@@ -41,6 +41,7 @@ import {
   findCellPosFromPmPos,
 } from "@stll/folio-core/prosemirror/cellDragSelection";
 import { proseDocToBlocks } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
+import { executeEditorCommand } from "@stll/folio-core/prosemirror/executeEditorCommand";
 import {
   CANONICAL_GAP,
   usesCanonicalSession,
@@ -439,7 +440,7 @@ export function usePagesPointer(
     const factory =
       btn.type === "row" ? cmds["addRowBelow"] : cmds["addColumnRight"];
     if (!factory) return;
-    factory()(view.state, (t) => view.dispatch(t), view);
+    executeEditorCommand(view, factory());
     tableInsertButton.value = null;
     view.focus();
   }

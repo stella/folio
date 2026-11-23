@@ -192,9 +192,8 @@ import {
 import { FOLIO_INPUT_HIDDEN_ATTRIBUTE } from "@stll/folio-core/paged-layout/selectionViewportRect";
 import { resizeColumnPair } from "@stll/folio-core/paged-layout/tableColumnResize";
 import { tableInsertButtonOffset } from "@stll/folio-core/paged-layout/tableInsertButtonGeometry";
-// Table commands (for quick-action insert buttons)
-import { addColumnRight, addRowBelow } from "@stll/folio-core/prosemirror";
 import { expectImageAttrs } from "@stll/folio-core/prosemirror/attrs";
+import { executeEditorCommand } from "@stll/folio-core/prosemirror/executeEditorCommand";
 import type { HistoryShortcutOwner } from "@stll/folio-core/prosemirror/extensions/core/HistoryExtension";
 import type { ExtensionManager } from "@stll/folio-core/prosemirror/extensions/ExtensionManager";
 import {
@@ -222,6 +221,7 @@ import type {
   TemplatePreviewValues,
 } from "@stll/folio-core/prosemirror/plugins/templatePreviewValues";
 import { getTemplateSlashMenu } from "@stll/folio-core/prosemirror/plugins/templateSlashMenu";
+import { singletonManager } from "@stll/folio-core/prosemirror/schema";
 import {
   clampRowResizeDelta,
   columnResizeCommand,
@@ -4784,7 +4784,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         resizingHfSurfaceRef.current = null;
         if (surface) {
           const view = hfPMsRef.current?.getView(surface.rId);
-          if (view) command(view.state, (tr) => view.dispatch(tr), view);
+          if (view) executeEditorCommand(view, command);
           return;
         }
         hiddenPMRef.current?.executeCommand(command);
@@ -5096,17 +5096,18 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         );
         view.dispatch(tr);
 
-        // Dispatch the appropriate insert command
-        if (type === "row") {
-          addRowBelow(view.state, view.dispatch);
-        } else {
-          addColumnRight(view.state, view.dispatch);
-        }
+        const commands = extensionManager ?? singletonManager;
+        executeEditorCommand(
+          view,
+          commands.requireCommand(
+            type === "row" ? "addRowBelow" : "addColumnRight",
+          )(),
+        );
 
         setTableInsertButton(null);
         hiddenPMRef.current.focus();
       },
-      [tableInsertButton, setTableInsertButton],
+      [tableInsertButton, setTableInsertButton, extensionManager],
     );
 
     /**

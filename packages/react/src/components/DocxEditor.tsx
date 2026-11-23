@@ -3668,10 +3668,10 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             break;
           }
           case "restartNumbering":
-            restartNumbering(view.state, view.dispatch);
+            executeEditorCommand(view, restartNumbering);
             break;
           case "continueNumbering":
-            continueNumbering(view.state, view.dispatch);
+            executeEditorCommand(view, continueNumbering);
             break;
           case "setNumberingValue":
             setNumberingValueDialogOpen(true);
@@ -5806,7 +5806,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       (props: Parameters<typeof setTableProperties>[0]) => {
         const view = getActiveEditorView();
         if (view) {
-          setTableProperties(props)(view.state, view.dispatch);
+          executeEditorCommand(view, setTableProperties(props));
         }
       },
       [getActiveEditorView],
@@ -5944,7 +5944,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       (value: number) => {
         const view = getActiveEditorView();
         if (view) {
-          setNumberingValue(value)(view.state, view.dispatch);
+          executeEditorCommand(view, setNumberingValue(value));
         }
       },
       [getActiveEditorView],
