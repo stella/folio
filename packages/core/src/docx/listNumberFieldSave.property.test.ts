@@ -1248,8 +1248,8 @@ const FIXTURES: readonly Pinned[] = [
     path: "tests/visual/fixtures/sample.docx",
     projection: {
       digest:
-        "c8d4dad94737c6320ca380ae77614b4d3a40748c25cb42a9084292c581064883",
-      length: 91_651,
+        "2d5a2402be90d6c86ac9ec4037e0bc8fb42b978fa933c6a5277b01bd625dfe4d",
+      length: 91_534,
     },
     saved: { file: "sample.document.xml" },
   },
@@ -1273,7 +1273,7 @@ const FIXTURES: readonly Pinned[] = [
   },
   {
     path: "tests/visual/fixtures/docx-editor-demo.docx",
-    projection: { length: 450_019 },
+    projection: { length: 449_493 },
     saved: {
       digest:
         "6bac5af14f8a58ea6627768ea747a8fc8ec69ce3e3edae1c41d720de84f81dee",

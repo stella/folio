@@ -1,4 +1,4 @@
-import { Result } from "better-result";
+import { panic, Result } from "better-result";
 import { Fragment, Slice } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
@@ -8,7 +8,12 @@ import {
   paragraphNumberingReference,
   relationshipIdOf,
 } from "@stll/docx-core/model";
-import { type DocumentOp, packageResourcesOpOf } from "@stll/docx-core/ops";
+import {
+  type DocumentOp,
+  type EditorIntent,
+  packageResourcesOpOf,
+  type TextPosition,
+} from "@stll/docx-core/ops";
 
 import {
   type CanonicalCommit,
@@ -48,6 +53,7 @@ import type {
   NumberingDefinitions,
   Paragraph,
   Run,
+  Table,
 } from "../types/document";
 import { readModel } from "../types/documentModel";
 import { bytesToDataUrl } from "../utils/base64";
@@ -85,6 +91,69 @@ const unplacedBlockGround = (slice: Slice): CanonicalRefusalGround => {
       : CANONICAL_GAP.storyContentProjection,
   };
 };
+type ClipboardParagraphPlace = {
+  paragraph: Paragraph;
+  replace: (next: Paragraph) => void;
+};
+
+/**
+ * A pasted block's paragraphs in document order, a table's cell paragraphs
+ * among them, each with the place it fills; undefined when a cell holds a
+ * block other than a paragraph or a table.
+ */
+const clipboardParagraphs = (
+  block: Paragraph | Table,
+  replace: (next: Paragraph) => void = () => {},
+): ClipboardParagraphPlace[] | undefined => {
+  if (block.type === "paragraph") return [{ paragraph: block, replace }];
+  const places: ClipboardParagraphPlace[] = [];
+  for (const row of block.rows)
+    for (const cell of row.cells)
+      for (const [index, inner] of cell.content.entries()) {
+        if (inner.type !== "paragraph" && inner.type !== "table")
+          return undefined;
+        const found = clipboardParagraphs(inner, (next) => {
+          cell.content[index] = next;
+        });
+        if (found === undefined) return undefined;
+        places.push(...found);
+      }
+  return places;
+};
+
+/**
+ * A table's verbatim captures describe the markup it was read from; a pasted
+ * copy is new content the serializer writes from its model.
+ */
+const withoutTableCaptures = (table: Table): void => {
+  if (table.formatting !== undefined) {
+    delete table.formatting.sourceXml;
+    delete table.formatting.gridSourceXml;
+  }
+  for (const row of table.rows) {
+    if (row.formatting !== undefined) delete row.formatting.sourceXml;
+    for (const cell of row.cells) {
+      if (cell.formatting !== undefined) delete cell.formatting.sourceXml;
+      for (const inner of cell.content)
+        if (inner.type === "table") withoutTableCaptures(inner);
+    }
+  }
+};
+
+/** A pasted block's own copy, each paragraph keeping its indentation provenance. */
+const cloneClipboardBlock = (block: Paragraph | Table): Paragraph | Table => {
+  const clone = structuredClone(block);
+  if (clone.type === "table") withoutTableCaptures(clone);
+  const sources = clipboardParagraphs(block) ?? [];
+  const targets = clipboardParagraphs(clone) ?? [];
+  for (const [index, { paragraph: target }] of targets.entries()) {
+    const source = sources[index]?.paragraph;
+    if (source !== undefined)
+      copyParagraphIndentationProjection({ target, source });
+  }
+  return clone;
+};
+
 const IMAGE_RELATIONSHIP =
   "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image";
 const HYPERLINK_RELATIONSHIP =
@@ -422,13 +491,14 @@ export const prepareCanonicalPaste = ({
   const paragraphType = state.schema.nodes["paragraph"];
   if (paragraphType === undefined)
     return refuse("Clipboard input requires a paragraph schema.");
+  const tableType = state.schema.nodes["table"];
   let inline = true;
-  let paragraphsOnly = true;
+  let blocksOnly = true;
   slice.content.forEach((node) => {
     inline &&= node.isInline;
-    paragraphsOnly &&= node.type === paragraphType;
+    blocksOnly &&= node.type === paragraphType || node.type === tableType;
   });
-  if (!inline && !paragraphsOnly)
+  if (!inline && !blocksOnly)
     return refuseUnder(
       unplacedBlockGround(slice),
       "Clipboard tables and embedded blocks require canonical table editing.",
@@ -453,17 +523,27 @@ export const prepareCanonicalPaste = ({
       }),
   });
   if (converted.isErr()) return converted;
-  const paragraphs: Paragraph[] = [];
+  const blocks: (Paragraph | Table)[] = [];
   for (const block of converted.value) {
-    if (block.type !== "paragraph")
+    if (
+      (block.type !== "paragraph" && block.type !== "table") ||
+      clipboardParagraphs(block) === undefined
+    )
       return refuseUnder(
         unplacedBlockGround(slice),
         "The clipboard contains an unsupported block.",
       );
-    const paragraph = structuredClone(block);
-    copyParagraphIndentationProjection({ target: paragraph, source: block });
-    paragraphs.push(paragraph);
+    blocks.push(cloneClipboardBlock(block));
   }
+  // Every pasted paragraph, a table's cell paragraphs among them, with the
+  // place it fills: an import that returns new paragraphs puts them there.
+  const places = blocks.flatMap(
+    (block, index) =>
+      clipboardParagraphs(block, (next) => {
+        blocks[index] = next;
+      }) ?? [],
+  );
+  const paragraphs = places.map(({ paragraph }) => paragraph);
   if (moveTarget === undefined && (plain || sourceDocument === undefined))
     flattenClipboardStyleReferences(paragraphs);
   // Over selected cells the paste clears every cell and lands in the first.
@@ -504,7 +584,13 @@ export const prepareCanonicalPaste = ({
     });
     if (importedStyles.isErr()) return refuse(importedStyles.error.message);
     styles = importedStyles.value.styles;
-    paragraphs.splice(0, paragraphs.length, ...importedStyles.value.paragraphs);
+    for (const [index, place] of places.entries()) {
+      const imported =
+        importedStyles.value.paragraphs[index] ??
+        panic("An imported clipboard paragraph is missing.");
+      place.replace(imported);
+      paragraphs[index] = imported;
+    }
     styleIds = importedStyles.value.styleIds;
     extraIds = importedStyles.value.numberingIds;
   }
@@ -823,36 +909,54 @@ export const prepareCanonicalPaste = ({
   }
   const openStart = importedSlice.openStart === 0 ? 0 : 1;
   const openEnd = importedSlice.openEnd === 0 ? 0 : 1;
+  // Without a table the blocks are paragraphs, pasted as one fragment.
+  const topParagraphs = blocks.filter(
+    (block): block is Paragraph => block.type === "paragraph",
+  );
+  const pasted = (range: {
+    from: TextPosition;
+    to: TextPosition;
+  }): EditorIntent =>
+    topParagraphs.length === blocks.length
+      ? {
+          type: "replaceFragment",
+          ...range,
+          paragraphs: topParagraphs,
+          openStart,
+          openEnd,
+        }
+      : { type: "pasteBlocks", ...range, blocks, openStart, openEnd };
   if (from.value === undefined || to.value === undefined)
     return session.prepareCellSelectionStructure(
       state,
-      (at) => ({
-        type: "replaceFragment",
-        from: at,
-        to: at,
-        paragraphs,
-        openStart,
-        openEnd,
-      }),
+      (at) => pasted({ from: at, to: at }),
       { resourceOps, semantic: "paste" },
     );
-  const fragment = {
-    from: from.value,
-    to: to.value,
-    paragraphs,
-    openStart,
-    openEnd,
-  } as const;
+  const range = { from: from.value, to: to.value };
   if (moveTarget === undefined)
     return session.prepareIntents(state, {
-      intents: [{ type: "replaceFragment", ...fragment }],
+      intents: [pasted(range)],
       resourceOps,
       semantic: "paste",
     });
+  if (topParagraphs.length !== blocks.length)
+    return refuseUnder(
+      { gap: CANONICAL_GAP.trackedTableStructure },
+      "Moving a table by dragging requires a table move operation.",
+    );
   const target = session.projection.addressAt(moveTarget);
   if (target.isErr()) return target;
   return session.prepareIntents(state, {
-    intents: [{ type: "moveFragment", target: target.value, ...fragment }],
+    intents: [
+      {
+        type: "moveFragment",
+        target: target.value,
+        ...range,
+        paragraphs: topParagraphs,
+        openStart,
+        openEnd,
+      },
+    ],
     resourceOps,
     semantic: "paste",
   });

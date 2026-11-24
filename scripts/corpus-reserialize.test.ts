@@ -264,7 +264,8 @@ describe("removing the captures makes the serializers run", () => {
     const original = captureCensus(parsed);
 
     expect(original.table).toStartWith("<w:tblPr>");
-    expect(original.grid).toStartWith("<w:tblGrid>");
+    // The fixture's grid is the one the model writes, so none is captured.
+    expect(original.grid).toBeUndefined();
     expect(original.row).toStartWith("<w:trPr>");
     expect(original.cell).toStartWith("<w:tcPr>");
     expect(original.header).toContain("<w:hdr");

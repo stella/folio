@@ -110,11 +110,7 @@ describe("tracked table cell grid provenance", () => {
 
     expect(tables.at(0)?.columnWidths).toEqual([4680]);
     expect(tables.at(0)?.rows.at(0)?.cells).toHaveLength(1);
-    expect(tables.at(0)?.formatting?.gridSourceXml).toBe(
-      '<w:tblGrid><w:gridCol w:w="4680"/></w:tblGrid>',
-    );
     expect(tables.at(1)?.columnWidths).toEqual([3000, 7000]);
-    expect(tables.at(1)?.formatting?.gridSourceXml).toBe(UNCHANGED_GRID_SOURCE);
     expect(gridsFrom(await documentXml(once))).toEqual([
       '<w:tblGrid><w:gridCol w:w="4680"/></w:tblGrid>',
       UNCHANGED_GRID_SOURCE,
@@ -123,6 +119,7 @@ describe("tracked table cell grid provenance", () => {
     const reopened = await FolioDocxReviewer.fromBuffer(once);
     const twice = await reopened.toBuffer();
     expect(await documentXml(twice)).toBe(await documentXml(once));
+    expect(await tablesFrom(twice)).toEqual(tables);
   });
 
   test("rejecting cell removals preserves both table grids verbatim", async () => {
@@ -134,9 +131,7 @@ describe("tracked table cell grid provenance", () => {
 
     expect(tables.at(0)?.columnWidths).toEqual(GRID_WIDTHS);
     expect(tables.at(0)?.rows.at(0)?.cells).toHaveLength(4);
-    expect(tables.at(0)?.formatting?.gridSourceXml).toBe(GRID_SOURCE);
     expect(tables.at(1)?.columnWidths).toEqual([3000, 7000]);
-    expect(tables.at(1)?.formatting?.gridSourceXml).toBe(UNCHANGED_GRID_SOURCE);
     expect(gridsFrom(await documentXml(once))).toEqual([
       GRID_SOURCE,
       UNCHANGED_GRID_SOURCE,
@@ -145,5 +140,6 @@ describe("tracked table cell grid provenance", () => {
     const reopened = await FolioDocxReviewer.fromBuffer(once);
     const twice = await reopened.toBuffer();
     expect(await documentXml(twice)).toBe(await documentXml(once));
+    expect(await tablesFrom(twice)).toEqual(tables);
   });
 });

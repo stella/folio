@@ -89,7 +89,13 @@ import {
   noteReferenceKind,
   noteReferenceSpans,
 } from "./noteMarks";
-import { isRangeBoundary, paragraphLength, withChildren } from "./offsets";
+import {
+  contentWidth,
+  isRangeBoundary,
+  paragraphHoldsContentOnceAccepted,
+  paragraphLength,
+  withChildren,
+} from "./offsets";
 import { findStoryParagraph } from "./paragraphLocator";
 import { authoredParagraphFormatting } from "./paragraphPropertySnapshot";
 import {
@@ -324,6 +330,21 @@ export type EditorIntent =
       openEnd: 0 | 1;
     }
   | {
+      /**
+       * Clipboard blocks, tables among them, over a range: the range is
+       * cleared, an open first or last paragraph joins the text at its edge,
+       * and the blocks between go in before the caret's paragraph, split at
+       * the caret when text stands before it. Without a table it is
+       * `replaceFragment`.
+       */
+      type: "pasteBlocks";
+      from: TextPosition;
+      to: TextPosition;
+      blocks: readonly (Paragraph | Table)[];
+      openStart: 0 | 1;
+      openEnd: 0 | 1;
+    }
+  | {
       type: "moveFragment";
       from: TextPosition;
       to: TextPosition;
@@ -494,6 +515,7 @@ const intentEndpoints = (intent: EditorIntentAllocation) => {
     case "removeHyperlink":
     case "insertHyperlink":
     case "replaceFragment":
+    case "pasteBlocks":
     case "moveFragment":
     case "replaceText":
     case "insertAtom":
@@ -692,6 +714,25 @@ export const createEditorIntentIdAllocator = ({
         demand += 4 * (1 + span.ancestors.length);
     }
     if (incoming.length > 0) demand += 8;
+    if (intent.type === "pasteBlocks") {
+      // The split at the caret, each pasted paragraph's mark and content, and
+      // each pasted table's rows.
+      demand += 8 + PARAGRAPH_REVISION_DEMAND;
+      for (const block of intent.blocks) {
+        const paragraphs =
+          block.type === "table"
+            ? storyParagraphs({ content: [block] }).map(
+                ({ paragraph }) => paragraph,
+              )
+            : [block];
+        if (block.type === "table") demand += 2 + block.rows.length;
+        for (const paragraph of paragraphs) {
+          demand += PARAGRAPH_REVISION_DEMAND;
+          for (const span of leafSpans(paragraph.content))
+            demand += leafRevisionDemand(span.ancestors.length);
+        }
+      }
+    }
     // A suggested link change strikes the text it changes and inserts the
     // changed copy after each stretch of it; a suggested contents list
     // records every paragraph it inserts and the split it may make.
@@ -1155,6 +1196,252 @@ const adjacentJoinRefusal = (
 
 const paragraphAt = (document: Document, at: TextPosition) =>
   findStoryParagraph(storyBody(document, at.story), at.blockId)?.paragraph;
+
+type ContentWithinRange = { paragraph: Paragraph; from: number; to: number };
+/**
+ * Whether `paragraph` holds content in `[from, to)` once its changes are
+ * accepted, by the one paragraph-content rule: range markers, comment
+ * references and what accepting takes away hold none. A paste keeps a
+ * paragraph for the text beside it only when this holds, in either mode, so
+ * accepting a suggested paste leaves the paragraphs the direct paste does.
+ */
+const holdsContentWithin = ({
+  paragraph,
+  from,
+  to,
+}: ContentWithinRange): boolean => {
+  const content: ParagraphContent[] = [];
+  let offset = 0;
+  for (const item of paragraph.content) {
+    const end = offset + contentWidth([item]);
+    if (end > from && offset < to) content.push(item);
+    offset = end;
+  }
+  return paragraphHoldsContentOnceAccepted({ ...paragraph, content });
+};
+
+/** A pasted block's paragraphs in document order, a table's cells' among them. */
+const blockParagraphs = (block: Paragraph | Table): Paragraph[] =>
+  block.type === "paragraph"
+    ? [block]
+    : block.rows.flatMap((row) =>
+        row.cells.flatMap((cell) =>
+          cell.content.flatMap((inner) =>
+            inner.type === "paragraph" || inner.type === "table"
+              ? blockParagraphs(inner)
+              : [],
+          ),
+        ),
+      );
+
+type BlockPasteIntent = Extract<EditorIntent, { type: "pasteBlocks" }>;
+type BlockPasteOptions = {
+  intent: BlockPasteIntent;
+  mode: EditorIntentMode;
+  firstBlockId?: number;
+};
+/**
+ * Clipboard blocks with tables: one step after another, each compiled against
+ * the document the last left and, suggesting, taking the revision ids the
+ * steps before it left unused.
+ */
+const compileBlockPaste = (
+  document: Document,
+  { intent, mode, firstBlockId }: BlockPasteOptions,
+): Result<CompiledEditorIntent, DocumentOpRefusal> => {
+  const { from, to, openStart, openEnd } = intent;
+  const paragraphs = intent.blocks.filter(
+    (block): block is Paragraph => block.type === "paragraph",
+  );
+  if (paragraphs.length === intent.blocks.length)
+    return compileEditorIntent(document, {
+      intent: {
+        type: "replaceFragment",
+        from,
+        to,
+        paragraphs,
+        openStart,
+        openEnd,
+      },
+      mode,
+      ...(firstBlockId === undefined ? {} : { firstBlockId }),
+    });
+  // Every pasted paragraph, a table's among them, takes the identities a
+  // clipboard paragraph takes: its copied bookmarks and records renamed.
+  const identified = identifyClipboardParagraphs({
+    document,
+    paragraphs: intent.blocks.flatMap(blockParagraphs),
+    mode,
+    firstBlockId,
+  });
+  if (identified.isErr()) return Result.err(identified.error);
+  let next = 0;
+  const take = (): Paragraph =>
+    identified.value[next++] ??
+    panic("An identified clipboard paragraph is missing.");
+  const rebuilt = (block: Paragraph | Table): Paragraph | Table =>
+    block.type === "paragraph"
+      ? take()
+      : {
+          ...block,
+          rows: block.rows.map((row) => ({
+            ...row,
+            cells: row.cells.map((cell) => ({
+              ...cell,
+              content: cell.content.map((inner) =>
+                inner.type === "paragraph" || inner.type === "table"
+                  ? rebuilt(inner)
+                  : inner,
+              ),
+            })),
+          })),
+        };
+  const blocks = intent.blocks.map(rebuilt);
+  const ops: DocumentOp[] = [];
+  let current = document;
+  let pool =
+    mode.type === "suggesting"
+      ? [mode.revision.id, ...(mode.newIds.revision ?? [])]
+      : [];
+  const step = (
+    stepIntent: EditorIntent,
+  ): Result<TextPosition, DocumentOpRefusal> => {
+    let stepMode: EditorIntentMode = mode;
+    if (mode.type === "suggesting") {
+      const [id, ...rest] = pool;
+      if (id === undefined)
+        return Result.err(
+          new DocumentOpRefusal({
+            reason: DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
+            message: "The pasted blocks need more revision ids.",
+            opType: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+          }),
+        );
+      stepMode = {
+        ...mode,
+        revision: { ...mode.revision, id },
+        newIds: { ...mode.newIds, revision: rest },
+      };
+    }
+    const compiled = compileEditorIntent(current, {
+      intent: stepIntent,
+      mode: stepMode,
+      ...(firstBlockId === undefined ? {} : { firstBlockId }),
+    });
+    if (compiled.isErr()) return Result.err(compiled.error);
+    const applied =
+      compiled.value.applied === undefined
+        ? applyDocumentOps(current, compiled.value.ops)
+        : Result.ok(compiled.value.applied);
+    if (applied.isErr()) return Result.err(applied.error);
+    ops.push(...compiled.value.ops);
+    current = applied.value.document;
+    // A step may take ids beyond the revisions it reports (a split copies a
+    // pending property change under a new id), so the package says which
+    // remain free.
+    const occupied = packageIdOccupancy(current.package).revisions;
+    pool = pool.filter((candidate) => !occupied.has(candidate));
+    return Result.ok(compiled.value.selection);
+  };
+
+  let caret: TextPosition = from;
+  if (from.blockId !== to.blockId || from.offset !== to.offset) {
+    const cleared = step({ type: "replaceText", from, to, text: "" });
+    if (cleared.isErr()) return Result.err(cleared.error);
+    caret = cleared.value;
+  }
+  // An open first paragraph joins the text before the caret.
+  const head = blocks.at(0);
+  if (openStart === 1 && head?.type === "paragraph") {
+    blocks.shift();
+    const joined = step({
+      type: "replaceFragment",
+      from: caret,
+      to: caret,
+      paragraphs: [head],
+      openStart: 1,
+      openEnd: 1,
+    });
+    if (joined.isErr()) return Result.err(joined.error);
+    caret = joined.value;
+  }
+  const last = blocks.at(-1);
+  const tail = openEnd === 1 && last?.type === "paragraph" ? last : undefined;
+  if (tail !== undefined) blocks.pop();
+  // The blocks go in before the caret's paragraph, split at the caret when
+  // text that stays stands before it; that paragraph keeps its identity.
+  const destination = paragraphAt(current, caret);
+  if (destination === undefined)
+    return Result.err(
+      new DocumentOpRefusal({
+        reason: DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
+        message: "The clipboard destination paragraph does not exist.",
+        opType: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+      }),
+    );
+  const textBefore = holdsContentWithin({
+    paragraph: destination,
+    from: 0,
+    to: caret.offset,
+  });
+  if (textBefore) {
+    const fresh = freshParagraphIds({
+      document: current,
+      reserved: mode.reservedBlockIds,
+      lease: mode.idLease,
+      count: 1,
+      opType: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+    });
+    if (fresh.isErr()) return Result.err(fresh.error);
+    const newBlockId =
+      fresh.value[0] ?? panic("A fresh paragraph id is missing.");
+    const split = step({ type: "splitParagraph", at: caret, newBlockId });
+    if (split.isErr()) return Result.err(split.error);
+  }
+  const anchor = caret.blockId;
+  for (const block of blocks) {
+    const placed = step(
+      block.type === "paragraph"
+        ? {
+            type: "insertParagraphs",
+            story: caret.story,
+            at: { type: "before", blockId: anchor },
+            paragraphs: [block],
+          }
+        : {
+            type: "tableBlock",
+            operation: {
+              type: DOCUMENT_OP_TYPES.INSERT_TABLE,
+              story: caret.story,
+              blockId: anchor,
+              table: block,
+              side: "before",
+              paragraphAfter: "none",
+            },
+          },
+    );
+    if (placed.isErr()) return Result.err(placed.error);
+  }
+  let selection: TextPosition = {
+    story: caret.story,
+    blockId: anchor,
+    offset: 0,
+  };
+  // An open last paragraph joins the text after the caret.
+  if (tail !== undefined) {
+    const joined = step({
+      type: "replaceFragment",
+      from: selection,
+      to: selection,
+      paragraphs: [tail],
+      openStart: 1,
+      openEnd: 1,
+    });
+    if (joined.isErr()) return Result.err(joined.error);
+    selection = joined.value;
+  }
+  return Result.ok({ ops, selection });
+};
 
 type MergedCellParagraphOptions = {
   /** The document the merge left. */
@@ -2337,6 +2624,12 @@ const compileInStory = (
             ...(firstBlockId === undefined ? {} : { firstBlockId }),
           }),
       });
+    case "pasteBlocks":
+      return compileBlockPaste(document, {
+        intent,
+        mode,
+        ...(firstBlockId === undefined ? {} : { firstBlockId }),
+      });
     case "replaceFragment": {
       if (intent.paragraphs.length === 0)
         return compileEditorIntent(document, {
@@ -2396,11 +2689,20 @@ const compileInStory = (
         document,
         intent.to,
       ).formatting;
-      const prefixBoundary = intent.openStart === 0 && intent.from.offset > 0;
+      // Markers and content pending removal keep no paragraph of their own:
+      // accepted, a suggested paste leaves the paragraphs the direct one does.
+      const keeps = (
+        paragraph: Paragraph | undefined,
+        from: number,
+        to: number,
+      ): boolean =>
+        paragraph !== undefined && holdsContentWithin({ paragraph, from, to });
+      const prefixBoundary =
+        intent.openStart === 0 && keeps(destination, 0, intent.from.offset);
       const suffixBoundary =
         intent.openEnd === 0 &&
         endpoint !== undefined &&
-        intent.to.offset < paragraphLength(endpoint);
+        keeps(endpoint, intent.to.offset, paragraphLength(endpoint));
       const normalized = [
         ...(prefixBoundary
           ? [

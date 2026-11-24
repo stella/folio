@@ -594,6 +594,13 @@ export type EditorIntent = HyperlinkEditorIntent | GenerateTOCIntent | {
     openStart: 0 | 1;
     openEnd: 0 | 1;
 } | {
+    type: "pasteBlocks";
+    from: TextPosition;
+    to: TextPosition;
+    blocks: readonly (Paragraph | Table)[];
+    openStart: 0 | 1;
+    openEnd: 0 | 1;
+} | {
     type: "moveFragment";
     from: TextPosition;
     to: TextPosition;

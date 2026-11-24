@@ -65,21 +65,6 @@ export const harnessRefusalProblems = ({
     .map(({ gap, message }) => `${gap}: ${message}`);
 };
 
-const clipboardTableRows: readonly HarnessRefusalRow[] = [
-  {
-    id: "clipboard-table",
-    gap: CANONICAL_GAP.trackedTableStructure,
-    message:
-      "Clipboard tables and embedded blocks require canonical table editing.",
-  },
-  {
-    id: "clipboard-nested-blocks",
-    gap: CANONICAL_GAP.trackedTableStructure,
-    message:
-      "Clipboard tables and nested block containers require canonical table editing.",
-  },
-];
-
 /**
  * Input over a cell selection other than typing and deletion needs a per-cell
  * operation the session does not have yet. Each of these leaves the document
@@ -110,7 +95,7 @@ const SELECTED_CELL_REFUSALS = {
   pasteWordHtml: [],
   pasteListHtml: [],
   pasteMultiBlock: [],
-  pasteTable: clipboardTableRows,
+  pasteTable: [],
   backspace: [],
   delete: [],
   cut: [],
@@ -130,13 +115,12 @@ export type CanonicalBrowserInputContext = {
   selection: "cells" | "other";
 };
 
-/** Native table paste and input over cells are explicit; the rest is strict. */
+/** Input over cells is explicit; the rest is strict. */
 export const canonicalBrowserRefusalRows = (
   action: BrowserInputAction,
   { selection }: CanonicalBrowserInputContext = { selection: "other" },
 ): readonly HarnessRefusalRow[] => {
-  if (selection === "cells") return SELECTED_CELL_REFUSALS[action.kind];
-  return action.kind === "pasteTable" ? clipboardTableRows : [];
+  return selection === "cells" ? SELECTED_CELL_REFUSALS[action.kind] : [];
 };
 
 type MatchCanonicalRefusalOptions = {

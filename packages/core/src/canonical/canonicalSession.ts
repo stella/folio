@@ -1686,6 +1686,7 @@ const intentStory = (intent: EditorIntent): OpStory => {
     case "removeHyperlink":
     case "insertHyperlink":
     case "replaceFragment":
+    case "pasteBlocks":
     case "moveFragment":
     case "replaceText":
     case "formatRun":
@@ -2417,6 +2418,7 @@ class CanonicalSession {
       case "removeHyperlink":
       case "insertHyperlink":
       case "replaceFragment":
+      case "pasteBlocks":
       case "moveFragment":
         return true;
       case "replaceText":

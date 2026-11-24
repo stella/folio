@@ -85,26 +85,21 @@ test.each(["editing", "suggesting"] as const)(
       assertExactModel(driver.snapshot(), before);
       expect(driver.history.canUndo()).toBe(false);
       expect(driver.history.canRedo()).toBe(false);
+      // A pasted table is one edit, undone whole.
       driver.paste(PASTED_TABLE(driver.state.doc));
-      expect(driver.refusals.at(-1)).toEqual({
-        gap: CANONICAL_GAP.trackedTableStructure,
-        message:
-          "Clipboard tables and embedded blocks require canonical table editing.",
-        expectation: "declared",
-        row: "clipboard-table",
-      });
-      expect(driver.state).toBe(state);
+      expect(driver.refusals).toEqual([]);
+      expect(driver.history.undo()).toBe(true);
       assertExactModel(driver.snapshot(), before);
       driver.history.setSelection(2, 4);
       expect(driver.cut()).toBe(true);
-      expect(driver.refusals).toHaveLength(1);
+      expect(driver.refusals).toEqual([]);
       expect(driver.history.canUndo()).toBe(true);
       expect(driver.history.undo()).toBe(true);
       assertExactModel(driver.snapshot(), before);
       // Over a selection the modified key deletes it, as the plain key does.
       driver.history.setSelection(2, 4);
       expect(driver.pressKey("Mod-Backspace")).toBe(true);
-      expect(driver.refusals).toHaveLength(1);
+      expect(driver.refusals).toEqual([]);
       expect(driver.history.canUndo()).toBe(true);
       expect(driver.history.undo()).toBe(true);
       assertExactModel(driver.snapshot(), before);

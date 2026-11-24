@@ -94,6 +94,7 @@ export const mapIntentPositions = (
     case "formatRun":
     case "insertAtom":
     case "replaceFragment":
+    case "pasteBlocks":
     case "setHyperlink":
     case "removeHyperlink":
     case "insertHyperlink":

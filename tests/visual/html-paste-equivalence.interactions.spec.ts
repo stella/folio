@@ -28,10 +28,9 @@ const cases = [
   },
   {
     kind: "pasteWordHtml",
-    // A clipboard table is a canonical refusal (`clipboard-table`).
-    name: "Word-like paragraphs",
-    html: '<p class="MsoNormal">Opening</p><p class="MsoNormal">Closing</p>',
-    plain: "Opening\nClosing",
+    name: "Word-like paragraphs and table",
+    html: '<p class="MsoNormal">Opening</p><table border="1"><tbody><tr><td><p class="MsoNormal">Cell A</p></td><td><p class="MsoNormal">Cell B</p></td></tr></tbody></table><p class="MsoNormal">Closing</p>',
+    plain: "Opening\nCell A\tCell B\nClosing",
     selection: "replace",
   },
   {

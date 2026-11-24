@@ -244,6 +244,23 @@ export type StructuralPatchResult =
   | { type: "patched"; xml: string }
   | { type: "declined"; reason: StructuralSpliceDeclineReason };
 
+/** Verbatim captures: they keep the source's own spelling, not its meaning. */
+const CAPTURE_KEYS: ReadonlySet<string> = new Set([
+  "sourceXml",
+  "gridSourceXml",
+]);
+
+/** `value` without its verbatim captures, so a respelled source compares equal. */
+const withoutCaptures = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(withoutCaptures);
+  if (typeof value !== "object" || value === null) return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => !CAPTURE_KEYS.has(key))
+      .map(([key, field]) => [key, withoutCaptures(field)]),
+  );
+};
+
 const decline = (
   reason: StructuralSpliceDeclineReason,
 ): StructuralPatchResult => ({ type: "declined", reason });
@@ -418,11 +435,16 @@ export const buildStructuralDocumentPatch = ({
     return decline("structuralBarrierChanged");
   // A table whose content changed is written whole from the serialized part;
   // every other table keeps its source bytes, including what the model does
-  // not represent.
+  // not represent. Captures are left out of the comparison: they record how
+  // the source spelled its markup, which a serialized part need not repeat.
   const changedTables = new Set<number>();
   for (const [index, block] of sourceBarriers.entries()) {
     const next = currentBarriers[index];
-    if (canonicalJson(block) === canonicalJson(next)) continue;
+    if (
+      canonicalJson(withoutCaptures(block)) ===
+      canonicalJson(withoutCaptures(next))
+    )
+      continue;
     if (block.type !== "table" || next?.type !== "table")
       return decline("structuralBarrierChanged");
     changedTables.add(index);
