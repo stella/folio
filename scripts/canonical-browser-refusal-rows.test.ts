@@ -13,53 +13,35 @@ const tablePaste = {
   kind: "pasteTable",
   ...BROWSER_PASTE_PAYLOADS.pasteTable,
 } satisfies BrowserInputAction;
+const cells = { selection: "cells" } as const;
+const imeOverCells = canonicalBrowserRefusalRows(
+  { kind: "imeReplacement", updates: ["alpha"], completion: "commit" },
+  cells,
+);
 
-test("canonical browser table paste declares exact refusal alternatives", () => {
-  const rows = canonicalBrowserRefusalRows(tablePaste);
-  expect(rows.map(({ id }) => id)).toEqual([
-    "clipboard-table",
-    "clipboard-nested-blocks",
-  ]);
-  validateHarnessRefusalRows(rows);
-
-  expect(
-    matchCanonicalRefusalRow({
-      rows,
-      refusal: {
-        gap: CANONICAL_GAP.trackedTableStructure,
-        message:
-          "Clipboard tables and embedded blocks require canonical table editing.",
-      },
-    }),
-  ).toEqual(rows[0]);
-  expect(
-    matchCanonicalRefusalRow({
-      rows,
-      refusal: {
-        gap: CANONICAL_GAP.trackedTableStructure,
-        message:
-          "Clipboard tables and nested block containers require canonical table editing.",
-      },
-    }),
-  ).toEqual(rows[1]);
+test("a pasted table is strict at a caret and over selected cells", () => {
+  expect(canonicalBrowserRefusalRows(tablePaste)).toEqual([]);
+  expect(canonicalBrowserRefusalRows(tablePaste, cells)).toEqual([]);
 });
 
-test("canonical browser refusal matching rejects unknown and mismatched refusals", () => {
-  const rows = canonicalBrowserRefusalRows(tablePaste);
+test("canonical browser refusal matching takes a declared row and rejects unknown and mismatched refusals", () => {
+  validateHarnessRefusalRows(imeOverCells);
+  const declared = imeOverCells.at(0);
+  if (declared === undefined)
+    throw new TypeError("IME replacement over cells declares a refusal.");
+  expect(
+    matchCanonicalRefusalRow({ rows: imeOverCells, refusal: declared }),
+  ).toEqual(declared);
   expect(
     matchCanonicalRefusalRow({
-      rows,
-      refusal: { gap: CANONICAL_GAP.dispatch, message: "A different refusal." },
+      rows: imeOverCells,
+      refusal: { gap: CANONICAL_GAP.commands, message: "A different refusal." },
     }),
   ).toBeUndefined();
   expect(
     matchCanonicalRefusalRow({
-      rows,
-      refusal: {
-        gap: CANONICAL_GAP.commands,
-        message:
-          "Clipboard tables and embedded blocks require canonical table editing.",
-      },
+      rows: imeOverCells,
+      refusal: { gap: CANONICAL_GAP.commands, message: declared.message },
     }),
   ).toBeUndefined();
   expect(
@@ -68,7 +50,6 @@ test("canonical browser refusal matching rejects unknown and mismatched refusals
 });
 
 test("typing, pasting and deleting over selected cells stay strict; IME replacement declares its refusal", () => {
-  const cells = { selection: "cells" } as const;
   // Typing and pasting clear every selected cell and land in the first.
   expect(
     canonicalBrowserRefusalRows(
@@ -85,14 +66,11 @@ test("typing, pasting and deleting over selected cells stay strict; IME replacem
     { kind: "cut" },
   ] as const)
     expect(canonicalBrowserRefusalRows(action, cells)).toEqual([]);
-  expect(
-    canonicalBrowserRefusalRows(tablePaste, cells).map(({ id }) => id),
-  ).toEqual(["clipboard-table", "clipboard-nested-blocks"]);
+  expect(imeOverCells.length).toBeGreaterThan(0);
 });
 
 test("canonical browser refusal rows reject retired ledger gaps", () => {
-  const rows = canonicalBrowserRefusalRows(tablePaste);
-  expect(() => validateHarnessRefusalRows(rows, {})).toThrow(
+  expect(() => validateHarnessRefusalRows(imeOverCells, {})).toThrow(
     "Retired canonical refusal row must become strict",
   );
 });

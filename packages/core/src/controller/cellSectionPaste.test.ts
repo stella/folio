@@ -133,10 +133,8 @@ for (const session of ["canonical"] as const)
           view.state.tr.setSelection(caretIn(view.state.doc, text)),
         );
         view.pasteHTML(html);
-        // A pasted table is no canonical edit yet: the paste is refused whole.
-        const refused = session === "canonical" && html === TABLE;
-        expect(refusals).toHaveLength(refused ? 1 : 0);
-        expect(view.state.doc.textContent.includes("Pasted")).toBe(!refused);
+        expect(refusals).toEqual([]);
+        expect(view.state.doc.textContent.includes("Pasted")).toBe(true);
         return view.state.doc;
       } finally {
         manager.destroyView();

@@ -292,10 +292,11 @@ export const createCanonicalEditorHarness = (
         bubbles: true,
         cancelable: true,
       });
-      let paragraphsOnly = true;
+      let blocksOnly = true;
       let inlineOnly = true;
       slice.content.forEach((node) => {
-        paragraphsOnly &&= node.type.name === "paragraph";
+        blocksOnly &&=
+          node.type.name === "paragraph" || node.type.name === "table";
         inlineOnly &&= node.isInline;
       });
       // A table is the table gap's; any other block the story content's.
@@ -314,7 +315,7 @@ export const createCanonicalEditorHarness = (
           message:
             "Clipboard tables and nested block containers require canonical table editing.",
         };
-      else if (!paragraphsOnly && !inlineOnly)
+      else if (!blocksOnly && !inlineOnly)
         row = {
           id: "clipboard-table",
           gap: blockGap,

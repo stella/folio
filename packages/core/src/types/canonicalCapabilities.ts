@@ -125,7 +125,7 @@ export const CANONICAL_CAPABILITIES: {
     readonly owner: "controller";
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Suggested row, column and table changes refuse content the tracked table records cannot express; a pasted table refuses.";
+    readonly summary: "Suggested row, column and table changes refuse content the tracked table records cannot express; a dragged table refuses to move.";
   };
   readonly "story-content-projection": {
     readonly owner: "controller";
@@ -259,7 +259,7 @@ export const CANONICAL_CAPABILITIES: {
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
-      "Suggested row, column and table changes refuse content the tracked table records cannot express; a pasted table refuses.",
+      "Suggested row, column and table changes refuse content the tracked table records cannot express; a dragged table refuses to move.",
   },
   [CANONICAL_GAP.storyContentProjection]: {
     owner: "controller",
