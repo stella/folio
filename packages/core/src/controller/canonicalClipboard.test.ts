@@ -277,6 +277,93 @@ describe("canonical clipboard", () => {
     }
   });
 
+  test("a copied footnote keeps its source paragraph style, and the destination's own note keeps its style", () => {
+    const styled = (text: string): Paragraph => ({
+      type: "paragraph",
+      paraId: text === "owned" ? "13572468" : "24681357",
+      formatting: { styleId: "Shared" },
+      content: [{ type: "run", content: [{ type: "text", text }] }],
+    });
+    const destination = seed();
+    destination.package.styles = {
+      styles: [
+        {
+          styleId: "Shared",
+          type: "paragraph",
+          name: "Owned",
+          rPr: { italic: true },
+        },
+      ],
+    };
+    destination.package.footnotes = [
+      { type: "footnote", id: 7, content: [styled("owned")] },
+    ];
+    const sourceDocument = seed();
+    sourceDocument.package.styles = {
+      styles: [
+        {
+          styleId: "Shared",
+          type: "paragraph",
+          name: "Foreign",
+          rPr: { bold: true },
+        },
+      ],
+    };
+    sourceDocument.package.footnotes = [
+      { type: "footnote", id: 7, content: [styled("foreign")] },
+    ];
+    const session = createCanonicalSession(
+      destination,
+      destination.package.styles,
+    ).unwrap();
+    const state = EditorState.create({ schema, doc: session.projection.doc });
+    const slice = new Slice(
+      Fragment.from(
+        schema.node(
+          "paragraph",
+          null,
+          schema.text("7", [
+            schema.marks["footnoteRef"].create({
+              occurrenceId: "03f2b59c-bca8-4830-b10e-c5ce004a3d9d",
+              id: "7",
+              noteType: "footnote",
+            }),
+          ]),
+        ),
+      ),
+      1,
+      1,
+    );
+    publishCanonicalProjection({
+      session,
+      state,
+      commit: prepareCanonicalPaste({
+        session,
+        state,
+        slice,
+        sourceDocument,
+      }).unwrap(),
+    }).unwrap();
+    const notes = session.document.package.footnotes ?? [];
+    const styleOf = (id: number) => {
+      const block = notes.find((note) => note.id === id)?.content.at(0);
+      return block?.type === "paragraph"
+        ? block.formatting?.styleId
+        : undefined;
+    };
+    expect(styleOf(7)).toBe("Shared");
+    const copied = notes.find((note) => note.id !== 7);
+    if (copied === undefined)
+      throw new TypeError("The copied note is missing.");
+    const importedId = styleOf(copied.id);
+    expect(importedId).not.toBe("Shared");
+    const imported = session.document.package.styles?.styles.find(
+      (style) => style.styleId === importedId,
+    );
+    expect(imported?.name).toBe("Foreign");
+    expect(imported?.rPr?.bold).toBe(true);
+  });
+
   test("same-session comment and note moves retain their owned story references and exact history", () => {
     for (const kind of ["comment", "footnote", "endnote"] as const) {
       const destination = seed();

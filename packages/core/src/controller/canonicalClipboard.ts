@@ -634,6 +634,41 @@ export const prepareCanonicalPaste = ({
         pasteTarget ?? moveSource?.to ?? selectionRange.to,
       );
   if (to.isErr()) return to;
+  // The notes and comments the blocks name, copied from their source: their
+  // bodies import styles and numbering with the blocks' own paragraphs.
+  const named =
+    moveTarget === undefined
+      ? clipboardAnnotations({ paragraphs, source: sourceDocument })
+      : Result.ok(undefined);
+  if (named.isErr()) return named;
+  const annotations =
+    named.value === undefined
+      ? undefined
+      : {
+          notes: structuredClone([...named.value.notes]),
+          comments: structuredClone([...named.value.comments]),
+        };
+  const annotationBodies: ClipboardParagraphPlace[] = [];
+  for (const note of annotations?.notes ?? [])
+    for (const [index, block] of note.content.entries())
+      if (block.type === "paragraph")
+        annotationBodies.push({
+          paragraph: block,
+          replace: (next) => {
+            note.content[index] = next;
+          },
+        });
+  for (const comment of annotations?.comments ?? [])
+    for (const [index, paragraph] of comment.content.entries())
+      annotationBodies.push({
+        paragraph,
+        replace: (next) => {
+          comment.content[index] = next;
+        },
+      });
+  const annotationParagraphs = annotationBodies.map(
+    ({ paragraph }) => paragraph,
+  );
   // The session's own document, read to build the paste's operations.
   const destination = readModel(session.document);
   let styles = destination.package.styles;
@@ -644,6 +679,7 @@ export const prepareCanonicalPaste = ({
       destination,
       source: sourceDocument,
       paragraphs,
+      annotationParagraphs,
       tableStyleIds: tables.flatMap(({ formatting }) =>
         formatting?.styleId === undefined ? [] : [formatting.styleId],
       ),
@@ -656,6 +692,13 @@ export const prepareCanonicalPaste = ({
         panic("An imported clipboard paragraph is missing.");
       place.replace(imported);
       paragraphs[index] = imported;
+    }
+    for (const [offset, body] of annotationBodies.entries()) {
+      const imported =
+        importedStyles.value.annotationParagraphs[offset] ??
+        panic("An imported copied note or comment paragraph is missing.");
+      body.replace(imported);
+      annotationParagraphs[offset] = imported;
     }
     styleIds = importedStyles.value.styleIds;
     extraIds = importedStyles.value.numberingIds;
@@ -674,7 +717,7 @@ export const prepareCanonicalPaste = ({
   const importedNumbering = importNumbering({
     destination: destination.package.numbering,
     source: sourceNumbering,
-    paragraphs,
+    paragraphs: [...paragraphs, ...annotationParagraphs],
     mode: moveTarget === undefined ? "copy" : "move",
     sourceKind: sourceDocument === undefined ? "normalizedSlice" : "package",
     ...(extraIds === undefined ? {} : { extraIds }),
@@ -780,11 +823,6 @@ export const prepareCanonicalPaste = ({
   };
   // New inline images have no opaque XML dependencies. Existing package images
   // retain their relationship only when its resolved source belongs to this package.
-  const annotations =
-    moveTarget === undefined
-      ? clipboardAnnotations({ paragraphs, source: sourceDocument })
-      : Result.ok(undefined);
-  if (annotations.isErr()) return annotations;
   for (const paragraph of paragraphs) {
     if (moveTarget === undefined) {
       const links: Extract<
@@ -992,14 +1030,14 @@ export const prepareCanonicalPaste = ({
     from: TextPosition;
     to: TextPosition;
   }): EditorIntent => {
-    if (annotations.value !== undefined)
+    if (annotations !== undefined)
       return {
         type: "pasteBlocks",
         ...range,
         blocks,
         openStart,
         openEnd,
-        annotations: annotations.value,
+        annotations,
       };
     if (topParagraphs.length === blocks.length)
       return {

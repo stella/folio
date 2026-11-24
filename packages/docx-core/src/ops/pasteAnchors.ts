@@ -38,13 +38,26 @@ export type PasteAnchor =
       id: number;
     };
 
-const PLACEHOLDER_PREFIX = "_folioPasteAnchor";
+const PLACEHOLDER_STEM = "_folioPasteAnchor";
 /** Above any id a package writes, so a placeholder never meets a bookmark. */
 const PLACEHOLDER_FIRST_ID = 0x7f_00_00_00;
 
-const placeholderIndex = (name: string): number | undefined => {
-  if (!name.startsWith(PLACEHOLDER_PREFIX)) return undefined;
-  const index = Number(name.slice(PLACEHOLDER_PREFIX.length));
+/**
+ * A placeholder name prefix no bookmark the destination holds begins with, so
+ * that only this paste's placeholders carry it.
+ */
+const freePrefix = (names: ReadonlySet<string>): string => {
+  let serial = 0;
+  for (;;) {
+    const prefix = `${PLACEHOLDER_STEM}${String(serial)}_`;
+    if (![...names].some((name) => name.startsWith(prefix))) return prefix;
+    serial += 1;
+  }
+};
+
+const placeholderIndex = (prefix: string, name: string): number | undefined => {
+  if (!name.startsWith(prefix)) return undefined;
+  const index = Number(name.slice(prefix.length));
   return Number.isInteger(index) ? index : undefined;
 };
 
@@ -76,6 +89,8 @@ const withoutPasteAnchors = <T>(value: T, ids: ReadonlySet<number>): T => {
 };
 
 type AnchoredBlocks = {
+  /** The name prefix this paste's placeholders carry. */
+  prefix: string;
   /** The blocks with a placeholder for each reference and marker. */
   blocks: (Paragraph | Table)[];
   /** The blocks without the references and markers. */
@@ -83,17 +98,22 @@ type AnchoredBlocks = {
   anchors: PasteAnchor[];
 };
 
-/** The blocks with each note reference and comment marker a placeholder. */
+/**
+ * The blocks with each note reference and comment marker a placeholder, named
+ * apart from every bookmark in `destinationNames`.
+ */
 export const withPasteAnchors = (
   blocks: readonly (Paragraph | Table)[],
+  destinationNames: ReadonlySet<string> = new Set(),
 ): AnchoredBlocks => {
+  const prefix = freePrefix(destinationNames);
   const anchors: PasteAnchor[] = [];
   const placeholder = (anchor: PasteAnchor): ParagraphContent[] => {
     const index = anchors.length;
     anchors.push(anchor);
     const id = PLACEHOLDER_FIRST_ID + index;
     return [
-      { type: "bookmarkStart", id, name: `${PLACEHOLDER_PREFIX}${index}` },
+      { type: "bookmarkStart", id, name: `${prefix}${String(index)}` },
       { type: "bookmarkEnd", id },
     ];
   };
@@ -168,10 +188,33 @@ export const withPasteAnchors = (
   const anchoredBlocks = blocks.map(block);
   const ids = new Set(anchors.map((_, index) => PLACEHOLDER_FIRST_ID + index));
   return {
+    prefix,
     blocks: anchoredBlocks,
     plain: withoutPasteAnchors(anchoredBlocks, ids),
     anchors,
   };
+};
+
+/** The names of every bookmark `value` holds, at any depth. */
+export const bookmarkNamesIn = (value: unknown): Set<string> => {
+  const names = new Set<string>();
+  const visit = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      for (const item of node) visit(item);
+      return;
+    }
+    if (node instanceof Map) {
+      for (const item of node.values()) visit(item);
+      return;
+    }
+    if (typeof node !== "object" || node === null) return;
+    const type: unknown = Reflect.get(node, "type");
+    const name: unknown = Reflect.get(node, "name");
+    if (type === "bookmarkStart" && typeof name === "string") names.add(name);
+    for (const field of Object.values(node)) visit(field);
+  };
+  visit(value);
+  return names;
 };
 
 /** Whether `paragraph` holds placeholders and nothing else. */
@@ -186,27 +229,46 @@ export const holdsOnlyPasteAnchors = (paragraph: Paragraph): boolean =>
 /** Where a placeholder landed: its paragraph, offset and paragraph order. */
 export type PlacedAnchor = { blockId: string; offset: number; order: number };
 
-/** Each placeholder's place among `paragraphs`, by anchor index. */
-export const placedPasteAnchors = (
-  paragraphs: readonly Paragraph[],
-): Map<number, PlacedAnchor> => {
+type PlacedAnchorsOptions = {
+  paragraphs: readonly Paragraph[];
+  prefix: string;
+  count: number;
+};
+/**
+ * Each of this paste's placeholders' place among `paragraphs`, by anchor
+ * index; undefined when one is missing or found twice, since then no place
+ * is the placeholder's own.
+ */
+export const placedPasteAnchors = ({
+  paragraphs,
+  prefix,
+  count,
+}: PlacedAnchorsOptions): Map<number, PlacedAnchor> | undefined => {
   const placed = new Map<number, PlacedAnchor>();
+  const seen: number[] = [];
+  const visit = (
+    items: readonly ParagraphContent[],
+    at: Omit<PlacedAnchor, "offset"> & { start: number },
+  ) => {
+    let offset = at.start;
+    for (const item of items) {
+      if (item.type === "bookmarkStart") {
+        const index = placeholderIndex(prefix, item.name);
+        if (index !== undefined && index < count) {
+          seen.push(index);
+          placed.set(index, { blockId: at.blockId, offset, order: at.order });
+        }
+      }
+      if (isInlineContainer(item))
+        visit(childrenOf(item), { ...at, start: offset });
+      offset += contentWidth([item]);
+    }
+  };
   for (const [order, paragraph] of paragraphs.entries()) {
     const blockId = paragraph.paraId;
     if (blockId === undefined) continue;
-    const visit = (items: readonly ParagraphContent[], start: number) => {
-      let offset = start;
-      for (const item of items) {
-        if (item.type === "bookmarkStart") {
-          const index = placeholderIndex(item.name);
-          if (index !== undefined)
-            placed.set(index, { blockId, offset, order });
-        }
-        if (isInlineContainer(item)) visit(childrenOf(item), offset);
-        offset += contentWidth([item]);
-      }
-    };
-    visit(paragraph.content, 0);
+    visit(paragraph.content, { blockId, order, start: 0 });
   }
-  return placed;
+  // One place per placeholder: a missing or repeated one has none of its own.
+  return seen.length !== count || placed.size !== count ? undefined : placed;
 };

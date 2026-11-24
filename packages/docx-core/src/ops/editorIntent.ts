@@ -105,6 +105,7 @@ import {
 import { findStoryParagraph } from "./paragraphLocator";
 import { authoredParagraphFormatting } from "./paragraphPropertySnapshot";
 import {
+  bookmarkNamesIn,
   holdsOnlyPasteAnchors,
   type PasteAnnotations,
   type PlacedAnchor,
@@ -1342,6 +1343,9 @@ type AnchoredPlacement = {
 type AnchoredPlacementOptions = BlockPlacementOptions & {
   /** The blocks without their placeholders. */
   plain: readonly (Paragraph | Table)[];
+  /** The name prefix and number of this paste's placeholders. */
+  prefix: string;
+  count: number;
 };
 /**
  * Clipboard blocks placed: once with their placeholders, to find where each
@@ -1353,16 +1357,26 @@ type AnchoredPlacementOptions = BlockPlacementOptions & {
  */
 const placeAnchoredBlocks = (
   document: Document,
-  { intent, plain, mode, firstBlockId }: AnchoredPlacementOptions,
+  {
+    intent,
+    plain,
+    prefix,
+    count,
+    mode,
+    firstBlockId,
+  }: AnchoredPlacementOptions,
 ): Result<AnchoredPlacement, DocumentOpRefusal> => {
   const story = intent.from.story;
   const paragraphsOf = (from: Document) =>
     storyParagraphs(storyBody(from, story)).map(({ paragraph }) => paragraph);
   const only = intent.blocks.length === 1 ? intent.blocks[0] : undefined;
   if (only?.type === "paragraph" && holdsOnlyPasteAnchors(only)) {
+    // A caret names one gap: two endpoints at one offset may still hold the
+    // markers between their gaps, which the clear must take.
     const collapsed =
-      intent.from.blockId === intent.to.blockId &&
-      intent.from.offset === intent.to.offset;
+      idKey(intent.from.blockId) === idKey(intent.to.blockId) &&
+      intent.from.offset === intent.to.offset &&
+      (intent.from.zeroWidthBefore ?? 0) === (intent.to.zeroWidthBefore ?? 0);
     const cleared = collapsed
       ? Result.ok({ ops: [], selection: intent.from })
       : compileEditorIntent(document, {
@@ -1401,7 +1415,22 @@ const placeAnchoredBlocks = (
       ? applyDocumentOps(document, placed.value.ops)
       : Result.ok(placed.value.applied);
   if (marked.isErr()) return Result.err(marked.error);
-  const found = placedPasteAnchors(paragraphsOf(marked.value.document));
+  const lost = () =>
+    Result.err(
+      new DocumentOpRefusal({
+        reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+        message: "A pasted note or comment lost its place in the paste.",
+        opType: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+      }),
+    );
+  // Every placeholder of this paste lands once; one missing or found twice
+  // leaves no place that is its own.
+  const found = placedPasteAnchors({
+    paragraphs: paragraphsOf(marked.value.document),
+    prefix,
+    count,
+  });
+  if (found === undefined) return lost();
   const unmarkedPlacement = compileBlockPlacement(document, {
     intent: { ...intent, blocks: plain },
     mode,
@@ -1421,14 +1450,7 @@ const placeAnchoredBlocks = (
   );
   for (const { blockId, offset } of found.values()) {
     const length = lengths.get(blockId);
-    if (length === undefined || offset > length)
-      return Result.err(
-        new DocumentOpRefusal({
-          reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
-          message: "A pasted note or comment lost its place in the paste.",
-          opType: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
-        }),
-      );
+    if (length === undefined || offset > length) return lost();
   }
   return Result.ok({
     ops: [...unmarkedPlacement.value.ops],
@@ -1459,7 +1481,10 @@ const compileBlockPaste = (
   { intent, mode, firstBlockId }: BlockPasteOptions,
 ): Result<CompiledEditorIntent, DocumentOpRefusal> => {
   const { annotations, ...placement } = intent;
-  const anchored = withPasteAnchors(intent.blocks);
+  const anchored = withPasteAnchors(
+    intent.blocks,
+    bookmarkNamesIn(document.package),
+  );
   if (anchored.anchors.length === 0)
     return compileBlockPlacement(document, {
       intent: placement,
@@ -1497,6 +1522,8 @@ const compileBlockPaste = (
   const placed = placeAnchoredBlocks(document, {
     intent: { ...placement, blocks: anchored.blocks },
     plain: anchored.plain,
+    prefix: anchored.prefix,
+    count: anchored.anchors.length,
     mode,
     firstBlockId,
   });
@@ -1580,12 +1607,19 @@ const compileBlockPaste = (
     );
   };
   // The revision ids the mode gives that the package leaves free.
+  // A comment record holds its id without occupying a revision, so the ids
+  // comments hold, a copy just made among them, are left out too.
   const freeRevisionIds = () => {
     const occupied = packageIdOccupancy(current.package).revisions;
+    const commented = new Set(
+      (current.package.document.comments ?? []).map(({ id }) => id),
+    );
     return [
       ...(mode.type === "suggesting" ? [mode.revision.id] : []),
       ...(mode.newIds?.revision ?? []),
-    ].filter((candidate) => !occupied.has(candidate));
+    ].filter(
+      (candidate) => !occupied.has(candidate) && !commented.has(candidate),
+    );
   };
   // A comment id shares its space with revision ids: it takes the first free
   // one, or the first past every comment the package leaves free.

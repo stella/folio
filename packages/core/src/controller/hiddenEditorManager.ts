@@ -1012,30 +1012,35 @@ export const createHiddenEditorManager = (
     type: "idle",
   };
   /**
-   * What the editor last copied or cut, with the document it came from: a
-   * paste of the same text reads its notes and comments from that document.
+   * What the editor last wrote to the clipboard, with the document it came
+   * from: a paste whose clipboard holds exactly that markup reads its notes
+   * and comments from that document, and any other paste does not.
    */
-  let clipboardCopy:
-    { type: "none" } | { type: "copied"; document: Document; text: string } = {
-    type: "none",
+  type ClipboardCopy =
+    { type: "none" } | { type: "copied"; document: Document; html: string };
+  let clipboardCopy: ClipboardCopy = { type: "none" };
+  /**
+   * Write the selection to the clipboard once and return the markup written,
+   * so that what a later paste compares is exactly what the clipboard holds.
+   */
+  const writeClipboard = (pmView: EditorView, data: DataTransfer) => {
+    const serialized = pmView.serializeForClipboard(
+      pmView.state.selection.content(),
+    );
+    const html = serialized.dom.innerHTML;
+    data.setData("text/html", html);
+    data.setData("text/plain", serialized.text);
+    return html;
   };
-  const sliceText = (slice: Slice) =>
-    slice.content.textBetween(0, slice.content.size, "\n", "\uFFFC");
-  const captureCopy = (pmView: EditorView) => {
-    clipboardCopy =
-      editorSession.type === "canonical" && !pmView.state.selection.empty
-        ? {
-            type: "copied",
-            document: readModel(editorSession.session.document),
-            text: sliceText(pmView.state.selection.content()),
-          }
-        : { type: "none" };
-  };
-  /** The copied document, when `slice` is the text the editor last copied. */
-  const copiedSource = (slice: Slice) =>
-    clipboardCopy.type === "copied" && clipboardCopy.text === sliceText(slice)
+  /** The copied document, when the pasted clipboard is the editor's own copy. */
+  const copiedSource = (event: ClipboardEvent) => {
+    const html = event.clipboardData?.getData("text/html") ?? "";
+    return clipboardCopy.type === "copied" &&
+      clipboardCopy.html !== "" &&
+      html.includes(clipboardCopy.html)
       ? { sourceDocument: clipboardCopy.document }
       : {};
+  };
   let lastInputRule:
     { session: CanonicalSession; version: number; caret: number } | undefined;
   const canonicalStructuralInput = {
@@ -1296,7 +1301,8 @@ export const createHiddenEditorManager = (
         return true;
       }
       syncCanonicalMode();
-      captureCopy(pmView);
+      // Read before the cut deletes it; kept only once the clipboard holds it.
+      const source = readModel(editorSession.session.document);
       const session = editorSession.session;
       const { from, to } = pmView.state.selection;
       const prepared = session.prepareReplace(pmView.state, {
@@ -1309,22 +1315,21 @@ export const createHiddenEditorManager = (
         refuse(prepared.error.message, prepared.error.ground);
         return true;
       }
+      const data = event.clipboardData;
       const copied = Result.try({
-        try: () => {
-          const serialized = pmView.serializeForClipboard(
-            pmView.state.selection.content(),
-          );
-          event.clipboardData?.setData("text/html", serialized.dom.innerHTML);
-          event.clipboardData?.setData("text/plain", serialized.text);
-        },
+        try: () => writeClipboard(pmView, data),
         catch: () =>
           new CanonicalSessionRefusalError({
             ground: { gap: CANONICAL_GAP.dispatch },
             message: "The clipboard could not receive the cut content.",
           }),
       });
-      if (copied.isErr()) refuse(copied.error.message, copied.error.ground);
-      else publishCommit(prepared.value);
+      if (copied.isErr()) {
+        refuse(copied.error.message, copied.error.ground);
+        return true;
+      }
+      clipboardCopy = { type: "copied", document: source, html: copied.value };
+      publishCommit(prepared.value);
       return true;
     },
     ...canonicalInputLifecycle,
@@ -1495,7 +1500,7 @@ export const createHiddenEditorManager = (
         editorSession.type === "canonical" &&
         !deps.getReadOnly() &&
         input.handleKeyPress(pmView, event),
-      handlePaste: (pmView, _event, slice) => {
+      handlePaste: (pmView, event, slice) => {
         if (editorSession.type !== "canonical") return false;
         if (deps.getReadOnly()) {
           deps.onReadOnlyEditAttempt();
@@ -1506,7 +1511,7 @@ export const createHiddenEditorManager = (
           session: editorSession.session,
           state: pmView.state,
           slice,
-          ...copiedSource(slice),
+          ...copiedSource(event),
         });
         if (prepared.isErr()) {
           if (prepared.error.reason !== "noChange")
@@ -1580,9 +1585,32 @@ export const createHiddenEditorManager = (
             ? input.handleDOMEvents.blur(pmView)
             : false,
         ...createHiddenEditorClipboardHandlers(deps),
-        copy: (pmView) => {
-          captureCopy(pmView);
-          return createHiddenEditorClipboardHandlers(deps).copy();
+        copy: (pmView, event) => {
+          const data = event.clipboardData;
+          if (
+            editorSession.type !== "canonical" ||
+            data === null ||
+            pmView.state.selection.empty
+          ) {
+            clipboardCopy = { type: "none" };
+            return createHiddenEditorClipboardHandlers(deps).copy();
+          }
+          // The editor writes the copy itself, as it does a cut, and keeps
+          // the markup it wrote with the document it came from.
+          const source = readModel(editorSession.session.document);
+          const written = Result.try(() => writeClipboard(pmView, data));
+          if (written.isErr()) {
+            clipboardCopy = { type: "none" };
+            return createHiddenEditorClipboardHandlers(deps).copy();
+          }
+          event.preventDefault();
+          clipboardCopy = {
+            type: "copied",
+            document: source,
+            html: written.value,
+          };
+          deps.onCopy?.();
+          return true;
         },
         compositionstart: (pmView) =>
           editorSession.type === "canonical"

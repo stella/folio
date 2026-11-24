@@ -94,8 +94,10 @@ const SUGGESTING = {
   newIds: { revision: Array.from({ length: 80 }, (_, index) => 91 + index) },
 } as const satisfies EditorIntentMode;
 
-const paste = (mode: EditorIntentMode): Document => {
-  const document = destination();
+const paste = (
+  mode: EditorIntentMode,
+  document: Document = destination(),
+): Document => {
   const at = { story: OP_STORIES.MAIN, blockId: "00000002", offset: 0 };
   const compiled = compileEditorIntent(document, {
     intent: {
@@ -189,4 +191,57 @@ test("a reference naming no copied note refuses", () => {
     mode: { type: "editing" },
   });
   expect(compiled.isErr()).toBe(true);
+});
+
+test("two copied comments take two fresh ids while suggesting", () => {
+  const document = destination();
+  const at = { story: OP_STORIES.MAIN, blockId: "00000002", offset: 0 };
+  const twoComments: Paragraph = {
+    type: "paragraph",
+    content: [
+      { type: "commentReference", id: 1 },
+      text("Both"),
+      { type: "commentReference", id: 2 },
+    ],
+  };
+  const compiled = compileEditorIntent(document, {
+    intent: {
+      type: "pasteBlocks",
+      from: at,
+      to: at,
+      blocks: [twoComments],
+      openStart: 1,
+      openEnd: 1,
+      annotations: {
+        notes: [],
+        comments: [comment(1, "First copy"), comment(2, "Second copy")],
+      },
+    },
+    mode: SUGGESTING,
+  });
+  if (compiled.isErr()) throw compiled.error;
+  const applied = applyDocumentOps(document, compiled.value.ops);
+  if (applied.isErr()) throw applied.error;
+  const ids = (applied.value.document.package.document.comments ?? []).map(
+    ({ id }) => id,
+  );
+  expect(ids).toHaveLength(3);
+  expect(new Set(ids).size).toBe(3);
+});
+
+test("a destination bookmark named like a placeholder takes no copy's place", () => {
+  const document = destination();
+  const first = document.package.document.content.at(0);
+  if (first?.type !== "paragraph") throw new TypeError("Lost paragraph");
+  // Every name a placeholder could take, standing in the destination.
+  first.content.push(
+    { type: "bookmarkStart", id: 40, name: "_folioPasteAnchor0_0" },
+    { type: "bookmarkEnd", id: 40 },
+  );
+  const pasted = paste({ type: "editing" }, document);
+  const second = pasted.package.document.content.at(1);
+  if (second?.type !== "paragraph") throw new TypeError("Lost paragraph");
+  expect(JSON.stringify(second.content)).toContain(
+    '"type":"footnoteRef","id":2',
+  );
 });

@@ -69,8 +69,12 @@ export const createCanonicalEditorHarness = (
   const refusalRows: HarnessRefusalRow[] = [];
   let acceptedTransactions = 0;
   let expectedRows: readonly HarnessRefusalRow[] = [];
-  /** The text the harness last copied or cut, as the editor compares it. */
+  /**
+   * The text the harness last copied or cut and the clipboard the editor
+   * wrote it to; a paste of that text pastes that clipboard, as a browser does.
+   */
   let copiedText: string | undefined;
+  let copiedData: DataTransfer | undefined;
   const clipboardText = (slice: Slice) =>
     slice.content.textBetween(0, slice.content.size, "\n", "￼");
   const activationRow = canonicalActivationRefusalRow(source);
@@ -295,6 +299,9 @@ export const createCanonicalEditorHarness = (
       const event = new ClipboardEvent("paste", {
         bubbles: true,
         cancelable: true,
+        ...(copiedData !== undefined && copiedText === clipboardText(slice)
+          ? { clipboardData: copiedData }
+          : {}),
       });
       let blocksOnly = true;
       let inlineOnly = true;
@@ -382,10 +389,11 @@ export const createCanonicalEditorHarness = (
       copiedText = editorView.state.selection.empty
         ? undefined
         : clipboardText(editorView.state.selection.content());
+      copiedData = new DataTransfer();
       const event = new ClipboardEvent("copy", {
         bubbles: true,
         cancelable: true,
-        clipboardData: new DataTransfer(),
+        clipboardData: copiedData,
       });
       editorView.dom.dispatchEvent(event);
     },
@@ -393,10 +401,11 @@ export const createCanonicalEditorHarness = (
       copiedText = editorView.state.selection.empty
         ? undefined
         : clipboardText(editorView.state.selection.content());
+      copiedData = new DataTransfer();
       const event = new ClipboardEvent("cut", {
         bubbles: true,
         cancelable: true,
-        clipboardData: new DataTransfer(),
+        clipboardData: copiedData,
       });
       withRefusalRows(caseRefusalRows, () =>
         editorView.dom.dispatchEvent(event),
