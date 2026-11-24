@@ -39,7 +39,7 @@ import type { Document } from "../types/document";
 import { createHarnessState, parseShapeDocument } from "./editorHarness";
 
 type Fixture = { body: string; footnotes?: string; header?: string };
-const SESSIONS = ["legacy", "canonical"] as const;
+const SESSIONS = ["canonical"] as const;
 type Session = (typeof SESSIONS)[number];
 const reference = JSON.parse(
   readFileSync(

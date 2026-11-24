@@ -33,7 +33,7 @@ const documentWith = async (inner: string) => {
 };
 
 const load = async (page: Page, inner: string) => {
-  await page.goto("/?session=legacy");
+  await page.goto("/");
   await page.locator("#file-input").setInputFiles({
     name: "box.docx",
     mimeType:
@@ -62,7 +62,7 @@ const savedDocument = async (page: Page) => {
 };
 
 const typeInHost = async (page: Page) => {
-  await page.getByText("Host", { exact: false }).first().click();
+  await page.locator(".layout-page").getByText("Host").first().click();
   await page.keyboard.press("Home");
   await page.keyboard.type("Z");
   await page.waitForTimeout(300);

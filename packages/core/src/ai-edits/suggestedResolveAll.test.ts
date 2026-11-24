@@ -74,7 +74,7 @@ const savedTexts = async (reviewer: FolioDocxReviewer): Promise<string[]> =>
     .getContent()
     .map(({ text }) => text);
 
-const SESSIONS = ["legacy", "canonical"] as const;
+const SESSIONS = ["canonical"] as const;
 
 const documentOf = async (texts: readonly string[]): Promise<ArrayBuffer> => {
   const document = createEmptyDocument();
@@ -751,7 +751,7 @@ describe("resolving every suggestion headlessly", () => {
   // refuses a suggested block; the canonical session puts it there, as the
   // `pendingDeletion` refusal's recovery says ("insert a new block next to
   // it").
-  test.each(["legacy", "canonical"] as const)(
+  test.each(["canonical"] as const)(
     "a suggestion anchored to a tracked deletion (%s session)",
     async (session) => {
       const writer = await FolioDocxReviewer.fromBuffer(await buildDocument(), {

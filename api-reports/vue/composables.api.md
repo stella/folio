@@ -12,7 +12,6 @@ import { CellCoordinates } from '@stll/folio-core/managers/types';
 import { ClipboardSelection } from '@stll/folio-core/managers/ClipboardManager';
 import { Command } from 'prosemirror-state';
 import { CommandMap } from '@stll/folio-core/prosemirror/extensions/types';
-import { Comment as Comment_2 } from '@stll/folio-core/types/content';
 import { ComputedRef } from 'vue';
 import { createSelectionFromDOM } from '@stll/folio-core/managers/ClipboardManager';
 import { createVisualLineState } from '@stll/folio-core/prosemirror/utils/visualLineNavigation';
@@ -21,7 +20,6 @@ import { DisplayMode } from '@stll/folio-core/managers/EditorModeManager';
 import { Document as Document_2 } from '@stll/folio-core/types/document';
 import { DocxInput } from '@stll/folio-core/utils/docxInput';
 import { EditorReadOnlyReason } from '@stll/folio-core/managers/EditorModeManager';
-import { EditorSession } from '@stll/folio-core/types/canonicalCapabilities';
 import { EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { extractTrackedChanges } from '@stll/folio-core/prosemirror/utils/extractTrackedChanges';
@@ -37,7 +35,6 @@ import { FolioSaveOptions } from '@stll/folio-core/controller/folioEditor';
 import { FolioSelectiveSaveFlags } from '@stll/folio-core/docx/selectiveSaveFlags';
 import { getSelectionRuns } from '@stll/folio-core/managers/ClipboardManager';
 import { HeaderFooterPartKind } from '@stll/folio-core/controller/headerFooterEditorManager';
-import { HiddenProseMirrorCollaboration } from '@stll/folio-core/controller/hiddenEditorManager';
 import { HiddenProseMirrorRemoteSelection } from '@stll/folio-core/controller/hiddenEditorManager';
 import { HistoryShortcutOwner } from '@stll/folio-core/prosemirror/extensions/core/HistoryExtension';
 import { Layout } from '@stll/folio-core/layout-engine/types';
@@ -137,19 +134,12 @@ export function useColorMode(): ComputedRef<boolean>;
 export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorReturn;
 
 // @public (undocumented)
-export type UseDocxEditorCollaboration = HiddenProseMirrorCollaboration & {
-    plugins?: Plugin_2[] | undefined;
-};
-
-// @public (undocumented)
 export type UseDocxEditorOptions = {
-    comments?: () => readonly Comment_2[];
     hiddenContainer: Ref<HTMLElement | null>;
     hiddenHeaderFooterContainer?: Ref<HTMLElement | null>;
     noteEditorContainer?: Ref<HTMLElement | null>;
     pagesContainer: Ref<HTMLElement | null>;
     readOnly?: MaybeRefOrGetter<boolean>;
-    experimentalSession?: MaybeRefOrGetter<EditorSession | undefined>;
     pageGap?: number;
     pageRenderer?: MaybeRefOrGetter<PageRendererName | undefined>;
     markupView?: MaybeRefOrGetter<DisplayMode>;
@@ -164,7 +154,7 @@ export type UseDocxEditorOptions = {
     historyShortcuts?: HistoryShortcutOwner;
     onCanonicalHistory?: (effect: CanonicalHistoryEffect) => void;
     onCanonicalHistoryDrop?: (drop: CanonicalHistoryDrop) => void;
-    collaboration?: MaybeRefOrGetter<UseDocxEditorCollaboration | CanonicalRoomCollaboration | undefined>;
+    collaboration?: MaybeRefOrGetter<CanonicalRoomCollaboration | undefined>;
     getAnonymizationTerms?: () => readonly FolioAnonymizationTerm[] | undefined;
     getDerivedFields?: () => FolioDerivedFields | undefined;
     showTemplateDirectives?: MaybeRefOrGetter<boolean | undefined>;

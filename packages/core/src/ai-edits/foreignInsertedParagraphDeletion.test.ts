@@ -97,7 +97,7 @@ const deleted = async (
   return await reviewer.toBuffer();
 };
 
-for (const session of ["legacy", "canonical"] as const) {
+for (const session of ["canonical"] as const) {
   for (const beforeTable of [false, true]) {
     const where = beforeTable ? "before a table" : "between paragraphs";
     const kept = beforeTable ? ["First", "table", "Final"] : ["First", "Final"];
@@ -174,7 +174,7 @@ for (const session of ["legacy", "canonical"] as const) {
   }
 }
 
-for (const session of ["legacy", "canonical"] as const) {
+for (const session of ["canonical"] as const) {
   test(`${session}: deleting the final paragraph after another author's added break records its deletion beside the insertion`, async () => {
     const docx = await createDocx({
       package: {
@@ -240,7 +240,7 @@ const takenMark = {
   deletion: { info: { id: 3, author: "Second Reviewer" } },
 };
 
-for (const session of ["legacy", "canonical"] as const) {
+for (const session of ["canonical"] as const) {
   for (const target of ["the paragraph", "the final paragraph"] as const) {
     test(`${session}: deleting ${target} again keeps both records of a mark another deletion already took`, async () => {
       const docx = await createDocx({

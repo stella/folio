@@ -56,7 +56,6 @@ const CONTRACT_OWNER_FILES = new Set([
   "packages/core/src/prosemirror/conversion/fromProseDoc.ts",
   "packages/core/src/prosemirror/conversion/toProseDoc.ts",
   "packages/core/src/prosemirror/extensions/core/DocExtension.ts",
-  "packages/core/src/prosemirror/yjsDocumentMetadata.ts",
 ]);
 
 /**
@@ -473,7 +472,7 @@ describe("paragraph property source ownership", () => {
     ).toContain("private paragraph-source contract");
     expect(
       contractOwnershipViolation(
-        "packages/core/src/prosemirror/yjsDocumentMetadata.ts",
+        "packages/core/src/prosemirror/conversion/toProseDoc.ts",
         'attrs["_docxParagraphSourceContract"] = seeded;',
       ),
     ).toBeNull();

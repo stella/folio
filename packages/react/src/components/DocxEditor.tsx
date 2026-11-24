@@ -67,11 +67,9 @@ import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEdit
 import { NO_ANONYMIZATION_HIGHLIGHTS } from "@stll/folio-core/controller/anonymizationHighlights";
 import { afterCanonicalCompositionSettles } from "@stll/folio-core/controller/canonicalInputTimer";
 import { resolveCanonicalReviewRange } from "@stll/folio-core/controller/canonicalReview";
-import { isCanonicalRoomCollaboration } from "@stll/folio-core/controller/canonicalRoomEditor";
 import { DOCUMENT_CHANGE_NOTIFY_DELAY_MS } from "@stll/folio-core/controller/documentChangeNotification";
 import {
   FOLIO_DOCX_SERIALIZATION_MODE,
-  type FolioDocxSerializationPath,
   type FolioGetDocxOptions,
   type FolioSaveOptions,
 } from "@stll/folio-core/controller/folioEditor";
@@ -85,14 +83,8 @@ import {
   canonicalSaveDiagnosticError,
   serializeCanonicalSave,
 } from "@stll/folio-core/docx/canonicalSave";
-import {
-  cloneCommentsWithParagraphPropertySources,
-  cloneDocumentWithParagraphPropertySources,
-} from "@stll/folio-core/docx/document-clone";
-import { withHostCommentThreads } from "@stll/folio-core/docx/hostCommentThreads";
-import { normalizeBaseDirection } from "@stll/folio-core/docx/normalizeBaseDirection";
+import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import { getCachedNumberingMap } from "@stll/folio-core/docx/numberingParser";
-import type { SaveDiagnostic } from "@stll/folio-core/docx/saveDiagnostics";
 import { findPageNumberAtEditorPosition } from "@stll/folio-core/layout-engine/pmPageIndex";
 import type { Layout } from "@stll/folio-core/layout-engine/types";
 import {
@@ -187,35 +179,27 @@ import {
   type RulerParagraphEdit,
 } from "@stll/folio-core/prosemirror/commands/rulerParagraph";
 import {
-  clearPendingComment,
-  commentIdsNamedIn,
   commentRecordsOf,
   commentThreadIds,
   commitCommentThread,
   deleteCommentThread,
-  markPendingComment,
   recordingCommentsView,
 } from "@stll/folio-core/prosemirror/commentRecords";
-import { proseDocToBlocks } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
 import {
   executeEditorCommand,
   executeFirstEditorCommand,
 } from "@stll/folio-core/prosemirror/executeEditorCommand";
 import { ExtensionManager } from "@stll/folio-core/prosemirror/extensions/ExtensionManager";
 import {
-  clearTrackedChanges,
   getChangedParagraphIds,
   hasStructuralChanges,
   hasUntrackedChanges,
-  repackWithEditorSectionRemovals,
 } from "@stll/folio-core/prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 // Extension system
 import { createStarterKit } from "@stll/folio-core/prosemirror/extensions/StarterKit";
 import { projectMarkupView } from "@stll/folio-core/prosemirror/markupViewProjection";
-import { withoutUnreferencedNotes } from "@stll/folio-core/prosemirror/noteReferenceReview";
 import { createAICitationDecorationsPlugin } from "@stll/folio-core/prosemirror/plugins/aiCitationDecorations";
 import { createAISuggestionDecorationsPlugin } from "@stll/folio-core/prosemirror/plugins/aiSuggestionDecorations";
-import { createDerivedFieldsPlugin } from "@stll/folio-core/prosemirror/plugins/derivedFields";
 import {
   createSuggestionModePlugin,
   setSuggestionMode,
@@ -230,7 +214,6 @@ import {
   type CanonicalGap,
   canonicalRefusalMessage,
   canonicalRefusalNotice,
-  usesCanonicalSession,
 } from "@stll/folio-core/types/canonicalCapabilities";
 import type { CanonicalCommentRequest } from "@stll/folio-core/types/canonicalComments";
 import type { Comment } from "@stll/folio-core/types/content";
@@ -239,7 +222,6 @@ import type {
   Document,
   EndnoteProperties,
   FootnoteProperties,
-  HeaderFooter,
   SectionProperties,
 } from "@stll/folio-core/types/document";
 import {
@@ -321,7 +303,6 @@ import { useImageHandlers } from "./hooks/useImageHandlers";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { usePanelLayout } from "./hooks/usePanelLayout";
 import { useZoomAndPageInfo } from "./hooks/useZoomAndPageInfo";
-import { copyHostDocument } from "./hostDocument";
 import { InlineHeaderFooterEditor } from "./InlineHeaderFooterEditor";
 import type { InlineHeaderFooterEditorRef } from "./InlineHeaderFooterEditor";
 import { PanelScrim } from "./panelDrawer";
@@ -368,17 +349,6 @@ const TextContextMenu = lazy(() =>
     default: m.TextContextMenu,
   })),
 );
-
-const loadAttemptSelectiveSave = async () => {
-  const { attemptSelectiveSave } =
-    await import("@stll/folio-core/docx/selectiveSave");
-  return attemptSelectiveSave;
-};
-
-const loadRepackDocx = async () => {
-  const { repackDocx } = await import("@stll/folio-core/docx/rezip");
-  return repackDocx;
-};
 
 // Dialog tree (lazy-loaded internally) lives in ./DocxEditorDialogs.
 
@@ -653,26 +623,11 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       collaboration,
       plugins,
       featureFlags,
-      experimentalSession: experimentalSessionProp,
       onSelectiveSaveTripwire,
     }: DocxEditorProps,
     ref,
   ) {
-    // A canonical room joins the canonical session; a Yjs fragment binds the
-    // legacy session's editor state, so it selects that session unless the
-    // host names one.
-    const experimentalSession =
-      experimentalSessionProp ??
-      (collaboration?.yXmlFragment === undefined ? undefined : "legacy");
-    const canonicalRoom =
-      collaboration !== undefined && isCanonicalRoomCollaboration(collaboration)
-        ? collaboration
-        : undefined;
-    const yjsCollaboration =
-      collaboration !== undefined &&
-      !isCanonicalRoomCollaboration(collaboration)
-        ? collaboration
-        : undefined;
+    const canonicalRoom = collaboration;
     const pagedEditorRef = useRef<PagedEditorRef>(null);
     const [pagedEditorBinding] = useState(createPagedEditorBinding);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -896,21 +851,12 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       {
         maxEntries: 100,
         groupingInterval: 500,
-        enableKeyboardShortcuts:
-          historyShortcuts === "editor" &&
-          !usesCanonicalSession(experimentalSession, CANONICAL_GAP.history),
+        enableKeyboardShortcuts: false,
       },
     );
 
     const refuseCanonicalModelEdit = useCallback(
       (gap: CanonicalGap, message: string) => {
-        if (
-          !usesCanonicalSession(
-            experimentalSession,
-            CANONICAL_GAP.authorityRouting,
-          )
-        )
-          return false;
         const error = new CanonicalSessionRefusalError({
           ground: { gap },
           message: canonicalRefusalMessage(gap, message),
@@ -919,7 +865,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         onError?.(error);
         return true;
       },
-      [experimentalSession, onError],
+      [onError],
     );
 
     // Extension manager — built once, provides schema + plugins + commands
@@ -989,22 +935,10 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       () => createTemplatePreviewValuesPlugin(),
       [],
     );
-    // The default session keeps the host's derived fields current through a
-    // plugin; the canonical session does it in the hidden editor.
-    const [derivedFieldsSlot] = useState(() =>
-      createCallbackSlot(() => derivedFields),
-    );
-    useLayoutEffect(() => {
-      derivedFieldsSlot.commit(() => derivedFields);
-    });
-    const [derivedFieldsPlugin] = useState(() =>
-      createDerivedFieldsPlugin(derivedFieldsSlot.invoke),
-    );
     const [hostPlugins] = useState(() => plugins ?? []);
     const editorPlugins = useMemo(
       () => [
         ...hostPlugins,
-        ...(yjsCollaboration?.plugins ?? []),
         suggestionPlugin,
         aiSuggestionPlugin,
         aiCitationPlugin,
@@ -1012,11 +946,9 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
           ? [templateDirectivesPlugin, templateSlashMenu]
           : []),
         templatePreviewPlugin,
-        derivedFieldsPlugin,
       ],
       [
         hostPlugins,
-        yjsCollaboration?.plugins,
         suggestionPlugin,
         aiSuggestionPlugin,
         aiCitationPlugin,
@@ -1024,7 +956,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         templateDirectivesPlugin,
         templateSlashMenu,
         templatePreviewPlugin,
-        derivedFieldsPlugin,
       ],
     );
 
@@ -1336,12 +1267,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       bodyView: bodyEditorView,
     });
     const comments = canonicalComments ?? legacyComments;
-    const commentDraftMode = usesCanonicalSession(
-      experimentalSession,
-      CANONICAL_GAP.authorityRouting,
-    )
-      ? "canonical"
-      : "prosemirror";
     const documentOperationUndoEntriesRef = useRef<
       LiveDocumentOperationUndoEntry[]
     >([]);
@@ -1442,24 +1367,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       handleHeaderFooterDoubleClick,
       handleBodyClick,
       handleRemoveHeaderFooter,
-    } = useHeaderFooterEditor({
-      history,
-      pushDocument,
-      getCanonicalApi,
-      experimentalSession: usesCanonicalSession(
-        experimentalSession,
-        CANONICAL_GAP.authorityRouting,
-      )
-        ? "canonical"
-        : "legacy",
-      // Hook reads live HF PM state at close time (the in-place sync
-      // that previously kept package.headers/footers current per
-      // keystroke was removed to fix the undo-corruption bug; the
-      // close path now flushes via this callback). PagedEditor's ref
-      // exposes per-rId view lookup; the hook supplies the rId it
-      // already resolved internally for save / remove.
-      getHfView: pagedEditorBinding.getHfView,
-    });
+    } = useHeaderFooterEditor({ history, getCanonicalApi });
     useLayoutEffect(() => {
       if (readOnly && hfEditPosition) handleBodyClick();
     }, [readOnly, hfEditPosition, handleBodyClick]);
@@ -1567,45 +1475,15 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
 
     // Helper to undo in the active editor
     const undoActiveEditor = useCallback(() => {
-      if (
-        !usesCanonicalSession(
-          experimentalSession,
-          CANONICAL_GAP.authorityRouting,
-        ) &&
-        getActiveEditorStory().type === "headerFooter" &&
-        hfEditorRef.current
-      ) {
-        hfEditorRef.current.undo();
-      } else {
-        pagedEditorRef.current?.undo();
-        requestAnimationFrame(refreshBodyHistoryAvailability);
-      }
-    }, [
-      getActiveEditorStory,
-      refreshBodyHistoryAvailability,
-      experimentalSession,
-    ]);
+      pagedEditorRef.current?.undo();
+      requestAnimationFrame(refreshBodyHistoryAvailability);
+    }, [refreshBodyHistoryAvailability]);
 
     // Helper to redo in the active editor
     const redoActiveEditor = useCallback(() => {
-      if (
-        !usesCanonicalSession(
-          experimentalSession,
-          CANONICAL_GAP.authorityRouting,
-        ) &&
-        getActiveEditorStory().type === "headerFooter" &&
-        hfEditorRef.current
-      ) {
-        hfEditorRef.current.redo();
-      } else {
-        pagedEditorRef.current?.redo();
-        requestAnimationFrame(refreshBodyHistoryAvailability);
-      }
-    }, [
-      getActiveEditorStory,
-      refreshBodyHistoryAvailability,
-      experimentalSession,
-    ]);
+      pagedEditorRef.current?.redo();
+      requestAnimationFrame(refreshBodyHistoryAvailability);
+    }, [refreshBodyHistoryAvailability]);
 
     const handleActiveNoteStoryChange = useCallback(
       (story: NoteStoryKey | null) => {
@@ -1686,12 +1564,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       documentBuffer: documentBuffer ?? null,
       initialDocument: initialDocument ?? null,
       password,
-      experimentalSession: usesCanonicalSession(
-        experimentalSession,
-        CANONICAL_GAP.authorityRouting,
-      )
-        ? "canonical"
-        : "legacy",
       history,
       onError,
       onCompatibilityChange,
@@ -1747,13 +1619,8 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         setState((prev) => ({ ...prev, documentLoad }));
       }, []),
     });
-    const {
-      loadBuffer,
-      loadParsedDocument,
-      heldUnreferencedNotes,
-      originalBufferRef,
-      loadedDocumentIdentity,
-    } = documentLoader;
+    const { loadBuffer, loadParsedDocument, loadedDocumentIdentity } =
+      documentLoader;
 
     // Extract tracked changes once PM view is ready (after loading completes).
     // They do not open the review sidebar: it lists comments only (tracked
@@ -1823,47 +1690,12 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
      * and hand the host one copy of it it owns. A document built outside the
      * paged editor's notification arrives as `built` and is the model; the
      * host gets its copy now or, for a change still in progress, once the
-     * change settles. In the legacy session the model holds this hook's
-     * comment list, and the host's document a copy of it.
+     * change settles.
      */
     const applyDocumentChange = useCallback(
       (change: DocumentChange | BuiltDocumentChange) => {
-        const canonical = usesCanonicalSession(
-          experimentalSession,
-          CANONICAL_GAP.authorityRouting,
-        );
-        // The session keeps its own comments; the legacy session's are the
-        // list this hook holds.
-        const held = (model: ReadonlyDocument): ReadonlyDocument =>
-          canonical
-            ? model
-            : {
-                ...model,
-                package: {
-                  ...model.package,
-                  document: {
-                    ...model.package.document,
-                    comments: commentsRef.current,
-                  },
-                },
-              };
-        const owned = (copy: Document): Document =>
-          canonical
-            ? copy
-            : {
-                ...copy,
-                package: {
-                  ...copy.package,
-                  document: {
-                    ...copy.package.document,
-                    comments: cloneCommentsWithParagraphPropertySources(
-                      commentsRef.current,
-                    ),
-                  },
-                },
-              };
         if ("built" in change) {
-          const built = held(change.built);
+          const built = change.built;
           pushDocument(built);
           cancelBuiltChangeNotification();
           if (change.settles === "later") {
@@ -1877,10 +1709,10 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             onChange?.(cloneDocumentWithParagraphPropertySources(built));
           }
         } else {
-          if (change.model) pushDocument(held(change.model));
+          if (change.model) pushDocument(change.model);
           if (change.forHost) {
             cancelBuiltChangeNotification();
-            onChange?.(owned(change.forHost));
+            onChange?.(change.forHost);
           }
           if (!change.model) return;
         }
@@ -1900,8 +1732,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         pushDocument,
         extractTrackedChanges,
         refreshBodyHistoryAvailability,
-        commentsRef,
-        experimentalSession,
         cancelBuiltChangeNotification,
       ],
     );
@@ -1919,66 +1749,8 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         return null;
       }
 
-      const canonical = pagedEditorRef.current
-        ?.getEditor()
-        .getCanonicalDocument();
-      if (canonical) return canonical;
-      if (
-        usesCanonicalSession(
-          experimentalSession,
-          CANONICAL_GAP.authorityRouting,
-        )
-      )
-        return null;
-
-      const live = pagedEditorRef.current?.getDocument();
-      // The live stories share the editor's model: the host gets its own copy.
-      let doc = live
-        ? copyHostDocument(committed, live)
-        : cloneDocumentWithParagraphPropertySources(committed);
-      if (!live) {
-        // The editor view was never instantiated, so getDocument() returned null
-        // and the PM-layer auto-bidi normalization never reached this clone.
-        // Apply the equivalent model-layer pass so an unflagged RTL-led document
-        // saved without focusing the editor still exports correct `w:bidi`.
-        doc = normalizeBaseDirection(doc);
-      }
-      // Flush in-flight HF PM edits into the cloned package — the persistent
-      // hidden HF EditorViews don't mutate history.state per keystroke
-      // (Codex #487 P1: 20:18 review), so a "Save As .docx" called while the
-      // chrome is still open would otherwise ship the pre-edit content for
-      // every rId the user touched (Codex #487 P1 follow-up: 20:52 review).
-      // We walk the ownership-aware cloned headers / footers, look up the
-      // matching persistent view, and overwrite
-      // each rId's `.content` from the live view while retaining the cloned
-      // story as the paragraph-property source. The
-      // original history.state remains untouched because every mutation
-      // lands on the cloned Map / HF objects.
-      const editor = pagedEditorRef.current;
-      if (editor) {
-        const flushBag = (bag: Map<string, HeaderFooter> | undefined) => {
-          if (!bag) {
-            return;
-          }
-          for (const [rId, hf] of bag) {
-            const view = editor.getHfView(rId);
-            if (view) {
-              hf.content = proseDocToBlocks(view.state.doc, hf.content);
-            }
-          }
-        };
-        flushBag(doc.package.headers);
-        flushBag(doc.package.footers);
-      }
-      // The threads are the host's list; the editor's document carries the
-      // ones it was loaded with.
-      // Uncontrolled, the list mirrors the editor's records; controlled, it
-      // is the host's accepted value.
-      const editorDoc = pagedEditorRef.current?.getView()?.state.doc;
-      return withHostCommentThreads(doc, commentsRef.current, {
-        anchoredInEditor: editorDoc ? commentIdsNamedIn(editorDoc) : null,
-      });
-    }, [commentsRef, experimentalSession]);
+      return pagedEditorRef.current?.getEditor().getCanonicalDocument() ?? null;
+    }, []);
 
     const applyCanonicalComment = useCallback(
       (request: CanonicalCommentRequest) => {
@@ -3642,16 +3414,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             const commentY =
               yPos ?? getFallbackCommentYPosition(scrollContainerRef.current);
             setCommentSelectionRange({ from, to });
-            if (commentDraftMode === "prosemirror") {
-              const marked = markPendingComment(
-                view,
-                { from, to },
-                {
-                  selectEnd: true,
-                },
-              );
-              if (!marked) break;
-            }
             setAddCommentYPosition(commentY);
             setShowCommentsSidebar(true);
             setIsAddingComment(true);
@@ -3714,7 +3476,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         contextSelectionFrom,
         contextSelectionTo,
         contextTrackedChange,
-        commentDraftMode,
         setAddCommentYPosition,
         setCommentSelectionRange,
         setFloatingCommentBtn,
@@ -3853,133 +3614,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             }
             savedBuffer = result.buffer;
           } else {
-            if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.save))
-              return null;
-            const view = pagedEditorRef.current?.getView();
-            const editorState = view?.state;
-            const baselineBuffer = originalBufferRef.current;
-            // Build the current document from the selected session. A note goes with its
-            // reference: one nothing refers to any more is not saved.
-            const current = buildCurrentDocument();
-            const doc = current
-              ? withoutUnreferencedNotes(current, heldUnreferencedNotes())
-              : null;
-            if (!doc) {
-              return null;
-            }
-
-            const { resolveSelectiveSaveFlags } =
-              await import("@stll/folio-core/docx/selectiveSaveFlags");
-            const flags = resolveSelectiveSaveFlags(featureFlags);
-
-            // The tripwire observes the selective path independently from the
-            // user-visible save mode. Only `useSelectiveForSave` is allowed to
-            // choose the returned bytes.
-            const useSelectiveForSave =
-              flags.selectiveSave &&
-              options?.mode !== FOLIO_DOCX_SERIALIZATION_MODE.full;
-            const shouldAttemptSelective =
-              useSelectiveForSave || flags.selectiveSaveTripwire;
-            let selectiveBuffer: ArrayBuffer | null = null;
-
-            if (shouldAttemptSelective && editorState && baselineBuffer) {
-              const attemptSelectiveSave = await loadAttemptSelectiveSave();
-              selectiveBuffer = await attemptSelectiveSave(
-                doc,
-                baselineBuffer,
-                {
-                  changedParaIds: getChangedParagraphIds(editorState),
-                  structuralChange: hasStructuralChanges(editorState),
-                  hasUntrackedChanges: hasUntrackedChanges(editorState),
-                  maxBytes: flags.selectiveSaveMaxBytes,
-                  onSelectiveDecline: options?.onSelectiveDecline,
-                  onDiagnostic: options?.onDiagnostic,
-                },
-              );
-            }
-
-            let buffer: ArrayBuffer | null = useSelectiveForSave
-              ? selectiveBuffer
-              : null;
-            let fullBuffer: ArrayBuffer | null = null;
-            let path: FolioDocxSerializationPath = "selective";
-            const repackSourceDoc = baselineBuffer
-              ? { ...doc, originalBuffer: baselineBuffer }
-              : doc;
-            // A section the editor removed on purpose (its ending paragraph
-            // deleted, or that deletion accepted) is one the repack must be told
-            // about, or it refuses the smaller package.
-            const fullDiagnostics: SaveDiagnostic[] = [];
-            const collectFullDiagnostic = (diagnostic: SaveDiagnostic) =>
-              fullDiagnostics.push(diagnostic);
-            const repackFull = async (): Promise<ArrayBuffer> => {
-              if (!baselineBuffer) {
-                const { createDocx } =
-                  await import("@stll/folio-core/docx/rezip");
-                return createDocx(repackSourceDoc, {
-                  onDiagnostic: collectFullDiagnostic,
-                });
-              }
-              const repackDocx = await loadRepackDocx();
-              const repack = () =>
-                repackDocx(repackSourceDoc, {
-                  onDiagnostic: collectFullDiagnostic,
-                });
-              return editorState
-                ? repackWithEditorSectionRemovals({
-                    state: editorState,
-                    document: repackSourceDoc,
-                    repack,
-                  })
-                : repack();
-            };
-
-            if (!buffer) {
-              fullBuffer = await repackFull();
-              buffer = fullBuffer;
-              path = "full-repack";
-            } else if (flags.selectiveSaveTripwire) {
-              try {
-                fullBuffer = await repackFull();
-              } catch {
-                // Tripwire-only full repack failures must never poison a
-                // successful selective save.
-              }
-            }
-
-            if (
-              flags.selectiveSaveTripwire &&
-              fullBuffer &&
-              onSelectiveSaveTripwire
-            ) {
-              // The comparison itself never blocks the save path. The host
-              // callback runs after the save try/catch so test harnesses may fail
-              // on mismatches by throwing.
-              try {
-                const { compareSelectiveVsFull } =
-                  await import("@stll/folio-core/docx/selectiveSaveTripwire");
-                tripwireResult = await compareSelectiveVsFull(
-                  selectiveBuffer,
-                  fullBuffer,
-                );
-              } catch {
-                // Comparison failures must never poison the save path.
-              }
-            }
-
-            for (const diagnostic of fullDiagnostics)
-              options?.onDiagnostic?.(diagnostic);
-            options?.onSerializationPath?.(path);
-            // Clear change tracker after successful save
-            if (
-              view &&
-              pagedEditorRef.current?.getView() === view &&
-              view.state.doc === editorState?.doc
-            ) {
-              originalBufferRef.current = buffer;
-              view.dispatch(clearTrackedChanges(view.state));
-            }
-            savedBuffer = buffer;
+            return null;
           }
         } catch (error) {
           onError?.(
@@ -3995,15 +3630,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         }
         return savedBuffer;
       },
-      [
-        buildCurrentDocument,
-        heldUnreferencedNotes,
-        onError,
-        originalBufferRef,
-        featureFlags,
-        onSelectiveSaveTripwire,
-        experimentalSession,
-      ],
+      [onError, featureFlags, onSelectiveSaveTripwire],
     );
 
     // Host-facing save keeps callback and dirty-state policy outside the
@@ -4423,31 +4050,11 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         // saves and closes an active header/footer. Ports upstream docx-editor
         // ff971a7b.
         undo: () => {
-          if (
-            !usesCanonicalSession(
-              experimentalSession,
-              CANONICAL_GAP.authorityRouting,
-            ) &&
-            getActiveEditorStory().type === "headerFooter" &&
-            hfEditorRef.current
-          ) {
-            return hfEditorRef.current.undo();
-          }
           const undone = pagedEditorRef.current?.undo() ?? false;
           requestAnimationFrame(refreshBodyHistoryAvailability);
           return undone;
         },
         redo: () => {
-          if (
-            !usesCanonicalSession(
-              experimentalSession,
-              CANONICAL_GAP.authorityRouting,
-            ) &&
-            getActiveEditorStory().type === "headerFooter" &&
-            hfEditorRef.current
-          ) {
-            return hfEditorRef.current.redo();
-          }
           const redone = pagedEditorRef.current?.redo() ?? false;
           requestAnimationFrame(refreshBodyHistoryAvailability);
           return redone;
@@ -4913,7 +4520,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         getCommentsDirty,
         getActiveEditorStory,
         refreshBodyHistoryAvailability,
-        experimentalSession,
       ],
     );
 
@@ -4930,29 +4536,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         })),
       [t],
     );
-    const activeHistoryAvailability = (() => {
-      if (
-        usesCanonicalSession(
-          experimentalSession,
-          CANONICAL_GAP.authorityRouting,
-        )
-      ) {
-        return {
-          canRedo: bodyHistoryAvailability.canRedo,
-          canUndo: bodyHistoryAvailability.canUndo,
-        };
-      }
-      if (activeNoteStory) {
-        return {
-          canRedo: bodyHistoryAvailability.canRedo,
-          canUndo: bodyHistoryAvailability.canUndo,
-        };
-      }
-      if (hfEditPosition) {
-        return { canRedo: history.canRedo, canUndo: history.canUndo };
-      }
-      return bodyHistoryAvailability;
-    })();
+    const activeHistoryAvailability = bodyHistoryAvailability;
 
     const toolbarChildren = toolbarExtra ?? null;
     const visibleCommentAuthorCount = commentAuthors.filter((commentAuthor) =>
@@ -5549,20 +5133,10 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       ],
     );
     const handleCancelAddComment = useCallback(() => {
-      const view = pagedEditorRef.current?.getView();
-      if (view && commentSelectionRange && commentDraftMode === "prosemirror") {
-        clearPendingComment(view, commentSelectionRange);
-      }
       setIsAddingComment(false);
       setCommentSelectionRange(null);
       setAddCommentYPosition(null);
-    }, [
-      commentSelectionRange,
-      commentDraftMode,
-      setAddCommentYPosition,
-      setCommentSelectionRange,
-      setIsAddingComment,
-    ]);
+    }, [setAddCommentYPosition, setCommentSelectionRange, setIsAddingComment]);
     // Resolve the specific tracked-change `revisionId` for a (from, to) range
     // reported by the sidebar. The 2-arg acceptChange/rejectChange commands
     // treat a missing revisionId as "match every mark in range", which would
@@ -6339,14 +5913,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                               ? { marginGuideColor }
                               : {})}
                             readOnly={readOnly}
-                            experimentalSession={
-                              usesCanonicalSession(
-                                experimentalSession,
-                                CANONICAL_GAP.authorityRouting,
-                              )
-                                ? "canonical"
-                                : "legacy"
-                            }
                             onDocumentChange={applyDocumentChange}
                             extensionManager={extensionManager}
                             suggestionModeActive={editingMode === "suggesting"}
@@ -6367,9 +5933,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                             onEditorViewReady={handleBodyViewReady}
                             externalPlugins={editorPlugins}
                             showTemplateDirectives={showTemplateDirectives}
-                            {...(yjsCollaboration !== undefined
-                              ? { collaboration: yjsCollaboration }
-                              : {})}
                             {...(canonicalRoom !== undefined
                               ? { canonicalRoom }
                               : {})}
@@ -6442,18 +6005,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                                       return;
                                     }
                                     setCommentSelectionRange(safeRange);
-                                    if (commentDraftMode === "prosemirror") {
-                                      const marked = markPendingComment(
-                                        view,
-                                        safeRange,
-                                        { selectEnd: true },
-                                      );
-                                      if (!marked) {
-                                        setCommentSelectionRange(null);
-                                        setFloatingCommentBtn(null);
-                                        return;
-                                      }
-                                    }
                                     const yPos = findSelectionYPosition(
                                       scrollContainerRef.current,
                                       editorContentRef.current,

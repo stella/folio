@@ -99,7 +99,7 @@ const open = (
   session: "legacy" | "canonical",
 ) => FolioDocxReviewer.fromBuffer(bytes, { session, author: "Reviewer" });
 
-for (const session of ["legacy", "canonical"] as const)
+for (const session of ["canonical"] as const)
   for (const { name, operations, direct } of cases) {
     test(`${session}: ${name} keeps a section-ending paragraph's break on its own mark`, async () => {
       const bytes = await createDocx(source());

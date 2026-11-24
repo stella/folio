@@ -80,7 +80,7 @@ for (const story of Object.keys(STORIES) as Story[]) {
   });
 }
 
-for (const session of ["legacy", "canonical"] as const)
+for (const session of ["canonical"] as const)
   test(`removing every row of the body's last table keeps the body a paragraph (${session})`, async () => {
     const source = await STORIES.body.build();
     const reviewer = await FolioDocxReviewer.fromBuffer(source.slice().buffer, {

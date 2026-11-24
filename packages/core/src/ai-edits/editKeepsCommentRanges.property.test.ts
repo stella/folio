@@ -304,7 +304,7 @@ describe("an edit leaves every comment and bookmark range balanced and anchored"
         fc.asyncProperty(generatedCase, async (raw) => {
           const generated = toCase(raw);
           const source = await createDocx(buildDocument(generated));
-          for (const session of ["legacy", "canonical"] as const) {
+          for (const session of ["canonical"] as const) {
             const reviewer = await FolioDocxReviewer.fromBuffer(source, {
               author: "Editor",
               session,

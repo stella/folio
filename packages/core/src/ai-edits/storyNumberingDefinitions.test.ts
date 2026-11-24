@@ -46,7 +46,7 @@ const storyParts = async (buffer: ArrayBuffer) => {
   );
 };
 
-const SESSIONS = ["legacy", "canonical"] as const;
+const SESSIONS = ["canonical"] as const;
 
 const openReviewer = async (
   session: (typeof SESSIONS)[number],

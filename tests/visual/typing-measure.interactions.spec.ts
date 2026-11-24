@@ -5,15 +5,13 @@
  * paragraph and reuses the measure of every other paragraph. The layout
  * instrumentation reports each block measured and each measure reused; this
  * spec types in long documents (a numbered list, a contract with lists and
- * tables, a document of tables) in both hosts and both engines, with track
+ * tables, a document of tables) in both hosts, with track
  * changes off and on, and bounds the paragraphs each layout pass measures.
  * Every key waits for the layout pass it causes before the next one, so each
  * key lays out on its own whatever the machine's speed.
  *
  * A table the edit did not reach keeps its measure too, whether the pass
- * hands it out again or moves it. In the legacy engine a settled edit builds
- * the document again, with new styles, so the next pass measures every table
- * once: a table is measured at most once per such build.
+ * hands it out again or moves it.
  */
 
 import { expect, type Page, test } from "@playwright/test";
@@ -108,7 +106,7 @@ const HOSTS = [
   { name: "react", origin: PLAYGROUND_HOSTS.react },
   { name: "vue", origin: PLAYGROUND_HOSTS.vue },
 ] as const;
-const ENGINES = ["legacy", "canonical"] as const;
+const ENGINES = ["canonical"] as const;
 const MODES = ["editing", "suggesting"] as const;
 
 test.use({ viewport: { width: 1280, height: 900 } });
@@ -287,13 +285,9 @@ for (const [name, markdown] of Object.entries(DOCUMENTS)) {
           // Every pass, not only their average, stays within the bound.
           for (const pass of passes)
             expect(pass).toBeLessThanOrEqual(MEASURED_PARAGRAPHS_PER_LAYOUT);
-          // A canonical session builds no document between keys, so no
-          // table is measured again. The legacy engine measures each table
-          // at most once per build: those in the window, and the one that may
-          // land just before it.
-          expect(measuredTables).toBeLessThanOrEqual(
-            engine === "canonical" ? 0 : tables * (conversions + 1),
-          );
+          // The session builds no document between keys, so no table is
+          // measured again.
+          expect(measuredTables).toBe(0);
         });
       }
     }

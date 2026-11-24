@@ -37,7 +37,7 @@ const docx = async (body: string): Promise<ArrayBuffer> => {
 const texts = (reviewer: FolioDocxReviewer) =>
   reviewer.getContent().map(({ text }) => text);
 
-const SESSIONS = ["legacy", "canonical"] as const;
+const SESSIONS = ["canonical"] as const;
 
 const CASES = [
   {

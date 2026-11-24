@@ -118,7 +118,6 @@ const harness = () => {
     getDocument: () => staleHostDocument,
     getCanonicalApi: () => api,
     readCanonicalDocument: readSessionDocument,
-    getExperimentalSession: () => "canonical" as const,
     getHost: () => host,
     getStyles: () => null,
     getTheme: () => null,
@@ -404,13 +403,9 @@ for (const target of [
           getHost: () => bodyHost,
           getDocument: () => source,
           getDocumentContext: () => source,
-          getExperimentalSession: () => "canonical",
           getStyles: () => null,
           getExtensionManager: () => undefined,
           getExternalPlugins: () => [],
-          getCollaboration: () => undefined,
-          getCollaborationModules: () => null,
-          getPrecomputedInitialState: () => null,
           getReadOnly: () => false,
           getDocumentIdentity: () => "native-story-history",
           onTransaction: () => {
@@ -441,7 +436,6 @@ for (const target of [
             const owned = manager.readCanonicalDocument();
             return owned && deepFreeze(owned);
           },
-          getExperimentalSession: () => "canonical" as const,
           getStyles: () => null,
           getTheme: () => null,
         };

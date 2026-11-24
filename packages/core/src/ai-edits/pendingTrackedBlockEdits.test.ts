@@ -303,7 +303,7 @@ describe("suggested insertion admission uses the live anchor for every gap run",
   // a suggested block; the canonical session puts it there, as the
   // `pendingDeletion` refusal's recovery says ("insert a new block next to
   // it").
-  for (const session of ["legacy", "canonical"] as const)
+  for (const session of ["canonical"] as const)
     for (const deletion of ["deleteBlock", "deleteTableRow"] as const) {
       for (const count of [1, 2, 3]) {
         for (const timing of [

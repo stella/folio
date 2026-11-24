@@ -80,7 +80,6 @@ test("read-only import repairs duplicate bookmarks and renders their first refer
           messages={getFolioMessages("en")}
         >
           <DocxEditor
-            experimentalSession="legacy"
             accessibleName="Document editor"
             ref={editor}
             documentBuffer={bytes}

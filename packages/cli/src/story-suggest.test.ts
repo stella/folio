@@ -120,7 +120,7 @@ test.each([header, footer])(
   },
 );
 
-for (const session of ["legacy", "canonical"] as const)
+for (const session of ["canonical"] as const)
   test.each([header, footer])(
     `a $type edit saves without a repack on the ${session} engine`,
     async (story) => {

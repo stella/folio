@@ -46,7 +46,7 @@ const readArrayBuffer = (filePath: string): ArrayBuffer => {
   );
 };
 
-const SESSIONS = ["legacy", "canonical"] as const;
+const SESSIONS = ["canonical"] as const;
 
 /**
  * The source writes no `w14:paraId`, so each engine mints its own block ids.

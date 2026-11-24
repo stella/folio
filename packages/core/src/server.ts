@@ -251,27 +251,6 @@ export {
 } from "./docx/server/extractDocxText";
 export { docxToMarkdown } from "./docx/server/docxToMarkdown";
 export {
-  FOLIO_YJS_DOCX_MATERIALIZATION_ERROR_CODES,
-  FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME,
-  FOLIO_YJS_UPDATE_MAX_BYTES,
-  FolioYjsDocxMaterializationError,
-  materializeYjsDocx,
-  type FolioYjsDocxMaterializationErrorCode,
-  type MaterializeYjsDocxOptions,
-} from "./docx/server/materializeYjsDocx";
-export {
-  FOLIO_YJS_SNAPSHOT_MIGRATION_ERROR_CODES,
-  FolioYjsSnapshotMigrationError,
-  migrateFolioYjsSnapshot,
-  type FolioYjsSnapshotMigrationErrorCode,
-  type FolioYjsSnapshotMigrationResult,
-} from "./docx/server/migrateYjsAttrSchema";
-export {
-  FOLIO_YJS_ATTR_SCHEMA_VERSION,
-  FolioYjsAttrSchemaVersionError,
-  type FolioYjsAttrSchemaVersion,
-} from "./prosemirror/yjsDocumentMetadata";
-export {
   BILINGUAL_TABLE_LAYOUTS,
   createBilingualDocument,
   InvalidBilingualDocumentOptionsError,

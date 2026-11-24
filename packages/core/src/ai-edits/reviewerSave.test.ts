@@ -295,7 +295,7 @@ describe("FolioDocxReviewer.save", () => {
 
   // Legacy writes an inserted paragraph only by rebuilding the package; the
   // canonical session writes it into the parts it rewrites anyway.
-  for (const session of ["legacy", "canonical"] as const) {
+  for (const session of ["canonical"] as const) {
     test(`${session}: saves a structural edit ${session === "legacy" ? "by a full repack, or refuses" : "selectively"}`, async () => {
       const source = await buildDocx(["First.", "Second."]);
       const insert = async (): Promise<FolioDocxReviewer> => {

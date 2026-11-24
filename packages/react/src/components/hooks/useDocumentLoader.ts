@@ -18,7 +18,6 @@ import {
 import type { DocxCompatibility } from "@stll/folio-core/docx/compatibility";
 import { DocumentLoaderManager } from "@stll/folio-core/managers/DocumentLoaderManager";
 import type { DocumentLoadState } from "@stll/folio-core/managers/DocumentLoaderManager";
-import type { EditorSession } from "@stll/folio-core/types/canonicalCapabilities";
 import type { Document } from "@stll/folio-core/types/document";
 import type { ReadonlyDocument } from "@stll/folio-core/types/documentModel";
 import { getDocumentLoadSource } from "@stll/folio-core/utils/documentLoaderBehavior";
@@ -39,7 +38,6 @@ type UseDocumentLoaderParams = {
   initialDocument: Document | null | undefined;
   /** Password for Agile-encrypted .docx files (Office 2010+). */
   password?: string | undefined;
-  experimentalSession?: EditorSession;
   /** History instance — used to reset/push document state. */
   history: UseHistoryReturn<ReadonlyDocument | null>;
   /** Called when an unrecoverable parse error occurs. */
@@ -89,7 +87,6 @@ export const useDocumentLoader = ({
   documentBuffer,
   initialDocument,
   password,
-  experimentalSession,
   history,
   onError,
   onCompatibilityChange,
@@ -106,7 +103,6 @@ export const useDocumentLoader = ({
   const [{ manager, api }] = useState(() => {
     const instance = new DocumentLoaderManager({
       history,
-      getExperimentalSession: () => experimentalSession,
       onError,
       onCompatibilityChange,
       onReset,
@@ -128,7 +124,6 @@ export const useDocumentLoader = ({
   useLayoutEffect(() => {
     manager.setCallbacks({
       history,
-      getExperimentalSession: () => experimentalSession,
       onError,
       onCompatibilityChange,
       onReset,
@@ -138,24 +133,20 @@ export const useDocumentLoader = ({
   }, [
     manager,
     history,
-    experimentalSession,
     onError,
     onCompatibilityChange,
     onReset,
     setDocumentLoadState,
   ]);
 
-  // Session-mode changes reload the same source under the newly committed mode.
   type CommittedSourceOptions = {
-    session: typeof experimentalSession;
     source: ReturnType<typeof getDocumentLoadSource>;
     loadPassword: typeof password;
   };
   const loadCommittedSource = useEffectEvent(
-    ({ session, source, loadPassword }: CommittedSourceOptions) => {
+    ({ source, loadPassword }: CommittedSourceOptions) => {
       manager.setCallbacks({
         history,
-        getExperimentalSession: () => session,
         onError,
         onCompatibilityChange,
         onReset,
@@ -176,11 +167,10 @@ export const useDocumentLoader = ({
   );
   useEffect(() => {
     loadCommittedSource({
-      session: experimentalSession,
       source: getDocumentLoadSource({ documentBuffer, initialDocument }),
       loadPassword: password,
     });
-  }, [documentBuffer, initialDocument, password, experimentalSession]);
+  }, [documentBuffer, initialDocument, password]);
 
   // A saved baseline belongs to this load; internal edits must not replace it.
   useEffect(() => {

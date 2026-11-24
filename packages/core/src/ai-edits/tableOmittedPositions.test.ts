@@ -107,7 +107,7 @@ const savedColumns = async (buffer: ArrayBuffer) => {
   });
 };
 
-const SESSIONS = ["legacy", "canonical"] as const;
+const SESSIONS = ["canonical"] as const;
 type Session = (typeof SESSIONS)[number];
 
 const open = (buffer: ArrayBuffer, session: Session) =>

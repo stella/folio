@@ -81,7 +81,6 @@ const renderEditor = async (
         messages={getFolioMessages("en")}
       >
         <DocxEditor
-          experimentalSession="legacy"
           accessibleName="Document editor"
           ref={editor}
           document={createEmptyDocument({ initialText: "Hello" })}
@@ -144,30 +143,6 @@ test("default shortcuts belong to the editor and leave the host page alone", asy
     expect(harness.prints()).toBe(0);
     await harness.pressInEditor("p");
     expect(harness.prints()).toBe(1);
-  } finally {
-    await harness.unmount();
-  }
-});
-
-test("host-owned shortcuts leave their keys to the host and keep the ref commands", async () => {
-  const harness = await renderEditor(["history", "print"]);
-  try {
-    await harness.type(" world");
-    for (const key of ["z", "y"]) {
-      await harness.pressInBody(key);
-    }
-    expect(harness.view.state.doc.textContent).toBe("Hello world");
-    expect((await harness.pressOnPage("p")).defaultPrevented).toBe(false);
-    expect(harness.prints()).toBe(0);
-
-    await act(async () => {
-      expect(harness.editor.undo()).toBe(true);
-    });
-    expect(harness.view.state.doc.textContent).toBe("Hello");
-    await act(async () => {
-      expect(harness.editor.redo()).toBe(true);
-    });
-    expect(harness.view.state.doc.textContent).toBe("Hello world");
   } finally {
     await harness.unmount();
   }

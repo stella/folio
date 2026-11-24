@@ -19,7 +19,7 @@ const row = (...cells: string[]) => `<w:tr>${cells.map(cell).join("")}</w:tr>`;
 const mark = (id: number) =>
   `<w:bookmarkStart w:id="${id}" w:name="b${id}"/><w:bookmarkEnd w:id="${id}"/>`;
 
-const SESSIONS = ["legacy", "canonical"] as const;
+const SESSIONS = ["canonical"] as const;
 
 const open = async (
   session: (typeof SESSIONS)[number],

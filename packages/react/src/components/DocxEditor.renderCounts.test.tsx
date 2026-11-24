@@ -62,7 +62,7 @@ const RENDER_BUDGET = { perOperation: 2, settled: 4, total: 30 };
 // Run this identical sequence on main and the change to compare committed
 // render counts. Duration is diagnostic: machine load makes timing unsuitable
 // as a correctness assertion. Initial mount and view initialization are excluded.
-for (const experimentalSession of ["legacy", "canonical"] as const) {
+for (const experimentalSession of ["canonical"] as const) {
   test(`editor typing and selection render measurement (${experimentalSession})`, async () => {
     const container = document.createElement("div");
     document.body.append(container);

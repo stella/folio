@@ -306,7 +306,7 @@ describe("a review saved midway", () => {
     expect(cutsSaved).toBeGreaterThan(0);
   });
 
-  test.each(["legacy", "canonical"] as const)(
+  test.each(["canonical"] as const)(
     "a file whose cut was saved with a depth opens, and saves unedited as it is (%s)",
     async (session) => {
       const zip = await ZipArchive.read(await createDocx(tracked()));

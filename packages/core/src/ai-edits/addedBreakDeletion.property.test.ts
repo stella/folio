@@ -76,7 +76,7 @@ const fixture = async ({ kind, following, anchors, text }: FixtureOptions) => {
   return createDocx(document);
 };
 
-const SESSIONS = ["canonical", "legacy"] as const;
+const SESSIONS = ["canonical"] as const;
 type Session = (typeof SESSIONS)[number];
 
 const open = (bytes: ArrayBuffer, session: Session) =>

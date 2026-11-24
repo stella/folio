@@ -61,20 +61,6 @@ const randomBrowserAuthorityProblems = (source: string) => {
         lane.type === "ForOfStatement" &&
         nodeText(source, lane.right) === "config.seeds",
     );
-    const inOracle = scope.some(
-      (declaration) =>
-        declaration.type === "VariableDeclarator" &&
-        declaration.id.type === "Identifier" &&
-        declaration.id.name === CANONICAL_TRACE_ORACLE,
-    );
-    if (
-      (inLane || inOracle) &&
-      node.type === "CallExpression" &&
-      node.callee.type === "Identifier" &&
-      node.callee.name === "runMode" &&
-      !fixedAuthority(node, "canonical")
-    )
-      problems.push("random browser authority");
     const inDefaultEditorLane = scope.some(
       (lane) =>
         lane.type === "ForOfStatement" &&
@@ -131,7 +117,7 @@ test("standing conformance cannot select legacy authority through its public fac
   ).toBe(false);
 });
 
-test("the canonical random lane is strict canonical, and no random lane accepts a known failure", () => {
+test("the random lanes run standing browser calls and accept no known failure", () => {
   const source = readFileSync(
     new URL(
       "../tests/visual/browser-input-fuzz.interactions.spec.ts",
@@ -140,14 +126,8 @@ test("the canonical random lane is strict canonical, and no random lane accepts 
     "utf8",
   );
   expect(randomBrowserAuthorityProblems(source)).toEqual([]);
-  const lane =
-    'for (const seed of config.seeds) { runMode({ authority: "canonical" }); }';
+  const lane = "for (const seed of config.seeds) { runMode({}); }";
   expect(randomBrowserAuthorityProblems(lane)).toEqual([]);
-  expect(
-    randomBrowserAuthorityProblems(
-      lane.replace('"canonical"', '"prosemirror"'),
-    ),
-  ).toHaveLength(1);
   expect(
     randomBrowserAuthorityProblems(lane.replace("});", "}); test.fail(true);")),
   ).toHaveLength(1);
@@ -159,14 +139,11 @@ test("the canonical random lane is strict canonical, and no random lane accepts 
       `${lane} for (const seed of config.defaultEditorSeeds) { test.fail(true); }`,
     ),
   ).toHaveLength(1);
-  const throughOracle =
-    'const checkCanonicalTrace = () => runMode({ authority: "canonical" }); for (const seed of config.seeds) { checkCanonicalTrace(); }';
-  expect(randomBrowserAuthorityProblems(throughOracle)).toEqual([]);
   expect(
     randomBrowserAuthorityProblems(
-      throughOracle.replace('"canonical"', '"prosemirror"'),
+      "for (const seed of config.seeds) { checkCanonicalTrace(); }",
     ),
-  ).toHaveLength(1);
+  ).toEqual([]);
 });
 
 // Representation readers and execution owners are allowed by exact export name.

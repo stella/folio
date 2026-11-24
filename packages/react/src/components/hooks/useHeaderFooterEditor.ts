@@ -1,30 +1,14 @@
 import { useCallback, useMemo, useState } from "react";
 
-import type { Node as PMNode } from "prosemirror-model";
 /**
  * Hook encapsulating header/footer editing state, content resolution, and
- * mutation callbacks extracted from DocxEditor.
- *
- * Thin React binding around the framework-agnostic header/footer operations in
- * `@stll/folio-core/utils/headerFooter`: the core module resolves the rendered
- * slots and builds the create/save/remove Documents; this hook keeps the React
- * glue — the edit-position state, the memoised resolution, the host
- * `pushDocument` routing, and reading the live hidden HF PM doc at save time.
+ * the canonical operations that create and remove a header or footer.
  */
-import type { EditorView } from "prosemirror-view";
-
 import {
   createCanonicalHeaderFooterOperation,
   removeCanonicalHeaderFooterOperations,
 } from "@stll/folio-core/canonical/canonicalOperations";
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
-import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
-import { proseDocToBlocks } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
-import {
-  CANONICAL_GAP,
-  type EditorSession,
-  usesCanonicalSession,
-} from "@stll/folio-core/types/canonicalCapabilities";
 import type {
   HeaderFooter,
   SectionProperties,
@@ -35,12 +19,9 @@ import {
   type ReadonlyDocument,
 } from "@stll/folio-core/types/documentModel";
 import {
-  createEmptyHeaderFooter,
   pickActiveHeaderFooterRId,
-  removeHeaderFooter,
   resolveEffectiveSectionProperties,
   resolveHeaderFooterContent,
-  saveHeaderFooterContent,
 } from "@stll/folio-core/utils/headerFooter";
 
 import type { UseHistoryReturn } from "../../hooks/useHistory";
@@ -51,20 +32,10 @@ import type { UseHistoryReturn } from "../../hooks/useHistory";
 
 type UseHeaderFooterEditorParams = {
   history: UseHistoryReturn<ReadonlyDocument | null>;
-  pushDocument: (document: ReadonlyDocument) => ReadonlyDocument;
   getCanonicalApi?: () => Pick<
     FolioEditor,
     "ensureView" | "getCanonicalDocument" | "applyCanonicalOperations"
   > | null;
-  experimentalSession?: EditorSession;
-  /**
-   * Look up the persistent hidden HF EditorView for an rId. Returns null
-   * when the view isn't mounted (e.g. the chrome unmounted before the
-   * close path ran). Called at close time so the save path can read live
-   * PM state and serialise it into the new HeaderFooter without mutating
-   * the current history.state.
-   */
-  getHfView: (rId: string) => EditorView | null;
 };
 
 type UseHeaderFooterEditorReturn = {
@@ -103,64 +74,12 @@ type UseHeaderFooterEditorReturn = {
     position: "header" | "footer",
     pageNumber?: number,
   ) => void;
-  /**
-   * Snapshot the current HF state into a new Document via pushDocument so
-   * the edit session lands in undo history. Reads `content` from the
-   * active HF PM (via getHfView) at call time; nothing in `history.state`
-   * is mutated until the new Document is pushed.
-   */
+  /** Close the HF editor; the session already holds its edits. */
   handleHeaderFooterSave: () => void;
   /** Save and close HF editor when the body is clicked */
   handleBodyClick: () => void;
   /** Remove the active header/footer from the document */
   handleRemoveHeaderFooter: () => void;
-};
-
-type SaveAndCloseHeaderFooterEditOptions = {
-  activeRId: string | null;
-  document: ReadonlyDocument;
-  editPosition: "header" | "footer";
-  isFirstPage: boolean;
-  pushDocument: (document: ReadonlyDocument) => ReadonlyDocument;
-  setEditPosition: (position: "header" | "footer" | null) => void;
-  view: { readonly state: { readonly doc: PMNode } } | null;
-};
-
-export const saveAndCloseHeaderFooterEdit = ({
-  activeRId,
-  document: model,
-  editPosition,
-  isFirstPage,
-  pushDocument,
-  setEditPosition,
-  view,
-}: SaveAndCloseHeaderFooterEditOptions): void => {
-  if (!activeRId || !view) {
-    setEditPosition(null);
-    return;
-  }
-  // The new document is built from a copy: the model is never written.
-  const document = cloneDocumentWithParagraphPropertySources(model);
-  const sourceParts =
-    editPosition === "header"
-      ? document.package.headers
-      : document.package.footers;
-  const source = sourceParts?.get(activeRId);
-  if (!source) {
-    setEditPosition(null);
-    return;
-  }
-  const newDocument = saveHeaderFooterContent({
-    document,
-    position: editPosition,
-    isFirstPage,
-    activeRId,
-    blocks: proseDocToBlocks(view.state.doc, source.content),
-  });
-  if (newDocument) {
-    pushDocument(newDocument);
-  }
-  setEditPosition(null);
 };
 
 // ---------------------------------------------------------------------------
@@ -169,10 +88,7 @@ export const saveAndCloseHeaderFooterEdit = ({
 
 export const useHeaderFooterEditor = ({
   history,
-  pushDocument,
-  getHfView,
   getCanonicalApi,
-  experimentalSession,
 }: UseHeaderFooterEditorParams): UseHeaderFooterEditorReturn => {
   // -------------------------------------------------------------------------
   // State
@@ -256,38 +172,17 @@ export const useHeaderFooterEditor = ({
       }
 
       // Create an empty header/footer for docs that don't have one yet.
-      if (
-        usesCanonicalSession(
-          experimentalSession,
-          CANONICAL_GAP.authorityRouting,
-        )
-      ) {
-        const api = getCanonicalApi?.();
-        api?.ensureView();
-        const canonical = api?.getCanonicalDocument();
-        if (!canonical || !api) return;
-        const operation = createCanonicalHeaderFooterOperation({
-          document: canonical,
-          position,
-          referenceType: isFirstPage ? "first" : "default",
-        });
-        if (api.applyCanonicalOperations([operation]))
-          setHfEditPosition(position);
-        return;
-      }
-      if (!history.state) {
-        return;
-      }
-      const newDoc = createEmptyHeaderFooter(
-        cloneDocumentWithParagraphPropertySources(history.state),
+      const api = getCanonicalApi?.();
+      api?.ensureView();
+      const canonical = api?.getCanonicalDocument();
+      if (!canonical || !api) return;
+      const operation = createCanonicalHeaderFooterOperation({
+        document: canonical,
         position,
-        isFirstPage,
-      );
-      if (!newDoc) {
-        return;
-      }
-      pushDocument(newDoc);
-      setHfEditPosition(position);
+        referenceType: isFirstPage ? "first" : "default",
+      });
+      if (api.applyCanonicalOperations([operation]))
+        setHfEditPosition(position);
     },
     [
       headerContent,
@@ -295,55 +190,14 @@ export const useHeaderFooterEditor = ({
       firstPageHeaderContent,
       firstPageFooterContent,
       hasTitlePg,
-      history,
-      pushDocument,
       getCanonicalApi,
-      experimentalSession,
     ],
   );
 
+  // The session holds every story's edits; closing the editor saves nothing.
   const handleHeaderFooterSave = useCallback(() => {
-    if (
-      usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)
-    ) {
-      setHfEditPosition(null);
-      return;
-    }
-    if (!hfEditPosition || !history.state?.package) {
-      setHfEditPosition(null);
-      return;
-    }
-
-    // Resolve the rId via the SAME resolution that picks the displayed H/F —
-    // for multi-section docs (NVCA-style title-page + signature sections) this
-    // is the rendered rId, not finalSectionProperties' rId. Codex PR #258.
-    const activeRId = pickActiveHeaderFooterRId(
-      resolution,
-      hfEditPosition,
-      hfEditIsFirstPage,
-    );
-    const view = activeRId ? getHfView(activeRId) : null;
-    // Read fresh blocks from PM state — HiddenHeaderFooterPMs no longer
-    // mutates `existing.content` in place (Codex #487 P1 re-fixed), so the
-    // pre-edit snapshot stays intact and undo can step back to it.
-    saveAndCloseHeaderFooterEdit({
-      activeRId,
-      document: history.state,
-      editPosition: hfEditPosition,
-      isFirstPage: hfEditIsFirstPage,
-      pushDocument,
-      setEditPosition: setHfEditPosition,
-      view,
-    });
-  }, [
-    hfEditPosition,
-    hfEditIsFirstPage,
-    resolution,
-    history,
-    pushDocument,
-    getHfView,
-    experimentalSession,
-  ]);
+    setHfEditPosition(null);
+  }, []);
 
   const handleBodyClick = useCallback(() => {
     if (!hfEditPosition) {
@@ -368,43 +222,19 @@ export const useHeaderFooterEditor = ({
       hfEditPosition,
       hfEditIsFirstPage,
     );
-    if (
-      usesCanonicalSession(experimentalSession, CANONICAL_GAP.authorityRouting)
-    ) {
-      const api = getCanonicalApi?.();
-      const canonical = api?.getCanonicalDocument();
-      if (api && canonical && activeRId) {
-        api.applyCanonicalOperations(
-          removeCanonicalHeaderFooterOperations({
-            document: canonical,
-            position: hfEditPosition,
-            rId: activeRId,
-          }),
-        );
-      }
-      setHfEditPosition(null);
-      return;
-    }
-    if (activeRId) {
-      pushDocument(
-        removeHeaderFooter({
-          document: cloneDocumentWithParagraphPropertySources(history.state),
+    const api = getCanonicalApi?.();
+    const canonical = api?.getCanonicalDocument();
+    if (api && canonical && activeRId) {
+      api.applyCanonicalOperations(
+        removeCanonicalHeaderFooterOperations({
+          document: canonical,
           position: hfEditPosition,
-          activeRId,
+          rId: activeRId,
         }),
       );
     }
-
     setHfEditPosition(null);
-  }, [
-    hfEditPosition,
-    hfEditIsFirstPage,
-    resolution,
-    history,
-    pushDocument,
-    getCanonicalApi,
-    experimentalSession,
-  ]);
+  }, [hfEditPosition, hfEditIsFirstPage, resolution, history, getCanonicalApi]);
 
   return {
     hfEditPosition,

@@ -42,7 +42,7 @@ describe("a main document at another path", () => {
     ]);
   });
 
-  describe.each(["legacy", "canonical"] as const)("%s", (session) => {
+  describe.each(["canonical"] as const)("%s", (session) => {
     test.each(["direct", "tracked-changes"] as const)(
       "saves an edit where the package says the document is (%s)",
       async (mode) => {

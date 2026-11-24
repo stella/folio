@@ -305,7 +305,7 @@ describe.each(SESSIONS)("%s", (session) => {
   });
 });
 
-test.each(["legacy", "canonical"] as const)(
+test.each(["canonical"] as const)(
   "accepting an authored replacement keeps both comment anchors in %s",
   async (session) => {
     const replacement = "New clause text.";
@@ -423,7 +423,7 @@ const LINK_EDITS = [
   },
 ] as const;
 
-describe.each(["legacy", "canonical"] as const)(
+describe.each(["canonical"] as const)(
   "replaceInBlock over a block whose text is a hyperlink (%s)",
   (session) => {
     test.each(

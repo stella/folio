@@ -38,7 +38,6 @@ import type { BrowserDragTarget } from "./browserDragTarget";
 import { driveBrowserIme } from "./browserImeDriver";
 import {
   BROWSER_INPUT_REGRESSIONS,
-  type CanonicalDesignedDifference,
   PINNED_BROWSER_INPUT_TAG,
 } from "./browserInputRegressions";
 import {
@@ -123,36 +122,23 @@ const editor = (page: Page) =>
     return true;
   });
 
-type FuzzAuthority = "canonical" | "prosemirror";
 type LoadFuzzOptions = {
   page: Page;
   bytes: ArrayBuffer;
   baseline: Block[];
   suggesting: boolean;
-  authority: FuzzAuthority;
 };
 const LOAD_TIMEOUT_MS = 60_000;
 
-const load = async ({
-  page,
-  bytes,
-  baseline,
-  suggesting,
-  authority,
-}: LoadFuzzOptions) => {
-  const activationRow =
-    authority === "canonical"
-      ? canonicalActivationRefusalRow(
-          await parseDocx(bytes, {
-            preloadFonts: false,
-            detectVariables: false,
-          }),
-        )
-      : undefined;
-  if (activationRow) validateHarnessRefusalRows([activationRow]);
-  await page.goto(
-    authority === "canonical" ? "/?session=canonical" : "/?session=legacy",
+const load = async ({ page, bytes, baseline, suggesting }: LoadFuzzOptions) => {
+  const activationRow = canonicalActivationRefusalRow(
+    await parseDocx(bytes, {
+      preloadFonts: false,
+      detectVariables: false,
+    }),
   );
+  if (activationRow) validateHarnessRefusalRows([activationRow]);
+  await page.goto("/");
   // A page that cannot mount fails here, not at the test's long fuzz budget.
   await page.waitForSelector(".layout-page", { timeout: LOAD_TIMEOUT_MS });
   await page.evaluate(() =>
@@ -164,11 +150,10 @@ const load = async ({
     undefined,
     { timeout: LOAD_TIMEOUT_MS },
   );
-  if (authority === "canonical")
-    await page.evaluate(() => {
-      globalThis.__folioCanonicalFuzzErrors = [];
-    });
-  if (authority === "canonical" && !activationRow) {
+  await page.evaluate(() => {
+    globalThis.__folioCanonicalFuzzErrors = [];
+  });
+  if (!activationRow) {
     if (!(await evaluateCanonicalLoad(page, [...new Uint8Array(bytes)])))
       throw new TypeError("Canonical fuzz load unavailable.");
   } else {
@@ -211,23 +196,18 @@ const load = async ({
   }
   await expect.poll(() => liveBlocks(page)).toEqual(projectLive(baseline));
   await editor(page);
-  if (authority === "canonical") {
-    expect(
-      await page.evaluate((tracked) => {
-        const core = globalThis.__folioPlayground?.getEditorRef()?.getEditor();
-        if (!core?.getCanonicalDocument())
-          throw new TypeError("Canonical fuzz authority unavailable.");
-        return core.setCanonicalMode(
-          tracked
-            ? { type: "suggesting", author: "Browser conformance" }
-            : { type: "editing" },
-        );
-      }, suggesting),
-    ).toBe(true);
-  } else if (suggesting)
-    await page
-      .getByRole("button", { name: "Track Changes", exact: true })
-      .click();
+  expect(
+    await page.evaluate((tracked) => {
+      const core = globalThis.__folioPlayground?.getEditorRef()?.getEditor();
+      if (!core?.getCanonicalDocument())
+        throw new TypeError("Canonical fuzz authority unavailable.");
+      return core.setCanonicalMode(
+        tracked
+          ? { type: "suggesting", author: "Browser conformance" }
+          : { type: "editing" },
+      );
+    }, suggesting),
+  ).toBe(true);
   await page.evaluate(() =>
     globalThis.__folioPlayground
       ?.getEditorRef()
@@ -235,8 +215,7 @@ const load = async ({
       ?.getView()
       ?.focus(),
   );
-  if (authority === "canonical")
-    expect(await drainCanonicalErrors(page)).toEqual([]);
+  expect(await drainCanonicalErrors(page)).toEqual([]);
   return { type: "ready" } as const;
 };
 
@@ -492,17 +471,7 @@ const canonicalSnapshot = async (page: Page) => {
   });
 };
 
-type DriveFuzzOptions = {
-  page: Page;
-  action: BrowserInputAction;
-  authority: FuzzAuthority;
-};
-const driveWithAuthority = async ({
-  page,
-  action,
-  authority,
-}: DriveFuzzOptions) => {
-  if (authority === "prosemirror") return drive(page, action);
+const driveWithAuthority = async (page: Page, action: BrowserInputAction) => {
   expect(await drainCanonicalErrors(page)).toEqual([]);
   const before = await canonicalSnapshot(page);
   const rows = canonicalBrowserRefusalRows(action, {
@@ -532,7 +501,6 @@ type RunFuzzOptions = {
   baseline: Block[];
   trace: BrowserInputTrace;
   suggesting: boolean;
-  authority: FuzzAuthority;
 };
 const runMode = async ({
   page,
@@ -540,21 +508,18 @@ const runMode = async ({
   baseline,
   trace,
   suggesting,
-  authority,
 }: RunFuzzOptions) => {
   const loaded = await load({
     page,
     bytes: source,
     baseline,
     suggesting,
-    authority,
   });
   if (loaded.type === "activationRefused") {
-    replayObservations?.push({ authority, suggesting, refused: loaded.row });
+    replayObservations?.push({ suggesting, refused: loaded.row });
     return { type: "activationRefused", row: loaded.row } as const;
   }
-  for (const action of trace.actions)
-    await driveWithAuthority({ page, action, authority });
+  for (const action of trace.actions) await driveWithAuthority(page, action);
   await page.waitForTimeout(350);
   const live = await liveBlocks(page);
   const painted = await page.locator(".layout-page-content").allTextContents();
@@ -564,19 +529,8 @@ const runMode = async ({
     projectLive(project(reopened)),
     "the saved package reads as the live editor did",
   ).toEqual(live);
-  if (authority === "canonical") {
-    if (!(await evaluateCanonicalLoad(page, [...new Uint8Array(buffer)])))
-      throw new TypeError("Canonical saved load unavailable.");
-  } else {
-    await page.evaluate(
-      async (saved) => {
-        await globalThis.__folioPlayground
-          ?.getEditorRef()
-          ?.loadDocumentBuffer(new Uint8Array(saved));
-      },
-      [...new Uint8Array(buffer)],
-    );
-  }
+  if (!(await evaluateCanonicalLoad(page, [...new Uint8Array(buffer)])))
+    throw new TypeError("Canonical saved load unavailable.");
   await expect
     .poll(() => page.locator(".layout-page-content").allTextContents(), {
       message: "a fresh load paints what the page showed before it",
@@ -584,7 +538,6 @@ const runMode = async ({
     .toEqual(painted);
   const changes = reopened.getChanges();
   replayObservations?.push({
-    authority,
     suggesting,
     blocks: project(reopened),
     changes: changes.map(({ type, text }) => ({ type, text })),
@@ -652,7 +605,6 @@ const checkCanonicalTrace = async ({
     baseline,
     trace,
     suggesting: false,
-    authority: "canonical",
   });
   const suggested = await runMode({
     page,
@@ -660,7 +612,6 @@ const checkCanonicalTrace = async ({
     baseline,
     trace,
     suggesting: true,
-    authority: "canonical",
   });
   if (
     edited.type === "activationRefused" ||
@@ -696,127 +647,7 @@ const checkCanonicalTrace = async ({
       TRACKED_INPUT_LEAVES_A_CHANGE,
     ).toBeGreaterThan(0);
   }
-};
-
-type DefaultEditorTraceOptions = CanonicalTraceOptions;
-/** One trace through the legacy editor's two modes, then its review outcomes. */
-const checkDefaultEditorTrace = async ({
-  page,
-  source,
-  baseline,
-  trace,
-}: DefaultEditorTraceOptions) => {
-  const edited = await runMode({
-    page,
-    source,
-    baseline,
-    trace,
-    suggesting: false,
-    authority: "prosemirror",
-  });
-  const suggested = await runMode({
-    page,
-    source,
-    baseline,
-    trace,
-    suggesting: true,
-    authority: "prosemirror",
-  });
-  if (edited.type !== "ready" || suggested.type !== "ready")
-    throw new TypeError("The default editor unexpectedly refused activation.");
-  // The baseline is docx-core resolution, not the legacy reviewer: the
-  // canonical session accepts and rejects what the default editor saved.
-  const accepting = await FolioDocxReviewer.fromBuffer(suggested.buffer, {
-    session: "canonical",
-  });
-  accepting.acceptAll();
-  expect(
-    project(await reopenSaved(await accepting.toBuffer())),
-    ACCEPTED_EQUALS_EDITED,
-  ).toEqual(edited.blocks);
-  const rejecting = await FolioDocxReviewer.fromBuffer(suggested.buffer, {
-    session: "canonical",
-  });
-  rejecting.rejectAll();
-  expect(
-    project(await reopenSaved(await rejecting.toBuffer())),
-    REJECTED_EQUALS_SOURCE,
-  ).toEqual(baseline);
-};
-
-/**
- * Both modes commit through the canonical session what the legacy editor
- * commits, but for a designed difference: there the named block commits what
- * the platform convention gives, and suggesting records the one span it
- * removed as deletions, beside the document's own changes.
- */
-const checkCommittedAsDefaultEditor = async ({
-  page,
-  source,
-  baseline,
-  trace,
-  designedDifference,
-}: CanonicalTraceOptions & {
-  designedDifference: CanonicalDesignedDifference | undefined;
-}) => {
-  const typed = (changes: readonly { type: string; text: string }[]) =>
-    changes.map(({ type, text }) => ({ type, text }));
-  const sourceChanges = typed(
-    (await FolioDocxReviewer.fromBuffer(source)).getChanges(),
-  );
-  for (const suggesting of [false, true]) {
-    const canonical = await runMode({
-      page,
-      source,
-      baseline,
-      trace,
-      suggesting,
-      authority: "canonical",
-    });
-    const viaDefault = await runMode({
-      page,
-      source,
-      baseline,
-      trace,
-      suggesting,
-      authority: "prosemirror",
-    });
-    if (canonical.type !== "ready" || viaDefault.type !== "ready")
-      throw new TypeError("Both editors must open the compared trace.");
-    if (designedDifference === undefined) {
-      expect(canonical.blocks).toEqual(viaDefault.blocks);
-      expect(typed(canonical.changes)).toEqual(typed(viaDefault.changes));
-      continue;
-    }
-    const { reason, block, text, caret, deletions } = designedDifference;
-    expect(baseline[block]?.text, reason).toBe(text);
-    const expected = wordDeletions(text, caret, deletions);
-    expect(canonical.blocks, reason).toEqual(
-      viaDefault.blocks.map((projection, index) =>
-        index === block ? { ...projection, text: expected.text } : projection,
-      ),
-    );
-    const added = typed(canonical.changes);
-    for (const change of sourceChanges) {
-      const at = added.findIndex(
-        ({ type, text: changed }) =>
-          type === change.type && changed === change.text,
-      );
-      expect(at, reason).toBeGreaterThanOrEqual(0);
-      added.splice(at, 1);
-    }
-    expect(
-      {
-        types: [...new Set(added.map(({ type }) => type))],
-        removed: added.map(({ text: changed }) => changed).join(""),
-      },
-      reason,
-    ).toEqual(
-      suggesting
-        ? { types: ["deletion"], removed: expected.removed }
-        : { types: [], removed: "" },
-    );
-  }
+  return edited.blocks;
 };
 
 const paintedTargetReplays = [
@@ -847,11 +678,10 @@ for (const [index, trace] of paintedTargetReplays.entries()) {
         bytes: source,
         baseline,
         suggesting,
-        authority: "canonical",
       });
       if (loaded.type === "activationRefused") continue;
       for (const action of trace.actions)
-        await driveWithAuthority({ page, action, authority: "canonical" });
+        await driveWithAuthority(page, action);
     }
   });
 }
@@ -882,52 +712,21 @@ test.describe("pinned browser input", () => {
         const replay = async () => {
           const source = await shapeArrayBuffer(trace.shape);
           const baseline = project(await FolioDocxReviewer.fromBuffer(source));
-          if ("preconditionAt" in regression) {
-            await load({
-              page,
-              bytes: source,
-              baseline,
-              suggesting: false,
-              authority: "prosemirror",
-            });
-            expect(await selectTarget(page, "table")).toBe(true);
-            for (const [index, action] of trace.actions.entries()) {
-              const before = await liveBlocks(page);
-              const outcome = await drive(page, action).then(
-                () => ({ status: "applied" }) as const,
-                (error: unknown) => ({ status: "refused", error }) as const,
-              );
-              if (index !== regression.preconditionAt) {
-                expect(outcome.status).toBe("applied");
-                continue;
-              }
-              expect(outcome.status).toBe("refused");
-              if (outcome.status !== "refused")
-                throw new TypeError("A missing table cannot be dragged");
-              expect(fc.PreconditionFailure.isFailure(outcome.error)).toBe(
-                true,
-              );
-              expect(await liveBlocks(page)).toEqual(before);
-              return;
-            }
-            throw new TypeError("The trace did not reach its precondition");
-          }
-          if ("authority" in regression) {
-            await checkCanonicalTrace({ page, source, baseline, trace });
-            if ("comparesWithDefaultEditor" in regression)
-              await checkCommittedAsDefaultEditor({
-                page,
-                source,
-                baseline,
-                trace,
-                designedDifference:
-                  "designedDifference" in regression
-                    ? regression.designedDifference
-                    : undefined,
-              });
+          const edited = await checkCanonicalTrace({
+            page,
+            source,
+            baseline,
+            trace,
+          });
+          if (edited === undefined || !("designedDifference" in regression))
             return;
-          }
-          await checkDefaultEditorTrace({ page, source, baseline, trace });
+          // The named block commits what deletion by word leaves.
+          const { reason, block, text, caret, deletions } =
+            regression.designedDifference;
+          expect(baseline[block]?.text, reason).toBe(text);
+          expect(edited[block]?.text, reason).toBe(
+            wordDeletions(text, caret, deletions).text,
+          );
         };
         const observed: { delay: number; observations: unknown[] }[] = [];
         for (const delay of PINNED_REPLAY_FONT_DELAYS_MS) {
@@ -1012,17 +811,12 @@ for (const [shape, target] of paintedDrags) {
         bytes: source,
         baseline,
         suggesting,
-        authority: "canonical",
       });
       if (loaded.type === "activationRefused") return;
-      await driveWithAuthority({
-        page,
-        authority: "canonical",
-        action: {
-          kind: "pasteHtml",
-          plain: "First bold\nSecond",
-          html: "<p>First <strong>bold</strong></p><p>Second</p>",
-        },
+      await driveWithAuthority(page, {
+        kind: "pasteHtml",
+        plain: "First bold\nSecond",
+        html: "<p>First <strong>bold</strong></p><p>Second</p>",
       });
       expect(await selectTarget(page, target)).toBe(true);
     });
@@ -1260,7 +1054,7 @@ for (const seed of config.defaultEditorSeeds) {
       check: async (trace) => {
         const source = await shapeArrayBuffer(trace.shape);
         const baseline = project(await FolioDocxReviewer.fromBuffer(source));
-        await checkDefaultEditorTrace({ page, source, baseline, trace });
+        await checkCanonicalTrace({ page, source, baseline, trace });
       },
     });
   });

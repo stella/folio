@@ -124,7 +124,6 @@ const driveEditor = async (document: Document) => {
     defineComponent({
       setup() {
         holder.editor = useDocxEditor({
-          experimentalSession: "legacy",
           hiddenContainer,
           pagesContainer: shallowRef(pages),
           noteEditorContainer: shallowRef(notes),

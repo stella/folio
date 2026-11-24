@@ -1011,7 +1011,7 @@ describe("headless docx review round-trip", () => {
     expect(rejectedTable.rows).toHaveLength(1);
   });
 
-  for (const session of ["legacy", "canonical"] as const)
+  for (const session of ["canonical"] as const)
     test(`${session}: preserves and resolves a tracked cell insertion`, async () => {
       const baseline = await buildTextBoxCellRevisionDocument({
         type: "tableCellInsertion",
@@ -1069,7 +1069,7 @@ describe("headless docx review round-trip", () => {
       expect(rejecting.getContentAsText()).not.toContain("Cell value");
     });
 
-  for (const session of ["legacy", "canonical"] as const)
+  for (const session of ["canonical"] as const)
     test(`${session}: preserves and resolves a tracked cell deletion`, async () => {
       const baseline = await buildTextBoxCellRevisionDocument({
         type: "tableCellDeletion",
@@ -1127,7 +1127,7 @@ describe("headless docx review round-trip", () => {
       expect(rejecting.getContentAsText()).toContain("Cell value");
     });
 
-  for (const session of ["legacy", "canonical"] as const)
+  for (const session of ["canonical"] as const)
     test(`${session}: tracks, persists, accepts, and rejects an empty vertical cell merge`, async () => {
       const baseline = await buildTextBoxVerticalMergeCandidateDocument();
       const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
@@ -1317,7 +1317,7 @@ describe("headless docx review round-trip", () => {
       );
     });
 
-  for (const session of ["legacy", "canonical"] as const)
+  for (const session of ["canonical"] as const)
     test(`${session}: tracks, persists, accepts, and rejects a vertical cell split`, async () => {
       const baseline = await buildTextBoxVerticalMergeDocument();
       const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
@@ -1537,7 +1537,7 @@ describe("headless docx review round-trip", () => {
     expect(rejectedTable.rows.at(0)?.cells).toHaveLength(1);
   });
 
-  for (const session of ["legacy", "canonical"] as const)
+  for (const session of ["canonical"] as const)
     test(`${session}: tracks, persists, accepts, and rejects a column deletion`, async () => {
       const baseline = await buildTextBoxTableDocument();
       const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
@@ -2775,7 +2775,7 @@ describe("headless docx review round-trip", () => {
     expect(reviewer.getChanges()).toEqual([]);
   });
 
-  for (const session of ["legacy", "canonical"] as const)
+  for (const session of ["canonical"] as const)
     test(`${session}: atomic batches reject every operation without document or comment changes`, async () => {
       const baseline = await makeParaIdBaseline(readFixture());
       const reviewer = await FolioDocxReviewer.fromBuffer(baseline, {
@@ -3332,7 +3332,7 @@ const insertionChange = (reviewer: FolioDocxReviewer): FolioReviewChange => {
 };
 
 describe("headless document-operation undo history", () => {
-  for (const session of ["legacy", "canonical"] as const)
+  for (const session of ["canonical"] as const)
     test(`${session}: keeps the latest batches up to its limit, each undoable in turn`, async () => {
       const document = createEmptyDocument();
       document.package.document.content = [
@@ -3770,7 +3770,7 @@ describe("headless docx review discovery + resolve", () => {
     expect(reopenedSavedComment?.done).toBe(false);
   });
 
-  for (const session of ["legacy", "canonical"] as const)
+  for (const session of ["canonical"] as const)
     test(`${session}: resolveComment leaves a thread already in the asked state as it is`, async () => {
       const reviewer = await FolioDocxReviewer.fromBuffer(
         await makeParaIdBaseline(readFixture()),
@@ -4622,7 +4622,7 @@ describe("headless docx review notes read surface", () => {
     },
   );
 
-  for (const session of ["canonical", "legacy"] as const)
+  for (const session of ["canonical"] as const)
     test(`${session}: edits a footnote through story-scoped document operations`, async () => {
       // A package whose paragraphs hold ids already.
       const baseline = (
@@ -4696,7 +4696,7 @@ describe("headless docx review notes read surface", () => {
       );
     });
 
-  for (const session of ["canonical", "legacy"] as const)
+  for (const session of ["canonical"] as const)
     test(`${session}: tracks and undoes an endnote operation batch`, async () => {
       // A package whose paragraphs hold ids already: either engine saves an
       // untouched part as it read it.
@@ -4766,7 +4766,7 @@ describe("headless docx review notes read surface", () => {
       ).toEqual(await partBytes(baseline, "word/endnotes.xml"));
     });
 
-  for (const session of ["canonical", "legacy"] as const)
+  for (const session of ["canonical"] as const)
     for (const savedBetween of [false, true])
       test(`${session}: an undone note edit leaves its part as the source held it, saved in between: ${savedBetween}`, async () => {
         const baseline = await readNotesFixture();

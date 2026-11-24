@@ -553,7 +553,7 @@ test.each(["ins", "del"] as const)(
     } satisfies Document;
     const buffer = await ingested(await createDocx(document));
     await viewLaws(buffer);
-    for (const session of ["legacy", "canonical"] as const)
+    for (const session of ["canonical"] as const)
       for (const view of FOLIO_RESOLVED_REVIEWED_VIEWS) {
         const reviewer = await open(buffer, session);
         const before = reviewer.toDocument();
@@ -789,7 +789,7 @@ describe("text a resolved paragraph mark joins into another paragraph", () => {
             const buffer = await ingested(await createDocx(document));
             const view =
               kind === "ins" || kind === "moveTo" ? "original" : "final";
-            for (const session of ["legacy", "canonical"] as const) {
+            for (const session of ["canonical"] as const) {
               const reviewer = await open(buffer, session);
               const before = reviewer.toDocument();
               const read = reviewer.readReviewedStory({

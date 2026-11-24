@@ -55,7 +55,7 @@ const markdownStory = (
   return toMarkdown(document);
 };
 
-const SESSIONS = ["legacy", "canonical"] as const;
+const SESSIONS = ["canonical"] as const;
 
 // Cross paragraph-style suggestions with authored run formatting in every
 // story, so an inherited mark cannot escape through a secondary converter.

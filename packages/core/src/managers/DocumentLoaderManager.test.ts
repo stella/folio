@@ -43,7 +43,6 @@ const makeCallbacks = (): {
     history,
   };
   const callbacks: DocumentLoaderCallbacks = {
-    getExperimentalSession: () => "legacy",
     history: {
       get state() {
         return history.state;

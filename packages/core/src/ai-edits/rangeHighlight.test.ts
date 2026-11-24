@@ -58,7 +58,7 @@ const runHighlights = (reviewer: FolioDocxReviewer) => {
   return spans;
 };
 
-for (const session of ["legacy", "canonical"] as const) {
+for (const session of ["canonical"] as const) {
   const reopen = async (reviewer: FolioDocxReviewer) =>
     FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), { session });
 

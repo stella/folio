@@ -56,7 +56,6 @@ export type {
   DocxEditorCollaboration,
   DocxEditorProps,
   DocxEditorRef,
-  DocxEditorYjsCollaboration,
   EditorMode,
   HighlightPassageOptions,
   HighlightPassageResult,

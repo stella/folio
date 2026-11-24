@@ -160,7 +160,7 @@ const replace = (
 
 describe("find and replace through the editor", () => {
   test.each(
-    (["canonical", "legacy"] as const).flatMap((engine) =>
+    (["canonical"] as const).flatMap((engine) =>
       SHAPES.flatMap((shape) =>
         OPERATIONS.map(
           (operation) => [engine, shape.name, operation, shape] as const,
@@ -219,7 +219,7 @@ describe("find and replace through the editor", () => {
     }
   });
 
-  test.each(["canonical", "legacy"] as const)(
+  test.each(["canonical"] as const)(
     "%s: matches policy refuses are skipped and change nothing",
     (engineName) => {
       const source = withParagraphIds(fromMarkdown("alpha editor beta"));
@@ -257,7 +257,7 @@ describe("find and replace through the editor", () => {
     },
   );
 
-  test.each(["canonical", "legacy"] as const)(
+  test.each(["canonical"] as const)(
     "%s: a match that already reads the replacement counts without an edit",
     (engineName) => {
       const source = withParagraphIds(fromMarkdown("alpha editor beta"));

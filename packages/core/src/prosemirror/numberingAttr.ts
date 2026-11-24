@@ -178,8 +178,7 @@ export const paragraphNumberingFromAttrValue = (
  *
  * A value that is present and not a {@link ParagraphNumberingAttr} panics
  * rather than being ignored: it can only come from a document written under an
- * attr schema this build does not read, and `yjsDocumentMetadata`'s version
- * gate exists to make that unreachable.
+ * attr schema this build does not read.
  */
 export const readParagraphNumberingAttr = (
   value: unknown,

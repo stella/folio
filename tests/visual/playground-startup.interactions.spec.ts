@@ -4,10 +4,7 @@ import { ensureLiveView } from "../parity/parity-fixture";
 
 // A generated document is a host model whose paragraphs have no ids; the
 // canonical session opens it with the ids its package gets.
-const SESSIONS = [
-  { name: "legacy", query: "session=legacy" },
-  { name: "canonical", query: "session=canonical" },
-] as const;
+const SESSIONS = [{ name: "canonical", query: "session=canonical" }] as const;
 
 const withSession = (query: string, session: string): string => {
   if (session === "") return query;

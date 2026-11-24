@@ -405,7 +405,7 @@ describe("tracked section-boundary ownership", () => {
     expect(reopenedSecond.getChanges()).toHaveLength(0);
   });
 
-  test.each(["legacy", "canonical"] as const)(
+  test.each(["canonical"] as const)(
     "accept removes an emptied endpoint before a table and reject restores it (%s)",
     async (session) => {
       await expectResolvedTerminals(

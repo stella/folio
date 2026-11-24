@@ -17,7 +17,7 @@ import { fromMarkdown } from "../markdown/fromMarkdown";
 import { FolioDocxReviewer } from "./headless";
 
 const TEXTS = ["p0", "p1", "p2", "p3", "p4"] as const;
-const SESSIONS = ["legacy", "canonical"] as const;
+const SESSIONS = ["canonical"] as const;
 
 const CASES = [
   {

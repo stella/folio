@@ -26,7 +26,7 @@ const makeDocument = async (href: string | undefined) => {
   return createDocx(document);
 };
 
-const SESSIONS = ["legacy", "canonical"] as const;
+const SESSIONS = ["canonical"] as const;
 
 for (const session of SESSIONS)
   for (const [baseHref, targetHref] of [

@@ -88,7 +88,7 @@ describe("several comment references in one run", () => {
     ).toEqual([1, 2]);
   });
 
-  for (const session of ["legacy", "canonical"] as const) {
+  for (const session of ["canonical"] as const) {
     test(`${session}: an edit of the commented paragraph keeps both references`, async () => {
       const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocx(), {
         author: "Editor",

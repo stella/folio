@@ -7,7 +7,7 @@ import { createRoot } from "react-dom/client";
 
 import { panic } from "better-result";
 import { afterAll, expect, test } from "bun:test";
-import { Plugin, TextSelection } from "prosemirror-state";
+import { TextSelection } from "prosemirror-state";
 import { IntlProvider } from "use-intl";
 
 import { getFolioMessages } from "@stll/folio-core/i18n/messages";
@@ -24,10 +24,6 @@ import type {
 import type { FolioAutocompleteState } from "@stll/folio-core/types/autocomplete";
 import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
 
-import {
-  HiddenProseMirror,
-  type HiddenProseMirrorRef,
-} from "./HiddenProseMirror";
 import { PagedEditor, type PagedEditorRef } from "./PagedEditor";
 import { useSelectionOverlay } from "./SelectionOverlay";
 
@@ -58,24 +54,6 @@ const createDocumentIO = (buffer: ArrayBuffer) => ({
   loadDocument: () => undefined,
   loadDocx: async () => undefined,
 });
-
-const createSeedProbe = () => {
-  let initializations = 0;
-  return {
-    plugins: [
-      new Plugin({
-        state: {
-          init: () => {
-            initializations++;
-            return null;
-          },
-          apply: () => null,
-        },
-      }),
-    ],
-    getInitializations: () => initializations,
-  };
-};
 
 const createSelectionMeasureProvider = (installed: MeasureProvider) =>
   ({
@@ -167,55 +145,6 @@ const createSelectionFixture = () => {
   };
 };
 
-test("persistent hidden view reads committed callbacks and read-only inputs", async () => {
-  const container = document.createElement("div");
-  document.body.append(container);
-  const root = createRoot(container);
-  const editor = createRef<HiddenProseMirrorRef>();
-  const documentModel = createEmptyDocument({ initialText: "Initial" });
-  const calls: string[] = [];
-  const render = async (readOnly: boolean, callbackLabel: string) => {
-    const { onTransaction, onReadOnlyEditAttempt } = createTransactionCallbacks(
-      calls,
-      callbackLabel,
-    );
-    await act(async () =>
-      root.render(
-        <HiddenProseMirror
-          experimentalSession="legacy"
-          ref={editor}
-          document={documentModel}
-          documentIdentity="initial"
-          readOnly={readOnly}
-          onTransaction={onTransaction}
-          onReadOnlyEditAttempt={onReadOnlyEditAttempt}
-        />,
-      ),
-    );
-  };
-  try {
-    await render(false, "first");
-    await act(async () => editor.current?.ensureView());
-    const view = editor.current?.getView();
-    expect(view).toBeDefined();
-    if (!view) panic("Expected a hidden view");
-    await act(async () => view.dispatch(view.state.tr.insertText("!", 1)));
-    expect(calls).toEqual(["first"]);
-    await render(true, "second");
-    expect(editor.current?.getView()).toBe(view);
-    await act(async () => view.dispatch(view.state.tr.insertText("?", 1)));
-    expect(calls).toEqual(["first", "blocked-second"]);
-    await render(false, "third");
-    expect(editor.current?.getView()).toBe(view);
-    await act(async () => view.dispatch(view.state.tr.insertText("+", 1)));
-    expect(calls).toEqual(["first", "blocked-second", "third"]);
-    expect(view.state.doc.textContent).toBe("+!Initial");
-  } finally {
-    await act(async () => root.unmount());
-    container.remove();
-  }
-});
-
 test("selection geometry follows collapsed, range, and cleared inputs without stale effects", async () => {
   const container = document.createElement("div");
   const root = createRoot(container);
@@ -294,7 +223,6 @@ test("persistent paged controller reads document I/O from the latest commit", as
       root.render(
         <IntlProvider locale="en" timeZone="UTC" messages={messages}>
           <PagedEditor
-            experimentalSession="legacy"
             accessibleName="Document editor"
             ref={editor}
             document={null}
@@ -337,7 +265,6 @@ test("read-only pages route selection keys but preserve native scrolling and ref
     root.render(
       <IntlProvider locale="en" timeZone="UTC" messages={messages}>
         <PagedEditor
-          experimentalSession="legacy"
           accessibleName="Document editor"
           ref={editor}
           document={createEmptyDocument({ initialText: "Read only text" })}
@@ -406,59 +333,6 @@ test("read-only pages route selection keys but preserve native scrolling and ref
   }
 });
 
-test("deferred hidden view reuses the latest committed pre-view document seed", async () => {
-  const container = document.createElement("div");
-  document.body.append(container);
-  const root = createRoot(container);
-  const editor = createRef<PagedEditorRef>();
-  const messages = getFolioMessages("en");
-  const probe = createSeedProbe();
-  const documentIO = createDocumentIO(new ArrayBuffer(0));
-  const render = async (
-    documentModel: ReturnType<typeof createEmptyDocument>,
-    identity: string,
-  ) => {
-    await act(async () =>
-      root.render(
-        <IntlProvider locale="en" timeZone="UTC" messages={messages}>
-          <PagedEditor
-            experimentalSession="legacy"
-            accessibleName="Document editor"
-            ref={editor}
-            document={documentModel}
-            documentIdentity={identity}
-            markupView="all-markup"
-            documentIO={documentIO}
-            externalPlugins={probe.plugins}
-          />
-        </IntlProvider>,
-      ),
-    );
-  };
-  try {
-    await render(createEmptyDocument({ initialText: "First" }), "first");
-    const controller =
-      editor.current?.getEditor() ?? panic("Expected an editor controller");
-    expect(controller.getView()).toBeNull();
-    await render(
-      createEmptyDocument({ initialText: "Replacement" }),
-      "replacement",
-    );
-    expect(editor.current?.getEditor()).toBe(controller);
-    expect(controller.getView()).toBeNull();
-    const initializedBeforeRequest = probe.getInitializations();
-    expect(initializedBeforeRequest).toBeGreaterThan(0);
-    await act(async () => editor.current?.ensureView({ focus: false }));
-    const view =
-      controller.getView() ?? panic("Expected the requested hidden view");
-    expect(view.state.doc.textContent).toBe("Replacement");
-    expect(probe.getInitializations()).toBe(initializedBeforeRequest);
-  } finally {
-    await act(async () => root.unmount());
-    container.remove();
-  }
-});
-
 const createAutocompleteCallback =
   (calls: string[], identity: string) => (state: FolioAutocompleteState) =>
     calls.push(`${identity}:${state.status === "idle" ? "idle" : state.text}`);
@@ -487,7 +361,6 @@ test("autocomplete subscriptions and host callbacks survive deferred view readin
             documentIdentity={identity}
             documentIO={createDocumentIO(new ArrayBuffer(0))}
             markupView="all-markup"
-            experimentalSession="canonical"
             onAutocompleteChange={onAutocompleteChange}
           />
         </IntlProvider>,

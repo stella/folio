@@ -12,7 +12,6 @@ import type { CSSProperties } from "react";
 import { createPortal } from "react-dom";
 
 import { panic } from "better-result";
-import { redo as historyRedo, undo as historyUndo } from "prosemirror-history";
 /**
  * PagedEditor Component
  *
@@ -211,7 +210,6 @@ import {
   type NoteReferenceFollower,
 } from "@stll/folio-core/prosemirror/noteReferenceReview";
 import { aiSuggestionDecorationsKey } from "@stll/folio-core/prosemirror/plugins/aiSuggestionDecorations";
-import { suggestionModeKey } from "@stll/folio-core/prosemirror/plugins/suggestionMode";
 import { templateDirectivesKey } from "@stll/folio-core/prosemirror/plugins/templateDirectives";
 import type { DirectiveRange } from "@stll/folio-core/prosemirror/plugins/templateDirectives";
 import { templatePreviewValuesKey } from "@stll/folio-core/prosemirror/plugins/templatePreviewValues";
@@ -229,15 +227,9 @@ import {
   rightEdgeResizeCommand,
   rowResizeCommand,
 } from "@stll/folio-core/prosemirror/tableResize";
-import { dispatchEditorTextInput } from "@stll/folio-core/prosemirror/textInput";
 import { findStartPosForParaId } from "@stll/folio-core/prosemirror/utils/findParagraphByParaId";
 import { resolveHeaderFooterSelectionGeometry } from "@stll/folio-core/render-dom/HeaderFooterSelectionOverlay";
-import {
-  CANONICAL_GAP,
-  type CanonicalRefusalGround,
-  type EditorSession,
-  usesCanonicalSession,
-} from "@stll/folio-core/types/canonicalCapabilities";
+import type { CanonicalRefusalGround } from "@stll/folio-core/types/canonicalCapabilities";
 import type { Footnote } from "@stll/folio-core/types/content";
 // Types
 import type {
@@ -284,7 +276,6 @@ import {
   HiddenProseMirror,
 } from "./HiddenProseMirror";
 import type {
-  HiddenProseMirrorCollaboration,
   HiddenProseMirrorRef,
   HiddenProseMirrorRemoteSelection,
 } from "./HiddenProseMirror";
@@ -333,7 +324,6 @@ export type PagedEditorProps = {
   accessibleName: string;
   /** The document model to edit; the editor reads it and never writes it. */
   document: ReadonlyDocument | null;
-  experimentalSession?: EditorSession;
   /** Who answers the undo and redo keys; the editor when unset. */
   historyShortcuts?: HistoryShortcutOwner;
   /** Adapter-owned document I/O exposed through the shared controller. */
@@ -438,8 +428,6 @@ export type PagedEditorProps = {
    *  while the directive plugin stays installed — the hidden view isn't
    *  reconfigured on a same-document plugin change, so gate the overlay here. */
   showTemplateDirectives?: boolean;
-  /** Optional Yjs collaboration owner for the hidden ProseMirror state. */
-  collaboration?: HiddenProseMirrorCollaboration | undefined;
   /** The canonical room the canonical session joins. */
   canonicalRoom?: CanonicalRoomCollaboration | undefined;
   /** Extension manager for plugins/schema/commands (optional — falls back to default) */
@@ -1582,7 +1570,6 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       document,
       documentIO,
       documentIdentity,
-      experimentalSession,
       historyShortcuts,
       fonts: hostFonts,
       theme: _theme,
@@ -1616,7 +1603,6 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       onCanonicalHistoryDrop,
       externalPlugins = EMPTY_PLUGINS,
       showTemplateDirectives = true,
-      collaboration,
       canonicalRoom,
       extensionManager,
       suggestionModeActive = false,
@@ -1703,10 +1689,6 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     const activeNoteStoryRef = useRef<NoteStoryKey | null>(null);
     const [noteStoryActive, setNoteStoryActive] = useState(false);
     const painterRef = useRef<LayoutPainter | null>(null);
-    const noteStoryPlugins = useMemo(
-      () => externalPlugins.filter((plugin) => suggestionModeKey.owns(plugin)),
-      [externalPlugins],
-    );
     const handleActiveNoteStoryChange = useCallback(
       (story: NoteStoryKey | null) => {
         activeNoteStoryRef.current = story;
@@ -1801,14 +1783,9 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     // Reactive "has the hidden editor been requested" signal. The manager owns
     // the actual view creation imperatively (via ensureView); this flag only
     // drives the pre-hidden initial-layout coordination below.
-    const [hiddenEditorRequested, setShouldCreateHiddenEditorView] = useState(
-      () => collaboration !== undefined,
-    );
-    const shouldCreateHiddenEditorView =
-      hiddenEditorRequested || collaboration !== undefined;
-    const shouldFocusHiddenEditorOnReadyRef = useRef(
-      collaboration !== undefined,
-    );
+    const [shouldCreateHiddenEditorView, setShouldCreateHiddenEditorView] =
+      useState(false);
+    const shouldFocusHiddenEditorOnReadyRef = useRef(false);
     const layoutSessionRef = useRef(createLayoutSession());
     const readPrecomputedInitialStateRef = useRef<() => EditorState | null>(
       readNoHiddenEditorState,
@@ -1975,23 +1952,17 @@ export const PagedEditor: React.ForwardRefExoticComponent<
      * a refused seed (or a view not created yet) pays for this conversion.
      */
     const readPrecomputedInitialState = useMemo(() => {
-      if (
-        shouldCreateHiddenEditorView ||
-        collaboration !== undefined ||
-        !document
-      )
+      if (shouldCreateHiddenEditorView || !document)
         return readNoHiddenEditorState;
       return readHiddenEditorStateOnce({
         document,
         styles,
         manager: extensionManager,
         externalPlugins,
-        collaborationModules: null,
         reason: "mount",
       });
     }, [
       shouldCreateHiddenEditorView,
-      collaboration,
       document,
       styles,
       extensionManager,
@@ -2093,74 +2064,62 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       [],
     );
 
-    const applyPendingHiddenEditorInput = useCallback(
-      (view: EditorView) => {
-        const pendingSelection = pendingHiddenEditorSelectionRef.current;
-        pendingHiddenEditorSelectionRef.current = null;
+    const applyPendingHiddenEditorInput = useCallback((view: EditorView) => {
+      const pendingSelection = pendingHiddenEditorSelectionRef.current;
+      pendingHiddenEditorSelectionRef.current = null;
 
-        if (pendingSelection?.type === "node") {
-          try {
-            view.dispatch(
-              view.state.tr.setSelection(
-                NodeSelection.create(view.state.doc, pendingSelection.pos),
-              ),
-            );
-          } catch {
-            // Fall through to queued text insertion at the current selection.
-          }
+      if (pendingSelection?.type === "node") {
+        try {
+          view.dispatch(
+            view.state.tr.setSelection(
+              NodeSelection.create(view.state.doc, pendingSelection.pos),
+            ),
+          );
+        } catch {
+          // Fall through to queued text insertion at the current selection.
+        }
+      }
+
+      if (pendingSelection?.type === "text") {
+        const docEnd = view.state.doc.content.size;
+        const anchor = Math.max(0, Math.min(pendingSelection.anchor, docEnd));
+        const head =
+          pendingSelection.head === undefined
+            ? anchor
+            : Math.max(0, Math.min(pendingSelection.head, docEnd));
+        try {
+          const selection = TextSelection.between(
+            view.state.doc.resolve(anchor),
+            view.state.doc.resolve(head),
+          );
+          view.dispatch(view.state.tr.setSelection(selection));
+        } catch {
+          // Keep the default selection if the cached visual position went stale.
+        }
+      }
+
+      const queuedInput = queuedInputBeforeHiddenEditorRef.current;
+      if (queuedInput.length === 0) {
+        return;
+      }
+
+      queuedInputBeforeHiddenEditorRef.current = [];
+      for (const input of queuedInput) {
+        if (input.type === "text") {
+          view.dom.dispatchEvent(
+            new InputEvent("beforeinput", {
+              inputType: "insertText",
+              data: input.text,
+              cancelable: true,
+              bubbles: true,
+            }),
+          );
+          continue;
         }
 
-        if (pendingSelection?.type === "text") {
-          const docEnd = view.state.doc.content.size;
-          const anchor = Math.max(0, Math.min(pendingSelection.anchor, docEnd));
-          const head =
-            pendingSelection.head === undefined
-              ? anchor
-              : Math.max(0, Math.min(pendingSelection.head, docEnd));
-          try {
-            const selection = TextSelection.between(
-              view.state.doc.resolve(anchor),
-              view.state.doc.resolve(head),
-            );
-            view.dispatch(view.state.tr.setSelection(selection));
-          } catch {
-            // Keep the default selection if the cached visual position went stale.
-          }
-        }
-
-        const queuedInput = queuedInputBeforeHiddenEditorRef.current;
-        if (queuedInput.length === 0) {
-          return;
-        }
-
-        queuedInputBeforeHiddenEditorRef.current = [];
-        for (const input of queuedInput) {
-          if (input.type === "text") {
-            if (
-              usesCanonicalSession(
-                experimentalSession,
-                CANONICAL_GAP.authorityRouting,
-              )
-            ) {
-              view.dom.dispatchEvent(
-                new InputEvent("beforeinput", {
-                  inputType: "insertText",
-                  data: input.text,
-                  cancelable: true,
-                  bubbles: true,
-                }),
-              );
-            } else {
-              dispatchEditorTextInput(view, input.text);
-            }
-            continue;
-          }
-
-          replayDeferredKeyDown(view, input.eventInit);
-        }
-      },
-      [experimentalSession],
-    );
+        replayDeferredKeyDown(view, input.eventInit);
+      }
+    }, []);
 
     // Column resize state
     const isResizingColumnRef = useRef(false);
@@ -2513,15 +2472,6 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           readPrecomputedInitialStateRef.current(),
       });
     }, [runtime]);
-    // Eagerly request the hidden editor when collaborating (matches the former
-    // `shouldCreateHiddenEditorView` initial-true for collaboration); the manager
-    // defers the actual creation until the collaboration modules load.
-    useLayoutEffect(() => {
-      if (collaboration !== undefined) {
-        hiddenPMRef.current?.ensureView();
-      }
-    }, [collaboration]);
-
     const getActiveEditorStory = useCallback(
       () =>
         resolveActiveEditorStory({
@@ -2601,18 +2551,9 @@ export const PagedEditor: React.ForwardRefExoticComponent<
      */
     const settledDocumentChange =
       useCallback((): SettledDocumentChange | null => {
-        const hidden = hiddenPMRef.current;
-        if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.save)) {
-          const model = hidden?.readCanonicalDocument() ?? null;
-          return model === null ? null : settledChangeOf(model);
-        }
-        const built = hidden?.getDocument();
-        const body = hidden?.getState()?.doc;
-        if (!built) return null;
-        return settledChangeOf(
-          body ? noteFollower.reconcile(readModel(built), body) : built,
-        );
-      }, [experimentalSession, noteFollower]);
+        const model = hiddenPMRef.current?.readCanonicalDocument() ?? null;
+        return model === null ? null : settledChangeOf(model);
+      }, []);
 
     const flushDocumentChangeNotification = useCallback(() => {
       const flush = () => {
@@ -2640,6 +2581,11 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         const change = settledDocumentChange();
         if (change) {
           cancelNoteChangeNotification();
+          // Open note, header and footer editors follow every commit, a
+          // peer's included, from the session's projections; the document
+          // prop changes only when the host's history records a change.
+          noteEditorRef.current?.sync();
+          hfPMsRef.current?.sync();
           onDocumentChangeRef.current?.(change);
           folioEmitterRef.current.emit("docChange", change.forHost);
         }
@@ -3624,13 +3570,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
             ensureHiddenEditorView({ sync: true });
           }
           scheduleLayout();
-          if (
-            usesCanonicalSession(
-              experimentalSession,
-              CANONICAL_GAP.authorityRouting,
-            )
-          )
-            scheduleDocumentChangeNotification();
+          scheduleDocumentChangeNotification();
         }
         if (docChanged || selectionChanged) {
           const { from, to } = view.state.selection;
@@ -3655,7 +3595,6 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       [
         scheduleLayout,
         ensureHiddenEditorView,
-        experimentalSession,
         scheduleDocumentChangeNotification,
         setHfCaretSelection,
       ],
@@ -5888,7 +5827,6 @@ export const PagedEditor: React.ForwardRefExoticComponent<
 
       if (
         shouldCreateHiddenEditorView ||
-        collaboration !== undefined ||
         preHiddenInitialLayoutDoneRef.current
       ) {
         return undefined;
@@ -5948,7 +5886,6 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         queueMicrotask(runLayoutInputDeferredByFontWait);
       };
     }, [
-      collaboration,
       document,
       readPrecomputedInitialState,
       runLayoutPipeline,
@@ -6424,20 +6361,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           if (documentChangeNotifyTimerRef.current !== null) {
             flushDocumentChangeNotification();
           }
-          const editorDocument = folioEditor.getDocument();
-          if (
-            usesCanonicalSession(
-              experimentalSession,
-              CANONICAL_GAP.authorityRouting,
-            )
-          )
-            return editorDocument;
-          const current = editorDocument
-            ? noteFollower.withPending(readModel(editorDocument))
-            : null;
-          return current
-            ? (noteEditorRef.current?.snapshotDocument(current) ?? current)
-            : null;
+          return folioEditor.getDocument();
         },
         getState() {
           return folioEditor.getState();
@@ -6486,64 +6410,34 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         undo() {
           const target = getActiveEditorStory();
           if (target.type === "none") return false;
-          if (
-            usesCanonicalSession(
-              experimentalSession,
-              CANONICAL_GAP.authorityRouting,
-            )
-          ) {
-            return (
-              hiddenPMRef.current?.applyCanonicalStoryHistory({
-                view: target.view,
-                story: getCanonicalActiveStory(),
-                direction: "undo",
-              }) ?? false
-            );
-          }
-          if (target.type === "body")
-            return hiddenPMRef.current?.undo() ?? false;
-          return historyUndo(target.view.state, target.view.dispatch);
+          return (
+            hiddenPMRef.current?.applyCanonicalStoryHistory({
+              view: target.view,
+              story: getCanonicalActiveStory(),
+              direction: "undo",
+            }) ?? false
+          );
         },
         redo() {
           const target = getActiveEditorStory();
           if (target.type === "none") return false;
-          if (
-            usesCanonicalSession(
-              experimentalSession,
-              CANONICAL_GAP.authorityRouting,
-            )
-          ) {
-            return (
-              hiddenPMRef.current?.applyCanonicalStoryHistory({
-                view: target.view,
-                story: getCanonicalActiveStory(),
-                direction: "redo",
-              }) ?? false
-            );
-          }
-          if (target.type === "body")
-            return hiddenPMRef.current?.redo() ?? false;
-          return historyRedo(target.view.state, target.view.dispatch);
+          return (
+            hiddenPMRef.current?.applyCanonicalStoryHistory({
+              view: target.view,
+              story: getCanonicalActiveStory(),
+              direction: "redo",
+            }) ?? false
+          );
         },
         canUndo() {
           const target = getActiveEditorStory();
           if (target.type === "none") return false;
-          return usesCanonicalSession(
-            experimentalSession,
-            CANONICAL_GAP.authorityRouting,
-          ) || target.type === "body"
-            ? (hiddenPMRef.current?.canUndo() ?? false)
-            : historyUndo(target.view.state);
+          return hiddenPMRef.current?.canUndo() ?? false;
         },
         canRedo() {
           const target = getActiveEditorStory();
           if (target.type === "none") return false;
-          return usesCanonicalSession(
-            experimentalSession,
-            CANONICAL_GAP.authorityRouting,
-          ) || target.type === "body"
-            ? (hiddenPMRef.current?.canRedo() ?? false)
-            : historyRedo(target.view.state);
+          return hiddenPMRef.current?.canRedo() ?? false;
         },
         setSelection(anchor: number, head?: number) {
           folioEditor.setSelection(anchor, head);
@@ -6602,14 +6496,12 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         folioEditor,
         getActiveEditorStory,
         getCanonicalActiveStory,
-        noteFollower,
         getScrollContainer,
         refreshBodyImeCaretAnchor,
         scrollToPageImpl,
         scrollToParaIdImpl,
         scrollToPositionImpl,
         setPassageHighlightImpl,
-        experimentalSession,
       ],
     );
 
@@ -6742,16 +6634,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           getCanonicalApi={getCanonicalApi}
           readCanonicalDocument={readCanonicalDocument}
           onSessionRefusal={handleSessionRefusal}
-          experimentalSession={
-            usesCanonicalSession(
-              experimentalSession,
-              CANONICAL_GAP.authorityRouting,
-            )
-              ? "canonical"
-              : "legacy"
-          }
           {...(styles !== undefined ? { styles } : {})}
-          {...(_theme !== undefined ? { theme: _theme } : {})}
         />
 
         <NoteStoryEditor
@@ -6761,21 +6644,11 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           getCanonicalApi={getCanonicalApi}
           readCanonicalDocument={readCanonicalDocument}
           onSessionRefusal={handleSessionRefusal}
-          experimentalSession={
-            usesCanonicalSession(
-              experimentalSession,
-              CANONICAL_GAP.authorityRouting,
-            )
-              ? "canonical"
-              : "legacy"
-          }
           onDocumentChange={handleNoteDocumentChange}
           onStoryChange={handleNoteStoryTransaction}
-          plugins={noteStoryPlugins}
           suggestionModeActive={suggestionModeActive}
           {...(suggestionAuthor !== undefined ? { suggestionAuthor } : {})}
           {...(styles !== undefined ? { styles } : {})}
-          {...(_theme !== undefined ? { theme: _theme } : {})}
         />
 
         {/* Hidden ProseMirror for keyboard input */}
@@ -6785,14 +6658,6 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           derivedFields={derivedFields}
           document={document}
           documentIdentity={documentIdentity}
-          experimentalSession={
-            usesCanonicalSession(
-              experimentalSession,
-              CANONICAL_GAP.authorityRouting,
-            )
-              ? "canonical"
-              : "legacy"
-          }
           {...(historyShortcuts === undefined ? {} : { historyShortcuts })}
           {...(onCanonicalHistory === undefined ? {} : { onCanonicalHistory })}
           {...(onCanonicalHistoryDrop === undefined
@@ -6802,7 +6667,6 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           {...(suggestionAuthor !== undefined ? { suggestionAuthor } : {})}
           suggestionModeActive={suggestionModeActive}
           widthPx={contentWidth}
-          getPrecomputedInitialState={readPrecomputedInitialState}
           readOnly={readOnly}
           onTransaction={handleTransaction}
           onCanonicalCompositionLayout={layoutCanonicalComposition}
@@ -6817,7 +6681,6 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           {...(onPaste !== undefined ? { onPaste } : {})}
           {...(styles !== undefined ? { styles } : {})}
           externalPlugins={externalPlugins}
-          {...(collaboration !== undefined ? { collaboration } : {})}
           {...(canonicalRoom !== undefined ? { canonicalRoom } : {})}
           {...(extensionManager !== undefined ? { extensionManager } : {})}
           {...(onReadOnlyEditAttempt !== undefined

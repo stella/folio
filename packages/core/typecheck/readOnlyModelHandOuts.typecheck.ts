@@ -50,13 +50,12 @@ export const effectiveSectionProperties = (
 export const storySnapshots = (
   notes: NoteEditorManager,
   parts: HeaderFooterEditorManager,
-  model: ReadonlyDocument,
 ): void => {
-  const noted = notes.snapshotDocument(model);
-  // @ts-expect-error a note snapshot shares what no edit touched with the model
+  const noted = notes.snapshotDocument();
+  // @ts-expect-error a note snapshot is the session's read-only document
   noted.package.document.content.length = 0;
-  const parted = parts.snapshotDocument(model);
-  // @ts-expect-error a part snapshot shares what no edit touched with the model
+  const parted = parts.snapshotDocument();
+  // @ts-expect-error a part snapshot is the session's read-only document
   parted.package.headers?.clear();
 };
 

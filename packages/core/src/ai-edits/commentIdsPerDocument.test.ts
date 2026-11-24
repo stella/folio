@@ -15,7 +15,7 @@ import { fromMarkdown } from "../markdown/fromMarkdown";
 import type { Document } from "../types/document";
 import { FolioDocxReviewer } from "./headless";
 
-const SESSIONS = ["legacy", "canonical"] as const;
+const SESSIONS = ["canonical"] as const;
 const DATE = "2026-01-02T03:04:05Z";
 
 /** A document holding one comment, with the id given, on its first paragraph. */

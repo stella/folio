@@ -485,7 +485,7 @@ const commentState = (
 const publicStoryText = (reviewer: FolioDocxReviewer) =>
   STORIES.map(({ handle }) => reviewer.readStory(handle)?.text);
 
-for (const engine of ["canonical", "legacy"] as const)
+for (const engine of ["canonical"] as const)
   for (const [index, entry] of STORIES.entries())
     for (const placement of ["same", "other"] as const)
       test(`${engine} ${entry.handle.type} ${placement} story: a held public proposal survives bulk rejection and save/restage across stories`, async () => {
@@ -859,7 +859,7 @@ for (const ordinary of ["present", "absent"] as const)
     }
   });
 
-for (const engine of ["canonical", "legacy"] as const)
+for (const engine of ["canonical"] as const)
   test(`${engine}: bulk rejection keeps an ordinary insertion that holds a fragment of a held proposal`, async () => {
     const entry = STORIES[0];
     // A canonical lock refuses staging the held edit; it arrives below.

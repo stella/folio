@@ -649,7 +649,7 @@ const REVIEW_COMMENT_SCENARIOS = [
   ),
 ];
 
-const SESSIONS = ["legacy", "canonical"] as const;
+const SESSIONS = ["canonical"] as const;
 
 const MATRIX_CASES = SESSIONS.flatMap((session) =>
   FOLIO_RESOLVED_REVIEWED_VIEWS.flatMap((view) =>

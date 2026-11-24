@@ -64,104 +64,99 @@ const idOf = (reviewer: FolioDocxReviewer, text: string): string => {
   return block.id;
 };
 
-describe.each(["legacy", "canonical"] as const)(
-  "on the %s session",
-  (session) => {
-    for (const mode of ["direct", "tracked-changes"] as const)
-      test(`a heading inserted beside a join into a deleted list item takes no numbering from it (${mode})`, async () => {
-        const open = async (bytes: ArrayBuffer) =>
-          FolioDocxReviewer.fromBuffer(bytes, { session });
-        const pending = await open(await numberedDocument());
-        const clause = idOf(pending, "Numbered clause two");
-        const apply = (
-          reviewer: FolioDocxReviewer,
-          applied: "direct" | "tracked-changes",
-          operations: Parameters<
-            FolioDocxReviewer["applyDocumentOperations"]
-          >[0]["operations"],
-        ) =>
-          expect(
-            reviewer.applyDocumentOperations(
-              { version: 1, mode: applied, operations },
-              { undefinedReferences: "refuse" },
-            ).skipped,
-          ).toEqual([]);
-        // The list item goes whole before a table; the body text keeps its
-        // words, but its break stays pending, running into the list item.
-        apply(pending, "tracked-changes", [
-          { id: "delete", type: "deleteBlock", blockId: clause },
-          {
-            id: "table",
-            type: "insertTable",
-            blockId: clause,
-            rows: [["Term", "Value"]],
-          },
-        ]);
-        const row = pending
-          .getChanges()
-          .find(({ type }) => type === "rowInserted");
-        expect(row && pending.acceptChange(row)).toBe(true);
-        apply(pending, "tracked-changes", [
-          {
-            id: "body",
-            type: "deleteBlock",
-            blockId: idOf(pending, "Unnumbered body text."),
-          },
-        ]);
-        const words = pending
-          .getChanges()
-          .find(({ type }) => type === "deletion");
-        expect(words && pending.rejectChange(words)).toBe(true);
-        const reviewer = await open(await pending.toBuffer());
-        apply(reviewer, mode, [
-          {
-            id: "insert",
-            type: "insertAfterBlock",
-            blockId: idOf(reviewer, "Unnumbered body text."),
-            text: "Inserted heading.",
-            styleId: "Heading2",
-          },
-        ]);
-        const inserted = reviewer
-          .getContent()
-          .find(({ text }) => text === "Inserted heading.");
-        expect(inserted?.kind).toBe("heading");
-        expect(
-          inserted?.kind === "heading" ? inserted.listReference : "missing",
-        ).toBeUndefined();
-      });
-
-    test("a heading inserted after a deleted list item copies its numbering", async () => {
-      const reviewer = await FolioDocxReviewer.fromBuffer(
-        await numberedDocument(),
-        { session },
-      );
-      const clause = idOf(reviewer, "Numbered clause one");
-      for (const operation of [
-        { id: "delete", type: "deleteBlock", blockId: clause },
-        {
-          id: "insert",
-          type: "insertAfterBlock",
-          blockId: clause,
-          text: "Inserted heading.",
-          styleId: "Heading2",
-        },
-      ] as const)
+describe.each(["canonical"] as const)("on the %s session", (session) => {
+  for (const mode of ["direct", "tracked-changes"] as const)
+    test(`a heading inserted beside a join into a deleted list item takes no numbering from it (${mode})`, async () => {
+      const open = async (bytes: ArrayBuffer) =>
+        FolioDocxReviewer.fromBuffer(bytes, { session });
+      const pending = await open(await numberedDocument());
+      const clause = idOf(pending, "Numbered clause two");
+      const apply = (
+        reviewer: FolioDocxReviewer,
+        applied: "direct" | "tracked-changes",
+        operations: Parameters<
+          FolioDocxReviewer["applyDocumentOperations"]
+        >[0]["operations"],
+      ) =>
         expect(
           reviewer.applyDocumentOperations(
-            { version: 1, mode: "tracked-changes", operations: [operation] },
+            { version: 1, mode: applied, operations },
             { undefinedReferences: "refuse" },
           ).skipped,
         ).toEqual([]);
+      // The list item goes whole before a table; the body text keeps its
+      // words, but its break stays pending, running into the list item.
+      apply(pending, "tracked-changes", [
+        { id: "delete", type: "deleteBlock", blockId: clause },
+        {
+          id: "table",
+          type: "insertTable",
+          blockId: clause,
+          rows: [["Term", "Value"]],
+        },
+      ]);
+      const row = pending
+        .getChanges()
+        .find(({ type }) => type === "rowInserted");
+      expect(row && pending.acceptChange(row)).toBe(true);
+      apply(pending, "tracked-changes", [
+        {
+          id: "body",
+          type: "deleteBlock",
+          blockId: idOf(pending, "Unnumbered body text."),
+        },
+      ]);
+      const words = pending
+        .getChanges()
+        .find(({ type }) => type === "deletion");
+      expect(words && pending.rejectChange(words)).toBe(true);
+      const reviewer = await open(await pending.toBuffer());
+      apply(reviewer, mode, [
+        {
+          id: "insert",
+          type: "insertAfterBlock",
+          blockId: idOf(reviewer, "Unnumbered body text."),
+          text: "Inserted heading.",
+          styleId: "Heading2",
+        },
+      ]);
       const inserted = reviewer
         .getContent()
         .find(({ text }) => text === "Inserted heading.");
       expect(inserted?.kind).toBe("heading");
       expect(
-        inserted?.kind === "heading"
-          ? inserted.listReference?.numId
-          : "missing",
-      ).toBe(7);
+        inserted?.kind === "heading" ? inserted.listReference : "missing",
+      ).toBeUndefined();
     });
-  },
-);
+
+  test("a heading inserted after a deleted list item copies its numbering", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await numberedDocument(),
+      { session },
+    );
+    const clause = idOf(reviewer, "Numbered clause one");
+    for (const operation of [
+      { id: "delete", type: "deleteBlock", blockId: clause },
+      {
+        id: "insert",
+        type: "insertAfterBlock",
+        blockId: clause,
+        text: "Inserted heading.",
+        styleId: "Heading2",
+      },
+    ] as const)
+      expect(
+        reviewer.applyDocumentOperations(
+          { version: 1, mode: "tracked-changes", operations: [operation] },
+          { undefinedReferences: "refuse" },
+        ).skipped,
+      ).toEqual([]);
+    const inserted = reviewer
+      .getContent()
+      .find(({ text }) => text === "Inserted heading.");
+    expect(inserted?.kind).toBe("heading");
+    expect(
+      inserted?.kind === "heading" ? inserted.listReference?.numId : "missing",
+    ).toBe(7);
+  });
+});

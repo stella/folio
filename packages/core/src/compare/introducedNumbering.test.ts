@@ -527,7 +527,7 @@ test("rebinds a colliding marker-typography change even when its label is unchan
   ).toBeUndefined();
 });
 
-test.each(["legacy", "canonical"] as const)(
+test.each(["canonical"] as const)(
   "rebinds a colliding numbering definition in an inserted table row (%s)",
   async (session) => {
     const result = await compareDocx(

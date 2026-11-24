@@ -38,7 +38,7 @@ type ComparedDocumentOptions = {
   session?: HeadlessReviewerSession;
 };
 
-const SESSIONS = ["legacy", "canonical"] as const;
+const SESSIONS = ["canonical"] as const;
 
 const comparedPackage = async (
   base: readonly BodyItem[],
@@ -322,7 +322,7 @@ describe("hyperlink nesting", () => {
 
 describe("determinism", () => {
   test.each(
-    (["legacy", "canonical"] as const).flatMap((session) =>
+    (["canonical"] as const).flatMap((session) =>
       (["without", "with"] as const).map(
         (sectionRevision) => [session, sectionRevision] as const,
       ),

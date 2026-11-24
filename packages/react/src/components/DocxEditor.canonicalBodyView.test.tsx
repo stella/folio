@@ -55,7 +55,6 @@ test("a canonical editor has its body view after mount, whatever the story edito
             ref={editor}
             accessibleName="Document editor"
             document={createEmptyDocument({ initialText: "Start" })}
-            experimentalSession="canonical"
             showToolbar={false}
           />
         </IntlProvider>,

@@ -78,7 +78,7 @@ test(
   propertyTestTimeout(5_000),
 );
 
-test.each(["legacy", "canonical"] as const)(
+test.each(["canonical"] as const)(
   "%s readers keep mixed opaque occurrences distinct through edits and save",
   async (session) => {
     const zip = await ZipArchive.read(await createEmptyDocx());

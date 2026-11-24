@@ -50,7 +50,7 @@ const reading = async (reviewer: FolioDocxReviewer) => {
   };
 };
 
-describe.each(["legacy", "canonical"] as const)("%s", (session) => {
+describe.each(["canonical"] as const)("%s", (session) => {
   for (const [shape, body] of Object.entries(SHAPES))
     test(`merges across ${shape}`, async () => {
       const bytes = await packageOf(body);

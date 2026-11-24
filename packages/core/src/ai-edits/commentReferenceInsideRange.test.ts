@@ -23,7 +23,7 @@ import { FolioDocxReviewer } from "./headless";
 import { hashFolioAIBlockText } from "./snapshot";
 
 const MODES = ["direct", "tracked-changes"] as const;
-const SESSIONS = ["legacy", "canonical"] as const;
+const SESSIONS = ["canonical"] as const;
 type Session = (typeof SESSIONS)[number];
 
 const open = async (bytes: ArrayBuffer | Uint8Array, session: Session) =>

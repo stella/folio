@@ -53,7 +53,7 @@ test("a note only reads matching marks in its own story", () => {
   ]);
 });
 
-for (const session of ["legacy", "canonical"] as const) {
+for (const session of ["canonical"] as const) {
   for (const kind of ["footnote", "endnote"] as const) {
     test(`${session} preserves a misplaced ${kind} mark on an edited save`, async () => {
       const document = createEmptyDocument();

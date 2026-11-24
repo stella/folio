@@ -57,7 +57,7 @@ const source = async () =>
 
 const SEEDS = [1, 7, 42, 2026];
 
-for (const engine of ["legacy", "canonical"] as const) {
+for (const engine of ["canonical"] as const) {
   test.each(SEEDS)(
     `${engine}: once edits settle, the model's toolbar values equal those of a built document (seed %i)`,
     async (seed) => {

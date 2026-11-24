@@ -306,7 +306,7 @@ const refusesRunStart = (options: {
   options.mode === "tracked-changes" &&
   options.length === 2;
 
-for (const session of ["legacy", "canonical"] as const)
+for (const session of ["canonical"] as const)
   test(`a run deleted back to its container's start or a table settles on its first paragraph, batched and one at a time (${session} session)`, async () => {
     for (const [before, prefix] of Object.entries(RUN_BEFORE)) {
       for (let length = 2; length <= RUN_PARAGRAPHS.length; length++) {

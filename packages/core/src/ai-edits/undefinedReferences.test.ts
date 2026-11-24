@@ -109,10 +109,10 @@ const CASES: {
 describe("undefined style and numbering references", () => {
   for (const { name, reason, operation } of CASES) {
     for (const mode of ["direct", "tracked-changes"] as const) {
-      test(`${name} is refused alike by both engines (${mode})`, async () => {
+      test(`${name} is refused (${mode})`, async () => {
         const buffer = await ingested();
         const outcomes = await Promise.all(
-          (["legacy", "canonical"] as const).map(async (session) => {
+          (["canonical"] as const).map(async (session) => {
             const reviewer = await open(buffer, session);
             const before = reviewer.getContent();
             const result = reviewer.applyDocumentOperations(
@@ -133,7 +133,6 @@ describe("undefined style and numbering references", () => {
           }),
         );
         expect(outcomes[0]?.[0]?.reason).toBe(reason);
-        expect(outcomes[1]).toEqual(outcomes[0]);
       });
     }
   }

@@ -35,7 +35,7 @@ const controlDocx = async (): Promise<ArrayBuffer> => {
 
 // A direct replacement of exactly a content control's text writes the new
 // text in the control, which keeps its properties, as typing over it does.
-for (const session of ["legacy", "canonical"] as const)
+for (const session of ["canonical"] as const)
   test(`${session}: replacing exactly an inline control's text keeps the control`, async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(await controlDocx(), {
       session,

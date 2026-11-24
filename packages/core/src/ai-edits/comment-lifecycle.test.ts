@@ -312,7 +312,7 @@ describe("accepted deletion comment anchors", () => {
     expect(await deleteGone([textRun("gone")], { mode: "direct" })).toBe(false);
   });
 
-  test.each(["legacy", "canonical"] as const)(
+  test.each(["canonical"] as const)(
     "a range survives exactly when covered non-carrier content survives in %s",
     async (session) => {
       const property = fc.asyncProperty(

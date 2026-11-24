@@ -173,7 +173,7 @@ const directFormattingCharacters = async (
   return characters;
 };
 
-const SESSIONS = ["legacy", "canonical"] as const;
+const SESSIONS = ["canonical"] as const;
 
 const expectAcceptedAndRejectedFormatting = async ({
   base,

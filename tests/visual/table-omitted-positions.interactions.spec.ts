@@ -61,7 +61,7 @@ const documentWith = async (rows: readonly Row[]): Promise<Buffer> => {
 };
 
 const load = async (page: Page, rows: readonly Row[]) => {
-  await page.goto("/?session=legacy");
+  await page.goto("/");
   await page.locator("#file-input").setInputFiles({
     name: "omitted.docx",
     mimeType:
@@ -256,7 +256,7 @@ test.describe("a table row with no cells", () => {
     ["nothing", ""],
     ["a declared gridAfter", '<w:gridAfter w:val="3"/>'],
   ] as const)
-    for (const session of ["legacy", "canonical"] as const)
+    for (const session of ["canonical"] as const)
       test(`opens and paints its neighbours with ${name} (${session} session)`, async ({
         page,
       }) => {

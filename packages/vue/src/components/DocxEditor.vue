@@ -532,17 +532,14 @@ import {
   onMounted,
   ref,
   shallowRef,
-  toRaw,
   type VNodeChild,
   watch,
 } from "vue";
 
 import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
-import { isCanonicalRoomCollaboration } from "@stll/folio-core/controller/canonicalRoomEditor";
 import { CanonicalSessionRefusalError } from "@stll/folio-core/controller/hiddenEditorManager";
 import { inspectDocxCompatibility } from "@stll/folio-core/docx/compatibility";
 import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
-import { withHostCommentThreads } from "@stll/folio-core/docx/hostCommentThreads";
 import { findBodyPmAnchors } from "@stll/folio-core/layout-bridge/dom/findBodyPmSpans";
 import { HIDDEN_EDITOR_WRAPPER_CLASS } from "@stll/folio-core/layout-bridge/dom/imeCaretAnchor";
 import {
@@ -577,7 +574,6 @@ import {
   insertTableOfContentsInView,
 } from "@stll/folio-core/prosemirror";
 import { expectTableAttrs } from "@stll/folio-core/prosemirror/attrs";
-import { commentIdsNamedIn } from "@stll/folio-core/prosemirror/commentRecords";
 import { executeEditorCommand } from "@stll/folio-core/prosemirror/executeEditorCommand";
 import { getTableContext } from "@stll/folio-core/prosemirror/extensions/nodes/TableExtension";
 import { extractSelectionContext } from "@stll/folio-core/prosemirror/plugins/selectionTracker";
@@ -587,7 +583,6 @@ import {
   type CanonicalGap,
   canonicalRefusalMessage,
   canonicalRefusalNotice,
-  usesCanonicalSession,
 } from "@stll/folio-core/types/canonicalCapabilities";
 import type { Comment } from "@stll/folio-core/types/content";
 import type {
@@ -704,20 +699,11 @@ const emit = defineEmits<{
 // injected primitives via `useFolioUI`, so `components.ColorPicker` etc. take
 // effect. Provided once at setup; the prop is not expected to change identity.
 provideFolioUI(props.components);
-// A Yjs fragment binds the legacy session's editor state, so it selects that
-// session unless the host names one.
-const experimentalSession = () =>
-  props.experimentalSession ??
-  (props.collaboration?.yXmlFragment === undefined ? undefined : "legacy");
 // Inherit the host's reactive light/dark/system setting. With no provider the
 // composable preserves the editor's existing light default. Teleported chrome
 // receives the same resolved mode through the portal-class provider.
 const isDark = useColorMode();
 provideDocxPortalClass(isDark);
-
-const canonicalAuthoritySession = computed(() =>
-  usesCanonicalSession(experimentalSession(), CANONICAL_GAP.authorityRouting),
-);
 
 /** Hand the host a document it owns; its three listeners share it. */
 function notifyHostDocument(doc: Document): void {
@@ -746,10 +732,6 @@ function reportEditorError(error: Error): void {
 }
 
 function refuseCanonicalModelEdit(gap: CanonicalGap, message: string): boolean {
-  if (
-    !usesCanonicalSession(experimentalSession(), CANONICAL_GAP.authorityRouting)
-  )
-    return false;
   const error = new CanonicalSessionRefusalError({
     ground: { gap },
     message: canonicalRefusalMessage(gap, message),
@@ -934,10 +916,6 @@ useKeyboardShortcuts({
 });
 
 // ---- Pipeline -----------------------------------------------------------
-/** The host's comment threads as saving copies them: plain objects, not reactive proxies. */
-const savedComments = () =>
-  commentManagement.comments.value.map((comment) => toRaw(comment));
-
 const autocompleteSuggestion = shallowRef<FolioAutocompleteState>({
   status: "idle",
 });
@@ -980,13 +958,11 @@ const {
     props.onAutocompleteChange?.(state);
   },
   // Read at save time; comment management is set up below.
-  comments: () => savedComments(),
   hiddenContainer: hiddenPmRef,
   hiddenHeaderFooterContainer: hiddenHfPmRef,
   noteEditorContainer: notePmRef,
   pagesContainer: pagesRef,
   readOnly,
-  experimentalSession,
   editorMode,
   author: () => props.author,
   password: () => props.password,
@@ -1199,7 +1175,6 @@ const {
   hyperlinkPopupData,
   readOnly,
   showHeaderFooterEditing: computed(() => props.showHeaderFooterEditing),
-  getExperimentalSession: experimentalSession,
   applyCanonicalOperations: (operations) =>
     editor.applyCanonicalOperations(operations),
   zoom,
@@ -1212,7 +1187,6 @@ const {
   getDocument,
   getHfPmView: getHeaderFooterView,
   syncHfPMs: syncHeaderFooterViews,
-  setDocument,
   openNoteStory: (story) => {
     openNoteStory(story);
     selectionSync.clearOverlay();
@@ -1220,7 +1194,6 @@ const {
   closeNoteStory,
   getActiveNoteView,
   reLayout,
-  onDocumentChange: notifyDocumentChange,
   clearOverlay: selectionSync.clearOverlay,
 });
 
@@ -1329,9 +1302,7 @@ const commentManagement = useCommentManagement({
   getDocument,
   author: () => props.author,
   commentsProp: () => props.comments,
-  commentsFromRoom: () =>
-    props.collaboration !== undefined &&
-    isCanonicalRoomCollaboration(props.collaboration),
+  commentsFromRoom: () => props.collaboration !== undefined,
   canonicalTick: stateTick,
   onCommentsChange: (next) => {
     props.onCommentsChange?.(next);
@@ -1350,8 +1321,7 @@ const commentLifecycle = useCommentLifecycle({
   pagesContainer: pagesRef,
   readOnly,
   createComment: commentManagement.createComment,
-  sessionKind: () =>
-    canonicalAuthoritySession.value ? "canonical" : "prosemirror",
+  sessionKind: () => "canonical",
   createCanonicalComment: (text, range) => {
     const result = editor.applyCanonicalComment({
       type: "create",
@@ -2058,28 +2028,14 @@ const { exposed } = useDocxEditorRefApi({
     commentManagement.appendComments(nextComments);
   },
   getComments: () =>
-    usesCanonicalSession(experimentalSession(), CANONICAL_GAP.authorityRouting)
-      ? commentManagement.comments.value.map((comment) =>
-          structuredClone(comment),
-        )
-      : commentManagement.comments.value,
+    commentManagement.comments.value.map((comment) => structuredClone(comment)),
   setComments: (nextComments) => {
     commentManagement.setComments(nextComments);
   },
   focus: () => activeEditorView.value?.focus(),
   readDocumentModel,
-  // The editor's document carries the threads it was loaded with; the host's
-  // list is what the sidebar shows and what saving writes.
-  getDocument: () => {
-    const document = getDocument();
-    if (!document || canonicalAuthoritySession.value) return document;
-    const editorDoc = editorView.value?.state.doc;
-    return withHostCommentThreads(document, savedComments(), {
-      anchoredInEditor: editorDoc ? commentIdsNamedIn(editorDoc) : null,
-    });
-  },
+  getDocument,
   getActiveView: () => activeEditorView.value,
-  getExperimentalSession: experimentalSession,
   getActiveCanonicalStory: () => {
     const note = activeNoteStory.value;
     if (note) return { kind: note.kind, id: note.noteId };

@@ -132,7 +132,7 @@ describe("an operation that starts a new list", () => {
   ] as const)(
     "keeps the tracked %s format and start at level %i after reopening",
     async (numFmt, level, lvlText, start, first, second) => {
-      for (const session of ["canonical", "legacy"] as const) {
+      for (const session of ["canonical"] as const) {
         const reviewer = await reviewerOf("Intro.", session);
         const labels = await savedLabels(reviewer, [
           {

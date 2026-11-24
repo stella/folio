@@ -14,7 +14,7 @@ import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
 import type { Document } from "../types/document";
 
-const SESSIONS = ["canonical", "legacy"] as const;
+const SESSIONS = ["canonical"] as const;
 const MODES = ["direct", "tracked-changes"] as const;
 const TABLE = "| A | B |\n|---|---|\n| 1 | 2 |";
 

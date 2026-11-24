@@ -53,7 +53,7 @@ const DOCUMENTS = {
   "numbered list, 3,500 items": () => numberedList(3500),
 } as const;
 
-const ENGINES = ["legacy", "canonical"] as const;
+const ENGINES = ["canonical"] as const;
 const PAINTERS = ["stock", "display-list"] as const;
 /** The React playground serves every painter; the Vue one the stock painter. */
 const HOSTS = [
@@ -68,7 +68,7 @@ const load = async (page: Page, bytes: number[]) => {
     const ref = globalThis.__folioPlayground?.getEditorRef();
     if (!ref) throw new TypeError("The playground editor is not ready.");
     await ref.loadDocumentBuffer(new Uint8Array(data));
-    // The legacy engine creates its editor view on first use.
+    // The editor view mounts on first use.
     ref.ensureEditorView();
   }, bytes);
   await page.waitForFunction(

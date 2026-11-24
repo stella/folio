@@ -126,15 +126,7 @@ jobs:
       - name: Install Playwright Chromium
         uses: ./.github/actions/playwright-deps
 
-      - name: Render the fixtures on the default engine
-        env:
-          FOLIO_RENDERING_SESSION: legacy
-        run: bunx playwright test --project=rendering --workers=1 --retries=0 --reporter=list --output=rendering-output/legacy
-
-      - name: Render the fixtures on the canonical session
-        if: always()
-        env:
-          FOLIO_RENDERING_SESSION: canonical
+      - name: Render the fixtures
         run: bunx playwright test --project=rendering --workers=1 --retries=0 --reporter=list --output=rendering-output/canonical
 
       - name: Upload renders and differences

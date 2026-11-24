@@ -7,7 +7,7 @@ import { createReviewerBridge } from "./bridges/reviewer";
 import { executeFolioToolCall } from "./execute";
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-const SESSIONS = ["legacy", "canonical"] as const;
+const SESSIONS = ["canonical"] as const;
 
 const makeDocx = async (): Promise<ArrayBuffer> => {
   const zip = new ZipArchive();

@@ -123,7 +123,7 @@ describe("direct final-paragraph identity receipts", () => {
         expect(preview.applied).toEqual(result.applied);
       });
 
-  for (const session of ["legacy", "canonical"] as const)
+  for (const session of ["canonical"] as const)
     for (const placement of CASES)
       for (const reversed of [false, true])
         test(`${session} ${placement}, reversed batch: ${reversed}`, async () => {

@@ -10,7 +10,7 @@ import { unzipDocx } from "../docx/unzip";
 import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import { applyFolioAIEditsToBuffer, FolioDocxReviewer } from "./headless";
 
-const SESSIONS = ["legacy", "canonical"] as const;
+const SESSIONS = ["canonical"] as const;
 
 const source = () =>
   createDocx({

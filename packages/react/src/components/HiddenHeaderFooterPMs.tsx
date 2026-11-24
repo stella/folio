@@ -22,15 +22,11 @@ import type {
   HeaderFooterPartKind,
 } from "@stll/folio-core/controller/headerFooterEditorManager";
 import type { HiddenEditorApi } from "@stll/folio-core/controller/hiddenEditorApi";
-import type {
-  CanonicalRefusalGround,
-  EditorSession,
-} from "@stll/folio-core/types/canonicalCapabilities";
+import type { CanonicalRefusalGround } from "@stll/folio-core/types/canonicalCapabilities";
 import type {
   Document,
   HeaderFooter,
   StyleDefinitions,
-  Theme,
 } from "@stll/folio-core/types/document";
 import type {
   DeepReadonly,
@@ -46,13 +42,14 @@ export type HiddenHeaderFooterPMsRef = {
   getHostElement: () => HTMLElement | null;
   getView: (rId: string) => EditorView | null;
   listSlots: () => HfPartKey[];
+  /** Brings every mounted header and footer editor to the session's document. */
+  sync: () => void;
 };
 
 export type HiddenHeaderFooterPMsProps = {
   /** The document model; the header and footer editors only read it. */
   document: ReadonlyDocument | null;
   readOnly?: boolean;
-  experimentalSession?: EditorSession;
   getCanonicalApi?: () => HiddenEditorApi | null;
   /**
    * The canonical session's own document, read without a copy; null outside
@@ -65,7 +62,6 @@ export type HiddenHeaderFooterPMsProps = {
     error?: Error,
   ) => void;
   styles?: DeepReadonly<StyleDefinitions> | null;
-  theme?: DeepReadonly<Theme> | null;
   defaultTabStopTwips?: number | null;
   onTransaction?: (
     rId: string,
@@ -106,9 +102,7 @@ export const HiddenHeaderFooterPMs: NamedExoticComponent<
         document,
         readOnly,
         styles,
-        theme,
         onTransaction,
-        experimentalSession,
         getCanonicalApi,
         readCanonicalDocument,
         onSessionRefusal,
@@ -116,36 +110,27 @@ export const HiddenHeaderFooterPMs: NamedExoticComponent<
       ref,
     ) {
       const hostRef = useRef<HTMLDivElement>(null);
-      const documentRef = useRef(document);
       const readOnlyRef = useRef(readOnly);
       const stylesRef = useRef(styles);
-      const themeRef = useRef(theme);
       const onTransactionRef = useRef(onTransaction);
       const canonicalApiRef = useRef(getCanonicalApi);
       const readCanonicalDocumentRef = useRef(readCanonicalDocument);
-      const sessionRef = useRef(experimentalSession);
       const refusalRef = useRef(onSessionRefusal);
 
       const managerRef = useRef<HeaderFooterEditorManager | null>(null);
       useLayoutEffect(() => {
-        documentRef.current = document;
         readOnlyRef.current = readOnly;
         stylesRef.current = styles;
-        themeRef.current = theme;
         onTransactionRef.current = onTransaction;
         canonicalApiRef.current = getCanonicalApi;
         readCanonicalDocumentRef.current = readCanonicalDocument;
-        sessionRef.current = experimentalSession;
         refusalRef.current = onSessionRefusal;
         managerRef.current ??= createHeaderFooterEditorManager({
           getHost: () => hostRef.current,
-          getDocument: () => documentRef.current,
           getReadOnly: () => readOnlyRef.current ?? false,
           getStyles: () => stylesRef.current,
-          getTheme: () => themeRef.current,
           getCanonicalApi: () => canonicalApiRef.current?.() ?? null,
           readCanonicalDocument: () => readCanonicalDocumentRef.current(),
-          getExperimentalSession: () => sessionRef.current,
           onSessionRefusal: (reason, ground, error) =>
             refusalRef.current?.(reason, ground, error),
           onTransaction: ({
@@ -169,11 +154,9 @@ export const HiddenHeaderFooterPMs: NamedExoticComponent<
         document,
         readOnly,
         styles,
-        theme,
         onTransaction,
         getCanonicalApi,
         readCanonicalDocument,
-        experimentalSession,
         onSessionRefusal,
       ]);
 
@@ -190,6 +173,7 @@ export const HiddenHeaderFooterPMs: NamedExoticComponent<
           getHostElement: () => hostRef.current,
           getView: (rId) => managerRef.current?.getView(rId) ?? null,
           listSlots: () => managerRef.current?.listSlots() ?? [],
+          sync: () => managerRef.current?.sync(),
         }),
         [],
       );

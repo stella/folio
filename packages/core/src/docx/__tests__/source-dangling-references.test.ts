@@ -57,7 +57,7 @@ const open = async () => {
 const part = async (buffer: ArrayBuffer, path: string) =>
   (await (await ZipArchive.read(buffer)).entry(path)?.text()) ?? "";
 
-const SESSIONS = ["canonical", "legacy"] as const;
+const SESSIONS = ["canonical"] as const;
 
 describe.each(
   SESSIONS.flatMap((session) =>

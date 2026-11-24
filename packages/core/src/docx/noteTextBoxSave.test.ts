@@ -67,7 +67,7 @@ const savedBoxText = (xml: string): string =>
 
 // A save that writes a note again writes the text box the note draws: the
 // parser reads the box as it reads one in the body, for every engine.
-for (const session of ["legacy", "canonical"] as const)
+for (const session of ["canonical"] as const)
   for (const kind of ["footnote", "endnote"] as const)
     test(`${session}: an edit to a ${kind}'s own text keeps the text box it draws`, async () => {
       const reviewer = await FolioDocxReviewer.fromBuffer(

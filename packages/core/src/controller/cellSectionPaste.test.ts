@@ -95,7 +95,7 @@ beforeAll(() => {
 });
 afterAll(() => releaseDom?.());
 
-for (const session of ["legacy", "canonical"] as const)
+for (const session of ["canonical"] as const)
   describe(`${session}: pasted HTML`, () => {
     const paste = (text: string, html: string): PMNode => {
       const host = document.createElement("div");
@@ -108,14 +108,10 @@ for (const session of ["legacy", "canonical"] as const)
         getStyles: () => null,
         getExtensionManager: () => singletonManager,
         getExternalPlugins: () => [],
-        getCollaboration: () => undefined,
-        getCollaborationModules: () => null,
-        getPrecomputedInitialState: () => null,
         getReadOnly: () => false,
         getDocumentIdentity: () => "0",
         getDocumentContext: () => opened,
         getEmbeddedFontFamilyMap: () => undefined,
-        getExperimentalSession: () => session,
         onSessionRefusal: (reason) => refusals.push(reason),
         onTransaction: () => {},
         onCanonicalCompositionLayout: () => {},

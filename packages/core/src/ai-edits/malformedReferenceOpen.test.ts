@@ -12,7 +12,7 @@ import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
 import { FolioDocxReviewer } from "./headless";
 
-const SESSIONS = ["legacy", "canonical"] as const;
+const SESSIONS = ["canonical"] as const;
 
 type PartEdit = { part: string; edit: (xml: string) => string };
 
