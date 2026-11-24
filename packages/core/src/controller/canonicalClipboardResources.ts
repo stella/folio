@@ -170,6 +170,8 @@ type ImportClipboardStylesOptions = {
   destination: Document;
   source: Document;
   paragraphs: readonly Paragraph[];
+  /** Styles pasted tables name, imported with their dependencies. */
+  tableStyleIds?: readonly string[];
 };
 
 type ImportedClipboardStyles = {
@@ -437,6 +439,7 @@ export const importClipboardStyles = ({
   destination,
   source,
   paragraphs,
+  tableStyleIds = [],
 }: ImportClipboardStylesOptions): Result<
   ImportedClipboardStyles,
   DocumentOpRefusal
@@ -478,6 +481,7 @@ export const importClipboardStyles = ({
   };
   for (const paragraph of clonedParagraphs)
     visitReferences(paragraph, selectReferences);
+  for (const styleId of tableStyleIds) selectReferences("styleId", styleId, {});
   const sourceNums = source.package.numbering?.nums ?? [];
   const sourceAbstracts = source.package.numbering?.abstractNums ?? [];
   const nums = new Map(sourceNums.map((num) => [num.numId, num]));

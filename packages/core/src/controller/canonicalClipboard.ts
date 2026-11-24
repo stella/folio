@@ -125,6 +125,26 @@ const clipboardParagraphs = (
  * A table's verbatim captures describe the markup it was read from; a pasted
  * copy is new content the serializer writes from its model.
  */
+/** Every table among the blocks, those nested in cells included. */
+const clipboardTables = (blocks: readonly (Paragraph | Table)[]): Table[] =>
+  blocks.flatMap((block) =>
+    block.type === "table"
+      ? [
+          block,
+          ...clipboardTables(
+            block.rows.flatMap((row) =>
+              row.cells.flatMap((cell) =>
+                cell.content.filter(
+                  (inner): inner is Paragraph | Table =>
+                    inner.type === "paragraph" || inner.type === "table",
+                ),
+              ),
+            ),
+          ),
+        ]
+      : [],
+  );
+
 const withoutTableCaptures = (table: Table): void => {
   if (table.formatting !== undefined) {
     delete table.formatting.sourceXml;
@@ -544,8 +564,12 @@ export const prepareCanonicalPaste = ({
       }) ?? [],
   );
   const paragraphs = places.map(({ paragraph }) => paragraph);
-  if (moveTarget === undefined && (plain || sourceDocument === undefined))
+  const tables = clipboardTables(blocks);
+  if (moveTarget === undefined && (plain || sourceDocument === undefined)) {
     flattenClipboardStyleReferences(paragraphs);
+    // A table style named outside a package this paste can read is not ours.
+    for (const table of tables) delete table.formatting?.styleId;
+  }
   // Over selected cells the paste clears every cell and lands in the first.
   const overCells =
     state.selection instanceof CellSelection &&
@@ -581,6 +605,9 @@ export const prepareCanonicalPaste = ({
       destination,
       source: sourceDocument,
       paragraphs,
+      tableStyleIds: tables.flatMap(({ formatting }) =>
+        formatting?.styleId === undefined ? [] : [formatting.styleId],
+      ),
     });
     if (importedStyles.isErr()) return refuse(importedStyles.error.message);
     styles = importedStyles.value.styles;
@@ -593,6 +620,11 @@ export const prepareCanonicalPaste = ({
     }
     styleIds = importedStyles.value.styleIds;
     extraIds = importedStyles.value.numberingIds;
+    for (const { formatting } of tables)
+      if (formatting?.styleId !== undefined)
+        formatting.styleId =
+          importedStyles.value.styleIds.get(formatting.styleId) ??
+          panic("An imported table style has no destination identity.");
   }
   const sourceNumbering =
     sourceDocument?.package.numbering ??

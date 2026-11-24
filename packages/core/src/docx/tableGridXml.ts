@@ -7,9 +7,16 @@ import type { Table, TableGridChange } from "../types/document";
 import { intAttr } from "./serializer/xmlUtils";
 
 /**
+ * The most grid columns a table declares. Far above what any editor lays out,
+ * it bounds a grid built from a source's skipped-column
+ * and span counts, which a file can state at any size.
+ */
+export const MAX_GRID_COLUMNS = 4096;
+
+/**
  * Columns the grid has to declare: the widest row's total of skipped columns
  * and spans, because a grid narrower than a row leaves cells with no column
- * to sit in.
+ * to sit in. At most {@link MAX_GRID_COLUMNS}.
  */
 export const gridColumnCount = (table: Table): number => {
   let widest = 0;
@@ -21,7 +28,7 @@ export const gridColumnCount = (table: Table): number => {
     }
     widest = Math.max(widest, columns);
   }
-  return widest;
+  return Math.min(widest, MAX_GRID_COLUMNS);
 };
 
 /**

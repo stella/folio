@@ -7,6 +7,7 @@ import { expect, test } from "bun:test";
 
 import type {
   Document,
+  InlineSdt,
   Paragraph,
   ParagraphContent,
   Run,
@@ -20,6 +21,12 @@ const run = (text: string): Run => ({
   content: [{ type: "text", text }],
 });
 const struck = (text: string, id = 5): ParagraphContent => ({
+  type: "deletion",
+  info: { id, author: "A", date: "2026-01-01T00:00:00Z" },
+  content: [run(text)],
+});
+
+const struckRun = (text: string, id = 5): InlineSdt["content"][number] => ({
   type: "deletion",
   info: { id, author: "A", date: "2026-01-01T00:00:00Z" },
   content: [run(text)],
@@ -150,4 +157,23 @@ test("live content beside the caret keeps its paragraph", () => {
     "Omega",
     "next",
   ]);
+});
+
+test("struck content in a control before the caret keeps no paragraph, live content after it aside", () => {
+  const control = (content: InlineSdt["content"]): ParagraphContent[] => [
+    { type: "inlineSdt", properties: {}, content },
+  ];
+  // Directly, the struck word is gone and the caret stands at the control's start.
+  const direct = paste(documentOf(control([run("kept")])), 0, {
+    type: "editing",
+  });
+  const suggested = paste(
+    documentOf(control([struckRun("gone"), run("kept")])),
+    4,
+    SUGGESTING,
+  );
+  const accepted = resolved(suggested, REVISION_DECISIONS.ACCEPT);
+  expect(accepted.package.document.content).toHaveLength(
+    direct.package.document.content.length,
+  );
 });
