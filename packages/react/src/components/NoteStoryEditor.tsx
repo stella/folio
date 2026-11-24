@@ -35,6 +35,8 @@ export type NoteStoryEditorRef = {
   close: () => void;
   getActiveView: () => EditorView | null;
   open: (story: NoteStoryKey) => void;
+  /** Brings every mounted note editor to the session's document. */
+  sync: () => void;
 };
 
 export type NoteStoryEditorProps = {
@@ -220,6 +222,7 @@ const NoteStoryEditorComponent = forwardRef<
       onActiveChangeRef.current(story);
       requestAnimationFrame(() => view.focus());
     },
+    sync: () => managerRef.current?.sync(),
   }));
 
   const title = active

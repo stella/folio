@@ -2581,6 +2581,11 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         const change = settledDocumentChange();
         if (change) {
           cancelNoteChangeNotification();
+          // Open note, header and footer editors follow every commit, a
+          // peer's included, from the session's projections; the document
+          // prop changes only when the host's history records a change.
+          noteEditorRef.current?.sync();
+          hfPMsRef.current?.sync();
           onDocumentChangeRef.current?.(change);
           folioEmitterRef.current.emit("docChange", change.forHost);
         }

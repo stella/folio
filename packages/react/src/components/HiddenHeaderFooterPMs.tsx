@@ -42,6 +42,8 @@ export type HiddenHeaderFooterPMsRef = {
   getHostElement: () => HTMLElement | null;
   getView: (rId: string) => EditorView | null;
   listSlots: () => HfPartKey[];
+  /** Brings every mounted header and footer editor to the session's document. */
+  sync: () => void;
 };
 
 export type HiddenHeaderFooterPMsProps = {
@@ -171,6 +173,7 @@ export const HiddenHeaderFooterPMs: NamedExoticComponent<
           getHostElement: () => hostRef.current,
           getView: (rId) => managerRef.current?.getView(rId) ?? null,
           listSlots: () => managerRef.current?.listSlots() ?? [],
+          sync: () => managerRef.current?.sync(),
         }),
         [],
       );
