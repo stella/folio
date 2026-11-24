@@ -96,25 +96,12 @@ const clipboardCallbackCounts = { copy: 0, cut: 0, paste: 0 };
 const findResultNotifications: (FindResult | null)[] = [];
 const query = new URLSearchParams(window.location.search);
 const collaborationEnabled = query.has("collaboration");
-// The canonical session is the editor's default; `?session=legacy` selects the
-// ProseMirror-owned engine and `?session=canonical` states the default. The
-// collaboration demo runs a canonical room, which only the canonical session
-// joins, so it keeps the default whatever `?session=` names.
-const requestedSession = query.get("session");
-const experimentalSession =
-  !collaborationEnabled &&
-  (requestedSession === "legacy" || requestedSession === "canonical")
-    ? requestedSession
-    : undefined;
 const editorMode = ref<EditorMode>(
   query.get("mode") === "suggesting" ? "suggesting" : "editing",
 );
 const showMarginGuides = query.has("marginGuides");
 const marginGuideColor = query.get("marginGuideColor") ?? undefined;
 const optionalEditorProps = {
-  ...(experimentalSession === undefined
-    ? {}
-    : ({ experimentalSession } as const)),
   ...(marginGuideColor === undefined ? {} : { marginGuideColor }),
 };
 // `?collaboration=1`: a canonical room shared by this origin's tabs that

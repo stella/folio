@@ -142,8 +142,6 @@ test("packaged consumer mounts, lays out via the worker, and logs no errors", as
     state: true,
     view: true,
     transform: true,
-    yjs: true,
-    yProseMirror: true,
   });
 
   const folioIdentity = await page.evaluateHandle(() => {
