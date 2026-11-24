@@ -440,7 +440,7 @@ export const REGISTRY_COMMAND_OPERATIONS: Readonly<
 };
 
 /** Two plain paragraphs, open at both ends, as a clipboard delivers them. */
-const PASTED_PARAGRAPHS = (schemaDoc: PMNode) => {
+export const PASTED_PARAGRAPHS = (schemaDoc: PMNode) => {
   const { schema } = schemaDoc.type;
   return new Slice(
     Fragment.from([

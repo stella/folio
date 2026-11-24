@@ -92,6 +92,7 @@ import {
 import {
   contentWidth,
   isRangeBoundary,
+  paragraphHoldsContentOnceAccepted,
   paragraphLength,
   withChildren,
 } from "./offsets";
@@ -1196,26 +1197,27 @@ const adjacentJoinRefusal = (
 const paragraphAt = (document: Document, at: TextPosition) =>
   findStoryParagraph(storyBody(document, at.story), at.blockId)?.paragraph;
 
-type PendingRemovalRange = { paragraph: Paragraph; from: number; to: number };
+type ContentWithinRange = { paragraph: Paragraph; from: number; to: number };
 /**
- * Whether every unit of `paragraph` in `[from, to)` is pending removal (a
- * tracked deletion or the source of a tracked move): accepting the paragraph's
- * revisions leaves nothing of that range.
+ * Whether `paragraph` holds content in `[from, to)` once its changes are
+ * accepted, by the one paragraph-content rule: range markers, comment
+ * references and what accepting takes away hold none. A paste keeps a
+ * paragraph for the text beside it only when this holds, in either mode, so
+ * accepting a suggested paste leaves the paragraphs the direct paste does.
  */
-const onlyPendingRemoval = ({
+const holdsContentWithin = ({
   paragraph,
   from,
   to,
-}: PendingRemovalRange): boolean => {
+}: ContentWithinRange): boolean => {
+  const content: ParagraphContent[] = [];
   let offset = 0;
   for (const item of paragraph.content) {
     const end = offset + contentWidth([item]);
-    const overlaps = end > from && offset < to;
-    if (overlaps && item.type !== "deletion" && item.type !== "moveFrom")
-      return false;
+    if (end > from && offset < to) content.push(item);
     offset = end;
   }
-  return true;
+  return paragraphHoldsContentOnceAccepted({ ...paragraph, content });
 };
 
 /** A pasted block's paragraphs in document order, a table's cells' among them. */
@@ -1333,9 +1335,12 @@ const compileBlockPaste = (
         : Result.ok(compiled.value.applied);
     if (applied.isErr()) return Result.err(applied.error);
     ops.push(...compiled.value.ops);
-    const used = new Set(applied.value.revisions);
-    pool = pool.filter((candidate) => !used.has(candidate));
     current = applied.value.document;
+    // A step may take ids beyond the revisions it reports (a split copies a
+    // pending property change under a new id), so the package says which
+    // remain free.
+    const occupied = packageIdOccupancy(current.package).revisions;
+    pool = pool.filter((candidate) => !occupied.has(candidate));
     return Result.ok(compiled.value.selection);
   };
 
@@ -1374,14 +1379,11 @@ const compileBlockPaste = (
         opType: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
       }),
     );
-  const textBefore =
-    caret.offset > 0 &&
-    (mode.type !== "suggesting" ||
-      !onlyPendingRemoval({
-        paragraph: destination,
-        from: 0,
-        to: caret.offset,
-      }));
+  const textBefore = holdsContentWithin({
+    paragraph: destination,
+    from: 0,
+    to: caret.offset,
+  });
   if (textBefore) {
     const fresh = freshParagraphIds({
       document: current,
@@ -2687,17 +2689,14 @@ const compileInStory = (
         document,
         intent.to,
       ).formatting;
-      // Suggesting, content pending removal keeps no paragraph of its own:
-      // accepted, it leaves none, as the direct paste over it does.
+      // Markers and content pending removal keep no paragraph of their own:
+      // accepted, a suggested paste leaves the paragraphs the direct one does.
       const keeps = (
         paragraph: Paragraph | undefined,
         from: number,
         to: number,
       ): boolean =>
-        paragraph !== undefined &&
-        from < to &&
-        (mode.type !== "suggesting" ||
-          !onlyPendingRemoval({ paragraph, from, to }));
+        paragraph !== undefined && holdsContentWithin({ paragraph, from, to });
       const prefixBoundary =
         intent.openStart === 0 && keeps(destination, 0, intent.from.offset);
       const suffixBoundary =

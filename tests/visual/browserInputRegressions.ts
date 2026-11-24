@@ -1007,7 +1007,6 @@ export const BROWSER_TABLE_CUT_PASTE_SEED_1794032767 = {
   trace: BrowserInputTrace;
 };
 
-/** A list pasted over words running to a paragraph's end, while suggesting. */
 /** A table pasted over everything leaves the caret in its last cell. */
 export const BROWSER_TABLE_PASTE_OVER_EVERYTHING_SEED_1794896995 = {
   seed: 1794896995,
