@@ -61,7 +61,6 @@ import { DocxCompatibility } from '@stll/folio-core/docx/compatibility';
 import { DocxInput } from '@stll/folio-core/utils/docxInput';
 import { EditorMode } from '@stll/folio-core/managers/EditorModeManager';
 import { EditorReadOnlyReason } from '@stll/folio-core/managers/EditorModeManager';
-import { EditorSession } from '@stll/folio-core/types/canonicalCapabilities';
 import { EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { EndnoteProperties } from '@stll/folio-core/types/content';
@@ -190,7 +189,6 @@ import { VNode } from 'vue';
 import { VNodeChild } from 'vue';
 import { Watermark } from '@stll/folio-core/watermark';
 import { WordDiffSegment } from '@stll/folio-core/ai-edits';
-import { XmlFragment } from 'yjs';
 
 export { AIBarStatus }
 
@@ -320,8 +318,8 @@ export type DocxEditorApplyDocumentOperationsOptions = {
     author?: string;
 };
 
-// @public (undocumented)
-export type DocxEditorCollaboration = CanonicalRoomCollaboration | DocxEditorYjsCollaboration;
+// @public
+export type DocxEditorCollaboration = CanonicalRoomCollaboration;
 
 // @public
 export type DocxEditorHandle = EditorHandle & {
@@ -335,7 +333,6 @@ export type DocxEditorProps = {
     documentBuffer?: DocxInput | null;
     password?: string | undefined;
     document?: Document_2 | null;
-    experimentalSession?: EditorSession;
     onSave?: (buffer: ArrayBuffer) => void;
     author?: string;
     plugins?: readonly Plugin_2[] | undefined;
@@ -513,21 +510,6 @@ export type DocxEditorRef = {
         keepContent?: boolean;
         force?: boolean;
     }) => boolean;
-};
-
-// @public
-export type DocxEditorYjsCollaboration = {
-    awareness?: {
-        clientID: number;
-        getStates: () => Map<number, unknown>;
-        off: (event: "change" | "update", handler: () => void) => void;
-        on: (event: "change" | "update", handler: () => void) => void;
-    } | undefined;
-    onSeeded?: (() => void) | undefined;
-    plugins?: Plugin_2[] | undefined;
-    shouldSeed?: boolean | undefined;
-    yXmlFragment: XmlFragment;
-    connect?: never;
 };
 
 // @public

@@ -2028,11 +2028,7 @@ const { exposed } = useDocxEditorRefApi({
     commentManagement.appendComments(nextComments);
   },
   getComments: () =>
-    true
-      ? commentManagement.comments.value.map((comment) =>
-          structuredClone(comment),
-        )
-      : commentManagement.comments.value,
+    commentManagement.comments.value.map((comment) => structuredClone(comment)),
   setComments: (nextComments) => {
     commentManagement.setComments(nextComments);
   },
