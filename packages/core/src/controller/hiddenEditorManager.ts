@@ -118,7 +118,7 @@ import {
   CANONICAL_RULE,
   type CanonicalRefusalGround,
 } from "../types/canonicalCapabilities";
-import type { StyleDefinitions } from "../types/document";
+import type { Document, StyleDefinitions } from "../types/document";
 import {
   type DeepReadonly,
   readModel,
@@ -1011,6 +1011,31 @@ export const createHiddenEditorManager = (
       } = {
     type: "idle",
   };
+  /**
+   * What the editor last copied or cut, with the document it came from: a
+   * paste of the same text reads its notes and comments from that document.
+   */
+  let clipboardCopy:
+    { type: "none" } | { type: "copied"; document: Document; text: string } = {
+    type: "none",
+  };
+  const sliceText = (slice: Slice) =>
+    slice.content.textBetween(0, slice.content.size, "\n", "\uFFFC");
+  const captureCopy = (pmView: EditorView) => {
+    clipboardCopy =
+      editorSession.type === "canonical" && !pmView.state.selection.empty
+        ? {
+            type: "copied",
+            document: readModel(editorSession.session.document),
+            text: sliceText(pmView.state.selection.content()),
+          }
+        : { type: "none" };
+  };
+  /** The copied document, when `slice` is the text the editor last copied. */
+  const copiedSource = (slice: Slice) =>
+    clipboardCopy.type === "copied" && clipboardCopy.text === sliceText(slice)
+      ? { sourceDocument: clipboardCopy.document }
+      : {};
   let lastInputRule:
     { session: CanonicalSession; version: number; caret: number } | undefined;
   const canonicalStructuralInput = {
@@ -1271,6 +1296,7 @@ export const createHiddenEditorManager = (
         return true;
       }
       syncCanonicalMode();
+      captureCopy(pmView);
       const session = editorSession.session;
       const { from, to } = pmView.state.selection;
       const prepared = session.prepareReplace(pmView.state, {
@@ -1480,6 +1506,7 @@ export const createHiddenEditorManager = (
           session: editorSession.session,
           state: pmView.state,
           slice,
+          ...copiedSource(slice),
         });
         if (prepared.isErr()) {
           if (prepared.error.reason !== "noChange")
@@ -1553,6 +1580,10 @@ export const createHiddenEditorManager = (
             ? input.handleDOMEvents.blur(pmView)
             : false,
         ...createHiddenEditorClipboardHandlers(deps),
+        copy: (pmView) => {
+          captureCopy(pmView);
+          return createHiddenEditorClipboardHandlers(deps).copy();
+        },
         compositionstart: (pmView) =>
           editorSession.type === "canonical"
             ? input.handleDOMEvents.compositionstart(pmView)

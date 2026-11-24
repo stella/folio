@@ -600,6 +600,7 @@ export type EditorIntent = HyperlinkEditorIntent | GenerateTOCIntent | {
     blocks: readonly (Paragraph | Table)[];
     openStart: 0 | 1;
     openEnd: 0 | 1;
+    annotations?: PasteAnnotations;
 } | {
     type: "moveFragment";
     from: TextPosition;
@@ -1216,6 +1217,12 @@ export const physicalOffsetAtVisibleOffset: (paragraph: Paragraph, offset: numbe
 
 // @public
 export const physicalPositionAtEditorOffset: (document: Document_2, at: TextPosition) => TextPosition;
+
+// @public
+export type PasteAnnotations = {
+    notes: readonly (Footnote | Endnote)[];
+    comments: readonly Comment_2[];
+};
 
 // @public
 export const planTrackedDeletion: (document: Document_2, options: PlanTrackedDeletionOptions) => Result<DocumentOp[], DocumentOpRefusal>;

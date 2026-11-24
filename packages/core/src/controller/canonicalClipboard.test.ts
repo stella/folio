@@ -116,7 +116,7 @@ const assertClipboardSources = (document: Document, before: Document) => {
 };
 
 describe("canonical clipboard", () => {
-  test("copied comment and note ids cannot bind colliding destination story parts in either editing mode", () => {
+  test("a copied comment or note is copied from its source under a fresh id, never binding the destination's own, in either editing mode", () => {
     for (const kind of ["comment", "footnote", "endnote"] as const) {
       for (const suggesting of [false, true])
         for (const reverse of [false, true])
@@ -225,7 +225,6 @@ describe("canonical clipboard", () => {
             );
             const before = session.document;
             const version = session.version;
-            const projection = session.projection;
             const selection = state.selection.toJSON();
             const sourceSnapshot =
               cloneDocumentWithParagraphPropertySources(sourceDocument);
@@ -236,20 +235,44 @@ describe("canonical clipboard", () => {
               slice,
               sourceDocument,
             });
-            expect(prepared.isErr()).toBe(true);
-            if (prepared.isOk())
-              throw new TypeError(
-                "Foreign story reference unexpectedly pasted.",
-              );
-            expect(prepared.error.reason).toBe("refused");
-            expect(prepared.error.message).toContain("source story parts");
-            assertClipboardModel(session.document, before);
+            if (prepared.isErr()) throw prepared.error;
+            state = publishCanonicalProjection({
+              session,
+              state,
+              commit: prepared.value,
+            }).unwrap().state;
             assertExactModel(sourceDocument, sourceSnapshot);
+            const after = session.document;
+            const stories = {
+              comment: after.package.document.comments,
+              footnote: after.package.footnotes,
+              endnote: after.package.endnotes,
+            }[kind];
+            // The destination's own story stays; the source's is copied
+            // under a fresh id (comments in document order, so sorted here).
+            expect(
+              (stories ?? [])
+                .map(({ id, content }) => [
+                  id === 7 ? 7 : "fresh",
+                  JSON.stringify(content).includes("owned story"),
+                  JSON.stringify(content).includes("foreign story"),
+                ])
+                .toSorted((left, right) =>
+                  String(left[0]).localeCompare(String(right[0])),
+                ),
+            ).toEqual([
+              [7, true, false],
+              ["fresh", false, true],
+            ]);
+            expect(session.canUndo).toBe(true);
+            state = publishCanonicalProjection({
+              session,
+              state,
+              commit: session.prepareUndo(state).unwrap(),
+            }).unwrap().state;
+            assertClipboardModel(session.document, before);
             assertExactModel(state.selection.toJSON(), selection);
-            expect(session.projection).toBe(projection);
-            expect(session.version).toBe(version);
-            expect(session.canUndo).toBe(false);
-            expect(session.canRedo).toBe(false);
+            expect(session.version).not.toBe(version);
           }
     }
   });

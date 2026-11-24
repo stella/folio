@@ -69,6 +69,10 @@ export const createCanonicalEditorHarness = (
   const refusalRows: HarnessRefusalRow[] = [];
   let acceptedTransactions = 0;
   let expectedRows: readonly HarnessRefusalRow[] = [];
+  /** The text the harness last copied or cut, as the editor compares it. */
+  let copiedText: string | undefined;
+  const clipboardText = (slice: Slice) =>
+    slice.content.textBetween(0, slice.content.size, "\n", "￼");
   const activationRow = canonicalActivationRefusalRow(source);
   const activationSource = cloneDocumentWithParagraphPropertySources(source);
   if (activationRow) validateHarnessRefusalRows([activationRow]);
@@ -340,12 +344,14 @@ export const createCanonicalEditorHarness = (
           )
             importsStoryParts = true;
         });
-        if (importsStoryParts)
+        // The editor reads them from the document it last copied from, so
+        // only a slice it did not copy itself refuses.
+        if (importsStoryParts && copiedText !== clipboardText(slice))
           row = {
             id: "clipboard-story-parts",
             gap: CANONICAL_GAP.storyContentProjection,
             message:
-              "Clipboard comments and note references require importing their source story parts.",
+              "Clipboard comments and note references require the document they were copied from.",
           };
       }
       const rows = row ? [row] : caseRefusalRows;
@@ -372,7 +378,21 @@ export const createCanonicalEditorHarness = (
       );
       return event.defaultPrevented;
     },
+    copy: () => {
+      copiedText = editorView.state.selection.empty
+        ? undefined
+        : clipboardText(editorView.state.selection.content());
+      const event = new ClipboardEvent("copy", {
+        bubbles: true,
+        cancelable: true,
+        clipboardData: new DataTransfer(),
+      });
+      editorView.dom.dispatchEvent(event);
+    },
     cut: () => {
+      copiedText = editorView.state.selection.empty
+        ? undefined
+        : clipboardText(editorView.state.selection.content());
       const event = new ClipboardEvent("cut", {
         bubbles: true,
         cancelable: true,

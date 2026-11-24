@@ -12,6 +12,7 @@ import {
   type DocumentOp,
   type EditorIntent,
   packageResourcesOpOf,
+  type PasteAnnotations,
   type TextPosition,
 } from "@stll/docx-core/ops";
 
@@ -437,34 +438,72 @@ const importNumbering = ({
   });
 };
 
-/** Imported comments and notes require copying their source story parts. */
-export const canonicalClipboardStoryPartRefusal = (
-  paragraph: Paragraph,
-): CanonicalSessionError | undefined => {
-  let requiresStory = false;
-  visitInlineContentSlots(paragraph, ({ item }) => {
-    if (
-      item.type === "commentRangeStart" ||
-      item.type === "commentRangeEnd" ||
-      item.type === "commentReference"
-    )
-      requiresStory = true;
-  });
-  visitParagraphRuns(paragraph, (run) => {
-    if (
-      run.content.some(
-        (item) => item.type === "footnoteRef" || item.type === "endnoteRef",
+type ClipboardAnnotationsOptions = {
+  paragraphs: readonly Paragraph[];
+  source: Document | undefined;
+};
+/**
+ * The notes and comments the clipboard's references and markers name, read
+ * from the document they were copied from; the paste copies each under a
+ * fresh id. Without that document the ids could name the destination's own
+ * notes and comments, so the paste refuses.
+ */
+export const clipboardAnnotations = ({
+  paragraphs,
+  source,
+}: ClipboardAnnotationsOptions): Result<
+  PasteAnnotations | undefined,
+  CanonicalSessionError
+> => {
+  const comments = new Set<number>();
+  const notes = new Set<string>();
+  for (const paragraph of paragraphs) {
+    visitInlineContentSlots(paragraph, ({ item }) => {
+      if (
+        item.type === "commentRangeStart" ||
+        item.type === "commentRangeEnd" ||
+        item.type === "commentReference"
       )
-    )
-      requiresStory = true;
-  });
-  if (!requiresStory) return undefined;
-  return new CanonicalSessionError({
-    ground: { gap: CANONICAL_GAP.storyContentProjection },
-    reason: "refused",
-    message:
-      "Clipboard comments and note references require importing their source story parts.",
-  });
+        comments.add(item.id);
+    });
+    visitParagraphRuns(paragraph, (run) => {
+      for (const item of run.content)
+        if (item.type === "footnoteRef" || item.type === "endnoteRef")
+          notes.add(
+            `${item.type === "footnoteRef" ? "footnote" : "endnote"}:${String(item.id)}`,
+          );
+    });
+  }
+  if (comments.size === 0 && notes.size === 0) return Result.ok(undefined);
+  const refusal = (message: string) =>
+    Result.err(
+      new CanonicalSessionError({
+        ground: { gap: CANONICAL_GAP.storyContentProjection },
+        reason: "refused",
+        message,
+      }),
+    );
+  if (source === undefined)
+    return refusal(
+      "Clipboard comments and note references require the document they were copied from.",
+    );
+  const annotations = {
+    notes: [
+      ...(source.package.footnotes ?? []),
+      ...(source.package.endnotes ?? []),
+    ].filter(({ type, id }) => notes.has(`${type}:${String(id)}`)),
+    comments: (source.package.document.comments ?? []).filter(({ id }) =>
+      comments.has(id),
+    ),
+  };
+  if (
+    annotations.notes.length !== notes.size ||
+    annotations.comments.length !== comments.size
+  )
+    return refusal(
+      "A clipboard comment or note reference names none in the document it was copied from.",
+    );
+  return Result.ok(annotations);
 };
 
 /** Clipboard slices are input payloads; their paragraph identities and private captures are not owners. */
@@ -741,10 +780,13 @@ export const prepareCanonicalPaste = ({
   };
   // New inline images have no opaque XML dependencies. Existing package images
   // retain their relationship only when its resolved source belongs to this package.
+  const annotations =
+    moveTarget === undefined
+      ? clipboardAnnotations({ paragraphs, source: sourceDocument })
+      : Result.ok(undefined);
+  if (annotations.isErr()) return annotations;
   for (const paragraph of paragraphs) {
     if (moveTarget === undefined) {
-      const storyPartRefusal = canonicalClipboardStoryPartRefusal(paragraph);
-      if (storyPartRefusal !== undefined) return Result.err(storyPartRefusal);
       const links: Extract<
         Paragraph["content"][number],
         { type: "hyperlink" }
@@ -945,19 +987,30 @@ export const prepareCanonicalPaste = ({
   const topParagraphs = blocks.filter(
     (block): block is Paragraph => block.type === "paragraph",
   );
+  // Notes and comments, or a table, need the block paste.
   const pasted = (range: {
     from: TextPosition;
     to: TextPosition;
-  }): EditorIntent =>
-    topParagraphs.length === blocks.length
-      ? {
-          type: "replaceFragment",
-          ...range,
-          paragraphs: topParagraphs,
-          openStart,
-          openEnd,
-        }
-      : { type: "pasteBlocks", ...range, blocks, openStart, openEnd };
+  }): EditorIntent => {
+    if (annotations.value !== undefined)
+      return {
+        type: "pasteBlocks",
+        ...range,
+        blocks,
+        openStart,
+        openEnd,
+        annotations: annotations.value,
+      };
+    if (topParagraphs.length === blocks.length)
+      return {
+        type: "replaceFragment",
+        ...range,
+        paragraphs: topParagraphs,
+        openStart,
+        openEnd,
+      };
+    return { type: "pasteBlocks", ...range, blocks, openStart, openEnd };
+  };
   if (from.value === undefined || to.value === undefined)
     return session.prepareCellSelectionStructure(
       state,

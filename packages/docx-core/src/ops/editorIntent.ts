@@ -5,7 +5,10 @@ import {
   type AbstractNumbering,
   type BlockContent,
   type BreakContent,
+  type Comment,
   type Document,
+  type Endnote,
+  type Footnote,
   type InlineSdt,
   MAX_REVISION_ID,
   type NumberingInstance,
@@ -19,6 +22,7 @@ import {
   type TextFormatting,
   type TrackedRunContent,
 } from "../model/document";
+import { maxOf } from "../model/extremes";
 import { isNumberingLevel } from "../model/numberingLevel";
 import {
   isNumberingReference,
@@ -101,6 +105,13 @@ import {
 import { findStoryParagraph } from "./paragraphLocator";
 import { authoredParagraphFormatting } from "./paragraphPropertySnapshot";
 import {
+  holdsOnlyPasteAnchors,
+  type PasteAnnotations,
+  type PlacedAnchor,
+  placedPasteAnchors,
+  withPasteAnchors,
+} from "./pasteAnchors";
+import {
   holdsMoveRange,
   withoutRepeatedMoveRangesIn,
 } from "./pastedMoveRanges";
@@ -159,6 +170,7 @@ import {
   type DeleteTableOp,
   DOCUMENT_OP_TYPES,
   type DocumentOp,
+  type DocumentOpType,
   EMPTY_PROPERTY_SETS,
   type InlineSlice,
   type InsertBlocksOp,
@@ -345,6 +357,11 @@ export type EditorIntent =
       blocks: readonly (Paragraph | Table)[];
       openStart: 0 | 1;
       openEnd: 0 | 1;
+      /**
+       * The notes and comments the blocks' references and markers name, by
+       * those ids: each is copied under a fresh id where its reference lands.
+       */
+      annotations?: PasteAnnotations;
     }
   | {
       type: "moveFragment";
@@ -731,6 +748,24 @@ export const createEditorIntentIdAllocator = ({
         for (const paragraph of paragraphs) {
           demand += PARAGRAPH_REVISION_DEMAND;
           for (const span of leafSpans(paragraph.content))
+            demand += leafRevisionDemand(span.ancestors.length);
+        }
+      }
+      // Each copied note's reference and paragraphs; each copied comment's
+      // markers may cut records in two.
+      for (const anchor of withPasteAnchors(intent.blocks).anchors) {
+        if (anchor.kind !== "note") {
+          demand += 4;
+          continue;
+        }
+        const note = intent.annotations?.notes.find(
+          ({ type, id }) => type === anchor.note && id === anchor.id,
+        );
+        demand += 4;
+        for (const block of note?.content ?? []) {
+          if (block.type !== "paragraph") continue;
+          demand += PARAGRAPH_REVISION_DEMAND;
+          for (const span of leafSpans(block.content))
             demand += leafRevisionDemand(span.ancestors.length);
         }
       }
@@ -1293,14 +1328,380 @@ type BlockPasteOptions = {
   mode: EditorIntentMode;
   firstBlockId?: number;
 };
+type BlockPlacementOptions = {
+  intent: Omit<BlockPasteIntent, "annotations">;
+  mode: EditorIntentMode;
+  firstBlockId?: number | undefined;
+};
+type AnchoredPlacement = {
+  ops: DocumentOp[];
+  document: Document;
+  caret: TextPosition;
+  places: (index: number) => PlacedAnchor | undefined;
+};
+type AnchoredPlacementOptions = BlockPlacementOptions & {
+  /** The blocks without their placeholders. */
+  plain: readonly (Paragraph | Table)[];
+};
+/**
+ * Clipboard blocks placed: once with their placeholders, to find where each
+ * lands, and once without, for the operations and the document they leave.
+ * Placeholders are zero width and hold no content, so both place the blocks
+ * alike; a found place the plain document does not hold refuses. A paragraph
+ * holding only placeholders places nothing: the range is cleared and every
+ * placeholder lands at the caret.
+ */
+const placeAnchoredBlocks = (
+  document: Document,
+  { intent, plain, mode, firstBlockId }: AnchoredPlacementOptions,
+): Result<AnchoredPlacement, DocumentOpRefusal> => {
+  const story = intent.from.story;
+  const paragraphsOf = (from: Document) =>
+    storyParagraphs(storyBody(from, story)).map(({ paragraph }) => paragraph);
+  const only = intent.blocks.length === 1 ? intent.blocks[0] : undefined;
+  if (only?.type === "paragraph" && holdsOnlyPasteAnchors(only)) {
+    const collapsed =
+      intent.from.blockId === intent.to.blockId &&
+      intent.from.offset === intent.to.offset;
+    const cleared = collapsed
+      ? Result.ok({ ops: [], selection: intent.from })
+      : compileEditorIntent(document, {
+          intent: {
+            type: "replaceText",
+            from: intent.from,
+            to: intent.to,
+            text: "",
+          },
+          mode,
+          ...(firstBlockId === undefined ? {} : { firstBlockId }),
+        });
+    if (cleared.isErr()) return Result.err(cleared.error);
+    const applied = applyDocumentOps(document, cleared.value.ops);
+    if (applied.isErr()) return Result.err(applied.error);
+    const caret = cleared.value.selection;
+    const order = paragraphsOf(applied.value.document).findIndex(
+      ({ paraId }) => paraId === caret.blockId,
+    );
+    const at = { blockId: caret.blockId, offset: caret.offset, order };
+    return Result.ok({
+      ops: [...cleared.value.ops],
+      document: applied.value.document,
+      caret,
+      places: () => at,
+    });
+  }
+  const placed = compileBlockPlacement(document, {
+    intent,
+    mode,
+    firstBlockId,
+  });
+  if (placed.isErr()) return Result.err(placed.error);
+  const marked =
+    placed.value.applied === undefined
+      ? applyDocumentOps(document, placed.value.ops)
+      : Result.ok(placed.value.applied);
+  if (marked.isErr()) return Result.err(marked.error);
+  const found = placedPasteAnchors(paragraphsOf(marked.value.document));
+  const unmarkedPlacement = compileBlockPlacement(document, {
+    intent: { ...intent, blocks: plain },
+    mode,
+    firstBlockId,
+  });
+  if (unmarkedPlacement.isErr()) return Result.err(unmarkedPlacement.error);
+  const unmarked =
+    unmarkedPlacement.value.applied === undefined
+      ? applyDocumentOps(document, unmarkedPlacement.value.ops)
+      : Result.ok(unmarkedPlacement.value.applied);
+  if (unmarked.isErr()) return Result.err(unmarked.error);
+  const lengths = new Map(
+    paragraphsOf(unmarked.value.document).map((paragraph) => [
+      paragraph.paraId,
+      paragraphLength(paragraph),
+    ]),
+  );
+  for (const { blockId, offset } of found.values()) {
+    const length = lengths.get(blockId);
+    if (length === undefined || offset > length)
+      return Result.err(
+        new DocumentOpRefusal({
+          reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+          message: "A pasted note or comment lost its place in the paste.",
+          opType: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+        }),
+      );
+  }
+  return Result.ok({
+    ops: [...unmarkedPlacement.value.ops],
+    document: unmarked.value.document,
+    caret: unmarkedPlacement.value.selection,
+    places: (index) => found.get(index),
+  });
+};
+
+type CopiedAnnotation =
+  | { kind: "note"; at: PlacedAnchor; note: Footnote | Endnote }
+  | {
+      kind: "comment";
+      from: PlacedAnchor | undefined;
+      at: PlacedAnchor;
+      comment: Comment;
+    };
+
+/**
+ * Clipboard blocks whose note references and comment markers name notes and
+ * comments: the blocks are placed with a placeholder for each, then each note
+ * and comment is copied under a fresh id where its placeholder landed, the
+ * latest place first so that no copy moves the place of another. A comment
+ * whose range the clipboard holds only part of is copied as a point.
+ */
+const compileBlockPaste = (
+  document: Document,
+  { intent, mode, firstBlockId }: BlockPasteOptions,
+): Result<CompiledEditorIntent, DocumentOpRefusal> => {
+  const { annotations, ...placement } = intent;
+  const anchored = withPasteAnchors(intent.blocks);
+  if (anchored.anchors.length === 0)
+    return compileBlockPlacement(document, {
+      intent: placement,
+      mode,
+      firstBlockId,
+    });
+  const refuse = (message: string) =>
+    Result.err(
+      new DocumentOpRefusal({
+        reason: DOCUMENT_OP_REFUSAL_REASONS.INVALID_OPERATION,
+        message,
+        opType: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+      }),
+    );
+  const story = intent.from.story;
+  const notes: (Footnote | Endnote | undefined)[] = [];
+  for (const anchor of anchored.anchors) {
+    if (anchor.kind !== "note") {
+      if (!annotations?.comments.some(({ id }) => id === anchor.id))
+        return refuse("A pasted comment marker names no copied comment.");
+      notes.push(undefined);
+      continue;
+    }
+    const note = annotations?.notes.find(
+      ({ type, id }) => type === anchor.note && id === anchor.id,
+    );
+    if (note === undefined)
+      return refuse("A pasted note reference names no copied note.");
+    if (story !== OP_STORIES.MAIN)
+      return refuse("Notes are pasted only into the document body.");
+    if (note.content.some((block) => block.type !== "paragraph"))
+      return refuse("A pasted note holds only paragraphs.");
+    notes.push(note);
+  }
+  const placed = placeAnchoredBlocks(document, {
+    intent: { ...placement, blocks: anchored.blocks },
+    plain: anchored.plain,
+    mode,
+    firstBlockId,
+  });
+  if (placed.isErr()) return placed;
+  const { ops, places, caret } = placed.value;
+  let current = placed.value.document;
+
+  const copies: (CopiedAnnotation & { rank: number })[] = [];
+  type Ranked = { at: PlacedAnchor; rank: number };
+  const ranges = new Map<
+    number,
+    Partial<Record<"start" | "end" | "reference", Ranked>>
+  >();
+  for (const [index, anchor] of anchored.anchors.entries()) {
+    const at = places(index);
+    if (at === undefined) continue;
+    const note = notes[index];
+    if (anchor.kind === "note") {
+      if (note !== undefined)
+        copies.push({ kind: "note", at, note, rank: index });
+      continue;
+    }
+    const range = ranges.get(anchor.id) ?? {};
+    const ranked = { at, rank: index };
+    if (anchor.kind === "commentRangeStart") range.start = ranked;
+    else if (anchor.kind === "commentRangeEnd") range.end = ranked;
+    else range.reference = ranked;
+    ranges.set(anchor.id, range);
+  }
+  for (const [id, { start, end, reference }] of ranges) {
+    const comment =
+      annotations?.comments.find((each) => each.id === id) ??
+      panic("A pasted comment was checked against the copied comments.");
+    const ranged = start !== undefined && end !== undefined;
+    const last = ranged ? end : (reference ?? end ?? start);
+    if (last === undefined) continue;
+    copies.push({
+      kind: "comment",
+      from: ranged ? start.at : undefined,
+      at: last.at,
+      comment,
+      rank: last.rank,
+    });
+  }
+  // The latest place first; copies at one place in reverse, so that each
+  // lands before the ones copied after it.
+  copies.sort(
+    (left, right) =>
+      right.at.order - left.at.order ||
+      right.at.offset - left.at.offset ||
+      right.rank - left.rank,
+  );
+
+  const position = ({ blockId, offset }: PlacedAnchor): TextPosition => ({
+    story,
+    blockId,
+    offset,
+  });
+  const nextId = (ids: readonly { id: number }[] | undefined) =>
+    maxOf(
+      (ids ?? []).map(({ id }) => id),
+      0,
+    ) + 1;
+  const freshContent = (
+    content: readonly Paragraph[],
+    opType: DocumentOpType,
+  ): Result<Paragraph[], DocumentOpRefusal> => {
+    const fresh = freshParagraphIds({
+      document: current,
+      reserved: mode.reservedBlockIds,
+      lease: mode.idLease,
+      count: content.length,
+      opType,
+    });
+    if (fresh.isErr()) return Result.err(fresh.error);
+    return Result.ok(
+      content.map((paragraph, index) => ({
+        ...cloneModel(paragraph),
+        paraId: fresh.value[index] ?? panic("A fresh paragraph id is missing."),
+      })),
+    );
+  };
+  // The revision ids the mode gives that the package leaves free.
+  const freeRevisionIds = () => {
+    const occupied = packageIdOccupancy(current.package).revisions;
+    return [
+      ...(mode.type === "suggesting" ? [mode.revision.id] : []),
+      ...(mode.newIds?.revision ?? []),
+    ].filter((candidate) => !occupied.has(candidate));
+  };
+  // A comment id shares its space with revision ids: it takes the first free
+  // one, or the first past every comment the package leaves free.
+  const freshCommentId = () => {
+    const free = freeRevisionIds().at(0);
+    if (free !== undefined) return free;
+    const occupied = packageIdOccupancy(current.package).revisions;
+    let id = nextId(current.package.document.comments);
+    while (occupied.has(id)) id += 1;
+    return id;
+  };
+  const out = [...ops];
+  for (const copy of copies) {
+    let op: DocumentOp;
+    if (copy.kind === "note") {
+      const content = freshContent(
+        copy.note.content.filter(
+          (block): block is Paragraph => block.type === "paragraph",
+        ),
+        DOCUMENT_OP_TYPES.ADD_NOTE,
+      );
+      if (content.isErr()) return Result.err(content.error);
+      const note =
+        copy.note.type === "footnote"
+          ? {
+              ...cloneModel(copy.note),
+              id: nextId(current.package.footnotes),
+              content: content.value,
+            }
+          : {
+              ...cloneModel(copy.note),
+              id: nextId(current.package.endnotes),
+              content: content.value,
+            };
+      let stamp = {};
+      if (mode.type === "suggesting") {
+        const [id, ...rest] = freeRevisionIds();
+        if (id === undefined)
+          return Result.err(
+            new DocumentOpRefusal({
+              reason: DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
+              message: "The pasted notes need more revision ids.",
+              opType: DOCUMENT_OP_TYPES.ADD_NOTE,
+            }),
+          );
+        stamp = {
+          revision: { ...mode.revision, id },
+          newIds: { revision: rest, control: mode.newIds.control ?? [] },
+        };
+      }
+      op = {
+        type: DOCUMENT_OP_TYPES.ADD_NOTE,
+        at: position(copy.at),
+        note,
+        ...stamp,
+      };
+    } else {
+      const content = freshContent(
+        copy.comment.content,
+        DOCUMENT_OP_TYPES.CREATE_COMMENT,
+      );
+      if (content.isErr()) return Result.err(content.error);
+      const {
+        parentId: _parent,
+        suggestionId: _suggestion,
+        ...source
+      } = cloneModel(copy.comment);
+      const commentId = freshCommentId();
+      // The comment's markers may cut pasted records, which take new ids.
+      op = {
+        type: DOCUMENT_OP_TYPES.CREATE_COMMENT,
+        newIds: {
+          revision: freeRevisionIds().filter((id) => id !== commentId),
+          control: mode.newIds?.control ?? [],
+        },
+        comment: {
+          ...source,
+          id: commentId,
+          content: content.value,
+          anchorKind: copy.from === undefined ? "point" : "range",
+        },
+        anchor:
+          copy.from === undefined
+            ? { kind: "point", at: position(copy.at) }
+            : {
+                kind: "range",
+                from: position(copy.from),
+                to: position(copy.at),
+              },
+      };
+    }
+    const applied = applyDocumentOp(current, op);
+    if (applied.isErr()) return Result.err(applied.error);
+    out.push(
+      trimAppliedNewIds({ before: current, op, applied: applied.value, story }),
+    );
+    current = applied.value.document;
+  }
+  // The caret follows each reference copied at or before it in its paragraph.
+  const passed = copies.filter(
+    ({ at }) => at.blockId === caret.blockId && at.offset <= caret.offset,
+  ).length;
+  return Result.ok({
+    ops: out,
+    selection: { ...caret, offset: caret.offset + passed },
+  });
+};
+
 /**
  * Clipboard blocks with tables: one step after another, each compiled against
  * the document the last left and, suggesting, taking the revision ids the
  * steps before it left unused.
  */
-const compileBlockPaste = (
+const compileBlockPlacement = (
   document: Document,
-  { intent, mode, firstBlockId }: BlockPasteOptions,
+  { intent, mode, firstBlockId }: BlockPlacementOptions,
 ): Result<CompiledEditorIntent, DocumentOpRefusal> => {
   const { from, to, openStart, openEnd } = intent;
   const paragraphs = intent.blocks.filter(

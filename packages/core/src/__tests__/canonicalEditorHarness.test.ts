@@ -234,23 +234,16 @@ for (const mode of ["editing", "suggesting"] as const) {
         const last = driver.state.doc.lastChild;
         if (last === null)
           throw new TypeError("Copied-block fixture has no final paragraph");
+        // Copied by the editor itself, so notes and comments copy too.
+        driver.dispatch(
+          driver.state.tr.setSelection(new AllSelection(driver.state.doc)),
+        );
+        driver.copy();
         const end = driver.state.doc.content.size - 1;
         driver.history.setSelection(end, end);
         const before = driver.snapshot();
         const state = driver.state;
         driver.paste(slice);
-        if (shape === "notes" || shape === "comments") {
-          expect(driver.refusals).toHaveLength(1);
-          expect(driver.refusals.at(0)).toMatchObject({
-            expectation: "declared",
-            row: "clipboard-story-parts",
-          });
-          assertExactModel(driver.snapshot(), before);
-          expect(driver.state).toBe(state);
-          expect(driver.history.canUndo()).toBe(false);
-          expect(driver.history.canRedo()).toBe(false);
-          return;
-        }
         expect(driver.refusals).toEqual([]);
         expect(driver.state.doc.eq(state.doc)).toBe(false);
         const edited = driver.snapshot();

@@ -130,7 +130,7 @@ export const CANONICAL_CAPABILITIES: {
     readonly owner: "controller";
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Unsupported inline, field and review content cannot be projected after canonical edits; pasted embedded blocks, comment and note references, and compositions over such content refuse.";
+    readonly summary: "Unsupported inline, field and review content cannot be projected after canonical edits; pasted embedded blocks, comment and note references copied outside the editor, and compositions over such content refuse.";
   };
   readonly "comment-model-edits": {
     readonly owner: "adapters";
@@ -259,7 +259,7 @@ export const CANONICAL_CAPABILITIES: {
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
-      "Unsupported inline, field and review content cannot be projected after canonical edits; pasted embedded blocks, comment and note references, and compositions over such content refuse.",
+      "Unsupported inline, field and review content cannot be projected after canonical edits; pasted embedded blocks, comment and note references copied outside the editor, and compositions over such content refuse.",
   },
   [CANONICAL_GAP.comments]: {
     owner: "adapters",
