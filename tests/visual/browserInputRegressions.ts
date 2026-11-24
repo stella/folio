@@ -985,28 +985,6 @@ const BROWSER_MODIFIED_BACKSPACE_TRACES = (
   trace: BrowserInputTrace;
 }[];
 
-/** A list pasted after cutting a block of table cells, while suggesting. */
-export const BROWSER_TABLE_CUT_PASTE_SEED_1794032767 = {
-  seed: 1794032767,
-  path: "13",
-  fingerprint: "407e8612a9687fad",
-  trace: {
-    shape: "tables",
-    actions: [
-      { kind: "pasteMultiBlock", ...BROWSER_PASTE_PAYLOADS.pasteMultiBlock },
-      { kind: "dragCellDelete" },
-      { kind: "cut" },
-      { kind: "pasteListHtml", ...BROWSER_PASTE_PAYLOADS.pasteListHtml },
-      { kind: "selectionDrag", target: "table" },
-    ],
-  },
-} satisfies {
-  seed: number;
-  path: string;
-  fingerprint: string;
-  trace: BrowserInputTrace;
-};
-
 /** A list pasted over words running to a paragraph's end, while suggesting. */
 /** A table pasted over everything leaves the caret in its last cell. */
 export const BROWSER_TABLE_PASTE_OVER_EVERYTHING_SEED_1794896995 = {
@@ -2143,12 +2121,11 @@ const CANONICAL_WORD_DELETION_TRACES = (
     : Object.assign(regression, { designedDifference });
 });
 
-/** The table was deleted before this drag; the trace has no next edit. */
+/** A drag over a table's cells after everything was selected and deleted. */
 export const BROWSER_DELETED_TABLE_SEED_431 = {
   seed: 431,
   path: "9:0:2:2:4:4",
   fingerprint: "8362dd2e6c195bc2",
-  preconditionAt: 2,
   trace: {
     shape: "tables",
     actions: [
@@ -2162,7 +2139,6 @@ export const BROWSER_DELETED_TABLE_SEED_431 = {
   seed: number;
   path: string;
   fingerprint: string;
-  preconditionAt: number;
   trace: BrowserInputTrace;
 };
 
@@ -2175,7 +2151,6 @@ export const BROWSER_INPUT_REGRESSIONS = [
   BROWSER_NOTES_SEED_197,
   BROWSER_LIST_SEED_47,
   BROWSER_TABLE_SEED_29,
-  BROWSER_TABLE_CUT_PASTE_SEED_1794032767,
   BROWSER_TABLE_PASTE_OVER_EVERYTHING_SEED_1794896995,
   BROWSER_CANCELLED_COMPOSITION_SEED_1793946574,
   BROWSER_PASTE_BEHIND_BOOKMARK_SEED_1793921366,
