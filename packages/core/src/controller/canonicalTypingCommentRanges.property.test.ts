@@ -255,12 +255,13 @@ test(
 );
 
 // Typed over directly, the ranged comment goes with its words, definition and
-// markers alike. A reference whose comment covers nothing has no words to go
-// with, and a tracked selection taking the markers has nowhere to keep them:
-// both still refuse.
+// markers alike. Tracked, the markers are deleted with the words: accepted,
+// the comment has nothing left to cover and goes as it does directly;
+// rejected, everything returns. A reference whose comment covers nothing has
+// no words to go with, and still refuses.
 for (const references of [0, 1, 2, 3])
   for (const type of ["editing", "suggesting"] as const) {
-    const takes = type === "editing" && references <= 1;
+    const takes = references <= 1;
     test(`${type}, ${references} references: replacing the whole mixed-coverage paragraph ${takes ? "takes its comment" : "refuses atomically"}`, async () => {
       setSystemTime(new Date("2026-01-02T03:04:05Z"));
       const source = sourceDocument({
@@ -291,11 +292,41 @@ for (const references of [0, 1, 2, 3])
         semantic: "typing",
       });
       if (takes) {
-        publishCanonicalProjection({
+        state = publishCanonicalProjection({
           session,
           state,
           commit: result.unwrap(),
-        }).unwrap();
+        }).unwrap().state;
+        if (type === "suggesting") {
+          const resolve = (resolution: "accept" | "reject") => {
+            state = publishCanonicalProjection({
+              session,
+              state,
+              commit: session
+                .prepareResolve(state, {
+                  revisionIds: [...getTrackedChangeStatsFromDoc(state.doc).ids],
+                  resolution,
+                })
+                .unwrap(),
+            }).unwrap().state;
+          };
+          resolve("reject");
+          expect(
+            await savedView(
+              (
+                await serializeCanonicalSave({
+                  snapshot: session.captureSaveSnapshot(),
+                })
+              ).buffer,
+            ),
+          ).toEqual(await savedView(saved.buffer));
+          state = publishCanonicalProjection({
+            session,
+            state,
+            commit: session.prepareUndo(state).unwrap(),
+          }).unwrap().state;
+          resolve("accept");
+        }
         const typed = await savedView(
           (
             await serializeCanonicalSave({

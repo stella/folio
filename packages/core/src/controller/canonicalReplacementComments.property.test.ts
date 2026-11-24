@@ -7,12 +7,10 @@ import {
   getCommentAnchorsFromDoc,
   getTrackedChangesFromDoc,
 } from "../ai-edits/read";
-import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
 import {
   canonicalCommentBody,
   compileCanonicalComments,
 } from "../canonical/canonicalComments";
-import { CanonicalPublicOperations } from "../canonical/canonicalPublicOperations";
 import {
   type CanonicalCommit,
   createCanonicalSession,
@@ -315,18 +313,13 @@ test("DOCX-produced nested control comments go with their words directly and sta
             }
           }
         })();
-        const before = session.document;
-        const snapshot = session.captureSaveSnapshot();
-        let committed = 0;
-        session.onCommitted(() => committed++);
         const result = session.prepareReplace(state, {
           ...range,
           text: "schedule",
         });
         if (placement === "inside" && mode === "suggesting") {
           // Tracked, the deleted words keep the comment: rejecting gives it
-          // back where it was. A selection taking the comment's markers
-          // still refuses.
+          // back where it was.
           expect(result.isOk()).toBe(true);
           publish(result.unwrap());
           publish(
@@ -342,50 +335,6 @@ test("DOCX-produced nested control comments go with their words directly and sta
           expect(
             getCommentAnchorsFromDoc(state.doc).map(({ quote }) => quote),
           ).toEqual(["time"]);
-          continue;
-        }
-        if (placement === "crossing" && mode === "suggesting") {
-          // Tracked, a selection taking the comment's markers still refuses.
-          // Replacing the block directly takes the comment with its words.
-          expect(result.isErr()).toBe(true);
-          if (result.isErr())
-            expect(result.error.ground).toEqual({
-              gap: "comment-replacement-alignment",
-            });
-          expect(session.document).toBe(before);
-          expect(session.version).toBe(0);
-          expect(session.canUndo).toBe(false);
-          expect(committed).toBe(0);
-          expect(session.captureSaveSnapshot()).toEqual(snapshot);
-          const executor = new CanonicalPublicOperations({
-            undoLimit: Number.POSITIVE_INFINITY,
-            session,
-            getState: () => state,
-            publish: (commit) => {
-              publish(commit);
-              return true;
-            },
-          });
-          const applied = executor.apply({
-            snapshot: createFolioAIEditSnapshot(state.doc),
-            batch: {
-              version: 1,
-              mode: "direct",
-              operations: [
-                {
-                  id: "replace",
-                  type: "replaceBlock",
-                  blockId: "12345678",
-                  text: "New agreement.",
-                },
-              ],
-            },
-          });
-          expect(applied.skipped).toEqual([]);
-          expect(applied.applied).toHaveLength(1);
-          expect(getCommentAnchorsFromDoc(state.doc)).toEqual([]);
-          expect(session.document.package.document.comments ?? []).toEqual([]);
-          expect(state.doc.textContent).toBe("New agreement.");
           continue;
         }
         expect(result.isOk()).toBe(true);
