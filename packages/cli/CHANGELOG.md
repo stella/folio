@@ -1,5 +1,14 @@
 # @stll/folio-cli
 
+## 0.6.2
+
+### Patch Changes
+
+- [#3519](https://github.com/stella/folio/pull/3519) [`df2f551`](https://github.com/stella/folio/commit/df2f551e4e9067aec73675aae216d2008f3005a2) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Run every editor on the canonical session: remove the legacy session (`experimentalSession`), the Yjs fragment collaboration and its server materialization, and the `y-prosemirror` peer dependency. Collaborate through a canonical room.
+- Updated dependencies [[`df2f551`](https://github.com/stella/folio/commit/df2f551e4e9067aec73675aae216d2008f3005a2)]:
+  - @stll/folio-core@0.72.0
+  - @stll/folio-agents@0.17.2
+
 ## 0.6.1
 
 ### Patch Changes
