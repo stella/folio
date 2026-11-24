@@ -669,6 +669,22 @@ export const prepareCanonicalPaste = ({
   const annotationParagraphs = annotationBodies.map(
     ({ paragraph }) => paragraph,
   );
+  // A note or comment part owns its relationships; a copied body naming an
+  // image or an external link would name one its new part does not hold.
+  for (const paragraph of annotationParagraphs) {
+    let related = false;
+    visitInlineContentSlots(paragraph, ({ item }) => {
+      if (item.type === "hyperlink" && item.anchor === undefined)
+        related = true;
+    });
+    visitParagraphRuns(paragraph, (run) => {
+      if (run.content.some((child) => child.type === "drawing")) related = true;
+    });
+    if (related)
+      return refuse(
+        "Copied notes and comments holding images or external links require their part's relationships.",
+      );
+  }
   // The session's own document, read to build the paste's operations.
   const destination = readModel(session.document);
   let styles = destination.package.styles;

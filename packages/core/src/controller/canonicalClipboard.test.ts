@@ -277,6 +277,66 @@ describe("canonical clipboard", () => {
     }
   });
 
+  test("a copied note linking outside its part refuses, since its new part holds no such relationship", () => {
+    const destination = seed();
+    const sourceDocument = seed();
+    sourceDocument.package.footnotes = [
+      {
+        type: "footnote",
+        id: 7,
+        content: [
+          {
+            type: "paragraph",
+            paraId: "24681357",
+            content: [
+              {
+                type: "hyperlink",
+                rId: "rId9",
+                href: "https://source.example.test",
+                children: [
+                  { type: "run", content: [{ type: "text", text: "linked" }] },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ];
+    const session = createCanonicalSession(
+      destination,
+      destination.package.styles,
+    ).unwrap();
+    const state = EditorState.create({ schema, doc: session.projection.doc });
+    const slice = new Slice(
+      Fragment.from(
+        schema.node(
+          "paragraph",
+          null,
+          schema.text("7", [
+            schema.marks["footnoteRef"].create({
+              occurrenceId: "03f2b59c-bca8-4830-b10e-c5ce004a3d9d",
+              id: "7",
+              noteType: "footnote",
+            }),
+          ]),
+        ),
+      ),
+      1,
+      1,
+    );
+    const prepared = prepareCanonicalPaste({
+      session,
+      state,
+      slice,
+      sourceDocument,
+    });
+    if (prepared.isOk()) throw new TypeError("The paste was not refused.");
+    expect(prepared.error.message).toContain("relationships");
+    expect(session.document.package.footnotes ?? []).toEqual(
+      destination.package.footnotes ?? [],
+    );
+  });
+
   test("a copied footnote keeps its source paragraph style, and the destination's own note keeps its style", () => {
     const styled = (text: string): Paragraph => ({
       type: "paragraph",

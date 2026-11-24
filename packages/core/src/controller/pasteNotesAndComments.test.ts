@@ -81,12 +81,11 @@ const copyAndPaste = (mode: "editing" | "suggesting") => {
       ),
     );
     driver.copy();
-    const slice = driver.state.selection.content();
     const end = driver.state.doc.content.size - 1;
     driver.dispatch(
       driver.state.tr.setSelection(TextSelection.create(driver.state.doc, end)),
     );
-    driver.paste(slice);
+    driver.pasteCopied();
     expect(driver.refusals).toEqual([]);
     return driver.snapshot();
   } finally {
@@ -116,6 +115,26 @@ test.each(["editing", "suggesting"] as const)(
     );
   },
 );
+
+test("a slice like the copy, but not the clipboard the editor wrote, refuses", () => {
+  const driver = createCanonicalEditorHarness(source(), "editing");
+  try {
+    const first = driver.state.doc.child(0);
+    driver.dispatch(
+      driver.state.tr.setSelection(
+        TextSelection.create(driver.state.doc, 1, 1 + first.content.size),
+      ),
+    );
+    driver.copy();
+    const slice = driver.state.selection.content();
+    const before = driver.state.doc;
+    driver.paste(slice);
+    expect(driver.refusals).toHaveLength(1);
+    expect(driver.state.doc.eq(before)).toBe(true);
+  } finally {
+    driver.dispose();
+  }
+});
 
 test("the suggested copy, accepted, leaves what the direct copy does", () => {
   const direct = copyAndPaste("editing");

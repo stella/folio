@@ -126,6 +126,7 @@ import {
 } from "../types/documentModel";
 import type { FolioDerivedFields, FolioFieldInsertion } from "../types/fields";
 import type { RemoteSelection } from "../types/remote-selection";
+import { INTERNAL_CLIPBOARD_TYPE } from "../utils/clipboard";
 import {
   type AnonymizationStorySource,
   createAnonymizationHighlights,
@@ -1013,31 +1014,36 @@ export const createHiddenEditorManager = (
   };
   /**
    * What the editor last wrote to the clipboard, with the document it came
-   * from: a paste whose clipboard holds exactly that markup reads its notes
-   * and comments from that document, and any other paste does not.
+   * from: a paste whose clipboard carries that copy's token and markup reads
+   * its notes and comments from that document, and any other paste does not.
    */
   type ClipboardCopy =
-    { type: "none" } | { type: "copied"; document: Document; html: string };
+    | { type: "none" }
+    | { type: "copied"; document: Document; html: string; token: string };
   let clipboardCopy: ClipboardCopy = { type: "none" };
   /**
-   * Write the selection to the clipboard once and return the markup written,
-   * so that what a later paste compares is exactly what the clipboard holds.
+   * Write the selection to the clipboard once, under a token minted for this
+   * copy alone, and return what was written.
    */
   const writeClipboard = (pmView: EditorView, data: DataTransfer) => {
     const serialized = pmView.serializeForClipboard(
       pmView.state.selection.content(),
     );
     const html = serialized.dom.innerHTML;
+    const token = crypto.randomUUID();
     data.setData("text/html", html);
     data.setData("text/plain", serialized.text);
-    return html;
+    data.setData(INTERNAL_CLIPBOARD_TYPE, token);
+    return { html, token };
   };
   /** The copied document, when the pasted clipboard is the editor's own copy. */
   const copiedSource = (event: ClipboardEvent) => {
-    const html = event.clipboardData?.getData("text/html") ?? "";
-    return clipboardCopy.type === "copied" &&
-      clipboardCopy.html !== "" &&
-      html.includes(clipboardCopy.html)
+    const data = event.clipboardData;
+    if (clipboardCopy.type !== "copied" || data === null) return {};
+    // The token binds the paste to the one item this editor wrote; the
+    // markup check refuses an item rewritten around that token.
+    return data.getData(INTERNAL_CLIPBOARD_TYPE) === clipboardCopy.token &&
+      data.getData("text/html").includes(clipboardCopy.html)
       ? { sourceDocument: clipboardCopy.document }
       : {};
   };
@@ -1328,7 +1334,7 @@ export const createHiddenEditorManager = (
         refuse(copied.error.message, copied.error.ground);
         return true;
       }
-      clipboardCopy = { type: "copied", document: source, html: copied.value };
+      clipboardCopy = { type: "copied", document: source, ...copied.value };
       publishCommit(prepared.value);
       return true;
     },
@@ -1607,7 +1613,7 @@ export const createHiddenEditorManager = (
           clipboardCopy = {
             type: "copied",
             document: source,
-            html: written.value,
+            ...written.value,
           };
           deps.onCopy?.();
           return true;

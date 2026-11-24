@@ -70,13 +70,10 @@ export const createCanonicalEditorHarness = (
   let acceptedTransactions = 0;
   let expectedRows: readonly HarnessRefusalRow[] = [];
   /**
-   * The text the harness last copied or cut and the clipboard the editor
-   * wrote it to; a paste of that text pastes that clipboard, as a browser does.
+   * The slice the editor last wrote to the clipboard and the clipboard it
+   * wrote; `pasteCopied` pastes that item, `paste` only external slices.
    */
-  let copiedText: string | undefined;
-  let copiedData: DataTransfer | undefined;
-  const clipboardText = (slice: Slice) =>
-    slice.content.textBetween(0, slice.content.size, "\n", "￼");
+  let copied: { slice: Slice; data: DataTransfer } | undefined;
   const activationRow = canonicalActivationRefusalRow(source);
   const activationSource = cloneDocumentWithParagraphPropertySources(source);
   if (activationRow) validateHarnessRefusalRows([activationRow]);
@@ -252,6 +249,94 @@ export const createCanonicalEditorHarness = (
       panic(strandedRevisionText({ listed, stranded, decision }));
     return resolved;
   };
+  /** Dispatch a copy or cut, keeping the item only once the editor wrote it. */
+  const writeClipboard = (type: "copy" | "cut") => {
+    const slice = editorView.state.selection.content();
+    const data = new DataTransfer();
+    const event = new ClipboardEvent(type, {
+      bubbles: true,
+      cancelable: true,
+      clipboardData: data,
+    });
+    withRefusalRows(caseRefusalRows, () => editorView.dom.dispatchEvent(event));
+    if (data.getData("text/html") !== "") copied = { slice, data };
+    return event.defaultPrevented;
+  };
+  /** Paste a slice, with the clipboard the editor wrote when it copied it. */
+  const pasteSlice = (
+    slice: Slice,
+    clipboardData: DataTransfer | undefined,
+  ) => {
+    const event = new ClipboardEvent("paste", {
+      bubbles: true,
+      cancelable: true,
+      ...(clipboardData === undefined ? {} : { clipboardData }),
+    });
+    let blocksOnly = true;
+    let inlineOnly = true;
+    slice.content.forEach((node) => {
+      blocksOnly &&=
+        node.type.name === "paragraph" || node.type.name === "table";
+      inlineOnly &&= node.isInline;
+    });
+    // A table is the table gap's; any other block the story content's.
+    let holdsTable = false;
+    slice.content.descendants((node) => {
+      if (node.type.name === "table") holdsTable = true;
+    });
+    const blockGap = holdsTable
+      ? CANONICAL_GAP.trackedTableStructure
+      : CANONICAL_GAP.storyContentProjection;
+    let row: HarnessRefusalRow | undefined;
+    if (slice.openStart > 1 || slice.openEnd > 1)
+      row = {
+        id: "clipboard-nested-blocks",
+        gap: blockGap,
+        message:
+          "Clipboard tables and nested block containers require canonical table editing.",
+      };
+    else if (!blocksOnly && !inlineOnly)
+      row = {
+        id: "clipboard-table",
+        gap: blockGap,
+        message:
+          "Clipboard tables and embedded blocks require canonical table editing.",
+      };
+    if (row === undefined) {
+      // Read clipboard carriers independently of the production preflight.
+      // A numbered paragraph alone never imports another story's payload.
+      let importsStoryParts = false;
+      slice.content.descendants((node) => {
+        if (
+          (node.type.name === "rangeAnchor" &&
+            expectRangeAnchorAttrs(node).markers.some(
+              (marker) => marker.type === "commentRangeStart",
+            )) ||
+          node.type.name === "commentReference" ||
+          node.marks.some(
+            ({ type }) =>
+              type.name === "comment" || type.name === "footnoteRef",
+          )
+        )
+          importsStoryParts = true;
+      });
+      // The editor reads them from the document it last copied from, so
+      // only a slice it did not copy itself refuses.
+      if (importsStoryParts && clipboardData === undefined)
+        row = {
+          id: "clipboard-story-parts",
+          gap: CANONICAL_GAP.storyContentProjection,
+          message:
+            "Clipboard comments and note references require the document they were copied from.",
+        };
+    }
+    const rows = row ? [row] : caseRefusalRows;
+    withRefusalRows(rows, () =>
+      editorView.someProp("handlePaste", (handler) =>
+        handler(editorView, event, slice),
+      ),
+    );
+  };
   return {
     authority: "canonical" as const,
     commandManager: singletonManager,
@@ -295,79 +380,14 @@ export const createCanonicalEditorHarness = (
           }),
         );
     },
-    paste: (slice: Slice) => {
-      const event = new ClipboardEvent("paste", {
-        bubbles: true,
-        cancelable: true,
-        ...(copiedData !== undefined && copiedText === clipboardText(slice)
-          ? { clipboardData: copiedData }
-          : {}),
-      });
-      let blocksOnly = true;
-      let inlineOnly = true;
-      slice.content.forEach((node) => {
-        blocksOnly &&=
-          node.type.name === "paragraph" || node.type.name === "table";
-        inlineOnly &&= node.isInline;
-      });
-      // A table is the table gap's; any other block the story content's.
-      let holdsTable = false;
-      slice.content.descendants((node) => {
-        if (node.type.name === "table") holdsTable = true;
-      });
-      const blockGap = holdsTable
-        ? CANONICAL_GAP.trackedTableStructure
-        : CANONICAL_GAP.storyContentProjection;
-      let row: HarnessRefusalRow | undefined;
-      if (slice.openStart > 1 || slice.openEnd > 1)
-        row = {
-          id: "clipboard-nested-blocks",
-          gap: blockGap,
-          message:
-            "Clipboard tables and nested block containers require canonical table editing.",
-        };
-      else if (!blocksOnly && !inlineOnly)
-        row = {
-          id: "clipboard-table",
-          gap: blockGap,
-          message:
-            "Clipboard tables and embedded blocks require canonical table editing.",
-        };
-      if (row === undefined) {
-        // Read clipboard carriers independently of the production preflight.
-        // A numbered paragraph alone never imports another story's payload.
-        let importsStoryParts = false;
-        slice.content.descendants((node) => {
-          if (
-            (node.type.name === "rangeAnchor" &&
-              expectRangeAnchorAttrs(node).markers.some(
-                (marker) => marker.type === "commentRangeStart",
-              )) ||
-            node.type.name === "commentReference" ||
-            node.marks.some(
-              ({ type }) =>
-                type.name === "comment" || type.name === "footnoteRef",
-            )
-          )
-            importsStoryParts = true;
-        });
-        // The editor reads them from the document it last copied from, so
-        // only a slice it did not copy itself refuses.
-        if (importsStoryParts && copiedText !== clipboardText(slice))
-          row = {
-            id: "clipboard-story-parts",
-            gap: CANONICAL_GAP.storyContentProjection,
-            message:
-              "Clipboard comments and note references require the document they were copied from.",
-          };
-      }
-      const rows = row ? [row] : caseRefusalRows;
-      withRefusalRows(rows, () =>
-        editorView.someProp("handlePaste", (handler) =>
-          handler(editorView, event, slice),
-        ),
-      );
+    paste: (slice: Slice) => pasteSlice(slice, undefined),
+    /** Paste the item the editor last wrote to the clipboard. */
+    pasteCopied: () => {
+      if (copied === undefined)
+        throw new TypeError("The harness has no copied clipboard item.");
+      pasteSlice(copied.slice, copied.data);
     },
+
     /**
      * Paste clipboard text through the view's own paste event, as a browser
      * does: the editor parses the text against the caret, then pastes it.
@@ -386,32 +406,9 @@ export const createCanonicalEditorHarness = (
       return event.defaultPrevented;
     },
     copy: () => {
-      copiedText = editorView.state.selection.empty
-        ? undefined
-        : clipboardText(editorView.state.selection.content());
-      copiedData = new DataTransfer();
-      const event = new ClipboardEvent("copy", {
-        bubbles: true,
-        cancelable: true,
-        clipboardData: copiedData,
-      });
-      editorView.dom.dispatchEvent(event);
+      writeClipboard("copy");
     },
-    cut: () => {
-      copiedText = editorView.state.selection.empty
-        ? undefined
-        : clipboardText(editorView.state.selection.content());
-      copiedData = new DataTransfer();
-      const event = new ClipboardEvent("cut", {
-        bubbles: true,
-        cancelable: true,
-        clipboardData: copiedData,
-      });
-      withRefusalRows(caseRefusalRows, () =>
-        editorView.dom.dispatchEvent(event),
-      );
-      return event.defaultPrevented;
-    },
+    cut: () => writeClipboard("cut"),
   };
 };
 

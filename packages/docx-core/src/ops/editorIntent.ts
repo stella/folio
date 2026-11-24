@@ -42,7 +42,11 @@ import {
   storyBody,
   storyParagraphs,
 } from "./blocks";
-import { isCommentExhausted, linksEmptiedByRetirement } from "./comments";
+import {
+  freshCommentId,
+  isCommentExhausted,
+  linksEmptiedByRetirement,
+} from "./comments";
 import { packageIdOccupancy } from "./editorIntentCensus";
 import { combineEdits } from "./edits";
 import { structurallyEqual } from "./equality";
@@ -105,7 +109,7 @@ import {
 import { findStoryParagraph } from "./paragraphLocator";
 import { authoredParagraphFormatting } from "./paragraphPropertySnapshot";
 import {
-  bookmarkNamesIn,
+  bookmarksIn,
   holdsOnlyPasteAnchors,
   type PasteAnnotations,
   type PlacedAnchor,
@@ -1343,17 +1347,18 @@ type AnchoredPlacement = {
 type AnchoredPlacementOptions = BlockPlacementOptions & {
   /** The blocks without their placeholders. */
   plain: readonly (Paragraph | Table)[];
-  /** The name prefix and number of this paste's placeholders. */
+  /** The name prefix, bookmark ids and number of this paste's placeholders. */
   prefix: string;
+  ids: ReadonlySet<number>;
   count: number;
 };
 /**
  * Clipboard blocks placed: once with their placeholders, to find where each
  * lands, and once without, for the operations and the document they leave.
  * Placeholders are zero width and hold no content, so both place the blocks
- * alike; a found place the plain document does not hold refuses. A paragraph
- * holding only placeholders places nothing: the range is cleared and every
- * placeholder lands at the caret.
+ * alike; a found place the plain document does not hold refuses. An open
+ * fragment holding only placeholders places nothing: the range is cleared and
+ * every placeholder lands at the caret. A closed paragraph is placed as one.
  */
 const placeAnchoredBlocks = (
   document: Document,
@@ -1361,6 +1366,7 @@ const placeAnchoredBlocks = (
     intent,
     plain,
     prefix,
+    ids,
     count,
     mode,
     firstBlockId,
@@ -1370,7 +1376,12 @@ const placeAnchoredBlocks = (
   const paragraphsOf = (from: Document) =>
     storyParagraphs(storyBody(from, story)).map(({ paragraph }) => paragraph);
   const only = intent.blocks.length === 1 ? intent.blocks[0] : undefined;
-  if (only?.type === "paragraph" && holdsOnlyPasteAnchors(only)) {
+  if (
+    only?.type === "paragraph" &&
+    intent.openStart === 1 &&
+    intent.openEnd === 1 &&
+    holdsOnlyPasteAnchors(only, ids)
+  ) {
     // A caret names one gap: two endpoints at one offset may still hold the
     // markers between their gaps, which the clear must take.
     const collapsed =
@@ -1483,7 +1494,7 @@ const compileBlockPaste = (
   const { annotations, ...placement } = intent;
   const anchored = withPasteAnchors(
     intent.blocks,
-    bookmarkNamesIn(document.package),
+    bookmarksIn(document.package),
   );
   if (anchored.anchors.length === 0)
     return compileBlockPlacement(document, {
@@ -1523,6 +1534,7 @@ const compileBlockPaste = (
     intent: { ...placement, blocks: anchored.blocks },
     plain: anchored.plain,
     prefix: anchored.prefix,
+    ids: anchored.ids,
     count: anchored.anchors.length,
     mode,
     firstBlockId,
@@ -1587,10 +1599,32 @@ const compileBlockPaste = (
       (ids ?? []).map(({ id }) => id),
       0,
     ) + 1;
-  const freshContent = (
-    content: readonly Paragraph[],
-    opType: DocumentOpType,
-  ): Result<Paragraph[], DocumentOpRefusal> => {
+  type FreshContentOptions = {
+    content: readonly Paragraph[];
+    opType: DocumentOpType;
+    /** Revision ids the copy itself takes, which the body leaves free. */
+    reserved: readonly number[];
+  };
+  // A copied body takes what pasted paragraphs take: fresh content-control,
+  // revision and bookmark identities, and a fresh id for every paragraph.
+  const freshContent = ({
+    content,
+    opType,
+    reserved,
+  }: FreshContentOptions): Result<Paragraph[], DocumentOpRefusal> => {
+    const identified = identifyClipboardParagraphs({
+      document: current,
+      paragraphs: content,
+      mode: {
+        ...mode,
+        newIds: {
+          ...mode.newIds,
+          revision: [...(mode.newIds?.revision ?? []), ...reserved],
+        },
+      },
+      firstBlockId: undefined,
+    });
+    if (identified.isErr()) return Result.err(identified.error);
     const fresh = freshParagraphIds({
       document: current,
       reserved: mode.reservedBlockIds,
@@ -1599,12 +1633,11 @@ const compileBlockPaste = (
       opType,
     });
     if (fresh.isErr()) return Result.err(fresh.error);
-    return Result.ok(
-      content.map((paragraph, index) => ({
-        ...cloneModel(paragraph),
-        paraId: fresh.value[index] ?? panic("A fresh paragraph id is missing."),
-      })),
-    );
+    // The identified paragraphs are this body's own copies.
+    for (const [index, paragraph] of identified.value.entries())
+      paragraph.paraId =
+        fresh.value[index] ?? panic("A fresh paragraph id is missing.");
+    return Result.ok(identified.value);
   };
   // The revision ids the mode gives that the package leaves free.
   // A comment record holds its id without occupying a revision, so the ids
@@ -1621,26 +1654,17 @@ const compileBlockPaste = (
       (candidate) => !occupied.has(candidate) && !commented.has(candidate),
     );
   };
-  // A comment id shares its space with revision ids: it takes the first free
-  // one, or the first past every comment the package leaves free.
-  const freshCommentId = () => {
-    const free = freeRevisionIds().at(0);
-    if (free !== undefined) return free;
-    const occupied = packageIdOccupancy(current.package).revisions;
-    let id = nextId(current.package.document.comments);
-    while (occupied.has(id)) id += 1;
-    return id;
-  };
   const out = [...ops];
   for (const copy of copies) {
     let op: DocumentOp;
     if (copy.kind === "note") {
-      const content = freshContent(
-        copy.note.content.filter(
+      const content = freshContent({
+        content: copy.note.content.filter(
           (block): block is Paragraph => block.type === "paragraph",
         ),
-        DOCUMENT_OP_TYPES.ADD_NOTE,
-      );
+        opType: DOCUMENT_OP_TYPES.ADD_NOTE,
+        reserved: [],
+      });
       if (content.isErr()) return Result.err(content.error);
       const note =
         copy.note.type === "footnote"
@@ -1677,17 +1701,26 @@ const compileBlockPaste = (
         ...stamp,
       };
     } else {
-      const content = freshContent(
-        copy.comment.content,
-        DOCUMENT_OP_TYPES.CREATE_COMMENT,
-      );
+      // A copy takes its id as an added comment does: from the lease's
+      // comment ids, or past every id the package's annotations carry.
+      const fresh = freshCommentId(current, mode.idLease);
+      if (fresh.isErr()) return Result.err(fresh.error);
+      const commentId = fresh.value;
+      const content = freshContent({
+        content: copy.comment.content,
+        opType: DOCUMENT_OP_TYPES.CREATE_COMMENT,
+        reserved: [commentId],
+      });
       if (content.isErr()) return Result.err(content.error);
       const {
         parentId: _parent,
         suggestionId: _suggestion,
         ...source
       } = cloneModel(copy.comment);
-      const commentId = freshCommentId();
+      // What proposed the comment elsewhere does not propose it here; a
+      // suggestion pasting it does, so rejecting that suggestion takes it.
+      const proposed =
+        mode.type === "suggesting" ? mode.revision.suggestionId : undefined;
       // The comment's markers may cut pasted records, which take new ids.
       op = {
         type: DOCUMENT_OP_TYPES.CREATE_COMMENT,
@@ -1700,6 +1733,7 @@ const compileBlockPaste = (
           id: commentId,
           content: content.value,
           anchorKind: copy.from === undefined ? "point" : "range",
+          ...(proposed === undefined ? {} : { suggestionId: proposed }),
         },
         anchor:
           copy.from === undefined

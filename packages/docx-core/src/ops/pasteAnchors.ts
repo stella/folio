@@ -39,12 +39,12 @@ export type PasteAnchor =
     };
 
 const PLACEHOLDER_STEM = "_folioPasteAnchor";
-/** Above any id a package writes, so a placeholder never meets a bookmark. */
+/** Where placeholder ids start; an id a bookmark already holds is skipped. */
 const PLACEHOLDER_FIRST_ID = 0x7f_00_00_00;
 
 /**
- * A placeholder name prefix no bookmark the destination holds begins with, so
- * that only this paste's placeholders carry it.
+ * A placeholder name prefix no bookmark the destination or the paste holds
+ * begins with, so that only this paste's placeholders carry it.
  */
 const freePrefix = (names: ReadonlySet<string>): string => {
   let serial = 0;
@@ -55,10 +55,12 @@ const freePrefix = (names: ReadonlySet<string>): string => {
   }
 };
 
+const PLACEHOLDER_INDEX = /^(?:0|[1-9]\d*)$/u;
+
 const placeholderIndex = (prefix: string, name: string): number | undefined => {
   if (!name.startsWith(prefix)) return undefined;
-  const index = Number(name.slice(prefix.length));
-  return Number.isInteger(index) ? index : undefined;
+  const suffix = name.slice(prefix.length);
+  return PLACEHOLDER_INDEX.test(suffix) ? Number(suffix) : undefined;
 };
 
 /** `value` with every placeholder bookmark in it removed. */
@@ -91,6 +93,8 @@ const withoutPasteAnchors = <T>(value: T, ids: ReadonlySet<number>): T => {
 type AnchoredBlocks = {
   /** The name prefix this paste's placeholders carry. */
   prefix: string;
+  /** The bookmark ids this paste's placeholders hold. */
+  ids: ReadonlySet<number>;
   /** The blocks with a placeholder for each reference and marker. */
   blocks: (Paragraph | Table)[];
   /** The blocks without the references and markers. */
@@ -100,18 +104,25 @@ type AnchoredBlocks = {
 
 /**
  * The blocks with each note reference and comment marker a placeholder, named
- * apart from every bookmark in `destinationNames`.
+ * and numbered apart from every bookmark in `destination` and in the blocks.
  */
 export const withPasteAnchors = (
   blocks: readonly (Paragraph | Table)[],
-  destinationNames: ReadonlySet<string> = new Set(),
+  destination: Bookmarks = { names: new Set(), ids: new Set() },
 ): AnchoredBlocks => {
-  const prefix = freePrefix(destinationNames);
+  const pasted = bookmarksIn(blocks);
+  const prefix = freePrefix(new Set([...destination.names, ...pasted.names]));
+  const taken = new Set([...destination.ids, ...pasted.ids]);
+  const ids = new Set<number>();
+  let nextId = PLACEHOLDER_FIRST_ID;
   const anchors: PasteAnchor[] = [];
   const placeholder = (anchor: PasteAnchor): ParagraphContent[] => {
     const index = anchors.length;
     anchors.push(anchor);
-    const id = PLACEHOLDER_FIRST_ID + index;
+    while (taken.has(nextId)) nextId += 1;
+    const id = nextId;
+    nextId += 1;
+    ids.add(id);
     return [
       { type: "bookmarkStart", id, name: `${prefix}${String(index)}` },
       { type: "bookmarkEnd", id },
@@ -186,18 +197,21 @@ export const withPasteAnchors = (
           })),
         };
   const anchoredBlocks = blocks.map(block);
-  const ids = new Set(anchors.map((_, index) => PLACEHOLDER_FIRST_ID + index));
   return {
     prefix,
+    ids,
     blocks: anchoredBlocks,
     plain: withoutPasteAnchors(anchoredBlocks, ids),
     anchors,
   };
 };
 
-/** The names of every bookmark `value` holds, at any depth. */
-export const bookmarkNamesIn = (value: unknown): Set<string> => {
+type Bookmarks = { names: ReadonlySet<string>; ids: ReadonlySet<number> };
+
+/** The names and ids of every bookmark `value` holds, at any depth. */
+export const bookmarksIn = (value: unknown): Bookmarks => {
   const names = new Set<string>();
+  const ids = new Set<number>();
   const visit = (node: unknown): void => {
     if (Array.isArray(node)) {
       for (const item of node) visit(item);
@@ -210,20 +224,29 @@ export const bookmarkNamesIn = (value: unknown): Set<string> => {
     if (typeof node !== "object" || node === null) return;
     const type: unknown = Reflect.get(node, "type");
     const name: unknown = Reflect.get(node, "name");
+    const id: unknown = Reflect.get(node, "id");
     if (type === "bookmarkStart" && typeof name === "string") names.add(name);
+    if (
+      (type === "bookmarkStart" || type === "bookmarkEnd") &&
+      typeof id === "number"
+    )
+      ids.add(id);
     for (const field of Object.values(node)) visit(field);
   };
   visit(value);
-  return names;
+  return { names, ids };
 };
 
-/** Whether `paragraph` holds placeholders and nothing else. */
-export const holdsOnlyPasteAnchors = (paragraph: Paragraph): boolean =>
+/** Whether `paragraph` holds this paste's placeholders and nothing else. */
+export const holdsOnlyPasteAnchors = (
+  paragraph: Paragraph,
+  ids: ReadonlySet<number>,
+): boolean =>
   paragraph.content.length > 0 &&
   paragraph.content.every(
     (item) =>
       (item.type === "bookmarkStart" || item.type === "bookmarkEnd") &&
-      item.id >= PLACEHOLDER_FIRST_ID,
+      ids.has(item.id),
   );
 
 /** Where a placeholder landed: its paragraph, offset and paragraph order. */

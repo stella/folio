@@ -452,10 +452,12 @@ export const importClipboardStyles = ({
   DocumentOpRefusal
 > => {
   const clonedParagraphs = structuredClone([...paragraphs]);
+  const clonedAnnotations = structuredClone([...annotationParagraphs]);
+  // Copied note and comment bodies keep the source's defaults as the blocks do.
   const materialized = materializeClipboardDefaults({
     source,
     destination,
-    paragraphs: clonedParagraphs,
+    paragraphs: [...clonedParagraphs, ...clonedAnnotations],
   });
   if (materialized.isErr()) return materialized;
   const sourceStyles = new Map<string, Style>();
@@ -489,7 +491,6 @@ export const importClipboardStyles = ({
   for (const paragraph of clonedParagraphs)
     visitReferences(paragraph, selectReferences);
   for (const styleId of tableStyleIds) selectReferences("styleId", styleId, {});
-  const clonedAnnotations = structuredClone([...annotationParagraphs]);
   const selectDefinedReferences: ReferenceVisitor = (key, value, owner) => {
     if (
       STYLE_REFERENCE_FIELDS.has(key) &&

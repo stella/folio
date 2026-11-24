@@ -230,10 +230,6 @@ for (const mode of ["editing", "suggesting"] as const) {
       );
       const driver = createCanonicalEditorHarness(source, mode);
       try {
-        const slice = new Slice(driver.state.doc.content, 0, 0);
-        const last = driver.state.doc.lastChild;
-        if (last === null)
-          throw new TypeError("Copied-block fixture has no final paragraph");
         // Copied by the editor itself, so notes and comments copy too.
         driver.dispatch(
           driver.state.tr.setSelection(new AllSelection(driver.state.doc)),
@@ -243,7 +239,7 @@ for (const mode of ["editing", "suggesting"] as const) {
         driver.history.setSelection(end, end);
         const before = driver.snapshot();
         const state = driver.state;
-        driver.paste(slice);
+        driver.pasteCopied();
         expect(driver.refusals).toEqual([]);
         expect(driver.state.doc.eq(state.doc)).toBe(false);
         const edited = driver.snapshot();
