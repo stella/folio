@@ -23,6 +23,7 @@ import type { FolioAIBlock } from "../ai-edits/types";
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
+import { gridColumnCount } from "../docx/tableGridXml";
 import {
   findChildren,
   OOXML_NAMESPACE_SCOPE,
@@ -252,7 +253,8 @@ export const checkTableGrid = (
 ): { projection: ProjectedTable; problems: TableGridProblem[] } => {
   const problems: TableGridProblem[] = [];
   // Widths are optional on w:gridCol. Count the declared grid columns in the
-  // captured XML so an unmeasured but well formed grid is still checked.
+  // captured XML so an unmeasured but well formed grid is still checked;
+  // without a capture, the grid is the one the model writes.
   const gridSource = table.formatting?.gridSourceXml;
   const columns = gridSource
     ? findChildren(
@@ -260,7 +262,7 @@ export const checkTableGrid = (
         "w",
         "gridCol",
       ).length
-    : (table.columnWidths?.length ?? 0);
+    : table.columnWidths?.length || gridColumnCount(table);
   const cells: ProjectedCell[] = [];
   const openByColumn = new Map<number, ProjectedCell>();
   table.rows.forEach((row, rowIndex) => {

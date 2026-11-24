@@ -97,6 +97,7 @@ import { captureSdtSiblingMarkers, parseSdtProperties } from "./sdtProperties";
 import { parseShading } from "./shadingParser";
 import { findChildAnySpelling } from "./strictNames";
 import type { StyleMap } from "./styleParser";
+import { modelTableGrid } from "./tableGridXml";
 import { TABLE_LOOK_FLAGS } from "./tableLook";
 import {
   isEmptyRowPropertiesAttribute,
@@ -2821,6 +2822,14 @@ export function parseTable(
   }
 
   inferImplicitSingleCellRowSpans(table, rowsWithGridOffsets);
+
+  // A grid the model writes back byte for byte needs no capture; keeping one
+  // would make a table saved without it read back different from itself.
+  if (table.formatting?.gridSourceXml === modelTableGrid(table)) {
+    const { gridSourceXml: _modelGrid, ...rest } = table.formatting;
+    if (Object.keys(rest).length > 0) table.formatting = rest;
+    else delete table.formatting;
+  }
 
   return table;
 }
