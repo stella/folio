@@ -999,11 +999,15 @@ export const createHiddenEditorManager = (
       derivation = "requested";
       return;
     }
-    do {
-      derivation = "running";
-      deriveFieldsOnce();
-    } while (derivationRequested());
-    derivation = "idle";
+    // A throwing provider must not leave later edits waiting on this pass.
+    try {
+      do {
+        derivation = "running";
+        deriveFieldsOnce();
+      } while (derivationRequested());
+    } finally {
+      derivation = "idle";
+    }
   };
   const deriveFieldsOnce = (): void => {
     const derived = deps.getDerivedFields?.();
