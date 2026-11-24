@@ -1,6 +1,8 @@
 import { panic } from "better-result";
 import { expect, test } from "bun:test";
 import { history } from "prosemirror-history";
+import type { Node as PMNode } from "prosemirror-model";
+import { Plugin } from "prosemirror-state";
 
 import { acquireHarnessDom } from "../../../../test/harnessDom";
 import { createDerivedFieldsPlugin } from "../prosemirror/plugins/derivedFields";
@@ -46,6 +48,18 @@ const mount = (session: "canonical" | "prosemirror") => {
   const host = document.createElement("div");
   document.body.append(host);
   const refusals: string[] = [];
+  // What a host plugin's view saw last: the document the editor shows.
+  let observed: PMNode | null = null;
+  const observer = new Plugin({
+    view: (view) => {
+      observed = view.state.doc;
+      return {
+        update: (next) => {
+          observed = next.state.doc;
+        },
+      };
+    },
+  });
   const manager = createHiddenEditorManager({
     getHost: () => host,
     getDocument: source,
@@ -55,8 +69,9 @@ const mount = (session: "canonical" | "prosemirror") => {
     getExtensionManager: () => undefined,
     getExternalPlugins: () =>
       session === "canonical"
-        ? []
+        ? [observer]
         : [
+            observer,
             history(),
             createSuggestionModePlugin(false),
             createDerivedFieldsPlugin(() => exhibits),
@@ -98,6 +113,8 @@ const mount = (session: "canonical" | "prosemirror") => {
   };
   return {
     api: manager.api,
+    /** Whether a host plugin's view saw the document the editor shows. */
+    observedShown: () => observed === view.state.doc,
     refusals,
     shown,
     toEnd,
@@ -150,6 +167,7 @@ test.each(["canonical", "prosemirror"] as const)(
         "Exhibit 3",
         "Exhibit 2",
       ]);
+      expect(editor.observedShown()).toBe(true);
       expect(editor.refusals).toEqual([]);
     } finally {
       editor.destroy();

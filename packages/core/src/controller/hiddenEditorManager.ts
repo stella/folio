@@ -949,6 +949,13 @@ export const createHiddenEditorManager = (
                 }),
               ],
         ),
+        // A host plugin's view observes the document the session shows; only
+        // the session writes it.
+        ...deps
+          .getExternalPlugins()
+          .flatMap(({ spec }) =>
+            spec.view === undefined ? [] : [new PMPlugin({ view: spec.view })],
+          ),
       ],
     });
   };
