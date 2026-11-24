@@ -1210,6 +1210,12 @@ export const paragraphVisibleText: (paragraph: Paragraph) => string;
 export const parseDocumentBatch: (json: string) => Result<DocumentBatch, BatchRejection>;
 
 // @public
+export type PasteAnnotations = {
+    notes: readonly (Footnote | Endnote)[];
+    comments: readonly Comment_2[];
+};
+
+// @public
 export const pendingSuggestionIdsIn: (document: Document_2) => Set<string>;
 
 // @public
@@ -1217,12 +1223,6 @@ export const physicalOffsetAtVisibleOffset: (paragraph: Paragraph, offset: numbe
 
 // @public
 export const physicalPositionAtEditorOffset: (document: Document_2, at: TextPosition) => TextPosition;
-
-// @public
-export type PasteAnnotations = {
-    notes: readonly (Footnote | Endnote)[];
-    comments: readonly Comment_2[];
-};
 
 // @public
 export const planTrackedDeletion: (document: Document_2, options: PlanTrackedDeletionOptions) => Result<DocumentOp[], DocumentOpRefusal>;
