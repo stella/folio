@@ -89,7 +89,12 @@ import {
   noteReferenceKind,
   noteReferenceSpans,
 } from "./noteMarks";
-import { isRangeBoundary, paragraphLength, withChildren } from "./offsets";
+import {
+  contentWidth,
+  isRangeBoundary,
+  paragraphLength,
+  withChildren,
+} from "./offsets";
 import { findStoryParagraph } from "./paragraphLocator";
 import { authoredParagraphFormatting } from "./paragraphPropertySnapshot";
 import {
@@ -1155,6 +1160,28 @@ const adjacentJoinRefusal = (
 
 const paragraphAt = (document: Document, at: TextPosition) =>
   findStoryParagraph(storyBody(document, at.story), at.blockId)?.paragraph;
+
+type PendingRemovalRange = { paragraph: Paragraph; from: number; to: number };
+/**
+ * Whether every unit of `paragraph` in `[from, to)` is pending removal (a
+ * tracked deletion or the source of a tracked move): accepting the paragraph's
+ * revisions leaves nothing of that range.
+ */
+const onlyPendingRemoval = ({
+  paragraph,
+  from,
+  to,
+}: PendingRemovalRange): boolean => {
+  let offset = 0;
+  for (const item of paragraph.content) {
+    const end = offset + contentWidth([item]);
+    const overlaps = end > from && offset < to;
+    if (overlaps && item.type !== "deletion" && item.type !== "moveFrom")
+      return false;
+    offset = end;
+  }
+  return true;
+};
 
 type MergedCellParagraphOptions = {
   /** The document the merge left. */
@@ -2396,11 +2423,23 @@ const compileInStory = (
         document,
         intent.to,
       ).formatting;
-      const prefixBoundary = intent.openStart === 0 && intent.from.offset > 0;
+      // Suggesting, content pending removal keeps no paragraph of its own:
+      // accepted, it leaves none, as the direct paste over it does.
+      const keeps = (
+        paragraph: Paragraph | undefined,
+        from: number,
+        to: number,
+      ): boolean =>
+        paragraph !== undefined &&
+        from < to &&
+        (mode.type !== "suggesting" ||
+          !onlyPendingRemoval({ paragraph, from, to }));
+      const prefixBoundary =
+        intent.openStart === 0 && keeps(destination, 0, intent.from.offset);
       const suffixBoundary =
         intent.openEnd === 0 &&
         endpoint !== undefined &&
-        intent.to.offset < paragraphLength(endpoint);
+        keeps(endpoint, intent.to.offset, paragraphLength(endpoint));
       const normalized = [
         ...(prefixBoundary
           ? [
