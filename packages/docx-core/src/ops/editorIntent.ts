@@ -1218,6 +1218,20 @@ const onlyPendingRemoval = ({
   return true;
 };
 
+/** A pasted block's paragraphs in document order, a table's cells' among them. */
+const blockParagraphs = (block: Paragraph | Table): Paragraph[] =>
+  block.type === "paragraph"
+    ? [block]
+    : block.rows.flatMap((row) =>
+        row.cells.flatMap((cell) =>
+          cell.content.flatMap((inner) =>
+            inner.type === "paragraph" || inner.type === "table"
+              ? blockParagraphs(inner)
+              : [],
+          ),
+        ),
+      );
+
 type BlockPasteIntent = Extract<EditorIntent, { type: "pasteBlocks" }>;
 type BlockPasteOptions = {
   intent: BlockPasteIntent;
@@ -1234,11 +1248,10 @@ const compileBlockPaste = (
   { intent, mode, firstBlockId }: BlockPasteOptions,
 ): Result<CompiledEditorIntent, DocumentOpRefusal> => {
   const { from, to, openStart, openEnd } = intent;
-  const blocks = [...intent.blocks];
-  const paragraphs = blocks.filter(
+  const paragraphs = intent.blocks.filter(
     (block): block is Paragraph => block.type === "paragraph",
   );
-  if (paragraphs.length === blocks.length)
+  if (paragraphs.length === intent.blocks.length)
     return compileEditorIntent(document, {
       intent: {
         type: "replaceFragment",
@@ -1251,6 +1264,37 @@ const compileBlockPaste = (
       mode,
       ...(firstBlockId === undefined ? {} : { firstBlockId }),
     });
+  // Every pasted paragraph, a table's among them, takes the identities a
+  // clipboard paragraph takes: its copied bookmarks and records renamed.
+  const identified = identifyClipboardParagraphs({
+    document,
+    paragraphs: intent.blocks.flatMap(blockParagraphs),
+    mode,
+    firstBlockId,
+  });
+  if (identified.isErr()) return Result.err(identified.error);
+  let next = 0;
+  const take = (): Paragraph =>
+    identified.value[next++] ??
+    panic("An identified clipboard paragraph is missing.");
+  const rebuilt = (block: Paragraph | Table): Paragraph | Table =>
+    block.type === "paragraph"
+      ? take()
+      : {
+          ...block,
+          rows: block.rows.map((row) => ({
+            ...row,
+            cells: row.cells.map((cell) => ({
+              ...cell,
+              content: cell.content.map((inner) =>
+                inner.type === "paragraph" || inner.type === "table"
+                  ? rebuilt(inner)
+                  : inner,
+              ),
+            })),
+          })),
+        };
+  const blocks = intent.blocks.map(rebuilt);
   const ops: DocumentOp[] = [];
   let current = document;
   let pool =

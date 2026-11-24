@@ -121,9 +121,29 @@ const clipboardParagraphs = (
   return places;
 };
 
+/**
+ * A table's verbatim captures describe the markup it was read from; a pasted
+ * copy is new content the serializer writes from its model.
+ */
+const withoutTableCaptures = (table: Table): void => {
+  if (table.formatting !== undefined) {
+    delete table.formatting.sourceXml;
+    delete table.formatting.gridSourceXml;
+  }
+  for (const row of table.rows) {
+    if (row.formatting !== undefined) delete row.formatting.sourceXml;
+    for (const cell of row.cells) {
+      if (cell.formatting !== undefined) delete cell.formatting.sourceXml;
+      for (const inner of cell.content)
+        if (inner.type === "table") withoutTableCaptures(inner);
+    }
+  }
+};
+
 /** A pasted block's own copy, each paragraph keeping its indentation provenance. */
 const cloneClipboardBlock = (block: Paragraph | Table): Paragraph | Table => {
   const clone = structuredClone(block);
+  if (clone.type === "table") withoutTableCaptures(clone);
   const sources = clipboardParagraphs(block) ?? [];
   const targets = clipboardParagraphs(clone) ?? [];
   for (const [index, { paragraph: target }] of targets.entries()) {

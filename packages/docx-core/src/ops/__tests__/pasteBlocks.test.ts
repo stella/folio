@@ -181,3 +181,51 @@ for (const [name, pasteCase, expected] of [
     );
   });
 }
+
+test("a pasted bookmark beside a table never repeats a standing one", () => {
+  const marked = (): Paragraph => ({
+    type: "paragraph",
+    content: [
+      { type: "bookmarkStart", id: 1, name: "clause" },
+      run("Lead"),
+      { type: "bookmarkEnd", id: 1 },
+    ],
+  });
+  const document: Document = {
+    package: {
+      document: {
+        content: [
+          { ...marked(), paraId: "00000001" },
+          paragraph("next", "00000002"),
+        ],
+      },
+    },
+  };
+  const at = { story: OP_STORIES.MAIN, blockId: "00000002", offset: 0 };
+  const compiled = compileEditorIntent(document, {
+    intent: {
+      type: "pasteBlocks",
+      from: at,
+      to: at,
+      blocks: [marked(), table()],
+      openStart: 0,
+      openEnd: 0,
+    },
+    mode: { type: "editing" },
+  });
+  if (compiled.isErr()) throw compiled.error;
+  const applied = applyDocumentOps(document, compiled.value.ops);
+  if (applied.isErr()) throw applied.error;
+  const names: string[] = [];
+  const ids: number[] = [];
+  for (const block of applied.value.document.package.document.content)
+    if (block.type === "paragraph")
+      for (const item of block.content)
+        if (item.type === "bookmarkStart") {
+          names.push(item.name);
+          ids.push(item.id);
+        }
+  expect(names).toHaveLength(2);
+  expect(new Set(names).size).toBe(2);
+  expect(new Set(ids).size).toBe(2);
+});
