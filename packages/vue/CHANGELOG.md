@@ -1,5 +1,16 @@
 # @stll/folio-vue
 
+## 0.30.0
+
+### Minor Changes
+
+- [#3513](https://github.com/stella/folio/pull/3513) [`61ee58a`](https://github.com/stella/folio/commit/61ee58a482adc257fcc36650a370d3724ef0efdd) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Hosts can insert fields and derive what they show, in either session. `DocxEditorRef.insertField({ instruction, displayText, locked })` puts a `w:fldSimple` in place of the selection: one undo step, a tracked insertion when suggesting. The `derivedFields` prop names the fields a host derives (`owns(instruction)`) and what each shows (`displayTexts(instructions)`, in document order, tracked deletions left out); after each local edit the owned fields are brought up to date in the same undo step, and a peer in a shared room receives the update with the edit.
+
+### Patch Changes
+
+- Updated dependencies [[`61ee58a`](https://github.com/stella/folio/commit/61ee58a482adc257fcc36650a370d3724ef0efdd)]:
+  - @stll/folio-core@0.71.0
+
 ## 0.29.0
 
 ### Minor Changes
