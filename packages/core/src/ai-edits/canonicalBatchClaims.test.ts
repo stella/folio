@@ -25,7 +25,7 @@ const blockId = "10000000";
 for (const mode of ["direct", "tracked-changes"] as const)
   for (const insertion of ["insertAfterBlock", "insertBeforeBlock"] as const)
     test(`${mode}: ${insertion} multiple insertions at one source boundary claim no existing text`, async () => {
-      for (const session of ["legacy", "canonical"] as const) {
+      for (const session of ["canonical"] as const) {
         const reviewer = await FolioDocxReviewer.fromBuffer(
           await paragraphsDocx([[textRun(source)]]),
           { session },
@@ -118,7 +118,7 @@ for (const mode of ["direct", "tracked-changes"] as const)
             ? ["Alpha beta", "gamma delta"]
             : editedExpected;
         const expected = conflicting ? conflictExpected : disjointExpected;
-        for (const session of ["legacy", "canonical"] as const) {
+        for (const session of ["canonical"] as const) {
           const bytes = await paragraphsDocx([[textRun(source)]]);
           const reviewer = await FolioDocxReviewer.fromBuffer(bytes, {
             session,
@@ -184,7 +184,7 @@ for (const mode of ["direct", "tracked-changes"] as const)
   for (const reverse of [false, true])
     test(`${mode}: annotations retain their snapshot coverage before moving edits (${reverse})`, async () => {
       const presentations: ReturnType<typeof presentationOf>[] = [];
-      for (const session of ["legacy", "canonical"] as const) {
+      for (const session of ["canonical"] as const) {
         const reviewer = await FolioDocxReviewer.fromBuffer(
           await paragraphsDocx([[textRun(source)]]),
           { session },
@@ -259,7 +259,7 @@ for (const mode of ["direct", "tracked-changes"] as const)
         )
       ).docx.slice().buffer;
       const presentations: ReturnType<typeof presentationOf>[] = [];
-      for (const session of ["legacy", "canonical"] as const) {
+      for (const session of ["canonical"] as const) {
         const reviewer = await FolioDocxReviewer.fromBuffer(bytes, { session });
         const before = reviewer.toDocument();
         const idOf = (text: string) =>
@@ -350,7 +350,7 @@ for (const mode of ["direct", "tracked-changes"] as const)
         )
       ).docx.slice().buffer;
       const presentations: ReturnType<typeof presentationOf>[] = [];
-      for (const session of ["legacy", "canonical"] as const) {
+      for (const session of ["canonical"] as const) {
         const reviewer = await FolioDocxReviewer.fromBuffer(bytes, { session });
         const before = reviewer.toDocument();
         const cellBlockId =
@@ -451,7 +451,7 @@ for (const mode of ["direct", "tracked-changes"] as const)
           [textRun("Final paragraph.")],
         ]);
         const presentations: ReturnType<typeof presentationOf>[] = [];
-        for (const session of ["legacy", "canonical"] as const) {
+        for (const session of ["canonical"] as const) {
           const reviewer = await FolioDocxReviewer.fromBuffer(bytes, {
             session,
           });
@@ -610,7 +610,7 @@ for (const columns of [1, 2])
         )
       ).docx.slice().buffer;
       const presentations: ReturnType<typeof presentationOf>[] = [];
-      for (const session of ["legacy", "canonical"] as const) {
+      for (const session of ["canonical"] as const) {
         const reviewer = await FolioDocxReviewer.fromBuffer(bytes, { session });
         const before = reviewer.toDocument();
         const cellBlockId =
@@ -689,7 +689,7 @@ for (const mode of ["direct", "tracked-changes"] as const)
   for (const reverse of [false, true])
     test(`${mode}: an insertion after a block and its merge claim one gap (reverse=${reverse})`, async () => {
       const outcomes: unknown[] = [];
-      for (const session of ["legacy", "canonical"] as const) {
+      for (const session of ["canonical"] as const) {
         const reviewer = await FolioDocxReviewer.fromBuffer(
           await paragraphsDocx([
             [textRun("Alpha.")],
@@ -758,7 +758,7 @@ for (const mode of ["direct", "tracked-changes"] as const)
         )
       ).docx.slice().buffer;
       const outcomes: unknown[] = [];
-      for (const session of ["legacy", "canonical"] as const) {
+      for (const session of ["canonical"] as const) {
         const reviewer = await FolioDocxReviewer.fromBuffer(bytes, { session });
         const cellBlockId =
           reviewer.snapshot().blocks.find((block) => block.text === "B1")?.id ??

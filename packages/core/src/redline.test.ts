@@ -51,7 +51,7 @@ type ParagraphSpec = {
   formatting?: InlineFormattingSpec;
 };
 
-const SESSIONS = ["legacy", "canonical"] as const;
+const SESSIONS = ["canonical"] as const;
 type Session = (typeof SESSIONS)[number];
 const buildInsertedParagraphs = (count: number): ParagraphSpec[] =>
   Array.from({ length: count }, (_, index) => ({

@@ -69,7 +69,7 @@ const inlineEdits = [
   edits[3],
 ] as const satisfies readonly FolioDocumentOperation[];
 
-for (const session of ["legacy", "canonical"] as const) {
+for (const session of ["canonical"] as const) {
   test(`${session} attributes only complete anchor losses in preview and commit`, async () => {
     const reviewer = await open(session);
     const before = reviewer.toDocument();

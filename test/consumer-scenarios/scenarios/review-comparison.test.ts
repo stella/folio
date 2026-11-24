@@ -931,7 +931,7 @@ test("a simple DATE field in a deleted paragraph keeps its resolved model and un
     .entry("word/document.xml")
     ?.text();
   assert.ok(originalXml?.includes("fldSimple"));
-  for (const session of ["legacy", "canonical"] as const) {
+  for (const session of ["canonical"] as const) {
     const open = (buffer: ArrayBuffer) =>
       FolioDocxReviewer.fromBuffer(buffer, { author: AUTHOR, session });
     const reviewer = await open(toArrayBuffer(bytes));

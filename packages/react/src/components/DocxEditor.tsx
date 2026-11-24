@@ -200,7 +200,6 @@ import { createStarterKit } from "@stll/folio-core/prosemirror/extensions/Starte
 import { projectMarkupView } from "@stll/folio-core/prosemirror/markupViewProjection";
 import { createAICitationDecorationsPlugin } from "@stll/folio-core/prosemirror/plugins/aiCitationDecorations";
 import { createAISuggestionDecorationsPlugin } from "@stll/folio-core/prosemirror/plugins/aiSuggestionDecorations";
-import { createDerivedFieldsPlugin } from "@stll/folio-core/prosemirror/plugins/derivedFields";
 import {
   createSuggestionModePlugin,
   setSuggestionMode,
@@ -936,17 +935,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       () => createTemplatePreviewValuesPlugin(),
       [],
     );
-    // The default session keeps the host's derived fields current through a
-    // plugin; the canonical session does it in the hidden editor.
-    const [derivedFieldsSlot] = useState(() =>
-      createCallbackSlot(() => derivedFields),
-    );
-    useLayoutEffect(() => {
-      derivedFieldsSlot.commit(() => derivedFields);
-    });
-    const [derivedFieldsPlugin] = useState(() =>
-      createDerivedFieldsPlugin(derivedFieldsSlot.invoke),
-    );
     const [hostPlugins] = useState(() => plugins ?? []);
     const editorPlugins = useMemo(
       () => [
@@ -958,7 +946,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
           ? [templateDirectivesPlugin, templateSlashMenu]
           : []),
         templatePreviewPlugin,
-        derivedFieldsPlugin,
       ],
       [
         hostPlugins,
@@ -969,7 +956,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         templateDirectivesPlugin,
         templateSlashMenu,
         templatePreviewPlugin,
-        derivedFieldsPlugin,
       ],
     );
 

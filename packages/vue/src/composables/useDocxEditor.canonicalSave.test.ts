@@ -94,7 +94,6 @@ test.each([
           holder.editor = useDocxEditor({
             hiddenContainer: shallowRef(null),
             pagesContainer: shallowRef(null),
-            experimentalSession: "canonical",
             onError: (error) => errors.push(error),
           });
           return () => h("div");
@@ -117,7 +116,7 @@ test.each([
     }
   },
 );
-test.each([undefined, "canonical", "legacy"] as const)(
+test.each([undefined, "canonical"] as const)(
   "%s history keys have one editor owner and no document-level owner",
   async (session) => {
     const container = document.createElement("div");
@@ -230,7 +229,6 @@ test("canonical edits save and reopen the canonical text and paragraph identity"
         holder.editor = useDocxEditor({
           hiddenContainer: shallowRef(hidden),
           pagesContainer: shallowRef(pages),
-          experimentalSession: "canonical",
           onError: (error) => errors.push(error),
           onChange: (document) => {
             hostChanges++;
@@ -342,7 +340,6 @@ test.each(["immediate", "deferred"] as const)(
           const editor = useDocxEditor({
             hiddenContainer: shallowRef(hidden),
             pagesContainer: shallowRef(pages),
-            experimentalSession: "canonical",
           });
           holder.editor = editor;
           editor.editor.on("docChange", () => {
@@ -534,7 +531,6 @@ test.each([
           const editor = useDocxEditor({
             hiddenContainer: shallowRef(hidden),
             pagesContainer: shallowRef(pages),
-            experimentalSession: "canonical",
           });
           holder.editor = editor;
           editor.editor.on("docChange", () => {
@@ -674,7 +670,6 @@ test.each([
             hiddenContainer: shallowRef(hidden),
             pagesContainer: shallowRef(pages),
             noteEditorContainer: shallowRef(notes),
-            experimentalSession: "canonical",
             editorMode,
             ...(fixture.source === "provided" ? { author } : {}),
             featureFlags: () => ({ selectiveSave: true }),
@@ -974,7 +969,6 @@ test.each(CANONICAL_SAVE_SEEDS)(
           holder.editor = useDocxEditor({
             hiddenContainer: shallowRef(hidden),
             pagesContainer: shallowRef(pages),
-            experimentalSession: "canonical",
             featureFlags: () => flags,
             onError: (error) => errors.push(error),
           });
@@ -1134,7 +1128,7 @@ test.each(CANONICAL_SAVE_SEEDS)(
   },
 );
 
-for (const session of [undefined, "legacy", "canonical"] as const)
+for (const session of [undefined, "canonical"] as const)
   test.each(SERIALIZATION_PATH_CASES)(
     `Vue ${session ?? "default"} $kind reports the returned write path through save`,
     async (scenario) => {
@@ -1230,7 +1224,7 @@ for (const session of [undefined, "legacy", "canonical"] as const)
     },
   );
 
-for (const session of [undefined, "legacy", "canonical"] as const)
+for (const session of [undefined, "canonical"] as const)
   for (const callback of [
     "onSerializationPath",
     "onSelectiveDecline",
@@ -1349,7 +1343,7 @@ for (const session of [undefined, "legacy", "canonical"] as const)
         }
       });
 
-for (const session of [undefined, "legacy", "canonical"] as const)
+for (const session of [undefined, "canonical"] as const)
   for (const operation of ["save", "getDocx"] as const)
     test(`Vue ${session ?? "default"} host tripwire exceptions propagate after ${operation}`, async () => {
       const container = document.createElement("div");

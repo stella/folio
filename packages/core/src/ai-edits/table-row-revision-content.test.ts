@@ -265,7 +265,7 @@ describe("folio writes both halves of a row revision", () => {
     expect(/<w:ins [^>]*>\s*<w:r>/u.test(xml)).toBe(true);
   });
 
-  test.each(["legacy", "canonical"] as const)(
+  test.each(["canonical"] as const)(
     "a tracked table deletion over a pending inserted row is refused, and the table saves (%s)",
     async (session) => {
       const reviewer = await FolioDocxReviewer.fromBuffer(
@@ -300,7 +300,7 @@ describe("folio writes both halves of a row revision", () => {
     },
   );
 
-  for (const session of ["legacy", "canonical"] as const)
+  for (const session of ["canonical"] as const)
     for (const mode of ["tracked-changes", "suggested"] as const) {
       test(`a row deletion over a pending insertion reads, accepts and rejects as one (${session}, ${mode})`, async () => {
         const source = await buildTableDocx([
@@ -360,7 +360,7 @@ describe("folio writes both halves of a row revision", () => {
       });
     }
 
-  test.each(["legacy", "canonical"] as const)(
+  test.each(["canonical"] as const)(
     "resolving one revision clears the row marker and the run marks together (%s)",
     async (session) => {
       const reviewer = await FolioDocxReviewer.fromBuffer(

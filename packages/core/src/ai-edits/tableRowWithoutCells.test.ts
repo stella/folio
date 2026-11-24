@@ -41,7 +41,7 @@ const authoredText = (reviewer: FolioDocxReviewer) =>
     .filter((text) => text !== "");
 
 const SOURCE = ["1", "2", "3", "4", "Tail"];
-const SESSIONS = ["legacy", "canonical"] as const;
+const SESSIONS = ["canonical"] as const;
 
 const savedRowCount = async (buffer: ArrayBuffer) => {
   const xml =

@@ -2,7 +2,6 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { panic } from "better-result";
 import { describe, expect, spyOn, test } from "bun:test";
 import fc from "fast-check";
-import { history, undo } from "prosemirror-history";
 import { Fragment, type Node as PMNode, Slice } from "prosemirror-model";
 import {
   AllSelection,
@@ -13,7 +12,6 @@ import {
   TextSelection,
 } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
-import * as Y from "yjs";
 
 import * as documentOps from "@stll/docx-core/ops";
 import { OP_STORIES, type OpStory } from "@stll/docx-core/ops";
@@ -25,7 +23,6 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
-import { parseShapeDocument } from "../__tests__/editorHarness";
 import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
 import type { FolioDocumentOperationStory } from "../document-operations";
 import { parseDocx } from "../docx/parser";
@@ -37,28 +34,20 @@ import {
 import { withCanonicalCommand } from "../prosemirror/canonicalCommands";
 import { pasteWithoutFormatting } from "../prosemirror/commands/pastePlainText";
 import { expectCommentRangeBoundaryAttrs } from "../prosemirror/commentRangeBoundaryAttrs";
-import { commentRecordsOf } from "../prosemirror/commentRecords";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { HyperlinkRemovalRefusal } from "../prosemirror/hyperlinkRemoval";
 import { insertTableOfContentsInView } from "../prosemirror/insertOperations";
-import {
-  NoteReferenceEditRefusal,
-  NoteReferenceReplayDefect,
-} from "../prosemirror/noteReferenceOccurrences";
 import { createSuggestionModePlugin } from "../prosemirror/plugins/suggestionMode";
 import { singletonManager } from "../prosemirror/schema";
-import { FolioYjsNoteReferenceSchemaError } from "../prosemirror/yjsDocumentMetadata";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import type { CanonicalCommentRequest } from "../types/canonicalComments";
 import type { Paragraph, ParagraphContent } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { resolveCanonicalReviewRange } from "./canonicalReview";
-import { loadCollaborationModules } from "./collaborationModules";
 import { createHeaderFooterEditorManager } from "./headerFooterEditorManager";
 import {
   createHiddenEditorClipboardHandlers,
   createHiddenEditorManager,
-  createHiddenEditorState,
   type HiddenEditorManagerDeps,
   type HiddenProseMirrorRemoteSelection,
 } from "./hiddenEditorManager";
@@ -96,13 +85,9 @@ const makeDeps = (
     getStyles: () => null,
     getExtensionManager: () => undefined,
     getExternalPlugins: () => [],
-    getCollaboration: () => undefined,
-    getCollaborationModules: () => null,
-    getPrecomputedInitialState: () => null,
     getReadOnly: () => false,
     getDocumentIdentity: () => "0",
     getDocumentContext: () => null,
-    getExperimentalSession: () => "legacy",
     onTransaction: () => {
       spies["onTransaction"].calls += 1;
     },
@@ -155,31 +140,6 @@ const commentRangeBoundaryIds = (doc: PMNode): number[] => {
     return true;
   });
   return ids;
-};
-
-const sourceWithNoteReference = async () => {
-  const source = createEmptyDocument({ initialText: "LR" });
-  const noteContent = createEmptyDocument({ initialText: "Note" }).package
-    .document.content;
-  source.package.document.content = [
-    {
-      type: "paragraph",
-      paraId: "12345678",
-      content: [
-        { type: "run", content: [{ type: "text", text: "L" }] },
-        {
-          type: "run",
-          formatting: { bold: true },
-          content: [{ type: "footnoteRef", id: 123 }],
-        },
-        { type: "run", content: [{ type: "text", text: "R" }] },
-      ],
-    },
-  ];
-  source.package.footnotes = [
-    { type: "footnote", id: 123, content: noteContent },
-  ];
-  return parseShapeDocument(new Uint8Array(await createDocx(source)));
 };
 
 describe("createHiddenEditorManager", () => {
@@ -247,7 +207,7 @@ const assertNotePasteRefusal = ({
   noteType,
   occurrenceId,
 }: NotePasteRefusalOptions) => {
-  const cases = (["legacy", "canonical"] as const).flatMap((session) =>
+  const cases = (["canonical"] as const).flatMap((session) =>
     (["sup", "span"] as const).flatMap((tag) =>
       (["footnote", "endnote"] as const).map((kind) => ({
         session,
@@ -270,7 +230,6 @@ const assertNotePasteRefusal = ({
       getDocument: () => source,
       getDocumentContext: () => source,
       getExtensionManager: () => singletonManager,
-      getExperimentalSession: () => session,
       onSessionRefusal: (reason, ground) =>
         refusals.push({ reason, gap: ground.gap }),
     });
@@ -355,148 +314,6 @@ test(
   propertyTestTimeout(5_000),
 );
 
-test("hidden manager refuses a local partial note-reference edit before committing it", async () => {
-  GlobalRegistrator.register();
-  const host = document.createElement("div");
-  document.body.append(host);
-  const source = await sourceWithNoteReference();
-  const refusals: { reason: string; gap: unknown; error: Error | undefined }[] =
-    [];
-  const { deps } = makeDeps({
-    getHost: () => host,
-    getDocument: () => source,
-    getDocumentContext: () => source,
-    getExtensionManager: () => singletonManager,
-    onSessionRefusal: (reason, ground, error) =>
-      refusals.push({ reason, gap: ground.gap, error }),
-  });
-  const manager = createHiddenEditorManager(deps);
-  try {
-    manager.ensureView();
-    const view = manager.getView();
-    if (!view) panic("Expected note-reference editor view");
-    const before = view.state;
-    const partialFormatting = before.tr.addMark(
-      3,
-      4,
-      before.schema.marks.italic?.create() ?? panic("Expected italic mark"),
-    );
-
-    expect(() => view.dispatch(partialFormatting)).not.toThrow();
-    expect(view.state).toBe(before);
-    expect(view.state.doc).toBe(before.doc);
-    expect(refusals).toHaveLength(1);
-    expect(refusals[0]?.error).toBeInstanceOf(NoteReferenceEditRefusal);
-    expect(refusals[0]?.reason).toBe(refusals[0]?.error?.message);
-    expect(refusals[0]?.gap).toBe(CANONICAL_GAP.dispatch);
-  } finally {
-    manager.destroyView();
-    host.remove();
-    GlobalRegistrator.unregister();
-  }
-});
-
-test("hidden manager accepts an invalid remote note-reference replay and reports its typed defect", async () => {
-  GlobalRegistrator.register();
-  const host = document.createElement("div");
-  document.body.append(host);
-  const source = await sourceWithNoteReference();
-  const modules = await loadCollaborationModules();
-  const refusals: { reason: string; gap: unknown; error: Error | undefined }[] =
-    [];
-  const { deps } = makeDeps({
-    getHost: () => host,
-    getDocument: () => source,
-    getDocumentContext: () => source,
-    getExtensionManager: () => singletonManager,
-    getCollaborationModules: () => modules,
-    onSessionRefusal: (reason, ground, error) =>
-      refusals.push({ reason, gap: ground.gap, error }),
-  });
-  const manager = createHiddenEditorManager(deps);
-  try {
-    manager.ensureView();
-    const view = manager.getView();
-    if (!view) panic("Expected note-reference editor view");
-    const before = view.state;
-    const remotePartialFormatting = before.tr
-      .addMark(
-        3,
-        4,
-        before.schema.marks.italic?.create() ?? panic("Expected italic mark"),
-      )
-      .setMeta(modules.yProseMirror.ySyncPluginKey, { isChangeOrigin: true });
-
-    expect(() => view.dispatch(remotePartialFormatting)).not.toThrow();
-    expect(view.state).not.toBe(before);
-    expect(view.state.doc).not.toBe(before.doc);
-    expect(refusals).toHaveLength(1);
-    expect(refusals[0]?.error).toBeInstanceOf(NoteReferenceReplayDefect);
-    expect(refusals[0]?.reason).toBe(refusals[0]?.error?.message);
-    expect(refusals[0]?.gap).toBe(CANONICAL_GAP.dispatch);
-  } finally {
-    manager.destroyView();
-    host.remove();
-    GlobalRegistrator.unregister();
-  }
-});
-
-test("hidden manager history remains usable around a refused partial note-reference edit", async () => {
-  GlobalRegistrator.register();
-  const host = document.createElement("div");
-  document.body.append(host);
-  const source = await sourceWithNoteReference();
-  const refusals: { reason: string; gap: unknown; error: Error | undefined }[] =
-    [];
-  const { deps } = makeDeps({
-    getHost: () => host,
-    getDocument: () => source,
-    getDocumentContext: () => source,
-    getExtensionManager: () => singletonManager,
-    onSessionRefusal: (reason, ground, error) =>
-      refusals.push({ reason, gap: ground.gap, error }),
-  });
-  const manager = createHiddenEditorManager(deps);
-  try {
-    manager.ensureView();
-    const view = manager.getView();
-    if (!view) panic("Expected note-reference editor view");
-    const initial = view.state;
-    const referenceFormatting = initial.tr.addMark(
-      2,
-      5,
-      initial.schema.marks.italic?.create() ?? panic("Expected italic mark"),
-    );
-
-    expect(() => view.dispatch(referenceFormatting)).not.toThrow();
-    const formatted = view.state;
-    expect(formatted).not.toBe(initial);
-    expect(manager.api.canUndo()).toBe(true);
-
-    const partialBoldRemoval = formatted.tr.removeMark(
-      3,
-      4,
-      formatted.schema.marks.bold ?? panic("Expected bold mark"),
-    );
-    expect(() => view.dispatch(partialBoldRemoval)).not.toThrow();
-    expect(view.state).toBe(formatted);
-    expect(refusals).toHaveLength(1);
-    expect(refusals[0]?.error).toBeInstanceOf(NoteReferenceEditRefusal);
-    expect(refusals[0]?.reason).toBe(refusals[0]?.error?.message);
-    expect(refusals[0]?.gap).toBe(CANONICAL_GAP.dispatch);
-
-    expect(manager.api.undo()).toBe(true);
-    expect(view.state.doc.textContent).toBe(initial.doc.textContent);
-    expect(manager.api.redo()).toBe(true);
-    expect(view.state.doc.eq(formatted.doc)).toBe(true);
-    expect(refusals).toHaveLength(1);
-  } finally {
-    manager.destroyView();
-    host.remove();
-    GlobalRegistrator.unregister();
-  }
-});
-
 describe("createHiddenEditorClipboardHandlers", () => {
   test("reports editable copy, cut, and paste without consuming the events", () => {
     const { deps, spies } = makeDeps();
@@ -533,7 +350,7 @@ describe("createHiddenEditorClipboardHandlers", () => {
   });
 });
 
-for (const session of ["legacy", "canonical"] as const) {
+for (const session of ["canonical"] as const) {
   for (const readOnly of [false, true]) {
     test(`${session} ${readOnly ? "read-only" : "editable"} view tells the host of clipboard events as legacy does`, () => {
       const releaseDom = acquireHarnessDom();
@@ -547,7 +364,6 @@ for (const session of ["legacy", "canonical"] as const) {
         getHost: () => host,
         getDocument: () => source,
         getDocumentContext: () => source,
-        getExperimentalSession: () => session,
         getReadOnly: () => readOnly,
       });
       const manager = createHiddenEditorManager(deps);
@@ -630,67 +446,7 @@ const commentedText = (doc: PMNode): Map<unknown, string> => {
   return commented;
 };
 
-for (const move of [true, false])
-  test(`legacy dropped ${move ? "move keeps its comment" : "copy takes a copy of its comment"}`, () => {
-    const releaseDom = acquireHarnessDom();
-    const host = document.createElement("div");
-    document.body.append(host);
-    const source = commentedDocument();
-    const { deps } = makeDeps({
-      getHost: () => host,
-      getDocument: () => source,
-      getDocumentContext: () => source,
-      getExperimentalSession: () => "legacy",
-      getExternalPlugins: () => [history()],
-    });
-    const manager = createHiddenEditorManager(deps);
-    try {
-      manager.ensureView();
-      const view = manager.getView() ?? panic("Expected a body view");
-      const before = view.state;
-      manager.api.setSelection(1, 6);
-      view.dragging = { slice: view.state.selection.content(), move };
-      const coordinates = spyOn(view, "posAtCoords").mockReturnValue({
-        pos: view.state.doc.content.size - 1,
-        inside: 0,
-      });
-      const event = new Event("drop", { bubbles: true, cancelable: true });
-      Object.defineProperties(event, {
-        dataTransfer: { value: { types: [], files: [], getData: () => "" } },
-        clientX: { value: 10 },
-        clientY: { value: 10 },
-        // The copy modifier of either platform.
-        altKey: { value: !move },
-        ctrlKey: { value: !move },
-      });
-      view.dom.dispatchEvent(event);
-      coordinates.mockRestore();
-      expect(view.state.doc.textContent).toBe(
-        move ? " worldHello" : "Hello worldHello",
-      );
-      expect(commentedText(view.state.doc)).toEqual(
-        new Map(
-          move
-            ? [[1, "Hello"]]
-            : [
-                [1, "Hello"],
-                [2, "Hello"],
-              ],
-        ),
-      );
-      const records = commentRecordsOf(view.state);
-      expect(records?.map(({ id }) => id)).toEqual(move ? [1] : [1, 2]);
-      expect(undo(view.state, view.dispatch)).toBe(true);
-      expect(view.state.doc.eq(before.doc)).toBe(true);
-      expect(commentRecordsOf(view.state)?.map(({ id }) => id)).toEqual([1]);
-    } finally {
-      manager.destroyView();
-      host.remove();
-      releaseDom();
-    }
-  });
-
-for (const session of ["legacy", "canonical"] as const) {
+for (const session of ["canonical"] as const) {
   for (const mode of ["editing", "suggesting"] as const) {
     test(`${session} ${mode} plain text pasted inside a comment joins its range`, () => {
       const releaseDom = acquireHarnessDom();
@@ -702,7 +458,6 @@ for (const session of ["legacy", "canonical"] as const) {
         getHost: () => host,
         getDocument: () => source,
         getDocumentContext: () => source,
-        getExperimentalSession: () => session,
         getExternalPlugins: () =>
           session === "legacy"
             ? [createSuggestionModePlugin(mode === "suggesting", "Author")]
@@ -740,7 +495,7 @@ for (const session of ["legacy", "canonical"] as const) {
 
 test.each([undefined, "canonical"] as const)(
   "%s canonical manager refuses transaction bypasses and shares one input journal",
-  (session) => {
+  (_session) => {
     GlobalRegistrator.register();
     const host = document.createElement("div");
     document.body.append(host);
@@ -753,7 +508,6 @@ test.each([undefined, "canonical"] as const)(
       getHost: () => host,
       getDocument: () => source,
       getDocumentContext: () => source,
-      getExperimentalSession: () => session,
       onSessionRefusal: (reason) => reasons.push(reason),
     });
     const manager = createHiddenEditorManager(deps);
@@ -808,7 +562,6 @@ for (const owner of ["editor", "host"] as const) {
       getHost: () => host,
       getDocument: () => source,
       getDocumentContext: () => source,
-      getExperimentalSession: () => "canonical",
       getHistoryShortcuts: () => owner,
       onCanonicalHistory: (effect) => effects.push(effect),
     });
@@ -889,7 +642,6 @@ test("canonical public batches publish the saved document and share human undo",
     getHost: () => host,
     getDocument: () => source,
     getDocumentContext: () => source,
-    getExperimentalSession: () => "canonical",
   });
   const manager = createHiddenEditorManager(deps);
   try {
@@ -946,7 +698,6 @@ test("canonical keyboard formatting and breaks publish journalled intents", () =
     getHost: () => host,
     getDocument: () => source,
     getDocumentContext: () => source,
-    getExperimentalSession: () => "canonical",
     onSessionRefusal: (reason) => reasons.push(reason),
   });
   const manager = createHiddenEditorManager(deps);
@@ -1082,7 +833,6 @@ test("canonical comment mutation results isolate committed snapshots and history
     getHost: () => host,
     getDocument: () => source,
     getDocumentContext: () => source,
-    getExperimentalSession: () => "canonical",
   });
   const manager = createHiddenEditorManager(deps);
   try {
@@ -1177,7 +927,6 @@ test("canonical thread deletion removes explicit boundary points beside a field 
     getHost: () => host,
     getDocument: () => source,
     getDocumentContext: () => source,
-    getExperimentalSession: () => "canonical",
   });
   const manager = createHiddenEditorManager(deps);
   try {
@@ -1246,7 +995,6 @@ test.each(["body", "story"] as const)(
       getHost: () => host,
       getDocument: () => source,
       getDocumentContext: () => source,
-      getExperimentalSession: () => "canonical",
     });
     const manager = createHiddenEditorManager(deps);
     const storyDeps = {
@@ -1255,7 +1003,6 @@ test.each(["body", "story"] as const)(
       getDocument: () => manager.api.getDocument(),
       getCanonicalApi: () => manager.api,
       readCanonicalDocument: () => manager.readCanonicalDocument(),
-      getExperimentalSession: () => "canonical" as const,
       getStyles: () => null,
       getTheme: () => null,
     };
@@ -1352,7 +1099,6 @@ test("canonical composition lays out its provisional text with the painter's fon
     getHost: () => host,
     getDocument: () => source,
     getDocumentContext: () => source,
-    getExperimentalSession: () => "canonical",
     getEmbeddedFontFamilyMap: () => embedded,
   });
   const manager = createHiddenEditorManager(deps);
@@ -1436,7 +1182,6 @@ test("a refused canonical activation reports once per loaded document across ret
       },
     }),
     getDocumentIdentity: () => identity,
-    getExperimentalSession: () => "canonical",
     onSessionRefusal: (reason) => reasons.push(reason),
   });
   const manager = createHiddenEditorManager(deps);
@@ -1472,7 +1217,6 @@ test("canonical suggesting uses the current author and preserves explicit mode a
     getHost: () => host,
     getDocument: () => source,
     getDocumentContext: () => source,
-    getExperimentalSession: () => "canonical",
     getEditingMode: () => (mode === "suggesting" ? "suggesting" : "editing"),
     getSuggestionAuthor: () => author,
     onSessionRefusal: (reason) => reasons.push(reason),
@@ -1591,7 +1335,6 @@ test.each([
       getHost: () => host,
       getDocument: () => source,
       getDocumentContext: () => source,
-      getExperimentalSession: () => "canonical",
       getReadOnly: () => readOnly,
       getSuggestionAuthor: () => "Story author",
       getEditingMode: () => mode,
@@ -1734,7 +1477,6 @@ test("canonical native paste and cut share one journal and clipboard failures ca
     getHost: () => host,
     getDocument: () => source,
     getDocumentContext: () => source,
-    getExperimentalSession: () => "canonical",
     getExternalPlugins: () => [clipboardPlugin],
     onSessionRefusal: (reason) => reasons.push(reason),
   });
@@ -1837,7 +1579,6 @@ test.each(["selection", "edit", "uncaptured"] as const)(
       getHost: () => host,
       getDocument: () => source,
       getDocumentContext: () => source,
-      getExperimentalSession: () => "canonical",
       onSessionRefusal: (reason) => reasons.push(reason),
     });
     const manager = createHiddenEditorManager(deps);
@@ -1930,7 +1671,6 @@ test("canonical drop moves atomically and pending clipboard reads respect read-o
     getHost: () => host,
     getDocument: () => source,
     getDocumentContext: () => source,
-    getExperimentalSession: () => "canonical",
     getReadOnly: () => readOnly,
   });
   const manager = createHiddenEditorManager(deps);
@@ -2014,7 +1754,6 @@ test.each(["editing", "suggesting"] as const)(
       getDocument: () => source,
       getDocumentContext: () => source,
       getDocumentIdentity: () => identity,
-      getExperimentalSession: () => "canonical",
       getEditingMode: () => hostMode,
       getSuggestionAuthor: () => "Current host author",
     });
@@ -2090,7 +1829,6 @@ test(
               getHost: () => host,
               getDocument: () => source,
               getDocumentContext: () => source,
-              getExperimentalSession: () => "canonical",
               onSessionRefusal: (reason, ground) => {
                 const gap = ground.gap;
                 expect(
@@ -2218,7 +1956,6 @@ test("canonical command execution reports descriptor refusals without mutation",
     getHost: () => host,
     getDocument: () => source,
     getDocumentContext: () => source,
-    getExperimentalSession: () => "canonical",
     onSessionRefusal: (message, ground) =>
       reasons.push({ message, gap: ground.gap }),
   });
@@ -2317,7 +2054,6 @@ test("selecting a table, a row or a column in a canonical session selects what t
     getHost: () => host,
     getDocument: () => source,
     getDocumentContext: () => source,
-    getExperimentalSession: () => "canonical",
   });
   const manager = createHiddenEditorManager(deps);
   try {
@@ -2378,7 +2114,6 @@ test("TOC view helper publishes through the controller in editing and suggesting
     getHost: () => host,
     getDocument: () => source,
     getDocumentContext: () => source,
-    getExperimentalSession: () => "canonical",
     onSessionRefusal: (_reason, ground) => gaps.push(ground.gap),
   });
   const manager = createHiddenEditorManager(deps);
@@ -2487,7 +2222,6 @@ test.each([
           getHost: () => host,
           getDocument: () => source,
           getDocumentContext: () => source,
-          getExperimentalSession: () => "canonical",
         });
         const manager = createHiddenEditorManager(deps);
         try {
@@ -2559,49 +2293,6 @@ test.each([
   },
 );
 
-test("legacy note snapshot refuses before the collaboration builder runs", async () => {
-  const modules = await loadCollaborationModules();
-  const source = await sourceWithNoteReference();
-  const ydoc = new Y.Doc();
-  const text = new Y.XmlText();
-  text.insert(0, "123123", {
-    footnoteRef: { id: "123", noteType: "footnote" },
-  });
-  const paragraph = new Y.XmlElement("paragraph");
-  paragraph.insert(0, [text]);
-  const fragment = ydoc.getXmlFragment("prosemirror");
-  fragment.insert(0, [paragraph]);
-  ydoc.getMap("folio:document-metadata").set("attrSchemaVersion", 11);
-  const before = Y.encodeStateAsUpdate(ydoc);
-  const build = spyOn(modules.yProseMirror, "initProseMirrorDoc");
-  expect(() =>
-    createHiddenEditorState({
-      document: source,
-      manager: singletonManager,
-      collaboration: { yXmlFragment: fragment, shouldSeed: false },
-      collaborationModules: modules,
-    }),
-  ).toThrow(FolioYjsNoteReferenceSchemaError);
-  expect(build).not.toHaveBeenCalled();
-  expect(Y.encodeStateAsUpdate(ydoc)).toEqual(before);
-  build.mockRestore();
-  ydoc.destroy();
-  const fresh = createHiddenEditorState({
-    document: source,
-    manager: singletonManager,
-  });
-  const ids: string[] = [];
-  fresh.doc.descendants((node) => {
-    for (const mark of node.marks) {
-      if (mark.type.name === "footnoteRef")
-        ids.push(mark.attrs["occurrenceId"]);
-    }
-  });
-  expect(ids).toHaveLength(1);
-  expect(ids.at(0)).toEqual(expect.any(String));
-  expect(ids.at(0)).not.toBe("");
-});
-
 test.each([
   { key: "Home", selectionType: "all" },
   { key: "End", selectionType: "all" },
@@ -2625,7 +2316,6 @@ test.each([
       getHost: () => bodyHost,
       getDocument: () => source,
       getDocumentContext: () => source,
-      getExperimentalSession: () => "canonical",
     });
     const manager = createHiddenEditorManager(deps);
     const notes = createNoteEditorManager({
@@ -2633,7 +2323,6 @@ test.each([
       getDocument: () => source,
       getCanonicalApi: () => manager.api,
       readCanonicalDocument: () => manager.readCanonicalDocument(),
-      getExperimentalSession: () => "canonical",
       getStyles: () => null,
       getTheme: () => null,
     });
@@ -2706,7 +2395,6 @@ test("committed version keys survive composition and distinguish document loads"
     getHost: () => host,
     getDocument: () => source,
     getDocumentContext: () => source,
-    getExperimentalSession: () => "canonical",
     getDocumentIdentity: () => identity,
   });
   const manager = createHiddenEditorManager(deps);
@@ -2784,7 +2472,7 @@ test("read-only switches synchronize DOM editability without changing the author
 test("typing after the browser moved the caret lands there in both session modes", () => {
   const releaseDom = acquireHarnessDom();
   try {
-    for (const session of ["legacy", "canonical"] as const) {
+    for (const _session of ["canonical"] as const) {
       const host = document.createElement("div");
       document.body.append(host);
       const source = createEmptyDocument({ initialText: "RAISEDTEXT" });
@@ -2794,7 +2482,6 @@ test("typing after the browser moved the caret lands there in both session modes
         getDocument: () => source,
         getDocumentContext: () => source,
         getExtensionManager: () => singletonManager,
-        getExperimentalSession: () => session,
         onSessionRefusal: (reason) => refusals.push(reason),
       });
       const manager = createHiddenEditorManager(deps);
@@ -2846,7 +2533,6 @@ test("a canonical body view comes from the host's sync, never from a story read"
     getHost: () => host,
     getDocument: () => source,
     getDocumentContext: () => source,
-    getExperimentalSession: () => "canonical",
   });
   const manager = createHiddenEditorManager(deps);
   try {

@@ -16,7 +16,7 @@ import { FolioDocxReviewer } from "./headless";
 
 const STAMP = { date: "2024-03-01T00:00:00.000Z", idSeed: 500 };
 
-const SESSIONS = ["legacy", "canonical"] as const;
+const SESSIONS = ["canonical"] as const;
 type Session = (typeof SESSIONS)[number];
 
 const textsOf = async (

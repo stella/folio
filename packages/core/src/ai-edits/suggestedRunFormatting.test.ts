@@ -18,7 +18,7 @@ import { FolioDocxReviewer } from "./headless";
 import { createFolioAITextRangeHandle } from "./snapshot";
 import type { FolioAIInlineFormatting } from "./types";
 
-const SESSIONS = ["legacy", "canonical"] as const;
+const SESSIONS = ["canonical"] as const;
 
 /** How each engine reports the refusal: by the same reason. */
 const REFUSAL = {

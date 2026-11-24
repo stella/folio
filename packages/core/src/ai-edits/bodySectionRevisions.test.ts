@@ -34,7 +34,7 @@ const sectionDocx = () => {
   return createDocx(document);
 };
 
-for (const session of ["legacy", "canonical"] as const)
+for (const session of ["canonical"] as const)
   for (const decision of ["accept", "reject"] as const)
     test(`${decision}ing every change resolves a body section's change (${session})`, async () => {
       const reviewer = await FolioDocxReviewer.fromBuffer(await sectionDocx(), {

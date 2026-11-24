@@ -30,7 +30,7 @@ const styleOperation = (id: string, blockId: string, styleId: string) =>
     properties: { styleId },
   }) as const satisfies FolioDocumentOperation;
 
-for (const session of ["legacy", "canonical"] as const) {
+for (const session of ["canonical"] as const) {
   test(`materializes one exact heading definition on apply in ${session}`, async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(await fixture(), {
       session,

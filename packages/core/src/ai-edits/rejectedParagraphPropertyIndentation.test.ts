@@ -14,7 +14,7 @@ import { createDocx } from "../docx/rezip";
 import { createEmptyDocument } from "../utils/createDocument";
 import { FolioDocxReviewer } from "./headless";
 
-const SESSIONS = ["legacy", "canonical"] as const;
+const SESSIONS = ["canonical"] as const;
 const LEVEL_INDENT = 720;
 const CHANGE_ID = 30;
 

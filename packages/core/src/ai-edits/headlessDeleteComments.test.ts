@@ -59,7 +59,7 @@ const assertComments = (reviewer: FolioDocxReviewer, ids: number[]) => {
   expect([...anchored].sort((left, right) => left - right)).toEqual(ids);
 };
 
-for (const session of ["legacy", "canonical"] as const) {
+for (const session of ["canonical"] as const) {
   test(`deletes explicit comment ids and their descendants in ${session}`, async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(await fixture(), {
       session,

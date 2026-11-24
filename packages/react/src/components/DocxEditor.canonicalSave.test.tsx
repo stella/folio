@@ -76,7 +76,7 @@ const createHostMutationObserver = () => {
   };
 };
 
-for (const experimentalSession of [undefined, "legacy", "canonical"] as const) {
+for (const experimentalSession of [undefined, "canonical"] as const) {
   test(`document history shortcuts in ${experimentalSession ?? "default"} ${experimentalSession === "legacy" ? "remain enabled in the legacy session" : "leave canonical history to the editor"}`, async () => {
     const container = document.createElement("div");
     document.body.append(container);
@@ -154,7 +154,6 @@ test("canonical edits save and reopen the canonical text and paragraph identity"
             accessibleName="Document editor"
             ref={editor}
             documentBuffer={bytes}
-            experimentalSession="canonical"
             onChange={hostChanges.onChange}
             onError={onError}
             showToolbar={false}
@@ -293,7 +292,6 @@ test.each(["immediate", "deferred"] as const)(
           accessibleName="Document editor"
           ref={editor}
           documentBuffer={bytes}
-          experimentalSession="canonical"
           comments={controlledComments}
           onCommentsChange={onCommentsChange}
           onError={onError}
@@ -457,7 +455,6 @@ test.each(["resolution", "content"] as const)(
           accessibleName="Document editor"
           ref={editor}
           documentBuffer={bytes}
-          experimentalSession="canonical"
           comments={controlledComments}
           onError={collectCommentErrors(errors)}
           showToolbar={false}
@@ -622,7 +619,6 @@ test("canonical header edits and new footer and note stories survive adapter sav
             accessibleName="Document editor"
             ref={editor}
             documentBuffer={bytes}
-            experimentalSession="canonical"
             onError={onError}
             showToolbar={false}
           />
@@ -812,7 +808,6 @@ test("canonical toolbar capture shortcuts publish formatting and break intents w
             accessibleName="Document editor"
             ref={editor}
             document={initialDocument}
-            experimentalSession="canonical"
             onError={onError}
             showToolbar
           />
@@ -962,7 +957,6 @@ test.each(["uncontrolled", "controlled"] as const)(
           accessibleName="Document editor"
           ref={editor}
           documentBuffer={bytes}
-          experimentalSession="canonical"
           mode={control === "controlled" ? mode : undefined}
           author="Control author"
           readOnly={readOnly}
@@ -1152,7 +1146,6 @@ for (const mode of ["editing", "suggesting"] as const) {
                 accessibleName="Document editor"
                 ref={editor}
                 documentBuffer={bytes}
-                experimentalSession="canonical"
                 mode={mode}
                 author="Note reviewer"
                 showToolbar={false}
@@ -1304,7 +1297,6 @@ test.each(CANONICAL_SAVE_SEEDS)(
               accessibleName="Document editor"
               ref={editor}
               documentBuffer={bytes}
-              experimentalSession="canonical"
               onError={onError}
               featureFlags={flags}
               showToolbar={false}
@@ -1486,7 +1478,7 @@ const createSaveNotifications = () => {
   };
 };
 
-for (const session of [undefined, "legacy", "canonical"] as const)
+for (const session of [undefined, "canonical"] as const)
   test.each(SERIALIZATION_PATH_CASES)(
     `React ${session ?? "default"} $kind reports the returned write path through save`,
     async (scenario) => {
@@ -1578,7 +1570,7 @@ for (const session of [undefined, "legacy", "canonical"] as const)
     },
   );
 
-for (const session of [undefined, "legacy", "canonical"] as const)
+for (const session of [undefined, "canonical"] as const)
   test(`a fresh ${session ?? "default"} model saves without a source package`, async () => {
     const container = document.createElement("div");
     document.body.append(container);
@@ -1639,7 +1631,7 @@ for (const session of [undefined, "legacy", "canonical"] as const)
     }
   });
 
-for (const session of [undefined, "legacy", "canonical"] as const)
+for (const session of [undefined, "canonical"] as const)
   for (const callback of [
     "onSerializationPath",
     "onSelectiveDecline",
@@ -1760,7 +1752,7 @@ const tripwireFeatureFlags = {
   selectiveSaveTripwire: true,
 };
 
-for (const session of [undefined, "legacy", "canonical"] as const)
+for (const session of [undefined, "canonical"] as const)
   test(`React ${session ?? "default"} host tripwire exceptions propagate after save acknowledgement`, async () => {
     const container = document.createElement("div");
     document.body.append(container);

@@ -9,7 +9,7 @@ import { FolioDocxReviewer } from "../ai-edits/headless";
 import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
 
-const SESSIONS = ["legacy", "canonical"] as const;
+const SESSIONS = ["canonical"] as const;
 const MODES = ["direct", "tracked-changes"] as const;
 
 const source = async (markdown: string) =>

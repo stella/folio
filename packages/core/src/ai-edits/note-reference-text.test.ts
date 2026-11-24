@@ -97,7 +97,7 @@ const MODES: readonly FolioAIEditApplyMode[] = [
   "suggested",
 ];
 
-const SESSIONS = ["legacy", "canonical"] as const;
+const SESSIONS = ["canonical"] as const;
 type Session = (typeof SESSIONS)[number];
 
 const open = async (session?: Session) => {

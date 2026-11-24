@@ -221,14 +221,12 @@ const managerDeps = ({
   host,
   source,
   readOnly,
-  sessionKind,
   onRefusal,
   onDestroy = () => undefined,
 }: {
   host: HTMLElement;
   source: Document;
   readOnly: () => boolean;
-  sessionKind: "canonical" | "legacy";
   onRefusal: (message: string, ground: CanonicalRefusalGround) => void;
   onDestroy?: () => void;
 }) =>
@@ -238,11 +236,7 @@ const managerDeps = ({
     getStyles: () => null,
     getExtensionManager: () => undefined,
     getExternalPlugins: () => [],
-    getCollaboration: () => undefined,
-    getCollaborationModules: () => null,
-    getPrecomputedInitialState: () => null,
     getReadOnly: readOnly,
-    getExperimentalSession: () => sessionKind,
     getDocumentIdentity: () => "section-fixture",
     getDocumentContext: () => source,
     onTransaction: () => undefined,
@@ -279,7 +273,6 @@ test("manager section patches refuse read-only and composition without changing 
               host,
               source,
               readOnly: () => readOnly,
-              sessionKind: "canonical",
               onRefusal: (_message, ground) => refused.push(ground.gap),
             }),
           );
@@ -332,29 +325,6 @@ test("manager section patches refuse read-only and composition without changing 
         id: "manager section patches refuse read-only and composition without changing model or journal",
       },
     );
-    const host = document.createElement("div");
-    document.body.append(host);
-    const manager = createHiddenEditorManager(
-      managerDeps({
-        host,
-        source: sectionFixture({
-          endpoints: 1,
-          finalPresence: "present",
-          notePresence: "absent",
-        }),
-        readOnly: () => false,
-        sessionKind: "legacy",
-        onRefusal: () => undefined,
-      }),
-    );
-    try {
-      expect(
-        manager.api.applyCanonicalSectionProperties({ marginLeft: 900 }),
-      ).toBeNull();
-    } finally {
-      manager.destroyView();
-      host.remove();
-    }
   } finally {
     GlobalRegistrator.unregister();
   }
@@ -375,7 +345,6 @@ test("section API refuses teardown reentry with one typed refusal and no model m
         notePresence: "present",
       }),
       readOnly: () => false,
-      sessionKind: "canonical",
       onRefusal: (_message, ground) => refused.push(ground.gap),
       onDestroy: () => invokeDuringDestroy?.(),
     }),

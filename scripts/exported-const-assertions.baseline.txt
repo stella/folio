@@ -31,8 +31,6 @@ packages/core/src/docx/paragraphTraversal.ts:BLOCK_TREE_DESCENT
 packages/core/src/docx/runParser.ts:RUN_PROPERTY_OWNERS
 packages/core/src/docx/server/build.ts:HEADING_LEVELS
 packages/core/src/docx/server/createBilingualDocument.ts:BILINGUAL_TABLE_LAYOUTS
-packages/core/src/docx/server/materializeYjsDocx.ts:FOLIO_YJS_DOCX_MATERIALIZATION_ERROR_CODES
-packages/core/src/docx/server/migrateYjsAttrSchema.ts:FOLIO_YJS_SNAPSHOT_MIGRATION_ERROR_CODES
 packages/core/src/docx/strictNames.gen.ts:STRICT_NAMES_BY_TRANSITIONAL_NAME
 packages/core/src/docx/strictNames.gen.ts:TRANSITIONAL_NAME_BY_STRICT_NAME
 packages/core/src/docx/tableLook.ts:TABLE_LOOK_FLAGS

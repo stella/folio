@@ -107,7 +107,7 @@ describe("block-level custom XML", () => {
     }
   });
 
-  test.each(["legacy", "canonical"] as const)(
+  test.each(["canonical"] as const)(
     "%s keeps a custom XML wrapper inside a table cell readable",
     async (session) => {
       const body =
@@ -191,7 +191,7 @@ describe("block-level custom XML", () => {
     expect(xml).toContain('<w:attr w:name="role" w:val="operative"/>');
   });
 
-  test.each(["legacy", "canonical"] as const)(
+  test.each(["canonical"] as const)(
     "%s keeps wrapper metadata and nested text on an editor round trip",
     async (session) => {
       const body = wrap(

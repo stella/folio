@@ -193,7 +193,7 @@ describe("paragraph mark run properties", () => {
           visibleMarks(projected),
         );
 
-        for (const engine of ["legacy", "canonical"] as const) {
+        for (const engine of ["canonical"] as const) {
           const reviewer = await FolioDocxReviewer.fromBuffer(source, {
             session: engine,
           });

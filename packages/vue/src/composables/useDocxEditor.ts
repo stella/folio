@@ -132,7 +132,6 @@ import type { HistoryShortcutOwner } from "@stll/folio-core/prosemirror/extensio
 import { ExtensionManager } from "@stll/folio-core/prosemirror/extensions/ExtensionManager";
 import { createStarterKit } from "@stll/folio-core/prosemirror/extensions/StarterKit";
 import type { CommandMap } from "@stll/folio-core/prosemirror/extensions/types";
-import { createDerivedFieldsPlugin } from "@stll/folio-core/prosemirror/plugins/derivedFields";
 import {
   createSuggestionModePlugin,
   setSuggestionMode,
@@ -690,11 +689,6 @@ export function useDocxEditor(
     onKeyAction: (action) => onSlashMenuKeyAction?.(action) ?? false,
   });
   const templatePreviewPlugin = createTemplatePreviewValuesPlugin();
-  // The default session keeps derived fields current through a plugin; the
-  // canonical session does it in the hidden editor.
-  const derivedFieldsPlugin = createDerivedFieldsPlugin(() =>
-    getDerivedFields?.(),
-  );
 
   const templatePluginsEnabled = (): boolean =>
     toValue(showTemplateDirectives) === true;
@@ -711,7 +705,6 @@ export function useDocxEditor(
         ? [templateDirectivesPlugin, templateSlashMenu]
         : []),
       templatePreviewPlugin,
-      derivedFieldsPlugin,
     ];
   }
 

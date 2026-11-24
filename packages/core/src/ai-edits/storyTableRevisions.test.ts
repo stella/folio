@@ -98,7 +98,7 @@ const STORIES = [
   { type: "footer", relationshipId: FOOTER },
 ] as const satisfies readonly FolioEditableDocumentStoryHandle[];
 
-for (const session of ["legacy", "canonical"] as const)
+for (const session of ["canonical"] as const)
   for (const view of ["final", "original"] as const)
     for (const story of STORIES)
       test(`a ${story.type} table's property revisions resolve to the ${view} view (${session})`, async () => {

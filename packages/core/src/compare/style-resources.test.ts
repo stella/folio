@@ -316,7 +316,7 @@ describe("referenced comparison style resources", () => {
     );
   });
 
-  test.each(["legacy", "canonical"] as const)(
+  test.each(["canonical"] as const)(
     "a tracked restyled replacement rejects to the old authored run formatting (%s)",
     async (session) => {
       const styles: StyleDefinitions = {

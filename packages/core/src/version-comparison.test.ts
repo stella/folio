@@ -271,7 +271,7 @@ const findChange = (
   return change;
 };
 
-const SESSIONS = ["legacy", "canonical"] as const;
+const SESSIONS = ["canonical"] as const;
 
 describe("compareDocxVersions: real w14:paraId alignment", () => {
   test("reports a nested text-box table-cell edit with stable source handles", async () => {

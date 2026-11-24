@@ -231,7 +231,7 @@ describe("a tracked deletion of a paragraph that is a pending insertion", () => 
   // Deleting one's own inserted paragraph takes the insertion back: the
   // document is the one before it, ids and paragraph properties included,
   // live, saved, resolved and undone.
-  for (const session of ["canonical", "legacy"] as const) {
+  for (const session of ["canonical"] as const) {
     for (const mode of ["tracked-changes", "suggested"] as const) {
       for (const [where, anchor] of [
         ["inside the story", "The Buyer"],
@@ -374,7 +374,7 @@ describe("a tracked deletion of a paragraph that is a pending insertion", () => 
     ["inside the story", "The Buyer"],
     ["at its end", "Signed"],
   ] as const) {
-    for (const session of ["canonical", "legacy"] as const) {
+    for (const session of ["canonical"] as const) {
       test(`retracting it ${where} retires its comment (${session})`, async () => {
         const reviewer = await open(undefined, session);
         const original = (
@@ -576,7 +576,7 @@ describe("inserting after a deleted final paragraph", () => {
       "Accepting the pending deletion of this paragraph's break would run its words into the inserted table. Resolve that change first, or insert the table elsewhere.",
   };
 
-  for (const session of ["canonical", "legacy"] as const)
+  for (const session of ["canonical"] as const)
     for (const { deleted, anchor } of [
       { deleted: ["Signed"], anchor: "The Buyer" },
       { deleted: ["Signed", "The Buyer"], anchor: "The Supplier" },
@@ -626,7 +626,7 @@ describe("inserting after a deleted final paragraph", () => {
 
   // In one batch, a direct deletion that joins the anchor into the closing
   // paragraph leaves the table after the paragraph that now holds it.
-  for (const session of ["canonical", "legacy"] as const)
+  for (const session of ["canonical"] as const)
     for (const { deleted, anchor } of [
       { deleted: ["Signed"], anchor: "The Buyer" },
       { deleted: ["Signed", "The Buyer"], anchor: "The Supplier" },

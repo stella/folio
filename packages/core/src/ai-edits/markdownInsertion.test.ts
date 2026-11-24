@@ -24,7 +24,7 @@ const edit = (text: string) =>
     ],
   }) as const;
 
-for (const session of ["legacy", "canonical"] as const) {
+for (const session of ["canonical"] as const) {
   test(`${session} reviews Markdown headings and inline formatting after a save`, async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(await source(), {
       session,
@@ -122,7 +122,7 @@ const tableEdit = (text: string) =>
 
 const table = "| Term | Value |\n| --- | --- |\n| Goods | Paid |";
 
-for (const session of ["legacy", "canonical"] as const) {
+for (const session of ["canonical"] as const) {
   test(`${session} accepts and rejects a tracked Markdown table after reopening`, async () => {
     const document = await paragraphsDocx([
       [textRun(input)],

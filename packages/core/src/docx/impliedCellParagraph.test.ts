@@ -60,7 +60,7 @@ for (const { name, cell } of CELLS) {
   test(`a cell ${name} reads alike on both engines`, async () => {
     const buffer = await packageWith(cell);
     const [legacy, canonical] = await Promise.all(
-      (["legacy", "canonical"] as const).map((session) =>
+      (["canonical"] as const).map((session) =>
         FolioDocxReviewer.fromBuffer(buffer.slice(0), { session }),
       ),
     );

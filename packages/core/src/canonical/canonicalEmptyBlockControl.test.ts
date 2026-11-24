@@ -33,7 +33,7 @@ const controlsIn = async (buffer: ArrayBuffer): Promise<number> =>
 
 test("an empty content control reads alike on both engines", async () => {
   const [legacy, canonical] = await Promise.all(
-    (["legacy", "canonical"] as const).map((session) =>
+    (["canonical"] as const).map((session) =>
       FolioDocxReviewer.fromBuffer(source(), { session }),
     ),
   );
@@ -42,7 +42,7 @@ test("an empty content control reads alike on both engines", async () => {
   expect(texts(canonical)).toEqual(texts(legacy));
 });
 
-test.each(["legacy", "canonical"] as const)(
+test.each(["canonical"] as const)(
   "an edit beside an empty content control keeps the control (%s)",
   async (session) => {
     const reviewer = await FolioDocxReviewer.fromBuffer(source(), {
@@ -72,7 +72,7 @@ test.each(["legacy", "canonical"] as const)(
   },
 );
 
-const SESSIONS = ["legacy", "canonical"] as const;
+const SESSIONS = ["canonical"] as const;
 const INSERTED = "Inserted beside the control.";
 
 const fillerOf = (reviewer: FolioDocxReviewer) => {

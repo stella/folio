@@ -285,7 +285,7 @@ const saveEdited = async ({
   return { buffer, source, edited: await documentPartOf(buffer), untouched };
 };
 
-describe.each(["legacy", "canonical"] as const)(
+describe.each(["canonical"] as const)(
   "%s paragraph edit locality",
   (session) => {
     test(

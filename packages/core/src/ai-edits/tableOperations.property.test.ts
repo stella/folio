@@ -306,7 +306,7 @@ const buildOperation = (
   }
 };
 
-const SESSIONS = ["legacy", "canonical"] as const;
+const SESSIONS = ["canonical"] as const;
 
 describe.each(SESSIONS)("%s session", (session) => {
   const open = (bytes: ArrayBuffer) =>

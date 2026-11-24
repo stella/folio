@@ -169,7 +169,7 @@ describe("a replacement across a formatting boundary", () => {
       source: "The [Supplier](https://example.com/party) agrees.",
       expected: "The [Provider performs](https://example.com/party).",
     },
-    ...(["canonical", "legacy"] as const).map((session) => ({
+    ...(["canonical"] as const).map((session) => ({
       boundary: "bold",
       session,
       source: "The **Supplier** agrees.",
@@ -619,7 +619,7 @@ describe("an edit applied directly and the same edit accepted", () => {
     );
   });
 
-  test.each(["legacy", "canonical"] as const)(
+  test.each(["canonical"] as const)(
     "checks disjoint comment fidelity across a saved tracked replacement (%s)",
     async (session) => {
       const { content, comments } = paragraphOf([

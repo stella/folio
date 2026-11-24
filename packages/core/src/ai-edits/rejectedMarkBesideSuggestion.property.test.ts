@@ -294,7 +294,7 @@ const rejectMixedReview = async ({
   expect(await textsOf(await reviewer.toBuffer())).toEqual(SOURCE_TEXTS);
 };
 
-test.each(["legacy", "canonical"] as const)(
+test.each(["canonical"] as const)(
   "a suggested split remains rejectable after nearby tracked marks join its anchor (%s)",
   async (session) => {
     const reviewer = await FolioDocxReviewer.fromBuffer(await source(), {

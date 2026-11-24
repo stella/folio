@@ -23,7 +23,7 @@ const followers = {
 } satisfies Record<string, BlockContent>;
 
 for (const [kind, follower] of Object.entries(followers))
-  for (const session of ["legacy", "canonical"] as const)
+  for (const session of ["canonical"] as const)
     test(`${session}: actual insertion before ${kind} rejects to its source`, async () => {
       const document = {
         package: {
@@ -94,7 +94,7 @@ for (const [kind, follower] of Object.entries(followers))
         }
     });
 
-for (const session of ["legacy", "canonical"] as const)
+for (const session of ["canonical"] as const)
   test(`${session}: removing an empty added mark before an opaque block takes its section with it`, async () => {
     for (const owner of [
       "unavailable",

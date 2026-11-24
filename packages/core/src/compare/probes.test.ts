@@ -67,7 +67,7 @@ const OPTIONS = {
   timestamp: "2024-03-01T00:00:00.000Z",
 } as const;
 
-const SESSIONS = ["legacy", "canonical"] as const;
+const SESSIONS = ["canonical"] as const;
 
 const PROSE_BASE = readFixture("upstream-styled-content.docx");
 const TABLE_BASE = readFixture("upstream-with-tables.docx");
@@ -507,7 +507,7 @@ describe("single-mutation probes", () => {
 
   // The story's last two paragraphs both move away: the last one's source
   // retires the break before both, so accepting leaves no moved words.
-  test.each(["legacy", "canonical"] as const)(
+  test.each(["canonical"] as const)(
     "move_clause: the story's last two paragraphs move earlier (%s)",
     async (session) => {
       const textsOf = (reviewer: FolioDocxReviewer) =>
@@ -655,7 +655,7 @@ describe("single-mutation probes", () => {
   // Adjacent new columns are one operation, so a tracked comparison records
   // them under the table's one pending grid change.
   test.each(
-    (["legacy", "canonical"] as const).flatMap((session) =>
+    (["canonical"] as const).flatMap((session) =>
       (["middle", "end"] as const).map((place) => ({ session, place })),
     ),
   )(

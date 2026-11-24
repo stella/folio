@@ -8,7 +8,7 @@ import { fromMarkdown } from "../markdown/fromMarkdown";
 import { FolioDocxReviewer } from "./headless";
 import { isFolioAIContentBlock } from "./snapshot";
 
-const SESSIONS = ["canonical", "legacy"] as const;
+const SESSIONS = ["canonical"] as const;
 
 const CASES = SESSIONS.flatMap((session) =>
   (["direct", "tracked-changes"] as const).flatMap((mode) =>

@@ -113,7 +113,7 @@ test("rejects a held batch when deleting an intervening paragraph exposes a fore
   ]);
 });
 
-for (const session of ["legacy", "canonical"] as const) {
+for (const session of ["canonical"] as const) {
   test(`${session} protects a foreign revision in a collapsed cell when deleting its table`, async () => {
     const docx = await createDocx({
       package: {

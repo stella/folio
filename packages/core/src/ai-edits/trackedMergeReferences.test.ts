@@ -19,7 +19,7 @@ import { paragraphPropertiesSnapshot } from "../prosemirror/commands/propertyCha
 import { resolveStateStory } from "../prosemirror/markupViewProjection";
 import { FolioDocxReviewer } from "./headless";
 
-const SESSIONS = ["legacy", "canonical"] as const;
+const SESSIONS = ["canonical"] as const;
 type Session = (typeof SESSIONS)[number];
 
 const open = async (markdown: string, session: Session) => {

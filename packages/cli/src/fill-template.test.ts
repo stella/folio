@@ -195,7 +195,7 @@ describe("fill_template", () => {
     expect(texts.get("word/footer-rIdFooter.xml")).toContain("Footer stays");
   });
 
-  test.each(["legacy", "canonical"] as const)(
+  test.each(["canonical"] as const)(
     "%s reads a block list that keeps the front matter through keepUntil",
     async (session) => {
       const { report, reviewer } = await fill(

@@ -36,7 +36,7 @@ afterAll(() => {
   GlobalRegistrator.unregister();
 });
 
-const SESSIONS = ["legacy", "canonical"] as const;
+const SESSIONS = ["canonical"] as const;
 type Session = (typeof SESSIONS)[number];
 
 /** Whether `value` is a whole document, not some of its content. */

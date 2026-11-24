@@ -87,7 +87,7 @@ describe("edit locality", () => {
    * paragraph is re-serialized. The invariant used to report the whole part
    * changing here, and the minted ids being written to disk with it.
    */
-  test.each(["legacy", "canonical"] as const)(
+  test.each(["canonical"] as const)(
     "%s keeps the paragraphs an edit did not touch in an id-less package",
     async (session) => {
       const buffer = await buildParagraphsDocx([

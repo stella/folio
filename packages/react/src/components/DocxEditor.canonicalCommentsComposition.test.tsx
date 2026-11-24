@@ -222,7 +222,6 @@ for (const shape of SHAPES) {
                       accessibleName="Document editor"
                       ref={editor}
                       documentBuffer={bytes}
-                      experimentalSession="canonical"
                       comments={controls.comments}
                       onError={observer.onError}
                       onChange={onDocumentChange}
@@ -432,7 +431,6 @@ test("committed comments are derived once across caret and composition renders",
         accessibleName="Document editor"
         ref={editor}
         documentBuffer={bytes}
-        experimentalSession="canonical"
         onError={observer.onError}
         showToolbar={showToolbar}
       />
@@ -562,7 +560,6 @@ test("external loads refresh committed comments when selection and history stay 
             accessibleName="Document editor"
             ref={editor}
             document={first}
-            experimentalSession="canonical"
             onError={observer.onError}
             preserveDocumentWhileLoading
           />
@@ -586,7 +583,6 @@ test("external loads refresh committed comments when selection and history stay 
             accessibleName="Document editor"
             ref={editor}
             document={second}
-            experimentalSession="canonical"
             onError={observer.onError}
             preserveDocumentWhileLoading
           />

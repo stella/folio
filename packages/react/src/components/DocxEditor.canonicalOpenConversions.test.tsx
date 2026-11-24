@@ -93,7 +93,6 @@ const mountCanonicalEditor = async (text: string, errors: Error[]) => {
           ref={editor}
           accessibleName="Document editor"
           documentBuffer={bytes}
-          experimentalSession="canonical"
           showToolbar={false}
           onError={onError}
         />

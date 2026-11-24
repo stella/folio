@@ -47,7 +47,7 @@ const OPTIONS = {
   timestamp: "2026-09-08T00:00:00.000Z",
 } as const;
 const REVISION_STAMP = { date: OPTIONS.timestamp, idSeed: 1 } as const;
-const SESSIONS = ["legacy", "canonical"] as const;
+const SESSIONS = ["canonical"] as const;
 /** Revision ids are an allocation detail; the engines number them apart. */
 const withoutRevisionIds = (xml: string): string =>
   xml.replace(/ w:id="\d+"/gu, "");

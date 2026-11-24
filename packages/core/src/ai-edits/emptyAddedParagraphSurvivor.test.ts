@@ -43,7 +43,7 @@ test("rejected bare added containers leave one empty carrier and preserve every 
         .unwrap()
         .slice().buffer;
       const revisions = Array.from({ length }, (_, index) => index + 1);
-      for (const session of ["legacy", "canonical"] as const)
+      for (const session of ["canonical"] as const)
         for (const decision of ["accept", "reject"] as const)
           for (const route of [
             "read",

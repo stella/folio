@@ -32,7 +32,7 @@ const GRID: TableSpec = {
   })),
 };
 
-const SESSIONS = ["legacy", "canonical"] as const;
+const SESSIONS = ["canonical"] as const;
 const MODES = ["direct", "tracked-changes"] as const;
 const AXES = [
   {

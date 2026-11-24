@@ -33,7 +33,7 @@ const cellChanges = (reviewer: FolioDocxReviewer) =>
       blockId,
     }));
 
-const SESSIONS = ["legacy", "canonical"] as const;
+const SESSIONS = ["canonical"] as const;
 type Session = (typeof SESSIONS)[number];
 
 const build = async (

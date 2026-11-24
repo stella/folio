@@ -10,7 +10,7 @@ import type { Document, Run } from "../types/document";
 import { FolioDocxReviewer } from "./headless";
 
 // Whole-paragraph range fixtures missed comments beside unchanged prefix text.
-test.each(["legacy", "canonical"] as const)(
+test.each(["canonical"] as const)(
   "aligned comment coverage agrees between direct and accepted tracked replacements in %s",
   async (session) => {
     await assertProperty(

@@ -1217,7 +1217,7 @@ describe("compareDocx", () => {
     );
   });
 
-  test.each(["legacy", "canonical"] as const)(
+  test.each(["canonical"] as const)(
     "added rows do not make surviving cells report as changed (%s)",
     async (session) => {
       // Each inserted row is one structural change. Exact row evidence keeps the

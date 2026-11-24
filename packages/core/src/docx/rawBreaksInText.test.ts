@@ -11,7 +11,7 @@ import { buildRawPackage, SECTION } from "../__tests__/documentShapes";
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { parseDocx } from "./parser";
 
-const SESSIONS = ["legacy", "canonical"] as const;
+const SESSIONS = ["canonical"] as const;
 
 /** Each raw spelling inside `w:t`, and the text it reads as. */
 const SHAPES = [

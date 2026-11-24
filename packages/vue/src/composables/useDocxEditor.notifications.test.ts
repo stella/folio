@@ -86,7 +86,6 @@ test.each(["note", "body"] as const)(
             hiddenContainer: shallowRef(hidden),
             pagesContainer: shallowRef(pages),
             noteEditorContainer: shallowRef(notes),
-            experimentalSession: "canonical",
             onChange: (document) => changes.push(document),
             onError: (error) => panic(error.message),
           });
@@ -185,7 +184,6 @@ test("a reactive document a host loads is held raw, so the host's copies can clo
     defineComponent({
       setup() {
         holder.editor = useDocxEditor({
-          experimentalSession: "legacy",
           hiddenContainer: shallowRef(null),
           pagesContainer: shallowRef(null),
           onError: (error) => panic(error.message),
@@ -224,7 +222,6 @@ const mountDefaultEditor = async (text: string) => {
     defineComponent({
       setup() {
         holder.editor = useDocxEditor({
-          experimentalSession: "legacy",
           hiddenContainer: shallowRef(hidden),
           pagesContainer: shallowRef(pages),
           onChange: (changed) => changes.push(changed),
@@ -300,48 +297,6 @@ test("the editor's readers read the document without a copy; the host's getDocum
   } finally {
     counter.stop();
     mounted.unmount();
-  }
-});
-
-test("a document holding a reactive proxy deeper down is held as raw data", () => {
-  const container = document.createElement("div");
-  document.body.append(container);
-  const holder: { editor: ReturnType<typeof useDocxEditor> | null } = {
-    editor: null,
-  };
-  const app = createApp(
-    defineComponent({
-      setup() {
-        holder.editor = useDocxEditor({
-          experimentalSession: "legacy",
-          hiddenContainer: shallowRef(null),
-          pagesContainer: shallowRef(null),
-          onError: (error) => panic(error.message),
-        });
-        return () => h("div");
-      },
-    }),
-  );
-  app.mount(container);
-  try {
-    const adapter = holder.editor ?? panic("Expected mounted Vue editor");
-    const plain = createEmptyDocument({ initialText: "Body" });
-    // A spread of a reactive document is a plain object holding proxies.
-    const hosted = { ...reactive(plain) };
-    expect(isProxy(hosted)).toBe(false);
-    expect(isProxy(hosted.package)).toBe(true);
-    adapter.loadDocument(hosted);
-    const model = adapter.modelDocument.value ?? panic("Expected a model");
-    expect(isProxy(model.package)).toBe(false);
-    expect(() => adapter.getDocument()).not.toThrow();
-    expect(adapter.getDocument()?.package.document.content).toEqual(
-      plain.package.document.content,
-    );
-    // The host's own object is left as it was.
-    expect(isProxy(hosted.package)).toBe(true);
-  } finally {
-    app.unmount();
-    container.remove();
   }
 });
 

@@ -61,7 +61,6 @@ test("a settled canonical edit hands the host one copy and keeps the session's d
             ref={editor}
             accessibleName="Document editor"
             document={createEmptyDocument({ initialText: "Start" })}
-            experimentalSession="canonical"
             showToolbar={false}
             onChange={recordChange}
           />

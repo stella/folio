@@ -395,7 +395,7 @@ for (const story of REVIEW_STORIES)
     });
   }
 
-for (const session of ["legacy", "canonical"] as const) {
+for (const session of ["canonical"] as const) {
   test(`${session} forks keep story states and comment overrides independent`, async () => {
     const original = await FolioDocxReviewer.fromBuffer(await reviewPackage(), {
       session,

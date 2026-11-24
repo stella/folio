@@ -138,7 +138,7 @@ const deleteControlText = async ({
 const controlCount = (xml: string): number =>
   (xml.match(/<w:sdt>/gu) ?? []).length;
 
-test.each(["legacy", "canonical"] as const)(
+test.each(["canonical"] as const)(
   "tracked text replacement starting inside an inline control keeps it (%s)",
   async (session) => {
     const source = await createDocx(

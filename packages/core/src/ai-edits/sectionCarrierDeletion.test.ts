@@ -147,7 +147,7 @@ describe("deleting the paragraph that ends a section", () => {
     );
   });
 
-  test.each(["legacy", "canonical"] as const)(
+  test.each(["canonical"] as const)(
     "%s merges its section into the next one and saves in direct mode",
     async (session) => {
       const reviewer = await FolioDocxReviewer.fromBuffer(

@@ -88,7 +88,7 @@ const run = (state: EditorState, command: Command) => {
   return { handled, transaction, doc: transaction?.doc ?? state.doc };
 };
 
-test.each(["legacy", "canonical"] as const)(
+test.each(["canonical"] as const)(
   "generated compare corpus resolves every parsed story like the full-range commands (%s)",
   async (session) => {
     let configurations = 0;

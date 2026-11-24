@@ -89,52 +89,44 @@ describe("field results in AI block text", () => {
     );
   });
 
-  describe.each(["legacy", "canonical"] as const)(
-    "%s review text",
-    (session) => {
-      test.each([
-        "see Clause 3.6(a) above",
-        "dated 1 March",
-        "received 2 March",
-      ])(
-        "reports the displayed field result when deleting %s",
-        async (text) => {
-          const reviewer = await FolioDocxReviewer.fromBuffer(
-            await createFieldDocx(),
-            { session },
-          );
-          const block = reviewer
-            .snapshot()
-            .blocks.find((candidate) => candidate.text === text);
-          if (!block)
-            throw new Error("Expected a paragraph containing a field.");
-          const result = reviewer.applyOperations(
-            [{ id: "delete", type: "deleteBlock", blockId: block.id }],
-            { mode: "tracked-changes", undefinedReferences: "refuse" },
-          );
-          expect(result.skipped).toEqual([]);
-          expect(result.applied).toHaveLength(1);
+  describe.each(["canonical"] as const)("%s review text", (session) => {
+    test.each(["see Clause 3.6(a) above", "dated 1 March", "received 2 March"])(
+      "reports the displayed field result when deleting %s",
+      async (text) => {
+        const reviewer = await FolioDocxReviewer.fromBuffer(
+          await createFieldDocx(),
+          { session },
+        );
+        const block = reviewer
+          .snapshot()
+          .blocks.find((candidate) => candidate.text === text);
+        if (!block) throw new Error("Expected a paragraph containing a field.");
+        const result = reviewer.applyOperations(
+          [{ id: "delete", type: "deleteBlock", blockId: block.id }],
+          { mode: "tracked-changes", undefinedReferences: "refuse" },
+        );
+        expect(result.skipped).toEqual([]);
+        expect(result.applied).toHaveLength(1);
 
-          const reopened = await FolioDocxReviewer.fromBuffer(
-            await reviewer.toBuffer(),
-            { session },
-          );
-          for (const document of [reviewer, reopened]) {
-            const changes = document.getChanges();
-            expect(
-              changes
-                .filter((change) => change.type === "deletion")
-                .map((change) => change.text)
-                .join(""),
-            ).toBe(text);
-            expect(
-              changes
-                .filter((change) => change.type === "paragraphMarkDeleted")
-                .map((change) => change.text),
-            ).toEqual([text]);
-          }
-        },
-      );
-    },
-  );
+        const reopened = await FolioDocxReviewer.fromBuffer(
+          await reviewer.toBuffer(),
+          { session },
+        );
+        for (const document of [reviewer, reopened]) {
+          const changes = document.getChanges();
+          expect(
+            changes
+              .filter((change) => change.type === "deletion")
+              .map((change) => change.text)
+              .join(""),
+          ).toBe(text);
+          expect(
+            changes
+              .filter((change) => change.type === "paragraphMarkDeleted")
+              .map((change) => change.text),
+          ).toEqual([text]);
+        }
+      },
+    );
+  });
 });

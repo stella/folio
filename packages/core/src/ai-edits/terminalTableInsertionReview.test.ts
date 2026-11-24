@@ -3,7 +3,7 @@ import { expect, test } from "bun:test";
 import { paragraphsDocx, textRun } from "../__tests__/operationBatchDocuments";
 import { FolioDocxReviewer } from "./headless";
 
-test.each(["legacy", "canonical"] as const)(
+test.each(["canonical"] as const)(
   "rejecting a terminal table insertion restores the original final paragraph (%s)",
   async (session) => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
@@ -38,7 +38,7 @@ test.each(["legacy", "canonical"] as const)(
   },
 );
 
-test.each(["legacy", "canonical"] as const)(
+test.each(["canonical"] as const)(
   "rejecting a table appended beside a pending final deletion restores the source (%s)",
   async (session) => {
     const reviewer = await FolioDocxReviewer.fromBuffer(

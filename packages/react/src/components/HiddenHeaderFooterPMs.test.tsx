@@ -1,96 +1,10 @@
-import { act, createRef } from "react";
-import { createRoot } from "react-dom/client";
-
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
-import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
 
 import type { Document, HeaderFooter } from "@stll/folio-core/types/document";
 
-import {
-  enumerateHfSlots,
-  HiddenHeaderFooterPMs,
-} from "./HiddenHeaderFooterPMs";
-import type { HiddenHeaderFooterPMsRef } from "./HiddenHeaderFooterPMs";
-
-const persistentHeaderDocument = {
-  package: {
-    document: { content: [] },
-    headers: new Map([
-      [
-        "rIdH",
-        {
-          type: "header",
-          hdrFtrType: "default",
-          content: [
-            {
-              type: "paragraph",
-              content: [
-                { type: "run", content: [{ type: "text", text: "Header" }] },
-              ],
-            },
-          ],
-        },
-      ],
-    ]),
-  },
-} satisfies Document;
+import { enumerateHfSlots } from "./HiddenHeaderFooterPMs";
 
 // Outside a canonical session there is no session document to read.
-const readNoCanonicalDocument = () => null;
-
-test("persistent header/footer views refuse edits through read-only switches", async () => {
-  const ownsDom = typeof document === "undefined";
-  if (ownsDom) GlobalRegistrator.register();
-  const actEnvironment = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT");
-  Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
-  const host = document.createElement("div");
-  document.body.append(host);
-  const root = createRoot(host);
-  const ref = createRef<HiddenHeaderFooterPMsRef>();
-  try {
-    await act(async () =>
-      root.render(
-        <HiddenHeaderFooterPMs
-          experimentalSession="legacy"
-          ref={ref}
-          document={persistentHeaderDocument}
-          readCanonicalDocument={readNoCanonicalDocument}
-        />,
-      ),
-    );
-    const view = ref.current?.getView("rIdH");
-    if (!view) panic("Expected a persistent header view");
-    const authored = view.state.doc;
-    for (const readOnly of [true, false, true]) {
-      await act(async () =>
-        root.render(
-          <HiddenHeaderFooterPMs
-            experimentalSession="legacy"
-            ref={ref}
-            document={persistentHeaderDocument}
-            readCanonicalDocument={readNoCanonicalDocument}
-            readOnly={readOnly}
-          />,
-        ),
-      );
-      expect(ref.current?.getView("rIdH")).toBe(view);
-      expect(view.editable).toBe(!readOnly);
-      if (readOnly) {
-        await act(async () =>
-          view.dispatch(view.state.tr.insertText("Refused", 1)),
-        );
-        expect(view.state.doc.eq(authored)).toBe(true);
-      }
-    }
-  } finally {
-    await act(async () => root.unmount());
-    host.remove();
-    Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", actEnvironment);
-    if (ownsDom) GlobalRegistrator.unregister();
-  }
-});
-
 function hf(kind: "header" | "footer" = "header"): HeaderFooter {
   return {
     type: kind,

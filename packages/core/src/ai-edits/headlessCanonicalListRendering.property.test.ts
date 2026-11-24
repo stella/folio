@@ -363,7 +363,7 @@ describe("a list's numbering", () => {
       "Header cell numbered": "2.",
       "Note numbered": "1.",
     };
-    for (const session of ["canonical", "legacy"] as const)
+    for (const session of ["canonical"] as const)
       expect(markersOf((await open(buffer, session)).toDocument())).toEqual(
         expected,
       );

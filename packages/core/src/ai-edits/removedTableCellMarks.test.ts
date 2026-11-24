@@ -42,7 +42,7 @@ const OUTCOMES = {
   accept: ["shall", "Left", "Left", "Right", ""],
 } as const;
 
-for (const session of ["legacy", "canonical"] as const)
+for (const session of ["canonical"] as const)
   for (const decision of ["accept", "reject"] as const)
     test(`${decision}ing a table pasted while suggesting resolves every change (${session})`, async () => {
       const reviewer = await FolioDocxReviewer.fromBuffer(await pastedTable(), {
@@ -122,7 +122,7 @@ const NESTED_OUTCOMES = {
   ],
 } as const;
 
-for (const session of ["legacy", "canonical"] as const)
+for (const session of ["canonical"] as const)
   for (const decision of ["accept", "reject"] as const)
     test(`${decision}ing a whole document replaced over a nested table resolves every change (${session})`, async () => {
       const reviewer = await FolioDocxReviewer.fromBuffer(

@@ -86,7 +86,7 @@ const suggest = (
   return call.result as SuggestSummary;
 };
 
-const SESSIONS = ["legacy", "canonical"] as const;
+const SESSIONS = ["canonical"] as const;
 
 for (const session of SESSIONS)
   describe(`suggest_changes with two operations on one block (${session})`, () => {

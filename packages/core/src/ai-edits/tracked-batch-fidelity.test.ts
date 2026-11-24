@@ -43,7 +43,7 @@ const edit = {
   replace: replacementText,
 } as const;
 
-test.each(["legacy", "canonical"] as const)(
+test.each(["canonical"] as const)(
   "%s admits a tracked deletion that identifies its retired comment",
   async (session) => {
     const reviewer = await FolioDocxReviewer.fromBuffer(await source(), {
@@ -125,7 +125,7 @@ test("refuses a tracked batch whose combined deletions remove an unreported comm
   }
 });
 
-for (const session of ["legacy", "canonical"] as const) {
+for (const session of ["canonical"] as const) {
   test(`${session} admits a reversible tracked edit beside a commented block`, async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(await source(), {
       session,

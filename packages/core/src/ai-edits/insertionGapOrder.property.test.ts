@@ -548,7 +548,7 @@ const readsApart = (placed: readonly Placed[]): boolean =>
 const label = (placed: readonly Placed[]): string[] =>
   placed.map((entry) => entry.label);
 
-for (const session of ["canonical", "legacy"] as const) {
+for (const session of ["canonical"] as const) {
   test(`tracked insertion of a table after a paragraph whose break is pending deletion (${session})`, async () => {
     const reviewer = await open(
       {
@@ -617,7 +617,7 @@ for (const session of ["canonical", "legacy"] as const) {
   });
 }
 
-test.each(["canonical", "legacy"] as const)(
+test.each(["canonical"] as const)(
   "inserts before the next paragraph ahead of a removed table (%s)",
   async (session) => {
     const reviewed = await replay(
@@ -661,7 +661,7 @@ test.each(["canonical", "legacy"] as const)(
 );
 
 test.each(
-  (["canonical", "legacy"] as const).flatMap((session) =>
+  (["canonical"] as const).flatMap((session) =>
     (
       [
         ["heading", "plain"],

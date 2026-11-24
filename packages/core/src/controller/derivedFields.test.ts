@@ -1,12 +1,9 @@
 import { panic } from "better-result";
 import { expect, test } from "bun:test";
-import { history } from "prosemirror-history";
 import type { Node as PMNode } from "prosemirror-model";
 import { Plugin } from "prosemirror-state";
 
 import { acquireHarnessDom } from "../../../../test/harnessDom";
-import { createDerivedFieldsPlugin } from "../prosemirror/plugins/derivedFields";
-import { createSuggestionModePlugin } from "../prosemirror/plugins/suggestionMode";
 import type { Document } from "../types/document";
 import type { FolioDerivedFields } from "../types/fields";
 import {
@@ -43,7 +40,7 @@ const source = (): Document => ({
   },
 });
 
-const mount = (session: "canonical" | "prosemirror") => {
+const mount = () => {
   const releaseDom = acquireHarnessDom();
   const host = document.createElement("div");
   document.body.append(host);
@@ -67,21 +64,8 @@ const mount = (session: "canonical" | "prosemirror") => {
     getDocumentIdentity: () => "fields",
     getStyles: () => null,
     getExtensionManager: () => undefined,
-    getExternalPlugins: () =>
-      session === "canonical"
-        ? [observer]
-        : [
-            observer,
-            history(),
-            createSuggestionModePlugin(false),
-            createDerivedFieldsPlugin(() => exhibits),
-          ],
-    getCollaboration: () => undefined,
-    getCollaborationModules: () => null,
-    getPrecomputedInitialState: () => null,
+    getExternalPlugins: () => [observer],
     getReadOnly: () => false,
-    getExperimentalSession: () =>
-      session === "canonical" ? "canonical" : "legacy",
     getDerivedFields: () => exhibits,
     getEditingMode: () => "editing",
     getSuggestionAuthor: () => "Reviewer",
@@ -113,10 +97,9 @@ const mount = (session: "canonical" | "prosemirror") => {
   };
   return {
     api: manager.api,
-    /** Whether a host plugin's view saw the document the editor shows. */
-    observedShown: () => observed === view.state.doc,
     refusals,
     shown,
+    observedShown: () => observed === view.state.doc,
     toEnd,
     destroy: () => {
       manager.destroyView();
@@ -132,45 +115,42 @@ const insert = (instruction: string) => ({
   locked: true,
 });
 
-test.each(["canonical", "prosemirror"] as const)(
-  "%s inserts fields and keeps their derived texts with each edit, undone together",
-  (session) => {
-    const editor = mount(session);
-    try {
-      editor.toEnd();
-      expect(editor.api.insertField(insert("invoice"))).toBe(true);
-      expect(editor.shown()).toEqual(["Exhibit 1"]);
+test("inserts fields and keeps their derived texts with each edit, undone together", () => {
+  const editor = mount();
+  try {
+    editor.toEnd();
+    expect(editor.api.insertField(insert("invoice"))).toBe(true);
+    expect(editor.shown()).toEqual(["Exhibit 1"]);
 
-      // A second source numbers after the first; the first again reuses 1.
-      editor.toEnd();
-      expect(editor.api.insertField(insert("contract"))).toBe(true);
-      editor.toEnd();
-      expect(editor.api.insertField(insert("invoice"))).toBe(true);
-      expect(editor.shown()).toEqual(["Exhibit 1", "Exhibit 2", "Exhibit 1"]);
+    // A second source numbers after the first; the first again reuses 1.
+    editor.toEnd();
+    expect(editor.api.insertField(insert("contract"))).toBe(true);
+    editor.toEnd();
+    expect(editor.api.insertField(insert("invoice"))).toBe(true);
+    expect(editor.shown()).toEqual(["Exhibit 1", "Exhibit 2", "Exhibit 1"]);
 
-      // A new first source renumbers every field in the same step, and one
-      // undo takes the insertion and the renumbering back together.
-      editor.api.setSelection(1);
-      expect(editor.api.insertField(insert("letter"))).toBe(true);
-      expect(editor.shown()).toEqual([
-        "Exhibit 1",
-        "Exhibit 2",
-        "Exhibit 3",
-        "Exhibit 2",
-      ]);
-      expect(editor.api.undo()).toBe(true);
-      expect(editor.shown()).toEqual(["Exhibit 1", "Exhibit 2", "Exhibit 1"]);
-      expect(editor.api.redo()).toBe(true);
-      expect(editor.shown()).toEqual([
-        "Exhibit 1",
-        "Exhibit 2",
-        "Exhibit 3",
-        "Exhibit 2",
-      ]);
-      expect(editor.observedShown()).toBe(true);
-      expect(editor.refusals).toEqual([]);
-    } finally {
-      editor.destroy();
-    }
-  },
-);
+    // A new first source renumbers every field in the same step, and one
+    // undo takes the insertion and the renumbering back together.
+    editor.api.setSelection(1);
+    expect(editor.api.insertField(insert("letter"))).toBe(true);
+    expect(editor.shown()).toEqual([
+      "Exhibit 1",
+      "Exhibit 2",
+      "Exhibit 3",
+      "Exhibit 2",
+    ]);
+    expect(editor.api.undo()).toBe(true);
+    expect(editor.shown()).toEqual(["Exhibit 1", "Exhibit 2", "Exhibit 1"]);
+    expect(editor.api.redo()).toBe(true);
+    expect(editor.shown()).toEqual([
+      "Exhibit 1",
+      "Exhibit 2",
+      "Exhibit 3",
+      "Exhibit 2",
+    ]);
+    expect(editor.observedShown()).toBe(true);
+    expect(editor.refusals).toEqual([]);
+  } finally {
+    editor.destroy();
+  }
+});

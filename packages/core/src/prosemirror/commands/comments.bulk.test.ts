@@ -10,8 +10,6 @@ import {
   TextSelection,
   type Transaction,
 } from "prosemirror-state";
-import { ySyncPlugin, yUndoPlugin } from "y-prosemirror";
-import * as Y from "yjs";
 
 import {
   assertProperty,
@@ -860,9 +858,9 @@ describe("headless bulk revision resolution isolation", () => {
   );
 
   test("omits synchronization and undo plugins from private headless states", () => {
-    const yDoc = new Y.Doc();
-    const sync = ySyncPlugin(yDoc.getXmlFragment("prosemirror"));
-    const undo = yUndoPlugin();
+    // The keys a host's Yjs binding names its plugins with.
+    const sync = new Plugin({ key: new PluginKey("y-sync") });
+    const undo = new Plugin({ key: new PluginKey("y-undo") });
     expect(
       pluginsForHeadlessRevisionResolution([sync, undo, stepCountPlugin]),
     ).toEqual([stepCountPlugin]);

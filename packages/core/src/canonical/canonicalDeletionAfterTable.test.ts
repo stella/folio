@@ -224,7 +224,7 @@ test.each([
 );
 
 test.each(
-  (["legacy", "canonical"] as const).flatMap((session) =>
+  (["canonical"] as const).flatMap((session) =>
     (["direct", "tracked-changes"] as const).flatMap((mode) =>
       (["Between words.", ""] as const).map(
         (text) => [session, mode, text] as const,

@@ -13,7 +13,7 @@ const OPTIONS = {
   timestamp: "2026-09-13T12:00:00.000Z",
 } as const;
 
-const SESSIONS = ["legacy", "canonical"] as const;
+const SESSIONS = ["canonical"] as const;
 
 const documentWithFinalSection = (
   finalSectionProperties: SectionProperties,
