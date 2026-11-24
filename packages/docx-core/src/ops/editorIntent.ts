@@ -90,7 +90,9 @@ import {
   noteReferenceSpans,
 } from "./noteMarks";
 import {
+  childrenOf,
   contentWidth,
+  isInlineContainer,
   isRangeBoundary,
   paragraphHoldsContentOnceAccepted,
   paragraphLength,
@@ -1210,14 +1212,65 @@ const holdsContentWithin = ({
   from,
   to,
 }: ContentWithinRange): boolean => {
-  const content: ParagraphContent[] = [];
-  let offset = 0;
-  for (const item of paragraph.content) {
-    const end = offset + contentWidth([item]);
-    if (end > from && offset < to) content.push(item);
-    offset = end;
-  }
-  return paragraphHoldsContentOnceAccepted({ ...paragraph, content });
+  // The items in [from, to), a container clipped to its children there, so
+  // content of a control outside the interval does not count.
+  const clip = (
+    items: readonly ParagraphContent[],
+    start: number,
+  ): ParagraphContent[] => {
+    const content: ParagraphContent[] = [];
+    let offset = start;
+    for (const item of items) {
+      const end = offset + contentWidth([item]);
+      if (end > from && offset < to)
+        content.push(
+          isInlineContainer(item)
+            ? withChildren(item, clip(childrenOf(item), offset))
+            : item,
+        );
+      offset = end;
+    }
+    return content;
+  };
+  return paragraphHoldsContentOnceAccepted({
+    ...paragraph,
+    content: clip(paragraph.content, 0),
+  });
+};
+
+/** Bookmark ids the content's starts and ends carry, containers included. */
+const bookmarkIdsIn = (items: readonly ParagraphContent[]): number[] =>
+  items.flatMap((item) => {
+    if (item.type === "bookmarkStart" || item.type === "bookmarkEnd")
+      return [item.id];
+    return isInlineContainer(item) ? bookmarkIdsIn(childrenOf(item)) : [];
+  });
+
+/** Whether a pasted table, or one nested in it, holds bookmarks or records of its own. */
+const holdsTableLevelIdentities = (block: Paragraph | Table): boolean => {
+  if (block.type !== "table") return false;
+  if (
+    (block.bookmarks?.length ?? 0) > 0 ||
+    (block.propertyChanges?.length ?? 0) > 0 ||
+    (block.carrierStack?.length ?? 0) > 0
+  )
+    return true;
+  return block.rows.some(
+    (row) =>
+      (row.bookmarks?.length ?? 0) > 0 ||
+      (row.propertyChanges?.length ?? 0) > 0 ||
+      (row.carrierStack?.length ?? 0) > 0 ||
+      row.cells.some(
+        (cell) =>
+          (cell.propertyChanges?.length ?? 0) > 0 ||
+          (cell.carrierStack?.length ?? 0) > 0 ||
+          cell.content.some(
+            (inner) =>
+              (inner.type === "paragraph" || inner.type === "table") &&
+              holdsTableLevelIdentities(inner),
+          ),
+      ),
+  );
 };
 
 /** A pasted block's paragraphs in document order, a table's cells' among them. */
@@ -1297,6 +1350,43 @@ const compileBlockPaste = (
           })),
         };
   const blocks = intent.blocks.map(rebuilt);
+  const refuseIdentities = (message: string) =>
+    Result.err(
+      new DocumentOpRefusal({
+        reason: DOCUMENT_OP_REFUSAL_REASONS.INVALID_OPERATION,
+        message,
+        opType: DOCUMENT_OP_TYPES.INSERT_TABLE,
+      }),
+    );
+  // A table's own bookmarks and records take no fresh identity here; the
+  // paste refuses rather than copy an id the destination may hold.
+  if (blocks.some(holdsTableLevelIdentities))
+    return refuseIdentities(
+      "A pasted table's own bookmarks and tracked records need fresh identities.",
+    );
+  // The open first and last paragraphs are identified again as they join; a
+  // bookmark from one of them to another block would lose its pair.
+  const joinedBlocks = new Set<number>();
+  if (openStart === 1 && blocks.at(0)?.type === "paragraph")
+    joinedBlocks.add(0);
+  if (openEnd === 1 && blocks.at(-1)?.type === "paragraph")
+    joinedBlocks.add(blocks.length - 1);
+  const bookmarkBlocks = new Map<number, Set<number>>();
+  for (const [index, block] of blocks.entries())
+    for (const paragraph of blockParagraphs(block))
+      for (const id of bookmarkIdsIn(paragraph.content)) {
+        const holders = bookmarkBlocks.get(id) ?? new Set<number>();
+        holders.add(index);
+        bookmarkBlocks.set(id, holders);
+      }
+  for (const holders of bookmarkBlocks.values())
+    if (
+      holders.size > 1 &&
+      [...holders].some((index) => joinedBlocks.has(index))
+    )
+      return refuseIdentities(
+        "A pasted bookmark spanning a joined paragraph and a table needs one identity.",
+      );
   const ops: DocumentOp[] = [];
   let current = document;
   let pool =

@@ -2825,8 +2825,12 @@ export function parseTable(
 
   // A grid the model writes back byte for byte needs no capture; keeping one
   // would make a table saved without it read back different from itself.
-  if (table.formatting?.gridSourceXml === modelTableGrid(table)) {
-    const { gridSourceXml: _modelGrid, ...rest } = table.formatting;
+  const captured = table.formatting;
+  if (
+    captured?.gridSourceXml !== undefined &&
+    captured.gridSourceXml === modelTableGrid(table)
+  ) {
+    const { gridSourceXml: _modelGrid, ...rest } = captured;
     if (Object.keys(rest).length > 0) table.formatting = rest;
     else delete table.formatting;
   }

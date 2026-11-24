@@ -229,3 +229,42 @@ test("a pasted bookmark beside a table never repeats a standing one", () => {
   expect(new Set(names).size).toBe(2);
   expect(new Set(ids).size).toBe(2);
 });
+
+const pasteRefusal = (
+  blocks: readonly (Paragraph | Table)[],
+  edges: { openStart: 0 | 1; openEnd: 0 | 1 },
+) => {
+  const document = source("abcdef");
+  const at = { story: OP_STORIES.MAIN, blockId: "00000001", offset: 3 };
+  const compiled = compileEditorIntent(document, {
+    intent: { type: "pasteBlocks", from: at, to: at, blocks, ...edges },
+    mode: { type: "editing" },
+  });
+  return compiled.isErr() ? compiled.error.message : undefined;
+};
+
+test("a table's own bookmark refuses rather than copy its identity", () => {
+  const marked: Table = {
+    ...table(),
+    bookmarks: [
+      { index: 0, marker: { type: "bookmarkStart", id: 3, name: "grid" } },
+    ],
+  };
+  expect(
+    pasteRefusal([paragraph("Lead"), marked], { openStart: 0, openEnd: 0 }),
+  ).toContain("own bookmarks");
+});
+
+test("a bookmark from an open first paragraph past a table refuses", () => {
+  const head: Paragraph = {
+    type: "paragraph",
+    content: [{ type: "bookmarkStart", id: 4, name: "span" }, run("Lead")],
+  };
+  const tail: Paragraph = {
+    type: "paragraph",
+    content: [run("Trail"), { type: "bookmarkEnd", id: 4 }],
+  };
+  expect(
+    pasteRefusal([head, table(), tail], { openStart: 1, openEnd: 1 }),
+  ).toContain("one identity");
+});
