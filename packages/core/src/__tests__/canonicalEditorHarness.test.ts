@@ -660,3 +660,33 @@ test.each(["cross-paragraph", "document"] as const)(
     }
   },
 );
+
+test.each(["editing", "suggesting"] as const)(
+  "a comment over selected cells spans their text and saves (%s)",
+  async (mode) => {
+    const shape = "tables";
+    const source = await parseShapeDocument(
+      new Uint8Array(await shapeArrayBuffer(shape)),
+    );
+    const driver = createCanonicalEditorHarness(source, mode);
+    try {
+      const placed = placeSelection(
+        driver.state,
+        documentShape(shape).focus,
+        "cross-paragraph",
+      );
+      if (!placed) throw new TypeError("Table fixture lost its selection");
+      driver.dispatch(driver.state.tr.setSelection(placed.selection));
+      const before = driver.snapshot().package.document.comments?.length ?? 0;
+      expect(driver.addComment("Across cells.")).toBe(true);
+      expect(driver.refusals).toEqual([]);
+      const edited = driver.snapshot();
+      expect(edited.package.document.comments ?? []).toHaveLength(before + 1);
+      const saved = await saveCanonicalHarnessDocument(edited);
+      const reopened = await parseShapeDocument(saved.bytes);
+      expect(modelMarkdown(reopened)).toBe(modelMarkdown(edited));
+    } finally {
+      driver.dispose();
+    }
+  },
+);

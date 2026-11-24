@@ -688,6 +688,7 @@ export const EXTRA_OPERATIONS: readonly ConformanceOperation[] = [
     suggesting: "direct",
     placements: RANGE,
     run: ({ view, base }) => {
+      if (view.authority === "canonical") return view.addComment("A note.");
       const id = nextCommentId(base, view.state.doc);
       const applied = view.execute(addCommentMark(id));
       if (applied) {
@@ -717,18 +718,22 @@ export const EXTRA_OPERATIONS: readonly ConformanceOperation[] = [
     suggesting: "direct",
     placements: ["paragraph"],
     run: ({ view }) =>
-      view.execute(
-        acceptChange(view.state.selection.from, view.state.selection.to),
-      ),
+      view.authority === "canonical"
+        ? view.resolveSelection("accept")
+        : view.execute(
+            acceptChange(view.state.selection.from, view.state.selection.to),
+          ),
   },
   {
     id: "host:rejectChange",
     suggesting: "direct",
     placements: ["paragraph"],
     run: ({ view }) =>
-      view.execute(
-        rejectChange(view.state.selection.from, view.state.selection.to),
-      ),
+      view.authority === "canonical"
+        ? view.resolveSelection("reject")
+        : view.execute(
+            rejectChange(view.state.selection.from, view.state.selection.to),
+          ),
   },
   {
     id: "host:acceptAllChanges",

@@ -25,35 +25,6 @@ const REFUSAL_ROWS = {
   },
 } as const satisfies Record<string, HarnessRefusalRow>;
 
-// Explicit unsupported cases; a controller descriptor/planner verdict must
-// never add an operation to this contract. Commands outside it stay strict.
-const COMMAND_REFUSAL_CONTRACTS = {
-  [CANONICAL_GAP.commands]: {
-    operations: ["host:addComment", "host:acceptChange", "host:rejectChange"],
-    rows: [
-      {
-        id: CANONICAL_GAP.commands,
-        gap: CANONICAL_GAP.dispatch,
-        message: "Unclassified native text is unavailable in this session.",
-      },
-      // Accepting and rejecting through the legacy commands: the refusal
-      // names the meta keys their transactions carry.
-      {
-        id: CANONICAL_GAP.commands,
-        gap: CANONICAL_GAP.dispatch,
-        message:
-          "A transaction with meta joinedRunsRestyled, closeHistory$ changed the document outside the session's operations; express the edit as document operations.",
-      },
-    ],
-  },
-} as const satisfies Record<
-  typeof CANONICAL_GAP.commands,
-  {
-    operations: readonly string[];
-    rows: readonly HarnessRefusalRow[];
-  }
->;
-
 type RefusalCase = {
   shape: string;
   operation: string;
@@ -78,11 +49,6 @@ export const TOC_HEADING_SHAPES = [
 export const canonicalConformanceRefusalRows = (
   key: RefusalCase,
 ): readonly HarnessRefusalRow[] => {
-  const commandContract = Object.values(COMMAND_REFUSAL_CONTRACTS).find(
-    ({ operations }) =>
-      operations.some((operation) => operation === key.operation),
-  );
-  if (commandContract) return commandContract.rows;
   if (
     key.shape === "tables" &&
     key.placement === "cross-paragraph" &&

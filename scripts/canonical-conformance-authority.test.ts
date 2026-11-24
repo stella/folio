@@ -215,6 +215,12 @@ const CONFORMANCE_PRODUCTION_IMPORTS = new Map<string, readonly string[]>([
       "rejectChange",
     ],
   ],
+  // The route a host's review menu takes in a canonical session: the
+  // operation under test, as the commands above are in a legacy one.
+  [
+    "packages/core/src/controller/canonicalReview",
+    ["resolveCanonicalReviewRange"],
+  ],
   ["packages/core/src/prosemirror/commands/formatting", ["clearFormatting"]],
   ["packages/core/src/prosemirror/commands/pageBreak", ["insertPageBreak"]],
   ["packages/core/src/prosemirror/conversion/fromProseDoc", ["fromProseDoc"]],
