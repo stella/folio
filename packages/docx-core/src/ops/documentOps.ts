@@ -140,6 +140,7 @@ export {
   type TableBlockIntentOperation,
   type EditorIntentMode,
 } from "./editorIntent";
+export type { PasteAnnotations } from "./pasteAnchors";
 export {
   DocumentOpsContractError,
   normalizeForOps,

@@ -600,6 +600,7 @@ export type EditorIntent = HyperlinkEditorIntent | GenerateTOCIntent | {
     blocks: readonly (Paragraph | Table)[];
     openStart: 0 | 1;
     openEnd: 0 | 1;
+    annotations?: PasteAnnotations;
 } | {
     type: "moveFragment";
     from: TextPosition;
@@ -1207,6 +1208,12 @@ export const paragraphVisibleText: (paragraph: Paragraph) => string;
 
 // @public
 export const parseDocumentBatch: (json: string) => Result<DocumentBatch, BatchRejection>;
+
+// @public
+export type PasteAnnotations = {
+    notes: readonly (Footnote | Endnote)[];
+    comments: readonly Comment_2[];
+};
 
 // @public
 export const pendingSuggestionIdsIn: (document: Document_2) => Set<string>;

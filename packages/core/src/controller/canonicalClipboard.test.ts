@@ -116,7 +116,7 @@ const assertClipboardSources = (document: Document, before: Document) => {
 };
 
 describe("canonical clipboard", () => {
-  test("copied comment and note ids cannot bind colliding destination story parts in either editing mode", () => {
+  test("a copied comment or note is copied from its source under a fresh id, never binding the destination's own, in either editing mode", () => {
     for (const kind of ["comment", "footnote", "endnote"] as const) {
       for (const suggesting of [false, true])
         for (const reverse of [false, true])
@@ -225,7 +225,6 @@ describe("canonical clipboard", () => {
             );
             const before = session.document;
             const version = session.version;
-            const projection = session.projection;
             const selection = state.selection.toJSON();
             const sourceSnapshot =
               cloneDocumentWithParagraphPropertySources(sourceDocument);
@@ -236,22 +235,193 @@ describe("canonical clipboard", () => {
               slice,
               sourceDocument,
             });
-            expect(prepared.isErr()).toBe(true);
-            if (prepared.isOk())
-              throw new TypeError(
-                "Foreign story reference unexpectedly pasted.",
-              );
-            expect(prepared.error.reason).toBe("refused");
-            expect(prepared.error.message).toContain("source story parts");
-            assertClipboardModel(session.document, before);
+            if (prepared.isErr()) throw prepared.error;
+            state = publishCanonicalProjection({
+              session,
+              state,
+              commit: prepared.value,
+            }).unwrap().state;
             assertExactModel(sourceDocument, sourceSnapshot);
+            const after = session.document;
+            const stories = {
+              comment: after.package.document.comments,
+              footnote: after.package.footnotes,
+              endnote: after.package.endnotes,
+            }[kind];
+            // The destination's own story stays; the source's is copied
+            // under a fresh id (comments in document order, so sorted here).
+            expect(
+              (stories ?? [])
+                .map(({ id, content }) => [
+                  id === 7 ? 7 : "fresh",
+                  JSON.stringify(content).includes("owned story"),
+                  JSON.stringify(content).includes("foreign story"),
+                ])
+                .toSorted((left, right) =>
+                  String(left[0]).localeCompare(String(right[0])),
+                ),
+            ).toEqual([
+              [7, true, false],
+              ["fresh", false, true],
+            ]);
+            expect(session.canUndo).toBe(true);
+            state = publishCanonicalProjection({
+              session,
+              state,
+              commit: session.prepareUndo(state).unwrap(),
+            }).unwrap().state;
+            assertClipboardModel(session.document, before);
             assertExactModel(state.selection.toJSON(), selection);
-            expect(session.projection).toBe(projection);
-            expect(session.version).toBe(version);
-            expect(session.canUndo).toBe(false);
-            expect(session.canRedo).toBe(false);
+            expect(session.version).not.toBe(version);
           }
     }
+  });
+
+  test("a copied note linking outside its part refuses, since its new part holds no such relationship", () => {
+    const destination = seed();
+    const sourceDocument = seed();
+    sourceDocument.package.footnotes = [
+      {
+        type: "footnote",
+        id: 7,
+        content: [
+          {
+            type: "paragraph",
+            paraId: "24681357",
+            content: [
+              {
+                type: "hyperlink",
+                rId: "rId9",
+                href: "https://source.example.test",
+                children: [
+                  { type: "run", content: [{ type: "text", text: "linked" }] },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ];
+    const session = createCanonicalSession(
+      destination,
+      destination.package.styles,
+    ).unwrap();
+    const state = EditorState.create({ schema, doc: session.projection.doc });
+    const slice = new Slice(
+      Fragment.from(
+        schema.node(
+          "paragraph",
+          null,
+          schema.text("7", [
+            schema.marks["footnoteRef"].create({
+              occurrenceId: "03f2b59c-bca8-4830-b10e-c5ce004a3d9d",
+              id: "7",
+              noteType: "footnote",
+            }),
+          ]),
+        ),
+      ),
+      1,
+      1,
+    );
+    const prepared = prepareCanonicalPaste({
+      session,
+      state,
+      slice,
+      sourceDocument,
+    });
+    if (prepared.isOk()) throw new TypeError("The paste was not refused.");
+    expect(prepared.error.message).toContain("relationships");
+    expect(session.document.package.footnotes ?? []).toEqual(
+      destination.package.footnotes ?? [],
+    );
+  });
+
+  test("a copied footnote keeps its source paragraph style, and the destination's own note keeps its style", () => {
+    const styled = (text: string): Paragraph => ({
+      type: "paragraph",
+      paraId: text === "owned" ? "13572468" : "24681357",
+      formatting: { styleId: "Shared" },
+      content: [{ type: "run", content: [{ type: "text", text }] }],
+    });
+    const destination = seed();
+    destination.package.styles = {
+      styles: [
+        {
+          styleId: "Shared",
+          type: "paragraph",
+          name: "Owned",
+          rPr: { italic: true },
+        },
+      ],
+    };
+    destination.package.footnotes = [
+      { type: "footnote", id: 7, content: [styled("owned")] },
+    ];
+    const sourceDocument = seed();
+    sourceDocument.package.styles = {
+      styles: [
+        {
+          styleId: "Shared",
+          type: "paragraph",
+          name: "Foreign",
+          rPr: { bold: true },
+        },
+      ],
+    };
+    sourceDocument.package.footnotes = [
+      { type: "footnote", id: 7, content: [styled("foreign")] },
+    ];
+    const session = createCanonicalSession(
+      destination,
+      destination.package.styles,
+    ).unwrap();
+    const state = EditorState.create({ schema, doc: session.projection.doc });
+    const slice = new Slice(
+      Fragment.from(
+        schema.node(
+          "paragraph",
+          null,
+          schema.text("7", [
+            schema.marks["footnoteRef"].create({
+              occurrenceId: "03f2b59c-bca8-4830-b10e-c5ce004a3d9d",
+              id: "7",
+              noteType: "footnote",
+            }),
+          ]),
+        ),
+      ),
+      1,
+      1,
+    );
+    publishCanonicalProjection({
+      session,
+      state,
+      commit: prepareCanonicalPaste({
+        session,
+        state,
+        slice,
+        sourceDocument,
+      }).unwrap(),
+    }).unwrap();
+    const notes = session.document.package.footnotes ?? [];
+    const styleOf = (id: number) => {
+      const block = notes.find((note) => note.id === id)?.content.at(0);
+      return block?.type === "paragraph"
+        ? block.formatting?.styleId
+        : undefined;
+    };
+    expect(styleOf(7)).toBe("Shared");
+    const copied = notes.find((note) => note.id !== 7);
+    if (copied === undefined)
+      throw new TypeError("The copied note is missing.");
+    const importedId = styleOf(copied.id);
+    expect(importedId).not.toBe("Shared");
+    const imported = session.document.package.styles?.styles.find(
+      (style) => style.styleId === importedId,
+    );
+    expect(imported?.name).toBe("Foreign");
+    expect(imported?.rPr?.bold).toBe(true);
   });
 
   test("same-session comment and note moves retain their owned story references and exact history", () => {

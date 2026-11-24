@@ -172,11 +172,17 @@ type ImportClipboardStylesOptions = {
   paragraphs: readonly Paragraph[];
   /** Styles pasted tables name, imported with their dependencies. */
   tableStyleIds?: readonly string[];
+  /**
+   * Bodies of copied notes and comments: a style they name that the source
+   * does not define (a built-in reference style, say) is left as it is.
+   */
+  annotationParagraphs?: readonly Paragraph[];
 };
 
 type ImportedClipboardStyles = {
   styles: StyleDefinitions | undefined;
   paragraphs: Paragraph[];
+  annotationParagraphs: Paragraph[];
   styleIds: ReadonlyMap<string, string>;
   numberingIds: ReadonlySet<number>;
 };
@@ -440,15 +446,18 @@ export const importClipboardStyles = ({
   source,
   paragraphs,
   tableStyleIds = [],
+  annotationParagraphs = [],
 }: ImportClipboardStylesOptions): Result<
   ImportedClipboardStyles,
   DocumentOpRefusal
 > => {
   const clonedParagraphs = structuredClone([...paragraphs]);
+  const clonedAnnotations = structuredClone([...annotationParagraphs]);
+  // Copied note and comment bodies keep the source's defaults as the blocks do.
   const materialized = materializeClipboardDefaults({
     source,
     destination,
-    paragraphs: clonedParagraphs,
+    paragraphs: [...clonedParagraphs, ...clonedAnnotations],
   });
   if (materialized.isErr()) return materialized;
   const sourceStyles = new Map<string, Style>();
@@ -482,6 +491,17 @@ export const importClipboardStyles = ({
   for (const paragraph of clonedParagraphs)
     visitReferences(paragraph, selectReferences);
   for (const styleId of tableStyleIds) selectReferences("styleId", styleId, {});
+  const selectDefinedReferences: ReferenceVisitor = (key, value, owner) => {
+    if (
+      STYLE_REFERENCE_FIELDS.has(key) &&
+      typeof value === "string" &&
+      !sourceStyles.has(value)
+    )
+      return;
+    selectReferences(key, value, owner);
+  };
+  for (const paragraph of clonedAnnotations)
+    visitReferences(paragraph, selectDefinedReferences);
   const sourceNums = source.package.numbering?.nums ?? [];
   const sourceAbstracts = source.package.numbering?.abstractNums ?? [];
   const nums = new Map(sourceNums.map((num) => [num.numId, num]));
@@ -586,6 +606,20 @@ export const importClipboardStyles = ({
     const lowered = lowerSourceTheme({ value: paragraph, source });
     if (lowered.isErr()) return lowered;
   }
+  const remapDefined: ReferenceVisitor = (key, value, owner) => {
+    if (
+      STYLE_REFERENCE_FIELDS.has(key) &&
+      typeof value === "string" &&
+      !styleIds.has(value)
+    )
+      return;
+    remap(key, value, owner);
+  };
+  for (const paragraph of clonedAnnotations) {
+    visitReferences(paragraph, remapDefined);
+    const lowered = lowerSourceTheme({ value: paragraph, source });
+    if (lowered.isErr()) return lowered;
+  }
   const prior = destination.package.styles;
   const styles =
     importedStyles.length === 0
@@ -597,6 +631,7 @@ export const importClipboardStyles = ({
   return Result.ok({
     styles,
     paragraphs: clonedParagraphs,
+    annotationParagraphs: clonedAnnotations,
     styleIds,
     numberingIds,
   });
