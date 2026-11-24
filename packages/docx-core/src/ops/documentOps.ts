@@ -28,7 +28,11 @@ export {
   withParagraphCopies,
   withParagraphRenderings,
 } from "./paragraphCopies";
-export { captureStoryParts, sectionPropertiesAt } from "./storyLifecycle";
+export {
+  captureStoryParts,
+  sectionPropertiesAt,
+  storyPartsOpOf,
+} from "./storyLifecycle";
 export {
   documentStories,
   replaceStoryBody,

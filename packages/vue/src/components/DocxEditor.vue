@@ -537,9 +537,9 @@ import {
 } from "vue";
 
 import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
+import { watermarkOperations } from "@stll/folio-core/controller/canonicalWatermark";
 import { CanonicalSessionRefusalError } from "@stll/folio-core/controller/hiddenEditorManager";
 import { inspectDocxCompatibility } from "@stll/folio-core/docx/compatibility";
-import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import { findBodyPmAnchors } from "@stll/folio-core/layout-bridge/dom/findBodyPmSpans";
 import { HIDDEN_EDITOR_WRAPPER_CLASS } from "@stll/folio-core/layout-bridge/dom/imeCaretAnchor";
 import {
@@ -578,12 +578,7 @@ import { executeEditorCommand } from "@stll/folio-core/prosemirror/executeEditor
 import { getTableContext } from "@stll/folio-core/prosemirror/extensions/nodes/TableExtension";
 import { extractSelectionContext } from "@stll/folio-core/prosemirror/plugins/selectionTracker";
 import type { FolioAutocompleteState } from "@stll/folio-core/types/autocomplete";
-import {
-  CANONICAL_GAP,
-  type CanonicalGap,
-  canonicalRefusalMessage,
-  canonicalRefusalNotice,
-} from "@stll/folio-core/types/canonicalCapabilities";
+import { canonicalRefusalNotice } from "@stll/folio-core/types/canonicalCapabilities";
 import type { Comment } from "@stll/folio-core/types/content";
 import type {
   Document,
@@ -604,10 +599,7 @@ import {
 import type { OutlineDepth } from "@stll/folio-core/utils/outlineDepth";
 import { readPaintedStart } from "@stll/folio-core/utils/paintedPositions";
 import type { TablePropertiesCommand } from "@stll/folio-core/utils/tableOperations";
-import {
-  setDocumentWatermark,
-  type Watermark,
-} from "@stll/folio-core/watermark";
+import type { Watermark } from "@stll/folio-core/watermark";
 
 import { documentChrome } from "../composables/documentChrome";
 import { useColorMode } from "../composables/useColorMode";
@@ -712,14 +704,6 @@ function notifyHostDocument(doc: Document): void {
   emit("update:document", doc);
 }
 
-/**
- * Notify the host of a document the editor now holds as its model: the host
- * gets one copy, in both sessions.
- */
-function notifyDocumentChange(doc: Document): void {
-  notifyHostDocument(cloneDocumentWithParagraphPropertySources(doc));
-}
-
 const { message: refusalNotice, show: showRefusalNotice } =
   useTransientNotice();
 
@@ -729,15 +713,6 @@ function reportEditorError(error: Error): void {
     showRefusalNotice(canonicalRefusalNotice(error.ground, t));
   props.onError?.(error);
   emit("error", error);
-}
-
-function refuseCanonicalModelEdit(gap: CanonicalGap, message: string): boolean {
-  const error = new CanonicalSessionRefusalError({
-    ground: { gap },
-    message: canonicalRefusalMessage(gap, message),
-  });
-  reportEditorError(error);
-  return true;
 }
 
 const editorMode = ref<EditorMode>(props.mode);
@@ -943,7 +918,6 @@ const {
   getDocument,
   readDocument,
   readDocumentModel,
-  setDocument,
   getHeaderFooterView,
   syncHeaderFooterViews,
   openNoteStory,
@@ -1757,13 +1731,6 @@ function handleMenuAction(action: string): void {
 }
 
 function handleWatermarkApply(watermark: Watermark | undefined): void {
-  if (
-    refuseCanonicalModelEdit(
-      CANONICAL_GAP.watermark,
-      "Watermark changes are unavailable in this session.",
-    )
-  )
-    return;
   if (readOnly.value) {
     return;
   }
@@ -1771,12 +1738,11 @@ function handleWatermarkApply(watermark: Watermark | undefined): void {
   if (!doc) {
     return;
   }
-  const next = setDocumentWatermark(doc, watermark);
-  setDocument(next);
-  isDirty.value = true;
-  stateTick.value++;
+  // The watermark lives in the header parts, journaled as one operation.
+  if (!editor.applyCanonicalOperations(watermarkOperations(doc, watermark)))
+    return;
+  syncHeaderFooterViews();
   reLayout();
-  notifyDocumentChange(next);
 }
 
 // Insert > Table (menu grid picker) routes through the shared insert handler so
