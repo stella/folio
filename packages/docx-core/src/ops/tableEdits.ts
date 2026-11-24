@@ -2139,15 +2139,16 @@ export const applyTableEdit = (
       changed = split({ document, op, table, grid: grid.value, location });
       break;
     case DOCUMENT_OP_TYPES.SET_TABLE_GRID: {
+      const unmeasured = op.columnWidths.length === 0;
       if (
-        op.columnWidths.length !== grid.value.width ||
+        (!unmeasured && op.columnWidths.length !== grid.value.width) ||
         op.columnWidths.some(
           (width) => !Number.isSafeInteger(width) || width <= 0,
         )
       )
         return mismatch(
           op,
-          "Column widths must match the grid and be positive twip counts.",
+          "Column widths must match the grid and be positive twip counts, or be none.",
         );
       if (table.formatting?.gridChange !== undefined)
         return refuse({
@@ -2170,7 +2171,10 @@ export const applyTableEdit = (
         });
       const stamps = stampsFor(op, 2);
       if (stamps.isErr()) return Result.err(stamps.error);
-      const next = { ...table, columnWidths: [...op.columnWidths] };
+      const { columnWidths: _previous, ...rest } = table;
+      const next: Table = unmeasured
+        ? rest
+        : { ...rest, columnWidths: [...op.columnWidths] };
       const gridStamp = stamps.value.at(0);
       const propertyStamp = stamps.value.at(1);
       if (gridStamp !== undefined && propertyStamp !== undefined) {

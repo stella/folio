@@ -29,12 +29,7 @@ const REFUSAL_ROWS = {
 // never add an operation to this contract. Commands outside it stay strict.
 const COMMAND_REFUSAL_CONTRACTS = {
   [CANONICAL_GAP.commands]: {
-    operations: [
-      "command:autoFitContents",
-      "host:addComment",
-      "host:acceptChange",
-      "host:rejectChange",
-    ],
+    operations: ["host:addComment", "host:acceptChange", "host:rejectChange"],
     rows: [
       {
         id: CANONICAL_GAP.commands,

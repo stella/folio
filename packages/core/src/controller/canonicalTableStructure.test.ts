@@ -203,6 +203,12 @@ const CASES: readonly Case[] = [
     selection: { type: "caret", in: "A" },
     tracked: true,
   },
+  {
+    name: "auto fit to contents",
+    command: "autoFitContents",
+    selection: { type: "caret", in: "A" },
+    tracked: true,
+  },
 ];
 
 const commandFor = (name: string) =>

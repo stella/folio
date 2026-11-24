@@ -200,11 +200,15 @@ const gridEdit = (
   const was = expectTableAttrs(before).columnWidths;
   const is = expectTableAttrs(after).columnWidths;
   if (JSON.stringify(was) === JSON.stringify(is)) return undefined;
-  if (at === undefined || is === undefined || is.length === 0) return null;
+  if (at === undefined) return null;
+  // No widths leaves the grid unmeasured, as AutoFit to contents does.
   return {
     type: "editTable",
     at,
-    edit: { type: DOCUMENT_OP_TYPES.SET_TABLE_GRID, columnWidths: [...is] },
+    edit: {
+      type: DOCUMENT_OP_TYPES.SET_TABLE_GRID,
+      columnWidths: [...(is ?? [])],
+    },
   };
 };
 
