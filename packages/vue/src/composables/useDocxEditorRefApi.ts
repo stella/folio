@@ -1120,6 +1120,9 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
     autocomplete: opts.editor.autocomplete,
     getAnonymizationMatches: () =>
       opts.editor.getAnonymizationHighlights().matches,
+    insertField: (field) =>
+      opts.getActiveView() === opts.editorView.value &&
+      opts.editor.insertField(field),
     getBlockRect,
     getBlockRects,
     getScrollRoot: () => getEditorScrollRoot(opts.scrollRootRef.value),

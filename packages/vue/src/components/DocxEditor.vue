@@ -1004,6 +1004,7 @@ const {
   // Template directives are driven by the overlay components below; this
   // threads the directive gate. Highlights read the host's terms.
   getAnonymizationTerms: () => props.anonymizationTerms,
+  getDerivedFields: () => props.derivedFields,
   showTemplateDirectives: () => props.showTemplateDirectives,
   onSlashMenuChange: (state) => props.onSlashMenuChange?.(state),
   onSlashMenuKeyAction: (action) =>

@@ -267,6 +267,7 @@ export type {
   FolioAnonymizationMatch,
   FolioAnonymizationTerm,
 } from "./types/anonymization";
+export type { FolioDerivedFields, FolioFieldInsertion } from "./types/fields";
 export {
   getTemplateDirectives,
   scanDirectives,

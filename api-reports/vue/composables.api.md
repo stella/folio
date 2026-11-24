@@ -31,6 +31,7 @@ import { FindResult } from '@stll/folio-core/utils/findReplace';
 import { FlowBlock } from '@stll/folio-core/layout-engine/types';
 import { FolioAnonymizationTerm } from '@stll/folio-core/controller/anonymizationHighlights';
 import { FolioAutocompleteState } from '@stll/folio-core/types/autocomplete';
+import { FolioDerivedFields } from '@stll/folio-core/types/fields';
 import { FolioEditor } from '@stll/folio-core/controller/folioEditor';
 import { FolioSaveOptions } from '@stll/folio-core/controller/folioEditor';
 import { FolioSelectiveSaveFlags } from '@stll/folio-core/docx/selectiveSaveFlags';
@@ -165,6 +166,7 @@ export type UseDocxEditorOptions = {
     onCanonicalHistoryDrop?: (drop: CanonicalHistoryDrop) => void;
     collaboration?: MaybeRefOrGetter<UseDocxEditorCollaboration | CanonicalRoomCollaboration | undefined>;
     getAnonymizationTerms?: () => readonly FolioAnonymizationTerm[] | undefined;
+    getDerivedFields?: () => FolioDerivedFields | undefined;
     showTemplateDirectives?: MaybeRefOrGetter<boolean | undefined>;
     onSlashMenuChange?: (state: TemplateSlashMenuState) => void;
     onSlashMenuKeyAction?: (action: TemplateSlashMenuKeyAction) => boolean;

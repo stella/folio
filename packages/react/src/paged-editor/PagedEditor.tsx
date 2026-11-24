@@ -252,6 +252,7 @@ import {
   readModel,
   type ReadonlyDocument,
 } from "@stll/folio-core/types/documentModel";
+import type { FolioDerivedFields } from "@stll/folio-core/types/fields";
 import {
   closestHtmlElement,
   htmlQueryAll,
@@ -501,6 +502,8 @@ export type PagedEditorProps = {
    * are view state: they never change the document or its history.
    */
   anonymizationTerms?: readonly FolioAnonymizationTerm[] | undefined;
+  /** Fields whose display text the host derives, kept current with each edit. */
+  derivedFields?: FolioDerivedFields | undefined;
   /** Called with every occurrence each time the set of occurrences changes. */
   onAnonymizationMatchesChange?:
     ((matches: readonly FolioAnonymizationMatch[]) => void) | undefined;
@@ -1638,6 +1641,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       onAutocompleteChange,
       anonymizationTerms,
       onAnonymizationMatchesChange,
+      derivedFields,
       selectedAnonymizationCanonical = null,
       anonymizationSelectionSeq,
     } = props;
@@ -6778,6 +6782,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         <HiddenProseMirror
           ref={hiddenPMRef}
           anonymizationTerms={anonymizationTerms}
+          derivedFields={derivedFields}
           document={document}
           documentIdentity={documentIdentity}
           experimentalSession={

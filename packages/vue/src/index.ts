@@ -230,6 +230,10 @@ export type {
   FolioAnonymizationMatch,
   FolioAnonymizationTerm,
 } from "@stll/folio-core/controller/anonymizationHighlights";
+export type {
+  FolioDerivedFields,
+  FolioFieldInsertion,
+} from "@stll/folio-core/types/fields";
 export {
   getTemplateDirectives,
   scanDirectives,

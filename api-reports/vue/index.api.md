@@ -94,12 +94,14 @@ import { FolioAutocompleteApi } from '@stll/folio-core/controller/autocompleteSu
 import { FolioAutocompleteState } from '@stll/folio-core/controller/autocompleteSuggestion';
 import { FolioBlockId } from '@stll/folio-core/types/block-id';
 import { FolioCommentAnchor } from '@stll/folio-core/ai-edits';
+import { FolioDerivedFields } from '@stll/folio-core/types/fields';
 import { FolioDocumentNavigationTarget } from '@stll/folio-core/ai-edits';
 import { FolioDocumentOperationBatch } from '@stll/folio-core/ai-edits';
 import { FolioDocumentOperationResult } from '@stll/folio-core/ai-edits';
 import { FolioDocumentOperationUndoHandle } from '@stll/folio-core/ai-edits';
 import { FolioDocumentOperationUndoResult } from '@stll/folio-core/ai-edits';
 import { FolioEditor } from '@stll/folio-core/controller/folioEditor';
+import { FolioFieldInsertion } from '@stll/folio-core/types/fields';
 import { FolioPendingSuggestionLoadResult } from '@stll/folio-core/ai-edits';
 import { FolioPendingSuggestionRecord } from '@stll/folio-core/ai-edits';
 import { FolioReviewChange } from '@stll/folio-core/ai-edits';
@@ -400,6 +402,7 @@ export type DocxEditorProps = {
     onEditorViewReady?: (view: EditorView | null) => void;
     collaboration?: DocxEditorCollaboration | undefined;
     anonymizationTerms?: readonly FolioAnonymizationTerm[] | undefined;
+    derivedFields?: FolioDerivedFields | undefined;
     onAutocompleteChange?: ((state: FolioAutocompleteState) => void) | undefined;
     onAnonymizationMatchesChange?: (matches: readonly FolioAnonymizationMatch[]) => void;
     onAnonymizationTermClick?: ((canonical: string, label: string) => void) | undefined;
@@ -489,6 +492,7 @@ export type DocxEditorRef = {
     getPositionPage: (position: TextPosition) => number | null;
     autocomplete: FolioAutocompleteApi;
     getAnonymizationMatches: () => readonly FolioAnonymizationMatch[];
+    insertField: (field: FolioFieldInsertion) => boolean;
     getBlockRect: (blockId: string) => BlockRect | null;
     getBlockRects: (blockIds: readonly string[]) => ReadonlyMap<string, BlockRect>;
     getScrollRoot: () => HTMLElement | null;
@@ -602,6 +606,10 @@ export type FolioButtonProps = {
     disabled?: boolean;
     className?: string;
 };
+
+export { FolioDerivedFields }
+
+export { FolioFieldInsertion }
 
 export { FolioSuggestion }
 

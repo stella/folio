@@ -1,0 +1,14 @@
+{
+  "core": {
+    "declarationBytes": 3500,
+    "declarationLines": 60
+  },
+  "react": {
+    "declarationBytes": 1500,
+    "declarationLines": 30
+  },
+  "vue": {
+    "declarationBytes": 1500,
+    "declarationLines": 30
+  }
+}

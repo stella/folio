@@ -79,6 +79,10 @@ import type {
   TabStop,
   Theme,
 } from "@stll/folio-core/types/document";
+import type {
+  FolioDerivedFields,
+  FolioFieldInsertion,
+} from "@stll/folio-core/types/fields";
 import type { DocxInput } from "@stll/folio-core/utils/docxInput";
 import type {
   FindMatch,
@@ -382,6 +386,13 @@ export type DocxEditorProps = {
    * included. Pass a new array to change the terms.
    */
   anonymizationTerms?: readonly FolioAnonymizationTerm[] | undefined;
+  /**
+   * Fields whose display text the host derives from the document (numbered
+   * references, for one). After each local edit the owned fields show what
+   * `displayTexts` gives them, in the same undo step as the edit; a peer in a
+   * shared room receives the update with it.
+   */
+  derivedFields?: FolioDerivedFields | undefined;
   /** Called with the inline autocomplete suggestion each time it changes. */
   onAutocompleteChange?: ((state: FolioAutocompleteState) => void) | undefined;
   /**
@@ -743,6 +754,12 @@ export type DocxEditorRef = {
   autocomplete: FolioAutocompleteApi;
   /** Every occurrence of the `anonymizationTerms`, as text positions. */
   getAnonymizationMatches: () => readonly FolioAnonymizationMatch[];
+  /**
+   * Insert a field in place of the body selection: one undo step, a tracked
+   * insertion when suggesting. False when nothing was inserted, as while a
+   * header, footer or note is being edited.
+   */
+  insertField: (field: FolioFieldInsertion) => boolean;
   /** Painted geometry for one block, relative to this editor's scroll root. */
   getBlockRect: (blockId: string) => BlockRect | null;
   /** Painted geometry for many blocks in one layout read; missing ids are omitted. */

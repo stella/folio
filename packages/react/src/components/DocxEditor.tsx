@@ -215,6 +215,7 @@ import { projectMarkupView } from "@stll/folio-core/prosemirror/markupViewProjec
 import { withoutUnreferencedNotes } from "@stll/folio-core/prosemirror/noteReferenceReview";
 import { createAICitationDecorationsPlugin } from "@stll/folio-core/prosemirror/plugins/aiCitationDecorations";
 import { createAISuggestionDecorationsPlugin } from "@stll/folio-core/prosemirror/plugins/aiSuggestionDecorations";
+import { createDerivedFieldsPlugin } from "@stll/folio-core/prosemirror/plugins/derivedFields";
 import {
   createSuggestionModePlugin,
   setSuggestionMode,
@@ -638,6 +639,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       anonymizationTerms,
       onAnonymizationMatchesChange,
       onAnonymizationTermClick,
+      derivedFields,
       onAutocompleteChange,
       selectedAnonymizationCanonical = null,
       anonymizationSelectionSeq,
@@ -987,6 +989,17 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       () => createTemplatePreviewValuesPlugin(),
       [],
     );
+    // The default session keeps the host's derived fields current through a
+    // plugin; the canonical session does it in the hidden editor.
+    const [derivedFieldsSlot] = useState(() =>
+      createCallbackSlot(() => derivedFields),
+    );
+    useLayoutEffect(() => {
+      derivedFieldsSlot.commit(() => derivedFields);
+    });
+    const [derivedFieldsPlugin] = useState(() =>
+      createDerivedFieldsPlugin(derivedFieldsSlot.invoke),
+    );
     const [hostPlugins] = useState(() => plugins ?? []);
     const editorPlugins = useMemo(
       () => [
@@ -999,6 +1012,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
           ? [templateDirectivesPlugin, templateSlashMenu]
           : []),
         templatePreviewPlugin,
+        derivedFieldsPlugin,
       ],
       [
         hostPlugins,
@@ -1010,6 +1024,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         templateDirectivesPlugin,
         templateSlashMenu,
         templatePreviewPlugin,
+        derivedFieldsPlugin,
       ],
     );
 
@@ -4781,6 +4796,9 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         getAnonymizationMatches: () =>
           pagedEditorRef.current?.getEditor()?.getAnonymizationHighlights()
             .matches ?? NO_ANONYMIZATION_HIGHLIGHTS.matches,
+        insertField: (field) =>
+          getActiveEditorStory().type === "body" &&
+          (pagedEditorRef.current?.getEditor()?.insertField(field) ?? false),
         getBlockRect: (blockId) =>
           pagedEditorRef.current?.getBlockRect(blockId) ?? null,
         getBlockRects: (blockIds) =>
@@ -6360,6 +6378,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                             pageEndGutter={panelLayout.commentsGutter}
                             anchorPositionMode="comments"
                             anonymizationTerms={anonymizationTerms}
+                            derivedFields={derivedFields}
                             onAnonymizationMatchesChange={
                               onAnonymizationMatchesChange
                             }

@@ -3384,6 +3384,54 @@ class CanonicalSession {
     });
   }
 
+  /**
+   * Bring derived content (a host's derived fields) in line with the edit
+   * just published: one commit that joins that edit's undo step, so undoing
+   * the edit undoes both. Refused when no local edit is open.
+   */
+  prepareDerivedUpdate(
+    state: EditorState,
+    ops: readonly DocumentOp[],
+  ): Result<CanonicalCommit, CanonicalSessionError> {
+    const group = this.applied.at(-1);
+    if (group === undefined)
+      return noChange("A derived update joins a local edit.");
+    if (ops.length === 0)
+      return noChange("The derived content is already current.");
+    const selection = group.postSelection;
+    const story = selection.anchor.story;
+    const projected = this.projectStory(story);
+    if (projected.isErr()) return projected;
+    const preDocument = this.currentDocument;
+    return this.stage({
+      state,
+      story,
+      ops,
+      selection,
+      origin: "input",
+      history: "joined",
+      onPublish: (inverse, version, shown) => {
+        group.entries.push({
+          type: "applied",
+          ops,
+          inverse,
+          preSelection: selection,
+          postSelection: shown,
+          preDocument,
+          postDocument: this.currentDocument,
+          version,
+          origin: "input",
+          semantic: "structure",
+          grouping: "isolated",
+          time: Date.now(),
+          boundary: this.groupingBoundary,
+        } as const satisfies AppliedJournalEntry);
+        group.postSelection = shown;
+        this.undone.length = 0;
+      },
+    });
+  }
+
   prepareSplit(
     state: EditorState,
   ): Result<CanonicalCommit, CanonicalSessionError> {

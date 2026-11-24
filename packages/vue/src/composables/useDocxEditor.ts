@@ -155,6 +155,7 @@ import {
   heldUnreferencedNotes,
   withoutUnreferencedNotes,
 } from "@stll/folio-core/prosemirror/noteReferenceReview";
+import { createDerivedFieldsPlugin } from "@stll/folio-core/prosemirror/plugins/derivedFields";
 import {
   createSuggestionModePlugin,
   setSuggestionMode,
@@ -188,6 +189,7 @@ import {
   readModel,
   type ReadonlyDocument,
 } from "@stll/folio-core/types/documentModel";
+import type { FolioDerivedFields } from "@stll/folio-core/types/fields";
 import type { DocxInput } from "@stll/folio-core/utils/docxInput";
 import { resolveHeaderFooterContent } from "@stll/folio-core/utils/headerFooter";
 
@@ -452,6 +454,8 @@ export type UseDocxEditorOptions = {
   >;
   /** The terms the editor highlights in the shown text; none when unset. */
   getAnonymizationTerms?: () => readonly FolioAnonymizationTerm[] | undefined;
+  /** The fields whose display text the host derives; none when unset. */
+  getDerivedFields?: () => FolioDerivedFields | undefined;
   /**
    * Install the template-directive + slash-menu plugins so `{{...}}` markers are
    * scanned and the `/` trigger is active. Reactive: toggling reconfigures the
@@ -633,6 +637,7 @@ export function useDocxEditor(
     onCanonicalHistoryDrop,
     collaboration,
     getAnonymizationTerms,
+    getDerivedFields,
     showTemplateDirectives,
     onSlashMenuChange,
     onSlashMenuKeyAction,
@@ -761,6 +766,11 @@ export function useDocxEditor(
     onKeyAction: (action) => onSlashMenuKeyAction?.(action) ?? false,
   });
   const templatePreviewPlugin = createTemplatePreviewValuesPlugin();
+  // The default session keeps derived fields current through a plugin; the
+  // canonical session does it in the hidden editor.
+  const derivedFieldsPlugin = createDerivedFieldsPlugin(() =>
+    getDerivedFields?.(),
+  );
 
   const templatePluginsEnabled = (): boolean =>
     toValue(showTemplateDirectives) === true;
@@ -778,6 +788,7 @@ export function useDocxEditor(
         ? [templateDirectivesPlugin, templateSlashMenu]
         : []),
       templatePreviewPlugin,
+      derivedFieldsPlugin,
     ];
   }
 
@@ -1103,6 +1114,7 @@ export function useDocxEditor(
     getExternalPlugins: buildExternalPlugins,
     getAnonymizationTerms: () =>
       getAnonymizationTerms?.() ?? NO_ANONYMIZATION_TERMS,
+    getDerivedFields: () => getDerivedFields?.(),
     getCollaboration: yjsCollaboration,
     getCollaborationModules: () => collaborationModules.value,
     getCanonicalRoom: canonicalRoom,
