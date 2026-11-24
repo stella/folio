@@ -1,5 +1,17 @@
 # @stll/folio-react
 
+## 0.37.0
+
+### Minor Changes
+
+- [#3519](https://github.com/stella/folio/pull/3519) [`df2f551`](https://github.com/stella/folio/commit/df2f551e4e9067aec73675aae216d2008f3005a2) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Run every editor on the canonical session: remove the legacy session (`experimentalSession`), the Yjs fragment collaboration and its server materialization, and the `y-prosemirror` peer dependency. Collaborate through a canonical room.
+
+### Patch Changes
+
+- [#3519](https://github.com/stella/folio/pull/3519) [`df2f551`](https://github.com/stella/folio/commit/df2f551e4e9067aec73675aae216d2008f3005a2) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Open note, header and footer editors show a peer's edits as they arrive.
+- Updated dependencies [[`df2f551`](https://github.com/stella/folio/commit/df2f551e4e9067aec73675aae216d2008f3005a2)]:
+  - @stll/folio-core@0.72.0
+
 ## 0.36.0
 
 ### Minor Changes

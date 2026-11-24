@@ -1,5 +1,16 @@
 # @stll/folio-nuxt
 
+## 0.5.0
+
+### Minor Changes
+
+- [#3519](https://github.com/stella/folio/pull/3519) [`df2f551`](https://github.com/stella/folio/commit/df2f551e4e9067aec73675aae216d2008f3005a2) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Run every editor on the canonical session: remove the legacy session (`experimentalSession`), the Yjs fragment collaboration and its server materialization, and the `y-prosemirror` peer dependency. Collaborate through a canonical room.
+
+### Patch Changes
+
+- Updated dependencies [[`df2f551`](https://github.com/stella/folio/commit/df2f551e4e9067aec73675aae216d2008f3005a2)]:
+  - @stll/folio-vue@0.31.0
+
 ## 0.4.9
 
 ### Patch Changes
