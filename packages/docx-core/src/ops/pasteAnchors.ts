@@ -16,6 +16,7 @@ import type {
   RunContent,
   Table,
 } from "../model/document";
+import { cloneModel } from "./modelClone";
 import {
   childrenOf,
   contentWidth,
@@ -69,7 +70,7 @@ const withoutPasteAnchors = <T>(value: T, ids: ReadonlySet<number>): T => {
     if (typeof node !== "object" || node === null) return;
     for (const field of Object.values(node)) strip(field);
   };
-  const copy = structuredClone(value);
+  const copy = cloneModel(value);
   strip(copy);
   return copy;
 };
