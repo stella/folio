@@ -7,7 +7,6 @@ export const CANONICAL_GAP = {
   comments: "comment-model-edits",
   modelEdits: "direct-model-edits",
   sectionProperties: "section-properties",
-  watermark: "watermark-model-edits",
   dispatch: "unclassified-transactions",
   save: "pm-save-projection",
   history: "pm-history",
@@ -151,12 +150,6 @@ export const CANONICAL_CAPABILITIES: {
     readonly adapters: readonly ["react", "vue"];
     readonly summary: "The shared controller journals section properties; legacy sessions keep model changes.";
   };
-  readonly "watermark-model-edits": {
-    readonly owner: "adapters";
-    readonly kind: "refusal";
-    readonly adapters: readonly ["vue"];
-    readonly summary: "Vue watermark mutations still change the model directly.";
-  };
   readonly "unclassified-transactions": {
     readonly owner: "controller";
     readonly kind: "refusal";
@@ -288,12 +281,6 @@ export const CANONICAL_CAPABILITIES: {
     adapters: ["react", "vue"],
     summary:
       "The shared controller journals section properties; legacy sessions keep model changes.",
-  },
-  [CANONICAL_GAP.watermark]: {
-    owner: "adapters",
-    kind: "refusal",
-    adapters: ["vue"],
-    summary: "Vue watermark mutations still change the model directly.",
   },
   [CANONICAL_GAP.dispatch]: {
     owner: "controller",

@@ -1663,6 +1663,9 @@ export type StoryParts = StoryPartFields & ({
 });
 
 // @public
+export const storyPartsOpOf: (input: StoryPartsOpOptions) => RestoreStoryPartsOp;
+
+// @public
 export const suggestedCommentIds: (document: Document_2, suggestionId?: string) => number[];
 
 // @public

@@ -455,6 +455,24 @@ export const storyLifecycleTouched = ({
   };
 };
 
+type StoryPartsOpOptions = { before: Document; after: Document };
+/**
+ * The operation that turns `before`'s story parts (body, sections, headers,
+ * footers, notes and settings) into `after`'s, for an edit computed on the
+ * whole document; it is stale-checked against `before`.
+ */
+export const storyPartsOpOf = ({
+  before,
+  after,
+}: StoryPartsOpOptions): RestoreStoryPartsOp => {
+  const prior = changedParts(before, after, true);
+  return {
+    type: DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS,
+    expected: cloneModel(prior),
+    parts: cloneModel(captureStoryParts(after, prior)),
+  };
+};
+
 export const storyLifecycleEdit = (
   before: Document,
   after: Document,
