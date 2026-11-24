@@ -15,6 +15,7 @@ import {
   createCanonicalSession,
   publishCanonicalProjection,
 } from "../packages/core/src/canonical/canonicalSession";
+import { resolveCanonicalReviewRange } from "../packages/core/src/controller/canonicalReview";
 import {
   CanonicalSessionRefusalError,
   createHiddenEditorManager,
@@ -24,6 +25,7 @@ import { cloneDocumentWithParagraphPropertySources } from "../packages/core/src/
 import { executeEditorCommand } from "../packages/core/src/prosemirror/executeEditorCommand";
 import { expectRangeAnchorAttrs } from "../packages/core/src/prosemirror/rangeAnchorAttrs";
 import { singletonManager } from "../packages/core/src/prosemirror/schema";
+import { selectionBounds } from "../packages/core/src/prosemirror/selectionBounds";
 import { CANONICAL_GAP } from "../packages/core/src/types/canonicalCapabilities";
 import type { CanonicalSaveSnapshot } from "../packages/core/src/types/canonicalSave";
 import type { Document } from "../packages/core/src/types/document";
@@ -357,6 +359,32 @@ export const createCanonicalEditorHarness = (
     history: manager.api,
     dispose,
     resolve,
+    /** Resolve the changes the selection touches, as a host's review menu does. */
+    resolveSelection: (decision: ReviewDecision) =>
+      withRefusalRows(
+        caseRefusalRows,
+        () =>
+          resolveCanonicalReviewRange({
+            editor: manager.api,
+            from: editorView.state.selection.from,
+            to: editorView.state.selection.to,
+            resolution: decision,
+          }) ?? panic("The canonical harness has no canonical document."),
+      ),
+    /** Comment on the selection, as a host's comment flow does. */
+    addComment: (text: string) =>
+      withRefusalRows(caseRefusalRows, () => {
+        // As the editors read it: over selected cells, every cell.
+        const { from, to } = selectionBounds(editorView.state.selection);
+        const result = manager.api.applyCanonicalComment({
+          type: "create",
+          text,
+          author: "Conformance",
+          date: "2026-01-01T00:00:00Z",
+          anchor: { kind: "selection", from, to, story: "main" },
+        });
+        return result?.status === "applied";
+      }),
     pressKey: (binding: string) => {
       const fields = keyboardEventFor(binding);
       const event = new KeyboardEvent("keydown", {

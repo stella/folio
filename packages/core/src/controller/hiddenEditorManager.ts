@@ -14,6 +14,7 @@ import type {
 import {
   EditorState as PMEditorState,
   Plugin as PMPlugin,
+  Selection as PMSelection,
 } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 import type { DirectEditorProps, MarkViewConstructor } from "prosemirror-view";
@@ -2183,8 +2184,27 @@ export const createHiddenEditorManager = (
             case "selection": {
               const projection = session.projectStory(request.anchor.story);
               if (projection.isErr()) return fail(projection.error.message);
-              const from = projection.value.addressAt(request.anchor.from);
-              const to = projection.value.addressAt(request.anchor.to);
+              // Selected cells end between cells: the comment spans their
+              // text, from the first text inside to the last.
+              const { doc } = projection.value;
+              const textEdge = (position: number, bias: 1 | -1) => {
+                if (position < 0 || position > doc.content.size)
+                  return position;
+                const resolved = doc.resolve(position);
+                if (resolved.parent.isTextblock) return position;
+                const found = PMSelection.findFrom(resolved, bias, true);
+                if (found === null) return position;
+                return bias > 0 ? found.from : found.to;
+              };
+              const collapsed = request.anchor.from === request.anchor.to;
+              const from = projection.value.addressAt(
+                collapsed
+                  ? request.anchor.from
+                  : textEdge(request.anchor.from, 1),
+              );
+              const to = projection.value.addressAt(
+                collapsed ? request.anchor.to : textEdge(request.anchor.to, -1),
+              );
               if (from.isErr()) return fail(from.error.message);
               if (to.isErr()) return fail(to.error.message);
               anchor =

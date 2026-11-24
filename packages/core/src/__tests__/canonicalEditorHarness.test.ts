@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { Fragment, Slice } from "prosemirror-model";
 import { AllSelection, NodeSelection } from "prosemirror-state";
+import { CellSelection } from "prosemirror-tables";
 
 import {
   canonicalConformanceRefusalRows,
@@ -644,6 +645,89 @@ test.each(["cross-paragraph", "document"] as const)(
       expect(driver.state.doc.attrs["_finalSectionStart"]).toBe("continuous");
       expect(driver.history.undo()).toBe(true);
       expect(driver.state.doc.eq(before)).toBe(true);
+    } finally {
+      driver.dispose();
+    }
+  },
+);
+
+/** The text of the paragraphs holding comment `id`'s start and end. */
+const commentEnds = (document: Document, id: number) => {
+  const ends: Partial<Record<"start" | "end", string>> = {};
+  const visit = (value: unknown, paragraph: string | undefined): void => {
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item, paragraph);
+      return;
+    }
+    if (typeof value !== "object" || value === null) return;
+    const type: unknown = Reflect.get(value, "type");
+    let text = paragraph;
+    if (type === "paragraph")
+      text = [...JSON.stringify(value).matchAll(/"text":"([^"]*)"/gu)]
+        .map((match) => match[1])
+        .join("");
+    if (type === "commentRangeStart" && Reflect.get(value, "id") === id)
+      ends.start = text;
+    if (type === "commentRangeEnd" && Reflect.get(value, "id") === id)
+      ends.end = text;
+    for (const field of Object.values(value)) visit(field, text);
+  };
+  visit(document.package.document.content, undefined);
+  return ends;
+};
+
+test.each(
+  (["editing", "suggesting"] as const).flatMap((mode) =>
+    (["forward", "backward"] as const).map((direction) => [mode, direction]),
+  ),
+)(
+  "a comment over selected cells spans every selected cell and saves (%s, %s)",
+  async (mode, direction) => {
+    const shape = "tables";
+    const source = await parseShapeDocument(
+      new Uint8Array(await shapeArrayBuffer(shape)),
+    );
+    const driver = createCanonicalEditorHarness(source, mode);
+    try {
+      const placed = placeSelection(
+        driver.state,
+        documentShape(shape).focus,
+        "cross-paragraph",
+      );
+      if (!(placed?.selection instanceof CellSelection))
+        throw new TypeError("Table fixture lost its cell selection");
+      const { $anchorCell, $headCell } = placed.selection;
+      driver.dispatch(
+        driver.state.tr.setSelection(
+          direction === "forward"
+            ? new CellSelection($anchorCell, $headCell)
+            : new CellSelection($headCell, $anchorCell),
+        ),
+      );
+      const before = new Set(
+        (driver.snapshot().package.document.comments ?? []).map(({ id }) => id),
+      );
+      expect(driver.addComment("Across cells.")).toBe(true);
+      expect(driver.refusals).toEqual([]);
+      const edited = driver.snapshot();
+      const added = (edited.package.document.comments ?? []).filter(
+        ({ id }) => !before.has(id),
+      );
+      expect(added).toHaveLength(1);
+      const id = added.at(0)?.id ?? -1;
+      // The comment starts in the first selected cell and ends in the last,
+      // whichever cell the selection began in.
+      const ends = commentEnds(edited, id);
+      const cells = driver.state.selection.ranges
+        .map(({ $from }) => $from)
+        .toSorted((left, right) => left.pos - right.pos);
+      expect(ends).toEqual({
+        start: cells.at(0)?.nodeAfter?.textContent,
+        end: cells.at(-1)?.nodeAfter?.textContent,
+      });
+      const saved = await saveCanonicalHarnessDocument(edited);
+      const reopened = await parseShapeDocument(saved.bytes);
+      expect(modelMarkdown(reopened)).toBe(modelMarkdown(edited));
     } finally {
       driver.dispose();
     }

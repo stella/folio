@@ -215,6 +215,14 @@ const CONFORMANCE_PRODUCTION_IMPORTS = new Map<string, readonly string[]>([
       "rejectChange",
     ],
   ],
+  // The route a host's review menu takes in a canonical session: the
+  // operation under test, as the commands above are in a legacy one.
+  [
+    "packages/core/src/controller/canonicalReview",
+    ["resolveCanonicalReviewRange"],
+  ],
+  // The range the editors give a comment: over selected cells, every cell.
+  ["packages/core/src/prosemirror/selectionBounds", ["selectionBounds"]],
   ["packages/core/src/prosemirror/commands/formatting", ["clearFormatting"]],
   ["packages/core/src/prosemirror/commands/pageBreak", ["insertPageBreak"]],
   ["packages/core/src/prosemirror/conversion/fromProseDoc", ["fromProseDoc"]],

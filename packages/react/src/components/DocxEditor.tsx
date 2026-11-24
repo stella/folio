@@ -208,6 +208,7 @@ import {
 import { createTemplateDirectivesPlugin } from "@stll/folio-core/prosemirror/plugins/templateDirectives";
 import { createTemplatePreviewValuesPlugin } from "@stll/folio-core/prosemirror/plugins/templatePreviewValues";
 import { templateSlashMenuPlugin } from "@stll/folio-core/prosemirror/plugins/templateSlashMenu";
+import { selectionBounds } from "@stll/folio-core/prosemirror/selectionBounds";
 import { getFolioParaIdFromBlockId } from "@stll/folio-core/types/block-id";
 import {
   CANONICAL_GAP,
@@ -2192,7 +2193,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
               ? pageEl.getBoundingClientRect().right - parentRect.left + 12
               : parentRect.width / 2 + 408;
             const left = Math.max(16, Math.min(rawLeft, parentRect.width - 16));
-            const { from, to } = view.state.selection;
+            const { from, to } = selectionBounds(view.state.selection);
             if (from !== to) {
               setFloatingCommentBtn({ top, left, from, to });
             } else {
@@ -3400,7 +3401,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             const { from, to } =
               contextSelectionFrom !== contextSelectionTo
                 ? { from: contextSelectionFrom, to: contextSelectionTo }
-                : view.state.selection;
+                : selectionBounds(view.state.selection);
             if (from === to) {
               break;
             }
