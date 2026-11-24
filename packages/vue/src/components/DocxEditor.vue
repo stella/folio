@@ -532,7 +532,6 @@ import {
   onMounted,
   ref,
   shallowRef,
-  toRaw,
   type VNodeChild,
   watch,
 } from "vue";
@@ -917,10 +916,6 @@ useKeyboardShortcuts({
 });
 
 // ---- Pipeline -----------------------------------------------------------
-/** The host's comment threads as saving copies them: plain objects, not reactive proxies. */
-const savedComments = () =>
-  commentManagement.comments.value.map((comment) => toRaw(comment));
-
 const autocompleteSuggestion = shallowRef<FolioAutocompleteState>({
   status: "idle",
 });
