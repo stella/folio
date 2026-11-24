@@ -1,8 +1,4 @@
-import {
-  closeHistory,
-  redo as historyRedo,
-  undo as historyUndo,
-} from "prosemirror-history";
+import { closeHistory } from "prosemirror-history";
 /**
  * Ref-API assembler for the Vue `DocxEditor` shell.
  *
@@ -110,11 +106,6 @@ import {
 import { projectMarkupView } from "@stll/folio-core/prosemirror/markupViewProjection";
 import { findStartPosForParaId } from "@stll/folio-core/prosemirror/utils/findParagraphByParaId";
 import { getFolioParaIdFromBlockId } from "@stll/folio-core/types/block-id";
-import {
-  CANONICAL_GAP,
-  type EditorSession,
-  usesCanonicalSession,
-} from "@stll/folio-core/types/canonicalCapabilities";
 import type { Comment } from "@stll/folio-core/types/content";
 import type { Document } from "@stll/folio-core/types/document";
 import type { ReadonlyDocument } from "@stll/folio-core/types/documentModel";
@@ -245,7 +236,6 @@ export type UseDocxEditorRefApiOptions = {
   /** The session's own document in a canonical session, without a copy; otherwise null. */
   readDocumentModel: () => ReadonlyDocument | null;
   getActiveView: () => EditorView | null;
-  getExperimentalSession?: () => EditorSession | undefined;
   getActiveCanonicalStory?: () => OpStory;
   closeNoteStory: () => void;
   getHeaderFooterView: (rId: string) => EditorView | null;
@@ -344,72 +334,28 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
   // which every method below already guards against).
   let pagedEditorRef: PagedEditorRef | null = null;
 
-  function undoActiveView(): boolean {
+  function storyHistory(direction: "undo" | "redo"): boolean {
     const view = opts.getActiveView();
-    if (
-      usesCanonicalSession(
-        opts.getExperimentalSession?.(),
-        CANONICAL_GAP.authorityRouting,
-      )
-    ) {
-      const story = opts.getActiveCanonicalStory?.() ?? "main";
-      return view && story !== "main"
-        ? opts.editor.applyCanonicalStoryHistory({
-            view,
-            story,
-            direction: "undo",
-          })
-        : opts.editor.undo();
-    }
-    if (view === opts.editorView.value) return opts.editor.undo();
-    return view ? historyUndo(view.state, view.dispatch) : false;
+    const story = opts.getActiveCanonicalStory?.() ?? "main";
+    if (view && story !== "main")
+      return opts.editor.applyCanonicalStoryHistory({ view, story, direction });
+    return direction === "undo" ? opts.editor.undo() : opts.editor.redo();
+  }
+
+  function undoActiveView(): boolean {
+    return storyHistory("undo");
   }
 
   function redoActiveView(): boolean {
-    const view = opts.getActiveView();
-    if (
-      usesCanonicalSession(
-        opts.getExperimentalSession?.(),
-        CANONICAL_GAP.authorityRouting,
-      )
-    ) {
-      const story = opts.getActiveCanonicalStory?.() ?? "main";
-      return view && story !== "main"
-        ? opts.editor.applyCanonicalStoryHistory({
-            view,
-            story,
-            direction: "redo",
-          })
-        : opts.editor.redo();
-    }
-    if (view === opts.editorView.value) return opts.editor.redo();
-    return view ? historyRedo(view.state, view.dispatch) : false;
+    return storyHistory("redo");
   }
 
   function canUndoActiveView(): boolean {
-    if (
-      usesCanonicalSession(
-        opts.getExperimentalSession?.(),
-        CANONICAL_GAP.authorityRouting,
-      )
-    )
-      return opts.editor.canUndo();
-    const view = opts.getActiveView();
-    if (view === opts.editorView.value) return opts.editor.canUndo();
-    return view ? historyUndo(view.state) : false;
+    return opts.editor.canUndo();
   }
 
   function canRedoActiveView(): boolean {
-    if (
-      usesCanonicalSession(
-        opts.getExperimentalSession?.(),
-        CANONICAL_GAP.authorityRouting,
-      )
-    )
-      return opts.editor.canRedo();
-    const view = opts.getActiveView();
-    if (view === opts.editorView.value) return opts.editor.canRedo();
-    return view ? historyRedo(view.state) : false;
+    return opts.editor.canRedo();
   }
 
   function blurActiveView(): void {

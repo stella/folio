@@ -29,15 +29,10 @@ afterAll(() => {
   Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", previousActEnvironment);
   GlobalRegistrator.unregister();
 });
-const returnDocument = (document: Document) => document;
-const noView = () => null;
-
 const HeaderHarness = ({ document }: { document: Document | null }) => {
   const history = useHistory(document, { enableKeyboardShortcuts: false });
   const editor = useHeaderFooterEditor({
     history: { ...history, state: document },
-    pushDocument: returnDocument,
-    getHfView: noView,
   });
   return (
     <output>

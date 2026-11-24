@@ -322,16 +322,6 @@ export {
   setGoogleFontsEnabled,
 } from "./utils/fontResolver";
 
-// Collaboration snapshot compatibility: the attr-schema version a stored Yjs
-// snapshot was written under. The editor refuses to load one written by newer
-// code rather than silently misreading its node attrs, so a host that mounts
-// the collaborative editor has to be able to classify that failure.
-export {
-  FOLIO_YJS_ATTR_SCHEMA_VERSION,
-  FolioYjsAttrSchemaVersionError,
-  type FolioYjsAttrSchemaVersion,
-} from "./prosemirror/yjsDocumentMetadata";
-
 export type { ReviewDisplayMode } from "./managers/reviewDisplayMode";
 
 export type { EditorReadOnlyReason } from "./managers/EditorModeManager";

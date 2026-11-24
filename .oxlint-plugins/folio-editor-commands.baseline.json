@@ -6,11 +6,10 @@
   "packages/core/src/prosemirror/plugins/suggestionMode.ts": 4,
   "packages/react/src/components/DocxEditor.tsx": 13,
   "packages/react/src/components/InlineHeaderFooterEditor.tsx": 2,
-  "packages/react/src/paged-editor/PagedEditor.tsx": 2,
   "packages/vue/src/components/ImageSelectionOverlay.vue": 1,
   "packages/vue/src/components/InlineHeaderFooterEditor.vue": 1,
   "packages/vue/src/composables/useCommentManagement.ts": 3,
-  "packages/vue/src/composables/useDocxEditorRefApi.ts": 6,
+  "packages/vue/src/composables/useDocxEditorRefApi.ts": 4,
   "packages/vue/src/composables/useHistory.ts": 2,
   "packages/vue/src/utils/imageClipboard.ts": 2
 }

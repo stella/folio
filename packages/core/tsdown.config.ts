@@ -48,7 +48,6 @@ const shared = {
     neverBundle: [
       /^prosemirror-[a-z-]+(?:$|\/)/u,
       /^yjs(?:$|\/)/u,
-      /^y-prosemirror(?:$|\/)/u,
       /^y-protocols(?:$|\/)/u,
     ],
   },

@@ -63,7 +63,6 @@ export default defineConfig({
         /^@stll\/folio-core(?:$|\/)/u,
         /^prosemirror-[a-z-]+(?:$|\/)/u,
         /^yjs(?:$|\/)/u,
-        /^y-prosemirror(?:$|\/)/u,
         /^y-protocols(?:$|\/)/u,
       ],
     },

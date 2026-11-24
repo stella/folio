@@ -17,14 +17,8 @@ import {
  */
 import { inspectDocxCompatibility } from "../docx/compatibility";
 import type { DocxCompatibility } from "../docx/compatibility";
-import { parseDocx } from "../docx/parser";
 import { recordDocumentLoadPhase } from "../layout-engine/layoutInstrumentation";
 import { heldUnreferencedNotes } from "../prosemirror/noteReferenceReview";
-import {
-  CANONICAL_GAP,
-  type EditorSession,
-  usesCanonicalSession,
-} from "../types/canonicalCapabilities";
 import type { Document } from "../types/document";
 import type { ReadonlyDocument } from "../types/documentModel";
 import { resetAuthorColors } from "../utils/authorColors";
@@ -50,7 +44,6 @@ export type DocumentLoaderHistory = {
 export type DocumentLoaderCallbacks = {
   /** Editor history to reset/seed with the loaded document. */
   history: DocumentLoaderHistory;
-  getExperimentalSession?: () => EditorSession | undefined;
   /**
    * Receives the identity of the document that just landed in history. Every
    * load allocates a fresh identity, so the adapter can tell an external load
@@ -83,14 +76,6 @@ export class DocumentLoaderManager {
     this.callbacks = callbacks;
   }
 
-  /** Whether loads open in a canonical session. */
-  private opensCanonicalSession(): boolean {
-    return usesCanonicalSession(
-      this.callbacks.getExperimentalSession?.(),
-      CANONICAL_GAP.authorityRouting,
-    );
-  }
-
   /** Reset color/UI state coupled to the previous document. */
   resetForNewDocument(): void {
     resetAuthorColors();
@@ -107,7 +92,7 @@ export class DocumentLoaderManager {
    */
   loadParsedDocument(doc: Document): void {
     const generation = ++this.loadGeneration;
-    if (!this.opensCanonicalSession() || holdsUniqueSeedIds(doc)) {
+    if (holdsUniqueSeedIds(doc)) {
       this.commitParsedDocument(doc, generation);
       return;
     }
@@ -186,13 +171,9 @@ export class DocumentLoaderManager {
           ...CANONICAL_DOCX_PARSE_OPTIONS,
           password: options.password,
         };
-        if (this.opensCanonicalSession()) {
-          const opened = await openCanonicalDocx(buffer, parseOptions);
-          if (opened.isErr()) throw opened.error;
-          doc = opened.value.document;
-        } else {
-          doc = await parseDocx(buffer, parseOptions);
-        }
+        const opened = await openCanonicalDocx(buffer, parseOptions);
+        if (opened.isErr()) throw opened.error;
+        doc = opened.value.document;
       } finally {
         recordDocumentLoadPhase(
           "docx-parse",

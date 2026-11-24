@@ -2,7 +2,6 @@ import type { CSSProperties, ReactNode } from "react";
 
 import type { Plugin } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
-import type { XmlFragment } from "yjs";
 
 import type {
   FolioAIEditApplyMode,
@@ -69,7 +68,6 @@ import type {
   FolioDocumentOperationUndoHandle,
   FolioDocumentOperationUndoResult,
 } from "@stll/folio-core/server";
-import type { EditorSession } from "@stll/folio-core/types/canonicalCapabilities";
 import type { Comment } from "@stll/folio-core/types/content";
 import type {
   Document,
@@ -146,16 +144,6 @@ export type DocxEditorProps = {
   derivedFields?: FolioDerivedFields | undefined;
   /** Pre-parsed document (alternative to documentBuffer) */
   document?: Document | null;
-  /**
-   * The editing engine. Unset, the editor runs the canonical session, which
-   * refuses unsupported edits with a notice, or the legacy session when
-   * `collaboration` is a Yjs fragment. `"legacy"` selects the
-   * ProseMirror-owned engine.
-   * A host plugin's transaction or a direct dispatch that changes the
-   * document is refused too, its refusal naming the transaction's meta keys:
-   * express such an edit as document operations (`applyDocumentOperations`).
-   */
-  experimentalSession?: EditorSession;
   /** Callback when document is saved */
   onSave?: (buffer: ArrayBuffer) => void;
   /** Author name used for comments and track changes */
@@ -502,26 +490,8 @@ export type DocxEditorProps = {
 
 export type { FolioSelectiveSaveFlags, TripwireResult };
 
-export type DocxEditorCollaboration =
-  CanonicalRoomCollaboration | DocxEditorYjsCollaboration;
-
-/** A Yjs fragment the legacy session edits, and the plugins that bind it. */
-export type DocxEditorYjsCollaboration = {
-  awareness?:
-    | {
-        clientID: number;
-        getStates: () => Map<number, unknown>;
-        off: (event: "change" | "update", handler: () => void) => void;
-        on: (event: "change" | "update", handler: () => void) => void;
-      }
-    | undefined;
-  onSeeded?: (() => void) | undefined;
-  plugins?: Plugin[] | undefined;
-  shouldSeed?: boolean | undefined;
-  yXmlFragment: XmlFragment;
-  /** A canonical room is reached through `connect`; a Yjs fragment has none. */
-  connect?: never;
-};
+/** The room an editor joins. */
+export type DocxEditorCollaboration = CanonicalRoomCollaboration;
 
 export type DocxEditorApplyDocumentOperationsOptions = {
   undefinedReferences: FolioUndefinedReferencePolicy;

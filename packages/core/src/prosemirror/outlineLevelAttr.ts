@@ -41,8 +41,7 @@ export const outlineLevelFromAttrValue = (
  *
  * A value that is present and not an {@link OutlineLevel} panics rather than
  * being ignored: it can only come from a document written under an attr schema
- * this build does not read, and `yjsDocumentMetadata`'s version gate exists to
- * make that unreachable.
+ * this build does not read.
  */
 export const readOutlineLevelAttr = (value: unknown): OutlineLevel | null => {
   if (value === undefined || value === null) {

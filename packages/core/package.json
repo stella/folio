@@ -114,7 +114,6 @@
     "prosemirror-tables": "^1.8.5",
     "prosemirror-transform": "^1.12.5",
     "prosemirror-view": "^1.42.9",
-    "y-prosemirror": "^1.3.7",
     "y-protocols": "^1.0.6",
     "yjs": "^13.6.33"
   },
@@ -130,7 +129,6 @@
     "prosemirror-tables": "^1.8.5",
     "prosemirror-transform": "^1.12.2",
     "prosemirror-view": "^1.42.6",
-    "y-prosemirror": "^1.3.7",
     "y-protocols": "^1.0.6",
     "yjs": "^13.6.33"
   }

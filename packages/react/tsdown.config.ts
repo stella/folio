@@ -81,7 +81,6 @@ const shared = {
       /^@base-ui\/react(?:$|\/)/u,
       // Keep JS subpaths external; CSS still passes through the strip plugin.
       /^prosemirror-[a-z-]+(?:$|\/(?!.*\.css$))/u,
-      /^y-prosemirror(?:$|\/)/u,
       /^y-protocols(?:$|\/)/u,
       /^yjs(?:$|\/)/u,
       "lucide-react",

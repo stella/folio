@@ -11,7 +11,6 @@ import type {
   RefAttributes,
 } from "react";
 
-import type { Plugin } from "prosemirror-state";
 /** Thin React surface over core's persistent note-story editor manager. */
 import type { EditorView } from "prosemirror-view";
 import { useTranslations } from "use-intl";
@@ -23,15 +22,11 @@ import {
   type NoteStoryKey,
 } from "@stll/folio-core/controller/noteEditorManager";
 import { setSuggestionMode } from "@stll/folio-core/prosemirror/plugins/suggestionMode";
+import type { CanonicalRefusalGround } from "@stll/folio-core/types/canonicalCapabilities";
+import type { StyleDefinitions } from "@stll/folio-core/types/document";
 import type {
-  CanonicalRefusalGround,
-  EditorSession,
-} from "@stll/folio-core/types/canonicalCapabilities";
-import type { StyleDefinitions, Theme } from "@stll/folio-core/types/document";
-import {
-  type DeepReadonly,
-  readModel,
-  type ReadonlyDocument,
+  DeepReadonly,
+  ReadonlyDocument,
 } from "@stll/folio-core/types/documentModel";
 
 import "prosemirror-view/style/prosemirror.css";
@@ -40,14 +35,11 @@ export type NoteStoryEditorRef = {
   close: () => void;
   getActiveView: () => EditorView | null;
   open: (story: NoteStoryKey) => void;
-  /** The model with the edited notes written back; it shares the model's parts. */
-  snapshotDocument: (model: ReadonlyDocument) => ReadonlyDocument;
 };
 
 export type NoteStoryEditorProps = {
   /** The document model; the note editors only read it. */
   document: ReadonlyDocument | null;
-  experimentalSession?: EditorSession;
   getCanonicalApi?: () => HiddenEditorApi | null;
   /**
    * The canonical session's own document, read without a copy; null outside
@@ -67,11 +59,9 @@ export type NoteStoryEditorProps = {
     docChanged: boolean,
     selectionChanged: boolean,
   ) => void;
-  plugins?: Plugin[];
   suggestionAuthor?: string;
   suggestionModeActive?: boolean;
   styles?: DeepReadonly<StyleDefinitions> | null;
-  theme?: DeepReadonly<Theme> | null;
 };
 
 const panelStyle: CSSProperties = {
@@ -104,7 +94,6 @@ const headerStyle: CSSProperties = {
 };
 
 const hostStyle: CSSProperties = { padding: "12px 16px", minHeight: 72 };
-const EMPTY_PLUGINS: Plugin[] = [];
 
 /* eslint-disable prefer-arrow-callback -- preserve the component name in React DevTools. */
 const NoteStoryEditorComponent = forwardRef<
@@ -113,33 +102,25 @@ const NoteStoryEditorComponent = forwardRef<
 >(function NoteStoryEditor(
   {
     document,
-    experimentalSession,
     getCanonicalApi,
     readCanonicalDocument,
     onSessionRefusal,
     onActiveChange,
     onDocumentChange,
     onStoryChange,
-    plugins,
     styles,
     suggestionAuthor,
     suggestionModeActive,
-    theme,
   },
   ref,
 ) {
   const t = useTranslations("folio");
-  const resolvedPlugins = plugins ?? EMPTY_PLUGINS;
   const isSuggestionModeActive = suggestionModeActive ?? false;
   const hostRef = useRef<HTMLDivElement>(null);
-  const documentRef = useRef(document);
   const canonicalApiRef = useRef(getCanonicalApi);
   const readCanonicalDocumentRef = useRef(readCanonicalDocument);
-  const sessionRef = useRef(experimentalSession);
   const refusalRef = useRef(onSessionRefusal);
   const stylesRef = useRef(styles);
-  const themeRef = useRef(theme);
-  const pluginsRef = useRef(resolvedPlugins);
   const onDocumentChangeRef = useRef(onDocumentChange);
   const onActiveChangeRef = useRef(onActiveChange);
   const onStoryChangeRef = useRef(onStoryChange);
@@ -147,40 +128,26 @@ const NoteStoryEditorComponent = forwardRef<
   const managerRef = useRef<NoteEditorManager | null>(null);
 
   useEffect(() => {
-    documentRef.current = document;
     canonicalApiRef.current = getCanonicalApi;
     readCanonicalDocumentRef.current = readCanonicalDocument;
-    sessionRef.current = experimentalSession;
     refusalRef.current = onSessionRefusal;
     stylesRef.current = styles;
-    themeRef.current = theme;
-    pluginsRef.current = resolvedPlugins;
     onDocumentChangeRef.current = onDocumentChange;
     onActiveChangeRef.current = onActiveChange;
     onStoryChangeRef.current = onStoryChange;
     if (managerRef.current === null) {
       managerRef.current = createNoteEditorManager({
-        getDocument: () => documentRef.current,
         getHost: () => hostRef.current,
-        getPlugins: () => pluginsRef.current,
         getStyles: () => stylesRef.current,
-        getTheme: () => themeRef.current,
         getCanonicalApi: () => canonicalApiRef.current?.() ?? null,
         readCanonicalDocument: () => readCanonicalDocumentRef.current(),
-        getExperimentalSession: () => sessionRef.current,
         onSessionRefusal: (reason, ground, error) =>
           refusalRef.current?.(reason, ground, error),
         onTransaction: ({ docChanged, selectionChanged, view }) => {
           if (docChanged) {
-            // The model as the edit left it, never a copy: the session's own
-            // document, or the note snapshot over the editor's document. The
-            // host's copy is made once the edit settles.
-            const current = documentRef.current;
-            const model =
-              readCanonicalDocumentRef.current() ??
-              (current && managerRef.current
-                ? managerRef.current.snapshotDocument(readModel(current))
-                : current);
+            // The session's own document, never a copy; the host's copy is
+            // made once the edit settles.
+            const model = readCanonicalDocumentRef.current();
             if (model) onDocumentChangeRef.current(model);
           }
           onStoryChangeRef.current(view, docChanged, selectionChanged);
@@ -196,16 +163,13 @@ const NoteStoryEditorComponent = forwardRef<
   }, [
     active,
     document,
-    experimentalSession,
     getCanonicalApi,
     readCanonicalDocument,
     onActiveChange,
     onDocumentChange,
     onSessionRefusal,
     onStoryChange,
-    resolvedPlugins,
     styles,
-    theme,
   ]);
 
   useEffect(() => {
@@ -256,8 +220,6 @@ const NoteStoryEditorComponent = forwardRef<
       onActiveChangeRef.current(story);
       requestAnimationFrame(() => view.focus());
     },
-    snapshotDocument: (current) =>
-      managerRef.current?.snapshotDocument(current) ?? current,
   }));
 
   const title = active

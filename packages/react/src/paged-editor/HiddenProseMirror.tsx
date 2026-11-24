@@ -5,7 +5,6 @@ import {
   useImperativeHandle,
   useLayoutEffect,
   useRef,
-  useState,
 } from "react";
 import type {
   CSSProperties,
@@ -13,7 +12,6 @@ import type {
   RefAttributes,
 } from "react";
 
-import { panic } from "better-result";
 /**
  * HiddenProseMirror Component
  *
@@ -42,24 +40,17 @@ import {
   NO_ANONYMIZATION_TERMS,
 } from "@stll/folio-core/controller/anonymizationHighlights";
 import type { CanonicalRoomCollaboration } from "@stll/folio-core/controller/canonicalRoomEditor";
-import { loadCollaborationModules } from "@stll/folio-core/controller/collaborationModules";
 import type { HiddenEditorApi } from "@stll/folio-core/controller/hiddenEditorApi";
 import {
-  type CollaborationModules,
-  collectRemoteSelections,
   createHiddenEditorManager,
   type HiddenEditorManager,
   type HiddenEditorTransactionUpdate,
-  type HiddenProseMirrorCollaboration,
   type HiddenProseMirrorRemoteSelection,
 } from "@stll/folio-core/controller/hiddenEditorManager";
 import { HIDDEN_EDITOR_WRAPPER_CLASS } from "@stll/folio-core/layout-bridge/dom/imeCaretAnchor";
 import type { HistoryShortcutOwner } from "@stll/folio-core/prosemirror/extensions/core/HistoryExtension";
 import type { ExtensionManager } from "@stll/folio-core/prosemirror/extensions/ExtensionManager";
-import type {
-  CanonicalRefusalGround,
-  EditorSession,
-} from "@stll/folio-core/types/canonicalCapabilities";
+import type { CanonicalRefusalGround } from "@stll/folio-core/types/canonicalCapabilities";
 import type { StyleDefinitions, Theme } from "@stll/folio-core/types/document";
 import type {
   DeepReadonly,
@@ -71,16 +62,8 @@ import "prosemirror-view/style/prosemirror.css";
 
 import "../styles/prosemirror-layer.css";
 
-export type {
-  HiddenProseMirrorCollaboration,
-  HiddenProseMirrorRemoteSelection,
-} from "@stll/folio-core/controller/hiddenEditorManager";
+export type { HiddenProseMirrorRemoteSelection } from "@stll/folio-core/controller/hiddenEditorManager";
 export { createHiddenEditorState } from "@stll/folio-core/controller/hiddenEditorManager";
-
-type CollaborationLoad =
-  | { status: "disabled" | "loading" }
-  | { status: "ready"; modules: CollaborationModules }
-  | { status: "failed"; error: unknown };
 
 const EMPTY_EXTERNAL_PLUGINS: Plugin[] = [];
 
@@ -91,7 +74,6 @@ const EMPTY_EXTERNAL_PLUGINS: Plugin[] = [];
 export type HiddenProseMirrorProps = {
   /** The document model to edit; the editor reads it and never writes it. */
   document: ReadonlyDocument | null;
-  experimentalSession?: EditorSession;
   /** Who answers the undo and redo keys; the editor when unset. */
   historyShortcuts?: HistoryShortcutOwner;
   suggestionModeActive?: boolean;
@@ -131,9 +113,7 @@ export type HiddenProseMirrorProps = {
   externalPlugins?: Plugin[];
   /** Terms the editor highlights in the shown text. */
   anonymizationTerms?: readonly FolioAnonymizationTerm[] | undefined;
-  /** Yjs-backed collaboration document owner. */
-  collaboration?: HiddenProseMirrorCollaboration | undefined;
-  /** The canonical room the canonical session joins. */
+  /** The room the session joins. */
   canonicalRoom?: CanonicalRoomCollaboration | undefined;
   onRemoteSelectionsChange?:
     ((selections: HiddenProseMirrorRemoteSelection[]) => void) | undefined;
@@ -145,12 +125,6 @@ export type HiddenProseMirrorProps = {
   onCanonicalHistory?: (effect: CanonicalHistoryEffect) => void;
   /** A peer's edit dropped local history steps. */
   onCanonicalHistoryDrop?: (drop: CanonicalHistoryDrop) => void;
-  /**
-   * Reads the initial state the parent converts for its pre-view layout. Read
-   * only when the view is built from the document, never when a canonical
-   * session seeds it.
-   */
-  getPrecomputedInitialState?: () => EditorState | null;
   /** Callback when EditorView is destroyed */
   onEditorViewDestroy?: () => void;
   /** Intercept key events before ProseMirror processes them. Return true to prevent PM handling. */
@@ -227,7 +201,6 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
   const {
     document,
     documentIdentity,
-    experimentalSession,
     historyShortcuts = "editor",
     suggestionModeActive = false,
     suggestionAuthor = "User",
@@ -243,7 +216,6 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
     externalPlugins = EMPTY_EXTERNAL_PLUGINS,
     anonymizationTerms,
     derivedFields,
-    collaboration,
     canonicalRoom,
     extensionManager,
     onEditorViewReady,
@@ -256,33 +228,13 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
     onPaste,
     onReadOnlyEditAttempt,
     onRemoteSelectionsChange,
-    getPrecomputedInitialState,
   } = props;
-
-  const hasCollaboration = collaboration !== undefined;
-  const [collaborationLoad, setCollaborationLoad] = useState<CollaborationLoad>(
-    () => ({
-      status: hasCollaboration ? "loading" : "disabled",
-    }),
-  );
-  if (hasCollaboration !== (collaborationLoad.status !== "disabled")) {
-    setCollaborationLoad({ status: hasCollaboration ? "loading" : "disabled" });
-  }
-  const collaborationModules =
-    hasCollaboration && collaborationLoad.status === "ready"
-      ? collaborationLoad.modules
-      : null;
-  const collaborationModulesError =
-    hasCollaboration && collaborationLoad.status === "failed"
-      ? collaborationLoad.error
-      : null;
 
   // Refs
   const hostRef = useRef<HTMLDivElement>(null);
   // Manager-input refs: the framework-agnostic view manager reads these via
   // accessor functions, so it always sees the latest committed value.
   const readOnlyRef = useRef(readOnly);
-  const experimentalSessionRef = useRef(experimentalSession);
   const historyShortcutsRef = useRef(historyShortcuts);
   const suggestionModeActiveRef = useRef(suggestionModeActive);
   const suggestionAuthorRef = useRef(suggestionAuthor);
@@ -294,10 +246,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
   const externalPluginsRef = useRef(externalPlugins);
   const anonymizationTermsRef = useRef(anonymizationTerms);
   const derivedFieldsRef = useRef(derivedFields);
-  const getPrecomputedInitialStateRef = useRef(getPrecomputedInitialState);
-  const collaborationRef = useRef(collaboration);
   const canonicalRoomRef = useRef(canonicalRoom);
-  const collaborationModulesRef = useRef(collaborationModules);
 
   // Store callbacks in refs to avoid dependency array issues that cause infinite loops
   // when the parent component passes unstable callback references
@@ -325,7 +274,6 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
   useLayoutEffect(() => {
     // Keep refs in sync
     readOnlyRef.current = readOnly;
-    experimentalSessionRef.current = experimentalSession;
     historyShortcutsRef.current = historyShortcuts;
     suggestionModeActiveRef.current = suggestionModeActive;
     suggestionAuthorRef.current = suggestionAuthor;
@@ -335,7 +283,6 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
     externalPluginsRef.current = externalPlugins;
     anonymizationTermsRef.current = anonymizationTerms;
     derivedFieldsRef.current = derivedFields;
-    getPrecomputedInitialStateRef.current = getPrecomputedInitialState;
     onTransactionRef.current = onTransaction;
     onCanonicalCompositionLayoutRef.current = onCanonicalCompositionLayout;
     getEmbeddedFontFamilyMapRef.current = getEmbeddedFontFamilyMap;
@@ -350,9 +297,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
     onPasteRef.current = onPaste;
     onReadOnlyEditAttemptRef.current = onReadOnlyEditAttempt;
     onRemoteSelectionsChangeRef.current = onRemoteSelectionsChange;
-    collaborationRef.current = collaboration;
     canonicalRoomRef.current = canonicalRoom;
-    collaborationModulesRef.current = collaborationModules;
 
     // Keep document ref in sync
     documentRef.current = document;
@@ -367,13 +312,8 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
         getAnonymizationTerms: () =>
           anonymizationTermsRef.current ?? NO_ANONYMIZATION_TERMS,
         getDerivedFields: () => derivedFieldsRef.current,
-        getCollaboration: () => collaborationRef.current,
-        getCollaborationModules: () => collaborationModulesRef.current,
         getCanonicalRoom: () => canonicalRoomRef.current,
-        getPrecomputedInitialState: () =>
-          getPrecomputedInitialStateRef.current?.() ?? null,
         getReadOnly: () => readOnlyRef.current,
-        getExperimentalSession: () => experimentalSessionRef.current,
         getHistoryShortcuts: () => historyShortcutsRef.current,
         onCanonicalHistory: (effect) => onCanonicalHistoryRef.current?.(effect),
         onCanonicalHistoryDrop: (drop) =>
@@ -406,69 +346,15 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
 
   // View creation and external state sync stay passive: ancestor layout
   // effects publish committed callbacks before readiness/selection events.
-  // This runs before the awareness subscription below so it can see a view
-  // whose deferred collaboration-module load just completed.
   useEffect(() => {
     managerRef.current?.retryViewCreation();
     managerRef.current?.syncExternalDocument();
     managerRef.current?.syncEditable();
   });
 
-  useEffect(() => {
-    if (!hasCollaboration) {
-      return undefined;
-    }
-
-    let cancelled = false;
-    void loadCollaborationModules().then(
-      (modules) => {
-        if (!cancelled) {
-          setCollaborationLoad({ status: "ready", modules });
-        }
-        return undefined;
-      },
-      (error: unknown) => {
-        if (!cancelled) {
-          setCollaborationLoad({ status: "failed", error });
-        }
-        return undefined;
-      },
-    );
-
-    return () => {
-      cancelled = true;
-    };
-  }, [hasCollaboration]);
-
   // ========================================================================
   // EditorView Lifecycle
   // ========================================================================
-
-  useEffect(() => {
-    const awareness = collaboration?.awareness;
-    if (!awareness || !managerRef.current?.getView() || !collaborationModules) {
-      onRemoteSelectionsChangeRef.current?.([]);
-      return undefined;
-    }
-
-    const publishRemoteSelections = () => {
-      const view = managerRef.current?.getView();
-      if (!view) {
-        return;
-      }
-      onRemoteSelectionsChangeRef.current?.(
-        collectRemoteSelections(view.state, awareness, collaborationModules),
-      );
-    };
-
-    awareness.on("change", publishRemoteSelections);
-    publishRemoteSelections();
-
-    return () => {
-      awareness.off("change", publishRemoteSelections);
-      onRemoteSelectionsChangeRef.current?.([]);
-    };
-  }, [collaboration, collaborationModules]);
 
   // Stable wrapper so the unmount effect keeps `destroyView` in its dependency
   // array; the teardown body lives in the manager.
@@ -495,18 +381,6 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
     }),
     [],
   );
-
-  if (hasCollaboration && collaborationModulesError) {
-    let detail = "unknown error";
-    if (collaborationModulesError instanceof Error) {
-      detail = collaborationModulesError.message;
-    } else if (typeof collaborationModulesError === "string") {
-      detail = collaborationModulesError;
-    }
-    panic(
-      `Failed to load collaboration editor modules. Reload the document to retry. Cause: ${detail}`,
-    );
-  }
 
   // ========================================================================
   // Render

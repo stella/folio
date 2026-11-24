@@ -36,11 +36,7 @@ import {
   type FolioAnonymizationTerm,
   NO_ANONYMIZATION_TERMS,
 } from "@stll/folio-core/controller/anonymizationHighlights";
-import {
-  type CanonicalRoomCollaboration,
-  isCanonicalRoomCollaboration,
-} from "@stll/folio-core/controller/canonicalRoomEditor";
-import { loadCollaborationModules } from "@stll/folio-core/controller/collaborationModules";
+import type { CanonicalRoomCollaboration } from "@stll/folio-core/controller/canonicalRoomEditor";
 import { DOCUMENT_CHANGE_NOTIFY_DELAY_MS } from "@stll/folio-core/controller/documentChangeNotification";
 import {
   createFolioEditor,
@@ -64,15 +60,12 @@ import type {
 } from "@stll/folio-core/controller/headerFooterEditorManager";
 import {
   CanonicalSessionRefusalError,
-  collectRemoteSelections,
   createHiddenEditorManager,
   createHiddenEditorState,
 } from "@stll/folio-core/controller/hiddenEditorManager";
 import type {
-  CollaborationModules,
   HiddenEditorManager,
   HiddenEditorTransactionUpdate,
-  HiddenProseMirrorCollaboration,
   HiddenProseMirrorRemoteSelection,
 } from "@stll/folio-core/controller/hiddenEditorManager";
 import { createHyphenationReadiness } from "@stll/folio-core/controller/hyphenationReadiness";
@@ -101,9 +94,6 @@ import {
   prepareCanonicalDocumentInput,
 } from "@stll/folio-core/docx/canonicalSessionInput";
 import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
-import { withHostCommentThreads } from "@stll/folio-core/docx/hostCommentThreads";
-import { parseDocx } from "@stll/folio-core/docx/parser";
-import type { SaveDiagnostic } from "@stll/folio-core/docx/saveDiagnostics";
 import type { FolioSelectiveSaveFlags } from "@stll/folio-core/docx/selectiveSaveFlags";
 import type { TripwireResult } from "@stll/folio-core/docx/selectiveSaveTripwire";
 import { getFootnoteText } from "@stll/folio-core/docx/storyPlainText";
@@ -138,23 +128,10 @@ import {
   getPageSize,
   twipsToPixels,
 } from "@stll/folio-core/paged-layout/sectionGeometry";
-import { commentIdsNamedIn } from "@stll/folio-core/prosemirror/commentRecords";
-import { fromProseDoc } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
 import type { HistoryShortcutOwner } from "@stll/folio-core/prosemirror/extensions/core/HistoryExtension";
 import { ExtensionManager } from "@stll/folio-core/prosemirror/extensions/ExtensionManager";
-import {
-  getChangedParagraphIds,
-  hasStructuralChanges,
-  hasUntrackedChanges,
-  repackWithEditorSectionRemovals,
-} from "@stll/folio-core/prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { createStarterKit } from "@stll/folio-core/prosemirror/extensions/StarterKit";
 import type { CommandMap } from "@stll/folio-core/prosemirror/extensions/types";
-import {
-  createNoteReferenceFollower,
-  heldUnreferencedNotes,
-  withoutUnreferencedNotes,
-} from "@stll/folio-core/prosemirror/noteReferenceReview";
 import { createDerivedFieldsPlugin } from "@stll/folio-core/prosemirror/plugins/derivedFields";
 import {
   createSuggestionModePlugin,
@@ -176,10 +153,8 @@ import {
   CANONICAL_GAP,
   type CanonicalGap,
   canonicalRefusalMessage,
-  type EditorSession,
-  usesCanonicalSession,
 } from "@stll/folio-core/types/canonicalCapabilities";
-import type { Comment, Footnote } from "@stll/folio-core/types/content";
+import type { Footnote } from "@stll/folio-core/types/content";
 import type {
   Document,
   HeaderFooter,
@@ -389,12 +364,6 @@ function describeInvalidHighlightMarks(doc: EditorState["doc"]): string {
 // ============================================================================
 
 export type UseDocxEditorOptions = {
-  /**
-   * The comment threads the host keeps beside the editor. Saving writes them
-   * into the document; without it the saved document keeps the threads it was
-   * loaded with.
-   */
-  comments?: () => readonly Comment[];
   /** Container element that hosts the off-screen ProseMirror editor. */
   hiddenContainer: Ref<HTMLElement | null>;
   /** Optional separate host for persistent header/footer ProseMirror views. */
@@ -405,13 +374,6 @@ export type UseDocxEditorOptions = {
   pagesContainer: Ref<HTMLElement | null>;
   /** Whether the editor is read-only. Reactive. */
   readOnly?: MaybeRefOrGetter<boolean>;
-  /**
-   * The editing engine. Unset, the editor runs the canonical session, which
-   * refuses an edit it cannot make yet with a notice, or the legacy session
-   * when `collaboration` is a Yjs fragment. `"legacy"` selects the
-   * ProseMirror-owned engine.
-   */
-  experimentalSession?: MaybeRefOrGetter<EditorSession | undefined>;
   /** Gap between pages in pixels. */
   pageGap?: number;
   /** Whether to paint each page's effective body-content boundary. Reactive. */
@@ -445,13 +407,8 @@ export type UseDocxEditorOptions = {
   onCanonicalHistory?: (effect: CanonicalHistoryEffect) => void;
   /** A peer's edit dropped local history steps, counted from the bottom. */
   onCanonicalHistoryDrop?: (drop: CanonicalHistoryDrop) => void;
-  /**
-   * Reactive collaboration: the canonical room the canonical session joins,
-   * or the Yjs fragment a legacy session edits with its binding plugins.
-   */
-  collaboration?: MaybeRefOrGetter<
-    UseDocxEditorCollaboration | CanonicalRoomCollaboration | undefined
-  >;
+  /** Reactive collaboration: the room the session joins. */
+  collaboration?: MaybeRefOrGetter<CanonicalRoomCollaboration | undefined>;
   /** The terms the editor highlights in the shown text; none when unset. */
   getAnonymizationTerms?: () => readonly FolioAnonymizationTerm[] | undefined;
   /** The fields whose display text the host derives; none when unset. */
@@ -499,10 +456,6 @@ export type UseDocxEditorOptions = {
    * only — never blocks or poisons the save. Mirrors React's callback.
    */
   onSelectiveSaveTripwire?: ((result: TripwireResult) => void) | undefined;
-};
-
-export type UseDocxEditorCollaboration = HiddenProseMirrorCollaboration & {
-  plugins?: Plugin[] | undefined;
 };
 
 export type HeaderFooterSelectionState = {
@@ -614,13 +567,11 @@ export function useDocxEditor(
   options: UseDocxEditorOptions,
 ): UseDocxEditorReturn {
   const {
-    comments,
     hiddenContainer,
     hiddenHeaderFooterContainer,
     noteEditorContainer,
     pagesContainer,
     readOnly = false,
-    experimentalSession: experimentalSessionOption,
     pageGap = DEFAULT_PAGE_GAP,
     pageRenderer,
     markupView = "all-markup",
@@ -652,11 +603,6 @@ export function useDocxEditor(
     featureFlags,
     onSelectiveSaveTripwire,
   } = options;
-  // A Yjs fragment binds the legacy session's editor state, so it selects that
-  // session unless the host names one.
-  const experimentalSession = () =>
-    toValue(experimentalSessionOption) ??
-    (toValue(collaboration)?.yXmlFragment === undefined ? undefined : "legacy");
   const headerFooterHost = hiddenHeaderFooterContainer ?? hiddenContainer;
   const getSuggestionAuthor = () =>
     toValue(author) ?? DEFAULT_SUGGESTION_AUTHOR;
@@ -665,8 +611,6 @@ export function useDocxEditor(
   // `docModel` (not `document`) so the global `document` stays reachable for the
   // FontFaceSet probe + DOM host lookups.
   const docModel = shallowRef<ReadonlyDocument | null>(null);
-  /** The notes the loaded document held without a reference: content a save keeps. */
-  let heldNotes: ReadonlySet<string> = new Set();
   /** The model's styles, for a reader that takes plain style definitions. */
   const readModelStyles = () => {
     const model = docModel.value;
@@ -681,21 +625,8 @@ export function useDocxEditor(
   let initialFontWaitPending = false;
   const editorView = shallowRef<EditorView | null>(null);
   const editorState = shallowRef<EditorState | null>(null);
-  const collaborationModules = shallowRef<CollaborationModules | null>(null);
-  // A canonical room joins the canonical session; a Yjs fragment binds the
-  // legacy session's editor state.
-  const yjsCollaboration = (): UseDocxEditorCollaboration | undefined => {
-    const value = toValue(collaboration);
-    return value === undefined || isCanonicalRoomCollaboration(value)
-      ? undefined
-      : value;
-  };
-  const canonicalRoom = (): CanonicalRoomCollaboration | undefined => {
-    const value = toValue(collaboration);
-    return value !== undefined && isCanonicalRoomCollaboration(value)
-      ? value
-      : undefined;
-  };
+  const canonicalRoom = (): CanonicalRoomCollaboration | undefined =>
+    toValue(collaboration);
   const remoteSelections = shallowRef<HiddenProseMirrorRemoteSelection[]>([]);
   const headerFooterSelection = shallowRef<HeaderFooterSelectionState | null>(
     null,
@@ -718,11 +649,6 @@ export function useDocxEditor(
   // (it is the selective-save baseline; see the featureFlags parity note), so
   // this flag — not the tracker — is what surfaces pending edits to the ref API.
   const isDirty = ref(false);
-  const isCanonicalSession = () =>
-    usesCanonicalSession(
-      toValue(experimentalSession),
-      CANONICAL_GAP.authorityRouting,
-    );
   // The model is never handed out: a host gets a copy it owns.
   const cloneForHost = (document: ReadonlyDocument) =>
     cloneDocumentWithParagraphPropertySources(document);
@@ -734,7 +660,6 @@ export function useDocxEditor(
     emitter.emit("docChange", forHosts);
   };
   const refuseCanonicalModelEdit = (gap: CanonicalGap, message: string) => {
-    if (!isCanonicalSession()) return false;
     const error = new CanonicalSessionRefusalError({
       ground: { gap },
       message: canonicalRefusalMessage(gap, message),
@@ -756,7 +681,6 @@ export function useDocxEditor(
   // definitions). Prepended to the host's external plugins so the hidden-editor
   // manager installs it on every (re)created state.
   const suggestionPlugin = createSuggestionModePlugin(false);
-  const notePlugins = [suggestionPlugin];
   // Template-directive scan + slash-menu trigger. Installed only when
   // `showTemplateDirectives` is on (see `buildExternalPlugins` /
   // `syncTemplatePlugins`). Preview plugin is inert until values are pushed.
@@ -783,7 +707,6 @@ export function useDocxEditor(
     return [
       suggestionPlugin,
       ...externalPlugins,
-      ...(yjsCollaboration()?.plugins ?? []),
       ...(templatePluginsEnabled()
         ? [templateDirectivesPlugin, templateSlashMenu]
         : []),
@@ -831,16 +754,13 @@ export function useDocxEditor(
   const headerFooterManager = createHeaderFooterEditorManager({
     getHost: () => headerFooterHost.value,
     getReadOnly: () => toValue(readOnly),
-    getDocument: () => docModel.value,
     getCanonicalApi: () => manager.api,
     readCanonicalDocument: () => manager.readCanonicalDocument(),
-    getExperimentalSession: () => toValue(experimentalSession),
     onSessionRefusal: (message, ground, error) => {
       parseError.value = message;
       onError?.(error ?? new CanonicalSessionRefusalError({ ground, message }));
     },
     getStyles: readModelStyles,
-    getTheme: () => docModel.value?.package.theme ?? null,
     onTransaction: ({ rId, kind, view, docChanged, selectionChanged }) => {
       if (docChanged) {
         isDirty.value = true;
@@ -860,26 +780,19 @@ export function useDocxEditor(
   };
   const noteEditorManager = createNoteEditorManager({
     getHost: () => noteEditorContainer?.value ?? null,
-    getPlugins: () => notePlugins,
-    getDocument: () => docModel.value,
     getCanonicalApi: () => manager.api,
     readCanonicalDocument: () => manager.readCanonicalDocument(),
-    getExperimentalSession: () => toValue(experimentalSession),
     onSessionRefusal: (message, ground, error) => {
       parseError.value = message;
       onError?.(error ?? new CanonicalSessionRefusalError({ ground, message }));
     },
     getStyles: readModelStyles,
-    getTheme: () => docModel.value?.package.theme ?? null,
     onTransaction: ({ docChanged, selectionChanged, view }) => {
       if (docChanged) {
         isDirty.value = true;
         const current = docModel.value;
         if (current) {
-          docModel.value =
-            manager.readCanonicalDocument() ??
-            noteEditorManagerHolder.current?.snapshotDocument(current) ??
-            current;
+          docModel.value = manager.readCanonicalDocument() ?? current;
           // The host hears of a note edit once it settles, as of a body edit.
           scheduleNoteChangeNotification();
         }
@@ -898,7 +811,6 @@ export function useDocxEditor(
     headerFooterManager.sync();
     noteEditorManager.sync();
   };
-  watch(() => toValue(experimentalSession), syncSecondaryStoryEditors);
 
   // ---- Layout pipeline ----------------------------------------------------
 
@@ -1033,33 +945,18 @@ export function useDocxEditor(
   // ---- Debounced PM → Document writeback ----------------------------------
 
   let docChangeTimer: number | null = null;
-  // A note follows its reference: a reference whose deletion the written-back
-  // edits rejected gives its note back its text, and deleting it again (as
-  // undoing that reject does) takes the text with it.
-  const noteFollower = createNoteReferenceFollower();
 
   function flushDocumentChangeNotification(): void {
     if (docChangeTimer !== null) {
       window.clearTimeout(docChangeTimer);
       docChangeTimer = null;
     }
-    const view = editorView.value;
-    const base = docModel.value;
-    if (!view || !base) {
+    if (!editorView.value || !docModel.value) {
       return;
     }
     try {
-      const canonical = manager.readCanonicalDocument();
-      if (!canonical && isCanonicalSession()) return;
-      const updated =
-        canonical ??
-        noteFollower.reconcile(
-          // canonical-gap: pm-save-projection
-          fromProseDoc(view.state.doc, readModel(base), {
-            stylesheetSource: { type: "package" },
-          }),
-          view.state.doc,
-        );
+      const updated = manager.readCanonicalDocument();
+      if (!updated) return;
       docModel.value = updated;
       syncSecondaryStoryEditors();
       cancelNoteChangeNotification();
@@ -1115,12 +1012,8 @@ export function useDocxEditor(
     getAnonymizationTerms: () =>
       getAnonymizationTerms?.() ?? NO_ANONYMIZATION_TERMS,
     getDerivedFields: () => getDerivedFields?.(),
-    getCollaboration: yjsCollaboration,
-    getCollaborationModules: () => collaborationModules.value,
     getCanonicalRoom: canonicalRoom,
-    getPrecomputedInitialState: () => null,
     getReadOnly: () => toValue(readOnly),
-    getExperimentalSession: () => toValue(experimentalSession),
     getHistoryShortcuts: () => historyShortcuts,
     onCanonicalHistory: (effect) => onCanonicalHistory?.(effect),
     onCanonicalHistoryDrop: (drop) => onCanonicalHistoryDrop?.(drop),
@@ -1162,93 +1055,22 @@ export function useDocxEditor(
     options.onAutocompleteChange?.(state),
   );
 
-  const publishRemoteSelections = (): void => {
-    const awareness = yjsCollaboration()?.awareness;
-    const modules = collaborationModules.value;
-    const view = manager.getView();
-    remoteSelections.value =
-      awareness && modules && view
-        ? collectRemoteSelections(view.state, awareness, modules)
-        : [];
-  };
-
+  // The room editor reports its peers' selections itself.
   watch(
     () => toValue(collaboration),
-    (activeCollaboration, _previousCollaboration, onCleanup) => {
+    () => {
       remoteSelections.value = [];
-      if (
-        !activeCollaboration ||
-        isCanonicalRoomCollaboration(activeCollaboration)
-      ) {
-        collaborationModules.value = null;
-        manager.retryViewCreation();
-        manager.syncExternalDocument();
-        return;
-      }
-
-      let cancelled = false;
-      onCleanup(() => {
-        cancelled = true;
-      });
-      collaborationModules.value = null;
-      void loadCollaborationModules().then(
-        (modules) => {
-          if (cancelled) {
-            return undefined;
-          }
-          collaborationModules.value = modules;
-          manager.retryViewCreation();
-          manager.syncExternalDocument();
-          publishRemoteSelections();
-          return undefined;
-        },
-        (error: unknown) => {
-          if (cancelled) {
-            return undefined;
-          }
-          collaborationModules.value = null;
-          onError?.(error instanceof Error ? error : new Error(String(error)));
-          return undefined;
-        },
-      );
+      manager.retryViewCreation();
+      manager.syncExternalDocument();
     },
     { immediate: true },
-  );
-
-  watch(
-    () => ({
-      awareness: yjsCollaboration()?.awareness,
-      modules: collaborationModules.value,
-      view: editorView.value,
-    }),
-    ({ awareness, modules, view }, _previous, onCleanup) => {
-      // A canonical room's editor reports its peers' selections itself.
-      if (canonicalRoom() !== undefined) return;
-      if (!awareness || !modules || !view) {
-        remoteSelections.value = [];
-        return;
-      }
-
-      awareness.on("change", publishRemoteSelections);
-      publishRemoteSelections();
-      onCleanup(() => {
-        awareness.off("change", publishRemoteSelections);
-        remoteSelections.value = [];
-      });
-    },
-    { flush: "post" },
   );
 
   function handleTransaction({
     newState,
     docChanged,
-    transactions,
   }: HiddenEditorTransactionUpdate): void {
     editorState.value = newState;
-    const before = transactions[0]?.before;
-    if (docChanged && before) {
-      noteFollower.noteBase(before);
-    }
     if (docChanged) {
       // The model only reads the session's document, so it takes it without
       // a copy; hosts get theirs when the change is notified.
@@ -1438,7 +1260,7 @@ export function useDocxEditor(
     noteEditorManager.activate(null);
     scheduler.dispose();
     manager.destroyView();
-    if (isCanonicalSession()) manager.ensureView();
+    manager.ensureView();
     syncSecondaryStoryEditors();
     manager.ensureView();
     if (!manager.getView()) {
@@ -1455,7 +1277,7 @@ export function useDocxEditor(
    */
   function paintFromPrecomputedState(): void {
     const model = docModel.value;
-    if (!model || yjsCollaboration()) {
+    if (!model) {
       return;
     }
     try {
@@ -1464,7 +1286,6 @@ export function useDocxEditor(
         styles: readModel(model).package.styles ?? null,
         manager: extensionManager,
         externalPlugins: buildExternalPlugins(),
-        collaborationModules: null,
         reason: "mount",
       });
       editorState.value = initialState;
@@ -1522,17 +1343,11 @@ export function useDocxEditor(
     parseError.value = null;
     isReady.value = false;
     try {
-      let doc: Document;
-      if (isCanonicalSession()) {
-        const opened = await openCanonicalDocx(buffer, {
-          password: toValue(password),
-        });
-        if (opened.isErr()) throw opened.error;
-        doc = opened.value.document;
-      } else {
-        doc = await parseDocx(buffer, { password: toValue(password) });
-      }
-      heldNotes = heldUnreferencedNotes(doc);
+      const opened = await openCanonicalDocx(buffer, {
+        password: toValue(password),
+      });
+      if (opened.isErr()) throw opened.error;
+      const doc = opened.value.document;
       docModel.value = doc;
       remountForNewDocument();
     } catch (err) {
@@ -1548,7 +1363,7 @@ export function useDocxEditor(
     // A host's document may hold reactive proxies; the model is its raw
     // data, which the copies the host is handed can clone.
     const raw = rawDocument(doc);
-    if (!isCanonicalSession() || holdsUniqueParagraphIds(raw)) {
+    if (holdsUniqueParagraphIds(raw)) {
       commitLoadedDocument(raw);
       return;
     }
@@ -1572,9 +1387,7 @@ export function useDocxEditor(
   }
 
   function commitLoadedDocument(doc: Document): void {
-    heldNotes = heldUnreferencedNotes(doc);
     docModel.value = doc;
-    noteFollower.reset();
     remountForNewDocument();
   }
 
@@ -1610,130 +1423,7 @@ export function useDocxEditor(
         }
         return result;
       }
-      if (isCanonicalSession()) return null;
-      // Legacy write-back can still owe the notes a restore or a deletion.
-      if (docChangeTimer !== null) flushDocumentChangeNotification();
-      const base = noteEditorManager.snapshotDocument(
-        headerFooterManager.snapshotDocument(currentDocument),
-      );
-
-      // Snapshot the editor state once, before any awaited dynamic imports, so
-      // the document we serialize and the selective-save change signals are all
-      // read from the same snapshot. A later `view.state` read could pick up an
-      // edit that landed mid-save and diff against the wrong baseline.
-      const state = view.state;
-      // canonical-gap: pm-save-projection
-      const projected = fromProseDoc(state.doc, readModel(base), {
-        stylesheetSource: { type: "package" },
-      });
-      const updatedDoc = withoutUnreferencedNotes(
-        comments
-          ? withHostCommentThreads(projected, comments(), {
-              anchoredInEditor: commentIdsNamedIn(state.doc),
-            })
-          : projected,
-        heldNotes,
-      );
-
-      const { resolveSelectiveSaveFlags } =
-        await import("@stll/folio-core/docx/selectiveSaveFlags");
-      const flags = resolveSelectiveSaveFlags(toValue(featureFlags));
-
-      // A note goes with its reference: one nothing refers to any more is not saved.
-      const baselineBuffer = updatedDoc.originalBuffer ?? null;
-
-      // The tripwire observes the selective path independently of the user-visible
-      // save mode. Only `useSelectiveForSave` is allowed to pick the returned bytes.
-      const useSelectiveForSave =
-        flags.selectiveSave &&
-        serializationOptions?.mode !== FOLIO_DOCX_SERIALIZATION_MODE.full;
-      const shouldAttemptSelective =
-        useSelectiveForSave || flags.selectiveSaveTripwire;
-
-      const { repackDocx, createDocx } =
-        await import("@stll/folio-core/docx/rezip");
-
-      let selectiveBuffer: ArrayBuffer | null = null;
-      if (shouldAttemptSelective && baselineBuffer) {
-        const { attemptSelectiveSave } =
-          await import("@stll/folio-core/docx/selectiveSave");
-        selectiveBuffer = await attemptSelectiveSave(
-          updatedDoc,
-          baselineBuffer,
-          {
-            changedParaIds: getChangedParagraphIds(state),
-            structuralChange: hasStructuralChanges(state),
-            hasUntrackedChanges: hasUntrackedChanges(state),
-            maxBytes: flags.selectiveSaveMaxBytes,
-            onSelectiveDecline: serializationOptions?.onSelectiveDecline,
-            onDiagnostic: serializationOptions?.onDiagnostic,
-          },
-        );
-      }
-
-      let buffer: ArrayBuffer | null = useSelectiveForSave
-        ? selectiveBuffer
-        : null;
-      let fullBuffer: ArrayBuffer | null = null;
-      let path: FolioDocxSerializationPath = "selective";
-
-      // A section the editor removed on purpose (its ending paragraph deleted,
-      // or that deletion accepted) is one the repack must be told about, or it
-      // refuses the smaller package.
-      const fullDiagnostics: SaveDiagnostic[] = [];
-      const collectFullDiagnostic = (diagnostic: SaveDiagnostic) =>
-        fullDiagnostics.push(diagnostic);
-      const repackFull = () =>
-        repackWithEditorSectionRemovals({
-          state,
-          document: updatedDoc,
-          repack: () =>
-            repackDocx(updatedDoc, {
-              onDiagnostic: collectFullDiagnostic,
-            }),
-        });
-
-      if (!buffer) {
-        // No original buffer means a from-scratch document — build one via createDocx.
-        fullBuffer = baselineBuffer
-          ? await repackFull()
-          : await createDocx(updatedDoc, {
-              onDiagnostic: collectFullDiagnostic,
-            });
-        buffer = fullBuffer;
-        path = "full-repack";
-      } else if (flags.selectiveSaveTripwire) {
-        try {
-          fullBuffer = await repackFull();
-        } catch {
-          // Tripwire-only full repack failures must never poison a successful
-          // selective save.
-        }
-      }
-
-      let tripwireResult: TripwireResult | null = null;
-      if (
-        flags.selectiveSaveTripwire &&
-        fullBuffer &&
-        onSelectiveSaveTripwire
-      ) {
-        // The comparison itself never blocks the save path.
-        try {
-          const { compareSelectiveVsFull } =
-            await import("@stll/folio-core/docx/selectiveSaveTripwire");
-          tripwireResult = await compareSelectiveVsFull(
-            selectiveBuffer,
-            fullBuffer,
-          );
-        } catch {
-          // Comparison failures must never poison the save path.
-        }
-      }
-
-      for (const diagnostic of fullDiagnostics)
-        serializationOptions?.onDiagnostic?.(diagnostic);
-      serializationOptions?.onSerializationPath?.(path);
-      return { buffer, path, document: updatedDoc, tripwireResult };
+      return null;
     } catch (error) {
       onError?.(error instanceof Error ? error : new Error(String(error)));
       return null;
@@ -1792,15 +1482,7 @@ export function useDocxEditor(
   }
 
   function readDocument(): ReadonlyDocument | null {
-    const canonical = readDocumentModel();
-    if (canonical) return canonical;
-    if (isCanonicalSession()) return null;
-    const document = docModel.value;
-    if (!document) return null;
-    const live = manager.api.getDocument() ?? document;
-    return noteEditorManager.snapshotDocument(
-      headerFooterManager.snapshotDocument(live),
-    );
+    return readDocumentModel();
   }
 
   function getDocument(): Document | null {

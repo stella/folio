@@ -1,10 +1,4 @@
-import {
-  panic,
-  Result,
-  TaggedError,
-  type TaggedErrorClass,
-} from "better-result";
-import { closeHistory } from "prosemirror-history";
+import { Result, TaggedError, type TaggedErrorClass } from "better-result";
 import {
   DOMParser as PMDOMParser,
   DOMSerializer,
@@ -20,13 +14,10 @@ import type {
 import {
   EditorState as PMEditorState,
   Plugin as PMPlugin,
-  TextSelection,
 } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 import type { DirectEditorProps, MarkViewConstructor } from "prosemirror-view";
 import { EditorView } from "prosemirror-view";
-import type * as YProseMirror from "y-prosemirror";
-import type { Doc as YDoc, XmlFragment } from "yjs";
 /**
  * Hidden-editor view lifecycle manager
  *
@@ -38,7 +29,6 @@ import type { Doc as YDoc, XmlFragment } from "yjs";
  * (`HiddenProseMirror`) keeps the input refs and its effects (which decide
  * *when* to act) and drives this manager through the methods below.
  */
-import type * as Yjs from "yjs";
 
 import {
   type CreateCommentOp,
@@ -72,7 +62,6 @@ import {
   derivedFieldOps,
   fieldInsertionParagraph,
 } from "../canonical/derivedFields";
-import { parseFieldType } from "../docx/fieldParser";
 import { parseDocx } from "../docx/parser";
 import {
   type EditingFontContext,
@@ -103,10 +92,7 @@ import { registerEditorCommandOwner } from "../prosemirror/executeEditorCommand"
 import type { HistoryShortcutOwner } from "../prosemirror/extensions/core/HistoryExtension";
 import type { ExtensionManager } from "../prosemirror/extensions/ExtensionManager";
 import { ensureBaseDirectionInState } from "../prosemirror/extensions/features/AutoBidiDetectionExtension";
-import {
-  ensureParaIdsInDoc,
-  ensureParaIdsInState,
-} from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
+import { ensureParaIdsInDoc } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import {
   toggleMarkForAllScripts,
   toggleUnderlineMark,
@@ -119,32 +105,18 @@ import {
   createNativeSelectionRefreshPlugin,
   isCompositionKeyDown,
 } from "../prosemirror/nativeSelection";
-import {
-  markNoteReferenceReplay,
-  noteReferenceTransactionIssue,
-} from "../prosemirror/noteReferenceOccurrences";
+import { noteReferenceTransactionIssue } from "../prosemirror/noteReferenceOccurrences";
 import { createDocumentNumberingPlugin } from "../prosemirror/plugins/documentNumbering";
 import {
   createDocumentStyleContextPlugin,
   createDocumentStylesPlugin,
 } from "../prosemirror/plugins/documentStyles";
 import { schema } from "../prosemirror/schema";
-import type { FieldAttrs } from "../prosemirror/schema/nodes";
 import { createTextInputPlugin } from "../prosemirror/textInput";
-import {
-  applyAttrSchemaMigrations,
-  proseDocumentParagraphSourceContract,
-  readYjsAttrSchemaVersion,
-  readYjsParagraphSourceContract,
-  withParagraphSourceContract,
-  writeYjsDocumentMetadata,
-} from "../prosemirror/yjsDocumentMetadata";
 import {
   CANONICAL_GAP,
   CANONICAL_RULE,
   type CanonicalRefusalGround,
-  type EditorSession,
-  usesCanonicalSession,
 } from "../types/canonicalCapabilities";
 import type { StyleDefinitions } from "../types/document";
 import {
@@ -161,11 +133,9 @@ import {
   NO_ANONYMIZATION_TERMS,
 } from "./anonymizationHighlights";
 import {
-  type AutocompleteEdit,
   canTriggerAutocomplete,
   classifyAutocompleteEdit,
   createAutocompleteSuggestion,
-  legacyAutocompleteEdit,
   nextAutocompleteWord,
 } from "./autocompleteSuggestion";
 import { prepareCanonicalPaste } from "./canonicalClipboard";
@@ -177,7 +147,6 @@ import {
   type CanonicalRoomCollaboration,
   type CanonicalRoomEditor,
   openCanonicalRoomEditor,
-  remoteSelectionColor,
 } from "./canonicalRoomEditor";
 import {
   isCanonicalListParagraph,
@@ -189,9 +158,7 @@ import {
   type HiddenEditorApi,
   type HiddenEditorAutocomplete,
 } from "./hiddenEditorApi";
-import { legacyTextAddressAt } from "./legacyTextAddress";
 import { handleReadOnlySelectionKeyDown } from "./readOnlySelection";
-import { legacyEditorPositionAt } from "./textPositionLookup";
 
 const CanonicalSessionRefusalErrorBase: TaggedErrorClass<"CanonicalSessionRefusalError"> =
   TaggedError("CanonicalSessionRefusalError");
@@ -203,7 +170,7 @@ export class CanonicalSessionRefusalError extends CanonicalSessionRefusalErrorBa
 }> {}
 
 type ActiveEditorSession =
-  | { type: "prosemirror" }
+  | { type: "unopened" }
   | { type: "canonical"; session: CanonicalSession }
   | { type: "refused"; reason: string; documentIdentity: string | null };
 
@@ -251,156 +218,10 @@ const parseCanonicalClipboardText = (
   });
 };
 
-const normalizeSeedState = (state: EditorState): EditorState =>
-  ensureBaseDirectionInState(ensureParaIdsInState(state));
-
 const normalizeLocalSeedState = (state: EditorState): EditorState =>
   ensureBaseDirectionInState(state);
 
-type YProseMirrorModule = typeof YProseMirror;
-type YjsModule = typeof Yjs;
-
-export type CollaborationModules = {
-  yProseMirror: YProseMirrorModule;
-  yjs: YjsModule;
-};
-
-type CollaborationAwareness = {
-  clientID: number;
-  getStates: () => Map<number, unknown>;
-  off: (event: "change" | "update", handler: () => void) => void;
-  on: (event: "change" | "update", handler: () => void) => void;
-};
-
-export type HiddenProseMirrorCollaboration = {
-  awareness?: CollaborationAwareness | undefined;
-  onSeeded?: (() => void) | undefined;
-  shouldSeed?: boolean | undefined;
-  yXmlFragment: XmlFragment;
-};
-
 export type HiddenProseMirrorRemoteSelection = RemoteSelection;
-
-type YSyncState = {
-  binding: {
-    mapping: Parameters<
-      YProseMirrorModule["relativePositionToAbsolutePosition"]
-    >[3];
-  };
-  doc: YDoc;
-  type: XmlFragment;
-};
-
-type AwarenessCursor = {
-  anchor: Record<string, unknown>;
-  head: Record<string, unknown>;
-};
-
-type AwarenessUser = {
-  color: string;
-  name: string;
-};
-
-const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null;
-
-const isYSyncState = (value: unknown, yjs: YjsModule): value is YSyncState => {
-  if (!isObjectRecord(value)) {
-    return false;
-  }
-  const binding = value["binding"];
-  return (
-    value["doc"] instanceof yjs.Doc &&
-    value["type"] instanceof yjs.XmlFragment &&
-    isObjectRecord(binding) &&
-    binding["mapping"] instanceof Map
-  );
-};
-
-const readAwarenessCursor = (state: unknown): AwarenessCursor | null => {
-  if (!isObjectRecord(state)) {
-    return null;
-  }
-  const cursor = state["cursor"];
-  if (!isObjectRecord(cursor)) {
-    return null;
-  }
-  const anchor = cursor["anchor"];
-  const head = cursor["head"];
-  if (!isObjectRecord(anchor) || !isObjectRecord(head)) {
-    return null;
-  }
-  return { anchor, head };
-};
-
-const readAwarenessUser = (state: unknown, clientId: number): AwarenessUser => {
-  if (!isObjectRecord(state) || !isObjectRecord(state["user"])) {
-    return {
-      color: "var(--doc-image-selection)",
-      name: `User ${clientId}`,
-    };
-  }
-
-  const user = state["user"];
-  return {
-    // Another peer's awareness: only a plain hex colour reaches a style.
-    color: remoteSelectionColor(user["color"]),
-    name: typeof user["name"] === "string" ? user["name"] : `User ${clientId}`,
-  };
-};
-
-export const collectRemoteSelections = (
-  state: EditorState,
-  awareness: CollaborationAwareness,
-  collaborationModules: CollaborationModules,
-): HiddenProseMirrorRemoteSelection[] => {
-  const syncState: unknown =
-    collaborationModules.yProseMirror.ySyncPluginKey.getState(state);
-  if (!isYSyncState(syncState, collaborationModules.yjs)) {
-    return [];
-  }
-
-  const selections: HiddenProseMirrorRemoteSelection[] = [];
-  for (const [clientId, remoteState] of awareness.getStates()) {
-    if (clientId === awareness.clientID) {
-      continue;
-    }
-
-    const cursor = readAwarenessCursor(remoteState);
-    if (cursor === null) {
-      continue;
-    }
-
-    const anchor =
-      collaborationModules.yProseMirror.relativePositionToAbsolutePosition(
-        syncState.doc,
-        syncState.type,
-        collaborationModules.yjs.createRelativePositionFromJSON(cursor.anchor),
-        syncState.binding.mapping,
-      );
-    const head =
-      collaborationModules.yProseMirror.relativePositionToAbsolutePosition(
-        syncState.doc,
-        syncState.type,
-        collaborationModules.yjs.createRelativePositionFromJSON(cursor.head),
-        syncState.binding.mapping,
-      );
-    if (anchor === null || head === null) {
-      continue;
-    }
-
-    const user = readAwarenessUser(remoteState, clientId);
-    selections.push({
-      anchor,
-      peer: String(clientId),
-      color: user.color,
-      head,
-      name: user.name,
-    });
-  }
-
-  return selections;
-};
 
 const HIDDEN_EDITOR_ATTRIBUTES = {
   "aria-label": "Document content",
@@ -425,8 +246,6 @@ export type CreateHiddenEditorStateOptions = {
   styles?: DeepReadonly<StyleDefinitions> | null | undefined;
   manager?: ExtensionManager | undefined;
   externalPlugins?: Plugin[] | undefined;
-  collaboration?: HiddenProseMirrorCollaboration | undefined;
-  collaborationModules?: CollaborationModules | null | undefined;
   reason?: HiddenEditorStateReason | undefined;
 };
 
@@ -438,8 +257,6 @@ export function createHiddenEditorState(
     styles,
     manager,
     externalPlugins = [],
-    collaboration,
-    collaborationModules,
     reason = "mount",
   } = options;
   recordHiddenEditorStateCreate(reason);
@@ -464,8 +281,7 @@ export function createHiddenEditorState(
   }
 
   // Expose the document's styles to style-aware commands (e.g. the Enter
-  // handler's `w:next` switch from heading to body text). Same resolver for
-  // collab and non-collab paths.
+  // handler's `w:next` switch from heading to body text).
   const styleResolverPlugin = createDocumentStylesPlugin(
     styles ?? document?.package.styles,
   );
@@ -481,107 +297,6 @@ export function createHiddenEditorState(
     ...(manager?.getPlugins() ?? [createTextInputPlugin()]),
     styleResolverPlugin,
   ];
-
-  if (collaboration) {
-    if (!collaborationModules) {
-      panic(
-        "Collaboration modules must be loaded before creating collaborative editor state.",
-      );
-    }
-
-    if (collaboration.shouldSeed && collaboration.yXmlFragment.length === 0) {
-      const seedState = normalizeLocalSeedState(
-        PMEditorState.create({
-          doc: localDoc,
-          schema: activeSchema,
-          plugins,
-        }),
-      );
-      collaborationModules.yProseMirror.prosemirrorToYXmlFragment(
-        seedState.doc,
-        collaboration.yXmlFragment,
-      );
-      const collaborationDocument = collaboration.yXmlFragment.doc;
-      if (!collaborationDocument) {
-        panic(
-          "A collaboration fragment must belong to a Yjs document before seeding.",
-        );
-      }
-      writeYjsDocumentMetadata(collaborationDocument, seedState.doc);
-      collaboration.onSeeded?.();
-    }
-
-    const collaborationDocument = collaboration.yXmlFragment.doc;
-    if (!collaborationDocument) {
-      panic(
-        "A collaboration fragment must belong to a Yjs document before loading.",
-      );
-    }
-    // Gate before any node is built: y-prosemirror copies unknown attr values
-    // into the node verbatim, drops unknown keys, and deletes an element it
-    // cannot build. A snapshot this build cannot read must never reach it.
-    const attrSchemaVersion = readYjsAttrSchemaVersion(collaborationDocument);
-    if (attrSchemaVersion.isErr()) {
-      throw attrSchemaVersion.error;
-    }
-    applyAttrSchemaMigrations(
-      collaborationDocument,
-      collaboration.yXmlFragment,
-      attrSchemaVersion.value,
-    );
-    let { doc } = collaborationModules.yProseMirror.initProseMirrorDoc(
-      collaboration.yXmlFragment,
-      activeSchema,
-    );
-    const collaborationContract = readYjsParagraphSourceContract(
-      collaborationDocument,
-    );
-    const localContract = proseDocumentParagraphSourceContract(localDoc);
-    if (localContract && collaborationContract !== localContract) {
-      panic(
-        "The collaboration state belongs to a different paragraph-property source.",
-      );
-    }
-    if (collaborationContract) {
-      doc = withParagraphSourceContract(doc, collaborationContract);
-    }
-
-    const initializedState = normalizeSeedState(
-      PMEditorState.create({
-        doc,
-        schema: activeSchema,
-        plugins,
-      }),
-    );
-    if (!initializedState.doc.eq(doc)) {
-      collaborationModules.yProseMirror.prosemirrorToYXmlFragment(
-        initializedState.doc,
-        collaboration.yXmlFragment,
-      );
-      ({ doc } = collaborationModules.yProseMirror.initProseMirrorDoc(
-        collaboration.yXmlFragment,
-        activeSchema,
-      ));
-      if (collaborationContract) {
-        doc = withParagraphSourceContract(doc, collaborationContract);
-      }
-    }
-
-    const startedAt = performance.now();
-    const state = normalizeSeedState(
-      PMEditorState.create({
-        doc,
-        schema: activeSchema,
-        plugins,
-      }),
-    );
-    recordHiddenEditorPhase(
-      reason,
-      "editor-state",
-      performance.now() - startedAt,
-    );
-    return state;
-  }
 
   const startedAt = performance.now();
   const state = normalizeLocalSeedState(
@@ -616,20 +331,9 @@ export type HiddenEditorManagerDeps = {
   getStyles: () => DeepReadonly<StyleDefinitions> | null | undefined;
   getExtensionManager: () => ExtensionManager | undefined;
   getExternalPlugins: () => Plugin[];
-  /** The Yjs fragment a legacy session edits. */
-  getCollaboration: () => HiddenProseMirrorCollaboration | undefined;
-  getCollaborationModules: () => CollaborationModules | null;
-  /** The room a canonical session joins. */
+  /** The room the session joins. */
   getCanonicalRoom?: () => CanonicalRoomCollaboration | undefined;
-  /**
-   * The state the adapter converted from the document for its pages before a
-   * view existed. Read only when the view is built from the document: a
-   * canonical session seeds the view with its own projection, so an adapter
-   * that converts on this read converts the document once per open.
-   */
-  getPrecomputedInitialState: () => EditorState | null | undefined;
   getReadOnly: () => boolean;
-  getExperimentalSession?: () => EditorSession | undefined;
   /** The terms the host wants highlighted; none when unset. */
   getAnonymizationTerms?: () => readonly FolioAnonymizationTerm[];
   /** The fields whose display text the host derives; none when unset. */
@@ -798,7 +502,7 @@ export const createHiddenEditorManager = (
     };
   };
   let releaseCommandOwner: (() => void) | undefined;
-  let editorSession: ActiveEditorSession = { type: "prosemirror" };
+  let editorSession: ActiveEditorSession = { type: "unopened" };
   let canonicalSessionEpoch = 0;
   let modeOverride: CanonicalSessionMode | null = null;
   const syncCanonicalMode = (): void => {
@@ -838,23 +542,6 @@ export const createHiddenEditorManager = (
     offAutocompleteEdits = () => {};
     leaveRoom();
     const canonicalRoom = deps.getCanonicalRoom?.();
-    if (
-      !usesCanonicalSession(
-        deps.getExperimentalSession?.(),
-        CANONICAL_GAP.authorityRouting,
-      )
-    ) {
-      if (canonicalRoom !== undefined)
-        panic(
-          "A canonical room is joined by the canonical session; select it with experimentalSession.",
-        );
-      editorSession = { type: "prosemirror" };
-      return true;
-    }
-    if (deps.getCollaboration() !== undefined)
-      panic(
-        "A canonical session collaborates in a canonical room (collaboration.connect); a Yjs fragment binds the legacy session.",
-      );
     const documentIdentity = deps.getDocumentIdentity();
     if (
       editorSession.type === "refused" &&
@@ -1032,74 +719,51 @@ export const createHiddenEditorManager = (
     }
     publishCanonical(prepared.value, refuse);
   };
-  /** Insert a field in place of the selection, in either session. */
+  /** Insert a field in place of the selection. */
   const insertField = (field: FolioFieldInsertion): boolean => {
-    if (!view || isDestroying || deps.getReadOnly()) return false;
+    if (
+      !view ||
+      isDestroying ||
+      deps.getReadOnly() ||
+      editorSession.type !== "canonical"
+    )
+      return false;
     const { state } = view;
-    switch (editorSession.type) {
-      case "canonical": {
-        const { session } = editorSession;
-        if (state.selection instanceof CellSelection) {
-          refuse("A field goes in at a text selection, not over cells.");
-          return false;
-        }
-        const range = canonicalSelectionRange(state);
-        const from = session.projection.addressAt(range.from);
-        if (from.isErr()) {
-          refuse(from.error.message, from.error.ground);
-          return false;
-        }
-        const to = session.projection.addressAt(range.to);
-        if (to.isErr()) {
-          refuse(to.error.message, to.error.ground);
-          return false;
-        }
-        syncCanonicalMode();
-        const prepared = session.prepareIntents(state, {
-          intents: [
-            {
-              type: "replaceFragment",
-              from: from.value,
-              to: to.value,
-              paragraphs: [fieldInsertionParagraph(field)],
-              openStart: 1,
-              openEnd: 1,
-            },
-          ],
-          semantic: "paste",
-        });
-        if (prepared.isErr()) {
-          refuse(prepared.error.message, prepared.error.ground);
-          return false;
-        }
-        return publishCommit(prepared.value);
-      }
-      case "prosemirror": {
-        const fieldType = state.schema.nodes["field"];
-        if (fieldType === undefined) return false;
-        const insertion = state.tr
-          .replaceSelectionWith(
-            fieldType.create({
-              fieldType: parseFieldType(field.instruction),
-              instruction: field.instruction,
-              displayText: field.displayText,
-              fieldKind: "simple",
-              ...(field.locked === undefined ? {} : { fldLock: field.locked }),
-            } satisfies FieldAttrs),
-            false,
-          )
-          .scrollIntoView();
-        // Its own undo step, apart from the typing before it.
-        view.dispatch(closeHistory(insertion));
-        return true;
-      }
-      case "refused":
-        return false;
-      default: {
-        editorSession satisfies never;
-        return panic("Unhandled editor session");
-      }
+    const { session } = editorSession;
+    if (state.selection instanceof CellSelection) {
+      refuse("A field goes in at a text selection, not over cells.");
+      return false;
     }
+    const range = canonicalSelectionRange(state);
+    const from = session.projection.addressAt(range.from);
+    if (from.isErr()) {
+      refuse(from.error.message, from.error.ground);
+      return false;
+    }
+    const to = session.projection.addressAt(range.to);
+    if (to.isErr()) {
+      refuse(to.error.message, to.error.ground);
+      return false;
+    }
+    syncCanonicalMode();
+    const prepared = session.prepareIntents(state, {
+      intents: [
+        {
+          type: "replaceFragment",
+          from: from.value,
+          to: to.value,
+          paragraphs: [fieldInsertionParagraph(field)],
+          openStart: 1,
+          openEnd: 1,
+        },
+      ],
+      semantic: "paste",
+    });
+    if (prepared.isErr()) {
+      refuse(prepared.error.message, prepared.error.ground);
+      return false;
+    }
+    return publishCommit(prepared.value);
   };
   /**
    * Show a peer's edit the room sequenced: the same publication as a local
@@ -1141,21 +805,9 @@ export const createHiddenEditorManager = (
   };
 
   const autocompletePositionAt = (position: TextPosition): number | null => {
-    if (!view || isDestroying) return null;
-    switch (editorSession.type) {
-      case "canonical":
-        return editorSession.session.projection
-          .positionAt(position)
-          .unwrapOr(null);
-      case "prosemirror":
-        return legacyEditorPositionAt(view.state.doc, position);
-      case "refused":
-        return null;
-      default: {
-        const unreachable: never = editorSession;
-        return unreachable;
-      }
-    }
+    if (!view || isDestroying || editorSession.type !== "canonical")
+      return null;
+    return editorSession.session.projection.positionAt(position).unwrapOr(null);
   };
   /** Where the suggestion's anchor shows in the body's editor document. */
   const autocompleteEditorAnchor = (): number | null => {
@@ -1166,11 +818,9 @@ export const createHiddenEditorManager = (
   };
   /** The caret as a body text position. */
   const caretTextPosition = (): TextPosition | null => {
-    if (!view) return null;
+    if (!view || editorSession.type !== "canonical") return null;
     const { head } = view.state.selection;
-    if (editorSession.type === "canonical")
-      return editorSession.session.projection.addressAt(head).unwrapOr(null);
-    return legacyTextAddressAt(view.state.doc, head);
+    return editorSession.session.projection.addressAt(head).unwrapOr(null);
   };
   /**
    * Insert the suggestion, or its next word, at its anchor as the person's
@@ -1180,53 +830,46 @@ export const createHiddenEditorManager = (
   const acceptAutocomplete = (scope: "all" | "word"): boolean => {
     const current = autocomplete.get();
     if (current.status === "idle" || current.text.length === 0) return false;
-    if (!view || deps.getReadOnly() || isDestroying) return false;
+    if (
+      !view ||
+      deps.getReadOnly() ||
+      isDestroying ||
+      editorSession.type !== "canonical"
+    )
+      return false;
     const at = autocompleteEditorAnchor();
     if (at === null) return false;
     const text =
       scope === "word" ? nextAutocompleteWord(current.text) : current.text;
-    if (editorSession.type === "canonical") {
-      syncCanonicalMode();
-      const session = editorSession.session;
-      session.breakUndoGroup();
-      const prepared = session.prepareReplace(view.state, {
-        from: at,
-        to: at,
-        text,
-        semantic: "typing",
-      });
-      if (prepared.isErr()) {
-        if (prepared.error.reason !== "noChange")
-          refuse(prepared.error.message, prepared.error.ground);
-        return false;
-      }
-      const published = publishCommit(prepared.value);
-      session.breakUndoGroup();
-      return published;
+    syncCanonicalMode();
+    const session = editorSession.session;
+    session.breakUndoGroup();
+    const prepared = session.prepareReplace(view.state, {
+      from: at,
+      to: at,
+      text,
+      semantic: "typing",
+    });
+    if (prepared.isErr()) {
+      if (prepared.error.reason !== "noChange")
+        refuse(prepared.error.message, prepared.error.ground);
+      return false;
     }
-    if (editorSession.type === "refused") return false;
-    const previous = view.state.doc;
-    const transaction = closeHistory(view.state.tr).insertText(text, at);
-    view.dispatch(
-      transaction.setSelection(
-        TextSelection.create(transaction.doc, at + text.length),
-      ),
-    );
-    if (!view || view.state.doc.eq(previous)) return false;
-    view.dispatch(closeHistory(view.state.tr));
-    return true;
+    const published = publishCommit(prepared.value);
+    session.breakUndoGroup();
+    return published;
   };
   let autocompleteRequests = 0;
   const autocompleteApi: HiddenEditorAutocomplete = {
     start: (options) => {
       const anchor = options?.at ?? caretTextPosition();
-      if (anchor === null || !view) return null;
+      if (anchor === null || !view || editorSession.type !== "canonical")
+        return null;
       const position = autocompletePositionAt(anchor);
       if (position === null) return null;
-      const resolved =
-        editorSession.type === "canonical"
-          ? editorSession.session.projection.addressAt(position).unwrapOr(null)
-          : legacyTextAddressAt(view.state.doc, position);
+      const resolved = editorSession.session.projection
+        .addressAt(position)
+        .unwrapOr(null);
       if (resolved === null) return null;
       autocompleteRequests += 1;
       const requestId =
@@ -1702,7 +1345,6 @@ export const createHiddenEditorManager = (
   // Track the document identity to detect truly external changes vs changes
   // that originated from editing (which get passed back through props).
   let lastDocumentId: string | null = null;
-  let lastCollaborationFragment: XmlFragment | null = null;
   let lastCanonicalRoom: CanonicalRoomCollaboration | null = null;
 
   const tryCreate = (): void => {
@@ -1713,43 +1355,11 @@ export const createHiddenEditorManager = (
     if (!host) {
       return;
     }
-    const collaboration = deps.getCollaboration();
-    const collaborationModules = deps.getCollaborationModules();
-    if (
-      collaboration &&
-      !collaborationModules &&
-      !usesCanonicalSession(
-        deps.getExperimentalSession?.(),
-        CANONICAL_GAP.authorityRouting,
-      )
-    ) {
-      return;
-    }
-
     const document = deps.getDocument();
-    const styles = deps.getStyles();
-    const extensionManager = deps.getExtensionManager();
-    const externalPlugins = deps.getExternalPlugins();
 
     input.reset();
-    if (!seedSession(document)) return;
-    const initialState = (() => {
-      if (editorSession.type === "canonical")
-        return canonicalState(editorSession.session);
-      const precomputedInitialState = collaboration
-        ? null
-        : deps.getPrecomputedInitialState();
-      if (precomputedInitialState) return precomputedInitialState;
-      return createHiddenEditorState({
-        document: document && readModel(document),
-        styles,
-        manager: extensionManager,
-        externalPlugins,
-        collaboration,
-        collaborationModules,
-        reason: "mount",
-      });
-    })();
+    if (!seedSession(document) || editorSession.type !== "canonical") return;
+    const initialState = canonicalState(editorSession.session);
 
     const editorProps: DirectEditorProps = {
       state: initialState,
@@ -1773,8 +1383,8 @@ export const createHiddenEditorManager = (
           return;
         }
 
-        if (editorSession.type === "refused") return;
-        if (editorSession.type === "canonical" && transaction.docChanged) {
+        if (editorSession.type !== "canonical") return;
+        if (transaction.docChanged) {
           if (input.acceptComposition(view, transaction)) return;
           if (!input.commitNativeProposal(view, transaction)) {
             input.refuseNativeMutation(view, transaction);
@@ -1784,20 +1394,10 @@ export const createHiddenEditorManager = (
           view.updateState(view.state);
           return;
         }
-        if (
-          editorSession.type === "canonical" &&
-          transaction.selectionSet &&
-          !input.isComposing
-        ) {
+        if (transaction.selectionSet && !input.isComposing) {
           lastInputRule = undefined;
           editorSession.session.breakUndoGroup();
         }
-        const modules = deps.getCollaborationModules();
-        if (
-          modules &&
-          transaction.getMeta(modules.yProseMirror.ySyncPluginKey) !== undefined
-        )
-          markNoteReferenceReplay(transaction);
         const applied = view.state.applyTransaction(transaction);
         const noteIssue = noteReferenceTransactionIssue(transaction);
         if (noteIssue)
@@ -1806,10 +1406,7 @@ export const createHiddenEditorManager = (
             { gap: CANONICAL_GAP.dispatch },
             noteIssue,
           );
-        if (
-          editorSession.type === "canonical" &&
-          !applied.state.doc.eq(view.state.doc)
-        ) {
+        if (!applied.state.doc.eq(view.state.doc)) {
           refuse(
             unclassifiedMutationMessage(
               applied.transactions,
@@ -1823,14 +1420,6 @@ export const createHiddenEditorManager = (
             appliedTransaction.docChanged &&
             !isCommentRecordsSync(appliedTransaction),
         );
-        let autocompleteEdit: AutocompleteEdit | undefined;
-        if (editorSession.type !== "canonical" && documentEdits.length > 0) {
-          const only = documentEdits.at(0);
-          autocompleteEdit =
-            documentEdits.length === 1 && only === transaction
-              ? legacyAutocompleteEdit(transaction)
-              : { type: "other" };
-        }
         view.updateState(applied.state);
 
         const docChanged = documentEdits.length > 0;
@@ -1852,26 +1441,6 @@ export const createHiddenEditorManager = (
         if (selectionChanged) {
           deps.onSelectionChange(applied.state);
         }
-
-        const currentCollaboration = deps.getCollaboration();
-        const currentCollaborationModules = deps.getCollaborationModules();
-        if (currentCollaboration?.awareness && currentCollaborationModules) {
-          deps.onRemoteSelectionsChange(
-            collectRemoteSelections(
-              applied.state,
-              currentCollaboration.awareness,
-              currentCollaborationModules,
-            ),
-          );
-        }
-        // Notify after the dispatch's host bookkeeping: a synchronous listener
-        // may accept again, publishing another transaction of its own.
-        if (autocompleteEdit !== undefined)
-          autocomplete.noteEdit(
-            view?.state === applied.state
-              ? autocompleteEdit
-              : { type: "other" },
-          );
       },
       // Intercept key events before ProseMirror processes them
       handleKeyDown: (pmView: EditorView, event: KeyboardEvent): boolean => {
@@ -2086,7 +1655,6 @@ export const createHiddenEditorManager = (
     syncHiddenEditorAccessibility(view, deps.getReadOnly());
     isInitialized = true;
     lastDocumentId = deps.getDocumentIdentity();
-    lastCollaborationFragment = collaboration?.yXmlFragment ?? null;
     lastCanonicalRoom = deps.getCanonicalRoom?.() ?? null;
 
     // Notify that view is ready.
@@ -2132,56 +1700,32 @@ export const createHiddenEditorManager = (
     if (isDestroying) {
       return;
     }
-    const canonicalRequested = usesCanonicalSession(
-      deps.getExperimentalSession?.(),
-      CANONICAL_GAP.authorityRouting,
-    );
     if (!view) {
-      // A canonical session is seeded with its view and reads input and
-      // composition from it, so a host that routes through it gets the view
-      // as soon as it syncs a document, not when something first reads a
-      // story. Without a document there is nothing to seed yet; the sync
-      // that brings one creates the view.
-      if (canonicalRequested && deps.getDocument() !== null) ensureView();
-      return;
-    }
-    const collaboration = deps.getCollaboration();
-    const collaborationModules = deps.getCollaborationModules();
-    if (collaboration && !collaborationModules && !canonicalRequested) {
+      // The session is seeded with its view and reads input and composition
+      // from it, so a host gets the view as soon as it syncs a document, not
+      // when something first reads a story. Without a document there is
+      // nothing to seed yet; the sync that brings one creates the view.
+      if (deps.getDocument() !== null) ensureView();
       return;
     }
 
     const document = deps.getDocument();
     const currentDocId = deps.getDocumentIdentity();
-    const currentCollaborationFragment = collaboration?.yXmlFragment ?? null;
     const currentCanonicalRoom = deps.getCanonicalRoom?.() ?? null;
-    const collaborationSourceChanged =
-      currentCollaborationFragment !== lastCollaborationFragment ||
-      currentCanonicalRoom !== lastCanonicalRoom;
-
-    const sessionChanged =
-      (editorSession.type !== "prosemirror") !== canonicalRequested;
-    if (collaboration && !collaborationSourceChanged && !sessionChanged) {
-      return;
-    }
+    const roomChanged = currentCanonicalRoom !== lastCanonicalRoom;
 
     // Skip if this is the same document (likely passed back after internal edit)
     // Only reset state if:
     // 1. Not yet initialized (first mount)
     // 2. Document identity changed (truly external change like loading a new file)
-    // 3. Collaboration starts/stops or switches sessions
-    if (
-      isInitialized &&
-      currentDocId === lastDocumentId &&
-      !collaborationSourceChanged &&
-      !sessionChanged
-    ) {
+    // 3. The editor joins, leaves or switches rooms
+    if (isInitialized && currentDocId === lastDocumentId && !roomChanged) {
       return;
     }
 
     // Finish the previous input owner before adopting the new session.
     input.reset();
-    if (!seedSession(document)) {
+    if (!seedSession(document) || editorSession.type !== "canonical") {
       destroyView();
       return;
     }
@@ -2189,22 +1733,9 @@ export const createHiddenEditorManager = (
     // Update tracking state
     isInitialized = true;
     lastDocumentId = currentDocId;
-    lastCollaborationFragment = currentCollaborationFragment;
     lastCanonicalRoom = currentCanonicalRoom;
 
-    // Create new state from document
-    const newState =
-      editorSession.type === "canonical"
-        ? canonicalState(editorSession.session)
-        : createHiddenEditorState({
-            document: document && readModel(document),
-            styles: deps.getStyles(),
-            manager: deps.getExtensionManager(),
-            externalPlugins: deps.getExternalPlugins(),
-            collaboration,
-            collaborationModules,
-            reason: "external-document",
-          });
+    const newState = canonicalState(editorSession.session);
     const updateStartedAt = performance.now();
     view.updateState(newState);
     recordHiddenEditorPhase(
@@ -2370,43 +1901,27 @@ export const createHiddenEditorManager = (
     return executor;
   };
 
-  const isCanonicalModelSessionRequested = () =>
-    usesCanonicalSession(
-      deps.getExperimentalSession?.(),
-      CANONICAL_GAP.authorityRouting,
-    );
-
   // Highlights read the stories as the editor shows them: a canonical
   // session's projection of each story, otherwise the body's editor document.
   const anonymization = createAnonymizationHighlights();
   const anonymizationSources = (): AnonymizationStorySource[] => {
-    if (editorSession.type === "canonical") {
-      const session = editorSession.session;
-      return documentStories(readModel(session.document)).flatMap((story) => {
-        const projected =
-          story === OP_STORIES.MAIN
-            ? session.projection
-            : session.projectStory(story).unwrapOr(null);
-        if (projected === null) return [];
-        return [
-          {
-            story,
-            doc: projected.doc,
-            addressAt: (position: number) =>
-              projected.addressAt(position).unwrapOr(null),
-          },
-        ];
-      });
-    }
-    if (!view) return [];
-    const doc = view.state.doc;
-    return [
-      {
-        story: OP_STORIES.MAIN,
-        doc,
-        addressAt: (position) => legacyTextAddressAt(doc, position),
-      },
-    ];
+    if (editorSession.type !== "canonical") return [];
+    const session = editorSession.session;
+    return documentStories(readModel(session.document)).flatMap((story) => {
+      const projected =
+        story === OP_STORIES.MAIN
+          ? session.projection
+          : session.projectStory(story).unwrapOr(null);
+      if (projected === null) return [];
+      return [
+        {
+          story,
+          doc: projected.doc,
+          addressAt: (position: number) =>
+            projected.addressAt(position).unwrapOr(null),
+        },
+      ];
+    });
   };
 
   const api = createHiddenEditorApi({
@@ -2541,13 +2056,8 @@ export const createHiddenEditorManager = (
           } as const;
         };
         if (editorSession.type === "refused") return fail(editorSession.reason);
-        if (editorSession.type !== "canonical") {
-          if (isCanonicalModelSessionRequested())
-            return fail(
-              "The canonical document is not ready for section changes.",
-            );
-          return null;
-        }
+        if (editorSession.type !== "canonical")
+          return fail("The document is not ready for section changes.");
         if (!view || deps.getReadOnly() || isDestroying)
           return fail("The document is not editable.");
         const session = editorSession.session;
@@ -2586,13 +2096,8 @@ export const createHiddenEditorManager = (
           } as const;
         };
         if (editorSession.type === "refused") return fail(editorSession.reason);
-        if (editorSession.type !== "canonical") {
-          if (isCanonicalModelSessionRequested())
-            return fail(
-              "The canonical document is not ready for comment changes.",
-            );
-          return null;
-        }
+        if (editorSession.type !== "canonical")
+          return fail("The document is not ready for comment changes.");
         if (!view || deps.getReadOnly())
           return fail("The document is not editable.");
         const session = editorSession.session;

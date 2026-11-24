@@ -1,4 +1,3 @@
-import type { Node as PMNode } from "prosemirror-model";
 /**
  * Pages-area pointer composable — owns every mousedown / mousemove /
  * click / dblclick / scroll handler on the pages viewport, plus the
@@ -40,20 +39,11 @@ import {
   createCellDragTracker,
   findCellPosFromPmPos,
 } from "@stll/folio-core/prosemirror/cellDragSelection";
-import { proseDocToBlocks } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
 import { executeEditorCommand } from "@stll/folio-core/prosemirror/executeEditorCommand";
-import {
-  CANONICAL_GAP,
-  type EditorSession,
-  usesCanonicalSession,
-} from "@stll/folio-core/types/canonicalCapabilities";
 import type { Document } from "@stll/folio-core/types/document";
 import {
-  createEmptyHeaderFooter,
   pickActiveHeaderFooterRId,
-  removeHeaderFooter,
   resolveHeaderFooterContent,
-  saveHeaderFooterContent,
 } from "@stll/folio-core/utils/headerFooter";
 import { readPaintedStart } from "@stll/folio-core/utils/paintedPositions";
 
@@ -113,7 +103,6 @@ export type UsePagesPointerOptions = {
   hyperlinkPopupData: Ref<HyperlinkPopupData | null>;
   readOnly: Ref<boolean>;
   showHeaderFooterEditing: Ref<boolean>;
-  getExperimentalSession?: () => EditorSession | undefined;
   applyCanonicalOperations?: (operations: readonly DocumentOp[]) => boolean;
   zoom: Ref<number>;
   layout: Ref<Layout | null>;
@@ -121,18 +110,11 @@ export type UsePagesPointerOptions = {
   getCommands: () => Commands;
   getDocument: () => Document | null;
   reLayout: () => void;
-  onDocumentChange: (document: Document) => void;
   clearOverlay: () => void;
   /** Synchronize persistent header/footer views after document-model changes. */
   syncHfPMs: () => void;
   /** Resolve the persistent EditorView for an HF instance (for click routing). */
   getHfPmView: (rId: string) => EditorView | null;
-  /**
-   * Replace the loaded Document — used by HF materialisation to publish a
-   * fresh Document object instead of mutating in place. Optional; if absent,
-   * callers fall back to in-place mutation + `syncHfPMs()`.
-   */
-  setDocument: (doc: Document) => void;
   /** Open a footnote or endnote story from a painted reference/body. */
   openNoteStory: (story: NoteStoryKey) => void;
   closeNoteStory: () => void;
@@ -157,63 +139,6 @@ export type UsePagesPointerReturn = {
   clearTableInsertTimer: () => void;
   handleHfSave: () => void;
   handleHfRemove: () => void;
-};
-
-type SaveAndCloseHeaderFooterEditOptions = {
-  editState: ShallowRef<HfEditState | null>;
-  getDocument: () => Document | null;
-  getHfPmView: (
-    rId: string,
-  ) => { readonly state: { readonly doc: PMNode } } | null;
-  onDocumentChange: (document: Document) => void;
-  reLayout: () => void;
-  setDocument: (document: Document) => void;
-  syncHfPMs: () => void;
-};
-
-export const saveAndCloseHeaderFooterEdit = ({
-  editState,
-  getDocument,
-  getHfPmView,
-  onDocumentChange,
-  reLayout,
-  setDocument,
-  syncHfPMs,
-}: SaveAndCloseHeaderFooterEditOptions): void => {
-  const edit = editState.value;
-  const document = getDocument();
-  if (!document?.package || !edit?.rId) {
-    editState.value = null;
-    return;
-  }
-  const view = getHfPmView(edit.rId);
-  if (!view) {
-    editState.value = null;
-    return;
-  }
-  const source =
-    edit.position === "header"
-      ? document.package.headers?.get(edit.rId)
-      : document.package.footers?.get(edit.rId);
-  if (!source) {
-    editState.value = null;
-    return;
-  }
-  const updated = saveHeaderFooterContent({
-    document,
-    position: edit.position,
-    isFirstPage: edit.isFirstPage,
-    activeRId: edit.rId,
-    blocks: proseDocToBlocks(view.state.doc, source.content),
-  });
-  editState.value = null;
-  if (!updated) {
-    return;
-  }
-  setDocument(updated);
-  syncHfPMs();
-  reLayout();
-  onDocumentChange(updated);
 };
 
 export function usePagesPointer(
@@ -537,43 +462,23 @@ export function usePagesPointer(
     let rId = pickActiveHeaderFooterRId(resolution, position, isFirstPage);
 
     if (!rId) {
-      let materialized: Document | null;
-      if (
-        usesCanonicalSession(
-          opts.getExperimentalSession?.(),
-          CANONICAL_GAP.authorityRouting,
-        )
-      ) {
-        const layoutPages = opts.layout.value?.pages;
-        const sectionIndex =
-          layoutPages === undefined
-            ? undefined
-            : itemBefore(layoutPages, pageNumber)?.sectionIndex;
-        const operation = createCanonicalHeaderFooterOperation({
-          document: doc,
-          position,
-          referenceType: isFirstPage ? "first" : "default",
-          ...(sectionIndex === undefined ? {} : { sectionIndex }),
-        });
-        if (!opts.applyCanonicalOperations?.([operation])) return;
-        materialized = opts.getDocument();
-        rId = operation.story.rId;
-      } else {
-        materialized = createEmptyHeaderFooter(doc, position, isFirstPage);
-        if (materialized) {
-          opts.setDocument(materialized);
-        }
-      }
+      const layoutPages = opts.layout.value?.pages;
+      const sectionIndex =
+        layoutPages === undefined
+          ? undefined
+          : itemBefore(layoutPages, pageNumber)?.sectionIndex;
+      const operation = createCanonicalHeaderFooterOperation({
+        document: doc,
+        position,
+        referenceType: isFirstPage ? "first" : "default",
+        ...(sectionIndex === undefined ? {} : { sectionIndex }),
+      });
+      if (!opts.applyCanonicalOperations?.([operation])) return;
+      const materialized = opts.getDocument();
+      rId = operation.story.rId;
       if (!materialized) return;
       opts.syncHfPMs();
       opts.reLayout();
-      if (
-        !usesCanonicalSession(
-          opts.getExperimentalSession?.(),
-          CANONICAL_GAP.authorityRouting,
-        )
-      )
-        opts.onDocumentChange(materialized);
       resolution = resolveHeaderFooterContent(materialized.package);
       rId ??= pickActiveHeaderFooterRId(resolution, position, isFirstPage);
     }
@@ -623,26 +528,10 @@ export function usePagesPointer(
     });
   }
 
+  // The session holds every story's edits; closing the editor saves nothing.
   function handleHfSave() {
-    if (
-      usesCanonicalSession(
-        opts.getExperimentalSession?.(),
-        CANONICAL_GAP.authorityRouting,
-      )
-    ) {
-      hfEdit.value = null;
-      opts.syncHfPMs();
-      return;
-    }
-    saveAndCloseHeaderFooterEdit({
-      editState: hfEdit,
-      getDocument: opts.getDocument,
-      getHfPmView: opts.getHfPmView,
-      onDocumentChange: opts.onDocumentChange,
-      reLayout: opts.reLayout,
-      setDocument: opts.setDocument,
-      syncHfPMs: opts.syncHfPMs,
-    });
+    hfEdit.value = null;
+    opts.syncHfPMs();
   }
 
   watch(
@@ -660,38 +549,15 @@ export function usePagesPointer(
       hfEdit.value = null;
       return;
     }
-    if (
-      usesCanonicalSession(
-        opts.getExperimentalSession?.(),
-        CANONICAL_GAP.authorityRouting,
-      )
-    ) {
-      const operations = removeCanonicalHeaderFooterOperations({
-        document: doc,
-        position: edit.position,
-        rId: edit.rId,
-      });
-      if (!opts.applyCanonicalOperations?.(operations)) return;
-      hfEdit.value = null;
-      opts.syncHfPMs();
-      opts.reLayout();
-      return;
-    }
-    // Actually remove the header/footer: drop the part from the headers/footers
-    // map AND strip every section reference that points at it. Clearing
-    // `content` alone left an empty header/footer still referenced by the
-    // section, so it kept rendering.
-    const newDoc = removeHeaderFooter({
+    const operations = removeCanonicalHeaderFooterOperations({
       document: doc,
       position: edit.position,
-      activeRId: edit.rId,
+      rId: edit.rId,
     });
-
+    if (!opts.applyCanonicalOperations?.(operations)) return;
     hfEdit.value = null;
-    opts.setDocument(newDoc);
     opts.syncHfPMs();
     opts.reLayout();
-    opts.onDocumentChange(newDoc);
   }
 
   function handlePagesMouseDown(event: MouseEvent) {
