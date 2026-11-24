@@ -91,6 +91,19 @@ const setup = (source: string | Document = "alpha beta") => {
   return { session, executor, snapshot, apply, publish, state: () => state };
 };
 
+/** Accept every tracked change the editor lists. */
+const acceptAll = (editor: ReturnType<typeof setup>) => {
+  const accepted = editor.session
+    .prepareResolve(editor.state(), {
+      revisionIds: getTrackedChangesFromDoc(editor.state().doc).map(
+        ({ id }) => id,
+      ),
+      resolution: "accept",
+    })
+    .unwrap();
+  expect(editor.publish(accepted)).toBe(true);
+};
+
 describe("canonical public operation batches", () => {
   test("cell replacement covers every sorted cell independently of selection direction, taking a comment with its words", () => {
     const source = fromMarkdown("| A | B |\n|---|---|\n| C | D |");
@@ -579,7 +592,7 @@ describe("canonical public operation batches", () => {
       );
     });
 
-    test(`${mode}: native marker-inclusive whole-paragraph replacement ${mode === "editing" ? "takes" : "refuses"} even a uniform comment`, () => {
+    test(`${mode}: native marker-inclusive whole-paragraph replacement takes even a uniform comment${mode === "suggesting" ? " once accepted" : ""}`, () => {
       const source = "The Supplier delivers on time.";
       const editor = setup(source);
       expect(
@@ -598,8 +611,6 @@ describe("canonical public operation batches", () => {
           ? { type: "editing" }
           : { type: "suggesting", author: "Reviewer" },
       );
-      const before = editor.session.document;
-      const version = editor.session.version;
       const paragraph =
         editor.session.projection.firstParagraph ?? panic("Missing paragraph");
       const result = editor.session.prepareReplace(editor.state(), {
@@ -607,23 +618,15 @@ describe("canonical public operation batches", () => {
         to: paragraph.start + paragraph.node.content.size,
         text: "New agreement.",
       });
-      if (mode === "editing") {
-        // Typed over directly, the comment goes with every word it covered.
-        expect(editor.publish(result.unwrap())).toBe(true);
-        expect(editor.state().doc.textContent).toBe("New agreement.");
-        expect(getCommentAnchorsFromDoc(editor.state().doc)).toEqual([]);
-        expect(editor.session.document.package.document.comments ?? []).toEqual(
-          [],
-        );
-        return;
-      }
-      expect(result.isErr()).toBe(true);
-      if (result.isErr())
-        expect(result.error.ground).toEqual({
-          gap: "comment-replacement-alignment",
-        });
-      expect(editor.session.document).toBe(before);
-      expect(editor.session.version).toBe(version);
+      // Typed over directly, the comment goes with every word it covered;
+      // tracked, it goes once the suggestion is accepted.
+      expect(editor.publish(result.unwrap())).toBe(true);
+      if (mode === "suggesting") acceptAll(editor);
+      expect(editor.state().doc.textContent).toBe("New agreement.");
+      expect(getCommentAnchorsFromDoc(editor.state().doc)).toEqual([]);
+      expect(editor.session.document.package.document.comments ?? []).toEqual(
+        [],
+      );
     });
 
     for (const action of ["insert", "delete"] as const) {
@@ -667,7 +670,7 @@ describe("canonical public operation batches", () => {
         expect(editor.session.document).toEqual(before);
       });
     }
-    test(`${mode}: native whole-paragraph replacement over a comment ${mode === "editing" ? "takes it with its words" : "refuses before publishing or changing history"}`, () => {
+    test(`${mode}: native whole-paragraph replacement over a comment takes it with its words${mode === "suggesting" ? " once accepted" : ""}`, () => {
       const editor = setup(
         "The Supplier delivers the goods on time and in good order.",
       );
@@ -688,8 +691,6 @@ describe("canonical public operation batches", () => {
           : { type: "suggesting", author: "Reviewer" },
       );
       const before = editor.session.document;
-      const version = editor.session.version;
-      const save = editor.session.captureSaveSnapshot();
       let committed = 0;
       editor.session.onCommitted(() => committed++);
       const paragraph =
@@ -699,36 +700,25 @@ describe("canonical public operation batches", () => {
         to: paragraph.start + paragraph.node.content.size,
         text: "Invoice delivery payment agreement supplier buyer payment term.",
       });
-      if (mode === "editing") {
-        expect(editor.publish(result.unwrap())).toBe(true);
-        expect(committed).toBe(1);
-        expect(getCommentAnchorsFromDoc(editor.state().doc)).toEqual([]);
-        expect(editor.session.document.package.document.comments ?? []).toEqual(
-          [],
+      expect(editor.publish(result.unwrap())).toBe(true);
+      expect(committed).toBe(1);
+      // Tracked, the comment stays on the deleted words until accepted.
+      if (mode === "suggesting") {
+        expect(editor.session.document.package.document.comments).toHaveLength(
+          1,
         );
-        expect(
-          editor.publish(editor.session.prepareUndo(editor.state()).unwrap()),
-        ).toBe(true);
-        expect(editor.session.document).toEqual(before);
-        return;
+        acceptAll(editor);
       }
-      expect(result.isErr()).toBe(true);
-      if (result.isErr())
-        expect(result.error.ground).toEqual({
-          gap: "comment-replacement-alignment",
-        });
-      expect(editor.session.document).toBe(before);
-      expect(editor.session.version).toBe(version);
-      expect(editor.session.captureSaveSnapshot()).toEqual(save);
-      expect(committed).toBe(0);
-      expect(editor.session.canUndo).toBe(true);
-      expect(editor.session.canRedo).toBe(false);
-      expect(
-        editor.publish(editor.session.prepareUndo(editor.state()).unwrap()),
-      ).toBe(true);
+      expect(getCommentAnchorsFromDoc(editor.state().doc)).toEqual([]);
       expect(editor.session.document.package.document.comments ?? []).toEqual(
         [],
       );
+      // The replacement, and the acceptance when tracked, undo back.
+      for (let step = 0; step < (mode === "suggesting" ? 2 : 1); step++)
+        expect(
+          editor.publish(editor.session.prepareUndo(editor.state()).unwrap()),
+        ).toBe(true);
+      expect(editor.session.document).toEqual(before);
     });
   }
 

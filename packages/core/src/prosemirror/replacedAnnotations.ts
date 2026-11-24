@@ -506,6 +506,32 @@ const rangedCommentLeaves =
   };
 
 /**
+ * Whether every word each of `ids` covers lies inside a change, so that
+ * accepting the tracked replacement leaves those comments nothing to cover.
+ */
+const coveredOnlyInside = ({
+  doc,
+  changes,
+  ids,
+}: {
+  doc: PMNode;
+  changes: readonly ReplacementChange[];
+  ids: ReadonlySet<number>;
+}): boolean => {
+  let outside = false;
+  doc.descendants(
+    rangedCommentLeaves((leafIds, from, to) => {
+      if (
+        !changes.some((change) => change.from <= from && to <= change.to) &&
+        leafIds.some((id) => ids.has(id))
+      )
+        outside = true;
+    }),
+  );
+  return !outside;
+};
+
+/**
  * The comment threads a direct replacement takes with its words: each root
  * whose every accepted covered word lies inside a change, with its replies.
  * Accepting the tracked replacement leaves such a root nothing to cover, so
@@ -650,7 +676,22 @@ export const preservesReplacementCommentAlignment = ({
         mark.type.name === "comment" && !retired.has(mark.attrs["commentId"]),
     );
     if (comments.some((mark) => mark.attrs["point"] === true)) return false;
-    if (change.markers === "selected" && comments.length > 0) return false;
+    // A suggestion within one paragraph over a comment's own markers deletes
+    // them with its words; accepted, that leaves the comment nothing to cover
+    // only when every word it covers is inside the changes, which drops it as
+    // a direct replacement does.
+    if (
+      change.markers === "selected" &&
+      comments.length > 0 &&
+      (removal.type === "direct" ||
+        !doc.resolve(change.from).sameParent(doc.resolve(change.to)) ||
+        !coveredOnlyInside({
+          doc,
+          changes,
+          ids: new Set(comments.map((mark) => Number(mark.attrs["commentId"]))),
+        }))
+    )
+      return false;
     if (removal.type === "tracked") continue;
     let internalCarrier = false;
     doc.nodesBetween(change.from, change.to, (node, position) => {

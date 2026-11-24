@@ -23,7 +23,6 @@ import {
 import { serializeCanonicalSave } from "../docx/canonicalSave";
 import { parseDocx } from "../docx/parser";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import type { Document } from "../types/document";
 
 const SHAPES = ["comments", "invisible-markers"] as const;
@@ -157,69 +156,53 @@ describe("which markers a replaced selection takes", () => {
       expect(result).toEqual({ covered: "", text: "Lead xy tail" });
     });
 
-    test(`${mode}: replacing a paragraph containing an internal comment ${mode === "editing" ? "takes the comment with its words" : "refuses atomically"}`, async () => {
+    test(`${mode}: replacing a paragraph containing an internal comment takes the comment with its words${mode === "suggesting" ? " once accepted" : ""}`, async () => {
       setSystemTime(new Date("2026-01-02T03:04:05Z"));
       const { session, state } = replacementState(mode, (text) => ({
         from: 0,
         to: text.length,
       }));
-      const document = session.document;
-      const snapshot = session.captureSaveSnapshot();
-      const saved = await serializeCanonicalSave({ snapshot });
-      const version = session.version;
-      const history = { undo: session.canUndo, redo: session.canRedo };
-      let commits = 0;
-      session.onCommitted(() => commits++);
       const result = session.prepareReplace(state, {
         from: state.selection.from,
         to: state.selection.to,
         text: "x",
         semantic: "typing",
       });
-      if (mode === "editing") {
-        // Typed over directly, every word the comment covered goes, and the
-        // comment goes with them: definition and markers alike.
-        publishCanonicalProjection({
+      let current = publishCanonicalProjection({
+        session,
+        state,
+        commit: result.unwrap(),
+      }).unwrap().state;
+      // Tracked, the markers are deleted with the words; accepted, the
+      // comment has nothing left to cover and goes as it does directly.
+      if (mode === "suggesting")
+        current = publishCanonicalProjection({
           session,
-          state,
-          commit: result.unwrap(),
-        }).unwrap();
-        const reopened = await parseDocx(
-          (
-            await serializeCanonicalSave({
-              snapshot: session.captureSaveSnapshot(),
+          state: current,
+          commit: session
+            .prepareResolve(current, {
+              revisionIds: [...getTrackedChangeStatsFromDoc(current.doc).ids],
+              resolution: "accept",
             })
-          ).buffer,
-          { preloadFonts: false },
-        );
-        expect(session.document.package.document.comments ?? []).toEqual([]);
-        expect(reopened.package.document.comments ?? []).toEqual([]);
-        expect(JSON.stringify(reopened.package.document.content)).not.toMatch(
-          /comment(RangeStart|RangeEnd|Reference)/u,
-        );
-        expect(toProseDoc(reopened).textContent).toBe("x");
-        return;
-      }
-      // Tracked, a selection taking the comment's markers still refuses.
-      expect(result.isErr()).toBe(true);
-      if (result.isErr())
-        expect(result.error.ground).toEqual({
-          gap: CANONICAL_GAP.commentReplacementAlignment,
-        });
-      expect(session.document).toBe(document);
-      expect(session.version).toBe(version);
-      expect({ undo: session.canUndo, redo: session.canRedo }).toEqual(history);
-      expect(commits).toBe(0);
-      expect(session.captureSaveSnapshot()).toEqual(snapshot);
-      expect(
-        new Uint8Array(
-          (
-            await serializeCanonicalSave({
-              snapshot: session.captureSaveSnapshot(),
-            })
-          ).buffer,
-        ),
-      ).toEqual(new Uint8Array(saved.buffer));
+            .unwrap(),
+        }).unwrap().state;
+      // Every word the comment covered goes, and the comment goes with them:
+      // definition and markers alike.
+      const reopened = await parseDocx(
+        (
+          await serializeCanonicalSave({
+            snapshot: session.captureSaveSnapshot(),
+          })
+        ).buffer,
+        { preloadFonts: false },
+      );
+      expect(session.document.package.document.comments ?? []).toEqual([]);
+      expect(reopened.package.document.comments ?? []).toEqual([]);
+      expect(JSON.stringify(reopened.package.document.content)).not.toMatch(
+        /comment(RangeStart|RangeEnd|Reference)/u,
+      );
+      expect(toProseDoc(reopened).textContent).toBe("x");
+      expect(current.doc.textContent).toBe("x");
     });
   }
 });
