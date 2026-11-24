@@ -15,6 +15,7 @@ import {
   commitCommentThread,
   markPendingComment,
 } from "@stll/folio-core/prosemirror/commentRecords";
+import { selectionBounds } from "@stll/folio-core/prosemirror/selectionBounds";
 import type { Comment } from "@stll/folio-core/types/content";
 
 import {
@@ -99,7 +100,7 @@ export function useCommentLifecycle(
       floatingCommentButton.value = null;
       return;
     }
-    const { from, to } = view.state.selection;
+    const { from, to } = selectionBounds(view.state.selection);
     if (from === to) {
       floatingCommentButton.value = null;
       return;
@@ -136,7 +137,7 @@ export function useCommentLifecycle(
       capturedRange: button
         ? { from: button.from, to: button.to }
         : { from: 0, to: 0 },
-      currentRange: { from: selection.from, to: selection.to },
+      currentRange: selectionBounds(selection),
       savedRange: lastSelectionRange.value,
     });
     if (!safeRange) {

@@ -18,6 +18,7 @@ import {
   listNumberingMenuState,
   NO_LIST_NUMBERING_MENU,
 } from "../prosemirror/listNumbering";
+import { selectionBounds } from "../prosemirror/selectionBounds";
 import { Subscribable } from "./Subscribable";
 import type {
   ContextMenuAnchor,
@@ -58,7 +59,10 @@ export class ContextMenuManager extends Subscribable<ContextMenuSnapshot> {
     anchor: ContextMenuAnchor,
     { state, hasSelectionOverride, trackedChange }: OpenContextMenuOptions,
   ): void {
-    const selection = state?.selection ?? { from: 0, to: 0 };
+    // Over selected cells the range runs from the first cell to the last.
+    const selection = state
+      ? selectionBounds(state.selection)
+      : { from: 0, to: 0 };
     const hasSelection =
       hasSelectionOverride ?? selection.from !== selection.to;
     const cursorInTable = state ? isInTable(state) : false;

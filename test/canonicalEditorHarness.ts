@@ -25,6 +25,7 @@ import { cloneDocumentWithParagraphPropertySources } from "../packages/core/src/
 import { executeEditorCommand } from "../packages/core/src/prosemirror/executeEditorCommand";
 import { expectRangeAnchorAttrs } from "../packages/core/src/prosemirror/rangeAnchorAttrs";
 import { singletonManager } from "../packages/core/src/prosemirror/schema";
+import { selectionBounds } from "../packages/core/src/prosemirror/selectionBounds";
 import { CANONICAL_GAP } from "../packages/core/src/types/canonicalCapabilities";
 import type { CanonicalSaveSnapshot } from "../packages/core/src/types/canonicalSave";
 import type { Document } from "../packages/core/src/types/document";
@@ -280,7 +281,8 @@ export const createCanonicalEditorHarness = (
     /** Comment on the selection, as a host's comment flow does. */
     addComment: (text: string) =>
       withRefusalRows(caseRefusalRows, () => {
-        const { from, to } = editorView.state.selection;
+        // As the editors read it: over selected cells, every cell.
+        const { from, to } = selectionBounds(editorView.state.selection);
         const result = manager.api.applyCanonicalComment({
           type: "create",
           text,
