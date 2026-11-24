@@ -221,6 +221,8 @@ const CONFORMANCE_PRODUCTION_IMPORTS = new Map<string, readonly string[]>([
     "packages/core/src/controller/canonicalReview",
     ["resolveCanonicalReviewRange"],
   ],
+  // The range the editors give a comment: over selected cells, every cell.
+  ["packages/core/src/prosemirror/selectionBounds", ["selectionBounds"]],
   ["packages/core/src/prosemirror/commands/formatting", ["clearFormatting"]],
   ["packages/core/src/prosemirror/commands/pageBreak", ["insertPageBreak"]],
   ["packages/core/src/prosemirror/conversion/fromProseDoc", ["fromProseDoc"]],
