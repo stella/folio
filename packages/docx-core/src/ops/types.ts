@@ -1209,7 +1209,10 @@ export type SplitCellOp = TableEditTarget & {
   type: typeof DOCUMENT_OP_TYPES.SPLIT_CELL;
   newBlockIds: readonly string[];
 };
-/** Resize the existing logical grid without changing its topology. */
+/**
+ * Resize the existing logical grid without changing its topology. No widths
+ * leaves the grid unmeasured, for a table laid out from its contents.
+ */
 export type SetTableGridOp = TableEditTarget & {
   type: typeof DOCUMENT_OP_TYPES.SET_TABLE_GRID;
   columnWidths: readonly number[];

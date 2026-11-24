@@ -3337,7 +3337,8 @@ export const TablePluginExtension: (
           withCanonicalTableAttributeCommand(toggleHeaderRow()),
         distributeColumns: () =>
           withCanonicalTableAttributeCommand(distributeColumns()),
-        autoFitContents: () => autoFitContents(),
+        autoFitContents: () =>
+          withCanonicalTableAttributeCommand(autoFitContents()),
         setTableProperties: (props: TablePropertiesCommand) =>
           withCanonicalTableAttributeCommand(setTableProperties(props)),
         applyTableStyle: (styleData: TableStyleCommand) =>
