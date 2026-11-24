@@ -1,5 +1,11 @@
 # @stll/folio-core
 
+## 0.71.1
+
+### Patch Changes
+
+- [#3518](https://github.com/stella/folio/pull/3518) [`6f0439a`](https://github.com/stella/folio/commit/6f0439a9a4200f1931691a252754e43f937c4f8b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Let host plugin views observe the document the canonical session shows.
+
 ## 0.71.0
 
 ### Minor Changes
