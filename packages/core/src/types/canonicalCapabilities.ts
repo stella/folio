@@ -363,7 +363,7 @@ export const CANONICAL_CAPABILITIES: {
     kind: "mutation-source",
     adapters: ["react", "vue"],
     summary:
-      "A canonical reviewer stages comparison resources, sections, table properties and inline atoms; secondary-story suggestion resolution, story-view resolution beside staged suggestions and comparison inline-provenance matching refuse.",
+      "Hosts can still pin the legacy reviewer engine, which runs on ProseMirror; a canonical reviewer refuses only a suggestion resolved in one of several stories it reaches.",
   },
   [CANONICAL_GAP.aiSnapshots]: {
     owner: "ai-edits",

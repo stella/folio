@@ -300,7 +300,7 @@ test("a late locked story refuses projection without publishing any earlier pref
   expect(reads(reviewer)).toStrictEqual(initial);
 });
 
-test("pending secondary-story suggestions retain their existing projection refusal and all proposal state", async () => {
+test("pending secondary-story suggestions project to final with the other changes, in one commit", async () => {
   setSystemTime(new Date(DATE));
   const observations = observeSessions();
   const reviewer = await fixture("unlocked");
@@ -330,20 +330,19 @@ test("pending secondary-story suggestions retain their existing projection refus
   expect(reviewer.exportPendingSuggestions()).toHaveLength(1);
   const original = firstSession(observations);
   const version = original.session.version;
-  const before = reads(reviewer);
-  const bytes = new Uint8Array(await reviewer.toBuffer());
-  expectRefusal(
-    () =>
-      getFolioDocxComparisonAccess(reviewer).projectStories(
-        "without-revision-census",
-      ),
-    { gap: CANONICAL_GAP.publicHeadlessSession },
+  const projection = getFolioDocxComparisonAccess(reviewer).projectStories(
+    "without-revision-census",
   );
-  expect(reads(reviewer)).toStrictEqual(before);
-  expect(original.session.version).toBe(version);
-  expect(new Uint8Array(await reviewer.toBuffer())).toEqual(bytes);
-  expect(observations.slice(1).flatMap(({ disposals }) => disposals)).toEqual(
-    [],
+  // The proposal resolved to final as an ordinary change does, in the
+  // projection's one commit.
+  expect(original.session.version).toBe(version + 1);
+  expect(reviewer.exportPendingSuggestions()).toEqual([]);
+  expect(reviewer.getChanges()).toEqual([]);
+  const projected = projection.stories.find(
+    ({ handle }) => JSON.stringify(handle) === JSON.stringify(story),
+  );
+  expect(projected?.snapshot?.blocks.map(({ text }) => text)).toContain(
+    "Pending note proposal.",
   );
 });
 

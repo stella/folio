@@ -300,12 +300,17 @@ const reviewPackage = async () => {
 
 for (const story of REVIEW_STORIES)
   for (const view of ["original", "final"] as const) {
-    test(`${story.type} ${view} story review refuses its staged suggestion without changing state or history`, async () => {
+    test(`${story.type} ${view} story review resolves its staged suggestion with its other changes`, async () => {
       setSystemTime(new Date("2026-01-02T03:04:05Z"));
       const reviewer = await open(await reviewPackage());
-      const beforeStage = reads(reviewer);
       const block = reviewer.snapshotStory(story)?.blocks.at(0);
       if (!block) throw new Error("The review fixture has no target block");
+      const other = REVIEW_STORIES.find(
+        (candidate) => candidate.type !== story.type,
+      );
+      if (!other) throw new Error("The review fixture has no other story");
+      const textBefore = reviewer.readStory(story)?.text;
+      const otherBefore = reviewer.readStory(other)?.text;
       const staged = reviewer.applyDocumentOperationsToStory({
         story,
         batch: {
@@ -324,41 +329,20 @@ for (const story of REVIEW_STORIES)
       });
       expect(staged.applied).toHaveLength(1);
       expect(staged.skipped).toEqual([]);
-      if (staged.undoHandle === null)
-        throw new Error("The stage has no undo handle");
-      const before = reads(reviewer);
-      const records = reviewer.exportPendingSuggestions();
-      expect(records).toHaveLength(1);
-      const saved = new Uint8Array(await reviewer.toBuffer());
-      expect(() => reviewer.resolveReviewedStory({ story, view })).toThrow(
-        CanonicalSessionError,
-      );
-      expect(reads(reviewer)).toEqual(before);
-      expect(reviewer.exportPendingSuggestions()).toEqual(records);
-      expect(new Uint8Array(await reviewer.toBuffer())).toEqual(saved);
-
-      // A different story is independently reviewable beside the staged one.
-      const other = REVIEW_STORIES.find(
-        (candidate) => candidate.type !== story.type,
-      );
-      if (!other) throw new Error("The review fixture has no other story");
-      expect(reviewer.resolveReviewedStory({ story: other, view })).toBe(true);
-      expect(reads(reviewer)).toEqual(before);
-      expect(reviewer.exportPendingSuggestions()).toEqual(records);
-
-      // Reading a resolved view may refuse, but cannot resolve the live stage.
-      try {
-        reviewer.readReviewedStory({ story, view });
-      } catch (error) {
-        if (!CanonicalSessionError.is(error)) throw error;
-      }
-      expect(reads(reviewer)).toEqual(before);
-      expect(reviewer.exportPendingSuggestions()).toEqual(records);
-      expect(reviewer.undoDocumentOperations(staged.undoHandle)).toMatchObject({
-        status: "undone",
-      });
-      expect(reads(reviewer)).toEqual(beforeStage);
+      expect(reviewer.exportPendingSuggestions()).toHaveLength(1);
+      expect(reviewer.resolveReviewedStory({ story, view })).toBe(true);
+      // The suggestion resolved with the story: nothing stays staged or
+      // listed, and the other stories are as they were.
       expect(reviewer.exportPendingSuggestions()).toEqual([]);
+      expect(
+        reviewer.readReviewedStory({ story, view: "current-markup" })?.changes,
+      ).toEqual([]);
+      const text = reviewer.readStory(story)?.text;
+      if (view === "original") expect(text).toBe(textBefore);
+      else expect(text).toContain("Proposed words.");
+      expect(reviewer.readStory(other)?.text).toBe(otherBefore);
+      const reopened = await open(new Uint8Array(await reviewer.toBuffer()));
+      expect(reopened.readStory(story)?.text).toBe(text);
     });
 
     test(`${story.type} ${view} story review resolves ordinary tracked edits`, async () => {
