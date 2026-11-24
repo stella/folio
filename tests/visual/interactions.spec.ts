@@ -36,7 +36,7 @@ const MOD = isMac ? "Meta" : "Control";
 async function mountFixture(
   page: Page,
   fixture: string,
-  session?: "legacy" | "canonical",
+  session?: "canonical",
 ): Promise<void> {
   const engine = session === undefined ? "" : `session=${session}&`;
   await page.goto(`/?${engine}file=${encodeURIComponent(fixture)}`);
@@ -117,7 +117,7 @@ function firstRowCellCount(page: Page): Promise<number> {
   });
 }
 
-for (const session of ["legacy", "canonical"] as const) {
+for (const session of ["canonical"] as const) {
   test(`showcase document loads from the recording URL and playground control (${session} session)`, async ({
     page,
   }) => {
@@ -344,12 +344,12 @@ async function caretAtParagraphStart(page: Page): Promise<void> {
 }
 
 test.describe("list autoformat", () => {
-  for (const session of ["legacy", "canonical"] as const) {
+  for (const session of ["canonical"] as const) {
     for (const [marker, undo] of [
       ["- ", "Backspace"],
       ["1. ", "Backspace"],
-      // The canonical session keeps the typed marker as its own undo step.
-      ...(session === "canonical" ? [["- ", `${MOD}+z`] as const] : []),
+      // The typed marker is its own undo step.
+      ["- ", `${MOD}+z`],
     ] as const) {
       test(`${session}: "${marker}" typed at a paragraph start becomes a list item, and ${undo} gives back exactly what was typed`, async ({
         page,
@@ -865,7 +865,7 @@ test.describe("image", () => {
 });
 
 test.describe("rendered page-break hints", () => {
-  for (const session of ["legacy", "canonical"] as const) {
+  for (const session of ["canonical"] as const) {
     test(`cached hints remain advisory without duplicating structural breaks (${session} session)`, async ({
       page,
     }) => {

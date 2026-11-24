@@ -32,7 +32,7 @@ const MOD = isMac ? "Meta" : "Control";
 async function mountFixture(
   page: Page,
   fixture: string,
-  session: "legacy" | "canonical" = "legacy",
+  session: "canonical" = "canonical",
 ): Promise<void> {
   const engine = session === undefined ? "" : `session=${session}&`;
   await page.goto(`/?${engine}file=${encodeURIComponent(fixture)}`);
@@ -439,7 +439,7 @@ test.describe("footer", () => {
 });
 
 test.describe("lists", () => {
-  for (const session of ["legacy", "canonical"] as const)
+  for (const session of ["canonical"] as const)
     test(`${session}: the toolbar list buttons toggle bullet and numbered lists on the caret paragraph`, async ({
       page,
     }) => {

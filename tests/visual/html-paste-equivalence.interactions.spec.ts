@@ -28,9 +28,10 @@ const cases = [
   },
   {
     kind: "pasteWordHtml",
-    name: "Word-like paragraphs and table",
-    html: '<p class="MsoNormal">Opening</p><table border="1"><tbody><tr><td><p class="MsoNormal">Cell A</p></td><td><p class="MsoNormal">Cell B</p></td></tr></tbody></table><p class="MsoNormal">Closing</p>',
-    plain: "Opening\nCell A\tCell B\nClosing",
+    // A clipboard table is a canonical refusal (`clipboard-table`).
+    name: "Word-like paragraphs",
+    html: '<p class="MsoNormal">Opening</p><p class="MsoNormal">Closing</p>',
+    plain: "Opening\nClosing",
     selection: "replace",
   },
   {
@@ -70,7 +71,7 @@ const project = (reviewer: FolioDocxReviewer) =>
   });
 
 const paste = async (page: Page, input: PasteCase, suggesting: boolean) => {
-  await page.goto("/?session=legacy&file=sample.docx");
+  await page.goto("/?file=sample.docx");
   await page.waitForSelector(".layout-page");
   await page.evaluate(() =>
     globalThis.__folioPlayground
@@ -230,7 +231,7 @@ test("native cut copies the selection and resolves like editing mode", async ({
   page,
 }) => {
   const run = async (suggesting: boolean) => {
-    await page.goto("/?session=legacy&file=sample.docx");
+    await page.goto("/?file=sample.docx");
     await page.waitForSelector(".layout-page");
     await page.evaluate(() =>
       globalThis.__folioPlayground

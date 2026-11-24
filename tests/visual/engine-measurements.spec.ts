@@ -2,8 +2,7 @@ import { type Page, test } from "@playwright/test";
 /**
  * Typing, open and save times on both editing engines, report-only.
  *
- * For each document, engine (the default one and the canonical session) and
- * host (React, Vue), on one page and one machine:
+ * For each document and host (React, Vue), on one page and one machine:
  *
  * - open: from handing the editor the file's bytes to the first page painted,
  *   and to the last layout pass before layout goes quiet (fully laid out);
@@ -91,7 +90,7 @@ const DOCUMENTS = [
   },
 ];
 
-const ENGINES = ["legacy", "canonical"] as const;
+const ENGINES = ["canonical"] as const;
 const HOSTS = [
   { name: "react", origin: "" },
   { name: "vue", origin: PLAYGROUND_HOSTS.vue },

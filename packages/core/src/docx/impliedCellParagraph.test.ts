@@ -7,7 +7,6 @@
 import { expect, test } from "bun:test";
 
 import { buildRawPackage, SECTION } from "../__tests__/documentShapes";
-import { FolioDocxReviewer } from "../ai-edits/headless";
 import { ensureParaIds } from "./ensureParaIds";
 import { visitDocxParagraphs } from "./paragraphTraversal";
 import { parseDocx } from "./parser";
@@ -55,17 +54,5 @@ for (const { name, cell } of CELLS) {
     expect(new Set(ids).size).toBe(ids.length);
     // Normalizing a normalized package changes nothing.
     expect((await ensureParaIds(ensured.docx)).alreadyComplete).toBe(true);
-  });
-
-  test(`a cell ${name} reads alike on both engines`, async () => {
-    const buffer = await packageWith(cell);
-    const [legacy, canonical] = await Promise.all(
-      (["canonical"] as const).map((session) =>
-        FolioDocxReviewer.fromBuffer(buffer.slice(0), { session }),
-      ),
-    );
-    const texts = (reviewer: FolioDocxReviewer | undefined) =>
-      reviewer?.snapshot().blocks.map(({ text }) => text);
-    expect(texts(canonical)).toEqual(texts(legacy));
   });
 }

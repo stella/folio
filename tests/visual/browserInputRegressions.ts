@@ -72,7 +72,6 @@ export const BROWSER_TABLE_SEED_29 = {
 
 /** A composition after a tracked insertion leaves that insertion's marks alone. */
 export const CANONICAL_INSERTION_SEED_557 = {
-  authority: "canonical",
   seed: 557,
   path: "7:2:0:1:1",
   fingerprint: "b470db459c2eaf7d",
@@ -84,7 +83,6 @@ export const CANONICAL_INSERTION_SEED_557 = {
     ],
   },
 } satisfies {
-  authority: "canonical";
   seed: number;
   path: string;
   fingerprint: string;
@@ -93,7 +91,6 @@ export const CANONICAL_INSERTION_SEED_557 = {
 
 /** A composition over a selection across list items replaces it once, in the first item. */
 export const CANONICAL_ACROSS_PARAGRAPHS_SEED_347 = {
-  authority: "canonical",
   seed: 347,
   path: "17:2:1:1:1",
   fingerprint: "92b692379e90307a",
@@ -105,7 +102,6 @@ export const CANONICAL_ACROSS_PARAGRAPHS_SEED_347 = {
     ],
   },
 } satisfies {
-  authority: "canonical";
   seed: number;
   path: string;
   fingerprint: string;
@@ -114,7 +110,6 @@ export const CANONICAL_ACROSS_PARAGRAPHS_SEED_347 = {
 
 /** A composition in front of a tracked deletion leaves that deletion's marks alone. */
 export const CANONICAL_DELETION_SEED_11 = {
-  authority: "canonical",
   seed: 11,
   path: "13:5:3:3:3:3",
   fingerprint: "950f061a7bc5243d",
@@ -127,7 +122,6 @@ export const CANONICAL_DELETION_SEED_11 = {
     ],
   },
 } satisfies {
-  authority: "canonical";
   seed: number;
   path: string;
   fingerprint: string;
@@ -136,7 +130,6 @@ export const CANONICAL_DELETION_SEED_11 = {
 
 /** Pasting over selected cells refuses and leaves the document as it was. */
 export const CANONICAL_CELL_PASTE_SEED_431 = {
-  authority: "canonical",
   seed: 431,
   path: "9:0:1:0:0:1",
   fingerprint: "52b2a7dfe8a76372",
@@ -148,7 +141,6 @@ export const CANONICAL_CELL_PASTE_SEED_431 = {
     ],
   },
 } satisfies {
-  authority: "canonical";
   seed: number;
   path: string;
   fingerprint: string;
@@ -157,7 +149,6 @@ export const CANONICAL_CELL_PASTE_SEED_431 = {
 
 /** Cancelling a composition over selected cells keeps their text. */
 export const CANONICAL_CELL_COMPOSITION_CANCEL = {
-  authority: "canonical",
   seed: 431,
   path: "selected-cells",
   fingerprint: "composition-cancel",
@@ -169,7 +160,6 @@ export const CANONICAL_CELL_COMPOSITION_CANCEL = {
     ],
   },
 } satisfies {
-  authority: "canonical";
   seed: number;
   path: string;
   fingerprint: string;
@@ -178,7 +168,6 @@ export const CANONICAL_CELL_COMPOSITION_CANCEL = {
 
 /** The browser restarts a composition beside a tracked insertion; its end names the text. */
 export const CANONICAL_RESTARTED_COMPOSITION_SEED_47 = {
-  authority: "canonical",
   seed: 47,
   path: "15:1:0:3:2:2:2:2:2",
   fingerprint: "8c764b826e4fb3b6",
@@ -194,7 +183,6 @@ export const CANONICAL_RESTARTED_COMPOSITION_SEED_47 = {
     ],
   },
 } satisfies {
-  authority: "canonical";
   seed: number;
   path: string;
   fingerprint: string;
@@ -203,7 +191,6 @@ export const CANONICAL_RESTARTED_COMPOSITION_SEED_47 = {
 
 /** A restart that lands away from the caret still commits at the caret. */
 export const CANONICAL_MISPLACED_COMPOSITION_SEED_29 = {
-  authority: "canonical",
   seed: 29,
   path: "0",
   fingerprint: "b0ac2c02d75b820c",
@@ -232,7 +219,6 @@ export const CANONICAL_MISPLACED_COMPOSITION_SEED_29 = {
     ],
   },
 } satisfies {
-  authority: "canonical";
   seed: number;
   path: string;
   fingerprint: string;
@@ -241,7 +227,6 @@ export const CANONICAL_MISPLACED_COMPOSITION_SEED_29 = {
 
 /** A multi-update composition in front of a tracked deletion leaves it deleted. */
 export const CANONICAL_DELETION_UPDATES_SEED_11 = {
-  authority: "canonical",
   seed: 11,
   path: "13",
   fingerprint: "a70c021688cbc310",
@@ -260,7 +245,6 @@ export const CANONICAL_DELETION_UPDATES_SEED_11 = {
     ],
   },
 } satisfies {
-  authority: "canonical";
   seed: number;
   path: string;
   fingerprint: string;
@@ -269,7 +253,6 @@ export const CANONICAL_DELETION_UPDATES_SEED_11 = {
 
 /** A cancelled composition beside a bookmark keeps the bookmark. */
 export const CANONICAL_BOOKMARK_SEED_263 = {
-  authority: "canonical",
   seed: 263,
   path: "8:4:2:2:3:3:2",
   fingerprint: "2cf9ea677cc3c57c",
@@ -281,7 +264,6 @@ export const CANONICAL_BOOKMARK_SEED_263 = {
     ],
   },
 } satisfies {
-  authority: "canonical";
   seed: number;
   path: string;
   fingerprint: string;
@@ -290,7 +272,6 @@ export const CANONICAL_BOOKMARK_SEED_263 = {
 
 /** A composition at a paragraph's start stays there, after an empty paragraph. */
 export const CANONICAL_PARAGRAPH_START_SEED_263 = {
-  authority: "canonical",
   seed: 263,
   path: "12:2:2:2:2",
   fingerprint: "156d4359b84edef4",
@@ -303,7 +284,6 @@ export const CANONICAL_PARAGRAPH_START_SEED_263 = {
     ],
   },
 } satisfies {
-  authority: "canonical";
   seed: number;
   path: string;
   fingerprint: string;
@@ -312,7 +292,6 @@ export const CANONICAL_PARAGRAPH_START_SEED_263 = {
 
 /** A composition at a paragraph's start stays there, after a pasted list. */
 export const CANONICAL_PARAGRAPH_START_SEED_431 = {
-  authority: "canonical",
   seed: 431,
   path: "14:4:2:2:2",
   fingerprint: "76156fa33702d1c6",
@@ -325,7 +304,6 @@ export const CANONICAL_PARAGRAPH_START_SEED_431 = {
     ],
   },
 } satisfies {
-  authority: "canonical";
   seed: number;
   path: string;
   fingerprint: string;
@@ -334,7 +312,6 @@ export const CANONICAL_PARAGRAPH_START_SEED_431 = {
 
 /** A restarted composition after a tracked paste commits once, at the caret. */
 export const CANONICAL_RESTARTED_AFTER_PASTE_SEED_197 = {
-  authority: "canonical",
   seed: 197,
   path: "19",
   fingerprint: "855d1f9b6feaad45",
@@ -352,7 +329,6 @@ export const CANONICAL_RESTARTED_AFTER_PASTE_SEED_197 = {
     ],
   },
 } satisfies {
-  authority: "canonical";
   seed: number;
   path: string;
   fingerprint: string;
@@ -364,7 +340,6 @@ export const CANONICAL_RESTARTED_AFTER_PASTE_SEED_197 = {
  * beside a pasted run: the reread names the run's font for one script only.
  */
 export const CANONICAL_COMPOSITION_REREAD_AFTER_PASTE = {
-  authority: "canonical",
   seed: 197,
   path: "reread-after-paste",
   fingerprint: "composition-reread-after-paste",
@@ -382,7 +357,6 @@ export const CANONICAL_COMPOSITION_REREAD_AFTER_PASTE = {
     ],
   },
 } satisfies {
-  authority: "canonical";
   seed: number;
   path: string;
   fingerprint: string;
@@ -395,11 +369,9 @@ export const CANONICAL_COMPOSITION_REREAD_AFTER_PASTE = {
  * editor commits.
  */
 export const CANONICAL_COMPOSITION_BESIDE_PASTED_RUN = {
-  authority: "canonical",
   seed: 197,
   path: "beside-pasted-run",
   fingerprint: "composition-beside-pasted-run",
-  comparesWithDefaultEditor: true,
   trace: {
     shape: "mixed-lists",
     actions: [
@@ -413,17 +385,14 @@ export const CANONICAL_COMPOSITION_BESIDE_PASTED_RUN = {
     ],
   },
 } satisfies {
-  authority: "canonical";
   seed: number;
   path: string;
   fingerprint: string;
-  comparesWithDefaultEditor: true;
   trace: BrowserInputTrace;
 };
 
 /** A restarted composition after tracked typing commits at the caret, not mid-word. */
 export const CANONICAL_RESTARTED_AFTER_TYPING = {
-  authority: "canonical",
   seed: 197,
   path: "typed-restart",
   fingerprint: "restarted-after-typing",
@@ -439,7 +408,6 @@ export const CANONICAL_RESTARTED_AFTER_TYPING = {
     ],
   },
 } satisfies {
-  authority: "canonical";
   seed: number;
   path: string;
   fingerprint: string;
@@ -448,7 +416,6 @@ export const CANONICAL_RESTARTED_AFTER_TYPING = {
 
 /** A composition inside a tracked run survives the DOM rebuilding its review mark. */
 export const CANONICAL_TRACKED_RUN_REREAD_SEED_1793897521 = {
-  authority: "canonical",
   seed: 1793897521,
   path: "12",
   fingerprint: "f9c052d5091f3dce",
@@ -468,7 +435,6 @@ export const CANONICAL_TRACKED_RUN_REREAD_SEED_1793897521 = {
     ],
   },
 } satisfies {
-  authority: "canonical";
   seed: number;
   path: string;
   fingerprint: string;
@@ -878,7 +844,6 @@ export const BROWSER_CANCELLED_COMPOSITION_SEED_1793946574 = {
 
 /** Backspace before tracked-deleted text at a paragraph's start joins the paragraph. */
 export const CANONICAL_JOIN_BESIDE_DELETION_SEED_29 = {
-  authority: "canonical",
   seed: 29,
   path: "15:2",
   fingerprint: "bad194d7a1bfd1c6",
@@ -892,7 +857,6 @@ export const CANONICAL_JOIN_BESIDE_DELETION_SEED_29 = {
     ],
   },
 } satisfies {
-  authority: "canonical";
   seed: number;
   path: string;
   fingerprint: string;
@@ -900,7 +864,6 @@ export const CANONICAL_JOIN_BESIDE_DELETION_SEED_29 = {
 };
 
 type CanonicalRegression = {
-  authority: "canonical";
   seed: number;
   path: string;
   fingerprint: string;
@@ -909,7 +872,6 @@ type CanonicalRegression = {
 
 /** ProseMirror types over a selection across paragraphs from keypress, with no beforeinput. */
 export const CANONICAL_TYPING_OVER_LIST_ITEMS_SEED_431 = {
-  authority: "canonical",
   seed: 431,
   path: "14:2:3:2:2:1:1",
   fingerprint: "d80b63ac597ad07a",
@@ -923,7 +885,6 @@ export const CANONICAL_TYPING_OVER_LIST_ITEMS_SEED_431 = {
 } satisfies CanonicalRegression;
 
 export const CANONICAL_TYPING_OVER_LIST_ITEMS_AFTER_TYPING_SEED_431 = {
-  authority: "canonical",
   seed: 431,
   path: "14",
   fingerprint: "1d751358bf327e40",
@@ -938,7 +899,6 @@ export const CANONICAL_TYPING_OVER_LIST_ITEMS_AFTER_TYPING_SEED_431 = {
 } satisfies CanonicalRegression;
 
 export const CANONICAL_TYPING_ACROSS_PARAGRAPHS = {
-  authority: "canonical",
   seed: 0,
   path: "paragraphs",
   fingerprint: "typing-across-paragraphs",
@@ -952,7 +912,6 @@ export const CANONICAL_TYPING_ACROSS_PARAGRAPHS = {
 } satisfies CanonicalRegression;
 
 export const CANONICAL_TYPING_OVER_EVERYTHING = {
-  authority: "canonical",
   seed: 0,
   path: "selectAll",
   fingerprint: "typing-over-select-all",
@@ -964,7 +923,6 @@ export const CANONICAL_TYPING_OVER_EVERYTHING = {
 
 /** Typing over selected cells refuses with the session's own reason, leaving them as they were. */
 export const CANONICAL_TYPING_OVER_CELLS = {
-  authority: "canonical",
   seed: 0,
   path: "cells",
   fingerprint: "typing-over-selected-cells",
@@ -1092,7 +1050,6 @@ export const BROWSER_NOTES_LIST_PASTE_SEED_29 = {
 
 /** A composition right after a list pasted before a bookmarked heading. */
 export const CANONICAL_COMPOSITION_AFTER_LIST_PASTE_SEED_11 = {
-  authority: "canonical",
   seed: 11,
   path: "3:2:1:1",
   fingerprint: "9b669b5c44effff2",
@@ -1107,7 +1064,6 @@ export const CANONICAL_COMPOSITION_AFTER_LIST_PASTE_SEED_11 = {
 
 /** Enter over a selected list item, then Delete over the paragraphs. */
 export const CANONICAL_DELETE_AFTER_SPLIT_LIST_ITEM_SEED_131 = {
-  authority: "canonical",
   seed: 131,
   path: "5:2",
   fingerprint: "655fd5f3d50f73f7",
@@ -1124,7 +1080,6 @@ export const CANONICAL_DELETE_AFTER_SPLIT_LIST_ITEM_SEED_131 = {
 
 /** Two Deletes and a plain paste between mixed lists, then select all. */
 export const CANONICAL_SELECT_ALL_AFTER_PASTE_BESIDE_DELETIONS_SEED_197 = {
-  authority: "canonical",
   seed: 197,
   path: "11:6:4:4",
   fingerprint: "15b0a756df596baf",
@@ -1141,7 +1096,6 @@ export const CANONICAL_SELECT_ALL_AFTER_PASTE_BESIDE_DELETIONS_SEED_197 = {
 
 /** Rich paste over every section, then a list pasted over it. */
 export const CANONICAL_LIST_PASTE_OVER_PASTED_SECTIONS_SEED_347 = {
-  authority: "canonical",
   seed: 347,
   path: "5:4",
   fingerprint: "9675b1953ffbca8d",
@@ -1157,7 +1111,6 @@ export const CANONICAL_LIST_PASTE_OVER_PASTED_SECTIONS_SEED_347 = {
 
 /** An office HTML paste over a decimal list, then a list paste, another office paste and Enter. */
 export const CANONICAL_OFFICE_PASTE_OVER_DECIMAL_LIST_SEED_47 = {
-  authority: "canonical",
   seed: 47,
   path: "14",
   fingerprint: "d6ef7314c0c2bb21",
@@ -1176,7 +1129,6 @@ export const CANONICAL_OFFICE_PASTE_OVER_DECIMAL_LIST_SEED_47 = {
 
 /** Everything cut while suggesting, across a comment's range and its reference. */
 export const CANONICAL_CUT_EVERYTHING_BESIDE_COMMENT_SEED_431 = {
-  authority: "canonical",
   seed: 431,
   path: "4:3:1",
   fingerprint: "5713f8fb706927fd",
@@ -1188,7 +1140,6 @@ export const CANONICAL_CUT_EVERYTHING_BESIDE_COMMENT_SEED_431 = {
 
 /** A table pasted where everything around a field, a link and a bookmark was deleted. */
 export const CANONICAL_TABLE_PASTE_OVER_EMPTIED_FIELDS_SEED_11 = {
-  authority: "canonical",
   seed: 11,
   path: "2:3:2:2:2",
   fingerprint: "234f75ae8b2de9d4",
@@ -1204,7 +1155,6 @@ export const CANONICAL_TABLE_PASTE_OVER_EMPTIED_FIELDS_SEED_11 = {
 
 /** A legacy-editor finding of #2300 (single-decimal-list), replayed in the canonical session. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_44ACBA1A39AE6967 = {
-  authority: "canonical",
   seed: 29,
   path: "1:3:3",
   fingerprint: "canonical-44acba1a39ae6967",
@@ -1220,7 +1170,6 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_44ACBA1A39AE6967 = {
 
 /** A legacy-editor finding of #2300 (fields-links-bookmarks), replayed in the canonical session. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_0AE2A73B64015980 = {
-  authority: "canonical",
   seed: 83,
   path: "3",
   fingerprint: "canonical-0ae2a73b64015980",
@@ -1232,7 +1181,6 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_0AE2A73B64015980 = {
 
 /** A legacy-editor finding of #2300 (fields-links-bookmarks), replayed in the canonical session. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_F833D2A2C838868E = {
-  authority: "canonical",
   seed: 263,
   path: "8",
   fingerprint: "canonical-f833d2a2c838868e",
@@ -1255,7 +1203,6 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_F833D2A2C838868E = {
 
 /** A legacy-editor finding of #2300 (notes), replayed in the canonical session. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_6B03AAC751613037 = {
-  authority: "canonical",
   seed: 1793897521,
   path: "11",
   fingerprint: "canonical-6b03aac751613037",
@@ -1280,7 +1227,6 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_6B03AAC751613037 = {
 
 /** A legacy-editor finding of #2300 (single-bullet-list), replayed in the canonical session. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_CAED1ECA237779C4 = {
-  authority: "canonical",
   seed: 1793946574,
   path: "10",
   fingerprint: "canonical-caed1eca237779c4",
@@ -1303,7 +1249,6 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_CAED1ECA237779C4 = {
 
 /** A legacy-editor finding of #2300 (tables), replayed in the canonical session. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_7AF616E1D95C9131 = {
-  authority: "canonical",
   seed: 1794032767,
   path: "11",
   fingerprint: "canonical-7af616e1d95c9131",
@@ -1325,7 +1270,6 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_7AF616E1D95C9131 = {
 
 /** A legacy-editor finding of #2300 (notes), replayed in the canonical session. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_1EDA02BD7E61236F = {
-  authority: "canonical",
   seed: 83,
   path: "9",
   fingerprint: "canonical-1eda02bd7e61236f",
@@ -1341,7 +1285,6 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_1EDA02BD7E61236F = {
 
 /** A legacy-editor finding of #2300 (image), replayed in the canonical session. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_B2E6A69C90DD0380 = {
-  authority: "canonical",
   seed: 431,
   path: "9",
   fingerprint: "canonical-b2e6a69c90dd0380",
@@ -1360,7 +1303,6 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_B2E6A69C90DD0380 = {
 
 /** A legacy-editor finding of #2300 (fields-links-bookmarks), replayed in the canonical session. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_88B32B907B27833C = {
-  authority: "canonical",
   seed: 1794119234,
   path: "15",
   fingerprint: "canonical-88b32b907b27833c",
@@ -1383,7 +1325,6 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_88B32B907B27833C = {
 
 /** A legacy-editor finding of #2300 (invisible-markers), replayed in the canonical session. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_40F31C41449DD72E = {
-  authority: "canonical",
   seed: 1794292116,
   path: "8:2:0:1:2",
   fingerprint: "canonical-40f31c41449dd72e",
@@ -1398,7 +1339,6 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_40F31C41449DD72E = {
 
 /** A legacy-editor finding of #2300 (rtl-cjk), replayed in the canonical session. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_050B871DCD760539 = {
-  authority: "canonical",
   seed: 1794378562,
   path: "6:2:0:1:2",
   fingerprint: "canonical-050b871dcd760539",
@@ -1413,7 +1353,6 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_050B871DCD760539 = {
 
 /** A legacy-editor finding of #2302 (single-decimal-list), replayed in the canonical session. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_16B45BECAB03610E = {
-  authority: "canonical",
   seed: 431,
   path: "9:2:1:1:1:2:2",
   fingerprint: "canonical-16b45becab03610e",
@@ -1428,7 +1367,6 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_16B45BECAB03610E = {
 
 /** A legacy-editor finding of #2302 (single-bullet-list), replayed in the canonical session. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_5736502082EB3A9B = {
-  authority: "canonical",
   seed: 1793914965,
   path: "7:2:1:2:2",
   fingerprint: "canonical-5736502082eb3a9b",
@@ -1443,7 +1381,6 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_5736502082EB3A9B = {
 
 /** A legacy-editor finding of #2302 (notes), replayed in the canonical session. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_B3A7D52FAF40115D = {
-  authority: "canonical",
   seed: 29,
   path: "15",
   fingerprint: "canonical-b3a7d52faf40115d",
@@ -1462,7 +1399,6 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_B3A7D52FAF40115D = {
 
 /** A legacy-editor finding of #2302 (rtl-cjk), replayed in the canonical session. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_0F194A9C3F728F97 = {
-  authority: "canonical",
   seed: 1794206220,
   path: "0:2:1:1:1:1:1:1",
   fingerprint: "canonical-0f194a9c3f728f97",
@@ -1477,7 +1413,6 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_0F194A9C3F728F97 = {
 
 /** The generic-HTML variant retained independently of the recorded Google Docs paste. */
 export const CANONICAL_MIXED_LIST_GENERIC_HTML_VARIANT = {
-  authority: "canonical",
   seed: 1794465004,
   path: "10",
   fingerprint: "canonical-mixed-list-generic-html-variant",
@@ -1495,7 +1430,6 @@ export const CANONICAL_MIXED_LIST_GENERIC_HTML_VARIANT = {
 
 /** Exact saved #2300 trace: seed 29, path 1; payloads stay as recorded. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_4C859FEE8C19BFB9 = {
-  authority: "canonical",
   seed: 29,
   path: "1",
   fingerprint: "canonical-4c859fee8c19bfb9",
@@ -1532,7 +1466,6 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_4C859FEE8C19BFB9 = {
 
 /** Exact saved #2300 trace: seed 431, path 9; payloads stay as recorded. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_E548E128F503AAE1 = {
-  authority: "canonical",
   seed: 431,
   path: "9",
   fingerprint: "canonical-e548e128f503aae1",
@@ -1572,7 +1505,6 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_E548E128F503AAE1 = {
 
 /** Exact saved #2300 trace: seed 1794206220, path 0; payloads stay as recorded. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_7452DA3E69BEBC60 = {
-  authority: "canonical",
   seed: 1794206220,
   path: "0",
   fingerprint: "canonical-7452da3e69bebc60",
@@ -1610,7 +1542,6 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_7452DA3E69BEBC60 = {
 
 /** Exact saved #2300 trace: seed 1794292116, path 8; payloads stay as recorded. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_85546B817397E3F7 = {
-  authority: "canonical",
   seed: 1794292116,
   path: "8",
   fingerprint: "canonical-85546b817397e3f7",
@@ -1639,7 +1570,6 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_85546B817397E3F7 = {
 
 /** Exact saved #2300 trace: seed 1794378562, path 6; payloads stay as recorded. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_ECA480EB2F57240C = {
-  authority: "canonical",
   seed: 1794378562,
   path: "6",
   fingerprint: "canonical-eca480eb2f57240c",
@@ -1675,7 +1605,6 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_ECA480EB2F57240C = {
 
 /** Exact saved #2300 trace: seed 1794551355, path 12; payloads stay as recorded. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_DAD129C5D08899AF = {
-  authority: "canonical",
   seed: 1794551355,
   path: "12",
   fingerprint: "canonical-dad129c5d08899af",
@@ -1713,7 +1642,6 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_DAD129C5D08899AF = {
 
 /** Exact saved #2300 trace: seed 83, path 9:4:2:2:2; payloads stay as recorded. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_F004C1C39C848FBC = {
-  authority: "canonical",
   seed: 83,
   path: "9:4:2:2:2",
   fingerprint: "canonical-f004c1c39c848fbc",
@@ -1740,7 +1668,6 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_F004C1C39C848FBC = {
 
 /** Exact saved #2300 trace: seed 1794637615, path 0:0:2; payloads stay as recorded. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_A870AB307548FC1D = {
-  authority: "canonical",
   seed: 1794637615,
   path: "0:0:2",
   fingerprint: "canonical-a870ab307548fc1d",
@@ -1768,7 +1695,6 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_A870AB307548FC1D = {
 
 /** Exact saved #2300 trace: seed 1794724016, path 6; payloads stay as recorded. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_83A762D815C32FC7 = {
-  authority: "canonical",
   seed: 1794724016,
   path: "6",
   fingerprint: "canonical-83a762d815c32fc7",
@@ -1806,7 +1732,6 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_83A762D815C32FC7 = {
 
 /** Exact saved #2300 trace: seed 1794724016, path 6:5; payloads stay as recorded. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_E92BCE340D8EB32B = {
-  authority: "canonical",
   seed: 1794724016,
   path: "6:5",
   fingerprint: "canonical-e92bce340d8eb32b",
@@ -1835,7 +1760,6 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_E92BCE340D8EB32B = {
 
 /** Exact saved #2302 trace: seed 1793914965, path 7; payloads stay as recorded. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_DA47B019908DFA2E = {
-  authority: "canonical",
   seed: 1793914965,
   path: "7",
   fingerprint: "canonical-da47b019908dfa2e",
@@ -1872,7 +1796,6 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_DA47B019908DFA2E = {
 
 /** Exact saved #2302 trace: seed 1794471204, path 14; payloads stay as recorded. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_CA0B65D37F32ED0A = {
-  authority: "canonical",
   seed: 1794471204,
   path: "14",
   fingerprint: "canonical-ca0b65d37f32ed0a",
@@ -1901,7 +1824,6 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_CA0B65D37F32ED0A = {
 
 /** Exact saved #2302 trace: seed 1794637615, path 0; payloads stay as recorded. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_4AB7DCA19B12D16D = {
-  authority: "canonical",
   seed: 1794637615,
   path: "0",
   fingerprint: "canonical-4ab7dca19b12d16d",
@@ -1950,7 +1872,6 @@ export const BROWSER_TABLE_PASTE_AT_DOCUMENT_END_SEED_1794637615 = {
 
 /** Exact saved #2596 trace: seed 1794465004, path 10; payloads stay as recorded. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_4CFD6DADC63EEB36 = {
-  authority: "canonical",
   seed: 1794465004,
   path: "10",
   fingerprint: "canonical-4cfd6dadc63eeb36",
@@ -2000,7 +1921,6 @@ export const BROWSER_PASTE_SPLITTING_NUMBERED_ITEM_SEED_1794465004 = {
 
 /** Typing over everything after a suggested paste retires the comment it covers (#2903). */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_328C996278E3AB12 = {
-  authority: "canonical",
   seed: 1794983381,
   path: "18:3:2:2",
   fingerprint: "canonical-328c996278e3ab12",
@@ -2037,7 +1957,6 @@ export const BROWSER_PASTE_OVER_PASTED_LIST_ITEMS_SEED_83 = {
 };
 
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_16EA251AF88F6319 = {
-  authority: "canonical",
   seed: 83,
   path: "18:5:2:2",
   fingerprint: "canonical-16ea251af88f6319",
@@ -2070,7 +1989,6 @@ export const BROWSER_PASTE_OVER_PASTED_TABLE_SEED_1795156188 = {
 };
 
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_68E2257269D2DCD0 = {
-  authority: "canonical",
   seed: 1795156188,
   path: "0",
   fingerprint: "canonical-68e2257269d2dcd0",
@@ -2103,7 +2021,6 @@ export const BROWSER_ENTER_BESIDE_STRUCK_BREAK_SEED_1795156188 = {
 };
 
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_282AA9454F604633 = {
-  authority: "canonical",
   seed: 1795156188,
   path: "11",
   fingerprint: "canonical-282aa9454f604633",
@@ -2111,10 +2028,8 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_282AA9454F604633 = {
 } satisfies CanonicalRegression;
 
 /**
- * A canonical trace that commits other text than the default editor by
- * design: the canonical session is the authority, and `reason` says why. The
- * named block commits what the platform convention gives; every other block,
- * and every change outside the block, what the default editor commits.
+ * What a word-deletion trace commits in one block: the text the platform
+ * convention gives, and `reason` says why.
  */
 export type CanonicalDesignedDifference = {
   reason: "Deletion by word and by line follows the platform convention.";
@@ -2138,8 +2053,8 @@ const WORD_DELETION_DIFFERENCE = (
 /**
  * Word deletion with Ctrl+Backspace and Ctrl+Delete on the canonical session:
  * inside a word, across runs, at a paragraph's edges (where it joins as the
- * plain key does), beside bookmarks, in lists and in table cells. Where the
- * default editor deletes one character, the trace names the difference.
+ * plain key does), beside bookmarks, in lists and in table cells. Where a
+ * word goes, the trace names the text it leaves.
  */
 const CANONICAL_WORD_DELETION_TRACES = (
   [
@@ -2212,18 +2127,14 @@ const CANONICAL_WORD_DELETION_TRACES = (
   const [shape, keys] = entry;
   const designedDifference = entry.length === 3 ? entry[2] : undefined;
   const regression = {
-    authority: "canonical",
     seed: 0,
     path: `word-deletion-${shape}-${String(index)}`,
     fingerprint: "canonical-word-deletion",
-    comparesWithDefaultEditor: true,
     trace: { shape, actions: [{ kind: "keys", keys: [...keys] }] },
   } satisfies {
-    authority: "canonical";
     seed: number;
     path: string;
     fingerprint: string;
-    comparesWithDefaultEditor: true;
     designedDifference?: CanonicalDesignedDifference;
     trace: BrowserInputTrace;
   };

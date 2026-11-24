@@ -31,17 +31,6 @@ const controlsIn = async (buffer: ArrayBuffer): Promise<number> =>
   ((await unzipDocx(buffer)).documentXml ?? "").match(/<w:sdt[\s/>]/gu)
     ?.length ?? 0;
 
-test("an empty content control reads alike on both engines", async () => {
-  const [legacy, canonical] = await Promise.all(
-    (["canonical"] as const).map((session) =>
-      FolioDocxReviewer.fromBuffer(source(), { session }),
-    ),
-  );
-  const texts = (reviewer: FolioDocxReviewer | undefined) =>
-    reviewer?.snapshot().blocks.map(({ kind, text }) => ({ kind, text }));
-  expect(texts(canonical)).toEqual(texts(legacy));
-});
-
 test.each(["canonical"] as const)(
   "an edit beside an empty content control keeps the control (%s)",
   async (session) => {

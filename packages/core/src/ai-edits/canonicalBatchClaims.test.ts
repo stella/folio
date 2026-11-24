@@ -183,7 +183,6 @@ const range = {
 for (const mode of ["direct", "tracked-changes"] as const)
   for (const reverse of [false, true])
     test(`${mode}: annotations retain their snapshot coverage before moving edits (${reverse})`, async () => {
-      const presentations: ReturnType<typeof presentationOf>[] = [];
       for (const session of ["canonical"] as const) {
         const reviewer = await FolioDocxReviewer.fromBuffer(
           await paragraphsDocx([[textRun(source)]]),
@@ -235,9 +234,7 @@ for (const mode of ["direct", "tracked-changes"] as const)
         expect(final.getContent().map(({ text }) => text)).toEqual([
           "Longer changed opening beta gamma delta",
         ]);
-        presentations.push(presentationOf(final.state.doc, () => "Batch note"));
       }
-      expect(presentations[1]).toEqual(presentations[0]);
     });
 
 const tableSource = `Lead paragraph.
@@ -258,7 +255,6 @@ for (const mode of ["direct", "tracked-changes"] as const)
           new Uint8Array(await createDocx(fromMarkdown(tableSource))),
         )
       ).docx.slice().buffer;
-      const presentations: ReturnType<typeof presentationOf>[] = [];
       for (const session of ["canonical"] as const) {
         const reviewer = await FolioDocxReviewer.fromBuffer(bytes, { session });
         const before = reviewer.toDocument();
@@ -336,9 +332,7 @@ for (const mode of ["direct", "tracked-changes"] as const)
           "Tail",
           "paragraph.",
         ]);
-        presentations.push(presentationOf(final.state.doc));
       }
-      expect(presentations[1]).toEqual(presentations[0]);
     });
 
 for (const mode of ["direct", "tracked-changes"] as const)
@@ -349,7 +343,6 @@ for (const mode of ["direct", "tracked-changes"] as const)
           new Uint8Array(await createDocx(fromMarkdown(tableSource))),
         )
       ).docx.slice().buffer;
-      const presentations: ReturnType<typeof presentationOf>[] = [];
       for (const session of ["canonical"] as const) {
         const reviewer = await FolioDocxReviewer.fromBuffer(bytes, { session });
         const before = reviewer.toDocument();
@@ -434,11 +427,7 @@ for (const mode of ["direct", "tracked-changes"] as const)
                 "Tail paragraph.",
               ],
         );
-        presentations.push(presentationOf(final.state.doc));
       }
-      // The tracked refusal is an existing kernel capability boundary, not
-      // an equivalent result: only the implemented direct path claims parity.
-      if (mode === "direct") expect(presentations[1]).toEqual(presentations[0]);
     });
 
 for (const mode of ["direct", "tracked-changes"] as const)
@@ -450,7 +439,6 @@ for (const mode of ["direct", "tracked-changes"] as const)
           [textRun("Next paragraph.")],
           [textRun("Final paragraph.")],
         ]);
-        const presentations: ReturnType<typeof presentationOf>[] = [];
         for (const session of ["canonical"] as const) {
           const reviewer = await FolioDocxReviewer.fromBuffer(bytes, {
             session,
@@ -523,9 +511,7 @@ for (const mode of ["direct", "tracked-changes"] as const)
           expect(presentation.at(0)?.alignment).toBe(
             pendingMerge ? null : "center",
           );
-          presentations.push(presentation);
         }
-        expect(presentations[1]).toEqual(presentations[0]);
       });
 
 test("canonical column review refusal preserves the already-pending table atomically", async () => {
@@ -609,7 +595,6 @@ for (const columns of [1, 2])
           new Uint8Array(await createDocx(fromMarkdown(markdown))),
         )
       ).docx.slice().buffer;
-      const presentations: ReturnType<typeof presentationOf>[] = [];
       for (const session of ["canonical"] as const) {
         const reviewer = await FolioDocxReviewer.fromBuffer(bytes, { session });
         const before = reviewer.toDocument();
@@ -680,9 +665,7 @@ for (const columns of [1, 2])
                 "Tail paragraph.",
               ];
         expect(final.getContent().map(({ text }) => text)).toEqual(expected);
-        presentations.push(presentationOf(final.state.doc));
       }
-      expect(presentations[1]).toEqual(presentations[0]);
     });
 
 for (const mode of ["direct", "tracked-changes"] as const)
@@ -740,7 +723,6 @@ for (const mode of ["direct", "tracked-changes"] as const)
           ? ["Alpha.Bravo.", "Charlie."]
           : ["Alpha.", "New.", "Bravo.", "Charlie."],
       });
-      expect(outcomes[1]).toEqual(outcomes[0]);
     });
 
 for (const mode of ["direct", "tracked-changes"] as const)
@@ -793,18 +775,16 @@ for (const mode of ["direct", "tracked-changes"] as const)
           texts: final.getContent().map(({ text }) => text),
         });
       }
-      const kept = {
-        applied: ["delete", "insert"],
-        skipped: [],
-        texts: ["Lead paragraph.", "Added", "A1", "Tail paragraph."],
-      };
-      // Both engines remove only the source column. Tracked, the canonical
-      // session asks for the table's pending review to be resolved first and
-      // leaves the table, the inserted column included, standing.
+      // Direct, only the source column goes. Tracked, the session asks for
+      // the table's pending review to be resolved first and leaves the
+      // table, the inserted column included, standing.
       expect(outcomes).toEqual([
-        kept,
         mode === "direct"
-          ? kept
+          ? {
+              applied: ["delete", "insert"],
+              skipped: [],
+              texts: ["Lead paragraph.", "Added", "A1", "Tail paragraph."],
+            }
           : {
               applied: ["insert"],
               skipped: [{ id: "delete", reason: "pendingTableChange" }],

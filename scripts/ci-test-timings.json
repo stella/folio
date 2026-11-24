@@ -1768,7 +1768,6 @@
   "packages/vue/src/composables/useOutlineDrawerFocus.test.ts": 8,
   "packages/vue/src/composables/useOutlineSidebar.test.ts": 3,
   "packages/vue/src/composables/usePageSetupControls.test.ts": 1,
-  "packages/vue/src/composables/usePagesPointer.headerFooterSave.test.ts": 130,
   "packages/vue/src/composables/useTableResize.test.ts": 14,
   "packages/vue/src/composables/useTransientNotice.test.ts": 1,
   "packages/vue/src/styles/bundledFonts.test.ts": 1,

@@ -4,8 +4,7 @@
  * Copying a document or converting one from the editor state costs time in
  * proportion to the document, so a host that derives toolbar, ruler or panel
  * state from a freshly built document pays it on every key. Once the edits
- * settle, the legacy session converts the editor state into the model once,
- * and either session copies the model once for the host's change
+ * settle, the session copies the model once for the host's change
  * notification, which never hands out the model itself.
  *
  * The page is wide enough that the outline and the comments open beside the
@@ -47,7 +46,7 @@ const HOSTS: readonly AdapterFixture[] = [
   { name: "react", baseUrl: PLAYGROUND_HOSTS.react },
   { name: "vue", baseUrl: PLAYGROUND_HOSTS.vue },
 ];
-const ENGINES = ["legacy", "canonical"] as const;
+const ENGINES = ["canonical"] as const;
 
 test.use({ viewport: { width: 1500, height: 900 } });
 

@@ -35,10 +35,7 @@ const HOSTS = [
   { name: "React", port: reactPort },
   { name: "Vue", port: vuePort },
 ] as const;
-const SESSIONS = [
-  { name: "legacy", query: "?session=legacy" },
-  { name: "canonical", query: "?session=canonical" },
-] as const;
+const SESSIONS = [{ name: "canonical", query: "?session=canonical" }] as const;
 
 test("a pending formatting change marks its paragraph with the change bar", async ({
   page,
