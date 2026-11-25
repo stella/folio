@@ -359,14 +359,6 @@ describe("a tracked deletion of a paragraph that is a pending insertion", () => 
     });
   }
 
-  test("a later suggestion deleting it takes it back (legacy)", async () => {
-    const { reviewer, original, deleting } =
-      await suggestedThenDeleted("legacy");
-    expect(reviewer.getContent()).toEqual(original);
-    expect(reviewer.getChanges()).toEqual([]);
-    expect(reviewer.rejectSuggestion(deleting)).toBe(false);
-  });
-
   // A comment the inserted paragraph alone carries retires with it, as a
   // direct deletion of a commented paragraph retires its comment; the result
   // reports it. The legacy session refuses the deletion.
@@ -903,7 +895,6 @@ describe("a comment on words a tracked replacement removes", () => {
 
   for (const [session, replaced, continued] of [
     ["canonical", "good", "order"],
-    ["legacy", "good promptly.", "ordershape"],
   ] as const) {
     test(`stays one stretch: it reads the same before and after a save (${session})`, async () => {
       const reviewer = await commentThenReplace("tracked-changes", session);

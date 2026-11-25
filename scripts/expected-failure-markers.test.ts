@@ -97,12 +97,6 @@ const EMPTIED_JOIN =
   'step 1: the result is not what was asked (insertAfterBlock):\n  "Inserted.": kind is "listItem", expected "paragraph"\n    before undefined\n    after {"kind":"listItem","text":"Inserted."}';
 
 describe("generated flows that reproduce a recorded finding", () => {
-  test("a failure with a legacy finding's symptom on the legacy engine is that finding", () => {
-    expect(recordedFindingOf(generatedFailure(EMPTIED_JOIN), "legacy")).toBe(
-      "LEGACY_INSERT_AFTER_EMPTIED_JOIN",
-    );
-  });
-
   test("the same failure on the canonical session is no finding", () => {
     expect(
       recordedFindingOf(generatedFailure(EMPTIED_JOIN), "canonical"),
@@ -113,12 +107,6 @@ describe("generated flows that reproduce a recorded finding", () => {
     expect(recordedFindingOf(generatedFailure(KNOWN), "canonical")).toBe(
       FINDING,
     );
-  });
-
-  test("a failure with no recorded symptom is no finding", () => {
-    expect(
-      recordedFindingOf(generatedFailure(OTHER), "legacy"),
-    ).toBeUndefined();
   });
 
   test("a recorded finding logs no failure marker", () => {

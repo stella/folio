@@ -20,7 +20,6 @@
   "packages/core/src/ai-edits/editKeepsCommentRanges.property.test.ts": 475,
   "packages/core/src/ai-edits/editKeepsCommentRanges.test.ts": 250,
   "packages/core/src/ai-edits/formattingRevisionStretches.property.test.ts": 16,
-  "packages/core/src/ai-edits/headlessCanonicalReads.property.test.ts": 1587,
   "packages/core/src/ai-edits/headlessReview.property.test.ts": 893,
   "packages/core/src/ai-edits/hyperlinkRevisionIdentity.property.test.ts": 169,
   "packages/core/src/ai-edits/insertedTableFinalParagraphResolution.property.test.ts": 836,

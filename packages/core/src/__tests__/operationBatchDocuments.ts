@@ -7,6 +7,7 @@
 
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
+import { EditorState as PMEditorState } from "prosemirror-state";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { createFolioAIEditSnapshotWithStyleResolver } from "../ai-edits/snapshot";
@@ -17,10 +18,18 @@ import {
   type FolioDocumentOperation,
   type FolioDocumentOperationResult,
 } from "../document-operations";
+import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
+import { pluginsForHeadlessRevisionResolution } from "../internal/headlessRevisionResolutionGuard";
 import { resolveAllChangesInHeadlessState } from "../prosemirror/commands/comments";
 import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import { ensureBaseDirectionInState } from "../prosemirror/extensions/features/AutoBidiDetectionExtension";
+import { ensureParaIdsInDoc } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
+import { createDocumentNumberingPlugin } from "../prosemirror/plugins/documentNumbering";
+import { createDocumentStylesPlugin } from "../prosemirror/plugins/documentStyles";
 import { getDocumentStyleResolver } from "../prosemirror/plugins/documentStyleState";
+import { schema, singletonManager } from "../prosemirror/schema";
 import { isZeroWidthAnchor } from "../prosemirror/zeroWidthAnchors";
 import type {
   Comment,
@@ -213,11 +222,30 @@ export const reviewerPresentation = (
   );
 };
 
-/** The state an {@link OperationSession} starts from: the reviewer's reading of the package. */
+/**
+ * The state an {@link OperationSession} starts from: the package read into
+ * ProseMirror with the plugins its revision resolution reads, as the
+ * reference applier edits it.
+ */
 export const reviewerSessionState = async (
   buffer: ArrayBuffer,
-): Promise<EditorState> =>
-  (await FolioDocxReviewer.fromBuffer(buffer, { author: "Reviewer" })).state;
+): Promise<EditorState> => {
+  const document = await parseDocx(buffer, {
+    detectVariables: false,
+    preloadFonts: false,
+  });
+  return ensureBaseDirectionInState(
+    PMEditorState.create({
+      schema,
+      doc: ensureParaIdsInDoc(toProseDoc(document)),
+      plugins: [
+        createDocumentNumberingPlugin(document.package.numbering),
+        ...pluginsForHeadlessRevisionResolution(singletonManager.getPlugins()),
+        createDocumentStylesPlugin(document.package.styles),
+      ],
+    }),
+  );
+};
 
 /**
  * A document held in memory and edited through the same applier the legacy
