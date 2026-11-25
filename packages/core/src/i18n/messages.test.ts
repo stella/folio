@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
+import { loadFolioMessages } from "./loadMessages";
 import { FOLIO_LOCALES, getFolioMessages, isFolioLocale } from "./messages";
 
 // Toolbar labels folio added after the initial translated catalogs were
@@ -157,6 +158,27 @@ describe("getFolioMessages", () => {
           `${locale}: folio.${key} should be translated`,
         ).not.toBe(english);
       }
+    }
+  });
+});
+
+describe("loadFolioMessages", () => {
+  test("resolves English and unshipped locales synchronously", () => {
+    const english = loadFolioMessages("en");
+    expect(english).toEqual(getFolioMessages("en"));
+    expect(loadFolioMessages("en-US")).toBe(english);
+    expect(loadFolioMessages("pt-PT")).toBe(english);
+    expect(loadFolioMessages("!!invalid")).toBe(english);
+  });
+
+  test("loads each translated catalog once, including regional aliases", async () => {
+    const german = loadFolioMessages("de-DE");
+    expect(german).toBeInstanceOf(Promise);
+    expect(loadFolioMessages("de")).toBe(german);
+    const resolved = await german;
+    expect(loadFolioMessages("de")).toBe(resolved);
+    for (const locale of FOLIO_LOCALES) {
+      expect(await loadFolioMessages(locale)).toEqual(getFolioMessages(locale));
     }
   });
 });

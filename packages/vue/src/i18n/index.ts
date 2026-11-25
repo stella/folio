@@ -14,16 +14,19 @@
 import { createTranslator } from "use-intl/core";
 import {
   type App,
-  computed,
-  type ComputedRef,
   inject,
   type InjectionKey,
   type MaybeRefOrGetter,
+  onServerPrefetch,
   provide,
+  shallowRef,
   toValue,
+  watch,
 } from "vue";
 
-import { getFolioMessages } from "@stll/folio-core/i18n/messages";
+import { loadFolioMessages } from "@stll/folio-core/i18n/loadMessages";
+import type { FolioMessages } from "@stll/folio-core/i18n/messages";
+import { messages as english } from "@stll/folio-core/i18n/messages/en";
 
 /** BCP-47 tag folio falls back to when a host supplies no locale. */
 export const defaultLocale = "en";
@@ -46,19 +49,19 @@ export type TranslateFn = (
   values?: Record<string, unknown>,
 ) => string;
 
-const createFolioTranslator = (locale: string) =>
+const createFolioTranslator = (locale: string, messages: FolioMessages) =>
   createTranslator({
     locale,
-    messages: getFolioMessages(locale),
+    messages,
     namespace: "folio",
   });
 
-const TRANSLATOR_KEY: InjectionKey<ComputedRef<FolioTranslator>> =
-  Symbol("folioTranslator");
+const LOCALE_KEY: InjectionKey<MaybeRefOrGetter<string>> =
+  Symbol("folioLocale");
 
-// Standalone fallback: when no provider is mounted, default to English so an
-// un-provided `<DocxEditor>` still renders localized chrome instead of throwing.
-const fallbackTranslator = computed(() => createFolioTranslator(defaultLocale));
+const fallbackTranslator = shallowRef(
+  createFolioTranslator(defaultLocale, english),
+);
 
 /**
  * Provide folio's translator to descendant components. `locale` may be a ref,
@@ -68,10 +71,36 @@ const fallbackTranslator = computed(() => createFolioTranslator(defaultLocale));
 export const provideLocale = (
   locale: MaybeRefOrGetter<string> = defaultLocale,
 ): void => {
-  provide(
-    TRANSLATOR_KEY,
-    computed(() => createFolioTranslator(toValue(locale))),
+  provide(LOCALE_KEY, locale);
+};
+
+const useLocaleTranslator = (locale: MaybeRefOrGetter<string>) => {
+  const translator = shallowRef(fallbackTranslator.value);
+  let pending: Promise<void> | undefined;
+  watch(
+    () => toValue(locale),
+    (tag, _previous, onCleanup) => {
+      const messages = loadFolioMessages(tag);
+      if (!(messages instanceof Promise)) {
+        translator.value = createFolioTranslator(tag, messages);
+        pending = undefined;
+        return;
+      }
+
+      let active = true;
+      onCleanup(() => {
+        active = false;
+      });
+      pending = messages.then((loaded) => {
+        if (active) translator.value = createFolioTranslator(tag, loaded);
+        return undefined;
+      });
+      return pending;
+    },
+    { immediate: true, flush: "sync" },
   );
+  onServerPrefetch(() => pending);
+  return translator;
 };
 
 /**
@@ -79,9 +108,11 @@ export const provideLocale = (
  * `folio` namespace of the active locale's catalog.
  */
 export const useTranslation = (): { t: TranslateFn } => {
-  const translator = inject(TRANSLATOR_KEY, fallbackTranslator);
-  // Unwrap the computed into a stable callable so call sites use `t("key")`
-  // without touching `.value`.
+  const locale = inject(LOCALE_KEY, defaultLocale);
+  const translator =
+    locale === defaultLocale ? fallbackTranslator : useLocaleTranslator(locale);
+
+  // Expose a stable callable so components always read the active translator.
   const t: TranslateFn = (key, values) =>
     // SAFETY: use-intl's translator is callable with (key, values); the cast
     // narrows the broad overload set to the shape folio's SFCs use.
@@ -99,9 +130,6 @@ export const useTranslation = (): { t: TranslateFn } => {
  */
 export const i18nPlugin = {
   install(app: App, locale: MaybeRefOrGetter<string> = defaultLocale): void {
-    app.provide(
-      TRANSLATOR_KEY,
-      computed(() => createFolioTranslator(toValue(locale))),
-    );
+    app.provide(LOCALE_KEY, locale);
   },
 };

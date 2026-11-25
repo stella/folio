@@ -1,8 +1,10 @@
+import { resolveFolioLocale } from "./locales";
 // The generated TS catalogs keep raw JSON out of the source-mirrored build.
 // Import a messages/<locale> entry to load one catalog independently.
 import { CATALOGS as GENERATED_CATALOGS } from "./messages/catalogs.gen";
-import { FOLIO_LOCALES, type FolioLocale } from "./messages/locales";
+import type { FolioLocale } from "./messages/locales";
 
+export { isFolioLocale } from "./locales";
 export { FOLIO_LOCALES, type FolioLocale } from "./messages/locales";
 
 // The exported type is self-contained: it references neither the generated
@@ -25,22 +27,6 @@ const CATALOGS: Record<
   Widen<(typeof GENERATED_CATALOGS)["en"]>
 > = GENERATED_CATALOGS;
 
-const FOLIO_LOCALE_SET = new Set<string>(FOLIO_LOCALES);
-
-export const isFolioLocale = (locale: string): locale is FolioLocale =>
-  FOLIO_LOCALE_SET.has(locale);
-
-// Base language subtag of a BCP-47 tag (`de-DE` -> `de`), or null for a
-// structurally invalid tag. `Intl.Locale` throws on malformed input, so this
-// boundary parse is guarded.
-const baseLanguageOf = (locale: string): string | null => {
-  try {
-    return new Intl.Locale(locale).language;
-  } catch {
-    return null;
-  }
-};
-
 // Returns folio's bundled `{ folio: ... }` messages for `locale`. An exact
 // match wins; otherwise a regional tag resolves to its base-language catalog
 // (`de-DE` -> `de`) — a host usually passes the same tag it gives IntlProvider —
@@ -48,13 +34,5 @@ const baseLanguageOf = (locale: string): string | null => {
 // shipped locale, so the exact match above already covered it). Merge into app
 // messages so the app wins on the rare intentional override:
 //   { ...getFolioMessages(locale), ...appMessages[locale] }
-export const getFolioMessages = (locale: string): FolioMessages => {
-  if (isFolioLocale(locale)) {
-    return CATALOGS[locale];
-  }
-  const base = baseLanguageOf(locale);
-  if (base !== null && isFolioLocale(base)) {
-    return CATALOGS[base];
-  }
-  return CATALOGS.en;
-};
+export const getFolioMessages = (locale: string): FolioMessages =>
+  CATALOGS[resolveFolioLocale(locale)];

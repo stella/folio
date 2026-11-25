@@ -25,6 +25,7 @@ import { createRoot, type Root } from "react-dom/client";
 
 import { IntlProvider } from "use-intl";
 
+import { loadFolioMessages } from "@stll/folio-core/i18n/loadMessages";
 import type { Document } from "@stll/folio-core/types/document";
 import type { DocxInput } from "@stll/folio-core/utils/docxInput";
 
@@ -33,7 +34,6 @@ import type {
   DocxEditorProps,
   DocxEditorRef,
 } from "./components/DocxEditor.props";
-import { getFolioMessages } from "./i18n/messages";
 
 /** Framework-agnostic handle for an imperatively mounted editor instance. */
 export type EditorHandle = {
@@ -72,12 +72,14 @@ export type RenderAsyncOptions = Omit<
  * Resolves once the document has parsed and the first `onChange` fires.
  * Rejects if `onError` runs before that milestone.
  */
-export const renderAsync = (
+export const renderAsync = async (
   input: DocxInput,
   container: HTMLElement,
   options: RenderAsyncOptions,
 ): Promise<DocxEditorHandle> => {
   const { locale = "en", ...editorOptions } = options;
+
+  const messages = await loadFolioMessages(locale);
 
   return new Promise<DocxEditorHandle>((resolve, reject) => {
     const ref = React.createRef<DocxEditorRef>();
@@ -144,7 +146,7 @@ export const renderAsync = (
     };
 
     const element = (
-      <IntlProvider locale={locale} messages={getFolioMessages(locale)}>
+      <IntlProvider locale={locale} messages={messages}>
         <DocxEditor
           {...editorOptions}
           documentBuffer={input}

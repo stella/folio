@@ -22,6 +22,7 @@
 
 import { type App, createApp, h, type MaybeRefOrGetter, ref } from "vue";
 
+import { loadFolioMessages } from "@stll/folio-core/i18n/loadMessages";
 import type { Document } from "@stll/folio-core/types/document";
 import type { DocxInput } from "@stll/folio-core/utils/docxInput";
 
@@ -76,7 +77,7 @@ export type RenderAsyncOptions = Omit<
  * Resolves once the document has parsed and the editor emits `ready`.
  * Rejects if `error` runs before that milestone.
  */
-export const renderAsync = (
+export const renderAsync = async (
   input: DocxInput,
   container: HTMLElement,
   options: RenderAsyncOptions = {},
@@ -86,6 +87,8 @@ export const renderAsync = (
     locale = "en",
     ...editorOptions
   } = options;
+
+  await loadFolioMessages(locale);
 
   return new Promise<DocxEditorHandle>((resolve, reject) => {
     const editorRef = ref<DocxEditorRef | null>(null);
