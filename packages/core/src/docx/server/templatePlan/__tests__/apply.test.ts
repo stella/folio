@@ -15,6 +15,7 @@ import type {
   TemplatePlanItem,
   TemplatePlanReport,
 } from "../types";
+import { verifyTemplatePlanOutput } from "../verify";
 import {
   buildMinimalDocx,
   buildSource,
@@ -25,6 +26,7 @@ import {
   partPaths,
   r,
   readPart,
+  replacePart,
   SOURCE_IDS,
   SOURCE_TEXT,
   TEMPLATE_IDS,
@@ -1032,5 +1034,160 @@ describe("applyTemplatePlan with objects, fields and endnotes", () => {
     expect(await refusal(await planFor(source), { source })).toBe(
       "unsupported-content",
     );
+  });
+});
+
+describe("verifyTemplatePlanOutput", () => {
+  let applied: Applied;
+
+  beforeAll(async () => {
+    applied = await apply(fullPlan());
+  });
+
+  const verify = async (output: Uint8Array): Promise<TemplatePlanReport> =>
+    unwrap(
+      await verifyTemplatePlanOutput({
+        source: fixture.source,
+        template: fixture.template,
+        output,
+        plan: fullPlan(),
+      }),
+    );
+
+  const tampered = async (
+    edit: (xml: string) => string,
+    path = "word/document.xml",
+  ): Promise<TemplatePlanReport> => {
+    const xml = (await readPart(applied.docx, path)) ?? "";
+    const edited = edit(xml);
+    expect(edited).not.toBe(xml);
+    return await verify(await replacePart(applied.docx, path, edited));
+  };
+
+  test("agrees with the report the apply returned", async () => {
+    expect(await verify(applied.docx)).toEqual(applied.report);
+  });
+
+  test("catches a changed word and names the block", async () => {
+    const report = await tampered((xml) =>
+      xml.replace("The Provider shall", "The Provider may"),
+    );
+
+    expect(report.ok).toBe(false);
+    expect(report.issues).toEqual([
+      expect.objectContaining({ code: "text-mismatch", blockId: "p4" }),
+    ]);
+    expect(report.counts).toMatchObject({ textIdentical: 14, textMismatch: 1 });
+  });
+
+  test("catches a no-break space turned into a space", async () => {
+    const report = await tampered((xml) =>
+      xml.replace(" described", " described"),
+    );
+
+    expect(report.issues.map(({ code }) => code)).toEqual(["text-mismatch"]);
+  });
+
+  test("catches lost italics and a lost highlight", async () => {
+    const italics = await tampered((xml) =>
+      xml.replace(
+        '<w:rPr><w:i/><w:iCs/></w:rPr><w:t xml:space="preserve">services</w:t>',
+        '<w:t xml:space="preserve">services</w:t>',
+      ),
+    );
+    expect(italics.issues).toEqual([
+      expect.objectContaining({ code: "emphasis-mismatch", blockId: "p4" }),
+    ]);
+    expect(italics.emphasisSpans).toEqual({
+      source: 8,
+      expected: 8,
+      output: 7,
+    });
+
+    const highlight = await tampered((xml) =>
+      xml.replace('<w:rPr><w:highlight w:val="yellow"/></w:rPr>', ""),
+    );
+    expect(highlight.issues.map(({ code }) => code)).toEqual([
+      "emphasis-mismatch",
+    ]);
+    expect(highlight.highlightSpans.output).toBe(1);
+  });
+
+  test("catches a changed footnote and a dropped one", async () => {
+    const changed = await tampered(
+      (xml) => xml.replace("emphasised", "emphasized"),
+      "word/footnotes.xml",
+    );
+    expect(changed.issues.map(({ code }) => code)).toEqual(["note-mismatch"]);
+    expect(changed.footnotes).toMatchObject({ identical: 0, mismatch: 1 });
+
+    const dropped = await tampered(
+      (xml) => xml.replace(/<w:footnote w:id="1">.*<\/w:footnote>/u, ""),
+      "word/footnotes.xml",
+    );
+    expect(dropped.issues.map(({ code }) => code)).toEqual(
+      expect.arrayContaining(["note-dangling", "note-mismatch"]),
+    );
+  });
+
+  test("catches a stale reference cache and a missing bookmark", async () => {
+    const stale = await tampered((xml) =>
+      xml.replace(
+        /(<w:fldChar w:fldCharType="separate"\/><\/w:r><w:r><w:t xml:space="preserve">)II(<\/w:t>)/u,
+        "$1III$2",
+      ),
+    );
+    expect(stale.references.results.at(0)).toMatchObject({
+      status: "cache-mismatch",
+      cachedText: "III",
+      expectedText: "II",
+    });
+    expect(stale.issues.map(({ code }) => code)).toContain("reference-broken");
+
+    const unbound = await tampered((xml) =>
+      xml
+        .replace(/<w:bookmarkStart w:id="\d+" w:name="_Ref\d{9}"\/>/u, "")
+        .replace(/<w:bookmarkEnd w:id="\d+"\/>/u, ""),
+    );
+    expect(
+      unbound.references.results.map(({ status }) => status).toSorted(),
+    ).toEqual(["missing-bookmark", "ok"]);
+  });
+
+  test("catches a dangling relationship and an unknown style", async () => {
+    const relationship = await tampered((xml) =>
+      xml.replace(/<w:hyperlink r:id="rId\d+"/u, '<w:hyperlink r:id="rId999"'),
+    );
+    expect(relationship.issues.map(({ code }) => code)).toContain(
+      "relationship-dangling",
+    );
+
+    const style = await tampered((xml) =>
+      xml.replace('<w:pStyle w:val="HouseBody"/>', '<w:pStyle w:val="Gone"/>'),
+    );
+    expect(style.issues.map(({ code }) => code)).toEqual(["style-dangling"]);
+  });
+
+  test("catches update on open that was not set", async () => {
+    const report = await tampered(
+      (xml) => xml.replace(/<folioW:updateFields[^>]*\/>/u, ""),
+      "word/settings.xml",
+    );
+
+    expect(report.issues.map(({ code }) => code)).toEqual([
+      "update-fields-mismatch",
+    ]);
+  });
+
+  test("catches a block removed from the output", async () => {
+    const report = await tampered((xml) =>
+      xml.replace(
+        /<w:p><w:pPr><w:pStyle w:val="HouseBody"\/><\/w:pPr><w:r><w:t xml:space="preserve">Line one.*?<\/w:p>/u,
+        "",
+      ),
+    );
+
+    expect(report.ok).toBe(false);
+    expect(report.issues.map(({ code }) => code)).toContain("block-missing");
   });
 });

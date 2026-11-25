@@ -37,6 +37,7 @@ import {
   piecesContent,
   type ResolvedParagraph,
   type ResolvedPlan,
+  resolvePlan,
   segmentPieces,
 } from "./plan";
 import {
@@ -57,6 +58,7 @@ import type {
   TemplatePlanReferenceResult,
   TemplatePlanReport,
   TemplatePlanSpanCounts,
+  VerifyTemplatePlanOutputArgs,
 } from "./types";
 import {
   integerOrNull,
@@ -1145,5 +1147,45 @@ export const reportTemplatePlanOutput = async ({
     },
     issues,
     warnings,
+  });
+};
+
+/**
+ * Check `output` against `source`, `template` and `plan` without trusting
+ * whoever wrote it: every expectation is derived again from the inputs.
+ * A refused plan is an error; a failed check is a report with `ok: false`.
+ */
+export const verifyTemplatePlanOutput = async ({
+  source,
+  template,
+  output,
+  plan,
+  options,
+}: VerifyTemplatePlanOutputArgs): Promise<
+  Result<TemplatePlanReport, TemplatePlanError>
+> => {
+  const analyzedSource = await analyzeDocument(source);
+  if (Result.isError(analyzedSource)) {
+    return analyzedSource;
+  }
+  const analyzedTemplate = await analyzeDocument(template);
+  if (Result.isError(analyzedTemplate)) {
+    return analyzedTemplate;
+  }
+  const resolved = resolvePlan(
+    analyzedSource.value,
+    analyzedTemplate.value,
+    plan,
+  );
+  if (Result.isError(resolved)) {
+    return resolved;
+  }
+  return await reportTemplatePlanOutput({
+    source: analyzedSource.value,
+    template: analyzedTemplate.value,
+    output,
+    plan,
+    resolved: resolved.value,
+    options,
   });
 };

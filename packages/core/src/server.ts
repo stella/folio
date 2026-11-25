@@ -345,6 +345,7 @@ export {
 export { analyzeDocxBlocks } from "./docx/server/templatePlan/blocks";
 export { inspectDocxTemplate } from "./docx/server/templatePlan/inspect";
 export { applyTemplatePlan } from "./docx/server/templatePlan/apply";
+export { verifyTemplatePlanOutput } from "./docx/server/templatePlan/verify";
 export {
   TEMPLATE_PLAN_ERROR_CODES,
   TemplatePlanError,
@@ -381,4 +382,5 @@ export {
   type TemplatePlanReport,
   type TemplatePlanSourceItem,
   type TemplatePlanSpanCounts,
+  type VerifyTemplatePlanOutputArgs,
 } from "./docx/server/templatePlan/types";
