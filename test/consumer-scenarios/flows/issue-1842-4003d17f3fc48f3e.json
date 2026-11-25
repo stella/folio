@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "title": "PINNED #1842, reported seed 788199520: a comment range over a pending replacement has the requested clean quote",
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "emoji",
+  "mode": "suggested",
+  "seed": 788199520,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 1412458890,
+      "operations": [
+        {
+          "type": "replaceInBlock",
+          "blockId": "3CEFFC83",
+          "find": "today",
+          "replace": "revised"
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 3492213191,
+      "operations": [
+        {
+          "type": "commentOnRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "3CEFFC83",
+            "startOffset": 0,
+            "endOffset": 45,
+            "selectedTextHash": "hu7g8zq"
+          },
+          "comment": {
+            "text": "Around the emoji."
+          }
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from collisions flow seed 788199520"
+}

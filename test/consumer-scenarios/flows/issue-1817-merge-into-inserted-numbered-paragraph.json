@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "plain",
+  "mode": "suggested",
+  "seed": 26000245,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 2993355004,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "412DDC7F",
+          "text": "Supplier supplier period payment goods party.",
+          "numbering": { "kind": "newList", "format": "numbered" }
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 2545766625,
+      "expectedApplied": 1,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "412DDC7F",
+          "separator": " "
+        }
+      ]
+    }
+  ],
+  "title": "PINNED #1817: a suggested join removes numbering on a paragraph whose mark is pending insertion"
+}

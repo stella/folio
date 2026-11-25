@@ -20,7 +20,9 @@
 
 import assert from "node:assert/strict";
 
+import { sourceDocumentOf } from "@stll/folio-core/ai-edits/snapshot";
 import type { FolioContentStatedNumbering } from "@stll/folio-core/compare/content-types";
+import { expectParagraphAttrs } from "@stll/folio-core/prosemirror/attrs";
 import {
   FOLIO_DOCUMENT_OPERATION_TYPES,
   type FolioDocumentOperationType,
@@ -867,6 +869,8 @@ type Comment = {
   anchor: string;
   blockId: string | null;
 };
+type ComparedComment = Comment & { finalAnchor?: string };
+
 const commentsOf = (reviewer: Reviewer): Comment[] =>
   reviewer.getComments().map((comment) => ({
     id: comment.id,
@@ -994,6 +998,8 @@ export type Model = {
   insertedRowIds: ReadonlySet<string>;
   /** Live paragraphs whose mark accepting removes (`JoinSources`). */
   joinSourceIds: ReadonlySet<string>;
+  /** Live paragraphs whose mark is pending insertion (`JoinSources`). */
+  markInsertedIds: ReadonlySet<string>;
   /**
    * The live document's numbering, for blocks the accepted package no longer
    * holds (a paragraph pending deletion): what such a block states is what a
@@ -1176,7 +1182,8 @@ const modelRow = (text: string, fields: Fields = {}, pre?: Row): ModelRow => {
  * (for hand-built rows with no package to read). `live`: the suggested model,
  * which reads the live rows themselves, so no block is missing from them and
  * none joins another; `markDeletedIds` are the paragraphs whose mark is a
- * pending deletion and `goWhole` the blank ones accepting removes whole.
+ * pending deletion, `markInsertedIds` those absent from the original stream,
+ * and `goWhole` the blank ones accepting removes whole.
  */
 export type JoinSources =
   | {
@@ -1198,6 +1205,7 @@ export type JoinSources =
   | {
       type: "live";
       markDeletedIds: ReadonlySet<string>;
+      markInsertedIds: ReadonlySet<string>;
       goWhole: ReadonlySet<string>;
     }
   | { type: "assumed" };
@@ -1345,6 +1353,8 @@ export const modelOf = (
         ? (joinSources.insertedRowIds ?? new Set())
         : new Set(),
     joinSourceIds: joinSourceIdsOf(joinSources),
+    markInsertedIds:
+      joinSources.type === "live" ? joinSources.markInsertedIds : new Set(),
     removedNoteStories: new Set(),
     uncertainNoteStories: new Set(),
     noteStoryByBlockId: new Map(),
@@ -3635,12 +3645,10 @@ const materialize = (model: Model): Expected[] => {
   // a cell, so the words keep their own paragraph, separator and all. The
   // paragraphs of a text box drawn in the joined paragraph stay listed
   // after it; the join runs past them.
-  const push = (
-    entry: Expected,
-    container: Container,
-    inTable: boolean,
-    inTextBox: boolean,
-  ) => {
+  const push = (entry: Expected, row: ModelRow) => {
+    const container = row.pre?.table;
+    const inTable = row.inInsertedTable === true;
+    const inTextBox = boxed(row);
     if (joinNext !== undefined && inTextBox && !joinNext.hostInTextBox) {
       out.push(entry);
       return;
@@ -3653,11 +3661,13 @@ const materialize = (model: Model): Expected[] => {
           // the second already in the properties the joined one gets.
           host.text += joinNext.separator;
           const head = joinedProperties.get(host) ?? host;
-          // A pending change that takes a paragraph's numbering away still
-          // shows its marker, as for any pending numbering removal.
+          // A pending numbering removal can show the original marker only
+          // when the trailing paragraph's mark exists in the original view.
           const keepsMarker =
             head.listLineage.type === "none" &&
-            entry.listLineage.type === "reference";
+            entry.listLineage.type === "reference" &&
+            row.pre !== undefined &&
+            !model.markInsertedIds.has(row.pre.id);
           const fields: Fields = keepsMarker
             ? {
                 ...head.fields,
@@ -3739,9 +3749,7 @@ const materialize = (model: Model): Expected[] => {
             listLineage: shown.listLineage,
             ...(whole && row.pre ? { pre: row.pre } : {}),
           },
-          row.pre?.table,
-          row.inInsertedTable === true,
-          boxed(row),
+          row,
         ),
       );
       const host = out.at(-1);
@@ -4148,15 +4156,40 @@ const anchorDisposition = (
   return "kept";
 };
 
-/**
- * Preserve untouched joined quotes. A complete component/block rewrite keeps
- * the comment on the struck words, outside which the new words go; only a
- * pending rewrite reaches here, as the accepted one removes the comment.
- */
-const expectedKeptAnchor = (
-  model: Model,
-  entry: Comment,
-): string | undefined => {
+const PLAIN_WORD = /^[\p{L}\p{N}\p{M}\p{Pc}]+$/u;
+
+type WholeReplacementAnchorOptions = {
+  source: string;
+  replacement: string;
+  mode: Mode;
+};
+
+/** Predict a whole quote for an unambiguous one-word rewrite. */
+const wholeReplacementAnchor = ({
+  source,
+  replacement,
+  mode,
+}: WholeReplacementAnchorOptions): string | undefined => {
+  if (mode === "suggested") return source;
+  if (!PLAIN_WORD.test(source) || !PLAIN_WORD.test(replacement))
+    return undefined;
+  const { prefix, suffix } = smallestChangeKeeps(source, replacement);
+  // An insertion exactly at either end stays outside the comment.
+  if (prefix === source.length || suffix === source.length) return source;
+  // Insertion before a kept suffix is inside the range. Insertion after the
+  // last covered text goes outside, leaving only the kept prefix.
+  if (suffix > 0) return replacement;
+  return prefix > 0 ? source.slice(0, prefix) : undefined;
+};
+
+type ExpectedKeptAnchorOptions = { model: Model; entry: Comment; mode: Mode };
+
+/** Preserve untouched joined quotes and predict complete rewrites where possible. */
+const expectedKeptAnchor = ({
+  model,
+  entry,
+  mode,
+}: ExpectedKeptAnchorOptions): string | undefined => {
   const view = paragraphTextProjection(model, entry.blockId);
   if (
     view.type === "pending-join" &&
@@ -4191,7 +4224,11 @@ const expectedKeptAnchor = (
       edit.replace !== "" &&
       !edit.replace.includes("\n")
     )
-      return entry.anchor;
+      return wholeReplacementAnchor({
+        source: entry.anchor,
+        replacement: edit.replace,
+        mode,
+      });
   }
   const row = model.rows.find(
     (candidate) => candidate.pre?.id === entry.blockId,
@@ -4214,7 +4251,13 @@ const expectedKeptAnchor = (
   ) {
     return undefined;
   }
-  return edit.replace.includes("\n") ? undefined : entry.anchor;
+  return edit.replace.includes("\n")
+    ? undefined
+    : wholeReplacementAnchor({
+        source: entry.anchor,
+        replacement: edit.replace,
+        mode,
+      });
 };
 
 /** Pending markup may interleave the old text and insertion in one range. */
@@ -4227,6 +4270,9 @@ const containsInOrder = (text: string, expected: string): boolean => {
   }
   return true;
 };
+
+const hasInterleavedText = (markup: string, clean: string): boolean =>
+  clean !== "" && markup !== clean && containsInOrder(markup, clean);
 
 const pendingAnchorMatches = (
   actual: string,
@@ -4284,7 +4330,7 @@ const acceptedOwnerId = (model: Model, row: ModelRow): string => {
 export const compareComments = (
   model: Model,
   before: readonly Comment[],
-  after: readonly Comment[],
+  after: readonly ComparedComment[],
   afterRows: readonly Row[],
   liveBefore: readonly Comment[] = before,
   mode: Mode = "direct",
@@ -4353,13 +4399,15 @@ export const compareComments = (
     // Locate by the live component, but predict the accepted quote rather
     // than pending deleted words visible only in the live comment range.
     const view = paragraphTextProjection(model, located.blockId);
-    const anchor = expectedKeptAnchor(
+    const anchor = expectedKeptAnchor({
       model,
-      view.type === "pending-join" &&
+      entry:
+        view.type === "pending-join" &&
         view.destinationPrediction.type === "exact"
-        ? { ...comment, blockId: located.blockId }
-        : comment,
-    );
+          ? { ...comment, blockId: located.blockId }
+          : comment,
+      mode,
+    });
     const owner =
       view.type === "pending-join" &&
       view.destinationPrediction.type === "exact"
@@ -4391,7 +4439,10 @@ export const compareComments = (
       (candidate) =>
         !beforeIds.has(candidate.id) &&
         candidate.text === comment.text &&
-        (anchor === undefined || candidate.anchor === anchor),
+        (anchor === undefined ||
+          candidate.anchor === anchor ||
+          (candidate.finalAnchor === anchor &&
+            hasInterleavedText(candidate.anchor, anchor))),
     );
     if (index === -1) {
       problems.push(
@@ -4446,6 +4497,50 @@ export const compareComments = (
     }
   }
   return problems;
+};
+
+type CompareNewCommentQuotesOptions = {
+  reviewer: Reviewer;
+  model: Model;
+  before: readonly Comment[];
+  after: Comment[];
+  story: Story;
+};
+
+/** Range requests use clean text, while live comments display tracked markup. */
+const withFinalNewCommentQuotes = ({
+  reviewer,
+  model,
+  before,
+  after,
+  story,
+}: CompareNewCommentQuotesOptions): ComparedComment[] => {
+  if (model.comments.length === 0) return after;
+  const beforeIds = new Set(before.map(({ id }) => id));
+  const added = after.filter(({ id }) => !beforeIds.has(id));
+  const mayHoldDeletedText = model.comments.some((comment) => {
+    const anchor = comment.anchor?.();
+    if (anchor === undefined || comment.removed?.() || comment.ambiguous?.())
+      return false;
+    return added.some(
+      (candidate) =>
+        candidate.text === comment.text &&
+        hasInterleavedText(candidate.anchor, anchor),
+    );
+  });
+  if (!mayHoldDeletedText) return after;
+  // A save drops staged suggestions. Resolve a live fork so the clean view
+  // checks the same anchored comment, including when it crosses a suggestion.
+  const final = reviewer.fork();
+  if (!final.resolveReviewedStory({ story, view: "final" })) return after;
+  const quotes = new Map(
+    commentsOf(final).map(({ id, anchor }) => [id, anchor]),
+  );
+  return after.map((comment) => {
+    if (beforeIds.has(comment.id)) return comment;
+    const finalAnchor = quotes.get(comment.id);
+    return finalAnchor === undefined ? comment : { ...comment, finalAnchor };
+  });
 };
 
 const compareStyles = async (
@@ -4733,6 +4828,19 @@ export const markDeletedIds = (reviewer: Reviewer): Set<string> =>
       ),
   );
 
+/** The inserted marks in this story, including those of staged suggestions. */
+const markInsertedIds = (reviewer: Reviewer, story: Story): Set<string> => {
+  const ids = new Set<string>();
+  const snapshot = reviewer.snapshotStory(story);
+  if (snapshot === null) return ids;
+  sourceDocumentOf(snapshot).descendants((node) => {
+    if (node.type.name !== "paragraph") return;
+    const { paraId, pPrMark } = expectParagraphAttrs(node);
+    if (typeof paraId === "string" && pPrMark?.kind === "ins") ids.add(paraId);
+  });
+  return ids;
+};
+
 export const capture = async (
   editable: Reviewer,
   mode: Mode,
@@ -4758,6 +4866,7 @@ export const capture = async (
       joinSources: {
         type: "live",
         markDeletedIds: markDeletedIds(reviewer),
+        markInsertedIds: markInsertedIds(reviewer, story),
         goWhole: blanksGoingWhole(rows, markDeletedIds(reviewer)),
       },
       numberingSource: {
@@ -5150,12 +5259,18 @@ export const assertRequestedOutcome = async (
   const predictable = model.unmodelled.length === 0;
 
   let rows: Row[];
-  let comments: Comment[];
+  let comments: ComparedComment[];
   let links: LinkSnapshot;
   let bytes: Uint8Array | null = null;
   if (pre.mode === "suggested") {
     rows = rowsOf(reviewer, pre.story);
-    comments = commentsOf(reviewer);
+    comments = withFinalNewCommentQuotes({
+      reviewer,
+      model,
+      before: pre.comments,
+      after: commentsOf(reviewer),
+      story: pre.story,
+    });
     links = captureLinks(reviewer);
   } else {
     const saved = await save(reviewer);
