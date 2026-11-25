@@ -214,10 +214,10 @@ describe("an operation that starts a new list", () => {
     expect(labels).toEqual(["Intro.", "• First", "• Second"]);
   });
 
-  // Legacy applies a batch right to left; canonical runs it in batch order.
-  test.each([{ session: "canonical", order: "batch" }] as const)(
-    "allocates a $session batch in the same $order order as one-at-a-time replay",
-    async ({ session, order }) => {
+  // A batch runs in batch order.
+  test.each([{ session: "canonical" }] as const)(
+    "allocates a $session batch in the same order as one-at-a-time replay",
+    async ({ session }) => {
       const batch = await reviewerOf("Left.\n\nMiddle.\n\nRight.", session);
       const replay = await reviewerOf("Left.\n\nMiddle.\n\nRight.", session);
       const operations = twoNewLists(batch);
@@ -227,7 +227,6 @@ describe("an operation that starts a new list", () => {
       );
 
       const replayOperations = twoNewLists(replay);
-      if (order === "right-to-left") replayOperations.reverse();
       for (const operation of replayOperations) {
         replay.applyDocumentOperations(
           { version: 1, mode: "direct", operations: [operation] },

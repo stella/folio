@@ -258,11 +258,6 @@ describe.each(SESSIONS)("%s session", (session) => {
         ],
       ]);
       expect(tableReadingProblems(directReading)).toEqual([]);
-      if (session === "legacy") {
-        // Legacy cannot record the row going with a tracked merge.
-        expect(tracked.result.applied).toEqual([]);
-        return;
-      }
       // The tracked merge records the row's deletion beside the merge.
       expect(tracked.result.issues).toEqual([]);
       const accepted = await resolveTracked(tracked.reviewer, "accept");
@@ -318,8 +313,6 @@ describe.each(SESSIONS)("%s session", (session) => {
         expect(result.skipped).toContainEqual(
           expect.objectContaining({ id: "split", reason: "unsupportedBlock" }),
         );
-        // Legacy refuses the merge too: it takes no merge and split in one
-        // table.
         const reading =
           mode === "direct" || result.applied.length === 0
             ? await readReviewerTables(reviewer)

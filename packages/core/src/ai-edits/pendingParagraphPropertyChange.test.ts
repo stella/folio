@@ -3,8 +3,7 @@
  * carry a pending change. The canonical engine folds the edit into that one
  * change: it keeps the properties the change started from, so rejecting it
  * restores the original, and takes the latest edit's author and date. An
- * edit back to the original leaves nothing pending. The legacy engine
- * refuses the edit and leaves the pending change as it was.
+ * edit back to the original leaves nothing pending.
  */
 import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
@@ -58,14 +57,12 @@ const savedProperties = async (bytes: ArrayBuffer): Promise<string> => {
 };
 
 type EditOptions = {
-  session: "legacy" | "canonical";
   author: string;
   properties: BlockProperties;
 };
 
-const edit = async ({ session, author, properties }: EditOptions) => {
+const edit = async ({ author, properties }: EditOptions) => {
   const reviewer = await FolioDocxReviewer.fromBuffer(await source(), {
-    session,
     author,
   });
   const block = reviewer.snapshot().blocks.at(0) ?? panic("Expected a block");
@@ -86,9 +83,7 @@ const edit = async ({ session, author, properties }: EditOptions) => {
   );
   const saved = await reviewer.toBuffer();
   const resolved = async (mode: "accept" | "reject") => {
-    const copy = await FolioDocxReviewer.fromBuffer(saved.slice(0), {
-      session,
-    });
+    const copy = await FolioDocxReviewer.fromBuffer(saved.slice(0));
     if (mode === "accept") copy.acceptAll();
     else copy.rejectAll();
     return await savedProperties(await copy.toBuffer());
@@ -107,7 +102,6 @@ const CHANGE = (author: string) =>
 describe("canonical: an edit over a pending paragraph-property change", () => {
   test("another author's edit folds into it, keeping where it started", async () => {
     const result = await edit({
-      session: "canonical",
       author: "Editor",
       properties: { spacing: { spaceAfter: 360 } },
     });
@@ -123,7 +117,6 @@ describe("canonical: an edit over a pending paragraph-property change", () => {
 
   test("the same author's edit folds into it too", async () => {
     const result = await edit({
-      session: "canonical",
       author: "Reviewer",
       properties: { alignment: "right" },
     });
@@ -135,7 +128,6 @@ describe("canonical: an edit over a pending paragraph-property change", () => {
 
   test("an edit back to where it started leaves nothing pending", async () => {
     const result = await edit({
-      session: "canonical",
       author: "Editor",
       properties: { alignment: null },
     });

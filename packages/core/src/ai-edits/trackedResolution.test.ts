@@ -285,8 +285,7 @@ describe("a tracked deletion of a paragraph that is a pending insertion", () => 
   // canonical session its deletion stays beside the insertion and the two
   // suggestions stay independent. Rejecting the deletion alone gives the
   // paragraph back, rejecting the insertion alone leaves the document before
-  // both, and accepting both, in either order, removes the paragraph. The
-  // legacy session takes the insertion back outright.
+  // both, and accepting both, in either order, removes the paragraph.
   const suggestedThenDeleted = async (session: HeadlessReviewerSession) => {
     const reviewer = await open(undefined, session);
     const original = (
@@ -361,7 +360,7 @@ describe("a tracked deletion of a paragraph that is a pending insertion", () => 
 
   // A comment the inserted paragraph alone carries retires with it, as a
   // direct deletion of a commented paragraph retires its comment; the result
-  // reports it. The legacy session refuses the deletion.
+  // reports it.
   for (const [where, anchor] of [
     ["inside the story", "The Buyer"],
     ["at its end", "Signed"],
@@ -379,7 +378,6 @@ describe("a tracked deletion of a paragraph that is a pending insertion", () => 
           comment: { text: "Why?" },
         }).applied.at(0)?.commentId;
         if (commentId === undefined) throw new Error("no comment");
-        const commented = reviewer.getContent();
         const deleted = reviewer.applyDocumentOperations(
           {
             version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -394,14 +392,6 @@ describe("a tracked deletion of a paragraph that is a pending insertion", () => 
           },
           { undefinedReferences: "refuse" },
         );
-        if (session === "legacy") {
-          expect(deleted.applied).toEqual([]);
-          expect(deleted.skipped.map(({ message }) => message)).toEqual([
-            "Accept All would lose a comment.",
-          ]);
-          expect(reviewer.getContent()).toEqual(commented);
-          return;
-        }
         expect(deleted.applied.at(0)?.retiredCommentIds).toEqual([commentId]);
         expect(reviewer.getContent()).toEqual(original);
         expect(reviewer.getChanges()).toEqual([]);
@@ -559,9 +549,8 @@ test("a blank final paragraph deletes like a direct edit and rejects to the blan
 describe("inserting after a deleted final paragraph", () => {
   // The canonical session refuses a tracked table right after a paragraph
   // whose break the final deletion retired, where accepting would run that
-  // paragraph's words into the table's first cell; the legacy session places
-  // the table after the deleted paragraph. Everything else resolves like
-  // direct editing on both.
+  // paragraph's words into the table's first cell. Everything else resolves
+  // like direct editing.
   const TABLE_AFTER_RETIRED_BREAK = {
     reason: "pendingParagraphMarkDeletion",
     message:
@@ -864,8 +853,7 @@ const anchorsOf = (reviewer: FolioDocxReviewer): string[] =>
 describe("a comment on words a tracked replacement removes", () => {
   // The canonical session keeps the comment on the deleted words only, so
   // accepting the replacement retires it, as a direct replacement covering
-  // the whole comment deletes it. The legacy session extends it over the
-  // inserted replacement.
+  // the whole comment deletes it.
   const commentThenReplace = async (
     mode: FolioDocumentOperationMode,
     session: HeadlessReviewerSession,

@@ -3,8 +3,7 @@
  * change. A fold over the whole run keeps the pending change's id and
  * reports it, a piece the patch cuts off takes a new one, and a batch never
  * reports an id no revision carries once it settles. A suggestion that would
- * take over another pending property change is refused by its own reason on
- * both engines.
+ * take over another pending property change is refused by its own reason.
  */
 import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
@@ -226,9 +225,8 @@ const pendingParagraphSource = async (): Promise<ArrayBuffer> => {
   return await createDocx(document);
 };
 
-/** How each engine answers a suggestion over another pending paragraph change. */
+/** How the reviewer answers a suggestion over another pending paragraph change. */
 const PARAGRAPH_SUGGESTION = {
-  legacy: { skipped: [] },
   canonical: {
     skipped: [
       {
@@ -282,16 +280,9 @@ type ReceiptOutcome = Pick<FolioDocumentOperationResult, "applied" | "skipped">;
  * A later batch's alignment and italic over the pending alignment and bold an
  * earlier batch of the same author made, given that batch's receipts. The
  * canonical session folds each edit into the pending change and reports the
- * id it shares; legacy refuses both by their own reasons.
+ * id it shares.
  */
 const LATER_BATCH = {
-  legacy: () => ({
-    applied: [],
-    skipped: [
-      { id: "align-1", reason: "pendingParagraphPropertyChange" },
-      { id: "format-1", reason: "pendingRunPropertyChange" },
-    ],
-  }),
   canonical: (earlier: ReceiptOutcome) => ({
     applied: earlier.applied.map((receipt) => ({
       ...receipt,
@@ -313,7 +304,7 @@ type LaterBatchOptions = {
 describe.each(SESSIONS)(
   "%s: a later batch over the pending property changes an earlier one made",
   (session) => {
-    test("reports the ids it shares, or is refused by its own reasons", async () => {
+    test("reports the ids it shares", async () => {
       const reviewer = await FolioDocxReviewer.fromBuffer(await source(), {
         author: "Reviewer",
         session,

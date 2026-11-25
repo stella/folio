@@ -4,8 +4,7 @@
  *
  * Every public operation that removes, merges, splits or rewrites a paragraph
  * is applied to every body paragraph of a three-section package (first and
- * even headers, a table, section breaks on paragraph marks), in every mode,
- * on both engines.
+ * even headers, a table, section breaks on paragraph marks), in every mode.
  * Whatever the batch reports as applied must then:
  *
  * - save with a full repack and reopen;
@@ -313,7 +312,7 @@ const source = await buildSectionsDocx();
 const open = async (session: Session): Promise<FolioDocxReviewer> =>
   await FolioDocxReviewer.fromBuffer(source, { author: "Reviewer", session });
 
-const original = project(await open("legacy"));
+const original = project(await open("canonical"));
 
 const apply = (
   reviewer: FolioDocxReviewer,

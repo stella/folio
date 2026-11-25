@@ -88,7 +88,7 @@ const DELETE_COMMENTED_TEXT = {
   replace: "",
 } as const;
 
-test("the legacy engine drops the comment from the save", async () => {
+test("the headless reviewer drops the comment from the save", async () => {
   const reviewer = await FolioDocxReviewer.fromBuffer(await fixture());
   expect(reviewer.getComments()).toHaveLength(1);
   const result = reviewer.applyOperations([DELETE_COMMENTED_TEXT], {
@@ -195,9 +195,7 @@ test("tracks retirement with two independently blocked joins", async () => {
   });
   expect(newBlocker.accept()).toBeNull();
 
-  const reviewer = await FolioDocxReviewer.fromBuffer(bytes, {
-    session: "canonical",
-  });
+  const reviewer = await FolioDocxReviewer.fromBuffer(bytes);
   expect(reviewer.getChanges().map(({ id }) => id)).toEqual([17, 18]);
   const result = reviewer.applyOperations([DELETE_COMMENTED_TEXT], {
     undefinedReferences: "refuse",

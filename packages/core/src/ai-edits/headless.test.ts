@@ -420,29 +420,19 @@ const buildTextBoxVerticalMergeDocument = async (): Promise<ArrayBuffer> => {
 
 type ResolveOperationChangeOptions = {
   reviewer: FolioDocxReviewer;
-  change: FolioReviewChange;
   decision: "accept" | "reject";
-  session: "legacy" | "canonical";
 };
 
 /**
- * Resolve the one operation pending in `reviewer`. The legacy engine lists a
- * table edit as one change; the canonical session lists each cell, row and
- * property record it made, so the operation is every pending change.
+ * Resolve the one operation pending in `reviewer`. The session lists each
+ * cell, row and property record a table edit made, so the operation is every
+ * pending change.
  */
 const resolveOperationChange = ({
   reviewer,
-  change,
   decision,
-  session,
 }: ResolveOperationChangeOptions) => {
-  if (session === "legacy")
-    expect(
-      decision === "accept"
-        ? reviewer.acceptChange(change)
-        : reviewer.rejectChange(change),
-    ).toBe(true);
-  else if (decision === "accept") reviewer.acceptAll();
+  if (decision === "accept") reviewer.acceptAll();
   else reviewer.rejectAll();
   expect(reviewer.getChanges()).toEqual([]);
 };
@@ -1204,12 +1194,10 @@ describe("headless docx review round-trip", () => {
       const pendingXml = await partText(pending, "word/document.xml");
       expect(pendingXml).toContain("<w:cellMerge ");
       expect(pendingXml).toContain('w:vMerge="cont"');
-      // The legacy engine states the cell's former state as a merge start;
-      // the canonical session states none (the cell was not merged) and records
-      // its former properties in a property change, which rejecting restores.
-      if (session === "legacy")
-        expect(pendingXml).toContain('w:vMergeOrig="rest"');
-      else expect(pendingXml).not.toContain("w:vMergeOrig");
+      // The session states no former merge state (the cell was not merged)
+      // and records its former properties in a property change, which
+      // rejecting restores.
+      expect(pendingXml).not.toContain("w:vMergeOrig");
       const pendingTable = findTextBoxShape(
         await parseDocx(pending, {
           detectVariables: false,
@@ -1231,7 +1219,6 @@ describe("headless docx review round-trip", () => {
       expect(pendingContinuation?.structuralChange).toMatchObject({
         type: "tableCellMerge",
         verticalMerge: "continue",
-        ...(session === "legacy" ? { verticalMergeOriginal: "rest" } : {}),
       });
 
       const accepting = await FolioDocxReviewer.fromBuffer(pending, {
@@ -1245,9 +1232,7 @@ describe("headless docx review round-trip", () => {
       }
       resolveOperationChange({
         reviewer: accepting,
-        change: acceptChange,
         decision: "accept",
-        session,
       });
       const accepted = await accepting.toBuffer();
       expect(await partText(accepted, "word/document.xml")).not.toContain(
@@ -1284,9 +1269,7 @@ describe("headless docx review round-trip", () => {
       }
       resolveOperationChange({
         reviewer: rejecting,
-        change: rejectChange,
         decision: "reject",
-        session,
       });
       const rejected = await rejecting.toBuffer();
       expect(await partText(rejected, "word/document.xml")).not.toContain(
@@ -1384,9 +1367,7 @@ describe("headless docx review round-trip", () => {
       }
       resolveOperationChange({
         reviewer: accepting,
-        change: acceptChange,
         decision: "accept",
-        session,
       });
       const accepted = await accepting.toBuffer();
       expect(await partText(accepted, "word/document.xml")).not.toContain(
@@ -1420,9 +1401,7 @@ describe("headless docx review round-trip", () => {
       }
       resolveOperationChange({
         reviewer: rejecting,
-        change: rejectChange,
         decision: "reject",
-        session,
       });
       const rejected = await rejecting.toBuffer();
       expect(await partText(rejected, "word/document.xml")).not.toContain(
@@ -1565,11 +1544,8 @@ describe("headless docx review round-trip", () => {
       expect(result.applied).toHaveLength(1);
       expect(typeof result.applied.at(0)?.revisionId).toBe("number");
       // Deleting the column that holds every cell deletes the table: the
-      // canonical session records its rows deleted, the legacy engine its cells.
-      const deletion =
-        session === "legacy"
-          ? { change: "cellDeleted", marker: "<w:cellDel " }
-          : { change: "rowDeleted", marker: "<w:del " };
+      // session records its rows deleted.
+      const deletion = { change: "rowDeleted", marker: "<w:del " };
       const pendingChange = reviewer
         .getChanges()
         .find(({ type }) => type === deletion.change);
@@ -1593,9 +1569,7 @@ describe("headless docx review round-trip", () => {
       }
       resolveOperationChange({
         reviewer: reopened,
-        change: reopenedChange,
         decision: "accept",
-        session,
       });
       const accepted = await reopened.toBuffer();
       expect(await partText(accepted, "word/document.xml")).not.toContain(
@@ -1624,9 +1598,7 @@ describe("headless docx review round-trip", () => {
       }
       resolveOperationChange({
         reviewer: rejecting,
-        change: rejectChange,
         decision: "reject",
-        session,
       });
       const rejected = await rejecting.toBuffer();
       expect(await partText(rejected, "word/document.xml")).not.toContain(
@@ -4585,13 +4557,8 @@ describe("headless docx review notes read surface", () => {
         author: "Reviewer",
         session,
       });
-      // The legacy session saves an untouched part as its parser normalized it
-      // (an out-of-range comment id renumbered); the canonical one as read.
-      const imported = await parseDocx(baseline, { preloadFonts: false });
-      if (!imported.originalBuffer)
-        panic("parser must retain the imported package");
-      const untouched =
-        session === "legacy" ? imported.originalBuffer : baseline;
+      // The session saves an untouched part as read.
+      const untouched = baseline;
       const snapshot = reviewer.snapshotStory(story);
       if (!snapshot) {
         throw new Error("expected the footnote story");

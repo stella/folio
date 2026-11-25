@@ -4,9 +4,8 @@
  *
  * folio mints an id for every paragraph that arrives without one, keyed on
  * the package and the paragraph's place in it, so a reopen of the same bytes
- * mints it again and a save need not write it. The legacy save writes none,
- * which keeps the package of a producer that writes no ids id-less;
- * a canonical save writes them only into a part it rewrites. Resolving the
+ * mints it again and a save need not write it. A save writes them only into a
+ * part it rewrites. Resolving the
  * story changes the package, so a reopened copy keys its ids on other content.
  * The check that the resolved story reached the package therefore cannot
  * depend on a minted id: it reported a story that persisted perfectly as one
@@ -97,9 +96,6 @@ describe.each([
       expect(xml).not.toContain("deleted");
       expect(xml).not.toContain("old-position");
       expect(xml).not.toMatch(/<w:(?:ins|del|moveFrom|moveTo)\b/u);
-      // The legacy save keeps the package the author's: a minted id is not an
-      // authored one. A canonical save writes the ids into the part it rewrote.
-      if (session === "legacy") expect(xml).not.toContain("w14:paraId");
 
       const reopened = await FolioDocxReviewer.fromBuffer(saved, { session });
       expect(

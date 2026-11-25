@@ -20,9 +20,8 @@ import type { FolioAIInlineFormatting } from "./types";
 
 const SESSIONS = ["canonical"] as const;
 
-/** How each engine reports the refusal: by the same reason. */
+/** How the refusal is reported. */
 const REFUSAL = {
-  legacy: { reason: "pendingRunPropertyChange" },
   canonical: {
     reason: "pendingRunPropertyChange",
     message:

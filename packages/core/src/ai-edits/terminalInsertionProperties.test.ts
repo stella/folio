@@ -23,7 +23,7 @@ const INSERTION_PROPERTIES = {
 } as const;
 
 // The canonical session refuses to move a pending formatting change onto a
-// new final paragraph; legacy records the insertion.
+// new final paragraph.
 const FINAL_MARK_REFUSAL =
   "A tracked insertion after a paragraph no paragraph follows needs the anchor's properties free of a pending change.";
 

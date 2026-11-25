@@ -223,31 +223,6 @@ type Shape = Step & {
 };
 
 /**
- * KNOWN GAP of the legacy engine, held by the `test.failing` below: the last
- * paragraph is deleted,
- * its deleted break alone is accepted, and the last suggestion inserts a
- * paragraph right before the suggested paragraph that then holds another
- * suggestion's displaced break (the first added clause). Rejecting every
- * change still leaves that suggestion's alignment and a break on the last
- * original paragraph, live and in the saved package.
- */
-type DisplacedBreakGapOptions = {
-  shape: Shape;
-  accepted: FolioReviewChangeKind;
-  reviewer: FolioDocxReviewer;
-};
-
-const isDisplacedBreakGap = ({
-  shape: { session, deleted, after },
-  accepted,
-  reviewer,
-}: DisplacedBreakGapOptions): boolean =>
-  session === "legacy" &&
-  deleted === LINES.length - 1 &&
-  accepted === "paragraphMarkDeleted" &&
-  reviewer.getContent().at(after + 1)?.text === "First added clause.";
-
-/**
  * Whether rejecting every change after the last suggestion reads, live and
  * saved, as rejecting every change without it; `null` when the shape does not
  * apply (no such change, or no paragraph can follow that block).
@@ -255,27 +230,19 @@ const isDisplacedBreakGap = ({
 const rejectsToBaseline = async (
   bytes: Uint8Array,
   shape: Shape,
-): Promise<{ matches: boolean; gap: boolean } | null> => {
+): Promise<boolean | null> => {
   const probe = await suggest(bytes, shape);
   if (probe === null) return null;
   const expected = await rejected(probe.reviewer, shape.session);
   const live = await suggest(bytes, shape);
   if (live === null) throw new Error("the flow no longer replays");
-  const gap = isDisplacedBreakGap({
-    shape,
-    accepted: live.accepted,
-    reviewer: live.reviewer,
-  });
   if (!suggestAfter(live.reviewer, shape.after)) return null;
   const saved = await open(await live.reviewer.toBuffer(), shape.session);
   const results = [
     await rejected(live.reviewer, shape.session),
     await rejected(saved, shape.session),
   ].map((result) => JSON.stringify(result));
-  return {
-    matches: results.every((result) => result === JSON.stringify(expected)),
-    gap,
-  };
+  return results.every((result) => result === JSON.stringify(expected));
 };
 
 /** Every shape over the paragraph `deleted`: each accepted change, each anchor. */
@@ -310,30 +277,18 @@ describe("reject all after accepting one of several suggestions", () => {
           const bytes = await fixture(session);
           const mismatches: Shape[] = [];
           let checked = 0;
-          let gaps = 0;
           for (const shape of await shapesOf({ bytes, session, deleted })) {
             const outcome = await rejectsToBaseline(bytes, shape);
             if (outcome === null) continue;
-            if (outcome.gap) {
-              gaps += 1;
-              continue;
-            }
-            if (!outcome.matches) mismatches.push(shape);
+            if (!outcome) mismatches.push(shape);
             checked += 1;
           }
           expect(mismatches).toEqual([]);
           expect(checked).toBeGreaterThan(10);
-          // The known gap is excluded only where its predicate names it.
-          expect(gaps > 0).toBe(
-            session === "legacy" && deleted === LINES.length - 1,
-          );
         },
         SWEEP_TIMEOUT_MS,
       );
     }
-
-  // KNOWN GAP (see `isDisplacedBreakGap`): passes while the gap is there and
-  // fails once it is fixed, so the predicate and this test go together.
 
   test.each(SESSIONS)(
     "the reported flow keeps the joined words in the paragraph that stays (%s)",
@@ -397,11 +352,9 @@ describe("reject all after accepting one of several suggestions", () => {
     },
   );
 
-  // Deleting the last paragraph deletes the break before it. The default
-  // engine inserts the two paragraphs at the end of the paragraph before, so
-  // "Second added clause." holds that paragraph's own break, and accepting its
-  // deletion joins the two original paragraphs. The canonical engine inserts
-  // them as typed at the last paragraph's start, so the break before it is
+  // Deleting the last paragraph deletes the break before it. The two
+  // paragraphs are inserted as typed at the last paragraph's start, so the
+  // break before it is
   // "Second added clause."'s own added break: accepting its deletion joins
   // that suggested paragraph into the last one, and rejecting the suggestion
   // then takes it out, leaving the original paragraphs apart.

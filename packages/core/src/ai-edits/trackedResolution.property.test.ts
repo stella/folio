@@ -435,8 +435,7 @@ test("reject restores heading properties when an insertion interrupts a pending 
 });
 
 /**
- * The legacy session puts the run after the paragraph the merge leaves; the
- * canonical one right after the merged paragraph, whose words accepting runs
+ * The run goes right after the merged paragraph, whose words accepting runs
  * into the run's first paragraph (`insertionAfterPendingBreak`).
  */
 for (const session of SESSIONS)

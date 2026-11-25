@@ -175,7 +175,7 @@ describe("an insertion beside a paragraph a tracked merge joins", () => {
               ),
             ).toBe(true);
             const tracked = await edit({ ...options, mode: "tracked-changes" });
-            if (session === "legacy" || placed !== "a paragraph after it") {
+            if (placed !== "a paragraph after it") {
               expect(tracked).toEqual(direct);
               return;
             }
@@ -485,8 +485,7 @@ describe("a suggested paragraph beside a pending join", () => {
 describe("a paragraph between a pending join and the table it reaches", () => {
   /**
    * "Bravo." deleted and "Alpha." then merged into it, tracked, before a
-   * table: the join runs into a paragraph going whole. The legacy session
-   * stops it at the table; on the canonical session accepting runs the
+   * table: the join runs into a paragraph going whole. Accepting runs the
    * joined words into the table's first cell, so a paragraph put before
    * that cell goes before the whole join.
    */

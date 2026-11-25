@@ -22,13 +22,7 @@ import {
   TEXT_BOX_TEXT,
 } from "../../../../test/consumer-scenarios/support/documents";
 import { FolioDocxReviewer } from "../ai-edits/headless";
-import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import { openCanonicalDocx } from "./canonicalSessionInput";
-import { parseDocx } from "./parser";
-
-const SESSIONS = [
-  "canonical",
-] as const satisfies readonly HeadlessReviewerSession[];
 
 const COMMENT_ID = "41";
 const DOCUMENT_PART = "word/document.xml";
@@ -246,13 +240,8 @@ const unwrap = <T, E>(result: Result<T, E>): T => {
 
 const options = { preloadFonts: false, detectVariables: false } as const;
 
-const opened = async (
-  bytes: ArrayBuffer,
-  session: HeadlessReviewerSession,
-): Promise<Document> =>
-  session === "legacy"
-    ? parseDocx(bytes, options)
-    : unwrap(await openCanonicalDocx(bytes, options)).document;
+const opened = async (bytes: ArrayBuffer): Promise<Document> =>
+  unwrap(await openCanonicalDocx(bytes, options)).document;
 
 type Anchors = { starts: number; ends: number; references: number };
 
@@ -331,92 +320,84 @@ const replaceWords = (
 
 describe("a package repeating a comment's range", () => {
   for (const shape of SHAPES) {
-    for (const session of SESSIONS) {
-      test(`${session}: ${shape.name}: the first range stays, the repeats go and are reported`, async () => {
-        const document = await opened(await packageOf(shape), session);
-        expect(modelAnchors(document)).toEqual({
-          starts: 1,
-          ends: 1,
-          references: 1,
-        });
-        expect(
-          document.parseWarnings?.flatMap(({ code, value }) =>
-            code === PARSE_WARNING_CODES.droppedCommentRange ? [value] : [],
-          ),
-        ).toEqual([...shape.dropped]);
-        expect(
-          document.parseWarnings?.filter(
-            ({ code }) =>
-              code === PARSE_WARNING_CODES.unpairedCommentRangeBoundary ||
-              code === PARSE_WARNING_CODES.unbalancedCommentRange,
-          ),
-        ).toEqual([]);
-        const reviewer = await FolioDocxReviewer.fromBuffer(
-          await packageOf(shape),
-          { session },
-        );
-        expect(
-          reviewer.getComments().map(({ anchoredText }) => anchoredText),
-        ).toEqual([shape.kept]);
+    test(`${shape.name}: the first range stays, the repeats go and are reported`, async () => {
+      const document = await opened(await packageOf(shape));
+      expect(modelAnchors(document)).toEqual({
+        starts: 1,
+        ends: 1,
+        references: 1,
       });
+      expect(
+        document.parseWarnings?.flatMap(({ code, value }) =>
+          code === PARSE_WARNING_CODES.droppedCommentRange ? [value] : [],
+        ),
+      ).toEqual([...shape.dropped]);
+      expect(
+        document.parseWarnings?.filter(
+          ({ code }) =>
+            code === PARSE_WARNING_CODES.unpairedCommentRangeBoundary ||
+            code === PARSE_WARNING_CODES.unbalancedCommentRange,
+        ),
+      ).toEqual([]);
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await packageOf(shape),
+      );
+      expect(
+        reviewer.getComments().map(({ anchoredText }) => anchoredText),
+      ).toEqual([shape.kept]);
+    });
 
-      test(`${session}: ${shape.name}: an unedited save keeps every story's bytes`, async () => {
-        const source = await packageOf(shape);
-        const reviewer = await FolioDocxReviewer.fromBuffer(source, {
-          session,
-        });
-        expect(await storyParts(await reviewer.toBuffer())).toEqual(
-          await storyParts(source),
-        );
-      });
+    test(`${shape.name}: an unedited save keeps every story's bytes`, async () => {
+      const source = await packageOf(shape);
+      const reviewer = await FolioDocxReviewer.fromBuffer(source);
+      expect(await storyParts(await reviewer.toBuffer())).toEqual(
+        await storyParts(source),
+      );
+    });
 
-      test(`${session}: ${shape.name}: an edit elsewhere leaves the repeated anchors as authored`, async () => {
-        const source = await packageOf(shape);
-        const reviewer = await FolioDocxReviewer.fromBuffer(source, {
-          session,
-        });
-        replaceWords(reviewer, EDITED_WORDS, "Payment is due at once.");
-        const before = await storyParts(source);
-        const after = await storyParts(await reviewer.toBuffer());
-        for (const [part, xml] of before) {
-          if (part !== DOCUMENT_PART) {
-            expect(after.get(part)).toBe(xml);
-            continue;
-          }
-          const edited = new Set(paragraphsOf(after.get(part) ?? ""));
-          expect(
-            paragraphsOf(xml).filter((paragraph) => !edited.has(paragraph)),
-          ).toEqual([expect.stringContaining(EDITED_WORDS)]);
+    test(`${shape.name}: an edit elsewhere leaves the repeated anchors as authored`, async () => {
+      const source = await packageOf(shape);
+      const reviewer = await FolioDocxReviewer.fromBuffer(source);
+      replaceWords(reviewer, EDITED_WORDS, "Payment is due at once.");
+      const before = await storyParts(source);
+      const after = await storyParts(await reviewer.toBuffer());
+      for (const [part, xml] of before) {
+        if (part !== DOCUMENT_PART) {
+          expect(after.get(part)).toBe(xml);
+          continue;
         }
-        const repeated = [...after].find(
-          ([part, xml]) => shape.part.test(part) && xml.includes(start),
-        );
-        expect(repeated).toBeDefined();
-      });
-
-      test(`${session}: ${shape.name}: a save after the open's repair reopens with the first range`, async () => {
-        const reviewer = await FolioDocxReviewer.fromBuffer(
-          await packageOf(shape),
-          { session },
-        );
-        replaceWords(reviewer, EDITED_WORDS, "Payment is due at once.");
-        const saved = await reviewer.toBuffer();
-        expect(modelAnchors(await opened(saved, session))).toEqual({
-          starts: 1,
-          ends: 1,
-          references: 1,
-        });
-        const reopened = await FolioDocxReviewer.fromBuffer(saved, { session });
+        const edited = new Set(paragraphsOf(after.get(part) ?? ""));
         expect(
-          reopened.getComments().map(({ anchoredText }) => anchoredText),
-        ).toEqual([shape.kept]);
+          paragraphsOf(xml).filter((paragraph) => !edited.has(paragraph)),
+        ).toEqual([expect.stringContaining(EDITED_WORDS)]);
+      }
+      const repeated = [...after].find(
+        ([part, xml]) => shape.part.test(part) && xml.includes(start),
+      );
+      expect(repeated).toBeDefined();
+    });
+
+    test(`${shape.name}: a save after the open's repair reopens with the first range`, async () => {
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await packageOf(shape),
+      );
+      replaceWords(reviewer, EDITED_WORDS, "Payment is due at once.");
+      const saved = await reviewer.toBuffer();
+      expect(modelAnchors(await opened(saved))).toEqual({
+        starts: 1,
+        ends: 1,
+        references: 1,
       });
-    }
+      const reopened = await FolioDocxReviewer.fromBuffer(saved);
+      expect(
+        reopened.getComments().map(({ anchoredText }) => anchoredText),
+      ).toEqual([shape.kept]);
+    });
 
     test(`${shape.name}: an edit of the repaired model inverts exactly`, async () => {
       const bytes = await packageOf(shape);
-      const before = await opened(bytes, "canonical");
-      const original = (await opened(bytes, "canonical")).package;
+      const before = await opened(bytes);
+      const original = (await opened(bytes)).package;
       const first = before.package.document.content.find(
         (block) =>
           block.type === "paragraph" &&
@@ -446,51 +427,49 @@ describe("a package repeating a comment's range", () => {
   for (const { name, words, type } of EDITS_OF_REPEATS) {
     const shape = SHAPES.find((candidate) => candidate.name === name);
     if (shape === undefined) panic(`no shape ${name}`);
-    for (const session of SESSIONS)
-      test(`${session}: ${name}: editing what holds the repeat writes the repair there`, async () => {
-        const reviewer = await FolioDocxReviewer.fromBuffer(
-          await packageOf(shape),
-          { session },
+    test(`${name}: editing what holds the repeat writes the repair there`, async () => {
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await packageOf(shape),
+      );
+      const held = reviewer
+        .listStories()
+        .flatMap(({ handle }) =>
+          (reviewer.snapshotStory(handle)?.blocks ?? []).map((block) => ({
+            handle,
+            block,
+          })),
+        )
+        .find(
+          ({ handle, block }) =>
+            handle.type === type && block.text.includes(words),
         );
-        const held = reviewer
-          .listStories()
-          .flatMap(({ handle }) =>
-            (reviewer.snapshotStory(handle)?.blocks ?? []).map((block) => ({
-              handle,
-              block,
-            })),
-          )
-          .find(
-            ({ handle, block }) =>
-              handle.type === type && block.text.includes(words),
-          );
-        if (held === undefined) panic(`no ${type} reads "${words}"`);
-        const { skipped } = reviewer.applyDocumentOperationsToStory({
-          story: held.handle,
-          batch: {
-            version: 1,
-            mode: "direct",
-            operations: [
-              {
-                id: "edit",
-                type: "replaceInBlock",
-                blockId: held.block.id,
-                find: words,
-                replace: "Edited",
-              },
-            ],
-          },
-          undefinedReferences: "refuse",
-        });
-        expect(skipped).toEqual([]);
-        const bytes = await reviewer.toBuffer();
-        const saved = [...(await storyParts(bytes)).values()].join("");
-        expect(countOf(saved, start)).toBe(1);
-        expect(countOf(saved, end)).toBe(1);
-        const reopened = await FolioDocxReviewer.fromBuffer(bytes, { session });
-        expect(
-          reopened.getComments().map(({ anchoredText }) => anchoredText),
-        ).toEqual([shape.kept]);
+      if (held === undefined) panic(`no ${type} reads "${words}"`);
+      const { skipped } = reviewer.applyDocumentOperationsToStory({
+        story: held.handle,
+        batch: {
+          version: 1,
+          mode: "direct",
+          operations: [
+            {
+              id: "edit",
+              type: "replaceInBlock",
+              blockId: held.block.id,
+              find: words,
+              replace: "Edited",
+            },
+          ],
+        },
+        undefinedReferences: "refuse",
       });
+      expect(skipped).toEqual([]);
+      const bytes = await reviewer.toBuffer();
+      const saved = [...(await storyParts(bytes)).values()].join("");
+      expect(countOf(saved, start)).toBe(1);
+      expect(countOf(saved, end)).toBe(1);
+      const reopened = await FolioDocxReviewer.fromBuffer(bytes);
+      expect(
+        reopened.getComments().map(({ anchoredText }) => anchoredText),
+      ).toEqual([shape.kept]);
+    });
   }
 });

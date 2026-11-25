@@ -302,17 +302,7 @@ type Scenario = {
   expected: (
     placement: Placement,
   ) => readonly (readonly [string, "object" | null])[];
-  /**
-   * Where the legacy session refuses the operation instead. It reads a text
-   * box as a block of its own after its paragraph, and a tracked break across
-   * it cannot be resolved: rejecting a split or accepting a merge joins two
-   * paragraphs, and its resolver joins only neighbours. A canonical session
-   * holds the box in its paragraph and applies them.
-   */
-  refused?: (kind: ObjectKind, placement: Placement, mode: Mode) => boolean;
 };
-
-const isTextBox = (kind: ObjectKind): boolean => kind.endsWith("text box");
 
 const withObject = (placement: Placement, first: string, second: string) =>
   placement === "leading" ? first : second;
@@ -405,9 +395,6 @@ const SCENARIOS: readonly Scenario[] = [
       ["words.", withObject(placement, null, "object") as "object" | null],
       [TAIL, null],
     ],
-    // Only where the box's anchor stays in the first half.
-    refused: (kind, placement, mode) =>
-      isTextBox(kind) && placement === "leading" && mode === "tracked-changes",
   },
   {
     name: "mergeBlockWithNext on the carrier",
@@ -421,7 +408,6 @@ const SCENARIOS: readonly Scenario[] = [
       [LEAD, null],
       [`${CARRIER} ${TAIL}`, "object"],
     ],
-    refused: (kind) => isTextBox(kind),
   },
   {
     name: "mergeBlockWithNext on the paragraph before the carrier",
@@ -517,19 +503,6 @@ describe.each(SESSIONS)(
               const reopened = await reopen(reviewer, session);
               expect(readerOrder(reopened)).toEqual(readerOrder(reviewer));
 
-              if (
-                session === "legacy" &&
-                scenario.refused?.(kind, placement, mode)
-              ) {
-                expect(result.skipped).toEqual([
-                  { id: "op", reason: "unsupportedBlock" },
-                ]);
-                expect(result.applied).toEqual([]);
-                expect(await savedBody(await reviewer.toBuffer())).toEqual(
-                  expectedBody(ORIGINAL, object),
-                );
-                return;
-              }
               expect(result.skipped).toEqual([]);
               expect(result.applied.map(({ id }) => id)).toEqual(["op"]);
 

@@ -294,11 +294,7 @@ describe.each(
               return [text, column > sourceColumn ? column - 1 : column];
             }),
         ),
-        // The legacy engine's acceptance narrows the grid in its table
-        // model whatever the other rows omit.
-        session === "canonical"
-          ? acceptedDeletion(rows, sourceColumn)
-          : undefined,
+        acceptedDeletion(rows, sourceColumn),
       );
     });
   });

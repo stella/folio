@@ -13,8 +13,7 @@
  * document — and assert what the reviewer owes each of them:
  *
  *   1. A text replacement leaves every other paragraph's bytes alone after
- *      accounting for the ids canonical assigns to the part it rewrites.
- *      Legacy keeps the authored id coverage.
+ *      accounting for the ids the session assigns to the part it rewrites.
  *   2. Every edit kind, structural ones included, saves a package that parses,
  *      declares the namespace of every id it writes, and still holds the
  *      paragraphs it never named.
@@ -38,7 +37,6 @@ import {
 } from "../../../../test/property-testing";
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import type { FolioAIBlock, FolioAIEditOperation } from "../ai-edits/types";
-import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import { ensureParaIds } from "./ensureParaIds";
 import { parseDocx } from "./parser";
 import { parseXmlDocument } from "./xmlParser";
@@ -264,17 +262,15 @@ type SaveEditOptions = {
   texts: readonly string[];
   coverage: IdCoverage;
   kind: EditKind;
-  session: HeadlessReviewerSession;
 };
 
 const saveEdited = async ({
   texts,
   coverage,
   kind,
-  session,
 }: SaveEditOptions): Promise<SavedEdit> => {
   const source = await buildPackage(texts, coverage);
-  const reviewer = await FolioDocxReviewer.fromBuffer(source, { session });
+  const reviewer = await FolioDocxReviewer.fromBuffer(source);
   const { operation, untouched } = planEdit(kind, reviewer.snapshot().blocks);
   const applied = reviewer.applyOperations([operation], {
     undefinedReferences: "refuse",
@@ -285,89 +281,80 @@ const saveEdited = async ({
   return { buffer, source, edited: await documentPartOf(buffer), untouched };
 };
 
-describe.each(["canonical"] as const)(
-  "%s paragraph edit locality",
-  (session) => {
-    test(
-      "a text replacement leaves every other paragraph byte-exact with its expected ids",
-      async () => {
-        await fc.assert(
-          fc.asyncProperty(documentArb, async ({ texts, coverage }) => {
-            const { source, edited } = await saveEdited({
+describe("paragraph edit locality", () => {
+  test(
+    "a text replacement leaves every other paragraph byte-exact with its expected ids",
+    async () => {
+      await fc.assert(
+        fc.asyncProperty(documentArb, async ({ texts, coverage }) => {
+          const { source, edited } = await saveEdited({
+            texts,
+            coverage,
+            kind: EDIT_KIND.replace,
+          });
+          const controlSave = await (
+            await FolioDocxReviewer.fromBuffer(source)
+          ).toBuffer();
+          expect(await documentPartOf(controlSave)).toBe(
+            await documentPartOf(source),
+          );
+          const control = await documentPartOf(
+            (await ensureParaIds(controlSave)).docx,
+          );
+
+          const before = paragraphBytes(control);
+          const after = paragraphBytes(edited);
+          expect(after.length).toBe(before.length);
+          for (const [ordinal, paragraph] of before.entries()) {
+            if (
+              paragraph.includes(MARKER) ||
+              after[ordinal]?.includes(MARKER)
+            ) {
+              continue;
+            }
+            expect(after[ordinal]).toBe(paragraph);
+          }
+          // The edit landed, and it landed in exactly one paragraph.
+          expect(
+            after.filter((paragraph) => paragraph.includes(MARKER)),
+          ).toHaveLength(1);
+          expect(paraIdCount(edited)).toBe(paraIdCount(control));
+        }),
+        propertyConfig({ numRuns: 60 }),
+      );
+    },
+    propertyTestTimeout(PROPERTY_TIMEOUT_MS),
+  );
+
+  test(
+    "every edit kind saves a valid package that keeps its untouched paragraphs",
+    async () => {
+      await fc.assert(
+        fc.asyncProperty(
+          documentArb,
+          fc.constantFrom(...Object.values(EDIT_KIND)),
+          async ({ texts, coverage }, kind) => {
+            const { buffer, edited, untouched } = await saveEdited({
               texts,
               coverage,
-              kind: EDIT_KIND.replace,
-              session,
+              kind,
             });
-            const controlSave = await (
-              await FolioDocxReviewer.fromBuffer(source, { session })
-            ).toBuffer();
-            expect(await documentPartOf(controlSave)).toBe(
-              await documentPartOf(source),
-            );
-            const comparison =
-              session === "canonical"
-                ? (await ensureParaIds(controlSave)).docx
-                : controlSave;
-            const control = await documentPartOf(comparison);
 
-            const before = paragraphBytes(control);
-            const after = paragraphBytes(edited);
-            expect(after.length).toBe(before.length);
-            for (const [ordinal, paragraph] of before.entries()) {
-              if (
-                paragraph.includes(MARKER) ||
-                after[ordinal]?.includes(MARKER)
-              ) {
-                continue;
-              }
-              expect(after[ordinal]).toBe(paragraph);
-            }
-            // The edit landed, and it landed in exactly one paragraph.
+            expect(parseXmlDocument(edited)).not.toBeNull();
+            expect(declaresEveryIdNamespace(edited)).toBe(true);
+            expect(isSubsequence(untouched, paragraphTexts(edited))).toBe(true);
+
+            const reparsed = await parseDocx(buffer, { preloadFonts: false });
             expect(
-              after.filter((paragraph) => paragraph.includes(MARKER)),
-            ).toHaveLength(1);
-            expect(paraIdCount(edited)).toBe(paraIdCount(control));
-          }),
-          propertyConfig({ numRuns: 60 }),
-        );
-      },
-      propertyTestTimeout(PROPERTY_TIMEOUT_MS),
-    );
-
-    test(
-      "every edit kind saves a valid package that keeps its untouched paragraphs",
-      async () => {
-        await fc.assert(
-          fc.asyncProperty(
-            documentArb,
-            fc.constantFrom(...Object.values(EDIT_KIND)),
-            async ({ texts, coverage }, kind) => {
-              const { buffer, edited, untouched } = await saveEdited({
-                texts,
-                coverage,
-                kind,
-                session,
-              });
-
-              expect(parseXmlDocument(edited)).not.toBeNull();
-              expect(declaresEveryIdNamespace(edited)).toBe(true);
-              expect(isSubsequence(untouched, paragraphTexts(edited))).toBe(
-                true,
-              );
-
-              const reparsed = await parseDocx(buffer, { preloadFonts: false });
-              expect(
-                reparsed.package.document.content.filter(
-                  (block) => block.type === "paragraph",
-                ),
-              ).not.toHaveLength(0);
-            },
-          ),
-          propertyConfig({ numRuns: 60 }),
-        );
-      },
-      propertyTestTimeout(PROPERTY_TIMEOUT_MS),
-    );
-  },
-);
+              reparsed.package.document.content.filter(
+                (block) => block.type === "paragraph",
+              ),
+            ).not.toHaveLength(0);
+          },
+        ),
+        propertyConfig({ numRuns: 60 }),
+      );
+    },
+    propertyTestTimeout(PROPERTY_TIMEOUT_MS),
+  );
+});

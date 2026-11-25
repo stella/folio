@@ -127,11 +127,10 @@ describe("host-persisted pending suggestions", () => {
       };
       await fc.assert(
         fc.asyncProperty(
-          fc.constantFrom("legacy" as const, "canonical" as const),
           fc.constantFrom(...Object.keys(operations)),
           fc.boolean(),
           fc.stringMatching(/^[A-Za-z]{3,12}$/u),
-          async (session, kind, statesIds, word) => {
+          async (kind, statesIds, word) => {
             const document = createEmptyDocument();
             document.package.document.content = [
               {
@@ -144,7 +143,7 @@ describe("host-persisted pending suggestions", () => {
               },
             ];
             const open = async (bytes: ArrayBuffer) =>
-              FolioDocxReviewer.fromBuffer(bytes, { session });
+              FolioDocxReviewer.fromBuffer(bytes);
             const reviewer = await open(await createDocx(document));
             const anchor = reviewer.snapshot().blocks.at(0)?.id ?? "";
             const operation =

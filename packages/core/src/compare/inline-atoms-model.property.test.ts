@@ -1,15 +1,11 @@
 /**
- * The model matcher restores inline atoms exactly as the editor-state matcher
- * does.
- *
- * Both read the same story: a base whose text a comparison's own operations
- * have already rewritten toward a revised document, saved, so either side
- * opens the same bytes. Each runs through its reviewer's comparison access:
- * the editor-state matcher on a legacy reviewer, the model matcher on a
- * canonical one, whose batch commits on its session. The two results must
- * agree, and so must the two saved documents once every change is accepted,
- * and once every change is rejected: their text and the atoms each block
- * holds.
+ * The model matcher restores inline atoms over a story: a base whose text a
+ * comparison's own operations have already rewritten toward a revised
+ * document, saved, then matched through the reviewer's comparison access,
+ * whose batch commits on its session. The saved document must resolve with
+ * every change accepted and with every change rejected, and the fixed pairs
+ * state the outcome and, where marked, that the accepted view reads like the
+ * revised document: its text and the atoms each block holds.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -37,7 +33,6 @@ import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operation
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { fromMarkdown } from "../markdown";
 import { createDocx, ensureParaIds } from "../server";
-import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import type { Footnote, ParagraphContent, RunContent } from "../types/document";
 import { sameInlineAtoms } from "./inline-atoms";
 import { planStoryCompare } from "./plan";
@@ -168,7 +163,7 @@ const buildDocx = async (body: Body): Promise<ArrayBuffer> => {
   return bytes.slice().buffer;
 };
 
-/** The bytes a canonical session reads, which the editor-state side reads too. */
+/** The bytes a canonical session reads. */
 const ingested = async (buffer: ArrayBuffer): Promise<ArrayBuffer> => {
   const prepared = await prepareCanonicalDocxInput(buffer);
   if (prepared.isErr()) throw prepared.error;
@@ -291,22 +286,17 @@ const outcomeOf = (result: MatchResult): MatchOutcome => {
 type MatchOnOptions = {
   prematched: Prematch;
   target: ArrayBuffer;
-  session: HeadlessReviewerSession;
 };
 
-/** The inline atom match on one engine, through the reviewer's comparison access. */
+/** The inline atom match, through the reviewer's comparison access. */
 const matchOn = async ({
   prematched,
   target,
-  session,
 }: MatchOnOptions): Promise<SideResult> => {
   const reviewer = await FolioDocxReviewer.fromBuffer(
     prematched.buffer.slice(0),
-    { session },
   );
-  const targetReviewer = await FolioDocxReviewer.fromBuffer(target.slice(0), {
-    session,
-  });
+  const targetReviewer = await FolioDocxReviewer.fromBuffer(target.slice(0));
   const result = getFolioDocxComparisonAccess(reviewer).matchInlineAtoms({
     story: MAIN,
     targetReviewer,
@@ -321,101 +311,52 @@ const matchOn = async ({
   return { outcome: outcomeOf(result), buffer: await reviewer.toBuffer() };
 };
 
-const withoutNextRevisionId = (outcome: MatchOutcome) => {
-  if (outcome.status !== "matched") return outcome;
-  const { nextRevisionId: _nextRevisionId, ...rest } = outcome;
-  return rest;
-};
-
 /** A saved document with every change accepted, then with every change rejected. */
-const resolvedViews = async (
-  buffer: ArrayBuffer,
-  session: HeadlessReviewerSession,
-) => {
-  const accepting = await FolioDocxReviewer.fromBuffer(buffer.slice(0), {
-    session,
-  });
+const resolvedViews = async (buffer: ArrayBuffer) => {
+  const accepting = await FolioDocxReviewer.fromBuffer(buffer.slice(0));
   expect(accepting.acceptAll().skipped).toEqual([]);
-  const rejecting = await FolioDocxReviewer.fromBuffer(buffer.slice(0), {
-    session,
-  });
+  const rejecting = await FolioDocxReviewer.fromBuffer(buffer.slice(0));
   expect(rejecting.rejectAll().skipped).toEqual([]);
   return [accepting.snapshot(), rejecting.snapshot()] as const;
 };
 
-type AgreementCase = "unplanned" | "unchanged" | "restored" | "unalignable";
+type MatchCase = "unplanned" | "unchanged" | "restored" | "unalignable";
 
 /**
- * Run both matchers on one pair and hold them to the same result; with
- * `readsLikeTarget`, hold both accepted views to the revised document too.
+ * Run the matcher on one pair and resolve the saved document; with
+ * `readsLikeTarget`, hold the accepted view to the revised document.
  */
-const expectAgreement = async (
+const expectResolvedMatch = async (
   baseBody: Body,
   targetBody: Body,
   readsLikeTarget = false,
-): Promise<AgreementCase> => {
+): Promise<MatchCase> => {
   const base = await ingested(await buildDocx(baseBody));
   const target = await ingested(await buildDocx(targetBody));
   const planned = await prematch(base, target);
   if (planned === null) return "unplanned";
   const prematched = { ...planned, buffer: await ingested(planned.buffer) };
-  const legacy = await matchOn({ prematched, target, session: "legacy" });
-  const canonical = await matchOn({
-    prematched,
-    target,
-    session: "canonical",
-  });
-  // A record an atom lands inside is cut in two, and each half keeps an id
-  // of its own on the session, where the editor state let both halves share
-  // one: the session may take more ids, never fewer.
-  expect(withoutNextRevisionId(canonical.outcome)).toEqual(
-    withoutNextRevisionId(legacy.outcome),
-  );
-  if (
-    canonical.outcome.status === "matched" &&
-    legacy.outcome.status === "matched"
-  )
-    expect(canonical.outcome.nextRevisionId).toBeGreaterThanOrEqual(
-      legacy.outcome.nextRevisionId,
-    );
-  const [legacyViews, canonicalViews] = [
-    await resolvedViews(legacy.buffer, "legacy"),
-    await resolvedViews(canonical.buffer, "canonical"),
-  ];
-  for (const [index, legacyView] of legacyViews.entries()) {
-    const canonicalView = canonicalViews[index];
-    if (!canonicalView) throw new Error("a resolved view is missing");
-    expect(canonicalView.blocks.map(({ text }) => text)).toEqual(
-      legacyView.blocks.map(({ text }) => text),
-    );
-    expect(
-      sameInlineAtoms(
-        sourceDocumentOf(canonicalView),
-        sourceDocumentOf(legacyView),
-      ),
-    ).toBe(true);
-  }
+  const matched = await matchOn({ prematched, target });
+  const [accepted] = await resolvedViews(matched.buffer);
   if (readsLikeTarget) {
     const revised = (
       await FolioDocxReviewer.fromBuffer(target.slice(0))
     ).snapshot();
-    for (const accepted of [legacyViews[0], canonicalViews[0]]) {
-      expect(accepted.blocks.map(({ text }) => text)).toEqual(
-        revised.blocks.map(({ text }) => text),
-      );
-      expect(
-        sameInlineAtoms(sourceDocumentOf(accepted), sourceDocumentOf(revised)),
-      ).toBe(true);
-    }
+    expect(accepted.blocks.map(({ text }) => text)).toEqual(
+      revised.blocks.map(({ text }) => text),
+    );
+    expect(
+      sameInlineAtoms(sourceDocumentOf(accepted), sourceDocumentOf(revised)),
+    ).toBe(true);
   }
-  switch (legacy.outcome.status) {
+  switch (matched.outcome.status) {
     case "matched":
-      return legacy.outcome.documentChanged ? "restored" : "unchanged";
+      return matched.outcome.documentChanged ? "restored" : "unchanged";
     case "unalignable":
     case "budget-exceeded":
       return "unalignable";
     default: {
-      const unreachable: never = legacy.outcome;
+      const unreachable: never = matched.outcome;
       return unreachable;
     }
   }
@@ -556,10 +497,10 @@ const pairArbitrary = fc
     return { base, target };
   });
 
-const agreementProperty = fc.asyncProperty(
+const resolvedMatchProperty = fc.asyncProperty(
   pairArbitrary,
   async ({ base, target }) => {
-    await expectAgreement(base, target);
+    await expectResolvedMatch(base, target);
   },
 );
 
@@ -575,7 +516,7 @@ const FIXED_PAIRS: readonly {
   name: string;
   base: Body;
   target: Body;
-  expected?: AgreementCase;
+  expected?: MatchCase;
   /** Accepting every change gives the revised document. */
   readsLikeTarget?: true;
 }[] = [
@@ -754,31 +695,35 @@ const FIXED_PAIRS: readonly {
 describe("matchInlineAtomsOnModel", () => {
   for (const { name, base, target, expected, readsLikeTarget } of FIXED_PAIRS)
     test(
-      `matches the editor-state matcher: ${name}`,
+      `resolves the matched document: ${name}`,
       async () => {
-        const agreed = await expectAgreement(base, target, readsLikeTarget);
-        if (expected !== undefined) expect(agreed).toBe(expected);
+        const outcome = await expectResolvedMatch(
+          base,
+          target,
+          readsLikeTarget,
+        );
+        if (expected !== undefined) expect(outcome).toBe(expected);
       },
       propertyTestTimeout(30_000),
     );
 
   test(
-    "matches the editor-state matcher on generated document pairs",
+    "resolves matched generated document pairs",
     async () => {
-      await assertProperty(agreementProperty, {
+      await assertProperty(resolvedMatchProperty, {
         numRuns: 25,
-        id: "model matcher agrees with the editor-state matcher",
+        id: "matched document pairs resolve both ways",
       });
     },
     propertyTestTimeout(120_000),
   );
 
   test(
-    "matches the editor-state matcher on a fixed sample that restores atoms",
+    "restores atoms on a fixed sample",
     async () => {
-      const cases: AgreementCase[] = [];
+      const cases: MatchCase[] = [];
       for (const { base, target } of coverageSample(pairArbitrary, 25))
-        cases.push(await expectAgreement(base, target));
+        cases.push(await expectResolvedMatch(base, target));
       expect(
         cases.filter((kind) => kind === "restored").length,
       ).toBeGreaterThanOrEqual(3);

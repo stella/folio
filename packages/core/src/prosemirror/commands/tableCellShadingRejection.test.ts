@@ -81,11 +81,8 @@ for (const [name, shading] of Object.entries(SHADINGS))
     ];
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await createDocx(changed),
-      { session: "legacy" },
     );
-    const baseline = await FolioDocxReviewer.fromBuffer(originalBytes, {
-      session: "legacy",
-    });
+    const baseline = await FolioDocxReviewer.fromBuffer(originalBytes);
     expect(reviewer.rejectAll()).toEqual({ resolved: 1, skipped: [] });
     const actual = reviewer
       .storyTables({ view: "current-markup" })

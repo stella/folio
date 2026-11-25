@@ -15,7 +15,6 @@ import { describe, expect, test } from "bun:test";
 import { MAX_REVISION_ID } from "@stll/docx-core/model";
 import { ZipArchive } from "@stll/docx-core/zip";
 
-import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import {
   type BodyItem,
   buildBodySequenceDocx,
@@ -35,15 +34,12 @@ type ComparedDocumentOptions = {
    * trip itself belongs to the property tests.
    */
   onUnverified?: "emit";
-  session?: HeadlessReviewerSession;
 };
-
-const SESSIONS = ["canonical"] as const;
 
 const comparedPackage = async (
   base: readonly BodyItem[],
   target: readonly BodyItem[],
-  { onUnverified, session }: ComparedDocumentOptions = {},
+  { onUnverified }: ComparedDocumentOptions = {},
 ): Promise<ZipArchive> => {
   const result = await compareDocx(
     await buildBodySequenceDocx(base),
@@ -51,7 +47,6 @@ const comparedPackage = async (
     {
       ...OPTIONS,
       ...(onUnverified === undefined ? {} : { onUnverified }),
-      ...(session === undefined ? {} : { session }),
     },
   );
   if (result.isErr()) {
@@ -265,46 +260,39 @@ describe("hyperlink nesting", () => {
     text: ["see ", LINK, " for details"],
   } as const satisfies BodyItem;
 
-  test.each(
-    [
-      {
-        name: "a deleted hyperlink",
-        base: [
-          { kind: "paragraph", text: "keep" },
-          LINKED_PARAGRAPH,
-        ] satisfies BodyItem[],
-        target: [{ kind: "paragraph", text: "keep" }] satisfies BodyItem[],
-      },
-      {
-        name: "an inserted hyperlink",
-        base: [{ kind: "paragraph", text: "keep" }] satisfies BodyItem[],
-        target: [
-          { kind: "paragraph", text: "keep" },
-          LINKED_PARAGRAPH,
-        ] satisfies BodyItem[],
-      },
-      {
-        name: "text edited around a hyperlink",
-        base: [LINKED_PARAGRAPH] satisfies BodyItem[],
-        target: [
-          { kind: "paragraph", text: ["read ", LINK, " for more"] },
-        ] satisfies BodyItem[],
-      },
-    ].flatMap(({ name, base, target }) =>
-      SESSIONS.map((session) => ({ name, base, target, session })),
-    ),
-  )(
-    "$name keeps the revision inside the link ($session)",
-    async ({ base, target, session }) => {
-      const xml = await comparedDocumentXml(base, target, { session });
-      for (const ancestors of hyperlinkAncestors(xml)) {
-        expect(ancestors).not.toContain("w:ins");
-        expect(ancestors).not.toContain("w:del");
-        expect(ancestors).not.toContain("w:moveFrom");
-        expect(ancestors).not.toContain("w:moveTo");
-      }
+  test.each([
+    {
+      name: "a deleted hyperlink",
+      base: [
+        { kind: "paragraph", text: "keep" },
+        LINKED_PARAGRAPH,
+      ] satisfies BodyItem[],
+      target: [{ kind: "paragraph", text: "keep" }] satisfies BodyItem[],
     },
-  );
+    {
+      name: "an inserted hyperlink",
+      base: [{ kind: "paragraph", text: "keep" }] satisfies BodyItem[],
+      target: [
+        { kind: "paragraph", text: "keep" },
+        LINKED_PARAGRAPH,
+      ] satisfies BodyItem[],
+    },
+    {
+      name: "text edited around a hyperlink",
+      base: [LINKED_PARAGRAPH] satisfies BodyItem[],
+      target: [
+        { kind: "paragraph", text: ["read ", LINK, " for more"] },
+      ] satisfies BodyItem[],
+    },
+  ])("$name keeps the revision inside the link", async ({ base, target }) => {
+    const xml = await comparedDocumentXml(base, target);
+    for (const ancestors of hyperlinkAncestors(xml)) {
+      expect(ancestors).not.toContain("w:ins");
+      expect(ancestors).not.toContain("w:del");
+      expect(ancestors).not.toContain("w:moveFrom");
+      expect(ancestors).not.toContain("w:moveTo");
+    }
+  });
 
   test("a deleted hyperlink's runs carry deleted text", async () => {
     const xml = await comparedDocumentXml(
@@ -321,15 +309,9 @@ describe("hyperlink nesting", () => {
 });
 
 describe("determinism", () => {
-  test.each(
-    (["canonical"] as const).flatMap((session) =>
-      (["without", "with"] as const).map(
-        (sectionRevision) => [session, sectionRevision] as const,
-      ),
-    ),
-  )(
-    "%s: loaded maximum revisions use bounded deterministic ids, %s a section revision in the base",
-    async (session, sectionRevision) => {
+  test.each(["without", "with"] as const)(
+    "loaded maximum revisions use bounded deterministic ids, %s a section revision in the base",
+    async (sectionRevision) => {
       const zip = await ZipArchive.read(
         await buildBodySequenceDocx([
           { kind: "paragraph", text: "alpha beta gamma" },
@@ -349,19 +331,11 @@ describe("determinism", () => {
       const target = await buildBodySequenceDocx([
         { kind: "paragraph", text: "alpha BETA gamma" },
       ]);
-      // The legacy reviewer keeps a pending input section change, a known
-      // verification gap: inspect the emitted markup while requiring the
-      // comparison to report that limitation. The canonical session compares
-      // the base's accepted view, section included, like every other revision.
-      const retainsSection = session === "legacy" && sectionRevision === "with";
-      const options = {
-        ...OPTIONS,
-        session,
-        ...(retainsSection ? { onUnverified: "emit" as const } : {}),
-      };
+      // The comparison reads the base's accepted view, section included,
+      // like every other revision.
       const [first, second] = await Promise.all([
-        compareDocx(base, target, options),
-        compareDocx(base, target, options),
+        compareDocx(base, target, OPTIONS),
+        compareDocx(base, target, OPTIONS),
       ]);
       if (first.isErr()) throw first.error;
       if (second.isErr()) throw second.error;
@@ -371,27 +345,13 @@ describe("determinism", () => {
       const savedZip = await ZipArchive.read(first.value.buffer);
       const savedXml = await savedZip.entry("word/document.xml")?.text();
       if (savedXml === undefined) panic("Comparison has no document part");
-      if (retainsSection) {
-        expect(savedXml).toContain('<w:sectPrChange w:id="1"');
-        expect(first.value.verification.status).toBe("unverified");
-        if (first.value.verification.status === "unverified") {
-          expect(
-            first.value.verification.failures.some(
-              ({ detail }) =>
-                detail ===
-                "input final section already carries tracked changes",
-            ),
-          ).toBe(true);
-        }
-      } else {
-        expect(savedXml).not.toContain("<w:sectPrChange");
-        expect(first.value.verification.status).toBe("verified");
-      }
+      expect(savedXml).not.toContain("<w:sectPrChange");
+      expect(first.value.verification.status).toBe("verified");
       const emittedIds = revisionIdsOf(savedXml).map(Number);
       expect(emittedIds.length).toBeGreaterThan(0);
       for (const id of emittedIds) {
         expect(Number.isInteger(id)).toBe(true);
-        expect(id).toBeGreaterThan(retainsSection ? 1 : 0);
+        expect(id).toBeGreaterThan(0);
         expect(id).toBeLessThanOrEqual(MAX_REVISION_ID);
       }
     },

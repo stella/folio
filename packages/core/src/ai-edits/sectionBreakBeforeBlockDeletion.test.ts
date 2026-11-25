@@ -10,10 +10,6 @@
  * deletion records exactly those words and that mark deleted, so accepting
  * it leaves the direct result, rejecting it restores the original, and
  * undoing it restores the original too, saved and reopened.
- *
- * Legacy removes the deleted paragraph's own mark, break and all: its
- * section runs on into the next one, directly and once the tracked deletion
- * is accepted.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -183,15 +179,13 @@ describe.each(Object.keys(FOLLOWERS) as Follower[])(
         const reviewer = await open(source, session);
         expect(deleteEnding(reviewer, "direct").applied).toHaveLength(1);
 
-        const expected =
-          session === "canonical"
-            ? // The paragraph before runs into the deleted paragraph's mark,
-              // which keeps its break and identity under the lead's
-              // properties.
-              [{ ...lead, id: ends.id, ends: ends.ends }, block, after]
-            : // Restate legacy: the deleted paragraph's mark goes, break and
-              // all, and its section runs on into the next one.
-              [lead, block, after];
+        // The paragraph before runs into the deleted paragraph's mark, which
+        // keeps its break and identity under the lead's properties.
+        const expected = [
+          { ...lead, id: ends.id, ends: ends.ends },
+          block,
+          after,
+        ];
         expect(project(reviewer)).toEqual(expected);
         expect(project(await reopen(reviewer, session))).toEqual(expected);
       });
@@ -221,17 +215,11 @@ describe.each(Object.keys(FOLLOWERS) as Follower[])(
         const accepting = await reopen(pending, session);
         accepting.acceptAll();
         const accepted = await reopen(accepting, session);
-        if (session === "canonical") {
-          // Accepting leaves exactly the direct result.
-          expect(body(accepted).content).toEqual(body(directSaved).content);
-          expect(body(accepted).finalSectionProperties).toEqual(
-            body(directSaved).finalSectionProperties,
-          );
-        } else {
-          // Restate legacy: accepting drops the break, as its direct
-          // deletion does.
-          expect(project(accepted)).toEqual(project(directSaved));
-        }
+        // Accepting leaves exactly the direct result.
+        expect(body(accepted).content).toEqual(body(directSaved).content);
+        expect(body(accepted).finalSectionProperties).toEqual(
+          body(directSaved).finalSectionProperties,
+        );
 
         const rejecting = await reopen(pending, session);
         rejecting.rejectAll();
@@ -266,11 +254,7 @@ describe.each(Object.keys(FOLLOWERS) as Follower[])(
           expect(reviewer.acceptSuggestion(suggestionId)).toBe(true);
         reviewer.acceptAll();
         const accepted = await reopen(reviewer, session);
-        if (session === "canonical")
-          expect(body(accepted).content).toEqual(body(directSaved).content);
-        // Restate legacy: accepting drops the break, as its direct deletion
-        // does.
-        else expect(project(accepted)).toEqual(project(directSaved));
+        expect(body(accepted).content).toEqual(body(directSaved).content);
       });
     });
   },

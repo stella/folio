@@ -2,7 +2,7 @@
  * A tracked paragraph put after one whose mark is under review would take
  * that mark over: after a story's last paragraph whose mark is pending, or
  * before a table under review after a paragraph whose break is pending
- * deletion. Legacy applies it; the canonical session refuses it by a typed
+ * deletion. The reviewer refuses it by a typed
  * reason, never a missing capability.
  */
 import { panic } from "better-result";
@@ -84,9 +84,8 @@ const source = async (content: readonly BlockContent[]) => {
   return await createDocx(document);
 };
 
-/** Each engine's outcome, by the operations it applied and skipped. */
+/** The outcome, by the operations it applied and skipped. */
 const OUTCOME = {
-  legacy: { applied: ["after"], skipped: [] },
   canonical: {
     applied: [],
     skipped: [

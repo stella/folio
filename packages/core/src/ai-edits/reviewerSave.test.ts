@@ -293,10 +293,9 @@ describe("FolioDocxReviewer.save", () => {
     expect(result.type).toBe("selective");
   });
 
-  // Legacy writes an inserted paragraph only by rebuilding the package; the
-  // canonical session writes it into the parts it rewrites anyway.
+  // An inserted paragraph is written into the parts the save rewrites anyway.
   for (const session of ["canonical"] as const) {
-    test(`${session}: saves a structural edit ${session === "legacy" ? "by a full repack, or refuses" : "selectively"}`, async () => {
+    test(`${session}: saves a structural edit selectively`, async () => {
       const source = await buildDocx(["First.", "Second."]);
       const insert = async (): Promise<FolioDocxReviewer> => {
         const reviewer = await FolioDocxReviewer.fromBuffer(source, {
@@ -321,19 +320,9 @@ describe("FolioDocxReviewer.save", () => {
       const refused = await (await insert()).save({ repack: "refuse" });
       const saved = await (await insert()).save();
 
-      if (session === "legacy") {
-        expect(refused).toEqual({
-          type: "repackRefused",
-          reason: "structuralChange",
-        });
-        expect(saved.type).toBe("full-repack");
-        if (saved.type !== "full-repack") return;
-        expect(saved.reason).toBe("structuralChange");
-      } else {
-        expect(refused.type).toBe("selective");
-        expect(saved.type).toBe("selective");
-      }
-      if (saved.type === "repackRefused") throw new Error(saved.reason);
+      expect(refused.type).toBe("selective");
+      expect(saved.type).toBe("selective");
+      if (saved.type !== "selective") return;
       const reopened = await FolioDocxReviewer.fromBuffer(saved.buffer, {
         session,
       });

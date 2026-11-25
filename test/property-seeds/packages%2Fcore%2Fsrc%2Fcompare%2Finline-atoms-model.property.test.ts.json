@@ -1,5 +1,5 @@
 {
-  "model matcher agrees with the editor-state matcher": [
+  "matched document pairs resolve both ways": [
     {
       "seed": 560491989,
       "path": "16:3:2:4:6:8:8:37",

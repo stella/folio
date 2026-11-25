@@ -102,13 +102,9 @@ test.each(["canonical"] as const)(
               anchoredText,
             }));
           expect(comments(tracked)).toEqual(comments(direct));
-          // The legacy session lends a comment on replaced words to the new
-          // words; the canonical one takes a thread whose range lies wholly in
-          // a changed stretch, and direct and accepted agree on which.
-          if (session === "legacy" || replacement === "")
-            expect(comments(direct)).toHaveLength(
-              replacement === "" ? 0 : ids.length,
-            );
+          // A thread whose range lies wholly in a changed stretch goes, and
+          // direct and accepted agree on which.
+          if (replacement === "") expect(comments(direct)).toHaveLength(0);
           const reopenedDirect = await FolioDocxReviewer.fromBuffer(
             await direct.toBuffer(),
             {

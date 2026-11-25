@@ -31,7 +31,7 @@ const ingested = async (): Promise<ArrayBuffer> => {
   return prepared.value.slice().buffer;
 };
 
-const open = (buffer: ArrayBuffer, session: "legacy" | "canonical") =>
+const open = (buffer: ArrayBuffer, session: "canonical") =>
   FolioDocxReviewer.fromBuffer(buffer.slice(0), {
     author: "Reviewer",
     session,

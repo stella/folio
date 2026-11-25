@@ -1,9 +1,8 @@
 /**
  * A replacement over a range that holds note references rewrites the prose
- * around them and keeps each reference where it stands, on both reviewer
- * engines, directly and as a tracked change: the engines apply or refuse the
- * same operations with the same reason, read the same text pending, accepted
- * and rejected, and save every reference, also after reopening.
+ * around them and keeps each reference where it stands, directly and as a
+ * tracked change: the reviewer applies or refuses each operation with its
+ * reason, and saves every reference, also after reopening.
  */
 
 import { describe, expect, mock, test } from "bun:test";
@@ -200,13 +199,10 @@ describe("a replacement over note references", () => {
     for (const mode of MODES)
       test(`${mode}: ${testCase.name}`, async () => {
         const buffer = await buildDocx();
-        const legacy = await runCase(buffer, "legacy", testCase, mode);
         const canonical = await runCase(buffer, "canonical", testCase, mode);
-        expect(canonical.outcome).toEqual(legacy.outcome);
         if (testCase.keeps)
-          expect(legacy.outcome).toEqual({ applied: 1, skipped: [] });
-        else expect(legacy.outcome.applied).toBe(0);
-        expect(canonical.reads).toEqual(legacy.reads);
+          expect(canonical.outcome).toEqual({ applied: 1, skipped: [] });
+        else expect(canonical.outcome.applied).toBe(0);
         // Every reference is saved where it stands, whatever the resolution.
         expect(canonical.reads.pending.references).toEqual(SOURCE_REFERENCES);
         if ("accepted" in canonical.reads) {

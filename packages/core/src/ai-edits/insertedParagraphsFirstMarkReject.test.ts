@@ -93,49 +93,36 @@ const content = (reviewer: FolioDocxReviewer) =>
 
 // In the body the anchor's own mark is the inserted one and the last new
 // paragraph holds the mark the anchor had, with a pending change of the
-// anchor's properties; the legacy engine records one on the middle paragraph
-// too. In a cell the new paragraphs' marks are the inserted ones, and the
-// canonical engine rejoins the second paragraph's insertion, which the split
-// made of the first's, into it. Either way the first inserted mark joins two
-// paragraphs.
+// anchor's properties. In a cell the new paragraphs' marks are the inserted
+// ones, and the session rejoins the second paragraph's insertion, which the
+// split made of the first's, into it. Either way the first inserted mark
+// joins two paragraphs.
 const EXPECTED = {
   body: {
     joinedFrom: "kept",
     joined: "keptfirst",
-    rest: {
-      legacy: [
-        "insertion",
-        "insertion",
-        "paragraphMarkInserted",
-        "paragraphPropertiesChanged",
-        "paragraphPropertiesChanged",
-      ],
-      canonical: [
-        "insertion",
-        "insertion",
-        "paragraphMarkInserted",
-        "paragraphPropertiesChanged",
-      ],
-    },
-    rejoined: { legacy: null, canonical: null },
+    rest: [
+      "insertion",
+      "insertion",
+      "paragraphMarkInserted",
+      "paragraphPropertiesChanged",
+    ],
+    rejoined: null,
   },
   cell: {
     joinedFrom: "first",
     joined: "firstsecond",
-    rest: {
-      legacy: ["insertion", "insertion", "paragraphMarkInserted"],
-      canonical: ["insertion", "insertion", "paragraphMarkInserted"],
-    },
-    rejoined: { legacy: null, canonical: "second" },
+    rest: ["insertion", "insertion", "paragraphMarkInserted"],
+    rejoined: "second",
   },
 } as const satisfies Record<
   Container,
   {
     joinedFrom: string;
     joined: string;
-    rest: Record<HeadlessReviewerSession, readonly string[]>;
+    rest: readonly string[];
     /** The inserted words whose record rejoins the one a split made it from. */
-    rejoined: Record<HeadlessReviewerSession, string | null>;
+    rejoined: string | null;
   }
 >;
 
@@ -161,9 +148,9 @@ describe.each(
       expect(firstMark.text).toBe(expected.joinedFrom);
       const rest = changes(pending).filter(([id]) => id !== firstMark.id);
       expect(rest.map(([, type]) => type).toSorted()).toEqual([
-        ...expected.rest[session],
+        ...expected.rest,
       ]);
-      const rejoinedText = expected.rejoined[session];
+      const rejoinedText = expected.rejoined;
       const rejoined =
         rejoinedText === null
           ? undefined
