@@ -20,8 +20,9 @@ the same runtime. The command above includes the complete editor peer closure.
 Import `DocxEditor` from `@stll/folio-vue` and load
 `@stll/folio-vue/editor.css` once in your application.
 
-The editor edits through the canonical session, and refuses an edit it cannot
-make yet with a notice.
+Every edit is a typed operation on the OOXML document model, the same one the
+headless engine and the agent tools apply. An edit the engine cannot make yet is
+refused with a notice instead of being applied partly.
 
 Keyboard shortcuts default to the editor root. Set `keyboardShortcuts="document"`
 only when this editor should own shortcuts across the host page.

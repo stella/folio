@@ -104,15 +104,15 @@ export function Editor() {
 
 ## 选择软件包
 
-| 软件包                                    | 适用场景                                              |
-| ----------------------------------------- | ----------------------------------------------------- |
-| [`@stll/folio-react`](./packages/react)   | 完整的 React 编辑器组件                               |
-| [`@stll/folio-vue`](./packages/vue)       | 完整的 Vue 3 编辑器组件                               |
-| [`@stll/folio-nuxt`](./packages/nuxt)     | 在 Nuxt 3 或 4 中以 SSR 安全方式注册 Vue 编辑器       |
-| [`@stll/folio-core`](./packages/core)     | DOCX 解析、ProseMirror 编辑、页面布局、审阅或修订 API |
-| [`@stll/docx-core`](./packages/docx-core) | 类型化 OOXML 模型、验证、序列化和投影内核             |
-| [`@stll/folio-agents`](./packages/agents) | 读取文档并提出批注或修订建议的工具                    |
-| [`@stll/folio-cli`](./packages/cli)       | 审阅本地 `.docx` 文件的命令行与 MCP 服务器            |
+| 软件包                                    | 适用场景                                        |
+| ----------------------------------------- | ----------------------------------------------- |
+| [`@stll/folio-react`](./packages/react)   | 完整的 React 编辑器组件                         |
+| [`@stll/folio-vue`](./packages/vue)       | 完整的 Vue 3 编辑器组件                         |
+| [`@stll/folio-nuxt`](./packages/nuxt)     | 在 Nuxt 3 或 4 中以 SSR 安全方式注册 Vue 编辑器 |
+| [`@stll/folio-core`](./packages/core)     | DOCX 解析、编辑操作、页面布局、审阅或修订 API   |
+| [`@stll/docx-core`](./packages/docx-core) | 类型化 OOXML 模型、验证、序列化和投影内核       |
+| [`@stll/folio-agents`](./packages/agents) | 读取文档并提出批注或修订建议的工具              |
+| [`@stll/folio-cli`](./packages/cli)       | 审阅本地 `.docx` 文件的命令行与 MCP 服务器      |
 
 使用 `bun add @stll/folio-vue vue` 安装 Vue 编辑器，使用 `bun add @stll/folio-nuxt` 安装 Nuxt 模块，或使用 `bun add @stll/folio-core` 安装框架无关引擎。
 

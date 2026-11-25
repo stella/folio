@@ -107,15 +107,15 @@ A barra de ferramentas chama `onSave` com os bytes atualizados do DOCX. Também
 
 ## Escolha um pacote
 
-| Pacote                                    | Use quando precisar de                                                     |
-| ----------------------------------------- | -------------------------------------------------------------------------- |
-| [`@stll/folio-react`](./packages/react)   | Editor completo como componente React                                      |
-| [`@stll/folio-vue`](./packages/vue)       | Editor completo como componente Vue 3                                      |
-| [`@stll/folio-nuxt`](./packages/nuxt)     | Registro do editor Vue compatível com SSR no Nuxt 3 ou 4                   |
-| [`@stll/folio-core`](./packages/core)     | Análise de DOCX, edição ProseMirror, paginação, revisão ou APIs de redline |
-| [`@stll/docx-core`](./packages/docx-core) | Modelo OOXML tipado, validação, serialização e mecanismo de projeção       |
-| [`@stll/folio-agents`](./packages/agents) | Ferramentas que leem documentos e propõem comentários ou alterações        |
-| [`@stll/folio-cli`](./packages/cli)       | Linha de comando e servidor MCP que revisam arquivos `.docx` em disco      |
+| Pacote                                    | Use quando precisar de                                                      |
+| ----------------------------------------- | --------------------------------------------------------------------------- |
+| [`@stll/folio-react`](./packages/react)   | Editor completo como componente React                                       |
+| [`@stll/folio-vue`](./packages/vue)       | Editor completo como componente Vue 3                                       |
+| [`@stll/folio-nuxt`](./packages/nuxt)     | Registro do editor Vue compatível com SSR no Nuxt 3 ou 4                    |
+| [`@stll/folio-core`](./packages/core)     | Análise de DOCX, operações de edição, paginação, revisão ou APIs de redline |
+| [`@stll/docx-core`](./packages/docx-core) | Modelo OOXML tipado, validação, serialização e mecanismo de projeção        |
+| [`@stll/folio-agents`](./packages/agents) | Ferramentas que leem documentos e propõem comentários ou alterações         |
+| [`@stll/folio-cli`](./packages/cli)       | Linha de comando e servidor MCP que revisam arquivos `.docx` em disco       |
 
 Instale o editor Vue com `bun add @stll/folio-vue vue`, o módulo Nuxt com
 `bun add @stll/folio-nuxt` ou o mecanismo independente de framework com

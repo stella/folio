@@ -1,7 +1,7 @@
 {
   "name": "@stll/folio-vue",
   "version": "0.31.0",
-  "description": "Vue 3 editor for folio: a Word-document (.docx) editor for the browser, built on @stll/folio-core and ProseMirror.",
+  "description": "Vue 3 editor for .docx documents: paginated editing, tracked changes, comments and collaboration in the browser, on the @stll/folio-core engine.",
   "keywords": [
     "document-editor",
     "docx",
