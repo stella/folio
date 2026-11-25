@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "title": "PINNED #1356, fingerprint 6428a89de2387760: a table after an empty paragraph joining the next replays ahead of a split of that one",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "plain",
+  "mode": "tracked-changes",
+  "seed": 1117110551,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 3324747246,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "5E88C024"
+        }
+      ],
+      "atomic": false
+    },
+    {
+      "action": "accept one",
+      "seed": 3764759325
+    },
+    {
+      "action": "story batch",
+      "seed": 669522172,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "5E88C024",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 1317974444,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "5E88C024",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        },
+        {
+          "type": "splitBlock",
+          "blockId": "483CD5EB",
+          "offset": 14
+        },
+        {
+          "type": "insertTable",
+          "blockId": "@9",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from insert+splice+unpin of 6a4f379b34429691"
+}

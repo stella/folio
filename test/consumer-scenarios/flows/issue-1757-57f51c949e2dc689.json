@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "title": "PINNED #1757, fingerprint 57f51c949e2dc689: a repeated suggested deletion of a final paragraph beside an edit of the paragraph before it",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "emoji",
+  "mode": "suggested",
+  "seed": 1434858163,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 539681405,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "5E88C024"
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 2307306021,
+      "operations": [
+        {
+          "type": "replaceInBlock",
+          "blockId": "31617F9A",
+          "find": "Launch ",
+          "replace": "revised",
+          "precondition": {
+            "blockTextHash": "hrit6rr"
+          }
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "5E88C024"
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from random flow seed 1434858163"
+}

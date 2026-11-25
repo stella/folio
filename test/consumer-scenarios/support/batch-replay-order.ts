@@ -141,15 +141,18 @@ const placement = (
   // edits inside the joined paragraphs. Into one with no words left, it
   // lands before that one, still as the batch read it: it runs ahead of the
   // edits inside it, which alone would give the join words to run into and
-  // put the block after it. A paragraph with no words of its own joins
-  // nothing into one that keeps words: a block put after it lands right
-  // after it, as one put after any paragraph does.
+  // put the block after it. A paragraph whose words are all pending deletion,
+  // with none running on through it, joins nothing into one that keeps
+  // words: a block put after it lands right after it, as one put after any
+  // paragraph does. An empty one reads as one paragraph with the one its join
+  // leaves, so the block lands after that one.
   const joined = joinsInto.get(blockIdOf(operation));
   const after =
     operation.type === "insertAfterBlock" ||
     (operation.type === "insertTable" && operation["position"] !== "before");
   const joinsWords =
-    joined !== undefined && !(joined.keepsWords && text === "");
+    joined !== undefined &&
+    !(joined.keepsWords && joined.source === PENDING_JOIN_SOURCES.GOES_WHOLE);
   if (after && joined !== undefined && joinsWords) {
     const survivor = preRows.findIndex((row) => row.id === joined.survivor);
     if (survivor >= 0)
@@ -171,6 +174,21 @@ const placement = (
     )
   )
     return [index, 1, AFTER_EVERY_OFFSET];
+  // A block put before a paragraph of a join into one that keeps words goes
+  // before the first paragraph the join takes in (`pendingJoinParagraphs`),
+  // the gap a block put before that one lands in.
+  if (before && (text !== "" || joined?.keepsWords === true)) {
+    let first = index;
+    for (let at = index - 1; at >= 0; at -= 1) {
+      const row = preRows[at];
+      if (row === undefined) break;
+      const source = joinsInto.get(row.id);
+      if (source === undefined || !sameContainerRows(row, preRows[index]))
+        break;
+      if (source.source === PENDING_JOIN_SOURCES.JOINS_IN) first = at;
+    }
+    if (first !== index) return [first, 0, 0];
+  }
   switch (operation.type) {
     case "replaceInBlock":
       return [index, 1, Math.max(0, text.indexOf(String(operation["find"])))];
@@ -193,31 +211,81 @@ const sameContainerRows = (left: Row, right: Row | undefined): right is Row =>
   `${left.table?.tableIndex}:${left.table?.rowIndex}:${left.table?.cellIndex}` ===
     `${right.table?.tableIndex}:${right.table?.rowIndex}:${right.table?.cellIndex}`;
 
-/** The paragraph a pending join runs into, and whether it keeps words. */
-export type PendingJoinTarget = { survivor: string; keepsWords: boolean };
+/**
+ * What accepting does with a paragraph of a pending join, as the engine reads
+ * it (`pendingJoinParagraphs`): its words, or its empty content, run into the
+ * paragraph the join leaves (`joinsIn`); its words are all pending deletion,
+ * but words before it run on through it (`runsOn`); or, its words all pending
+ * deletion with none running on, it goes whole (`goesWhole`).
+ */
+export const PENDING_JOIN_SOURCES = {
+  JOINS_IN: "joinsIn",
+  RUNS_ON: "runsOn",
+  GOES_WHOLE: "goesWhole",
+} as const;
+
+export type PendingJoinSource =
+  (typeof PENDING_JOIN_SOURCES)[keyof typeof PENDING_JOIN_SOURCES];
+
+/**
+ * The paragraph a pending join runs into, whether it keeps words, and what
+ * accepting does with the joining paragraph.
+ */
+export type PendingJoinTarget = {
+  survivor: string;
+  keepsWords: boolean;
+  source: PendingJoinSource;
+};
+
+type PendingJoinTargetsOptions = {
+  rows: readonly Row[];
+  /** The paragraphs whose mark is pending deletion (`markDeletedIds`). */
+  markDeleted: ReadonlySet<string>;
+  /** The paragraphs holding words pending deletion (`wordsDeletedIds`). */
+  wordsDeleted: ReadonlySet<string>;
+};
 
 /**
  * The paragraph each pending join in `rows` runs into: from a paragraph whose
- * mark is pending deletion (`sources`) on past the next ones whose marks go
- * too, to the first one whose mark stays, in the same container. The engine
- * places a block put after any paragraph of the join after that one when it
- * keeps words, and in the gap before it otherwise.
+ * mark is pending deletion (`markDeleted`) on past the next ones whose marks
+ * go too, to the first one whose mark stays, in the same container. The
+ * engine places a block put after any paragraph of the join after that one
+ * when it keeps words, and in the gap before it otherwise. A row with no words
+ * left is empty unless it holds words pending deletion.
  */
-export const pendingJoinTargets = (
-  rows: readonly Row[],
-  sources: ReadonlySet<string>,
-): Map<string, PendingJoinTarget> => {
+export const pendingJoinTargets = ({
+  rows,
+  markDeleted,
+  wordsDeleted,
+}: PendingJoinTargetsOptions): Map<string, PendingJoinTarget> => {
   const targets = new Map<string, PendingJoinTarget>();
+  let wordsRunOn = false;
   for (const [index, row] of rows.entries()) {
-    if (!sources.has(row.id)) continue;
+    if (!markDeleted.has(row.id)) {
+      wordsRunOn = false;
+      continue;
+    }
+    const previous = rows[index - 1];
+    if (previous === undefined || !sameContainerRows(row, previous))
+      wordsRunOn = false;
+    let source: PendingJoinSource = PENDING_JOIN_SOURCES.JOINS_IN;
+    if (row.text === "" && wordsDeleted.has(row.id))
+      source = wordsRunOn
+        ? PENDING_JOIN_SOURCES.RUNS_ON
+        : PENDING_JOIN_SOURCES.GOES_WHOLE;
+    if (row.text !== "") wordsRunOn = true;
     let at = index + 1;
-    while (sources.has(rows[at]?.id ?? "") && sameContainerRows(row, rows[at]))
+    while (
+      markDeleted.has(rows[at]?.id ?? "") &&
+      sameContainerRows(row, rows[at])
+    )
       at += 1;
     const survivor = rows[at];
     if (sameContainerRows(row, survivor))
       targets.set(row.id, {
         survivor: survivor.id,
         keepsWords: survivor.text.length > 0,
+        source,
       });
   }
   return targets;

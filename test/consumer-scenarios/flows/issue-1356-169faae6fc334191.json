@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "title": "PINNED #1356, fingerprint 169faae6fc334191: blocks put before the paragraphs of a pending join replay in one gap",
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "directNumbered",
+  "mode": "tracked-changes",
+  "seed": 1425911673,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 1993806146,
+      "operations": [
+        {
+          "type": "commentOnBlock",
+          "blockId": "412DDC7F",
+          "quote": "Terms",
+          "comment": {
+            "text": "Clause payment payment goods party goods."
+          }
+        }
+      ],
+      "atomic": false
+    },
+    {
+      "action": "add_comment",
+      "seed": 4064668705
+    },
+    {
+      "action": "story batch",
+      "seed": 3001712698,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "31617F9A"
+        }
+      ],
+      "atomic": false
+    },
+    {
+      "action": "reject one",
+      "seed": 641350062
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 3569607171,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "5E88C024",
+          "text": "Warranty party supplier goods.",
+          "styleId": "Heading2"
+        },
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "31617F9A",
+          "text": "Period invoice notice supplier delivery buyer goods."
+        },
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "5E88C024",
+          "text": "Buyer notice term party."
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from reseed+insert of c1470336d9f56de8"
+}
