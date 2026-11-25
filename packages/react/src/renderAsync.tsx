@@ -25,6 +25,11 @@ import { createRoot, type Root } from "react-dom/client";
 
 import { IntlProvider } from "use-intl";
 
+import {
+  getLoadedFolioMessages,
+  loadFolioMessages,
+} from "@stll/folio-core/i18n/loadMessages";
+import type { FolioMessages } from "@stll/folio-core/i18n/messages";
 import type { Document } from "@stll/folio-core/types/document";
 import type { DocxInput } from "@stll/folio-core/utils/docxInput";
 
@@ -33,7 +38,7 @@ import type {
   DocxEditorProps,
   DocxEditorRef,
 } from "./components/DocxEditor.props";
-import { getFolioMessages } from "./i18n/messages";
+import { EditorLoadingIndicator } from "./components/DocxEditorHelpers";
 
 /** Framework-agnostic handle for an imperatively mounted editor instance. */
 export type EditorHandle = {
@@ -143,18 +148,47 @@ export const renderAsync = (
       },
     };
 
-    const element = (
-      <IntlProvider locale={locale} messages={getFolioMessages(locale)}>
-        <DocxEditor
-          {...editorOptions}
-          documentBuffer={input}
-          onError={lifecycle.onError}
-          onChange={lifecycle.onChange}
-          ref={ref}
-        />
-      </IntlProvider>
-    );
+    const mountEditor = (messages: FolioMessages) => {
+      root?.render(
+        <IntlProvider locale={locale} messages={messages}>
+          <DocxEditor
+            {...editorOptions}
+            documentBuffer={input}
+            onError={lifecycle.onError}
+            onChange={lifecycle.onChange}
+            ref={ref}
+          />
+        </IntlProvider>,
+      );
+    };
 
-    root.render(element);
+    const loaded = getLoadedFolioMessages(locale);
+    if (loaded) {
+      mountEditor(loaded);
+      return;
+    }
+
+    root.render(
+      <div
+        aria-busy="true"
+        className={`folio-root folio-editor folio-editor-loading ${editorOptions.className ?? ""}`}
+        data-testid="folio-editor"
+        style={{ height: "100%", width: "100%", ...editorOptions.style }}
+      >
+        <EditorLoadingIndicator />
+      </div>,
+    );
+    void loadFolioMessages(locale).then(
+      (messages) => {
+        mountEditor(messages);
+        return undefined;
+      },
+      (error: unknown) => {
+        lifecycle.onError(
+          error instanceof Error ? error : new Error(String(error)),
+        );
+        return undefined;
+      },
+    );
   });
 };

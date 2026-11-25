@@ -33,7 +33,20 @@
       { dark: isDark, 'paged-editor--readonly': readOnly },
     ]"
     :style="style"
+    :data-folio-locale-pending="!localeReady || undefined"
+    :aria-busy="localeStatus.type === 'loading' || undefined"
   >
+    <div
+      v-if="localeStatus.type === 'failed'"
+      class="docx-editor-vue__locale-loading docx-editor-vue__error"
+      role="alert"
+    >
+      {{ localeStatus.error.message }}
+    </div>
+    <LocaleLoading
+      v-else-if="!localeReady"
+      class="docx-editor-vue__locale-loading"
+    />
     <div class="docx-editor-vue__toolbar-shell">
       <DocxEditorMenuBar
         :show-table-insert="props.showTableInsert !== false"
@@ -134,7 +147,10 @@
     />
 
     <div v-if="parseError" class="docx-editor-vue__error">{{ parseError }}</div>
-    <div v-else-if="showLoadingIndicator" class="docx-editor-vue__loading">
+    <div
+      v-else-if="localeReady && showLoadingIndicator"
+      class="docx-editor-vue__loading"
+    >
       <slot name="loading-indicator">
         <VNodeRenderer v-if="loadingIndicator" :node="loadingIndicator" />
         <template v-else>{{ t("loadingDocument") }}</template>
@@ -625,7 +641,8 @@ import { useTableResize } from "../composables/useTableResize";
 import { useTrackedChanges } from "../composables/useTrackedChanges";
 import { useTransientNotice } from "../composables/useTransientNotice";
 import { useZoom } from "../composables/useZoom";
-import { useTranslation } from "../i18n";
+import { useEditorTranslation } from "../i18n";
+import { LocaleLoading } from "../i18n/LocaleLoading";
 import { provideFolioUI } from "../ui/folio-ui";
 import type { FontOption } from "../utils/fontOptions";
 import AnonymizationRectsOverlay from "./AnonymizationRectsOverlay.vue";
@@ -762,7 +779,8 @@ const displayModeClass = computed(() =>
   displayMode.value === "all-markup" ? "" : `folio-root--${displayMode.value}`,
 );
 
-const { t } = useTranslation();
+const { t, status: localeStatus } = useEditorTranslation(reportEditorError);
+const localeReady = computed(() => localeStatus.value.type === "ready");
 
 // Stable functional component that renders a host-supplied VNodeChild
 // (placeholder / loadingIndicator). Declaring it once — rather than minting a
@@ -2235,6 +2253,14 @@ defineExpose(exposed);
 .docx-editor-vue__notice {
   padding: 12px;
   color: var(--foreground);
+}
+.docx-editor-vue[data-folio-locale-pending]
+  > :not(.docx-editor-vue__locale-loading) {
+  visibility: hidden;
+}
+.docx-editor-vue__locale-loading {
+  position: absolute;
+  inset: 0;
 }
 .docx-editor-vue__loading,
 .docx-editor-vue__placeholder {

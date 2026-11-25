@@ -6,15 +6,22 @@ import { AlertCircleIcon, FileIcon } from "lucide-react";
 import type { JSX } from "react/jsx-runtime";
 import { useTranslations } from "use-intl";
 
-export function DefaultLoadingIndicator(): JSX.Element {
-  const t = useTranslations("folio");
-
+export function EditorLoadingIndicator({
+  label,
+}: {
+  label?: string;
+}): JSX.Element {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-5 text-[var(--doc-text-muted)]">
       <div className="h-9 w-9 animate-spin rounded-full border-[3px] border-[var(--doc-border)] border-t-[var(--doc-primary)]" />
-      <span className="text-sm">{t("loadingDocument")}</span>
+      {label && <span className="text-sm">{label}</span>}
     </div>
   );
+}
+
+export function DefaultLoadingIndicator(): JSX.Element {
+  const t = useTranslations("folio");
+  return <EditorLoadingIndicator label={t("loadingDocument")} />;
 }
 
 export function DefaultPlaceholder(): JSX.Element {

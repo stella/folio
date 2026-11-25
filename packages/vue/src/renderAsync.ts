@@ -22,6 +22,10 @@
 
 import { type App, createApp, h, type MaybeRefOrGetter, ref } from "vue";
 
+import {
+  getLoadedFolioMessages,
+  loadFolioMessages,
+} from "@stll/folio-core/i18n/loadMessages";
 import type { Document } from "@stll/folio-core/types/document";
 import type { DocxInput } from "@stll/folio-core/utils/docxInput";
 
@@ -36,6 +40,7 @@ import {
   defaultColorMode,
 } from "./composables/useColorMode";
 import { i18nPlugin } from "./i18n";
+import { LocaleLoading } from "./i18n/LocaleLoading";
 
 /** Framework-agnostic handle for an imperatively mounted editor instance. */
 export type EditorHandle = {
@@ -91,6 +96,7 @@ export const renderAsync = (
     const editorRef = ref<DocxEditorRef | null>(null);
     let app: App | null = null;
     let settled = false;
+    const localeReady = ref(getLoadedFolioMessages(locale) !== undefined);
 
     const handle: DocxEditorHandle = {
       save: async () => {
@@ -125,10 +131,26 @@ export const renderAsync = (
       },
     };
 
+    const onError = (error: Error) => {
+      editorOptions.onError?.(error);
+      if (!settled) {
+        settled = true;
+        app?.unmount();
+        app = null;
+        reject(error);
+      }
+    };
+
     app = createApp({
       setup() {
-        return () =>
-          h(DocxEditor, {
+        return () => {
+          if (!localeReady.value) {
+            return h(LocaleLoading, {
+              class: editorOptions.className,
+              style: editorOptions.style,
+            });
+          }
+          return h(DocxEditor, {
             ...editorOptions,
             documentBuffer: input,
             ref: editorRef,
@@ -138,21 +160,27 @@ export const renderAsync = (
                 resolve(handle);
               }
             },
-            onError: (error: Error) => {
-              editorOptions.onError?.(error);
-              if (!settled) {
-                settled = true;
-                app?.unmount();
-                app = null;
-                reject(error);
-              }
-            },
+            onError,
           });
+        };
       },
     });
 
     app.use(i18nPlugin, locale);
     app.use(colorModePlugin, colorMode);
     app.mount(container);
+
+    if (!localeReady.value) {
+      void loadFolioMessages(locale).then(
+        () => {
+          localeReady.value = true;
+          return undefined;
+        },
+        (error: unknown) => {
+          onError(error instanceof Error ? error : new Error(String(error)));
+          return undefined;
+        },
+      );
+    }
   });
 };

@@ -6,14 +6,18 @@ import { build, type Metafile } from "esbuild";
 import path from "node:path";
 import { gzipSync } from "node:zlib";
 
+import { FOLIO_LOCALES } from "@stll/folio-core/i18n/messages/locales";
+
+const catalogDir = "packages/core/src/i18n/messages";
+
 const root = path.resolve(import.meta.dir, "../../..");
 const ADAPTERS = ["react", "vue"] as const;
 type Adapter = (typeof ADAPTERS)[number];
 type Metrics = { minified: number; gzip: number; docxOps: number };
 
 const BUDGETS = {
-  react: { minified: 4_604_000, gzip: 1_397_000, docxOps: 663_000 },
-  vue: { minified: 4_261_000, gzip: 1_267_000, docxOps: 664_000 },
+  react: { minified: 4_178_000, gzip: 1_303_000, docxOps: 663_000 },
+  vue: { minified: 3_836_000, gzip: 1_173_000, docxOps: 664_000 },
 } as const satisfies Record<Adapter, Metrics>;
 
 const HOST_PEERS = [
@@ -50,6 +54,30 @@ const eagerOutputs = ({ outputs }: Metafile): Set<string> => {
   return eager;
 };
 
+const checkCatalogs = (metafile: Metafile, eager: Set<string>) => {
+  const eagerInputs = new Set<string>();
+  const lazyInputs = new Set<string>();
+  for (const [name, output] of Object.entries(metafile.outputs)) {
+    const inputs = eager.has(name) ? eagerInputs : lazyInputs;
+    for (const [source, input] of Object.entries(output.inputs)) {
+      if (input.bytesInOutput > 0 && source.startsWith(`${catalogDir}/`))
+        inputs.add(source);
+    }
+  }
+  if (eagerInputs.has(`${catalogDir}/catalogs.gen.ts`))
+    throw new Error("The aggregate message catalog is eager");
+  for (const locale of FOLIO_LOCALES) {
+    const input = `${catalogDir}/${locale}.gen.ts`;
+    const isEnglish = locale === "en";
+    if (
+      isEnglish
+        ? !eagerInputs.has(input)
+        : eagerInputs.has(input) || !lazyInputs.has(input)
+    )
+      throw new Error(`Unexpected bundle placement for the ${locale} catalog`);
+  }
+};
+
 const measure = async (adapter: Adapter): Promise<Metrics> => {
   const packageName = `@stll/folio-${adapter}`;
   const buildResult = await build({
@@ -78,6 +106,7 @@ const measure = async (adapter: Adapter): Promise<Metrics> => {
     loader: { ".css": "empty" },
   });
   const eager = eagerOutputs(buildResult.metafile);
+  checkCatalogs(buildResult.metafile, eager);
   const bytes = new Map(
     buildResult.outputFiles.map((file) => [
       path.relative(root, file.path).split(path.sep).join("/"),
