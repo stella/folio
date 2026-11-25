@@ -1,0 +1,141 @@
+{
+  "version": 1,
+  "title": "PINNED #3516, reported seed 1310561153: a proposed paragraph whose anchor is gone stands beside a saved paragraph, though rejecting it would leave an empty paragraph with its id",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "comments",
+  "mode": "suggested",
+  "seed": 1310561153,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 2758479784,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "483CD5EB"
+        },
+        {
+          "type": "insertAfterBlock",
+          "blockId": "483CD5EB",
+          "text": "Clause buyer buyer party written agreement buyer supplier.",
+          "styleId": "Heading2"
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 671149183,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "412DDC7F",
+          "text": "Notice buyer payment delivery party."
+        },
+        {
+          "type": "formatRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "5E88C024",
+            "startOffset": 35,
+            "endOffset": 41,
+            "selectedTextHash": "h8c37xr"
+          },
+          "formatting": {
+            "bold": true
+          }
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 1047220065,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "formatRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "@0",
+            "startOffset": 21,
+            "endOffset": 29,
+            "selectedTextHash": "hb35i6n"
+          },
+          "formatting": {
+            "italic": true
+          }
+        },
+        {
+          "type": "formatRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "412DDC7F",
+            "startOffset": 7,
+            "endOffset": 17,
+            "selectedTextHash": "hxdhei5"
+          },
+          "formatting": {
+            "italic": true
+          }
+        },
+        {
+          "type": "formatRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "@0",
+            "startOffset": 30,
+            "endOffset": 35,
+            "selectedTextHash": "h4h3o5z"
+          },
+          "formatting": {
+            "italic": true
+          }
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 2055126617,
+      "operations": [
+        {
+          "type": "formatRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "@0",
+            "startOffset": 13,
+            "endOffset": 20,
+            "selectedTextHash": "h7umevi"
+          },
+          "formatting": {
+            "italic": true
+          }
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "5E88C024"
+        }
+      ]
+    },
+    {
+      "action": "accept one",
+      "seed": 95678410
+    },
+    {
+      "action": "accept all",
+      "seed": 3758810036
+    }
+  ],
+  "swarm": [
+    "formatRange",
+    "insertAfterBlock",
+    "insertBeforeBlock",
+    "deleteBlock"
+  ],
+  "origin": "shrunk from random flow seed 1310561153"
+}

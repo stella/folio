@@ -71,6 +71,12 @@
       "path": "209:3:2:2:5:7:7:8:8:8:8:8:8:9:8:9:8:8:8:8:8:8:8:8:8",
       "note": "#3498: a proposed deletion of a split half pending tracked deletion, between tracked paragraphs",
       "date": "2026-11-23"
+    },
+    {
+      "seed": -416772550,
+      "path": "46:4:3:6:6:7:6:6:7:7:31:7:7:14:33:7:7:7:7:7:7:7:7:7",
+      "note": "#3536: a proposed split follows its mark into the paragraph a rejection joins it to, beside another proposal's words",
+      "date": "2026-11-25"
     }
   ]
 }
