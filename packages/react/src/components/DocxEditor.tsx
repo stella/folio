@@ -175,21 +175,11 @@ import {
   executeFirstEditorCommand,
 } from "@stll/folio-core/prosemirror/executeEditorCommand";
 import { ExtensionManager } from "@stll/folio-core/prosemirror/extensions/ExtensionManager";
-import {
-  getChangedParagraphIds,
-  hasStructuralChanges,
-  hasUntrackedChanges,
-} from "@stll/folio-core/prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 // Extension system
 import { createStarterKit } from "@stll/folio-core/prosemirror/extensions/StarterKit";
 import { projectMarkupView } from "@stll/folio-core/prosemirror/markupViewProjection";
 import { createAICitationDecorationsPlugin } from "@stll/folio-core/prosemirror/plugins/aiCitationDecorations";
 import { createAISuggestionDecorationsPlugin } from "@stll/folio-core/prosemirror/plugins/aiSuggestionDecorations";
-import {
-  createSuggestionModePlugin,
-  setSuggestionMode,
-  suggestionModeKey,
-} from "@stll/folio-core/prosemirror/plugins/suggestionMode";
 import { createTemplateDirectivesPlugin } from "@stll/folio-core/prosemirror/plugins/templateDirectives";
 import { createTemplatePreviewValuesPlugin } from "@stll/folio-core/prosemirror/plugins/templatePreviewValues";
 import { templateSlashMenuPlugin } from "@stll/folio-core/prosemirror/plugins/templateSlashMenu";
@@ -852,20 +842,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       return mgr;
     }, [historyShortcuts]);
 
-    const [initialSuggestionMode] = useState(() => ({
-      active: editingMode === "suggesting",
-      author,
-    }));
-
-    // Suggestion mode plugin
-    const suggestionPlugin = useMemo(
-      () =>
-        createSuggestionModePlugin(
-          initialSuggestionMode.active,
-          initialSuggestionMode.author,
-        ),
-      [initialSuggestionMode],
-    );
     // AI suggestion decorations — non-mutating overlay for the review
     // queue. Always present; the plugin renders nothing until
     // suggestions are pushed in.
@@ -915,7 +891,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
     const editorPlugins = useMemo(
       () => [
         ...hostPlugins,
-        suggestionPlugin,
         aiSuggestionPlugin,
         aiCitationPlugin,
         ...(showTemplateDirectives
@@ -925,7 +900,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       ],
       [
         hostPlugins,
-        suggestionPlugin,
         aiSuggestionPlugin,
         aiCitationPlugin,
         showTemplateDirectives,
@@ -1004,23 +978,9 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
     const [bodyEditorView, setBodyEditorView] = useState<EditorView | null>(
       null,
     );
-    // The view starts from the mode the editor mounted with, and it is made at
-    // the first click or replaced by a new document. Whatever was chosen since
-    // has had no view to reach, so a view takes the mode as it appears.
-    const syncSuggestionMode = useCallback(
-      (view: EditorView) => {
-        const active = editingMode === "suggesting";
-        const current = suggestionModeKey.getState(view.state);
-        if (current?.active !== active || current.author !== author) {
-          setSuggestionMode(active, view.state, view.dispatch, author);
-        }
-      },
-      [editingMode, author],
-    );
     const handleBodyViewReady = useCallback(
       (view: EditorView | null) => {
         if (view) {
-          syncSuggestionMode(view);
           syncCanonicalMode();
           // A canonical session holds its own copy of the loaded document:
           // hold that copy as the model from the start, so the document state
@@ -1035,7 +995,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         setBodyEditorView(view);
         setBodyViewEpoch((epoch) => epoch + 1);
       },
-      [history, reportEditorViewReady, syncCanonicalMode, syncSuggestionMode],
+      [history, reportEditorViewReady, syncCanonicalMode],
     );
 
     // Outline headings follow completed layouts: each pass collects the
@@ -1649,14 +1609,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       });
       return cleanup;
     }, [onFontsLoadedCallback]);
-
-    // Sync editing mode to ProseMirror suggestion mode plugin
-    useEffect(() => {
-      const view = pagedEditorRef.current?.getView();
-      if (view) {
-        syncSuggestionMode(view);
-      }
-    }, [syncSuggestionMode]);
 
     // Handle document change
     /**
@@ -3600,20 +3552,15 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         getFindResult,
         clearFind: resetFindResult,
         hasPendingChanges: () => {
-          const view = pagedEditorRef.current?.getView();
-          if (!view) {
+          const pagedEditor = pagedEditorRef.current;
+          if (!pagedEditor?.getView()) {
             return false;
           }
-          const canonical = pagedEditorRef.current
-            ?.getEditor()
-            .hasCanonicalPendingChanges();
-          if (canonical !== null && canonical !== undefined)
-            return getCommentsDirty() || canonical;
+          // A view exists only with a canonical session, whose journal is the
+          // document's dirty signal.
           return (
             getCommentsDirty() ||
-            getChangedParagraphIds(view.state).size > 0 ||
-            hasStructuralChanges(view.state) ||
-            hasUntrackedChanges(view.state)
+            pagedEditor.getEditor().hasCanonicalPendingChanges() === true
           );
         },
         getEditorRef: () => pagedEditorRef.current,
