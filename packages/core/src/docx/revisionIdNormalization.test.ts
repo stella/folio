@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
 
+import { FOLIO_REVIEW_HISTORY_NAMESPACE } from "./reviewHistoryNamespace";
+import { serializeParagraphMarkResolutionJoin } from "./reviewResolutionProvenance";
 import {
   normalizeRevisionIdsInXmlParts,
   REVISION_ELEMENT_NAMES,
@@ -89,4 +91,20 @@ test("claims every id once when every part repeats the same one", () => {
   );
   expect(ids).toHaveLength(9);
   expect(new Set(ids).size).toBe(ids.length);
+});
+
+test("a survivor reference keeps pointing to the paragraph mark when an earlier wrapper shares its id", () => {
+  const provenance = serializeParagraphMarkResolutionJoin({
+    kind: "ins",
+    info: { id: 3, author: "Reviewer" },
+    survivor: "first",
+    takenOverMark: 9,
+  });
+  const xml = `<w:document xmlns:w="${W}" xmlns:folio="${FOLIO_REVIEW_HISTORY_NAMESPACE}"><w:p><w:pPr><w:rPr><w:ins w:id="3"${provenance}/></w:rPr></w:pPr><w:ins w:id="9"/></w:p><w:p><w:pPr><w:rPr><w:ins w:id="9"/></w:rPr></w:pPr></w:p></w:document>`;
+  const parts = new Map([["word/document.xml", xml]]);
+  const once = normalizeRevisionIdsInXmlParts(parts);
+  expect(once.get("word/document.xml")).toBe(
+    xml.replace('<w:ins w:id="9"/></w:p>', '<w:ins w:id="0"/></w:p>'),
+  );
+  expect(normalizeRevisionIdsInXmlParts(once)).toEqual(once);
 });

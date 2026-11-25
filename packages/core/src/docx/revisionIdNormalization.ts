@@ -3,12 +3,16 @@
 
 import { TaggedError, type TaggedErrorClass } from "better-result";
 
-import { rewriteStreamingXmlDecimalAttributes } from "@stll/docx-core/xml";
+import {
+  rewriteStreamingXmlDecimalAttributes,
+  scanStreamingXmlElements,
+} from "@stll/docx-core/xml";
 import {
   assertXmlResourceLimits,
   XmlResourceLimitError,
 } from "@stll/docx-core/xml/limits";
 
+import { parseParagraphMarkResolutionJoin } from "./reviewResolutionProvenance";
 import {
   findAttributeByNamespaceUri,
   getLocalName,
@@ -176,18 +180,40 @@ export const normalizeRevisionIdsInXmlParts = (
     REVISION_ELEMENT_CANDIDATE.test(xml),
   );
   const occurrencesByPath = new Map<string, number[]>();
+  // Keep a paragraph mark's id if a split also wrote it on an inline
+  // wrapper. Folio review provenance refers to the mark, even when its
+  // physical element comes after another occurrence of the same id.
+  const paragraphMarks = new Map<number, { path: string; ordinal: number }>();
+  const takenOverMarks = new Set<number>();
   const reserved = new Set<number>();
   for (const [path, xml] of candidates) {
     assertXmlResourceLimits({ xml, partPath: path });
     const ids: number[] = [];
     // One walk collects both: the revision ids this pass owns, and the rest of
     // the annotation space it must not mint into.
-    const scanned = rewriteStreamingXmlDecimalAttributes(xml, (element) => {
+    const paragraphMarkProperties = new WeakSet<XmlElement>();
+    const scanned = scanStreamingXmlElements(xml, ({ element, parent }) => {
+      if (
+        parent?.name !== undefined &&
+        element.name !== undefined &&
+        getLocalName(parent.name) === "pPr" &&
+        getLocalName(element.name) === "rPr" &&
+        WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(parent) ?? "") &&
+        WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? "")
+      )
+        paragraphMarkProperties.add(element);
       const identified = identifiedElement(element);
       if (identified === null) {
         return null;
       }
       if (identified.kind === ID_KINDS.revision) {
+        if (parent !== undefined && paragraphMarkProperties.has(parent)) {
+          if (!paragraphMarks.has(identified.id)) {
+            paragraphMarks.set(identified.id, { path, ordinal: ids.length });
+          }
+          const { takenOverMark } = parseParagraphMarkResolutionJoin(element);
+          if (takenOverMark !== undefined) takenOverMarks.add(takenOverMark);
+        }
         ids.push(identified.id);
       }
       reserved.add(identified.id);
@@ -206,15 +232,23 @@ export const normalizeRevisionIdsInXmlParts = (
 
   const repeatedPaths = new Set<string>();
   const firstSeen = new Set<number>();
+  const repeated = new Set<number>();
   for (const [path, ids] of occurrencesByPath) {
     for (const id of ids) {
       if (firstSeen.has(id)) {
         repeatedPaths.add(path);
+        repeated.add(id);
       } else {
         firstSeen.add(id);
       }
     }
   }
+
+  const hasPreferredDuplicate = (ids: readonly number[]) =>
+    ids.some(
+      (id) =>
+        repeated.has(id) && takenOverMarks.has(id) && paragraphMarks.has(id),
+    );
 
   // The parts with no revision element carry annotation ids too, and
   // `word/comments.xml` is the obvious one. Walking them is a second pass over
@@ -279,18 +313,32 @@ export const normalizeRevisionIdsInXmlParts = (
       }
       seen.add(id);
     };
-    if (!repeatedPaths.has(path) && ids.every((id) => !seen.has(id))) {
+    if (
+      !repeatedPaths.has(path) &&
+      !hasPreferredDuplicate(ids) &&
+      ids.every((id) => !seen.has(id))
+    ) {
       for (const id of ids) {
         claim(id);
       }
       continue;
     }
+    let ordinal = 0;
     const rewritten = rewriteStreamingXmlDecimalAttributes(xml, (element) => {
       const attribute = revisionAttribute(element);
       if (!attribute) {
         return null;
       }
-      if (!seen.has(attribute.id)) {
+      const preferred = takenOverMarks.has(attribute.id)
+        ? paragraphMarks.get(attribute.id)
+        : undefined;
+      const at = ordinal;
+      ordinal += 1;
+      if (
+        !seen.has(attribute.id) &&
+        (preferred === undefined ||
+          (preferred.path === path && preferred.ordinal === at))
+      ) {
         claim(attribute.id);
         return null;
       }

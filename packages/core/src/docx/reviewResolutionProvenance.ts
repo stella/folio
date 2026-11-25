@@ -108,6 +108,7 @@ const PARAGRAPH_MARK_FIELDS = {
   // a field of another: a reader that does not know it drops only the
   // marker, and joins the paragraphs as any rejected mark.
   survivor: { type: "private", attribute: "rejectionSurvivor" },
+  takenOverMark: { type: "private", attribute: "rejectionSurvivor" },
   // When the split whose cut a deleted mark holds was made. Its own
   // attribute: a reader that does not know it joins at the deletion's date.
   splitDate: { type: "private", attribute: "splitDate" },
@@ -609,9 +610,19 @@ export const serializeCopyOriginAncestors = (
     valid: isCopyOriginAncestors,
   });
 
+type StoredRejectionSurvivor = { takenOverMark: number | null };
+
+const isStoredRejectionSurvivor = (
+  value: unknown,
+): value is StoredRejectionSurvivor =>
+  record(value) &&
+  Object.keys(value).length === 1 &&
+  (value["takenOverMark"] === null || isRevisionId(value["takenOverMark"]));
+
 const isParagraphMarkSurvivor = (
   value: unknown,
-): value is NonNullable<ParagraphMarkChange["survivor"]> => value === "first";
+): value is "first" | StoredRejectionSurvivor =>
+  value === "first" || isStoredRejectionSurvivor(value);
 
 const isParagraphMarkSplitDate = (
   value: unknown,
@@ -626,7 +637,10 @@ const isParagraphMarkSplitDate = (
  */
 export const parseParagraphMarkResolutionJoin = (
   node: XmlElement,
-): Pick<ParagraphMarkChange, "resolutionJoin" | "survivor" | "splitDate"> => {
+): Pick<
+  ParagraphMarkChange,
+  "resolutionJoin" | "survivor" | "takenOverMark" | "splitDate"
+> => {
   const value = parseAttribute({
     node,
     attribute: PARAGRAPH_MARK_FIELDS.resolutionJoin.attribute,
@@ -646,7 +660,14 @@ export const parseParagraphMarkResolutionJoin = (
     ...(value === undefined
       ? {}
       : { resolutionJoin: value === null ? undefined : value }),
-    ...(survivor === undefined ? {} : { survivor }),
+    // Older saved documents use the positional string. All saves use the
+    // object envelope, with null for a break without a revision id.
+    ...(survivor === undefined ? {} : { survivor: "first" as const }),
+    ...(survivor === undefined ||
+    survivor === "first" ||
+    survivor.takenOverMark === null
+      ? {}
+      : { takenOverMark: survivor.takenOverMark }),
     ...(splitDate === undefined ? {} : { splitDate }),
   };
 };
@@ -655,8 +676,11 @@ const paragraphMarkSurvivorOptions = (
   mark: ParagraphMarkChange,
 ): SerializeAttributeOptions => ({
   attribute: PARAGRAPH_MARK_FIELDS.survivor.attribute,
-  value: mark.survivor,
-  valid: isParagraphMarkSurvivor,
+  value:
+    mark.survivor === undefined
+      ? undefined
+      : { takenOverMark: mark.takenOverMark ?? null },
+  valid: isStoredRejectionSurvivor,
 });
 
 const paragraphMarkSplitDateOptions = (

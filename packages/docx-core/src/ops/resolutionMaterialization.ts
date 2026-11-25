@@ -59,6 +59,7 @@ type MaterializationOptions = {
 
 type FallbackReason =
   | JoinFallback
+  | "survivorProvenance"
   | "story"
   | "packageDependencies"
   | "sectionView"
@@ -136,6 +137,14 @@ export const tryMaterializeResolution = ({
   if (noteReferences.length > 0 || receiverEffects.length > 0)
     return fallback("referenceEffects");
   const originals = body.content;
+  // A retired mark can update a different paragraph’s review provenance.
+  if (
+    join.type === "plan" &&
+    locations.some(
+      ({ paragraph }) => paragraph.pPrMark?.takenOverMark !== undefined,
+    )
+  )
+    return fallback("survivorProvenance");
   if (
     !originals.every(
       (block): block is Paragraph => block.type === "paragraph",

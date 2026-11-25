@@ -27,6 +27,7 @@ import {
 import { validateOpsDocument } from "./contract";
 import type { DocumentEdit, DocumentEditEffects } from "./edits";
 import { structurallyEqual } from "./equality";
+import { firstSurvivorFields } from "./firstSurvivor";
 import { freshenIdentities } from "./identity";
 import {
   type IdentityKeyIndex,
@@ -283,9 +284,11 @@ const trackedParagraphReplacement = ({
   }
   // A move's destination marks its paragraphs moved to, not inserted.
   const markKind = op.move === true ? "moveTo" : "ins";
+  const former = takesOverMark ? source.pPrMark : undefined;
+  const survivor = firstSurvivorFields(former);
   const marks = takenOverMarks({
-    mark: takesOverMark ? source.pPrMark : undefined,
-    added: { kind: markKind, info: stampInfo(revision), survivor: "first" },
+    mark: former,
+    added: { kind: markKind, info: stampInfo(revision), ...survivor },
   });
   if (marks.isErr()) return marks;
   const blocks: Paragraph[] = [];
@@ -307,7 +310,7 @@ const trackedParagraphReplacement = ({
           // After a final paragraph each new break is rejected into the
           // paragraph before it, which ends up being the anchor, as the
           // anchor's own new break is.
-          ...(takesOverMark ? { survivor: "first" as const } : {}),
+          ...(takesOverMark ? survivor : {}),
         },
       });
       continue;

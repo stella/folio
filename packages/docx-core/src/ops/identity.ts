@@ -657,7 +657,7 @@ export const freshenIdentities = ({
         kind: "fresh",
         paragraphs: bindDeferredIdentities({
           before: after,
-          after: rebindPropertyChangeOwners({
+          after: rebindParagraphMarkReferences({
             source: before,
             draft: after,
             freshened: rebindRetainedIdentities({
@@ -671,7 +671,7 @@ export const freshenIdentities = ({
     : { kind: "invalidId", id: invalid };
 };
 
-type RebindPropertyChangeOwnersOptions = {
+type RebindParagraphMarkReferencesOptions = {
   source: readonly Paragraph[];
   draft: readonly Paragraph[];
   freshened: Paragraph[];
@@ -679,36 +679,62 @@ type RebindPropertyChangeOwnersOptions = {
 };
 
 /**
- * A property change that belongs to a paragraph-mark deletion
- * (`resolvesWith`) follows that deletion to the id freshening gave it.
+ * Review provenance that refers to a paragraph mark follows its freshened
+ * identity when the referring record is copied with it.
  */
-const rebindPropertyChangeOwners = ({
+const rebindParagraphMarkReferences = ({
   source,
   draft,
   freshened,
   elsewhere,
-}: RebindPropertyChangeOwnersOptions): Paragraph[] => {
+}: RebindParagraphMarkReferencesOptions): Paragraph[] => {
   const ownerInfo = ({ pPrMark }: Paragraph) =>
     pPrMark?.kind === "del" ? pPrMark.info : pPrMark?.deletion?.info;
   const kept = new Set<number>();
   const moved = new Map<number, number>();
+  const movedMarks = new Map<number, number>();
+  const keptMarks = new Set<number>();
   for (const [index, paragraph] of draft.entries()) {
+    const fresh =
+      freshened.at(index) ?? panic("Freshening preserves each paragraph.");
+    const oldId = paragraph.pPrMark?.info.id;
+    const freshId = fresh.pPrMark?.info.id;
+    if (oldId !== undefined && freshId !== undefined) {
+      if (oldId === freshId) keptMarks.add(oldId);
+      else movedMarks.set(oldId, freshId);
+    }
     const old = ownerInfo(paragraph);
-    const next = ownerInfo(
-      freshened.at(index) ?? panic("Freshening preserves each paragraph."),
-    );
+    const next = ownerInfo(fresh);
     if (old === undefined || next === undefined) continue;
     if (old.id === next.id) kept.add(old.id);
     else moved.set(old.id, next.id);
   }
-  if (moved.size === 0) return freshened;
+  if (moved.size === 0 && movedMarks.size === 0) return freshened;
   const previousOwners = new Map<number, number>();
+  const previousTakeovers = new Map<number, number>();
   for (const paragraph of source) {
+    const mark = paragraph.pPrMark;
+    if (mark?.takenOverMark !== undefined)
+      previousTakeovers.set(mark.info.id, mark.takenOverMark);
     for (const { info, resolvesWith } of paragraph.propertyChanges ?? []) {
       if (resolvesWith !== undefined) previousOwners.set(info.id, resolvesWith);
     }
   }
-  return freshened.map((paragraph) => {
+  return freshened.map((fresh) => {
+    const mark = fresh.pPrMark;
+    const target = mark?.takenOverMark;
+    const targetId = target === undefined ? undefined : movedMarks.get(target);
+    const paragraph =
+      mark === undefined ||
+      target === undefined ||
+      targetId === undefined ||
+      (previousTakeovers.get(mark.info.id) === target &&
+        (keptMarks.has(target) ||
+          elsewhere.has(
+            slotKey({ space: IDENTITY_SPACES.REVISION, id: target }),
+          )))
+        ? fresh
+        : { ...fresh, pPrMark: { ...mark, takenOverMark: targetId } };
     if (paragraph.propertyChanges === undefined) return paragraph;
     let changed = false;
     const propertyChanges = paragraph.propertyChanges.map((change) => {
