@@ -6916,8 +6916,12 @@ export class CanonicalPublicOperations {
           holdsOriginalWords))
     ) {
       if (paragraph.start === end) return refusal("noopOperation");
-      // Words a pending join runs into it go with its own, as below.
-      const start = joinedWordsStart ?? paragraph.start;
+      // Words a pending join runs into it go with its own, as below. Between
+      // two tables nothing runs into it: a table the batch puts before it
+      // stands between it and the words of the join.
+      const start = keepsTablesApart
+        ? paragraph.start
+        : (joinedWordsStart ?? paragraph.start);
       const from = projection.addressAt(start);
       const to = projection.addressAt(end);
       if (from.isErr() || to.isErr()) return refusal("unsupportedBlock");
