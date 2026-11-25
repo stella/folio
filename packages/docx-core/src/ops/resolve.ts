@@ -6963,10 +6963,17 @@ const deferSplitSeam = ({
     while (standingInKeptCut(right.at(keptTo))) keptTo += 1;
     const known = new WeakMap<InlineNode, string>();
     const leftHolder = keptCutHolders({
-      after: changeAtEdge(left[leftEnd + 1], "start"),
+      after: changeAtEdge(
+        left[leftEnd + 1] ?? (rightStart > 0 ? right.at(0) : undefined),
+        "start",
+      ),
     });
     const rightHolder = keptCutHolders({
-      before: changeAtEdge(right[rightStart - 1], "end"),
+      before: changeAtEdge(
+        right[rightStart - 1] ??
+          (leftEnd < left.length - 1 ? left.at(-1) : undefined),
+        "end",
+      ),
     });
     const leftRow = left.slice(leftEnd + 1).toReversed();
     const rightRow = right.slice(0, rightStart);
