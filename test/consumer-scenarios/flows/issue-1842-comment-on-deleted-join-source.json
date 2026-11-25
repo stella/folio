@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "title": "A paragraph property edit preserves how the following deletion retires a comment on a pending join source",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "styleNumbered",
+  "mode": "tracked-changes",
+  "seed": 2039738940,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 4247375635,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "7B806329",
+          "separator": " ",
+          "mergedParagraphProperties": {
+            "spacing": { "spaceBefore": 120, "spaceAfter": 120 }
+          }
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 3551598768,
+      "operations": [
+        { "type": "splitBlock", "blockId": "7B806329", "offset": 18 },
+        { "type": "splitBlock", "blockId": "1BF99289", "offset": 8 }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 3423716374,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "commentOnBlock",
+          "blockId": "@7",
+          "quote": "clause",
+          "comment": {
+            "text": "Warranty agreement party agreement written agreement goods."
+          }
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 1968221443,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "1BF99289",
+          "properties": {
+            "numbering": { "kind": "reference", "numId": 5, "ilvl": 0 }
+          }
+        },
+        { "type": "deleteBlock", "blockId": "1BF99289" }
+      ]
+    }
+  ],
+  "origin": "shrunk from dropOperation of bba12ec719064abb"
+}
