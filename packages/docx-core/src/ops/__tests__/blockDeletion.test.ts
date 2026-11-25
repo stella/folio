@@ -974,6 +974,7 @@ test("a tracked deletion of the paragraph whose mark the last paragraph's deleti
             {
               type: "paragraphPropertyChange",
               info: { ...info, id: 6 },
+              resolvesWith: info.id,
               currentFormatting: numbered,
             },
           ],
