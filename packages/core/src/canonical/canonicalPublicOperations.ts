@@ -11,6 +11,7 @@ import { TableMap } from "prosemirror-tables";
 
 import { commentAuthorIssue, trackedChangeAuthorIssue } from "@stll/docx-core";
 import {
+  type BlockContent,
   CONTENT_CONTROL_LOCK,
   lockedControlMessage,
   MAX_REVISION_ID,
@@ -59,6 +60,8 @@ import {
   orderBatchOperations,
   packageResourcesOpOf,
   type ParagraphAbsorption,
+  paragraphHoldsContent,
+  paragraphHoldsContentOnceAccepted,
   paragraphLength,
   type ParagraphPropsPatch,
   paragraphsThroughTextBoxes,
@@ -130,7 +133,6 @@ import {
   hashFolioAIBlockText,
 } from "../ai-edits/snapshot";
 import {
-  followedOnlyByDeletedParagraphs,
   isInsertedPPrMark,
   snapshotBatchClaim,
   type SnapshotBatchOperation,
@@ -2510,6 +2512,24 @@ const commentsRetiredBetween = (
   );
 };
 
+/**
+ * Whether only paragraphs accepting removes whole stand in `blocks`, one of
+ * them at least pending removal: a join before them, once accepted, has no
+ * words after it to separate. Range boundaries among them hold nothing.
+ */
+const onlyRemovedParagraphsFollow = (
+  blocks: readonly BlockContent[],
+): boolean => {
+  let removes = false;
+  for (const block of blocks) {
+    if (isBlockBoundary(block)) continue;
+    if (block.type !== "paragraph" || paragraphHoldsContentOnceAccepted(block))
+      return false;
+    removes ||= paragraphHoldsContent(block) || block.pPrMark?.kind === "del";
+  }
+  return removes;
+};
+
 type MergeIntentsAsItRunsOptions = {
   document: Document;
   story: OpStory;
@@ -2521,8 +2541,12 @@ type MergeIntentsAsItRunsOptions = {
  * A merge's intents as the batch stands in `document` when the merge runs.
  * The separator goes in at the first paragraph's end as it now stands: an
  * edit of that paragraph the batch ran first, a comment's reference among
- * them, may have changed its length. Direct, the join also binds to the
- * paragraph that now follows: a paragraph the batch deleted first is no
+ * them, may have changed its length. Where only paragraphs accepting removes
+ * whole follow it, deletions the batch made first among them, it goes in not
+ * at all: accepting leaves no words after it to separate, as the legacy
+ * engine reads the document as the merge runs. A deletion the batch refuses,
+ * or makes after the merge, has not taken them. Direct, the join also binds
+ * to the paragraph that now follows: a paragraph the batch deleted first is no
  * longer there, so the merge joins across it, as merging after that deletion
  * does; `undefined` when no paragraph follows any more. Tracked, a deleted
  * paragraph stays, and the join keeps it, unless an earlier operation joined
@@ -2556,29 +2580,39 @@ const mergeIntentsAsItRuns = ({
     !locations.some(({ paragraph }) => idKey(paragraph.paraId ?? "") === was);
   if (here === undefined) return bindsToNext ? undefined : intents;
   const end = paragraphLength(here.paragraph);
+  const siblings = locateParagraphThroughTextBoxes(
+    document,
+    story,
+    join.blockId,
+  )?.blocks;
+  const separates =
+    siblings === undefined ||
+    !onlyRemovedParagraphsFollow(siblings.slice(here.index + 1));
   const separatorAtEnd: EditorIntent[] = [];
   for (const intent of intents) {
-    separatorAtEnd.push(
-      intent.type === "replaceText" &&
-        idKey(intent.from.blockId) === key &&
-        intent.from.offset === intent.to.offset
-        ? {
-            ...intent,
-            from: { ...intent.from, offset: end },
-            to: { ...intent.to, offset: end },
-          }
-        : intent,
-    );
+    if (
+      intent.type !== "replaceText" ||
+      idKey(intent.from.blockId) !== key ||
+      intent.from.offset !== intent.to.offset
+    ) {
+      separatorAtEnd.push(intent);
+      continue;
+    }
+    if (separates)
+      separatorAtEnd.push({
+        ...intent,
+        from: { ...intent.from, offset: end },
+        to: { ...intent.to, offset: end },
+      });
   }
   if (!bindsToNext) return separatorAtEnd;
   const next = locations[at + 1];
   // Range boundaries may stand between the two, where no section ends: the
   // join crosses them as resolving a mark does.
-  const between = locateParagraphThroughTextBoxes(
-    document,
-    story,
-    join.blockId,
-  )?.blocks.slice(here.index + 1, next?.index ?? here.index + 1);
+  const between = siblings?.slice(
+    here.index + 1,
+    next?.index ?? here.index + 1,
+  );
   const follows =
     next !== undefined &&
     JSON.stringify(here.list) === JSON.stringify(next.list) &&
@@ -8452,26 +8486,10 @@ export class CanonicalPublicOperations {
       operation.type === "mergeBlockWithNext" &&
       intent.type === "joinParagraphs"
     ) {
-      // The separator goes in at the first paragraph's end, before the join.
-      // Where only paragraphs pending deletion follow, or ones the batch
-      // deletes and places nothing beside, accepting leaves no words after it
-      // to separate, as the legacy engine reads it.
-      const vanishing = new Set(
-        [...besideDeletions.deleted].filter(
-          (id) =>
-            !besideDeletions.insertedBeside.has(id) &&
-            !besideDeletions.paragraphsAfter.has(id) &&
-            !besideDeletions.tables.after.has(id) &&
-            !besideDeletions.tables.before.has(id),
-        ),
-      );
-      const separator = followedOnlyByDeletedParagraphs(
-        projection.value.doc,
-        paragraph.start - 1 + paragraph.node.nodeSize,
-        vanishing,
-      )
-        ? ""
-        : (operation.separator ?? "");
+      // The separator goes in at the first paragraph's end, before the join;
+      // as the merge runs, it goes only where words follow
+      // (`mergeIntentsAsItRuns`).
+      const separator = operation.separator ?? "";
       if (separator !== "") {
         const at = projection.value.addressAt(
           paragraph.start + paragraph.node.content.size,

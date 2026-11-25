@@ -151,6 +151,8 @@ export {
   commentReferenceOffsets,
   OBJECT_REPLACEMENT_CHARACTER,
   paragraphContentVerdict,
+  paragraphHoldsContent,
+  paragraphHoldsContentOnceAccepted,
   paragraphLength,
   paragraphLogicalText,
   type ParagraphContentVerdict,
