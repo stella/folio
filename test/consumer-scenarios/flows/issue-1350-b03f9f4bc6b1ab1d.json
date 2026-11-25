@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "title": "PINNED #1350: deleting the paragraph a tracked batch put after a restyled final list item keeps the restyle once accepted, as applied directly",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "directNumbered",
+  "mode": "tracked-changes",
+  "seed": 1166448619,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 3438026511,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "5E88C024",
+          "text": "Payment party invoice payment notice."
+        },
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "5E88C024",
+          "properties": {
+            "styleId": "Heading2"
+          }
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 3622273802,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "@4"
+        }
+      ]
+    }
+  ],
+  "origin": "minimal replay of shrunk random flow seed 1166448619"
+}
