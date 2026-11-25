@@ -670,7 +670,7 @@ const commentExhaustionIn = (document: Document) => {
       case "point":
         anchored ??= sourceCommentAnchorIds(document);
         return !anchored.has(id);
-      case undefined:
+      default:
         return false;
     }
   };
