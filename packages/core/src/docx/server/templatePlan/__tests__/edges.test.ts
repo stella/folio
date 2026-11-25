@@ -234,15 +234,34 @@ describe("applyTemplatePlan edge content", () => {
       numbering
         .replace(
           '<w:pPr><w:ind w:left="567" w:hanging="567"/></w:pPr>',
-          '<w:pPr><w:ind w:left="567" w:right="113" w:hanging="567"/><w:jc w:val="center"/></w:pPr>',
+          '<w:pPr><w:ind w:left="567" w:right="2mm" w:hanging="567"/><w:jc w:val="center"/></w:pPr>',
         )
         .replace(
           '<w:pPr><w:ind w:left="1134" w:hanging="567"/></w:pPr>',
           '<w:pPr><w:keepNext/><w:jc w:val="left"/></w:pPr>',
         )
+        // A level whose properties are written self-closed, with a namespace
+        // declared on the tag itself, and one that states its indent in inches.
+        .replace(
+          '<w:pPr><w:ind w:left="2268" w:hanging="567"/></w:pPr>',
+          '<w:pPr xmlns:x="urn:example:local"/>',
+        )
         .replace(/<w:lvl w:ilvl="4">.*?<\/w:lvl>/u, '<w:lvl w:ilvl="4"/>'),
     );
     expect(template).not.toBe(base);
+    const inches = await replacePart(
+      base,
+      "word/numbering.xml",
+      numbering.replace(
+        '<w:ind w:left="567" w:hanging="567"/>',
+        '<w:ind w:left="1in" w:hanging="0.5in"/>',
+      ),
+    );
+    expect(
+      unwrap(await inspectDocxTemplate(inches))
+        .numbering.abstractNums.at(0)
+        ?.levels.at(0)?.indent,
+    ).toEqual({ left: 1440, hanging: 720, firstLine: null });
     const source = await buildMinimalDocx(`${p(r("first"))}${p(r("second"))}`);
     const plan = await planFor({
       source,
@@ -260,6 +279,7 @@ describe("applyTemplatePlan edge content", () => {
           { abstractNumId: 0, ilvl: 0, indent: { left: 0, hanging: 0 } },
           { abstractNumId: 0, ilvl: 1, indent: { left: 284 } },
           { abstractNumId: 0, ilvl: 2, indent: { firstLine: 142 } },
+          { abstractNumId: 0, ilvl: 3, indent: { hanging: 284 } },
           { abstractNumId: 0, ilvl: 4, lvlText: "%5.", indent: { left: 0 } },
         ],
       },
@@ -270,9 +290,10 @@ describe("applyTemplatePlan edge content", () => {
     const patched = (await readPart(docx, "word/numbering.xml")) ?? "";
 
     expect(report.ok).toBe(true);
-    // The right indent and the alignment stay; left and hanging are the plan's.
+    // The right indent stays as written, in its own unit, and so does the
+    // alignment; left and hanging are the plan's.
     expect(patched).toContain(
-      '<w:pPr><w:ind w:left="0" w:right="113" w:hanging="0"/><w:jc w:val="center"/></w:pPr>',
+      '<w:pPr><w:ind w:left="0" w:right="2mm" w:hanging="0"/><w:jc w:val="center"/></w:pPr>',
     );
     // An indent is written where the schema orders it: before the alignment.
     expect(patched).toContain(
@@ -281,6 +302,10 @@ describe("applyTemplatePlan edge content", () => {
     // A first-line indent replaces the hanging one; the left indent stays.
     expect(patched).toContain(
       '<w:pPr><w:ind w:left="1701" w:firstLine="142"/></w:pPr>',
+    );
+    // A self-closed `w:pPr` keeps its start tag as written.
+    expect(patched).toContain(
+      '<w:pPr xmlns:x="urn:example:local"><w:ind w:hanging="284"/></w:pPr>',
     );
     expect(patched).toContain(
       '<w:lvl w:ilvl="4"><w:lvlText w:val="%5."/><w:pPr><w:ind w:left="0"/></w:pPr></w:lvl>',
@@ -293,14 +318,14 @@ describe("applyTemplatePlan edge content", () => {
       { left: 0, hanging: 0, firstLine: null },
       { left: 284, hanging: null, firstLine: null },
       { left: 1701, hanging: null, firstLine: 142 },
-      { left: 2268, hanging: 567, firstLine: null },
+      { left: null, hanging: 284, firstLine: null },
       { left: 0, hanging: null, firstLine: null },
     ]);
 
     // An output whose level lost the planned indent is not what was planned.
     const reverted = patched.replace(
-      '<w:ind w:left="0" w:right="113" w:hanging="0"/>',
-      '<w:ind w:left="567" w:right="113" w:hanging="567"/>',
+      '<w:ind w:left="0" w:right="2mm" w:hanging="0"/>',
+      '<w:ind w:left="567" w:right="2mm" w:hanging="567"/>',
     );
     expect(reverted).not.toBe(patched);
     const revertedReport = await verifyFor({

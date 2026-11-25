@@ -28,10 +28,10 @@ import {
   TemplatePlanError,
 } from "./types";
 import {
-  integerOrNull,
   isW,
   type RawPart,
   readRawPart,
+  twipsOrNull,
   walkElements,
   wAttr,
   wChild,
@@ -77,7 +77,7 @@ const statedIndents = ({
     for (const level of wChildren(definition, "lvl")) {
       const indent = wChild(wChild(level, "pPr"), "ind");
       const stated = (name: string): number | null =>
-        integerOrNull(wAttr(indent, name));
+        twipsOrNull(wAttr(indent, name));
       indents.set(
         `${wAttr(definition, "abstractNumId") ?? ""}:${wAttr(level, "ilvl") ?? ""}`,
         {

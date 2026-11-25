@@ -68,6 +68,7 @@ import {
   readRawPart,
   sliceWithSplices,
   spliceXml,
+  twipsOrNull,
   walkElements,
   wAttr,
   wChild,
@@ -250,22 +251,26 @@ const levelPropertiesXml = ({
   const properties = wChild(level, "pPr");
   const existing = wChild(properties, "ind");
   const stated = (name: string): number | null =>
-    integerOrNull(wAttr(existing, name));
+    twipsOrNull(wAttr(existing, name));
   const hanging =
     indent.hanging ??
     (indent.firstLine === undefined ? stated("hanging") : null);
   const firstLine =
     indent.firstLine ??
     (indent.hanging === undefined ? stated("firstLine") : null);
-  const values: [string, number | null][] = [
+  // The right indent is not the patch's to change: it is kept as written,
+  // whatever unit it is written in.
+  const values: [string, number | string | null][] = [
     ["left", indent.left ?? stated("left") ?? stated("start")],
-    ["right", stated("right") ?? stated("end")],
+    ["right", wAttr(existing, "right") ?? wAttr(existing, "end")],
     ["hanging", hanging],
     ["firstLine", firstLine],
   ];
   const attributes = values
     .flatMap(([name, value]) =>
-      value === null ? [] : [` ${w}:${name}="${String(value)}"`],
+      value === null
+        ? []
+        : [` ${w}:${name}="${escapeXmlAttribute(String(value))}"`],
     )
     .join("");
   const indentXml = `<${w}:ind${attributes}/>`;
@@ -281,8 +286,10 @@ const levelPropertiesXml = ({
   }
   const inner = innerRangeOf(part.xml, properties);
   if (inner === null) {
+    // Written self-closed: the start tag is kept as it is, with whatever
+    // attributes and namespace declarations it states.
     const name = properties.name ?? `${w}:pPr`;
-    return `<${name}>${indentXml}</${name}>`;
+    return `${part.xml.slice(range.start, range.end - 2).trimEnd()}>${indentXml}</${name}>`;
   }
   const later = AFTER_INDENT.map((name) => wChild(properties, name)).find(
     (element) => element !== null,

@@ -94,6 +94,7 @@ import {
   isW,
   type RawPart,
   readRawPart,
+  twipsOrNull,
   walkElements,
   wAttr,
   wChild,
@@ -1124,7 +1125,7 @@ export const reportTemplatePlanOutput = async ({
     }
     const indent = wChild(wChild(level, "pPr"), "ind");
     for (const [name, value] of Object.entries(patch.indent ?? {})) {
-      if (integerOrNull(wAttr(indent, name)) !== value) {
+      if (twipsOrNull(wAttr(indent, name)) !== value) {
         numberingMismatch(
           `Level ${patch.ilvl} of list definition ${patch.abstractNumId} does not carry the planned ${name} indent.`,
         );

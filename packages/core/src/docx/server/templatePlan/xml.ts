@@ -10,6 +10,7 @@ import {
 } from "@stll/docx-core/xml";
 
 import { spliceXml, type XmlSplice } from "../../selectiveXmlPatch";
+import { universalMeasureAs } from "../../universalMeasure";
 import {
   getAttributeByNamespaceUri,
   getLocalName,
@@ -78,6 +79,14 @@ export const integerOrNull = (value: string | null): number | null => {
   const parsed = Number.parseInt(value, 10);
   return Number.isSafeInteger(parsed) ? parsed : null;
 };
+
+/**
+ * A length attribute in twentieths of a point: a plain number, or a
+ * universal measure (`1in`, `2.54cm`), which the schema allows in its place.
+ */
+export const twipsOrNull = (value: string | null): number | null =>
+  integerOrNull(value) ??
+  (value === null ? null : (universalMeasureAs(value.trim(), "twips") ?? null));
 
 /** The largest of `values`, or `floor` when none is larger. */
 export const maxOf = (values: Iterable<number>, floor: number): number => {
