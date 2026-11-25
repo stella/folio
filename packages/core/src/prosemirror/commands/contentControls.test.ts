@@ -5,6 +5,7 @@
 import { describe, expect, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
 
+import { createReferenceEditorRuntime } from "../../__tests__/createReferenceEditorKit";
 import {
   ContentControlLockedError,
   ContentControlTypeError,
@@ -24,7 +25,9 @@ function makeState(docNode = defaultDoc()): EditorState {
   return EditorState.create({
     doc: docNode,
     schema,
-    plugins: [...singletonManager.getPlugins()],
+    plugins: [
+      ...createReferenceEditorRuntime(singletonManager.getSchema()).plugins,
+    ],
   });
 }
 
@@ -453,7 +456,7 @@ describe("removeContentControlTr", () => {
       schema,
       plugins: [
         createSuggestionModePlugin(true, "Reviewer"),
-        ...singletonManager.getPlugins(),
+        ...createReferenceEditorRuntime(singletonManager.getSchema()).plugins,
       ],
     });
     const tr = setContentControlValueTr(

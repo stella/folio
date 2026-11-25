@@ -15,6 +15,7 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import { createReferenceEditorRuntime } from "../__tests__/createReferenceEditorKit";
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
@@ -135,7 +136,9 @@ const typedAndSaved = async (source: ArrayBuffer): Promise<ArrayBuffer> => {
   let state = EditorState.create({
     schema,
     doc: toProseDoc(parsed, { styles: parsed.package.styles }),
-    plugins: [...singletonManager.getPlugins()],
+    plugins: [
+      ...createReferenceEditorRuntime(singletonManager.getSchema()).plugins,
+    ],
   });
   const end = (state.doc.firstChild?.nodeSize ?? 2) - 1;
   state = state.apply(

@@ -10,13 +10,13 @@ import {
   parseSourceModule,
   walkAst,
 } from "../../../../scripts/lib/oxc-ast";
+import { createParagraphChangeTrackerPlugin } from "../__tests__/reference-editor/ParagraphChangeTrackerExtension";
+import { ParaIdAllocatorExtension } from "../__tests__/reference-editor/ParaIdAllocatorExtension";
 import { createCommentRecordsPlugin } from "./commentRecords";
 import { AutoBidiDetectionExtension } from "./extensions/features/AutoBidiDetectionExtension";
 import { EmptyParagraphFormatExtension } from "./extensions/features/EmptyParagraphFormatExtension";
 import { ImageDragExtension } from "./extensions/features/ImageDragExtension";
 import { JoinedRunStyleExtension } from "./extensions/features/JoinedRunStyleExtension";
-import { createParagraphChangeTrackerPlugin } from "./extensions/features/ParagraphChangeTrackerExtension";
-import { ParaIdAllocatorExtension } from "./extensions/features/ParaIdAllocatorExtension";
 import { RunIdentityExtension } from "./extensions/marks/RunIdentityExtension";
 import type { AnyExtension } from "./extensions/types";
 import { createPluginKeyOwner } from "./pluginKeyOwner";

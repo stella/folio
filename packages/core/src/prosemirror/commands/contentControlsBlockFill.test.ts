@@ -5,6 +5,7 @@
 import { describe, expect, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
 
+import { createReferenceEditorRuntime } from "../../__tests__/createReferenceEditorKit";
 import type { BlockContent } from "../../types/document";
 import { schema, singletonManager } from "../schema";
 import { setContentControlContentBlocksTr } from "./contentControlsBlockFill";
@@ -16,7 +17,9 @@ function makeState() {
   return EditorState.create({
     doc: schema.node("doc", null, [sdt]),
     schema,
-    plugins: [...singletonManager.getPlugins()],
+    plugins: [
+      ...createReferenceEditorRuntime(singletonManager.getSchema()).plugins,
+    ],
   });
 }
 

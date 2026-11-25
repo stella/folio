@@ -4,13 +4,13 @@ import { DOMParser, Slice } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
+import { ParaIdAllocatorExtension } from "../../../__tests__/reference-editor/ParaIdAllocatorExtension";
 import { parseDocx } from "../../../docx/parser";
 import { createDocx } from "../../../docx/rezip";
 import { fromProseDoc } from "../../conversion/fromProseDoc";
 import { toProseDoc } from "../../conversion/toProseDoc";
 import { completeNumberingForDoc } from "../../listInstanceReferences";
 import { schema } from "../../schema";
-import { ParaIdAllocatorExtension } from "./ParaIdAllocatorExtension";
 import {
   flattenPastedHtmlLists,
   numberPastedHtmlLists,

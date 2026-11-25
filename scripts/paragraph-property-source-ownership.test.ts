@@ -41,14 +41,14 @@ const PM_PARAGRAPH_PROVENANCE_FILES = new Set([
   "packages/core/src/prosemirror/conversion/fromProseDoc.ts",
   "packages/core/src/prosemirror/conversion/toProseDoc.ts",
   "packages/core/src/prosemirror/extensions/features/AutoBidiDetectionExtension.ts",
-  "packages/core/src/prosemirror/extensions/features/ParaIdAllocatorExtension.ts",
+  "packages/core/src/__tests__/reference-editor/ParaIdAllocatorExtension.ts",
 ]);
 const TOKEN_OWNER_FILES = new Set([
   OWNER,
   "packages/core/src/prosemirror/attrs/index.ts",
   "packages/core/src/prosemirror/conversion/fromProseDoc.ts",
   "packages/core/src/prosemirror/extensions/core/ParagraphExtension.ts",
-  "packages/core/src/prosemirror/extensions/features/ParaIdAllocatorExtension.ts",
+  "packages/core/src/__tests__/reference-editor/ParaIdAllocatorExtension.ts",
   "packages/core/src/prosemirror/schema/nodes.ts",
 ]);
 const CONTRACT_OWNER_FILES = new Set([

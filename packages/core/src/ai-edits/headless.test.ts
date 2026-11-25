@@ -17,6 +17,7 @@ import { EditorState } from "prosemirror-state";
 import { ZipArchive } from "@stll/docx-core/zip";
 
 import { expectParagraphBlock } from "../../../../test/paragraphBlock";
+import { createReferenceEditorRuntime } from "../__tests__/createReferenceEditorKit";
 import {
   buildTextBoxTableDocument,
   findTextBoxShape,
@@ -273,7 +274,8 @@ const makeParaIdBaseline = async (
     EditorState.create({
       schema,
       doc: toProseDoc(document),
-      plugins: singletonManager.getPlugins(),
+      plugins: createReferenceEditorRuntime(singletonManager.getSchema())
+        .plugins,
     }),
   );
   return repackDocx({

@@ -28,6 +28,11 @@ import {
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../../test/property-testing";
+import { ParagraphChangeTrackerExtension } from "../../__tests__/reference-editor/ParagraphChangeTrackerExtension";
+import {
+  mapParagraphKeepers,
+  ParaIdAllocatorExtension,
+} from "../../__tests__/reference-editor/ParaIdAllocatorExtension";
 import { getTransactionDirtyRange } from "../../paged-layout/transactionDirtyRange";
 import {
   buildRandomBatch,
@@ -38,11 +43,6 @@ import {
 } from "../__tests__/randomTransactions";
 import { paragraphChangeTrackerKey } from "../paragraphChangeTrackerMeta";
 import { AutoBidiDetectionExtension } from "./features/AutoBidiDetectionExtension";
-import { ParagraphChangeTrackerExtension } from "./features/ParagraphChangeTrackerExtension";
-import {
-  mapParagraphKeepers,
-  ParaIdAllocatorExtension,
-} from "./features/ParaIdAllocatorExtension";
 import {
   insertedRanges,
   RunIdentityExtension,

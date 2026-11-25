@@ -19,6 +19,7 @@ import {
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../../../test/property-testing";
+import { createReferenceEditorRuntime } from "../../../__tests__/createReferenceEditorKit";
 import { UNDERLINE_STYLE_VALUES } from "../../../types/documentEnumValues";
 import { schema, singletonManager } from "../../schema";
 import { textFormattingToMarks } from "./markUtils";
@@ -40,7 +41,7 @@ const storedMarksForEmptyParagraph = (defaultTextFormatting: object) => {
   const state = EditorState.create({
     doc,
     schema,
-    plugins: singletonManager.getPlugins(),
+    plugins: createReferenceEditorRuntime(singletonManager.getSchema()).plugins,
   });
 
   return state.apply(state.tr.setSelection(TextSelection.create(state.doc, 1)))

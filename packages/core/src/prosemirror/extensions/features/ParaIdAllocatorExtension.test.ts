@@ -24,6 +24,11 @@ import {
   propertyTestTimeout,
 } from "../../../../../../test/property-testing";
 import {
+  getChangedParagraphIds,
+  ParagraphChangeTrackerExtension,
+} from "../../../__tests__/reference-editor/ParagraphChangeTrackerExtension";
+import { ParaIdAllocatorExtension } from "../../../__tests__/reference-editor/ParaIdAllocatorExtension";
+import {
   joinProseParagraphsWithRightPropertySource,
   PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
   PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR,
@@ -34,11 +39,6 @@ import {
   ensureParaIdsInState,
   requestDeterministicParaIds,
 } from "../../paraIds";
-import {
-  getChangedParagraphIds,
-  ParagraphChangeTrackerExtension,
-} from "./ParagraphChangeTrackerExtension";
-import { ParaIdAllocatorExtension } from "./ParaIdAllocatorExtension";
 
 const schema = new Schema({
   nodes: {

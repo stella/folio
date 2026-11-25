@@ -15,6 +15,12 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../../test/property-testing";
+import {
+  getChangedParagraphIds,
+  hasStructuralChanges,
+  hasUntrackedChanges,
+  ParagraphChangeTrackerExtension,
+} from "../../__tests__/reference-editor/ParagraphChangeTrackerExtension";
 import { FolioDocxReviewer } from "../../ai-edits/headless";
 import type { FolioAIBlock, FolioAIParagraphBlock } from "../../ai-edits/types";
 import { parseDocx } from "../../docx/parser";
@@ -31,12 +37,6 @@ import type {
 import { createEmptyDocument } from "../../utils/createDocument";
 import { fromProseDoc } from "../conversion/fromProseDoc";
 import { toProseDoc } from "../conversion/toProseDoc";
-import {
-  getChangedParagraphIds,
-  hasStructuralChanges,
-  hasUntrackedChanges,
-  ParagraphChangeTrackerExtension,
-} from "../extensions/features/ParagraphChangeTrackerExtension";
 import { createDocumentStylesPlugin } from "../plugins/documentStyles";
 import { schema } from "../schema";
 import {

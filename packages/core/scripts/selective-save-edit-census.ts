@@ -29,8 +29,6 @@ import {
 import { fromProseDoc } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "@stll/folio-core/prosemirror/conversion/toProseDoc";
 import { splitBlockClearBorders } from "@stll/folio-core/prosemirror/extensions/features/BaseKeymapExtension";
-import { ParagraphChangeTrackerExtension } from "@stll/folio-core/prosemirror/extensions/features/ParagraphChangeTrackerExtension";
-import { ParaIdAllocatorExtension } from "@stll/folio-core/prosemirror/extensions/features/ParaIdAllocatorExtension";
 import { paragraphChangeTrackerKey } from "@stll/folio-core/prosemirror/paragraphChangeTrackerMeta";
 import { ensureParaIdsInState } from "@stll/folio-core/prosemirror/paraIds";
 
@@ -47,6 +45,8 @@ import {
   loadCorpusLock,
   sourceCheckoutPath,
 } from "../../../scripts/lib/corpus-manifest";
+import { ParagraphChangeTrackerExtension } from "../src/__tests__/reference-editor/ParagraphChangeTrackerExtension";
+import { ParaIdAllocatorExtension } from "../src/__tests__/reference-editor/ParaIdAllocatorExtension";
 import { censusParagraphOrdinals } from "./selective-save-census-identity";
 
 class EditCensusError extends TaggedError("EditCensusError")<{

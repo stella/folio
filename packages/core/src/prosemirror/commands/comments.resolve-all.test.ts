@@ -14,11 +14,11 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../../test/property-testing";
-import { RevisionResolutionStep } from "../../internal/revisionResolutionStep";
 import {
   getChangeTrackerState,
   ParagraphChangeTrackerExtension,
-} from "../extensions/features/ParagraphChangeTrackerExtension";
+} from "../../__tests__/reference-editor/ParagraphChangeTrackerExtension";
+import { RevisionResolutionStep } from "../../internal/revisionResolutionStep";
 import { schema } from "../schema";
 import {
   acceptAllChanges,

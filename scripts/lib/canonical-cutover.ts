@@ -113,15 +113,6 @@ const mutationGap = (
     const name = nodeText(text, node.callee);
     if (name === "fromProseDoc" || imports.get(name)?.endsWith(":fromProseDoc"))
       return CANONICAL_GAP.save;
-    if (imports.get(name) === "prosemirror-history:history")
-      return CANONICAL_GAP.history;
-    if (
-      name === "columnResizing" ||
-      name === "tableEditing" ||
-      imports.get(name) === "prosemirror-tables:columnResizing" ||
-      imports.get(name) === "prosemirror-tables:tableEditing"
-    )
-      return CANONICAL_GAP.tableGeometry;
     if (
       (name === "applyFolioAIEditOperations" ||
         name === "applyFolioAIEditOperationsInPackage") &&
@@ -141,10 +132,6 @@ const mutationGap = (
     if (name === "appendTransaction") {
       if (file.endsWith("/suggestionMode.ts"))
         return CANONICAL_GAP.suggestionPlugin;
-      if (file.endsWith("/ParaIdAllocatorExtension.ts"))
-        return CANONICAL_GAP.paragraphIdentity;
-      if (file.endsWith("/ParagraphChangeTrackerExtension.ts"))
-        return CANONICAL_GAP.paragraphTracker;
     }
     if (name === "fromBuffer" && file.endsWith("/headless.ts"))
       return CANONICAL_GAP.publicHeadlessSession;
@@ -180,6 +167,14 @@ export const inspectCanonicalSources = (
       for (const statement of program.body) {
         if (statement.type !== "ImportDeclaration") continue;
         const moduleName = statement.source.value;
+        if (
+          /(?:^|\/)(?:reference-editor\/|createReferenceEditorKit(?:\.ts)?$)/u.test(
+            moduleName,
+          )
+        )
+          failures.push(
+            `${file}: reference engine plugins belong in test support`,
+          );
         for (const binding of statement.specifiers) {
           if (
             binding.type === "ImportNamespaceSpecifier" &&
@@ -191,6 +186,14 @@ export const inspectCanonicalSources = (
             binding.imported.type === "Identifier"
               ? binding.imported.name
               : binding.imported.value;
+          if (
+            (moduleName === "prosemirror-history" && imported === "history") ||
+            (moduleName === "prosemirror-tables" &&
+              (imported === "columnResizing" || imported === "tableEditing"))
+          )
+            failures.push(
+              `${file}: ${imported} belongs in the reference editor`,
+            );
           imports.set(binding.local.name, `${moduleName}:${imported}`);
           if (
             [

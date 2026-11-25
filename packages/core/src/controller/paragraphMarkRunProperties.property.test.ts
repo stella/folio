@@ -19,6 +19,7 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import { createReferenceEditorRuntime } from "../__tests__/createReferenceEditorKit";
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { createCanonicalSession } from "../canonical/canonicalSession";
 import { visitParagraphRuns } from "../docx/paragraphTraversal";
@@ -269,7 +270,10 @@ describe("paragraph mark run properties", () => {
           let state = EditorState.create({
             schema,
             doc: toProseDoc(parsed, { styles: parsed.package.styles }),
-            plugins: [...singletonManager.getPlugins()],
+            plugins: [
+              ...createReferenceEditorRuntime(singletonManager.getSchema())
+                .plugins,
+            ],
           });
           state = state.apply(
             state.tr.setSelection(TextSelection.create(state.doc, 1)),

@@ -37,6 +37,7 @@ import type {
   ParagraphContent,
   TextFormatting,
 } from "../types/document";
+import { createReferenceEditorRuntime } from "./createReferenceEditorKit";
 
 export const textRun = (
   text: string,
@@ -240,7 +241,9 @@ export const reviewerSessionState = async (
       doc: ensureParaIdsInDoc(toProseDoc(document)),
       plugins: [
         createDocumentNumberingPlugin(document.package.numbering),
-        ...pluginsForHeadlessRevisionResolution(singletonManager.getPlugins()),
+        ...pluginsForHeadlessRevisionResolution(
+          createReferenceEditorRuntime(singletonManager.getSchema()).plugins,
+        ),
         createDocumentStylesPlugin(document.package.styles),
       ],
     }),
