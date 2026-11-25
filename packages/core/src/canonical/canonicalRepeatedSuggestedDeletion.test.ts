@@ -95,15 +95,19 @@ for (const mode of MODES)
         expect(
           reviewer.applyOperations(
             [{ id: "delete", type: "deleteBlock", blockId: last.id }],
-            { mode },
+            { mode, undefinedReferences: "refuse" },
           ).skipped,
         ).toEqual([]);
       const batch = batched.reviewer.applyOperations(batchOf(batched), {
         mode,
+        undefinedReferences: "refuse",
       });
       const skipped = batchOf(sequential).flatMap(
         (operation) =>
-          sequential.reviewer.applyOperations([operation], { mode }).skipped,
+          sequential.reviewer.applyOperations([operation], {
+            mode,
+            undefinedReferences: "refuse",
+          }).skipped,
       );
       expect(batch.skipped).toEqual(skipped);
       expect(outcome(batched.reviewer)).toEqual(outcome(sequential.reviewer));

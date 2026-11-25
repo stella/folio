@@ -133,6 +133,11 @@ describe("shared toolchain CI selection", () => {
           TYPECHECK_PUSH: "${{ github.event_name == 'push' }}",
         },
       },
+      {
+        id: "test-typecheck",
+        name: "Test-file type errors only shrink",
+        run: "bun run typecheck:tests",
+      },
     ]);
   });
 
