@@ -16,6 +16,7 @@ if (container && mountLocale !== null) {
     const response = await fetch("/fixtures/sample.docx");
     await renderAsync(await response.arrayBuffer(), container, {
       locale: mountLocale,
+      accessibleName: "Locale test editor",
     });
   })();
 } else if (container) {
