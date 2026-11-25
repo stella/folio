@@ -307,6 +307,8 @@ type SequentialGroupsOptions = {
   joinsInto?: ReadonlyMap<string, PendingJoinTarget>;
   /** Blank paragraphs of `preRows` accepting removes whole (`blanksGoingWhole`). */
   goWhole?: ReadonlySet<string>;
+  /** Paragraphs whose live marks are pending insertion. */
+  markInserted?: ReadonlySet<string>;
 };
 
 export const sequentialGroups = ({
@@ -316,6 +318,7 @@ export const sequentialGroups = ({
   mode,
   joinsInto = new Map(),
   goWhole = new Set(),
+  markInserted = new Set(),
 }: SequentialGroupsOptions): AnyOperation[][] => {
   /**
    * Where the gap at `at` starts: before the blank paragraphs right before
@@ -461,7 +464,17 @@ export const sequentialGroups = ({
     // after the earlier deletions in its run. Running it first gives the
     // final paragraph a property change belonging to that suggestion, which
     // the other suggestions cannot take back.
-    if (mode === "suggested" && carrier.type === "kept" && !placesInRun) {
+    // A pending inserted mark immediately before the closing paragraph
+    // needs the original order: deleting it first leaves a pending mark
+    // that the independent closing suggestion cannot consume.
+    const previous = candidates.at(0)?.paragraph;
+    if (
+      mode === "suggested" &&
+      carrier.type === "kept" &&
+      !placesInRun &&
+      previous !== undefined &&
+      !markInserted.has(previous.id)
+    ) {
       const carrierAt = candidates.findIndex(
         ({ paragraph }) => paragraph === carrier.paragraph,
       );
