@@ -6,7 +6,7 @@ export const LocaleLoading = defineComponent({
       h(
         "div",
         { class: "docx-editor-vue__loading", "aria-busy": "true" },
-        slots.default?.() ?? [h("progress", { "aria-hidden": "true" })],
+        slots["default"]?.() ?? [h("progress", { "aria-hidden": "true" })],
       );
   },
 });
