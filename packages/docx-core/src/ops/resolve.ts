@@ -6268,11 +6268,7 @@ const resolveList = ({
             const receiverBefore = side === "after";
             const records = keptRecordsFacing(
               index,
-              keptCutHolders(
-                receiverBefore
-                  ? { before: changeAtEdge(node, "end") }
-                  : { after: changeAtEdge(node, "start") },
-              ),
+              receiverBefore ? "before" : "after",
             );
             tookKept = nameKeptPiece(
               receiverBefore ? first : seam - records,
