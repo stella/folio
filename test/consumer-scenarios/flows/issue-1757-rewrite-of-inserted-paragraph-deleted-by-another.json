@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "title": "PINNED #1757, fingerprint a32080449f7da710: a rewrite of an inserted paragraph another author deleted is refused, not run into the next paragraph",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "styleNumbered",
+  "mode": "tracked-changes",
+  "seed": 366724455,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 870677731,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "7B806329",
+          "text": "Supplier schedule supplier term.",
+          "styleId": "Heading2"
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 1558878298,
+      "operations": [
+        {
+          "type": "splitBlock",
+          "blockId": "5E88C024",
+          "offset": 22
+        }
+      ]
+    },
+    {
+      "action": "new reviewer",
+      "seed": 735219037
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 2566784850,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "@8"
+        },
+        {
+          "type": "splitBlock",
+          "blockId": "@4",
+          "offset": 4
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 3702573796,
+      "operations": [
+        {
+          "type": "replaceBlock",
+          "blockId": "@9",
+          "text": "Invoice party term party written period."
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from random flow seed 366724455"
+}

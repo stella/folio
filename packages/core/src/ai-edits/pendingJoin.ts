@@ -18,12 +18,20 @@ import { buildCleanBlockText } from "./clean-text";
 import type { NoteReferenceLabels } from "./note-references";
 import type { FolioAIEditSkippedOperation } from "./types";
 
-/** A paragraph mark that is a pending deletion, or a relocation's source. */
+/**
+ * A paragraph mark that is a pending deletion, or a relocation's source: a
+ * deleted mark, or an added one another author deleted after (`deletion`),
+ * which goes whichever change is resolved first.
+ */
 export const isDeletedPPrMark = (value: unknown): boolean =>
   typeof value === "object" &&
   value !== null &&
   "kind" in value &&
-  (value.kind === "del" || value.kind === "moveFrom");
+  (value.kind === "del" ||
+    value.kind === "moveFrom" ||
+    ("deletion" in value &&
+      value.deletion !== undefined &&
+      value.deletion !== null));
 
 /** A table row's or cell's revision record. */
 const hasRevisionMarker = (value: unknown): boolean =>

@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "title": "PINNED #1757, fingerprint 4b04efefae137318: a split of the paragraph a pending join runs into past a text box splits that paragraph's own words",
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "stories",
+  "mode": "tracked-changes",
+  "seed": 366724230,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 1367054482,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "7B806329",
+          "separator": " "
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 39441945,
+      "operations": [
+        {
+          "type": "splitBlock",
+          "blockId": "79D25458",
+          "offset": 17
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from collisions flow seed 366724230"
+}
