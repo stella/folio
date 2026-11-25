@@ -1369,6 +1369,85 @@ const placesBlock = (
   operation.type === "insertTable" ||
   operation.type === "insertSignatureTable";
 
+/** The side of the block it names that an insertion puts its block on. */
+const placementSide = (
+  operation: BlockInsertion | TableInsertion,
+): "before" | "after" => {
+  switch (operation.type) {
+    case "insertBeforeBlock":
+      return "before";
+    case "insertAfterBlock":
+      return "after";
+    case "insertTable":
+    case "insertSignatureTable":
+      return operation.position ?? "after";
+    default: {
+      const unreachable: never = operation;
+      return unreachable;
+    }
+  }
+};
+
+const placesTable = (operation: BlockInsertion | TableInsertion): boolean =>
+  operation.type === "insertTable" || operation.type === "insertSignatureTable";
+
+/**
+ * A batch's blocks beside a paragraph it deletes, which a table or another
+ * block follows rather than a paragraph, land in the requested order, the
+ * ones put before it first, in every mode:
+ *
+ * - `keepsTablesApart`: the last block put before it is a table, and so is
+ *   the first put after it, or, with none, the block after it. The paragraph
+ *   stays between them, emptied directly, its words deleted when tracked, so
+ *   accepting keeps its mark there and the tables apart. Every block stays on
+ *   its side.
+ * - `placedAfter`: applied directly, from the first paragraph put before it,
+ *   the blocks put before it go after it instead, ahead of the ones put after
+ *   it. The deletion then removes it by identity with a paragraph after it,
+ *   and that paragraph keeps its own properties. Tracked, the paragraph stays
+ *   until accepted, so every block lands on its own side.
+ */
+type DeletedParagraphPlacement =
+  | { type: "keepsTablesApart" }
+  | { type: "placedAfter"; operationIds: ReadonlySet<string> };
+
+type DeletedParagraphPlacementOptions = {
+  /** The batch's insertions beside the paragraph, in input order. */
+  beside: readonly (BlockInsertion | TableInsertion)[];
+  /** The block after the paragraph as the batch reads it. */
+  after: PMNode;
+};
+
+const deletedParagraphPlacement = ({
+  beside,
+  after,
+}: DeletedParagraphPlacementOptions): DeletedParagraphPlacement => {
+  const before = beside.filter(
+    (operation) => placementSide(operation) === "before",
+  );
+  const last = before.at(-1);
+  const firstAfter = beside.find(
+    (operation) => placementSide(operation) === "after",
+  );
+  const followedByTable =
+    firstAfter === undefined
+      ? after.type.name === "table"
+      : placesTable(firstAfter);
+  if (last !== undefined && placesTable(last) && followedByTable)
+    return { type: "keepsTablesApart" };
+  const firstParagraph = before.findIndex(
+    (operation) => operation.type === "insertBeforeBlock",
+  );
+  return {
+    type: "placedAfter",
+    operationIds: new Set(
+      firstParagraph < 0
+        ? []
+        : before.slice(firstParagraph).map(({ id }) => id),
+    ),
+  };
+};
+
 type ProjectedParagraph = NonNullable<
   ReturnType<CanonicalProjection["paragraph"]>
 >;
@@ -4468,6 +4547,10 @@ type BesideDeletions = {
   paragraphsAfter: ReadonlySet<string>;
   /** Those the operations before this one, in input order, put a paragraph after. */
   paragraphsAfterEarlier: (operationId: string) => ReadonlySet<string>;
+  /** The insertions that put a block beside `blockId`, in input order. */
+  placedBeside: (
+    blockId: string,
+  ) => readonly (BlockInsertion | TableInsertion)[];
 };
 
 type DeletedRunBeforeOptions = {
@@ -4609,6 +4692,7 @@ const NO_BESIDE_DELETIONS: BesideDeletions = {
   tables: { after: new Set(), before: new Set(), deleted: new Set() },
   paragraphsAfter: new Set(),
   paragraphsAfterEarlier: () => new Set(),
+  placedBeside: () => [],
 };
 
 /**
@@ -5089,6 +5173,11 @@ export class CanonicalPublicOperations {
             ),
         );
       },
+      placedBeside: (blockId) =>
+        batch.operations.filter(
+          (operation): operation is BlockInsertion | TableInsertion =>
+            placesBlock(operation) && operation.blockId === blockId,
+        ),
     };
     const inputIndices = new Map(
       batch.operations.map(({ id }, index) => [id, index]),
@@ -5265,11 +5354,17 @@ export class CanonicalPublicOperations {
     // again on its own, against the operations that did.
     for (const item of [...resolved]) {
       if (item.besideDeletion !== true || !state) continue;
-      const { operation } = item;
+      // As requested: resolved beside the deletion, an insertion before the
+      // paragraph may have been placed after it instead.
+      const operation =
+        batch.operations.find(({ id }) => id === item.operation.id) ??
+        panic("A resolved operation lost its request.");
       if (
         operation.type !== "deleteBlock" &&
         operation.type !== "insertAfterBlock" &&
-        operation.type !== "insertBeforeBlock"
+        operation.type !== "insertBeforeBlock" &&
+        operation.type !== "insertTable" &&
+        operation.type !== "insertSignatureTable"
       )
         continue;
       const partnered = resolved.some(({ operation: other }) =>
@@ -5963,12 +6058,13 @@ export class CanonicalPublicOperations {
     };
     /**
      * Where an insertion stands among those at its gap: in batch order, but a
-     * paragraph put before one the direct batch deletes, placed after it
-     * instead (`besideDeletion`), still goes ahead of the blocks put after it.
+     * block put before one the direct batch deletes, placed after it instead
+     * (`besideDeletion`), still goes ahead of the blocks put after it.
      */
     const placementOrderOf = (member: AdmittedOperation) =>
       member.besideDeletion === true &&
-      member.operation.type === "insertAfterBlock"
+      placesBlock(member.operation) &&
+      placementSide(member.operation) === "after"
         ? orderOf(member) - batch.operations.length
         : orderOf(member);
     const gaps = new Map<number, AdmittedOperation[]>();
@@ -7271,9 +7367,21 @@ export class CanonicalPublicOperations {
     // the deletion keeps a paragraph to remove it by identity. A tracked
     // deletion leaves the paragraph in place, so its sides stay apart, and it
     // removes the paragraph by identity once the insertion beside it applies.
-    const followed =
-      state.doc.resolve(paragraph.start + paragraph.node.content.size + 1)
-        .nodeAfter?.type.name === "paragraph";
+    const blockAfter = state.doc.resolve(
+      paragraph.start + paragraph.node.content.size + 1,
+    ).nodeAfter;
+    const followed = blockAfter?.type.name === "paragraph";
+    // Deleted by the batch with a table or another block after it, the
+    // blocks put beside it land in the requested order
+    // (`deletedParagraphPlacement`).
+    const besideDeleted =
+      !followed && blockAfter !== null && besideDeletions.deleted.has(blockId)
+        ? deletedParagraphPlacement({
+            beside: besideDeletions.placedBeside(blockId),
+            after: blockAfter,
+          })
+        : undefined;
+    const keepsTablesApart = besideDeleted?.type === "keepsTablesApart";
     if (isTableStructureOperation(operation))
       return resolveTableStructure({
         operation,
@@ -7295,9 +7403,18 @@ export class CanonicalPublicOperations {
     if (
       operation.type === "insertTable" ||
       operation.type === "insertSignatureTable"
-    )
-      return resolveTableInsertion({
-        operation,
+    ) {
+      // Put before a paragraph the direct batch deletes behind a paragraph
+      // put there, it goes after it with that paragraph.
+      const besideDeletion =
+        !tracked &&
+        listStart === undefined &&
+        besideDeleted?.type === "placedAfter" &&
+        besideDeleted.operationIds.has(operation.id);
+      const inserted = resolveTableInsertion({
+        operation: besideDeletion
+          ? { ...operation, position: "after" }
+          : operation,
         ...(listStart === undefined ? {} : { listStart }),
         paragraph,
         projection: projection.value,
@@ -7307,6 +7424,10 @@ export class CanonicalPublicOperations {
         skipAlike,
         template: options.tableTemplates?.get(operation.id),
       });
+      return besideDeletion && inserted.isOk()
+        ? Result.ok({ ...inserted.value, besideDeletion: true as const })
+        : inserted;
+    }
     // Nothing stands before a list's start: no pending join reads the place,
     // and no paragraph the batch deletes is beside it.
     if (isBlockInsertion(operation) && listStart !== undefined)
@@ -7328,15 +7449,14 @@ export class CanonicalPublicOperations {
         !tracked &&
         operation.type === "insertBeforeBlock" &&
         !followed &&
-        besideDeletions.deleted.has(blockId);
+        besideDeletions.deleted.has(blockId) &&
+        !keepsTablesApart;
       // A container's final mark remains on a paragraph inserted before it.
       // Before a table or control, its own mark goes: insert after it first
-      // so the block deletion has a following paragraph to receive its text.
-      const after = state.doc.resolve(
-        paragraph.start - 1 + paragraph.node.nodeSize,
-      ).nodeAfter;
+      // so the block deletion has a following paragraph to receive its text
+      // (`deletedParagraphPlacement`).
       const insertion: BlockInsertion =
-        besideDeletion && after !== null
+        besideDeletion && blockAfter !== null
           ? { ...operation, type: "insertAfterBlock" }
           : operation;
       // A paragraph put after one whose break a pending join removes goes
@@ -7404,7 +7524,9 @@ export class CanonicalPublicOperations {
       });
     if (operation.type === "deleteBlock") {
       const gainsFollower =
-        !followed && besideDeletions.insertedBeside.has(blockId);
+        !followed &&
+        besideDeletions.insertedBeside.has(blockId) &&
+        !keepsTablesApart;
       const before = state.doc.resolve(paragraph.start - 1).nodeBefore;
       const after = state.doc.resolve(
         paragraph.start + paragraph.node.content.size + 1,
@@ -7422,10 +7544,11 @@ export class CanonicalPublicOperations {
       const previousId: unknown =
         before?.type.name === "paragraph" ? before.attrs["paraId"] : undefined;
       const followsInsertedTable =
-        !followed &&
-        (besideDeletions.tables.before.has(blockId) ||
-          (typeof previousId === "string" &&
-            besideDeletions.tables.after.has(previousId)));
+        keepsTablesApart ||
+        (!followed &&
+          (besideDeletions.tables.before.has(blockId) ||
+            (typeof previousId === "string" &&
+              besideDeletions.tables.after.has(previousId))));
       // A paragraph the batch puts right after the table before it runs
       // first and stands before this one when the deletion runs.
       const tableBeforeGainsFollower =

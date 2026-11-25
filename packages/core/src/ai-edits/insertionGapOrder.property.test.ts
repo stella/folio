@@ -765,6 +765,57 @@ test.each(["delete", "insert"] as const)(
   },
 );
 
+// Two tables with nothing between them read as one table once saved, so the
+// property leaves this order out: the deleted paragraph stays, emptied,
+// between the table put before it and the one after it.
+test.each(["paragraph, table", "table, paragraph, table"] as const)(
+  "a deleted paragraph keeps a table put before it apart from the table after it in every mode (%s)",
+  async (kinds) => {
+    const blocks = async (mode: "direct" | "tracked-changes") => {
+      const reviewer = await open(
+        {
+          anchorIsLast: false,
+          table: "kept",
+          nextRemoved: false,
+          mode: "tracked-changes",
+          batches: [],
+          between: [],
+        },
+        "canonical",
+      );
+      const anchor = reviewer
+        .snapshot()
+        .blocks.find(({ text }) => text === ANCHOR);
+      if (anchor === undefined) throw new Error("Missing anchor");
+      const before = { blockId: anchor.id, after: false };
+      const insertions = kinds.split(", ").map((kind): Insertion => ({
+        kind: kind === "table" ? "table" : "paragraph",
+        side: "beforeAnchor",
+        look: "plain",
+      }));
+      applyBatch(reviewer, mode, [
+        ...insertions.map((insertion, at) =>
+          insertionOf(insertion, `B0I${at}`, before),
+        ),
+        { id: "delete", type: "deleteBlock", blockId: anchor.id },
+      ]);
+      reviewer.acceptAll();
+      return (await reopen(reviewer, "canonical"))
+        .snapshot()
+        .blocks.map((block) => ({
+          text: block.text,
+          inTable: block.table !== undefined,
+        }));
+    };
+    const direct = await blocks("direct");
+    expect(direct).toEqual(await blocks("tracked-changes"));
+    const gap = direct.findIndex(({ text }) => text === "");
+    expect(gap).toBeGreaterThan(0);
+    expect(direct.at(gap - 1)?.inTable).toBe(true);
+    expect(direct.at(gap + 1)).toEqual({ text: `${TABLE} one`, inTable: true });
+  },
+);
+
 test("insertion ahead of a removed table checks the break at its actual placement", async () => {
   const reviewer = await open(
     {
