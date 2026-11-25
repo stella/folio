@@ -53,6 +53,7 @@ import {
   storyParagraphs,
 } from "./blocks";
 import { isCommentExhausted, linksEmptiedByRetirement } from "./comments";
+import { planContiguousResolutionJoins } from "./contiguousResolutionJoins";
 import {
   acceptCopyOriginAncestor,
   rejectCopyOriginAncestorsInNodes,
@@ -134,6 +135,15 @@ import {
   withSeamBoundariesInside,
 } from "./rangeBoundaries";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
+import type {
+  JoinPlan,
+  ParagraphMarkPlan,
+  ResolutionReceiverEffect,
+} from "./resolutionMarkPlan";
+import {
+  type ResolutionInlineOp,
+  tryMaterializeResolution,
+} from "./resolutionMaterialization";
 import { edgeChain, edgeChainPastRemoved } from "./resolvedEdges";
 import { reachableRowIds, resolveTableRows } from "./resolveTableRows";
 import {
@@ -6147,17 +6157,6 @@ const reachableIds = (paragraph: Paragraph): Set<number> => {
   return out;
 };
 
-type JoinPlan = {
-  op: ResolveRevisionOp;
-  story: OpStory;
-  paraId: string;
-  revisionId: number;
-  added: boolean;
-  depth: number | undefined;
-  /** Paragraphs standing only for their pending insertions. */
-  holders: ReadonlySet<string>;
-};
-
 /**
  * Whether the record a paragraph's content starts with, and the one it ends
  * with, are containers resolution emptied. The record is the innermost one at
@@ -6348,30 +6347,6 @@ const deferSplitSeam = ({
     return { left: left.map(atLeft), right: right.map(atRight) };
   }
   return { left, right };
-};
-
-type ResolutionReceiverEffect = {
-  type:
-    | "paragraph-join"
-    | "table-run-in"
-    | "block-run-in"
-    | "retained-range-boundaries";
-  receiver: Paragraph;
-};
-
-type ParagraphMarkPlan = {
-  ops: readonly DocumentOp[];
-  receiverEffects: readonly ResolutionReceiverEffect[];
-  /**
-   * The paragraph, ending a block content control, whose join takes an
-   * empty paragraph after the control once every other join is done.
-   */
-  endsControl?: string;
-  /**
-   * The paragraph, ending a block content control, that the rejection of its
-   * added mark left standing only for its pending insertions.
-   */
-  holdsInsertions?: string;
 };
 
 /**
@@ -7947,7 +7922,7 @@ const planSingleRecordResolution = (
     );
   }
 
-  const inline: DocumentOp[] = [];
+  const inline: ResolutionInlineOp[] = [];
   const joins: JoinPlan[] = [];
   const holders = new Set(
     paragraphs.flatMap(({ paragraph }) =>
@@ -8377,6 +8352,45 @@ const planSingleRecordResolution = (
         review,
       });
     }
+  }
+
+  const materialized = tryMaterializeResolution({
+    document,
+    story: op.story,
+    locations: paragraphs,
+    inline,
+    join:
+      joins.length === 0
+        ? { type: "noJoins" }
+        : {
+            type: "plan",
+            prepare: (view) => {
+              const ends = new Map(emptiedEnds);
+              return planContiguousResolutionJoins({
+                document,
+                story: op.story,
+                ...view,
+                joins,
+                // On a proven section-free main-list pair, joinOps only
+                // needs these adjacent paragraphs. Its receiver is still
+                // the real working follower, with its actual review fields.
+                planPair: ({ join, first, second }) =>
+                  joinOps(
+                    { package: { document: { content: [first, second] } } },
+                    join,
+                    ends,
+                  ),
+              });
+            },
+          },
+    noteReferences,
+    receiverEffects,
+  });
+  if (materialized.type === "materialized") {
+    return Result.ok({
+      edit: materialized.edit,
+      receiverEffects: materialized.receiverEffects,
+    });
   }
 
   const staged = applyOps(document, inline);
