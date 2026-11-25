@@ -261,13 +261,16 @@ const selectedProjects = (argv: readonly string[]): readonly TestProject[] => {
   return TEST_PROJECTS.filter(({ id }) => ids.includes(id));
 };
 
+const modeFromArgv = (
+  argv: readonly string[],
+): "write" | "check" | "report" => {
+  if (argv.includes("--write-baseline")) return "write";
+  return argv.includes("--check") ? "check" : "report";
+};
+
 const main = () => {
   const argv = process.argv.slice(2);
-  const mode = argv.includes("--write-baseline")
-    ? "write"
-    : argv.includes("--check")
-      ? "check"
-      : "report";
+  const mode = modeFromArgv(argv);
   const projects = selectedProjects(argv);
   const diagnostics = projects.flatMap((project) => {
     console.log(`test-typecheck: checking ${project.id}`);
