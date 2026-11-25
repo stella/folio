@@ -1376,14 +1376,12 @@ const columnEditAcrossRecords = ({
       if (formatting === undefined) delete next.formatting;
       else next.formatting = formatting;
       const [first, ...rest] = cell.propertyChanges ?? [];
+      const earlier = respanned(first?.previousFormatting ?? {}, span.earlier);
       if (first !== undefined && span.earlier !== 0)
         next.propertyChanges = [
           {
             ...first,
-            previousFormatting: respanned(
-              first.previousFormatting ?? {},
-              span.earlier,
-            ),
+            ...(earlier === undefined ? {} : { previousFormatting: earlier }),
           },
           ...rest,
         ];
