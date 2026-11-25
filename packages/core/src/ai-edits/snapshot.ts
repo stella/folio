@@ -25,6 +25,7 @@ import {
 } from "../prosemirror/attrs";
 import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
 import { createListLabelCounter } from "../prosemirror/listLabels";
+import { CLEARED_LIST_RENDERING_ATTRS } from "../prosemirror/listMarker";
 import {
   paragraphNumberingAttr,
   readParagraphNumberingAttr,
@@ -1179,6 +1180,18 @@ const getBlockKind = (
 };
 
 /** Rebind cached style numbering to the current style before the owner reads it. */
+/**
+ * The attrs without the cached list rendering keys. The list counter reads
+ * those keys with `!= null`, so an absent key clears like the null that
+ * {@link CLEARED_LIST_RENDERING_ATTRS} writes into editor state.
+ */
+const withoutListRenderingAttrs = <T extends object>(attrs: T): T =>
+  Object.fromEntries(
+    Object.entries(attrs).filter(
+      ([key]) => !Object.hasOwn(CLEARED_LIST_RENDERING_ATTRS, key),
+    ),
+  ) as T;
+
 const snapshotListAttrs = (
   attrs: Readonly<ReturnType<typeof expectParagraphAttrs>>,
   styleResolver: RunStyleResolver | null,
@@ -1206,19 +1219,18 @@ const snapshotListAttrs = (
     return numbering === undefined ? null : paragraphNumberingAttr(numbering);
   };
   const currentStyleNumbering = styleNumberingAttr(attrs.styleId);
-  const currentAttrs = { ...attrs };
+  const dropsCachedStyleNumbering =
+    attrs.numPr == null &&
+    attrs.numPrFromStyle != null &&
+    currentStyleNumbering === null;
+  // Drop the cached marker while leaving authored numbering and the
+  // original review stream available to the list counter.
+  const currentAttrs = dropsCachedStyleNumbering
+    ? withoutListRenderingAttrs({ ...attrs })
+    : { ...attrs };
   delete currentAttrs.numPrFromStyle;
-  const cancelsStaleStyleNumbering =
-    (attrs.numPr === null || attrs.numPr === undefined) &&
-    currentStyleNumbering === null &&
-    attrs._propertyChanges !== null &&
-    attrs._propertyChanges !== undefined &&
-    attrs._propertyChanges.length > 0;
   return {
     ...currentAttrs,
-    ...(cancelsStaleStyleNumbering
-      ? { numPr: paragraphNumberingAttr({ kind: "none" }) }
-      : {}),
     ...(currentStyleNumbering === null
       ? {}
       : { numPrFromStyle: currentStyleNumbering }),

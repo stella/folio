@@ -777,6 +777,65 @@ describe("createFolioAIEditSnapshot", () => {
     expect(block).not.toHaveProperty("displayLabel");
   });
 
+  test("rebinds styled numbering without cancelling the original review marker", () => {
+    const authored = paragraphNumberingFromSlots({ numId: 5, ilvl: 0 });
+    const cancelled = paragraphNumberingFromSlots({ numId: 0 });
+    const change = {
+      type: "paragraphPropertyChange",
+      info: { id: 1, author: "Reviewer", date: "2026-01-01T00:00:00Z" },
+      previousFormatting: { numPr: authored, listMarker: "1." },
+    };
+    const cases = [
+      { text: "Existing", attrs: {}, reference: { numId: 5, level: 0 } },
+      {
+        text: "Stale inherited marker",
+        attrs: { numPrFromStyle: authored, listMarker: "9." },
+        reference: { numId: 5, level: 0 },
+      },
+      {
+        text: "Pending insertion",
+        attrs: { pPrMark: { kind: "ins", id: 2, author: "Reviewer" } },
+        reference: null,
+      },
+      { text: "Cancelled", attrs: { numPr: cancelled }, reference: null },
+      {
+        text: "Standalone projection",
+        attrs: {
+          listMarker: "7.",
+          _propertyChanges: [
+            { ...change, previousFormatting: { styleId: "Heading1" } },
+          ],
+        },
+        reference: null,
+      },
+    ];
+    const doc = folioSchema.node(
+      "doc",
+      null,
+      cases.map(({ text, attrs }) =>
+        folioSchema.node(
+          "paragraph",
+          Object.assign(
+            { styleId: "Heading1", _propertyChanges: [change] },
+            attrs,
+          ),
+          folioSchema.text(text),
+        ),
+      ),
+    );
+    const resolver = createStyleResolver({
+      styles: [{ styleId: "Heading1", type: "paragraph" }],
+    });
+    const blocks = createFolioAIEditSnapshotWithStyleResolver(
+      doc,
+      resolver,
+    ).blocks.map(expectParagraphBlock);
+    expect(blocks.map(({ listReference }) => listReference ?? null)).toEqual(
+      cases.map(({ reference }) => reference),
+    );
+    expect(blocks.at(-1)?.displayLabel).toBe("7.");
+  });
+
   test("uses the pending paragraph-property level when it hides a marker", () => {
     const visible = paragraphNumberingFromSlots({ numId: 5, ilvl: 0 });
     const hidden = paragraphNumberingFromSlots({ numId: 5, ilvl: 1 });
