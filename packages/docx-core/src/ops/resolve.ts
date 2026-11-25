@@ -3925,7 +3925,10 @@ const resolveList = ({
   /** The date of the earliest removed insertion that recorded each of them. */
   const removalDates = new Map<number, string>();
   /** The joins of the last removed insertion that recorded each of them. */
-  const removalJoins = new Map<number, Record<SourceOwnerSide, number>>();
+  const removalJoins = new Map<
+    number,
+    Record<SourceOwnerSide, number> & { type: "cut" | "carriedJoin" }
+  >();
   const recordSourceSeam = (index: number, depth: number): void => {
     recordExactSeam(index, depth);
     if (depth > 0)
@@ -4694,8 +4697,32 @@ const resolveList = ({
           const around = floating.has(out.length)
             ? enclosingRecordCut(node, index)
             : undefined;
+          // A rejected insertion can carry a kept join on both sides. Pass
+          // it to the edge when the other piece stands outside this list.
+          // If the enclosing cut already joined, its kept boundaries stand
+          // here instead and take the join at the same recorded depth.
+          const after = pending.at(index + 1);
+          const before = itemBefore(out, keptStart)?.node;
+          const crossesKeptCut =
+            (before !== undefined && standsInKeptCut(before)) ||
+            (after !== undefined && standsInKeptCut(after));
+          const atNestedEdge =
+            path.length > 0 && (before === undefined) !== (after === undefined);
+          const carriedJoin =
+            (atNestedEdge || crossesKeptCut) &&
+            joins !== undefined &&
+            joins.remove === 0 &&
+            kept.length === 0 &&
+            resolution.decision === REVISION_DECISIONS.REJECT &&
+            isAddedRevision(node)
+              ? Math.min(
+                  recordJoin(joins, "before"),
+                  recordJoin(joins, "after"),
+                )
+              : 0;
           const removalCut = Math.max(
             cutLevelsOnceResolved(node, index),
+            carriedJoin,
             around?.side === undefined ? (around?.depth ?? 0) : 0,
           );
           if (around?.side !== undefined) folds.push(out.length);
@@ -4711,6 +4738,7 @@ const resolveList = ({
               removalJoins.set(out.length, {
                 before: recordJoin(joins, "before"),
                 after: recordJoin(joins, "after"),
+                type: carriedJoin > 0 ? "carriedJoin" : "cut",
               });
           }
           // The kept markers beside it naming its side (or both) as their
@@ -5826,11 +5854,17 @@ const resolveList = ({
       passesJoinOn(seam, seam - count - 1, depth)
     )
       continue;
+    // A carried join can face its surviving piece through a pending revision.
+    // Read the contents of that revision at the facing edge.
+    const carriedJoinMeetsPiece =
+      removalJoins.get(recorded)?.type === "carriedJoin" &&
+      alikeDepth(recordAt(left?.node, "end"), recordAt(right?.node, "start")) >
+        0;
     if (
       kept === undefined &&
       (left === undefined ||
         right === undefined ||
-        !sameOwnFields(left.node, right.node))
+        (!sameOwnFields(left.node, right.node) && !carriedJoinMeetsPiece))
     )
       continue;
     exactSeams.delete(recorded);
