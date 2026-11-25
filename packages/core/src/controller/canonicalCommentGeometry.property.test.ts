@@ -198,7 +198,7 @@ const checkGeometry = (ranges: readonly Interval[], units: readonly Unit[]) => {
     pairedBookmarkIds: new Set(),
   }).unwrap();
   expect(mapped.text).toBe(paragraphLogicalText(source));
-  expect(mapped.boundaries).toEqual(expected);
+  expect(mapped.gaps.toBoundaries()).toEqual(expected);
   // Bind the oracle's ordinals to the operation owner's source leaves.
   const spans = inlineLeafSpans(content);
   for (const [offset, gaps] of expected.entries()) {

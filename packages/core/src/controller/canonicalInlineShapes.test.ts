@@ -108,14 +108,14 @@ const checkShape = (
     expect(mapped.text).toBe(paragraphLogicalText(paragraph));
     for (let position = 0; position <= native.content.size; position += 1) {
       if (
-        mapped.boundaries.some((gaps) =>
-          gaps.some((gap) => gap.position === position),
-        )
+        mapped.gaps
+          .toBoundaries()
+          .some((gaps) => gaps.some((gap) => gap.position === position))
       )
         continue;
       expect(projection.addressAt(start + position).isErr()).toBe(true);
     }
-    for (const [offset, gaps] of mapped.boundaries.entries()) {
+    for (const [offset, gaps] of mapped.gaps.toBoundaries().entries()) {
       expect(gaps.length).toBeGreaterThan(0);
       if (splitsSurrogatePair(mapped.text, offset)) continue;
       for (const gap of gaps) {

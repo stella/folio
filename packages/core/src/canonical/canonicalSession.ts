@@ -547,8 +547,7 @@ class CanonicalProjection {
       start:
         (this.starts[block] ?? panic("Missing block start")) + entry.offset,
       text: entry.inline.text,
-      boundaries: entry.inline.boundaries,
-      seams: entry.inline.seams,
+      gaps: entry.inline.gaps,
       node: entry.node,
       source: entry.source,
     };
@@ -619,28 +618,26 @@ class CanonicalProjection {
           )
         : refuse("The input is outside a plain paragraph.");
     const relative = position - paragraph.start;
-    const offset = paragraph.boundaries.findIndex((gaps) =>
-      gaps.some((gap) => gap.position === relative),
-    );
+    const offset = paragraph.gaps.offsetOf(relative);
     if (offset < 0)
       return refuse("The input splits an indivisible inline element.");
     if (splitsSurrogatePair(paragraph.text, offset)) {
       return refuse("The input would split a surrogate pair.");
     }
     const gaps =
-      paragraph.boundaries.at(offset) ?? panic("Missing canonical boundary");
-    const index = gaps.findIndex((entry) => entry.position === relative);
-    const gap = gaps[index] ?? panic("Missing canonical native gap");
-    const seam =
-      paragraph.seams.at(offset)?.[index] ?? panic("Missing canonical seam");
+      paragraph.gaps.at(offset) ?? panic("Missing canonical boundary");
+    // A gap carries its seam: the ordinals its editor position stands for.
+    const gap =
+      gaps.find((entry) => entry.position === relative) ??
+      panic("Missing canonical native gap");
     let ordinal = gap.zeroWidthBefore;
-    if (edge === "afterMarkers") ordinal = seam.last;
-    if (edge === "beforeMarkers") ordinal = seam.first;
+    if (edge === "afterMarkers") ordinal = gap.last;
+    if (edge === "beforeMarkers") ordinal = gap.first;
     return Result.ok({
       story: this.story,
       blockId: paragraph.blockId,
       offset,
-      ...(gaps.length > 1 || ordinal > 0 || seam.first !== seam.last
+      ...(gaps.length > 1 || ordinal > 0 || gap.first !== gap.last
         ? { zeroWidthBefore: ordinal }
         : {}),
     });
@@ -716,22 +713,14 @@ class CanonicalProjection {
       return refuse("The canonical selection is outside a plain paragraph.");
     }
     const gaps =
-      paragraph.boundaries.at(address.offset) ??
-      panic("Missing canonical boundary");
+      paragraph.gaps.at(address.offset) ?? panic("Missing canonical boundary");
     // An ordinal a seam's editor position stands for, not only the seam's own.
-    const seams =
-      paragraph.seams.at(address.offset) ?? panic("Missing canonical seams");
-    const lastOrdinal = (seams.at(-1) ?? panic("Missing canonical seam")).last;
+    const lastOrdinal = (gaps.at(-1) ?? panic("Missing canonical seam")).last;
     // No ordinal stated: after every zero-width leaf at the offset.
     const ordinal = address.zeroWidthBefore ?? lastOrdinal;
     const gap =
       gaps.find(({ zeroWidthBefore }) => zeroWidthBefore === ordinal) ??
-      gaps.find((_, index) => {
-        const seam = seams[index];
-        return (
-          seam !== undefined && seam.first <= ordinal && ordinal <= seam.last
-        );
-      });
+      gaps.find(({ first, last }) => first <= ordinal && ordinal <= last);
     if (!Number.isInteger(ordinal) || ordinal < 0 || ordinal > lastOrdinal)
       return refuse("The canonical selection is outside a paragraph gap.");
     if (gap === undefined)
