@@ -208,6 +208,15 @@ covers edge-reaching, equal and covering ranges; extra unused supplied ids
 still witness the risk. Disjoint and merely touching ranges are unchanged.
 Ranges crossing paragraphs already refuse as invalid sequencing operations.
 
+A deletion whose ends name zero-width leaves (`zeroWidthBefore` above 0)
+changes the zero-width gaps only at the offsets its range spans. A concurrent
+text edit with a position at one of those offsets refuses, since a direct
+deletion keeps some range boundaries there and a tracked one wraps leaves a
+position among them falls inside; one with every position elsewhere moves by
+offset alone. `zeroWidthSpanOverlap` states the pair for both the transform
+and `trackedOrderPair`, so the tracked-order policy never names a pair the
+transform refuses.
+
 ## Block-scoped operations
 
 Every other operation is block-scoped: paragraph replacement, inline

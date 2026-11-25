@@ -64,6 +64,50 @@ export const fragmentedDeletionOverlap = (
   );
 };
 
+/**
+ * The positions an operation is rebased by, where its transform maps them
+ * by paragraph and offset.
+ */
+const mappedPositions = (op: DocumentOp): readonly TextPosition[] => {
+  switch (op.type) {
+    case DOCUMENT_OP_TYPES.INSERT_TEXT:
+    case DOCUMENT_OP_TYPES.SPLIT_BLOCK:
+      return [op.at];
+    case DOCUMENT_OP_TYPES.DELETE_RANGE:
+    case DOCUMENT_OP_TYPES.SET_RUN_PROPS:
+      return [op.from, op.to];
+    default:
+      return [];
+  }
+};
+
+/**
+ * Whether `op` has a position at an offset `over`'s range spans, where
+ * `over` is a deletion whose ends name zero-width leaves. Such a deletion
+ * changes the zero-width gaps only at those offsets: a direct one removes
+ * the leaves strictly inside it but keeps some range boundaries there, and
+ * a tracked one wraps leaves a position among them would fall inside. A
+ * position elsewhere moves by its offset alone. The transform refuses the
+ * pair, so it is outside the tracked-order policy too.
+ */
+export const zeroWidthSpanOverlap = (
+  op: DocumentOp,
+  over: DocumentOp,
+): boolean => {
+  if (
+    over.type !== DOCUMENT_OP_TYPES.DELETE_RANGE ||
+    ((over.from.zeroWidthBefore ?? 0) === 0 &&
+      (over.to.zeroWidthBefore ?? 0) === 0)
+  )
+    return false;
+  return mappedPositions(op).some(
+    (position) =>
+      sameParagraph(position, over.from) &&
+      over.from.offset <= position.offset &&
+      position.offset <= over.to.offset,
+  );
+};
+
 /** The kinds of concurrent pair whose two orders record different cuts. */
 export const TRACKED_ORDER_PAIRS: Readonly<{
   /** A cut at a tracked change's edge or inside its range. */
@@ -240,7 +284,12 @@ export const trackedOrderPair = (
     (over.type === DOCUMENT_OP_TYPES.INSERT_CONTENT && !isInlineInsertion(over))
   )
     return undefined;
-  if (fragmentedDeletionOverlap(op, over)) return undefined;
+  if (
+    fragmentedDeletionOverlap(op, over) ||
+    zeroWidthSpanOverlap(op, over) ||
+    zeroWidthSpanOverlap(over, op)
+  )
+    return undefined;
   if (overlappingDeletions(op, over))
     return TRACKED_ORDER_PAIRS.OVERLAPPING_DELETIONS;
   const opEdges = changeEdges(op, document);

@@ -32,7 +32,10 @@ import {
   sameParagraph,
 } from "./points";
 import { transformByFootprint } from "./scope";
-import { fragmentedDeletionOverlap } from "./trackedTransform";
+import {
+  fragmentedDeletionOverlap,
+  zeroWidthSpanOverlap,
+} from "./trackedTransform";
 
 type TransformOptions = { order?: "before" | "after" };
 
@@ -573,17 +576,12 @@ const transformRestoredOp = ({
       over,
       "Tracking a concurrent insertion requires a revision partition.",
     );
-  if (
-    over.type === DOCUMENT_OP_TYPES.DELETE_RANGE &&
-    ((over.from.zeroWidthBefore ?? 0) !== 0 ||
-      (over.to.zeroWidthBefore ?? 0) !== 0)
-  ) {
+  if (zeroWidthSpanOverlap(op, over))
     return refusal(
       op,
       over,
       "Tracked deletion and zero-width boundaries require an unchanged range.",
     );
-  }
   const mapping: PointMapping = {
     over,
     effect,

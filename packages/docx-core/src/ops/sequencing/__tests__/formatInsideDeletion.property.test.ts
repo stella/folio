@@ -324,7 +324,8 @@ const rejoined = (forget?: Forgotten) =>
       const deletionFirst = inOrder(base, deletion, format, forget);
       // Declared, a separate class: a position after zero-width leaves
       // is refused against a concurrent deletion holding it, and a
-      // deletion bounded there refuses every concurrent operation.
+      // deletion bounded there refuses an operation with a position at
+      // an offset its range spans.
       const zeroWidthBound = [deleteFrom, formatFrom, formatTo, deleteTo].some(
         ({ zeroWidthBefore }) => zeroWidthBefore > 0,
       );
