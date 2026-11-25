@@ -560,9 +560,6 @@ export const analyzeDocument = async (
 export const analyzeDocxBlocks = async (
   docx: Uint8Array,
 ): Promise<Result<DocxBlockManifest, TemplatePlanError>> =>
-  await guarded(async () => {
-    const analyzed = await analyzeDocument(docx);
-    return Result.isError(analyzed)
-      ? analyzed
-      : Result.ok(analyzed.value.manifest);
-  });
+  await guarded(async () =>
+    (await analyzeDocument(docx)).map(({ manifest }) => manifest),
+  );

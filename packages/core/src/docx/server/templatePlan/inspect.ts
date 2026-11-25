@@ -234,7 +234,8 @@ export const inspectDocxTemplate = async (
 ): Promise<Result<DocxTemplateInspection, TemplatePlanError>> =>
   await guarded(async () => {
     const analyzed = await analyzeDocument(docx);
-    return Result.isError(analyzed)
-      ? analyzed
-      : await inspectAnalyzedTemplate(analyzed.value);
+    if (Result.isError(analyzed)) {
+      return Result.err(analyzed.error);
+    }
+    return await inspectAnalyzedTemplate(analyzed.value);
   });

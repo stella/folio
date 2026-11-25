@@ -61,6 +61,7 @@ const readStory = (raw: RawPart): ReadStory => {
     cellStart: () => {},
     tableEnd: () => {},
     unread: () => {},
+    tracked: () => {},
   });
   return {
     texts,
