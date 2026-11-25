@@ -2815,6 +2815,27 @@ const resolveList = ({
       ...(payload && { payload: true as const }),
     });
   };
+  /** A cut at a paragraph edge can end inside the one insertion it split. */
+  const cutsEdgeOfRemovedInsertion = (
+    node: TrackedWrapper,
+    index: number,
+  ): boolean => {
+    const cut = node.resolutionJoins;
+    if (cut?.remove !== 1 || cut.before !== 0 || cut.after !== 0) return false;
+    if (index !== 0 && index !== pending.length - 1) return false;
+    const piece = pending[index === 0 ? 1 : index - 1];
+    return (
+      piece !== undefined &&
+      isAddedRevision(piece) &&
+      isTrackedWrapper(piece) &&
+      resolution.ids.has(piece.info.id) &&
+      removesContent(piece, resolution.decision) &&
+      (piece.info.date ?? "") < (node.info.date ?? "") &&
+      piece.resolutionJoins?.before === 0 &&
+      piece.resolutionJoins.after === 0 &&
+      piece.resolutionJoins.remove === 0
+    );
+  };
   /**
    * How many levels of the cut `node` recorded for its removal remain once
    * this resolution is done, read against the records either side of it as
@@ -2829,6 +2850,7 @@ const resolveList = ({
     const joins = node.resolutionJoins;
     const depth = joins?.remove ?? 0;
     if (depth === 0) return 0;
+    if (cutsEdgeOfRemovedInsertion(node, index)) return 0;
     // A change this resolution removes that holds no record either side
     // (its joins on keeping are 0) cut only the records beyond the changes
     // later edits put beside it; those go with this resolution too, so the
@@ -4490,7 +4512,8 @@ const resolveList = ({
           const cutGoes =
             piece === undefined &&
             enclosingCut === undefined &&
-            madeInNewContent(node, index) &&
+            (madeInNewContent(node, index) ||
+              cutsEdgeOfRemovedInsertion(node, index)) &&
             cutLevelsOnceResolved(node, index) === 0;
           const depth = Math.max(
             node.resolutionJoins?.remove ?? 0,
