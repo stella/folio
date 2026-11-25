@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "title": "PINNED #1842, reported seed 788199642: a direct replacement preserves the comment covering its retained suffix",
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "plain",
+  "mode": "direct",
+  "seed": 788199642,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 660317248,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "3CEFFC83",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 3435848416,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "412DDC7F"
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 148787672,
+      "operations": [
+        {
+          "type": "commentOnRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "@3",
+            "startOffset": 0,
+            "endOffset": 6,
+            "selectedTextHash": "hkhwncd"
+          },
+          "comment": {
+            "text": "Warranty warranty period buyer notice."
+          }
+        }
+      ],
+      "atomic": true
+    },
+    {
+      "action": "story batch",
+      "seed": 2924318840,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "replaceInBlock",
+          "blockId": "@3",
+          "find": "Period",
+          "replace": "revised",
+          "precondition": {
+            "blockTextHash": "hkhwncd"
+          }
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from collisions flow seed 788199642"
+}

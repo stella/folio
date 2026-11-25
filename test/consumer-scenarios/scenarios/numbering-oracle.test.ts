@@ -22,6 +22,7 @@ import {
   emojiDocument,
   openReviewer,
   packDocument,
+  plainDocument,
   scenarioEngine,
   storiesDocument,
   styleNumberedDocument,
@@ -838,6 +839,78 @@ test("a reference resolves a list created by an earlier suggested insertion", as
   assert.ok(result);
   assert.equal(result.kind, "listItem");
   assert.equal(result.displayLabel, "•");
+});
+
+test("a suggested join shows removed numbering only for a mark present in the original view", async () => {
+  const bytes = await plainDocument();
+  for (const insertMode of ["direct", "suggested"] as const) {
+    const reviewer = await openReviewer(bytes);
+    const anchor = rowsOf(reviewer).find(({ kind }) => kind === "paragraph");
+    assert.ok(anchor);
+    const insertion = await applyChecked(
+      reviewer,
+      [
+        {
+          id: "insert-numbered",
+          type: "insertAfterBlock",
+          blockId: anchor.id,
+          text: "Numbered clause.",
+          numbering: { kind: "newList", format: "numbered" },
+        },
+      ],
+      insertMode,
+      "insert a numbered clause",
+    );
+    assert.equal(insertion.applied.length, 1);
+    const numbered = rowsOf(reviewer).find(
+      ({ text }) => text === "Numbered clause.",
+    );
+    assert.ok(numbered?.listReference);
+
+    const survivorOf = (current: typeof reviewer) => {
+      const survivor = rowsOf(current).find(({ id }) => id === numbered.id);
+      assert.ok(survivor);
+      return survivor;
+    };
+    const suggestJoin = async (id: string) => {
+      const join = await applyChecked(
+        reviewer,
+        [
+          {
+            id,
+            type: "mergeBlockWithNext",
+            blockId: anchor.id,
+            separator: " ",
+          },
+        ],
+        "suggested",
+        "join onto the numbered clause",
+      );
+      assert.equal(join.applied.length, 1);
+    };
+    const expectedMarker =
+      insertMode === "direct" ? numbered.listReference : undefined;
+    await suggestJoin("join");
+    assert.deepEqual(survivorOf(reviewer).listReference, expectedMarker);
+    assert.equal(reviewer.rejectSuggestion("join"), true);
+    assert.deepEqual(
+      survivorOf(reviewer).listReference,
+      numbered.listReference,
+    );
+
+    await suggestJoin("join-again");
+    if (insertMode === "suggested")
+      assert.equal(reviewer.acceptSuggestion("insert-numbered"), true);
+    assert.equal(reviewer.acceptSuggestion("join-again"), true);
+    const reopened = await openReviewer(
+      new Uint8Array(await reviewer.toBuffer()),
+    );
+    assert.deepEqual(survivorOf(reopened).listReference, expectedMarker);
+    assert.deepEqual(reopened.acceptAll().skipped, []);
+    const survivor = survivorOf(reopened);
+    assert.equal(survivor.text, `${anchor.text} ${numbered.text}`);
+    assert.equal(survivor.listReference, undefined);
+  }
 });
 
 test("a reference resolves a pending list inserted beside a table cell", async () => {
