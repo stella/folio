@@ -759,6 +759,30 @@ const breakRetiredBefore = (
 };
 
 /**
+ * A table pending deletion still blocks a tracked paragraph join, but it
+ * does not supply properties to the closing paragraph. Look past such
+ * tables for the paragraph that supplies them in the accepted document.
+ */
+const terminalPropertySource = (
+  list: readonly BlockContent[],
+  index: number,
+): number => {
+  let candidate = index;
+  for (;;) {
+    const block = list[candidate];
+    if (
+      block?.type !== "table" ||
+      block.rows.length === 0 ||
+      !block.rows.every(
+        (row) => row.structuralChange?.type === "tableRowDeletion",
+      )
+    )
+      return candidate;
+    candidate = breakRetiredBefore(list, candidate);
+  }
+};
+
+/**
  * Whether accepting leaves nothing of `blocks`, a container's last blocks:
  * paragraphs that keep no content once accepted, each before the last with
  * its break pending deletion, and no section break among them.
@@ -1234,9 +1258,18 @@ export const deleteBlocks = ({
           ...sectionBoundaries,
         };
   const finalReview = reviewFieldsOf(last.paragraph);
-  if (previous !== undefined && givesProperties(list, previousIndex)) {
+  const propertySourceIndex =
+    terminal && op.revision !== undefined
+      ? terminalPropertySource(list, previousIndex)
+      : previousIndex;
+  const propertySource = list[propertySourceIndex];
+  if (
+    terminal &&
+    propertySource?.type === "paragraph" &&
+    givesProperties(list, propertySourceIndex)
+  ) {
     const formatting = withMarkFormatting(
-      paragraphPropertiesOf(previous.formatting),
+      paragraphPropertiesOf(propertySource.formatting),
       last.paragraph.formatting,
     );
     delete finalReview.formatting;

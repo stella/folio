@@ -69,6 +69,65 @@ const assertLaws = (document: Document, op: DeleteBlocksOp) => {
   return { tracked, direct };
 };
 
+test("terminal deletions inherit the preceding paragraph's properties across a deleted table", () => {
+  const document = documentOf([
+    cell([paragraph("00000010", "kept table")]),
+    paragraph("00000001", "text"),
+    cell([paragraph("00000011", "deleted table")]),
+    paragraph("00000002", "closing text"),
+  ]);
+  const numberClosing = {
+    type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
+    story: OP_STORIES.MAIN,
+    blockId: "00000002",
+    patch: { numPr: { kind: "reference", numId: 2, ilvl: 0 } },
+  } satisfies DocumentOp;
+  const deleteTable = {
+    type: DOCUMENT_OP_TYPES.DELETE_TABLE,
+    story: OP_STORIES.MAIN,
+    blockId: "00000011",
+  } satisfies DocumentOp;
+  const numbered = apply(document, {
+    ...numberClosing,
+    revision: { id: 50, author: "Reviewer", date: "2026-02-03T04:05:06Z" },
+  });
+  const table = apply(numbered.document, {
+    ...deleteTable,
+    revision: { id: 200, author: "Reviewer", date: "2026-02-03T04:05:06Z" },
+    newIds: { revision: [201, 202, 203] },
+  });
+  const closing = apply(table.document, deletion(["00000002"]));
+  const preceding = apply(closing.document, {
+    ...deletion(["00000001"]),
+    revision: { id: 300, author: "Reviewer", date: "2026-02-03T04:05:06Z" },
+    newIds: { revision: [301, 302, 303] },
+  });
+  const revisions = [
+    ...new Set([
+      ...numbered.revisions,
+      ...table.revisions,
+      ...closing.revisions,
+      ...preceding.revisions,
+    ]),
+  ];
+  const directNumbered = apply(document, numberClosing);
+  const directTable = apply(directNumbered.document, deleteTable);
+  const directClosing = apply(directTable.document, {
+    ...deletion(["00000002"]),
+    revision: undefined,
+  });
+  const direct = apply(directClosing.document, {
+    ...deletion(["00000002"]),
+    revision: undefined,
+  });
+  expect(
+    resolveTracked(preceding.document, revisions, REVISION_DECISIONS.ACCEPT),
+  ).toStrictEqual(direct.document);
+  expect(
+    resolveTracked(preceding.document, revisions, REVISION_DECISIONS.REJECT),
+  ).toStrictEqual(document);
+});
+
 test.each(["body", "cell"] as const)(
   "whole-container deletion retains the last paragraph in a %s",
   (container) => {
