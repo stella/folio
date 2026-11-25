@@ -181,6 +181,12 @@ test("canonical edits save and reopen the canonical text and paragraph identity"
         await new Promise((resolve) => window.setTimeout(resolve, 300)),
     );
     expect(hostChanges.count).toBeGreaterThan(0);
+    await act(async () => {
+      expect(await editor.current?.getEditor()?.getDocx()).toBeInstanceOf(
+        ArrayBuffer,
+      );
+    });
+    expect(editor.current?.hasPendingChanges()).toBe(true);
     let saved: ArrayBuffer | null | undefined;
     await act(async () => {
       saved = await editor.current?.save();

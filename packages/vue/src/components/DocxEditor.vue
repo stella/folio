@@ -1970,7 +1970,7 @@ const { exposed } = useDocxEditorRefApi({
   editorView,
   // Doc-dirty flag (any doc-changing transaction; cleared on save + load) and
   // comment-list dirty flag together back `hasPendingChanges`, mirroring React's
-  // ParagraphChangeTracker signals OR-ed with commentsDirtyRef. The ref API's
+  // canonical journal read OR-ed with commentsDirtyRef. The ref API's
   // save wrapper clears the comment flag; useDocxEditor clears the doc flag.
   isDirty,
   commentsDirty: commentManagement.commentsDirty,

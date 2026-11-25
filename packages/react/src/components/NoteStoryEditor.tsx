@@ -21,7 +21,6 @@ import {
   type NoteEditorManager,
   type NoteStoryKey,
 } from "@stll/folio-core/controller/noteEditorManager";
-import { setSuggestionMode } from "@stll/folio-core/prosemirror/plugins/suggestionMode";
 import type { CanonicalRefusalGround } from "@stll/folio-core/types/canonicalCapabilities";
 import type { StyleDefinitions } from "@stll/folio-core/types/document";
 import type {
@@ -61,8 +60,6 @@ export type NoteStoryEditorProps = {
     docChanged: boolean,
     selectionChanged: boolean,
   ) => void;
-  suggestionAuthor?: string;
-  suggestionModeActive?: boolean;
   styles?: DeepReadonly<StyleDefinitions> | null;
 };
 
@@ -111,13 +108,10 @@ const NoteStoryEditorComponent = forwardRef<
     onDocumentChange,
     onStoryChange,
     styles,
-    suggestionAuthor,
-    suggestionModeActive,
   },
   ref,
 ) {
   const t = useTranslations("folio");
-  const isSuggestionModeActive = suggestionModeActive ?? false;
   const hostRef = useRef<HTMLDivElement>(null);
   const canonicalApiRef = useRef(getCanonicalApi);
   const readCanonicalDocumentRef = useRef(readCanonicalDocument);
@@ -174,22 +168,6 @@ const NoteStoryEditorComponent = forwardRef<
     styles,
   ]);
 
-  useEffect(() => {
-    const manager = managerRef.current;
-    if (!manager) return;
-    for (const story of manager.listStories()) {
-      const view = manager.getView(story);
-      if (view) {
-        setSuggestionMode(
-          isSuggestionModeActive,
-          view.state,
-          view.dispatch,
-          suggestionAuthor,
-        );
-      }
-    }
-  }, [isSuggestionModeActive, suggestionAuthor]);
-
   useEffect(
     () => () => {
       managerRef.current?.destroy();
@@ -212,12 +190,6 @@ const NoteStoryEditorComponent = forwardRef<
     open: (story) => {
       const view = managerRef.current?.activate(story);
       if (!view) return;
-      setSuggestionMode(
-        isSuggestionModeActive,
-        view.state,
-        view.dispatch,
-        suggestionAuthor,
-      );
       setActive(story);
       onActiveChangeRef.current(story);
       requestAnimationFrame(() => view.focus());

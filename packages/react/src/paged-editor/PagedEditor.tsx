@@ -6646,8 +6646,6 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           onSessionRefusal={handleSessionRefusal}
           onDocumentChange={handleNoteDocumentChange}
           onStoryChange={handleNoteStoryTransaction}
-          suggestionModeActive={suggestionModeActive}
-          {...(suggestionAuthor !== undefined ? { suggestionAuthor } : {})}
           {...(styles !== undefined ? { styles } : {})}
         />
 
