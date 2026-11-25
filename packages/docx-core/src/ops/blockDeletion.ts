@@ -7,6 +7,7 @@ import type {
   DocumentBody,
   Paragraph,
   ParagraphContent,
+  ParagraphPropertyChange,
   Table,
 } from "../model/document";
 import {
@@ -820,32 +821,35 @@ type FinalDeletionTakenFromOptions = {
 
 /**
  * The container's last paragraph, right after `last`, when its pending
- * deletion took `last`'s mark: its words are all pending deletion and a
- * pending change gave it `last`'s properties.
+ * deletion took `last`'s mark, along with the property change that belongs
+ * to that mark's deletion.
  */
 const finalDeletionTakenFrom = ({
   list,
   following,
   followerIndex,
   last,
-}: FinalDeletionTakenFromOptions): Paragraph | undefined =>
-  following?.type === "paragraph" &&
-  markPendingDeletion(last) &&
-  blockFollower(list, followerIndex).block === undefined &&
-  paragraphHoldsContent(following) &&
-  !paragraphHoldsContentOnceAccepted(following) &&
-  (following.propertyChanges?.length ?? 0) > 0 &&
-  sameParagraphProperties(
-    paragraphPropertiesOf(following.formatting),
-    paragraphPropertiesOf(last.formatting),
+}: FinalDeletionTakenFromOptions) => {
+  const mark = last.pPrMark;
+  if (
+    following?.type !== "paragraph" ||
+    mark?.kind !== "del" ||
+    blockFollower(list, followerIndex).block !== undefined ||
+    !paragraphHoldsContent(following) ||
+    paragraphHoldsContentOnceAccepted(following)
   )
-    ? following
-    : undefined;
+    return undefined;
+  const change = following.propertyChanges?.find(
+    ({ resolvesWith }) => resolvesWith === mark.info.id,
+  );
+  return change === undefined ? undefined : { final: following, change };
+};
 
 type FinalDeletionTakenBackOptions = BlockDeletionOptions & {
   revision: RevisionStamp;
   /** The last paragraph whose deletion took the selection's last mark. */
   final: Paragraph;
+  change: ParagraphPropertyChange;
 };
 
 /**
@@ -861,6 +865,7 @@ const withFinalDeletionTakenBack = ({
   applyOps,
   revision,
   final,
+  change,
 }: FinalDeletionTakenBackOptions): Result<DocumentEdit, DocumentOpRefusal> => {
   const refuse = (reason: DocumentOpRefusal["reason"], message: string) =>
     Result.err(new DocumentOpRefusal({ reason, message, opType: op.type }));
@@ -869,11 +874,7 @@ const withFinalDeletionTakenBack = ({
       DOCUMENT_OP_REFUSAL_REASONS.INVALID_BLOCK_ID,
       "The last paragraph has no id to delete it by.",
     );
-  if (
-    (final.propertyChanges ?? []).some((change) =>
-      takesOverOtherSuggestion(change, revision),
-    )
-  )
+  if (takesOverOtherSuggestion(change, revision))
     return refuse(
       DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_PROPERTY_CHANGE,
       "A suggestion cannot take back another pending paragraph property change.",
@@ -882,7 +883,7 @@ const withFinalDeletionTakenBack = ({
     {
       type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
       story: op.story,
-      revisionIds: (final.propertyChanges ?? []).map(({ info }) => info.id),
+      revisionIds: [change.info.id],
       decision: REVISION_DECISIONS.REJECT,
     },
   ]);
@@ -1102,7 +1103,7 @@ export const deleteBlocks = ({
       op,
       applyOps,
       revision: op.revision,
-      final: takenFinal,
+      ...takenFinal,
     });
   // Tracked, a paragraph a table or another block follows loses its words
   // and its own mark, as the default editor records it; accepting removes
@@ -1393,6 +1394,9 @@ export const deleteBlocks = ({
     const ending = lastBlockPastBoundaries(list);
     if (
       ending?.type === "paragraph" &&
+      // The final paragraph's independent review keeps its own properties.
+      // A deletion-owned change was already taken back above.
+      (ending.propertyChanges?.length ?? 0) === 0 &&
       givesProperties(list, retiredIndex) &&
       !sameParagraphProperties(retired.formatting, ending.formatting)
     ) {
@@ -1410,6 +1414,7 @@ export const deleteBlocks = ({
     ];
   }
   const endsContainer = trailing.at(-1) ?? (terminal ? last.paragraph : null);
+  const propertySource = trailing.length > 0 ? retired : previous;
   // The paragraphs whose own mark the tracked deletion records deleted.
   const losesMark = (paragraph: Paragraph) =>
     paragraph !== endsContainer && !trailing.includes(paragraph);
@@ -1549,7 +1554,7 @@ export const deleteBlocks = ({
         foldedParagraphPropertyChange({
           paragraph,
           formatting: endFormatting,
-          stamp: op.revision,
+          stamp: revision,
         }),
       ];
       next = withReviewFields(next, review);
@@ -1595,6 +1600,21 @@ export const deleteBlocks = ({
         following?.type === "paragraph" && trailing.length === 0
           ? [following]
           : [];
+      // Several marks can start with the operation stamp. Link to the mark
+      // that actually supplied the properties after those ids are distinct.
+      const sourceMark = fresh.paragraphs.find(
+        (_, index) => reviewed[index] === propertySource,
+      )?.pPrMark;
+      const ownerId =
+        sourceMark?.kind === "del"
+          ? sourceMark.info.id
+          : sourceMark?.deletion?.info.id;
+      const newOwner =
+        ownerId !== undefined &&
+        propertySource !== undefined &&
+        !markGoes(propertySource)
+          ? ownerId
+          : undefined;
       const marked = [...fresh.paragraphs, ...next];
       const original = [...reviewed, ...next];
       const changed = [...tracked, ...next];
@@ -1606,8 +1626,19 @@ export const deleteBlocks = ({
       const modified = new Set<string>();
       let carried: ParagraphContent[] | undefined;
       let joining: string[] = [];
-      for (const [index, paragraph] of marked.entries()) {
+      for (const [index, markedParagraph] of marked.entries()) {
         const source = original[index];
+        const change = markedParagraph.propertyChanges?.at(0);
+        const paragraph =
+          newOwner !== undefined &&
+          source === endsContainer &&
+          !source.propertyChanges?.length &&
+          change !== undefined
+            ? {
+                ...markedParagraph,
+                propertyChanges: [{ ...change, resolvesWith: newOwner }],
+              }
+            : markedParagraph;
         // The boundaries standing before the following paragraph stay
         // between the blocks, or join it with a paragraph that joins it.
         if (source === following && standing.length > 0) {

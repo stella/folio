@@ -133,7 +133,7 @@ const applyAll = (document: Document, ops: readonly DocumentOp[]) => {
 };
 
 /** Each inverse, as a client stores and replays it. */
-const undone = (applied: { document: Document; inverse: DocumentOp[] }) =>
+const undone = (applied: AppliedDocumentOp) =>
   applyAll(applied.document, JSON.parse(JSON.stringify(applied.inverse)))
     .document;
 
@@ -163,7 +163,10 @@ const renumbered = (document: Document): unknown => {
     if (typeof value !== "object" || value === null) return value;
     return Object.fromEntries(
       Object.entries(value).map(([key, field]) => {
-        if (key !== "id" || typeof field !== "number")
+        if (
+          (key !== "id" && key !== "resolvesWith") ||
+          typeof field !== "number"
+        )
           return [key, walk(field)];
         if (!ids.has(field)) ids.set(field, ids.size + 1);
         return [key, ids.get(field)];
@@ -283,3 +286,46 @@ test.each([
     );
   },
 );
+
+test("deleting before the already deleted final paragraph keeps its unrelated property revision", () => {
+  const document = documentOf({
+    before: BEFORE["a plain paragraph"].blocks,
+    item: "right-aligned",
+    closing: "right-aligned",
+  });
+  const closing = document.package.document.content.at(-1);
+  if (closing?.type !== "paragraph")
+    throw new Error("Expected final paragraph");
+  const propertyChange = {
+    type: "paragraphPropertyChange",
+    info: { id: 50, ...MODES.tracked },
+    previousFormatting: FORMATTINGS.centered,
+    currentFormatting: FORMATTINGS["right-aligned"],
+  } satisfies NonNullable<Paragraph["propertyChanges"]>[number];
+  closing.propertyChanges = [propertyChange];
+  const closingDeleted = apply(document, {
+    type: DOCUMENT_OP_TYPES.DELETE_BLOCKS,
+    story: OP_STORIES.MAIN,
+    blockIds: [CLOSING],
+    revision: { id: 100, ...MODES.tracked },
+    newIds: { revision: [101, 102, 103] },
+  }).document;
+
+  const deleted = apply(closingDeleted, {
+    type: DOCUMENT_OP_TYPES.DELETE_BLOCKS,
+    story: OP_STORIES.MAIN,
+    blockIds: [ITEM],
+    revision: { id: 110, ...MODES.tracked },
+    newIds: { revision: [111, 112, 113, 114] },
+  });
+  expect(deleted.document.package.document.content.at(-1)).toMatchObject({
+    paraId: CLOSING,
+    formatting: FORMATTINGS["right-aligned"],
+    propertyChanges: [propertyChange],
+  });
+  expect(deleted.document.package.document.content.at(0)).toMatchObject({
+    paraId: KEPT,
+    pPrMark: { kind: "del", info: { id: 110 } },
+  });
+  expect(undone(deleted)).toEqual(closingDeleted);
+});

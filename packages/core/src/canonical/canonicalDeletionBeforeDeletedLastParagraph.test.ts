@@ -122,3 +122,14 @@ test("tracked deletions of a paragraph and the last one after it read alike in e
   }
   for (const other of views.slice(1)) expect(other).toEqual(views.at(0));
 });
+
+test("reopening preserves which deletion owns the final paragraph's property change", async () => {
+  const tracked = await open();
+  deleting(tracked, "tracked-changes", [CLOSING]);
+  const reopened = await open(await tracked.toBuffer());
+  deleting(reopened, "tracked-changes", [ITEM]);
+
+  const together = await open();
+  deleting(together, "tracked-changes", [ITEM, CLOSING]);
+  expect(view(reopened)).toEqual(view(together));
+});

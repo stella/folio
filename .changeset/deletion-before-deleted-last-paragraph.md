@@ -3,4 +3,4 @@
 "@stll/folio-core": patch
 ---
 
-A tracked deletion of the paragraph before a last paragraph already pending deletion applies: it takes back the property change that deletion recorded, and the deletions read alike in either order
+A tracked deletion before an already deleted last paragraph takes back the property change linked to the earlier deletion, preserves independent property revisions, and reads alike in either order.
