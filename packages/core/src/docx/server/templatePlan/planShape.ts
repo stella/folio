@@ -201,6 +201,34 @@ const omitIssue = (omit: unknown): string | null => {
   return null;
 };
 
+const INDENT_KEYS: ReadonlySet<string> = new Set([
+  "left",
+  "hanging",
+  "firstLine",
+]);
+/** The widest indent a patch may state: the widest page WordprocessingML allows. */
+const MAX_INDENT = 31_680;
+
+/**
+ * Whether `value` is a level indent a patch may state: at least one of
+ * `left`, `hanging` and `firstLine`, each a whole number of twentieths of a
+ * point, and not both a hanging and a first-line indent.
+ */
+const isLevelIndent = (value: unknown): boolean => {
+  if (!isObject(value)) {
+    return false;
+  }
+  const keys = Object.keys(value);
+  return (
+    keys.length > 0 &&
+    keys.every(
+      (key) =>
+        INDENT_KEYS.has(key) && isCount(value[key]) && value[key] <= MAX_INDENT,
+    ) &&
+    !(value["hanging"] !== undefined && value["firstLine"] !== undefined)
+  );
+};
+
 const patchesIssue = (patches: unknown): string | null => {
   if (patches === undefined) {
     return null;
@@ -222,13 +250,14 @@ const patchesIssue = (patches: unknown): string | null => {
       return `Two numbering patches change level ${String(patch["ilvl"])} of list definition ${String(patch["abstractNumId"])}.`;
     }
     seen.add(key);
-    const { numFmt, lvlText, start, suff } = patch;
+    const { numFmt, lvlText, start, suff, indent } = patch;
     if (
       (numFmt !== undefined &&
         !(isString(numFmt) && NUMBER_FORMATS.has(numFmt))) ||
       (lvlText !== undefined && !(isString(lvlText) && isPlainText(lvlText))) ||
       (start !== undefined && !isCount(start)) ||
-      (suff !== undefined && !(isString(suff) && SUFFIXES.has(suff)))
+      (suff !== undefined && !(isString(suff) && SUFFIXES.has(suff))) ||
+      (indent !== undefined && !isLevelIndent(indent))
     ) {
       return "A numbering patch carries a malformed value.";
     }

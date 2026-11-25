@@ -399,6 +399,11 @@ export type DocxTemplateNumberingLevel = {
     start: number;
     suff: "tab" | "space" | "nothing";
     pStyle: string | null;
+    indent: {
+        left: number | null;
+        hanging: number | null;
+        firstLine: number | null;
+    };
 };
 
 // @public (undocumented)
@@ -436,6 +441,7 @@ export type DocxTemplateStyle = {
         ilvl: number;
     } | null;
     outlineLvl: number | null;
+    alignment: string | null;
     isDefault: boolean;
 };
 
@@ -2221,6 +2227,11 @@ export type TemplatePlanNumberingPatch = {
     lvlText?: string;
     start?: number;
     suff?: "tab" | "space" | "nothing";
+    indent?: {
+        left?: number;
+        hanging?: number;
+        firstLine?: number;
+    };
 };
 
 // @public (undocumented)

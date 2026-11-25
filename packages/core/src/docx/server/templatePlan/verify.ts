@@ -1122,6 +1122,30 @@ export const reportTemplatePlanOutput = async ({
         );
       }
     }
+    const indent = wChild(wChild(level, "pPr"), "ind");
+    for (const [name, value] of Object.entries(patch.indent ?? {})) {
+      if (integerOrNull(wAttr(indent, name)) !== value) {
+        numberingMismatch(
+          `Level ${patch.ilvl} of list definition ${patch.abstractNumId} does not carry the planned ${name} indent.`,
+        );
+      }
+    }
+    // A hanging and a first-line indent exclude each other: the one the
+    // plan states must not stand beside the other.
+    const excluded = [
+      ["hanging", "firstLine"],
+      ["firstLine", "hanging"],
+    ] as const;
+    for (const [stated, other] of excluded) {
+      if (
+        patch.indent?.[stated] !== undefined &&
+        wAttr(indent, other) !== null
+      ) {
+        numberingMismatch(
+          `Level ${patch.ilvl} of list definition ${patch.abstractNumId} keeps a ${other} indent beside the planned ${stated} one.`,
+        );
+      }
+    }
   }
 
   // Integrity of every id the output's stories use: the main document and

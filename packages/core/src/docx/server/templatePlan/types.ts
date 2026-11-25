@@ -127,6 +127,11 @@ export type DocxTemplateStyle = {
   /** The list the style binds its paragraphs to, inheritance resolved. */
   numPr: { numId: number; ilvl: number } | null;
   outlineLvl: number | null;
+  /**
+   * The paragraph alignment the style states (`w:jc`), inheritance resolved;
+   * null when neither the style nor one it is based on states one.
+   */
+  alignment: string | null;
   isDefault: boolean;
 };
 
@@ -137,6 +142,12 @@ export type DocxTemplateNumberingLevel = {
   start: number;
   suff: "tab" | "space" | "nothing";
   pStyle: string | null;
+  /** The level's paragraph indent in twentieths of a point; null where unstated. */
+  indent: {
+    left: number | null;
+    hanging: number | null;
+    firstLine: number | null;
+  };
 };
 
 export type DocxTemplateNumbering = {
@@ -255,6 +266,12 @@ export type TemplatePlanNumberingPatch = {
   lvlText?: string;
   start?: number;
   suff?: "tab" | "space" | "nothing";
+  /**
+   * The paragraph indent the level gives, in twentieths of a point. A value
+   * left out keeps what the level states; `hanging` and `firstLine` exclude
+   * each other, so stating one drops the other.
+   */
+  indent?: { left?: number; hanging?: number; firstLine?: number };
 };
 
 export type TemplatePlanReference = {

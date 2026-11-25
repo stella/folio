@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { applyTemplatePlan } from "../apply";
 import { analyzeDocxBlocks } from "../blocks";
+import { inspectDocxTemplate } from "../inspect";
 import { innerRangeOf, readRawPart } from "../xml";
 import {
   buildMinimalDocx,
@@ -220,5 +221,96 @@ describe("applyTemplatePlan edge content", () => {
     expect(relevelledReport.issues).toEqual([
       expect.objectContaining({ code: "numbering-mismatch", blockId: "p0" }),
     ]);
+  });
+
+  test("patches the indent of a level and keeps what the patch leaves out", async () => {
+    const base = await buildTemplate();
+    const numbering = (await readPart(base, "word/numbering.xml")) ?? "";
+    // Level 0 states an indent; level 1 holds paragraph properties without
+    // one; level 4 is written self-closed.
+    const template = await replacePart(
+      base,
+      "word/numbering.xml",
+      numbering
+        .replace(
+          '<w:pPr><w:ind w:left="567" w:hanging="567"/></w:pPr>',
+          '<w:pPr><w:ind w:left="567" w:right="113" w:hanging="567"/><w:jc w:val="center"/></w:pPr>',
+        )
+        .replace(
+          '<w:pPr><w:ind w:left="1134" w:hanging="567"/></w:pPr>',
+          '<w:pPr><w:keepNext/><w:jc w:val="left"/></w:pPr>',
+        )
+        .replace(/<w:lvl w:ilvl="4">.*?<\/w:lvl>/u, '<w:lvl w:ilvl="4"/>'),
+    );
+    expect(template).not.toBe(base);
+    const source = await buildMinimalDocx(`${p(r("first"))}${p(r("second"))}`);
+    const plan = await planFor({
+      source,
+      template,
+      items: (ids) =>
+        ids.map(({ id, hash }) => ({
+          kind: "source",
+          blockId: id,
+          hash,
+          styleId: "HouseBody",
+          numbering: { numId: 1, ilvl: 0 },
+        })),
+      extra: {
+        numberingPatches: [
+          { abstractNumId: 0, ilvl: 0, indent: { left: 0, hanging: 0 } },
+          { abstractNumId: 0, ilvl: 1, indent: { left: 284 } },
+          { abstractNumId: 0, ilvl: 2, indent: { firstLine: 142 } },
+          { abstractNumId: 0, ilvl: 4, lvlText: "%5.", indent: { left: 0 } },
+        ],
+      },
+    });
+    const { docx, report } = unwrap(
+      await applyTemplatePlan({ source, template, plan }),
+    );
+    const patched = (await readPart(docx, "word/numbering.xml")) ?? "";
+
+    expect(report.ok).toBe(true);
+    // The right indent and the alignment stay; left and hanging are the plan's.
+    expect(patched).toContain(
+      '<w:pPr><w:ind w:left="0" w:right="113" w:hanging="0"/><w:jc w:val="center"/></w:pPr>',
+    );
+    // An indent is written where the schema orders it: before the alignment.
+    expect(patched).toContain(
+      '<w:pPr><w:keepNext/><w:ind w:left="284"/><w:jc w:val="left"/></w:pPr>',
+    );
+    // A first-line indent replaces the hanging one; the left indent stays.
+    expect(patched).toContain(
+      '<w:pPr><w:ind w:left="1701" w:firstLine="142"/></w:pPr>',
+    );
+    expect(patched).toContain(
+      '<w:lvl w:ilvl="4"><w:lvlText w:val="%5."/><w:pPr><w:ind w:left="0"/></w:pPr></w:lvl>',
+    );
+    expect(
+      unwrap(await inspectDocxTemplate(docx))
+        .numbering.abstractNums.at(0)
+        ?.levels.map(({ indent }) => indent),
+    ).toEqual([
+      { left: 0, hanging: 0, firstLine: null },
+      { left: 284, hanging: null, firstLine: null },
+      { left: 1701, hanging: null, firstLine: 142 },
+      { left: 2268, hanging: 567, firstLine: null },
+      { left: 0, hanging: null, firstLine: null },
+    ]);
+
+    // An output whose level lost the planned indent is not what was planned.
+    const reverted = patched.replace(
+      '<w:ind w:left="0" w:right="113" w:hanging="0"/>',
+      '<w:ind w:left="567" w:right="113" w:hanging="567"/>',
+    );
+    expect(reverted).not.toBe(patched);
+    const revertedReport = await verifyFor({
+      source,
+      template,
+      plan,
+      output: await replacePart(docx, "word/numbering.xml", reverted),
+    });
+    expect(
+      revertedReport.issues.map(({ code, part }) => [code, part]),
+    ).toContainEqual(["numbering-mismatch", "word/numbering.xml"]);
   });
 });
