@@ -161,11 +161,10 @@ describe.each(["canonical"] as const)("on the %s session", (session) => {
   });
 });
 
-// A paragraph put before a paragraph accepting takes whole copies it, as the
-// paragraph the operation names: before an emptied list item whose break is
-// pending deletion, it is a list item, as before one whose deleted words it
-// still holds (#1738). Applied directly, tracked or suggested, accepting
-// gives the same paragraphs.
+// A paragraph put before a pending join reads as the joined paragraph, which
+// has the properties of the paragraph the join leaves: before an emptied list
+// item whose break is pending deletion, it is no list item (#1738). Applied
+// directly, tracked or suggested, accepting gives the same paragraphs.
 describe("a paragraph inserted before an emptied list item pending deletion", () => {
   const MODES = ["direct", "tracked-changes", "suggested"] as const;
 
@@ -229,14 +228,17 @@ describe("a paragraph inserted before an emptied list item pending deletion", ()
     };
   };
 
-  test.each(MODES)("copies the named list item (%s)", async (mode) => {
-    const { pending, accepted } = await insertBefore(mode);
-    expect(pending?.kind).toBe("listItem");
-    expect(accepted).toEqual([
-      { text: "Terms", kind: "heading" },
-      { text: "Inserted clause.", kind: "listItem" },
-      { text: "Unnumbered body text.", kind: "paragraph" },
-      { text: "Numbered clause two", kind: "listItem" },
-    ]);
-  });
+  test.each(MODES)(
+    "copies the paragraph the join leaves (%s)",
+    async (mode) => {
+      const { pending, accepted } = await insertBefore(mode);
+      expect(pending?.kind).toBe("paragraph");
+      expect(accepted).toEqual([
+        { text: "Terms", kind: "heading" },
+        { text: "Inserted clause.", kind: "paragraph" },
+        { text: "Unnumbered body text.", kind: "paragraph" },
+        { text: "Numbered clause two", kind: "listItem" },
+      ]);
+    },
+  );
 });

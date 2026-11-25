@@ -1853,8 +1853,7 @@ const followersGoOnAcceptance = (doc: PMNode, position: number): boolean => {
  * pending join makes of it in the document the batch read
  * (`pendingJoinParagraphs`, which the legacy engine places by too): after
  * the join's last paragraph, or before its first, copying the properties of
- * the paragraph the join leaves, which the joined paragraph has; before a
- * paragraph accepting takes whole, that paragraph's own. The batch's
+ * the paragraph the join leaves, which the joined paragraph has. The batch's
  * other operations do not move it: a split of the paragraph the join leaves
  * puts the block after both halves, as one put after that paragraph goes.
  * Where no join reads the paragraph, `pendingJoinParagraphs` names the
@@ -1886,12 +1885,7 @@ const besidePendingJoin = ({
       ? paragraph
       : projection.paragraphStartingAt(position);
   const place = at(after ? join.last : join.first);
-  // Put before a paragraph accepting takes whole, mark and words, it copies
-  // that paragraph, as one before a paragraph whose words a deletion holds
-  // does: an empty paragraph whose break is pending deletion lends its
-  // properties as the named paragraph it is (`lentFormatting`).
-  const formattingSource =
-    !after && goesWholeOnAcceptance(paragraph.node) ? paragraph : at(join.last);
+  const formattingSource = at(join.last);
   if (place === undefined || formattingSource === undefined)
     return panic("A pending join names a paragraph the projection lacks.");
   return { place, formattingSource };
