@@ -1,3 +1,4 @@
+import { panic } from "better-result";
 import { expect, test } from "bun:test";
 import fc from "fast-check";
 
@@ -14,6 +15,7 @@ import { paragraph } from "../docx/server/build";
 import { createEmptyDocument } from "../utils/createDocument";
 import { FolioDocxReviewer } from "./headless";
 import type { FolioPendingSuggestionRecord } from "./pending-suggestions";
+import { hashFolioAIBlockContent } from "./snapshot";
 
 // A resolution can remove the paragraph a pending suggestion's record names:
 // a rejected split or insertion joins it into its neighbour, an accepted
@@ -215,3 +217,72 @@ test(
   },
   propertyTestTimeout(120_000),
 );
+
+test("export rebases the insertion a cancelled tracked paragraph anchored", async () => {
+  const reviewer = await FolioDocxReviewer.fromBuffer(await source());
+  const apply = (
+    mode: "suggested" | "tracked-changes",
+    request: FolioDocumentOperation,
+  ) => {
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode,
+        operations: [request],
+      },
+      { undefinedReferences: "refuse" },
+    );
+    expect(result.applied).toHaveLength(1);
+    expect(result.skipped).toEqual([]);
+  };
+
+  apply("suggested", {
+    id: "first",
+    type: "insertAfterBlock",
+    blockId: "10000002",
+    text: "Earlier proposal.",
+  });
+  const existing = new Set(reviewer.getContent().map(({ id }) => id));
+  const trackedText = "Tracked paragraph.";
+  apply("tracked-changes", {
+    id: "tracked",
+    type: "insertAfterBlock",
+    blockId: "10000002",
+    text: trackedText,
+  });
+  const tracked = reviewer.getContent().filter(({ id }) => !existing.has(id));
+  expect(tracked).toHaveLength(1);
+  const inserted = tracked.at(0) ?? panic("The tracked paragraph is missing.");
+  apply("suggested", {
+    id: "second",
+    type: "insertAfterBlock",
+    blockId: inserted.id,
+    text: "Later proposal.",
+    precondition: { blockTextHash: hashFolioAIBlockContent(trackedText) },
+  });
+  apply("tracked-changes", {
+    id: "cancel",
+    type: "deleteBlock",
+    blockId: inserted.id,
+  });
+  // The deletion has already taken the tracked insertion out of the document.
+  expect(reviewer.snapshot().anchors[inserted.id]).toBeUndefined();
+  expect(reviewer.acceptAll().resolved).toBe(0);
+
+  const records = reviewer.exportPendingSuggestions();
+  expect(records.map(({ suggestionId }) => suggestionId)).toEqual([
+    "first",
+    "second",
+  ]);
+  expect(reviewer.exportPendingSuggestions()).toEqual(records);
+  const reopened = await FolioDocxReviewer.fromBuffer(
+    await reviewer.toBuffer(),
+  );
+  expect(reopened.loadPendingSuggestions(records)).toEqual([
+    { status: "restaged", suggestionId: "first" },
+    { status: "restaged", suggestionId: "second" },
+  ]);
+  expect(reopened.getContent().map(({ text }) => text)).toEqual(
+    reviewer.getContent().map(({ text }) => text),
+  );
+});
