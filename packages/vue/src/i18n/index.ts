@@ -65,8 +65,10 @@ const fallbackTranslator = shallowRef(
 
 /**
  * Provide folio's translator to descendant components. `locale` may be a ref,
- * getter, or plain string; the translator recomputes when a reactive locale
- * changes. Call inside a parent component `setup()` (e.g. the editor shell).
+ * getter, or plain string. An unloaded catalog replaces the current messages
+ * once it arrives. Call inside a parent component `setup()`. Before hydrating
+ * a non-English editor, preload the catalog with
+ * `await loadFolioMessages(locale)` from `@stll/folio-core/i18n/loadMessages`.
  */
 export const provideLocale = (
   locale: MaybeRefOrGetter<string> = defaultLocale,
@@ -97,6 +99,7 @@ const useLocaleTranslator = (locale: MaybeRefOrGetter<string>) => {
       });
       return pending;
     },
+    // Vue disposes non-sync watchers during SSR setup.
     { immediate: true, flush: "sync" },
   );
   onServerPrefetch(() => pending);
