@@ -153,8 +153,19 @@ test("clipboard allocation skips occupied IDs and reserved candidates within the
       },
     },
   };
+  const keptFrom = "2026-03-04T05:00:00Z";
   const intent = clipboard([
-    paragraph("00000001", [revision(99), control(99)]),
+    paragraph("00000001", [
+      {
+        type: "bookmarkStart",
+        id: 1,
+        name: "paste",
+        keptCut: { keptFrom, holders: { before: 10, after: 99 } },
+      },
+      revision(99),
+      { type: "bookmarkEnd", id: 1 },
+      control(99),
+    ]),
     paragraph("00000002", [run("tail")]),
   ]);
   const mode = {
@@ -184,6 +195,15 @@ test("clipboard allocation skips occupied IDs and reserved candidates within the
     expect(ids.packageIdentityKeys(edit.document.package)).toContain(
       "control:12",
     );
+    const pasted = edit.document.package.document.content.flatMap((block) =>
+      block.type === "paragraph" ? block.content : [],
+    );
+    expect(pasted).toContainEqual({
+      type: "bookmarkStart",
+      id: 1,
+      name: "paste",
+      keptCut: { keptFrom, holders: { after: 13 } },
+    });
     expect(
       applyDocumentOps(edit.document, edit.inverse).unwrap().document,
     ).toEqual(document);

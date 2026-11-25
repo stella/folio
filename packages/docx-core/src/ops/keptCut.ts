@@ -173,38 +173,35 @@ export const withKeptCutPieceConsumed = (
     }, known),
   );
 
-/**
- * `node` with the holder ids of the markers it stands for redirected by
- * `successor`: a holder merged into another change, or given a fresh id,
- * still holds the piece under its new id.
- */
+/** Point a cut at the copies or successors of its holders. */
+export const remapKeptCutHolders = (
+  cut: KeptCut,
+  successor: (id: number) => number | undefined,
+): KeptCut => {
+  const holders = cut.holders;
+  if (holders === undefined) return cut;
+  const before =
+    holders.before === undefined ? undefined : successor(holders.before);
+  const after =
+    holders.after === undefined ? undefined : successor(holders.after);
+  if (before === holders.before && after === holders.after) return cut;
+  return cutHeldBy(
+    cut,
+    withHolderScope(keptCutHolders({ before, after }), holders.scope),
+  );
+};
+
+/** Redirect holder references on a marker when its revisions are reminted. */
 export const withKeptCutHoldersRenamed = (
   node: InlineNode,
   successor: (id: number) => number,
-): InlineNode =>
-  changeStandingMarkers(node, (marker) => {
-    const holders = carriesKeptCut(marker)
-      ? marker.keptCut?.holders
-      : undefined;
-    if (
-      !carriesKeptCut(marker) ||
-      marker.keptCut === undefined ||
-      holders === undefined
-    )
-      return marker;
-    const before =
-      holders.before === undefined ? undefined : successor(holders.before);
-    const after =
-      holders.after === undefined ? undefined : successor(holders.after);
-    if (before === holders.before && after === holders.after) return marker;
-    const renamed = withHolderScope(
-      keptCutHolders({ before, after }),
-      holders.scope,
-    );
-    return Object.assign({}, marker, {
-      keptCut: cutHeldBy(marker.keptCut, renamed),
-    });
-  });
+): InlineNode => {
+  if (!carriesKeptCut(node) || node.keptCut === undefined) return node;
+  const cut = remapKeptCutHolders(node.keptCut, successor);
+  return cut === node.keptCut
+    ? node
+    : Object.assign({}, node, { keptCut: cut });
+};
 
 /** The earliest revision a marker `node` stands for was kept from. */
 export const keptCutFrom = (node: InlineNode): string | undefined => {
