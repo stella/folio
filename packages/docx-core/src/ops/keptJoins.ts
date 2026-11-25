@@ -108,3 +108,31 @@ export const withJoinRetired = (
     ),
   });
 };
+
+/**
+ * `node`, a pending tracked change, with its join on `side` `depth` levels
+ * deep and closed to records there (`plainSides`): it meets no record of the
+ * cut on that side and takes only the kept markers naming its side.
+ */
+export const withJoinClosed = (
+  node: InlineNode,
+  side: "before" | "after",
+  depth: number,
+): InlineNode => {
+  if (!isTrackedWrapper(node) || node.resolutionJoins === undefined)
+    return panic("A facing insertion is a pending change with joins.");
+  const joins = node.resolutionJoins;
+  const plainSides = joins.plainSides ?? [];
+  return Object.assign({}, node, {
+    resolutionJoins: Object.assign(
+      {},
+      joins,
+      side === "before" ? { before: depth } : { after: depth },
+      {
+        plainSides: plainSides.includes(side)
+          ? plainSides
+          : [...plainSides, side],
+      },
+    ),
+  });
+};
