@@ -437,6 +437,13 @@ const earlierGap = (left: Gap, right: Gap): Gap =>
  * order. A retained range or comment anchor ends a stretch; a tracked stretch runs across
  * deleted content, which it leaves alone, and one holding nothing else is
  * dropped.
+ *
+ * An empty container marks nothing on its own. Whether it goes depends on
+ * its region, the part of the range between two range boundaries or comment
+ * anchors: it goes with the region when the region removes something else,
+ * and stays when the region holds nothing else to remove. The region is the
+ * same whoever edits and in either mode, so a direct replacement and an
+ * accepted suggestion keep the same containers.
  */
 type ReplacementDeletionSegmentsOptions = {
   spans: readonly LeafSpan[];
@@ -446,9 +453,10 @@ type ReplacementDeletionSegmentsOptions = {
     | {
         type: "editing";
         /**
-         * Whether a stretch holding only empty containers is dropped, as a
-         * tracked one is. A direct edit drops it when its tracked counterpart
-         * records something else and so keeps the containers. (default: false)
+         * Whether the empty containers of a region that removes nothing
+         * else stay, as a suggestion leaves them. A deletion of nothing but
+         * empty containers, which has no tracked counterpart, removes them.
+         * (default: false)
          */
         keepsLoneEmptyContainers?: boolean;
       }
@@ -462,15 +470,19 @@ export const replacementDeletionSegments = ({
   mode,
 }: ReplacementDeletionSegmentsOptions): Segment[] => {
   const keepsLoneEmptyContainers =
-    mode.type === "editing" && mode.keepsLoneEmptyContainers === true;
-  const out: Segment[] = [];
-  let open: Segment | undefined;
+    mode.type === "suggesting" || mode.keepsLoneEmptyContainers === true;
+  type Stretch = Segment & { region: number; empties: boolean };
+  const out: Stretch[] = [];
+  const recordingRegions = new Set<number>();
+  let region = 0;
+  let open: Stretch | undefined;
   for (const span of spans) {
     const start = laterGap(span.before, from);
     const end = earlierGap(span.after, to);
     if (compareGaps(start, end) >= 0) continue;
     if (isParagraphContent(span.node) && isRangeBoundary(span.node)) {
       open = undefined;
+      region += 1;
       continue;
     }
     let plan: LeafPlan = isCommentAnchor(span.node) ? "anchor" : "direct";
@@ -478,19 +490,18 @@ export const replacementDeletionSegments = ({
     else if (span.ancestors.some(isRemovedRevisionNode)) plan = "untouched";
     if (plan === "anchor") {
       open = undefined;
+      region += 1;
       continue;
     }
     const segmentPlan = plan === "untouched" ? "tracked" : plan;
-    // An empty container marks nothing tracked: a stretch holding nothing
-    // else is dropped, as one over deleted content is. A suggestion drops it
-    // inside the author's own insertion too, so that a direct edit, which
-    // knows no author, can keep it the same way wherever it stands.
-    const records =
+    // An empty container marks nothing tracked: it goes only with a region
+    // that removes something else, whatever stretch it falls in.
+    const empty =
       plan !== "untouched" &&
-      !(
-        (mode.type === "suggesting" || keepsLoneEmptyContainers) &&
-        isEmptyContainer(span.node)
-      );
+      keepsLoneEmptyContainers &&
+      isEmptyContainer(span.node);
+    const records = plan !== "untouched" && !empty;
+    if (records) recordingRegions.add(region);
     if (
       open !== undefined &&
       open.plan === segmentPlan &&
@@ -498,12 +509,31 @@ export const replacementDeletionSegments = ({
     ) {
       open.to = end;
       open.records ||= records;
+      open.empties ||= empty;
       continue;
     }
-    open = { plan: segmentPlan, from: start, to: end, records };
+    open = {
+      plan: segmentPlan,
+      from: start,
+      to: end,
+      records,
+      region,
+      empties: empty,
+    };
     out.push(open);
   }
-  return out.filter(({ records }) => records);
+  return out.flatMap((stretch) =>
+    stretch.records || (stretch.empties && recordingRegions.has(stretch.region))
+      ? [
+          {
+            plan: stretch.plan,
+            from: stretch.from,
+            to: stretch.to,
+            records: true,
+          },
+        ]
+      : [],
+  );
 };
 
 /**

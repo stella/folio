@@ -332,6 +332,12 @@
       "path": "390:2:1:1:1:1:7:6:8:8:9:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8",
       "note": "A tracked replacement inside a pending insertion takes its ids operation by operation, each in document order.",
       "date": "2026-11-22"
+    },
+    {
+      "seed": -303931408,
+      "path": "71:0:0:0:0:0:0:7:5:5:5:8:8:9:8:9:9:9:9:9:11:11:11:11:14:13:14:15:15:15:15:15:15:15:15:15:15:15:15:15:15:15:15:15:15:15:15:15:16:16:16:16:15:15:15:15:18:16:15:16:16:15:17:15:17:17:17:17:17:17:17:17",
+      "note": "An empty wrapper between moved-away content and a link goes with the replaced text in a direct replacement as in the accepted suggestion: whether it goes depends on its region between range boundaries, not on where moved content splits the stretch.",
+      "date": "2026-11-25"
     }
   ],
   "the same operation on equal documents gives equal results": [
