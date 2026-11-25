@@ -7020,7 +7020,7 @@ const deferSplitSeam = ({
 
 /**
  * Whether the paragraph stands only for its pending insertions: rejecting
- * its added mark, which ended a block content control, left it in place.
+ * its added mark left it in place until its content is resolved.
  */
 const standsForInsertions = (paragraph: Paragraph): boolean =>
   paragraph.content.some(
@@ -7262,6 +7262,24 @@ const cutGoesOn = ({
   );
 };
 
+/**
+ * Whether rejecting an added paragraph before trailing range boundaries
+ * would leave a paragraph ending the list. The boundaries stay where they
+ * are and do not require a paragraph of their own.
+ */
+const leavesParagraphBeforeTrailingBoundaries = (
+  blocks: readonly BlockContent[],
+  index: number,
+): boolean => {
+  const follower = blockFollower(blocks, index);
+  return (
+    follower.block === undefined &&
+    follower.standing.length > 0 &&
+    blocks.findLast((block, at) => at < index && !isBlockBoundary(block))
+      ?.type === "paragraph"
+  );
+};
+
 const joinOps = (
   document: Document,
   { op, story, paraId, revisionId, added, depth, holders }: JoinPlan,
@@ -7463,6 +7481,11 @@ const joinOps = (
   // paragraph ends its container.
   const followsBlock = isOpaqueFollower(next);
   const containerFinal = endsItsContainer(body, location);
+  const endsBeforeBoundaries =
+    added &&
+    next === undefined &&
+    standing.length > 0 &&
+    leavesParagraphBeforeTrailingBoundaries(blocks, location.index);
   const tableBoundary =
     next?.type === "table"
       ? paragraphTableRunInBoundary(paragraph, next)
@@ -7546,6 +7569,7 @@ const joinOps = (
           // a cell, that paragraph's mark becomes the cell's terminator.
           (containerFinal &&
             itemBefore(blocks, location.index)?.type === "paragraph") ||
+          endsBeforeBoundaries ||
           // Ending a control, with the paragraphs joining it: removing them
           // leaves the control ending in whatever stands before them and the
           // container's end where it was, so a rejected added mark takes its
@@ -7760,14 +7784,15 @@ const joinOps = (
       review,
     },
   ];
-  // A rejected added mark ending a control or before a block, with pending
-  // insertions standing (its own or those joining it), keeps the paragraph
-  // only for them: rejecting them later removes it, as rejecting the mark
-  // with them does, where the container still ends as it must once it goes.
+  // A rejected added mark that can remove its emptied paragraph keeps it
+  // only for pending insertions. Rejecting those later removes it, just as
+  // rejecting them with the mark does.
   const leavesHolder =
     added &&
     op.decision === REVISION_DECISIONS.REJECT &&
-    ((endsControl && standsAfterBlock) || goesBeforeBlock);
+    ((endsControl && standsAfterBlock) ||
+      goesBeforeBlock ||
+      endsBeforeBoundaries);
   const held = leavesHolder ? holdingParagraph(paragraph.content) : undefined;
   if (held !== undefined)
     markOps.push({
@@ -7892,7 +7917,8 @@ type RemoveEmptiedHolderOptions = {
  * them, as rejecting its mark with them at once does: only while it still
  * ends its block content control short of the container's end, with a block
  * before it, so the control keeps ending with that block, or still stands
- * before a block in a list that ends with a paragraph.
+ * before a block in a list that ends with a paragraph, or ends a list before
+ * trailing range boundaries that another paragraph can precede.
  */
 const removeEmptiedHolder = ({
   document,
@@ -7927,7 +7953,12 @@ const removeEmptiedHolder = ({
     anchor !== undefined &&
     isOpaqueFollower(blockFollower(blocks, index).block) &&
     blockListEndsInParagraph(blocks.filter((block) => !isBlockBoundary(block)));
-  if (!endsControl && !standsBeforeBlock) return Result.ok(undefined);
+  if (
+    !endsControl &&
+    !standsBeforeBlock &&
+    !leavesParagraphBeforeTrailingBoundaries(blocks, index)
+  )
+    return Result.ok(undefined);
   const removed = applyOps(document, [
     anchor === undefined
       ? {
