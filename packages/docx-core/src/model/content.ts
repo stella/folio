@@ -2534,6 +2534,20 @@ export type ParagraphMarkChange = WritableRecord & {
    */
   survivor?: "first" | undefined;
   /**
+   * With `survivor: "first"`: the revision id of the tracked mark the
+   * paragraph after took over (at the end of a chain of such marks), which
+   * that paragraph holds. When the paragraph holding it goes (rejected, joined
+   * on or deleted), the mark keeps the paragraph after on rejection, the one
+   * that was there before both; when the mark is accepted, the paragraph
+   * stays and the id goes. Absent when the taken-over mark was no tracked
+   * change. Saved as folio's own ignorable review provenance.
+   *
+   * Compatibility: a file saved before folio recorded it carries
+   * `survivor: "first"` alone, read as that same positional flag. Remove that
+   * reading when no supported document can still carry the flag alone.
+   */
+  takenOverMark?: number | undefined;
+  /**
    * A later pending deletion of this added mark, `w:del` written beside its
    * `w:ins` or `w:moveTo`: another author deleted the break an insertion
    * made, and either can be resolved first. Absent on deleted and

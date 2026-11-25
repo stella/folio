@@ -257,6 +257,7 @@ test.each(
         kind: "ins",
         info: { ...stamp, id: first.pPrMark?.info.id ?? -1 },
         survivor: "first",
+        ...(taker === undefined ? {} : { takenOverMark: taker.info.id }),
       });
       expect(first.propertyChanges).toBeUndefined();
       expect(second.pPrMark).toEqual(taker);

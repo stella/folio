@@ -241,6 +241,7 @@ export const paragraphMarkChange: Validator = object({
   info: trackedChangeInfo,
   resolutionJoin: optional(natural),
   survivor: optional(literal("first")),
+  takenOverMark: optional(natural),
   splitDate: optional(string),
   deletion: optional(object({ info: trackedChangeInfo })),
 } satisfies RecordFields<ParagraphMarkChange>);

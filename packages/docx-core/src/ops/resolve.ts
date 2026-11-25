@@ -183,6 +183,7 @@ import {
   type RevisionAbsorption,
   type RevisionDecision,
   SECTION_BOUNDARY_POLICIES,
+  type SetParagraphReviewOp,
 } from "./types";
 
 /** Applies operations atomically; `applyDocumentOps`, passed in to keep the modules acyclic. */
@@ -8243,7 +8244,8 @@ const settleTwoRecordMarks = (
   op: ResolveRevisionOp,
 ): { ops: DocumentOp[]; ids: number[] } => {
   const ids = new Set(op.revisionIds);
-  const ops: DocumentOp[] = [];
+  const ops: SetParagraphReviewOp[] = [];
+  const replacementMarks = new Map<number, number>();
   for (const { paragraph } of paragraphs) {
     const mark = paragraph.pPrMark;
     if (mark?.deletion === undefined) continue;
@@ -8264,6 +8266,7 @@ const settleTwoRecordMarks = (
                 : { splitDate: mark.info.date }),
             }),
       };
+      replacementMarks.set(insertion, deletion);
       ids.delete(insertion);
     } else {
       const { deletion: _deleted, ...added } = mark;
@@ -8277,6 +8280,35 @@ const settleTwoRecordMarks = (
       expected: reviewFieldsOf(paragraph),
       review,
     });
+  }
+  if (replacementMarks.size > 0) {
+    const planned = new Map(ops.map((edit) => [edit.blockId, edit]));
+    for (const { paragraph } of paragraphs) {
+      const blockId = paragraph.paraId ?? "";
+      const existing = planned.get(blockId);
+      const mark =
+        existing === undefined ? paragraph.pPrMark : existing.review.pPrMark;
+      const target = mark?.takenOverMark;
+      const replacement =
+        target === undefined ? undefined : replacementMarks.get(target);
+      if (mark === undefined || replacement === undefined) continue;
+      const expected = reviewFieldsOf(paragraph);
+      const review = {
+        ...(existing?.review ?? expected),
+        pPrMark: { ...mark, takenOverMark: replacement },
+      };
+      if (existing === undefined) {
+        ops.push({
+          type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
+          story: op.story,
+          blockId,
+          expected,
+          review,
+        });
+      } else {
+        existing.review = review;
+      }
+    }
   }
   return { ops, ids: op.revisionIds.filter((id) => ids.has(id)) };
 };
@@ -8960,6 +8992,17 @@ const planSingleRecordResolution = (
     if (depth !== mark.resolutionJoin)
       retiredCutDepths.set(idKey(paragraph.paraId ?? ""), depth);
   }
+  const keptBreaks = new Set<number>();
+  for (const {
+    paragraph: { pPrMark: mark },
+  } of paragraphs) {
+    if (
+      mark !== undefined &&
+      ids.has(mark.info.id) &&
+      markWasAdded(mark.kind) === (op.decision === REVISION_DECISIONS.ACCEPT)
+    )
+      keptBreaks.add(mark.info.id);
+  }
   for (const location of paragraphs) {
     const { paragraph } = location;
     const paraId = paragraph.paraId ?? "";
@@ -9000,6 +9043,15 @@ const planSingleRecordResolution = (
       });
     }
     let review = resolveParagraphReview(paragraph, resolution, keepsBreak);
+    if (
+      mark?.takenOverMark !== undefined &&
+      keptBreaks.has(mark.takenOverMark) &&
+      !keepsBreak
+    ) {
+      const { takenOverMark: _takenOverMark, ...positional } = mark;
+      review ??= reviewFieldsOf(paragraph);
+      review.pPrMark = positional;
+    }
     const retiredDepth = retiredCutDepths.get(idKey(paraId));
     if (retiredDepth !== undefined) {
       const remainingMark =
