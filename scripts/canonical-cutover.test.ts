@@ -152,8 +152,8 @@ describe("canonical cutover guard", () => {
     const mutationFixtures = fixtures.filter(
       ({ gap }) => CANONICAL_CAPABILITIES[gap].kind === "mutation-source",
     );
-    expect(mutationFixtures.map(({ gap }) => gap).sort()).toEqual(
-      mutationSources.map(([id]) => id).sort(),
+    expect(mutationSources.map(([id]) => id).sort()).toEqual(
+      mutationFixtures.map(({ gap }) => gap).sort(),
     );
   });
 
@@ -163,11 +163,11 @@ describe("canonical cutover guard", () => {
     expect(failuresOf("fromProseDoc(state.doc, original);", file)).toContain(
       `${file}:1: ${failure}`,
     );
-    for (const source of [
+    for (const fixture of [
       'import { fromProseDoc as project } from "../prosemirror/conversion";\nproject(state.doc, original);',
       'import * as conversion from "../prosemirror/conversion";\nconversion["fromProseDoc"](state.doc, original);',
     ])
-      expect(failuresOf(source, file)).toContain(`${file}:2: ${failure}`);
+      expect(failuresOf(fixture, file)).toContain(`${file}:2: ${failure}`);
   });
 
   test("cannot keep a dead source alive with an orphan comment", () => {
