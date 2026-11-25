@@ -79,6 +79,17 @@ export const integerOrNull = (value: string | null): number | null => {
   return Number.isSafeInteger(parsed) ? parsed : null;
 };
 
+/** The largest of `values`, or `floor` when none is larger. */
+export const maxOf = (values: Iterable<number>, floor: number): number => {
+  let max = floor;
+  for (const value of values) {
+    if (value > max) {
+      max = value;
+    }
+  }
+  return max;
+};
+
 /** A relationship attribute (`r:id`, `r:embed`, ...) by local name. */
 export const relationshipAttr = (
   element: XmlElement,

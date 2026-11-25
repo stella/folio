@@ -24,6 +24,8 @@ import {
   type XmlSplice,
 } from "./xml";
 
+const RELATIONSHIPS_NAMESPACE =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 const REF_BOOKMARK_PREFIX = "_Ref";
 const REF_BOOKMARK_DIGITS = 9;
 const REF_BOOKMARK_SPACE = 10 ** REF_BOOKMARK_DIGITS;
@@ -97,7 +99,9 @@ export const wrapParagraphContentInBookmark = ({
   id,
   name,
 }: WrapParagraphOptions): string | null => {
-  const declared = `<wrap xmlns:${prefixes.w}="${prefixes.wUri}">${paragraphXml}</wrap>`;
+  // The fragment is read on its own, so the prefixes its part's root binds
+  // are declared around it.
+  const declared = `<wrap xmlns:${prefixes.w}="${prefixes.wUri}" xmlns:${prefixes.r}="${RELATIONSHIPS_NAMESPACE}">${paragraphXml}</wrap>`;
   const offset = declared.indexOf(">") + 1;
   const part = readRawPart("paragraph", declared);
   const paragraph = part === null ? null : elementChildren(part.root).at(0);

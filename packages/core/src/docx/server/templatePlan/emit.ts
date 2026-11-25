@@ -1,0 +1,795 @@
+/**
+ * The markup of what a resolved plan places: paragraphs, tables and notes
+ * rebuilt from source content in the template's own spelling. Text, tabs,
+ * breaks, note references, links and stated emphasis travel; fonts, sizes,
+ * colours and direct paragraph formatting stay behind.
+ */
+import { panic, Result } from "better-result";
+
+import { resolveNamespaceUri } from "@stll/docx-core/xml/namespaces";
+
+import type { RelationshipMap } from "../../../types/document";
+import { parseRelationships, RELATIONSHIP_TYPES } from "../../relsParser";
+import { captureVerbatimXml } from "../../verbatimCapture";
+import {
+  cloneElement,
+  getLocalName,
+  OFFICE_RELATIONSHIP_NAMESPACE_URIS,
+  parseXmlDocument,
+  WORDPROCESSINGML_NAMESPACE_URIS,
+  type XmlElement,
+} from "../../xmlParser";
+import { appendToXmlRoot } from "../../xmlRootInsertion";
+import type { AnalyzedNote } from "./blocks";
+import {
+  bookmarkEndXml,
+  bookmarkStartXml,
+  type BookmarkWrap,
+  complexFieldXml,
+  wrapParagraphContentInBookmark,
+} from "./builders";
+import { runPropertiesXml } from "./emphasis";
+import {
+  type ExpectedPiece,
+  type ExpectedSegment,
+  paragraphPieces,
+  type PieceOrigin,
+  type ResolvedParagraph,
+  type SignatureContext,
+} from "./plan";
+import type { AtomLink, StoryField } from "./story";
+import { TemplatePlanError } from "./types";
+import {
+  elementChildren,
+  escapeXmlAttribute,
+  escapeXmlText,
+  MATH_NAMESPACE,
+  type PartPrefixes,
+  wAttr,
+  wChild,
+  wName,
+} from "./xml";
+
+const PACKAGE_RELATIONSHIPS_NAMESPACE =
+  "http://schemas.openxmlformats.org/package/2006/relationships";
+
+export type RelationshipsEditor = {
+  path: string;
+  add: (relationship: {
+    type: string;
+    target: string;
+    external: boolean;
+  }) => string;
+  /** The part's markup with the added relationships, or null when none were added. */
+  xml: () => string | null;
+};
+
+/** An editor over a relationships part that may not exist yet. */
+export const createRelationshipsEditor = (
+  path: string,
+  existing: string | null,
+): RelationshipsEditor => {
+  const source =
+    existing ??
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="${PACKAGE_RELATIONSHIPS_NAMESPACE}"></Relationships>`;
+  const known = parseRelationships(source);
+  let next = 1;
+  for (const id of known.keys()) {
+    const number = /^rId(?<number>\d+)$/u.exec(id)?.groups?.["number"];
+    if (number !== undefined) {
+      next = Math.max(next, Number(number) + 1);
+    }
+  }
+  const added = new Map<string, string>();
+  const markup: string[] = [];
+  const root = parseXmlDocument(source);
+  const rootName = root?.name ?? "Relationships";
+  const colon = rootName.indexOf(":");
+  const elementName =
+    colon === -1 ? "Relationship" : `${rootName.slice(0, colon)}:Relationship`;
+  return {
+    path,
+    add: ({ type, target, external }) => {
+      const key = `${type}\u0000${target}\u0000${external ? "1" : "0"}`;
+      const reused = added.get(key);
+      if (reused !== undefined) {
+        return reused;
+      }
+      let id = `rId${next}`;
+      while (known.has(id)) {
+        next += 1;
+        id = `rId${next}`;
+      }
+      next += 1;
+      added.set(key, id);
+      markup.push(
+        `<${elementName} Id="${id}" Type="${escapeXmlAttribute(type)}" Target="${escapeXmlAttribute(target)}"${external ? ' TargetMode="External"' : ""}/>`,
+      );
+      return id;
+    },
+    xml: () =>
+      markup.length === 0
+        ? null
+        : appendToXmlRoot(source, { rootName, markup: markup.join("") }),
+  };
+};
+
+export type TemplateCharacterStyles = {
+  hyperlink: string | null;
+  footnoteReference: string | null;
+  endnoteReference: string | null;
+  footnoteText: string | null;
+  endnoteText: string | null;
+};
+
+export type NoteKind = "footnote" | "endnote";
+
+/** A media part of the source, read ahead so the emit stays synchronous. */
+export type SourceMedia = { bytes: Uint8Array; extension: string };
+
+export type EmitShared = {
+  styles: TemplateCharacterStyles;
+  /** The source relationships of each part pieces come from. */
+  sourceRelationships: Record<PieceOrigin, RelationshipMap>;
+  /** Source media by the package path it is stored at. */
+  sourceMedia: ReadonlyMap<string, SourceMedia>;
+  resolveSourceTarget: (origin: PieceOrigin, target: string) => string;
+  /** The new id of a source note; allocates one the first time a note is met. */
+  noteId: (kind: NoteKind, sourceId: string) => number;
+  /** Register a media part of the output and return its absolute target. */
+  addMedia: (sourcePath: string, media: SourceMedia) => string;
+  nextDrawingId: () => number;
+};
+
+export type EmitContext = EmitShared & {
+  prefixes: PartPrefixes;
+  relationships: RelationshipsEditor;
+};
+
+type LinkTarget = { relationshipId: string } | null;
+
+const linkTargetOf = (
+  { link, origin }: ExpectedPiece,
+  context: EmitContext,
+): LinkTarget => {
+  if (link === null) {
+    return null;
+  }
+  switch (link.kind) {
+    case "url":
+      return {
+        relationshipId: context.relationships.add({
+          type: RELATIONSHIP_TYPES.hyperlink,
+          target: link.url,
+          external: true,
+        }),
+      };
+    case "relationship": {
+      const relationship = context.sourceRelationships[origin].get(
+        link.relationshipId,
+      );
+      if (
+        relationship === undefined ||
+        relationship.type !== RELATIONSHIP_TYPES.hyperlink
+      ) {
+        return null;
+      }
+      return {
+        relationshipId: context.relationships.add({
+          type: RELATIONSHIP_TYPES.hyperlink,
+          target: relationship.target,
+          external: relationship.targetMode === "External",
+        }),
+      };
+    }
+    case "anchor":
+      // The bookmark it points at stays in the source.
+      return null;
+    default:
+      return link satisfies never;
+  }
+};
+
+const sameLink = (left: AtomLink | null, right: AtomLink | null): boolean => {
+  if (left === null || right === null) {
+    return left === right;
+  }
+  if (left.kind === "relationship" && right.kind === "relationship") {
+    return left.relationshipId === right.relationshipId;
+  }
+  if (left.kind === "url" && right.kind === "url") {
+    return left.url === right.url;
+  }
+  return (
+    left.kind === "anchor" &&
+    right.kind === "anchor" &&
+    left.anchor === right.anchor
+  );
+};
+
+type ObjectTransfer = Result<string, TemplatePlanError>;
+
+/** An object of the source with its relationships and drawing ids re-homed. */
+const transferObject = (
+  { atom, origin }: ExpectedPiece,
+  context: EmitContext,
+): ObjectTransfer => {
+  const element = atom?.element;
+  if (element === undefined || element === null) {
+    return Result.ok("");
+  }
+  let refusal: TemplatePlanError | null = null;
+  const mapRelationship = (id: string): string => {
+    const relationship = context.sourceRelationships[origin].get(id);
+    if (relationship === undefined) {
+      refusal ??= new TemplatePlanError({
+        code: "unsupported-content",
+        message: `An object refers to the missing relationship ${id}.`,
+      });
+      return id;
+    }
+    const external = relationship.targetMode === "External";
+    if (relationship.type === RELATIONSHIP_TYPES.hyperlink || external) {
+      return context.relationships.add({
+        type: relationship.type,
+        target: relationship.target,
+        external,
+      });
+    }
+    const path = context.resolveSourceTarget(origin, relationship.target);
+    const media = context.sourceMedia.get(path);
+    if (relationship.type !== RELATIONSHIP_TYPES.image || media === undefined) {
+      refusal ??= new TemplatePlanError({
+        code: "unsupported-content",
+        message:
+          "An embedded object other than a picture cannot be moved onto a template.",
+      });
+      return id;
+    }
+    return context.relationships.add({
+      type: RELATIONSHIP_TYPES.image,
+      target: context.addMedia(path, media),
+      external: false,
+    });
+  };
+  const rehome = (node: XmlElement): XmlElement => {
+    if (node.type !== "element") {
+      return node;
+    }
+    const attributes: Record<string, string | number | undefined> = {
+      ...node.attributes,
+    };
+    for (const [name, value] of Object.entries(node.attributes ?? {})) {
+      const colon = name.indexOf(":");
+      if (value === undefined || colon === -1 || name.startsWith("xmlns:")) {
+        continue;
+      }
+      const uri = resolveNamespaceUri(
+        node.namespaceScope,
+        name.slice(0, colon),
+      );
+      if (OFFICE_RELATIONSHIP_NAMESPACE_URIS.has(uri ?? "")) {
+        attributes[name] = mapRelationship(String(value));
+      }
+    }
+    if (getLocalName(node.name) === "docPr" && attributes["id"] !== undefined) {
+      attributes["id"] = String(context.nextDrawingId());
+    }
+    return cloneElement(node, {
+      attributes,
+      ...(node.elements === undefined
+        ? {}
+        : { elements: node.elements.map(rehome) }),
+    });
+  };
+  const xml = captureVerbatimXml(rehome(element));
+  return refusal === null ? Result.ok(xml) : Result.err(refusal);
+};
+
+const wAttributesXml = (element: XmlElement, prefix: string): string =>
+  Object.entries(element.attributes ?? {})
+    .map(([name, value]) => {
+      const colon = name.indexOf(":");
+      if (value === undefined || colon === -1 || name.startsWith("xmlns:")) {
+        return "";
+      }
+      const uri = resolveNamespaceUri(
+        element.namespaceScope,
+        name.slice(0, colon),
+      );
+      return WORDPROCESSINGML_NAMESPACE_URIS.has(uri ?? "")
+        ? ` ${prefix}:${name.slice(colon + 1)}="${escapeXmlAttribute(String(value))}"`
+        : "";
+    })
+    .join("");
+
+/**
+ * A WordprocessingML subtree re-spelled under `prefix`. Elements and
+ * attributes of other namespaces are left out: this copies structure such as
+ * a table grid, never content.
+ */
+export const wSubtreeXml = (element: XmlElement, prefix: string): string => {
+  const name = wName(element);
+  if (name === null) {
+    return "";
+  }
+  const children = elementChildren(element)
+    .map((child) => wSubtreeXml(child, prefix))
+    .join("");
+  const open = `<${prefix}:${name}${wAttributesXml(element, prefix)}`;
+  return children === ""
+    ? `${open}/>`
+    : `${open}>${children}</${prefix}:${name}>`;
+};
+
+type RunsResult = Result<string, TemplatePlanError>;
+
+const pieceRunXml = (
+  piece: ExpectedPiece,
+  context: EmitContext,
+  linked: boolean,
+): RunsResult => {
+  const { w } = context.prefixes;
+  const properties = (rStyle: string | null): string =>
+    runPropertiesXml({
+      prefix: w,
+      signature: piece.signature,
+      rStyle,
+      escapeAttribute: escapeXmlAttribute,
+    });
+  const run = (content: string, rStyle: string | null = null): string =>
+    `<${w}:r>${properties(rStyle ?? (linked ? context.styles.hyperlink : null))}${content}</${w}:r>`;
+  switch (piece.kind) {
+    case "text":
+      return Result.ok(
+        piece.text === ""
+          ? ""
+          : run(
+              `<${w}:t xml:space="preserve">${escapeXmlText(piece.text)}</${w}:t>`,
+            ),
+      );
+    case "tab":
+      return Result.ok(run(`<${w}:tab/>`));
+    case "lineBreak":
+      return Result.ok(run(`<${w}:br/>`));
+    case "pageBreak": {
+      const type = wAttr(piece.atom?.element, "type") ?? "page";
+      return Result.ok(
+        run(`<${w}:br ${w}:type="${escapeXmlAttribute(type)}"/>`),
+      );
+    }
+    case "noBreakHyphen":
+      return Result.ok(run(`<${w}:noBreakHyphen/>`));
+    case "softHyphen":
+      return Result.ok(run(`<${w}:softHyphen/>`));
+    case "symbol": {
+      const element = piece.atom?.element;
+      return Result.ok(
+        element === undefined || element === null
+          ? ""
+          : run(wSubtreeXml(element, w)),
+      );
+    }
+    case "footnoteReference":
+    case "endnoteReference": {
+      const kind: NoteKind =
+        piece.kind === "footnoteReference" ? "footnote" : "endnote";
+      const sourceId = wAttr(piece.atom?.element, "id");
+      if (sourceId === null) {
+        return Result.ok("");
+      }
+      const style =
+        kind === "footnote"
+          ? context.styles.footnoteReference
+          : context.styles.endnoteReference;
+      const mark = `<${w}:${kind}Reference ${w}:id="${context.noteId(kind, sourceId)}"/>`;
+      return Result.ok(
+        style === null
+          ? `<${w}:r><${w}:rPr><${w}:vertAlign ${w}:val="superscript"/></${w}:rPr>${mark}</${w}:r>`
+          : `<${w}:r><${w}:rPr><${w}:rStyle ${w}:val="${escapeXmlAttribute(style)}"/></${w}:rPr>${mark}</${w}:r>`,
+      );
+    }
+    case "object": {
+      const transferred = transferObject(piece, context);
+      if (Result.isError(transferred)) {
+        return transferred;
+      }
+      // An equation is a sibling of runs; everything else is run content.
+      return Result.ok(
+        piece.atom?.element?.namespaceUri === MATH_NAMESPACE
+          ? transferred.value
+          : run(transferred.value),
+      );
+    }
+    default:
+      return piece.kind satisfies never;
+  }
+};
+
+/** Adjacent text pieces that state the same emphasis and link become one run. */
+const mergedPieces = (pieces: readonly ExpectedPiece[]): ExpectedPiece[] => {
+  const merged: ExpectedPiece[] = [];
+  for (const piece of pieces) {
+    const last = merged.at(-1);
+    if (
+      last !== undefined &&
+      last.kind === "text" &&
+      piece.kind === "text" &&
+      last.signature === piece.signature &&
+      last.origin === piece.origin &&
+      sameLink(last.link, piece.link)
+    ) {
+      merged[merged.length - 1] = { ...last, text: last.text + piece.text };
+    } else {
+      merged.push(piece);
+    }
+  }
+  return merged;
+};
+
+const piecesRunsXml = (
+  pieces: readonly ExpectedPiece[],
+  context: EmitContext,
+): RunsResult => {
+  const { w, r } = context.prefixes;
+  const out: string[] = [];
+  let group: { relationshipId: string; link: AtomLink; runs: string[] } | null =
+    null;
+  const flush = (): void => {
+    if (group === null) {
+      return;
+    }
+    out.push(
+      `<${w}:hyperlink${context.prefixes.rDeclaration} ${r}:id="${escapeXmlAttribute(group.relationshipId)}" ${w}:history="1">${group.runs.join("")}</${w}:hyperlink>`,
+    );
+    group = null;
+  };
+  for (const piece of mergedPieces(pieces)) {
+    const target = linkTargetOf(piece, context);
+    if (
+      group !== null &&
+      (target === null || !sameLink(group.link, piece.link))
+    ) {
+      flush();
+    }
+    const run = pieceRunXml(piece, context, target !== null);
+    if (Result.isError(run)) {
+      return run;
+    }
+    if (target === null || piece.link === null) {
+      out.push(run.value);
+      continue;
+    }
+    group ??= { ...target, link: piece.link, runs: [] };
+    group.runs.push(run.value);
+  }
+  flush();
+  return Result.ok(out.join(""));
+};
+
+/** The runs of a segment list, references written as complex REF fields. */
+export const segmentsRunsXml = (
+  segments: readonly ExpectedSegment[],
+  context: EmitContext,
+  instructionOf: (segment: ExpectedSegment) => string | null,
+): RunsResult => {
+  const out: string[] = [];
+  let plain: ExpectedPiece[] = [];
+  const flush = (): Result<undefined, TemplatePlanError> => {
+    if (plain.length === 0) {
+      return Result.ok(undefined);
+    }
+    const runs = piecesRunsXml(plain, context);
+    plain = [];
+    if (Result.isError(runs)) {
+      return runs;
+    }
+    out.push(runs.value);
+    return Result.ok(undefined);
+  };
+  for (const segment of segments) {
+    if (segment.kind === "piece") {
+      plain.push(segment.piece);
+      continue;
+    }
+    const flushed = flush();
+    if (Result.isError(flushed)) {
+      return flushed;
+    }
+    const result = piecesRunsXml(segment.pieces, context);
+    if (Result.isError(result)) {
+      return result;
+    }
+    const instruction =
+      instructionOf(segment) ??
+      panic("A resolved reference must carry its field instruction.");
+    out.push(
+      complexFieldXml({
+        prefix: context.prefixes.w,
+        instruction,
+        resultRunsXml: result.value,
+        runPropertiesXml: runPropertiesXml({
+          prefix: context.prefixes.w,
+          signature: segment.pieces.at(0)?.signature ?? "",
+          escapeAttribute: escapeXmlAttribute,
+        }),
+      }),
+    );
+  }
+  const flushed = flush();
+  return Result.isError(flushed) ? flushed : Result.ok(out.join(""));
+};
+
+export type ParagraphEmit = {
+  paragraph: ResolvedParagraph;
+  bookmark: BookmarkWrap | undefined;
+  instructionOf: (segment: ExpectedSegment) => string | null;
+  /** Whether the paragraph's style binds a list that `numbering: null` must cancel. */
+  styleBindsList: boolean;
+};
+
+/** Runs of a placed paragraph, inside its bookmark when it is a reference target. */
+export const paragraphContentXml = (
+  { paragraph, bookmark, instructionOf }: ParagraphEmit,
+  context: EmitContext,
+): RunsResult => {
+  const runs = segmentsRunsXml(paragraph.segments, context, instructionOf);
+  if (Result.isError(runs) || bookmark === undefined) {
+    return runs;
+  }
+  const { w } = context.prefixes;
+  return Result.ok(
+    `${bookmarkStartXml({ prefix: w, ...bookmark })}${runs.value}${bookmarkEndXml({ prefix: w, id: bookmark.id })}`,
+  );
+};
+
+const NO_LIST_NUM_ID = 0;
+
+/** A whole `w:p` for a placed source paragraph. */
+export const paragraphXml = (
+  emit: ParagraphEmit,
+  context: EmitContext,
+): RunsResult => {
+  const { w } = context.prefixes;
+  const { styleId, numbering } = emit.paragraph;
+  const properties: string[] = [];
+  if (styleId !== null) {
+    properties.push(`<${w}:pStyle ${w}:val="${escapeXmlAttribute(styleId)}"/>`);
+  }
+  if (numbering.kind === "direct") {
+    properties.push(
+      `<${w}:numPr><${w}:ilvl ${w}:val="${numbering.ilvl}"/><${w}:numId ${w}:val="${numbering.numId}"/></${w}:numPr>`,
+    );
+  } else if (numbering.kind === "none" && emit.styleBindsList) {
+    properties.push(
+      `<${w}:numPr><${w}:numId ${w}:val="${NO_LIST_NUM_ID}"/></${w}:numPr>`,
+    );
+  }
+  const runs = segmentsRunsXml(
+    emit.paragraph.segments,
+    context,
+    emit.instructionOf,
+  );
+  if (Result.isError(runs)) {
+    return runs;
+  }
+  const pPr =
+    properties.length === 0
+      ? ""
+      : `<${w}:pPr>${properties.join("")}</${w}:pPr>`;
+  const xml = `<${w}:p>${pPr}${runs.value}</${w}:p>`;
+  if (emit.bookmark === undefined) {
+    return Result.ok(xml);
+  }
+  const wrapped = wrapParagraphContentInBookmark({
+    paragraphXml: xml,
+    prefixes: context.prefixes,
+    ...emit.bookmark,
+  });
+  return wrapped === null
+    ? Result.err(
+        new TemplatePlanError({
+          code: "xml-unreadable",
+          message: "A reference target could not be bookmarked.",
+          blockId: emit.paragraph.parts.at(0)?.block.block.id ?? "",
+        }),
+      )
+    : Result.ok(wrapped);
+};
+
+const TABLE_LAYOUT_PROPERTIES = ["tblLayout", "tblLook"] as const;
+const ROW_PROPERTIES = [
+  "gridBefore",
+  "gridAfter",
+  "cantSplit",
+  "tblHeader",
+] as const;
+const CELL_SPAN_PROPERTIES = ["tcW", "gridSpan", "hMerge", "vMerge"] as const;
+
+const keptChildrenXml = (
+  properties: XmlElement | null,
+  names: readonly string[],
+  prefix: string,
+): string =>
+  names
+    .map((name) => {
+      const child = wChild(properties, name);
+      return child === null ? "" : wSubtreeXml(child, prefix);
+    })
+    .join("");
+
+export type TableEmit = {
+  table: XmlElement;
+  /** A table style of the template, or null to keep the source's own borders. */
+  styleId: string | null;
+  paragraphOf: (element: XmlElement) => RunsResult;
+};
+
+/**
+ * A source table rebuilt: its grid, spans and merges, with every cell
+ * paragraph placed like a body paragraph. Without a template table style the
+ * source's borders are kept so the grid stays visible.
+ */
+export const tableXml = (
+  { table, styleId, paragraphOf }: TableEmit,
+  context: EmitContext,
+): RunsResult => {
+  const { w } = context.prefixes;
+  const blocksXml = (container: XmlElement): RunsResult => {
+    const out: string[] = [];
+    for (const child of elementChildren(container)) {
+      const name = wName(child);
+      let result: RunsResult = Result.ok("");
+      if (name === "p") {
+        result = paragraphOf(child);
+      } else if (name === "tbl") {
+        result = tableXml({ table: child, styleId, paragraphOf }, context);
+      } else if (name === "sdt") {
+        const content = wChild(child, "sdtContent");
+        result = content === null ? Result.ok("") : blocksXml(content);
+      } else if (name === "customXml") {
+        result = blocksXml(child);
+      }
+      if (Result.isError(result)) {
+        return result;
+      }
+      out.push(result.value);
+    }
+    return Result.ok(out.join(""));
+  };
+  const cellsXml = (container: XmlElement): RunsResult => {
+    const out: string[] = [];
+    for (const child of elementChildren(container)) {
+      const name = wName(child);
+      if (name === "tc") {
+        const cellProperties = wChild(child, "tcPr");
+        const kept = `${keptChildrenXml(cellProperties, CELL_SPAN_PROPERTIES, w)}${styleId === null ? keptChildrenXml(cellProperties, ["tcBorders"], w) : ""}${keptChildrenXml(cellProperties, ["vAlign"], w)}`;
+        const blocks = blocksXml(child);
+        if (Result.isError(blocks)) {
+          return blocks;
+        }
+        // A cell ends in a paragraph, whatever its last block was.
+        const content = blocks.value.endsWith(`</${w}:p>`)
+          ? blocks.value
+          : `${blocks.value}<${w}:p/>`;
+        out.push(
+          `<${w}:tc>${kept === "" ? "" : `<${w}:tcPr>${kept}</${w}:tcPr>`}${content}</${w}:tc>`,
+        );
+      } else if (name === "sdt") {
+        const content = wChild(child, "sdtContent");
+        const inner = content === null ? Result.ok("") : cellsXml(content);
+        if (Result.isError(inner)) {
+          return inner;
+        }
+        out.push(inner.value);
+      } else if (name === "customXml") {
+        const inner = cellsXml(child);
+        if (Result.isError(inner)) {
+          return inner;
+        }
+        out.push(inner.value);
+      }
+    }
+    return Result.ok(out.join(""));
+  };
+  const rowsXml = (container: XmlElement): RunsResult => {
+    const out: string[] = [];
+    for (const child of elementChildren(container)) {
+      const name = wName(child);
+      if (name === "tr") {
+        const kept = keptChildrenXml(wChild(child, "trPr"), ROW_PROPERTIES, w);
+        const cells = cellsXml(child);
+        if (Result.isError(cells)) {
+          return cells;
+        }
+        out.push(
+          `<${w}:tr>${kept === "" ? "" : `<${w}:trPr>${kept}</${w}:trPr>`}${cells.value}</${w}:tr>`,
+        );
+      } else if (name === "sdt") {
+        const content = wChild(child, "sdtContent");
+        const inner = content === null ? Result.ok("") : rowsXml(content);
+        if (Result.isError(inner)) {
+          return inner;
+        }
+        out.push(inner.value);
+      } else if (name === "customXml") {
+        const inner = rowsXml(child);
+        if (Result.isError(inner)) {
+          return inner;
+        }
+        out.push(inner.value);
+      }
+    }
+    return Result.ok(out.join(""));
+  };
+
+  const tableProperties = wChild(table, "tblPr");
+  const style =
+    styleId === null
+      ? ""
+      : `<${w}:tblStyle ${w}:val="${escapeXmlAttribute(styleId)}"/>`;
+  const properties = `${style}${keptChildrenXml(tableProperties, ["tblW"], w)}${styleId === null ? keptChildrenXml(tableProperties, ["tblBorders"], w) : ""}${keptChildrenXml(tableProperties, TABLE_LAYOUT_PROPERTIES, w)}`;
+  const grid = wChild(table, "tblGrid");
+  const rows = rowsXml(table);
+  if (Result.isError(rows)) {
+    return rows;
+  }
+  return Result.ok(
+    `<${w}:tbl><${w}:tblPr>${properties}</${w}:tblPr>${grid === null ? "" : wSubtreeXml(grid, w)}${rows.value}</${w}:tbl>`,
+  );
+};
+
+export type NoteEmit = {
+  kind: NoteKind;
+  id: number;
+  note: AnalyzedNote;
+  /** Styles of the source, to read what the note's runs state. */
+  source: SignatureContext;
+  /** The fields of the source notes part. */
+  fields: readonly StoryField[];
+};
+
+/** A source note under its new id, its paragraphs in the template's note style. */
+export const noteXml = (
+  { kind, id, note, source, fields }: NoteEmit,
+  context: EmitContext,
+): RunsResult => {
+  const { w } = context.prefixes;
+  const textStyle =
+    kind === "footnote"
+      ? context.styles.footnoteText
+      : context.styles.endnoteText;
+  const referenceStyle =
+    kind === "footnote"
+      ? context.styles.footnoteReference
+      : context.styles.endnoteReference;
+  const origin: PieceOrigin = kind === "footnote" ? "footnotes" : "endnotes";
+  const pPr =
+    textStyle === null
+      ? ""
+      : `<${w}:pPr><${w}:pStyle ${w}:val="${escapeXmlAttribute(textStyle)}"/></${w}:pPr>`;
+  const mark = `<${w}:r><${w}:rPr>${
+    referenceStyle === null
+      ? `<${w}:vertAlign ${w}:val="superscript"/>`
+      : `<${w}:rStyle ${w}:val="${escapeXmlAttribute(referenceStyle)}"/>`
+  }</${w}:rPr><${w}:${kind}Ref/></${w}:r>`;
+  const paragraphs: string[] = [];
+  for (const [index, read] of note.paragraphs.entries()) {
+    const runs = piecesRunsXml(
+      paragraphPieces({ read, context: source, origin, fields }),
+      context,
+    );
+    if (Result.isError(runs)) {
+      return runs;
+    }
+    paragraphs.push(
+      `<${w}:p>${pPr}${index === 0 ? mark : ""}${runs.value}</${w}:p>`,
+    );
+  }
+  if (paragraphs.length === 0) {
+    paragraphs.push(`<${w}:p>${pPr}${mark}</${w}:p>`);
+  }
+  return Result.ok(
+    `<${w}:${kind} ${w}:id="${id}">${paragraphs.join("")}</${w}:${kind}>`,
+  );
+};

@@ -161,6 +161,11 @@ export type DocxTemplateField = {
   result: string;
   /** Main story only: the top-level block the field starts in. */
   blockId?: string;
+  /**
+   * Main story only: the top-level block the field ends in. A plan keeps
+   * every block from `blockId` to this one, or none of them.
+   */
+  endBlockId?: string;
 };
 
 export type DocxTemplateSection = {
@@ -331,6 +336,17 @@ export type TemplatePlanSpanCounts = {
   output: number;
 };
 
+export type TemplatePlanNoteCounts = {
+  /** Notes in the source. */
+  source: number;
+  /** Notes the placed blocks refer to. */
+  expected: number;
+  /** Notes the output's placed blocks refer to. */
+  output: number;
+  identical: number;
+  mismatch: number;
+};
+
 export type TemplatePlanFieldLeftover = {
   part: string;
   kind: string;
@@ -351,6 +367,7 @@ export type TemplatePlanIssue = {
     | "numbering-dangling"
     | "style-dangling"
     | "prompting-field-left"
+    | "field-not-frozen"
     | "update-fields-mismatch"
     | "conformance";
   message: string;
@@ -381,18 +398,8 @@ export type TemplatePlanReport = {
     /** Placed blocks that showed a label in the source and render none. */
     labelLost: number;
   };
-  footnotes: {
-    source: number;
-    output: number;
-    identical: number;
-    mismatch: number;
-  };
-  endnotes: {
-    source: number;
-    output: number;
-    identical: number;
-    mismatch: number;
-  };
+  footnotes: TemplatePlanNoteCounts;
+  endnotes: TemplatePlanNoteCounts;
   emphasisSpans: TemplatePlanSpanCounts;
   highlightSpans: TemplatePlanSpanCounts;
   references: {
@@ -424,6 +431,8 @@ export type TemplatePlanReport = {
   updateFields: "set" | "cleared" | "unchanged";
   conformance: {
     status: "conformant" | "invalid" | "indeterminate";
+    /** The template's own status; the output may not be worse. */
+    templateStatus: "conformant" | "invalid" | "indeterminate";
     issues: FolioDocxConformanceIssue[];
   };
   issues: TemplatePlanIssue[];

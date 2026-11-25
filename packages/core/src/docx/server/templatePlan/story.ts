@@ -63,6 +63,8 @@ export type StoryField = {
   resultStart: number;
   /** Paragraph ordinal within the story the field begins in. */
   paragraphOrdinal: number;
+  /** Paragraph ordinal the field ends in; the begin's until the end is seen. */
+  endParagraphOrdinal: number;
   /** Whether both ends were seen. */
   closed: boolean;
 };
@@ -208,6 +210,7 @@ const beginField = (walk: ParagraphWalk, instruction: string): StoryField => {
     result: "",
     resultStart: -1,
     paragraphOrdinal: read.ordinal,
+    endParagraphOrdinal: read.ordinal,
     closed: false,
   };
   state.fields.push(field);
@@ -303,6 +306,7 @@ const readRun = (
             state.strayFieldEnds += 1;
           } else {
             top.field.kind = fieldKindOf(top.field.instruction);
+            top.field.endParagraphOrdinal = read.ordinal;
             top.field.closed = true;
           }
         }

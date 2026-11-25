@@ -186,6 +186,10 @@ export const inspectAnalyzedTemplate = async (
     if (block !== undefined) {
       inspected.blockId = block.topLevelId;
     }
+    const endBlock = story.paragraphs[field.endParagraphOrdinal];
+    if (endBlock !== undefined && field.closed) {
+      inspected.endBlockId = endBlock.topLevelId;
+    }
     return inspected;
   });
   const bookmarks = bookmarksOf(document);

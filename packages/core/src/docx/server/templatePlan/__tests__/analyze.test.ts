@@ -232,15 +232,31 @@ describe("inspectDocxTemplate", () => {
     const { fields } = unwrap(await inspectDocxTemplate(await buildTemplate()));
 
     expect(
-      fields.map(({ part, kind, blockId }) => [part, kind, blockId ?? null]),
+      fields.map(({ part, kind, blockId, endBlockId }) => [
+        part,
+        kind,
+        blockId ?? null,
+        endBlockId ?? null,
+      ]),
     ).toEqual([
-      ["word/document.xml", "TOC", TEMPLATE_IDS.tocFirst],
-      ["word/document.xml", "PAGEREF", TEMPLATE_IDS.tocFirst],
-      ["word/document.xml", "PAGEREF", TEMPLATE_IDS.tocLast],
-      ["word/document.xml", "FILLIN", TEMPLATE_IDS.fillIn],
-      ["word/header1.xml", "PAGE", null],
-      ["word/footer1.xml", "DATE", null],
-      ["word/footer1.xml", "FILENAME", null],
+      // The table of contents field spans two blocks; a plan keeps both.
+      ["word/document.xml", "TOC", TEMPLATE_IDS.tocFirst, TEMPLATE_IDS.tocLast],
+      [
+        "word/document.xml",
+        "PAGEREF",
+        TEMPLATE_IDS.tocFirst,
+        TEMPLATE_IDS.tocFirst,
+      ],
+      [
+        "word/document.xml",
+        "PAGEREF",
+        TEMPLATE_IDS.tocLast,
+        TEMPLATE_IDS.tocLast,
+      ],
+      ["word/document.xml", "FILLIN", TEMPLATE_IDS.fillIn, TEMPLATE_IDS.fillIn],
+      ["word/header1.xml", "PAGE", null, null],
+      ["word/footer1.xml", "DATE", null, null],
+      ["word/footer1.xml", "FILENAME", null, null],
     ]);
     expect(fields.find(({ kind }) => kind === "FILLIN")).toMatchObject({
       instruction: 'FILLIN "Recipient"',
