@@ -64,6 +64,8 @@ watch(
   (open) => {
     if (open) value.value = DEFAULT_VALUE;
   },
+  // Immediate: the editor mounts a dialog only while it is open.
+  { immediate: true },
 );
 
 function apply() {

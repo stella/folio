@@ -153,6 +153,8 @@ watch(
       searchRef.value?.focus();
     }
   },
+  // Immediate: the editor mounts a dialog only while it is open.
+  { immediate: true },
 );
 
 function close() {

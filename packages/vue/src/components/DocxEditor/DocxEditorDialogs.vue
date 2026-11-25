@@ -13,12 +13,14 @@
 -->
 <template>
   <FindReplaceDialog
+    v-if="showFindReplace"
     :is-open="showFindReplace"
     :search="search"
     @close="emit('update:showFindReplace', false)"
   />
 
   <HyperlinkDialog
+    v-if="showHyperlink"
     :is-open="showHyperlink"
     :view="view"
     :bookmarks="bookmarks"
@@ -28,12 +30,14 @@
   />
 
   <InsertSymbolDialog
+    v-if="showInsertSymbol"
     :is-open="showInsertSymbol"
     @close="emit('update:showInsertSymbol', false)"
     @insert="(symbol) => emit('insert-symbol', symbol)"
   />
 
   <ImagePropertiesDialog
+    v-if="showImageProperties"
     :is-open="showImageProperties"
     :view="view"
     :pm-pos="selectedImagePmPos"
@@ -41,6 +45,7 @@
   />
 
   <PageSetupDialog
+    v-if="showPageSetup"
     :is-open="showPageSetup"
     :section-properties="sectionProperties"
     @close="emit('update:showPageSetup', false)"
@@ -48,6 +53,7 @@
   />
 
   <TablePropertiesDialog
+    v-if="showTableProperties"
     :is-open="showTableProperties"
     :current-props="tableProperties"
     @close="emit('update:showTableProperties', false)"
@@ -55,12 +61,14 @@
   />
 
   <SetNumberingValueDialog
+    v-if="showNumberingValue"
     :is-open="showNumberingValue"
     @close="emit('update:showNumberingValue', false)"
     @apply="(value) => emit('numbering-value-apply', value)"
   />
 
   <WatermarkDialog
+    v-if="showWatermark"
     :is-open="showWatermark"
     :current-watermark="currentWatermark"
     @close="emit('update:showWatermark', false)"
@@ -70,6 +78,7 @@
 
 <script setup lang="ts">
 import type { EditorView } from "prosemirror-view";
+import { defineAsyncComponent } from "vue";
 
 import type { SectionProperties } from "@stll/folio-core/types/document";
 import type { DeepReadonly } from "@stll/folio-core/types/documentModel";
@@ -77,14 +86,33 @@ import type { TablePropertiesCommand } from "@stll/folio-core/utils/tableOperati
 import type { Watermark } from "@stll/folio-core/watermark";
 
 import type { UseFindReplaceReturn } from "../../composables/useFindReplace";
-import FindReplaceDialog from "../dialogs/FindReplaceDialog.vue";
-import HyperlinkDialog from "../dialogs/HyperlinkDialog.vue";
-import ImagePropertiesDialog from "../dialogs/ImagePropertiesDialog.vue";
-import InsertSymbolDialog from "../dialogs/InsertSymbolDialog.vue";
-import PageSetupDialog from "../dialogs/PageSetupDialog.vue";
-import SetNumberingValueDialog from "../dialogs/SetNumberingValueDialog.vue";
-import TablePropertiesDialog from "../dialogs/TablePropertiesDialog.vue";
-import WatermarkDialog from "../dialogs/WatermarkDialog.vue";
+
+// Each dialog loads the first time it opens and mounts only while open, as
+// the React editor's dialogs do: opening a document does not pay for them.
+const FindReplaceDialog = defineAsyncComponent(
+  () => import("../dialogs/FindReplaceDialog.vue"),
+);
+const HyperlinkDialog = defineAsyncComponent(
+  () => import("../dialogs/HyperlinkDialog.vue"),
+);
+const ImagePropertiesDialog = defineAsyncComponent(
+  () => import("../dialogs/ImagePropertiesDialog.vue"),
+);
+const InsertSymbolDialog = defineAsyncComponent(
+  () => import("../dialogs/InsertSymbolDialog.vue"),
+);
+const PageSetupDialog = defineAsyncComponent(
+  () => import("../dialogs/PageSetupDialog.vue"),
+);
+const SetNumberingValueDialog = defineAsyncComponent(
+  () => import("../dialogs/SetNumberingValueDialog.vue"),
+);
+const TablePropertiesDialog = defineAsyncComponent(
+  () => import("../dialogs/TablePropertiesDialog.vue"),
+);
+const WatermarkDialog = defineAsyncComponent(
+  () => import("../dialogs/WatermarkDialog.vue"),
+);
 
 type BookmarkOption = {
   name: string;
