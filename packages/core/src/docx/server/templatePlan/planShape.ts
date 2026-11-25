@@ -32,6 +32,9 @@ const isObject = (value: unknown): value is Json =>
 
 const isString = (value: unknown): value is string => typeof value === "string";
 
+const isOptionalBoolean = (value: unknown): boolean =>
+  value === undefined || typeof value === "boolean";
+
 const isOptionalString = (value: unknown): boolean =>
   value === undefined || isString(value);
 
@@ -104,6 +107,9 @@ const sourceItemIssue = (item: Json, where: string): string | null => {
       return `${where} carries a malformed ${key}.`;
     }
   }
+  if (!isOptionalBoolean(item["labelAsText"])) {
+    return `${where} carries a malformed labelAsText.`;
+  }
   const merge = item["mergeNext"];
   if (merge !== undefined && !(isString(merge) && MERGES.has(merge))) {
     return `${where} names an unknown merge.`;
@@ -130,7 +136,8 @@ const sourceItemIssue = (item: Json, where: string): string | null => {
     seen.add(entry["blockId"]);
     if (
       !isOptionalString(entry["styleId"]) ||
-      !isOptionalString(entry["stripLabel"])
+      !isOptionalString(entry["stripLabel"]) ||
+      !isOptionalBoolean(entry["labelAsText"])
     ) {
       return `${where} carries a malformed nested placement.`;
     }

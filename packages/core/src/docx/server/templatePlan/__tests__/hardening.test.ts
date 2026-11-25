@@ -1162,6 +1162,84 @@ describe("template fields", () => {
   });
 });
 
+describe("labels written as text", () => {
+  const level = (
+    ilvl: number,
+    numFmt: string,
+    lvlText: string,
+    suff = "",
+  ): string =>
+    `<w:lvl w:ilvl="${ilvl}"><w:start w:val="1"/><w:numFmt w:val="${numFmt}"/>${suff}<w:lvlText w:val="${lvlText}"/></w:lvl>`;
+  const numbered = (text: string, numId: number, ilvl: number): string =>
+    p(
+      r(text),
+      `<w:numPr><w:ilvl w:val="${ilvl}"/><w:numId w:val="${numId}"/></w:numPr>`,
+    );
+  const NUMBERING = [
+    `<w:abstractNum w:abstractNumId="0">${level(0, "upperRoman", "%1.")}${level(1, "decimal", "%1.%2", '<w:suff w:val="space"/>')}${level(2, "ordinal", "%1.%3")}</w:abstractNum>`,
+    `<w:abstractNum w:abstractNumId="1">${level(0, "bullet", "\u2022")}</w:abstractNum>`,
+    '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>',
+    '<w:num w:numId="2"><w:abstractNumId w:val="1"/></w:num>',
+  ].join("");
+  const source = async (): Promise<Uint8Array> =>
+    await buildSourceWith({
+      body: [
+        numbered("Scope", 1, 0),
+        numbered("The works.", 1, 1),
+        numbered("A point.", 2, 0),
+        numbered("A spelled number.", 1, 2),
+      ].join(""),
+      numbering: NUMBERING,
+    });
+  const asText =
+    (ids: readonly string[]) =>
+    (blocks: PlannedBlock[]): TemplatePlanItem[] =>
+      blocks.map(({ id, hash }) => ({
+        kind: "source",
+        blockId: id,
+        hash,
+        numbering: null,
+        ...(ids.includes(id) ? { labelAsText: true } : {}),
+      }));
+
+  test("a number keeps the tab or space its list puts after it", async () => {
+    const { docx, report } = unwrap(
+      await applyFor({
+        source: await source(),
+        template,
+        items: asText(["p0", "p1"]),
+      }),
+    );
+    const blocks = unwrap(await analyzeDocxBlocks(docx)).blocks;
+    const textOf = (blockId: string): string | undefined => {
+      const outputBlockId = report.blocks.find(
+        (block) => block.blockId === blockId,
+      )?.outputBlockId;
+      return blocks.find(({ id }) => id === outputBlockId)?.text;
+    };
+
+    expect(report.ok).toBe(true);
+    expect(textOf("p0")).toBe("I.\tScope");
+    expect(textOf("p1")).toBe("I.1 The works.");
+    // The other two say so: their labels are gone.
+    expect(report.counts).toMatchObject({ labelAsText: 2, labelLost: 2 });
+  });
+
+  test("a bullet and a number a language spells are not text", async () => {
+    for (const blockId of ["p2", "p3"]) {
+      const applied = await applyFor({
+        source: await source(),
+        template,
+        items: asText([blockId]),
+      });
+      expect(codeOf(applied)).toBe("label-not-writable");
+      if (Result.isError(applied)) {
+        expect(applied.error.blockId).toBe(blockId);
+      }
+    }
+  });
+});
+
 describe("omitted blocks", () => {
   const NUMBERING =
     '<w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/></w:lvl></w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>';

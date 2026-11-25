@@ -14,6 +14,7 @@ export const TEMPLATE_PLAN_ERROR_CODES: readonly [
   "block-unplaced",
   "block-placed-twice",
   "strip-label-mismatch",
+  "label-not-writable",
   "merge-invalid",
   "reference-span-invalid",
   "reference-target-unplaced",
@@ -34,6 +35,7 @@ export const TEMPLATE_PLAN_ERROR_CODES: readonly [
   "block-unplaced",
   "block-placed-twice",
   "strip-label-mismatch",
+  "label-not-writable",
   "merge-invalid",
   "reference-span-invalid",
   "reference-target-unplaced",
@@ -234,6 +236,8 @@ export type TemplatePlanNestedParagraph = {
   styleId?: string;
   numbering?: TemplatePlanNumbering | null;
   stripLabel?: string;
+  /** As on a source item. */
+  labelAsText?: boolean;
 };
 
 export type TemplatePlanSourceItem = {
@@ -246,6 +250,15 @@ export type TemplatePlanSourceItem = {
   numbering?: TemplatePlanNumbering | null;
   /** The manual label at the start of the block to remove, with the space after it. */
   stripLabel?: string;
+  /**
+   * Write the block's automatic label as text at the start of its text, with
+   * the tab or space its list puts after it: for a label no list of the
+   * template prints. The paragraph it leads must join no list
+   * (`numbering: null`). Only a label that reads the same wherever the file
+   * is opened can be written: numbers, letters and roman numerals, not a
+   * bullet glyph and not a number a language spells.
+   */
+  labelAsText?: boolean;
   /** Join the next item of the plan, a source paragraph, into this paragraph. */
   mergeNext?: TemplatePlanMerge;
   /** Table only: the paragraph style of its cells. */
@@ -319,6 +332,8 @@ export type TemplatePlanBlockResult = {
   emphasis: "identical" | "mismatch" | "omitted";
   /** What `stripLabel` removed, the following space included. */
   strippedPrefix?: string;
+  /** The automatic label `labelAsText` wrote as text, without what follows it. */
+  labelAsText?: string;
   /** The label the source showed: its automatic label, else the stripped one. */
   sourceLabel: string | null;
   /** The automatic label the output paragraph renders. */
@@ -415,8 +430,10 @@ export type TemplatePlanReport = {
     emphasisMismatch: number;
     /** Placed blocks whose source label and output label differ. */
     labelChanged: number;
-    /** Placed blocks that showed a label in the source and render none. */
+    /** Placed blocks that showed a label in the source and show none: neither rendered nor written as text. */
     labelLost: number;
+    /** Placed blocks whose automatic label is written as text. */
+    labelAsText: number;
   };
   footnotes: TemplatePlanNoteCounts;
   endnotes: TemplatePlanNoteCounts;
