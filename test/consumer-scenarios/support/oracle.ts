@@ -996,6 +996,8 @@ export type Model = {
   deletedContentIds: ReadonlySet<string>;
   /** Paragraphs of table rows pending insertion (`JoinSources`). */
   insertedRowIds: ReadonlySet<string>;
+  /** Paragraphs a pending insertion added after another (`JoinSources`). */
+  addedAfterIds: ReadonlySet<string>;
   /** Live paragraphs whose mark accepting removes (`JoinSources`). */
   joinSourceIds: ReadonlySet<string>;
   /** Live paragraphs whose mark is pending insertion (`JoinSources`). */
@@ -1201,6 +1203,13 @@ export type JoinSources =
        * paragraph does not run into a table under review.
        */
       insertedRowIds?: ReadonlySet<string>;
+      /**
+       * Paragraphs a pending insertion added after the paragraph before
+       * them, which took over its mark (that mark is inserted with
+       * `survivor: "first"`): removing one under tracking retracts the
+       * insertion, so the paragraph before keeps its own mark and identity.
+       */
+      addedAfterIds?: ReadonlySet<string>;
     }
   | {
       type: "live";
@@ -1264,16 +1273,28 @@ const markedJoinSourcesOf = async (bytes: Uint8Array): Promise<JoinSources> => {
   const emptyIds = new Set<string>();
   const deletedContentIds = new Set<string>();
   const insertedRowIds = new Set<string>();
+  const addedAfterIds = new Set<string>();
   const parsed = await parseDocx(toArrayBuffer(bytes), { preloadFonts: false });
   const visitBlocks = (blocks: readonly unknown[], inserted: boolean): void => {
+    let previousMark: unknown;
     for (const block of blocks) {
       if (typeof block !== "object" || block === null) continue;
       const type: unknown = Reflect.get(block, "type");
       if (type === "paragraph") {
         const id: unknown = Reflect.get(block, "paraId");
         if (inserted && typeof id === "string") insertedRowIds.add(id);
+        if (
+          typeof id === "string" &&
+          typeof previousMark === "object" &&
+          previousMark !== null &&
+          Reflect.get(previousMark, "kind") === "ins" &&
+          Reflect.get(previousMark, "survivor") === "first"
+        )
+          addedAfterIds.add(id);
+        previousMark = Reflect.get(block, "pPrMark");
         continue;
       }
+      previousMark = undefined;
       if (type !== "table") continue;
       const rows: unknown = Reflect.get(block, "rows");
       for (const row of Array.isArray(rows) ? rows : []) {
@@ -1310,7 +1331,14 @@ const markedJoinSourcesOf = async (bytes: Uint8Array): Promise<JoinSources> => {
     ids.add(paragraph.paraId);
     if (paragraph.content.length === 0) emptyIds.add(paragraph.paraId);
   });
-  return { type: "marked", ids, emptyIds, deletedContentIds, insertedRowIds };
+  return {
+    type: "marked",
+    ids,
+    emptyIds,
+    deletedContentIds,
+    insertedRowIds,
+    addedAfterIds,
+  };
 };
 
 /**
@@ -1351,6 +1379,10 @@ export const modelOf = (
     insertedRowIds:
       joinSources.type === "marked"
         ? (joinSources.insertedRowIds ?? new Set())
+        : new Set(),
+    addedAfterIds:
+      joinSources.type === "marked"
+        ? (joinSources.addedAfterIds ?? new Set())
         : new Set(),
     joinSourceIds: joinSourceIdsOf(joinSources),
     markInsertedIds:
@@ -4336,6 +4368,15 @@ const acceptedOwnerId = (model: Model, row: ModelRow): string => {
     // A live-only row (a join's source, a paragraph pending deletion) is not
     // in the accepted document the ids are read from.
     if (later.outsidePreState === true) continue;
+    // Removing a paragraph a pending insertion added retracts it: it never
+    // carries the words, and the paragraph before keeps its own mark.
+    if (
+      model.mode === "tracked-changes" &&
+      later.removed &&
+      later.pre !== undefined &&
+      model.addedAfterIds.has(later.pre.id)
+    )
+      continue;
     // A cell ends where the next one starts; in a story, a table stands
     // between the words and that story's last paragraph.
     if (
