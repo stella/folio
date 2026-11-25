@@ -1469,6 +1469,7 @@ export const reportTemplatePlanOutput = async ({
     emphasisMismatch: 0,
     labelChanged: 0,
     labelLost: 0,
+    labelAsText: 0,
   };
   const tables = new Map<string, TemplatePlanBlockResult>();
   for (const block of source.story.order) {
@@ -1540,7 +1541,10 @@ export const reportTemplatePlanOutput = async ({
     if (emphasis === "mismatch") {
       counts.emphasisMismatch += 1;
     }
-    if (sourceLabel !== null && outputLabel === null) {
+    const labelAsText = part?.labelAsText ?? null;
+    if (labelAsText !== null) {
+      counts.labelAsText += 1;
+    } else if (sourceLabel !== null && outputLabel === null) {
       counts.labelLost += 1;
     } else if (
       sourceLabel !== null &&
@@ -1570,6 +1574,7 @@ export const reportTemplatePlanOutput = async ({
       ...(part === undefined || part.strippedPrefix === ""
         ? {}
         : { strippedPrefix: part.strippedPrefix }),
+      ...(labelAsText === null ? {} : { labelAsText }),
       sourceLabel,
       outputLabel,
     });
@@ -1577,6 +1582,11 @@ export const reportTemplatePlanOutput = async ({
   if (counts.labelLost > 0) {
     warnings.push(
       `${counts.labelLost} block(s) showed a number or label in the source and render none.`,
+    );
+  }
+  if (counts.labelAsText > 0) {
+    warnings.push(
+      `${counts.labelAsText} block(s) carry their automatic number as text.`,
     );
   }
   if (counts.labelChanged > 0) {

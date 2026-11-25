@@ -25,7 +25,7 @@ import {
   withOverride,
   withSignatureHighlight,
 } from "./emphasis";
-import { styleNumbering } from "./labels";
+import { type ParagraphLabel, styleNumbering } from "./labels";
 import { PLAN_HIGHLIGHT_COLORS, planShapeIssue } from "./planShape";
 import type { StoryOrigin } from "./resources";
 import type {
@@ -89,6 +89,8 @@ export type ResolvedNumbering =
 export type ResolvedPart = {
   block: AnalyzedBlock;
   strippedPrefix: string;
+  /** The automatic label written as text before the part, or null. */
+  labelAsText: string | null;
 };
 
 export type ResolvedParagraph = {
@@ -638,6 +640,30 @@ export const piecesContent = (
 type PlannedPart = {
   block: AnalyzedBlock;
   stripLabel: string | undefined;
+  labelAsText: boolean;
+};
+
+const plainPiece = (kind: "text" | "tab", text: string): ExpectedPiece => ({
+  kind,
+  text,
+  signature: "",
+  link: null,
+  atom: null,
+  origin: "document",
+});
+
+/** A label written as text: the label, then what its list puts after it. */
+const labelPieces = ({
+  label,
+  suffix,
+}: NonNullable<ParagraphLabel["asText"]>): ExpectedPiece[] => {
+  const pieces = [plainPiece("text", label)];
+  if (suffix === "tab") {
+    pieces.push(plainPiece("tab", "\t"));
+  } else if (suffix === "space") {
+    pieces.push(plainPiece("text", " "));
+  }
+  return pieces;
 };
 
 type ParagraphRequest = {
@@ -924,7 +950,8 @@ export const resolvePlan = (
     }
     const segments: ExpectedSegment[] = [];
     const resolvedParts: ResolvedPart[] = [];
-    for (const [index, { block, stripLabel }] of parts.entries()) {
+    for (const [index, planned] of parts.entries()) {
+      const { block, stripLabel } = planned;
       const { id, text } = block.block;
       if (block.read === null) {
         return invalid(
@@ -987,8 +1014,42 @@ export const resolvePlan = (
           segments.push({ kind: "piece", piece: separator });
         }
       }
+      const written = planned.labelAsText
+        ? (block.label?.asText ?? null)
+        : null;
+      if (planned.labelAsText) {
+        // The label is the source's own, and only one that is the same
+        // text everywhere; the paragraph it leads renders no other.
+        if (written === null) {
+          return Result.err(
+            refuse({
+              code: "label-not-writable",
+              message: `Block ${id} shows no automatic label that can be written as text.`,
+              blockId: id,
+            }),
+          );
+        }
+        if (
+          stripLabel !== undefined ||
+          (index === 0 && resolvedNumbering.value.kind !== "none")
+        ) {
+          return invalid(
+            `Block ${id} takes its label as text and can neither lose a typed label nor join a list.`,
+          );
+        }
+        segments.push(
+          ...labelPieces(written).map((piece): ExpectedSegment => ({
+            kind: "piece",
+            piece,
+          })),
+        );
+      }
       segments.push(...part.value);
-      resolvedParts.push({ block, strippedPrefix });
+      resolvedParts.push({
+        block,
+        strippedPrefix,
+        labelAsText: written?.label ?? null,
+      });
     }
     const pieces = segmentPieces(segments);
     for (const piece of pieces) {
@@ -1057,6 +1118,7 @@ export const resolvePlan = (
     if (
       item.mergeNext !== undefined ||
       item.stripLabel !== undefined ||
+      item.labelAsText !== undefined ||
       item.numbering !== undefined
     ) {
       return invalid(`Table ${id} takes a style and nested placements only.`);
@@ -1095,7 +1157,13 @@ export const resolvePlan = (
       const override = overrides.get(nested.block.id);
       overrides.delete(nested.block.id);
       const paragraph = resolveParagraph({
-        parts: [{ block: nested, stripLabel: override?.stripLabel }],
+        parts: [
+          {
+            block: nested,
+            stripLabel: override?.stripLabel,
+            labelAsText: override?.labelAsText === true,
+          },
+        ],
         separators: [],
         styleId: override?.styleId ?? item.cellStyleId,
         numbering: override?.numbering,
@@ -1190,7 +1258,11 @@ export const resolvePlan = (
           break;
         }
         const parts: PlannedPart[] = [
-          { block: block.value, stripLabel: item.stripLabel },
+          {
+            block: block.value,
+            stripLabel: item.stripLabel,
+            labelAsText: item.labelAsText === true,
+          },
         ];
         const separators: TemplatePlanMerge[] = [];
         let merge = item.mergeNext;
@@ -1237,7 +1309,11 @@ export const resolvePlan = (
             );
           }
           separators.push(merge);
-          parts.push({ block: nextBlock.value, stripLabel: next.stripLabel });
+          parts.push({
+            block: nextBlock.value,
+            stripLabel: next.stripLabel,
+            labelAsText: next.labelAsText === true,
+          });
           merge = next.mergeNext;
           index += 1;
         }
@@ -1289,7 +1365,11 @@ export const resolvePlan = (
           if (Result.isError(block)) {
             return block;
           }
-          parts.push({ block: block.value, stripLabel: undefined });
+          parts.push({
+            block: block.value,
+            stripLabel: undefined,
+            labelAsText: false,
+          });
         }
         const paragraph = resolveParagraph({
           parts,

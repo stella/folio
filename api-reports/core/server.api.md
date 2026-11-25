@@ -2109,7 +2109,7 @@ export type TableCellSpec = string | {
 };
 
 // @public
-export const TEMPLATE_PLAN_ERROR_CODES: readonly ["archive-unreadable", "part-missing", "xml-unreadable", "plan-invalid", "sha-mismatch", "unknown-block", "hash-mismatch", "block-unplaced", "block-placed-twice", "strip-label-mismatch", "merge-invalid", "reference-span-invalid", "reference-target-unplaced", "highlight-span-invalid", "numbering-unknown", "style-unknown", "tracked-changes", "unsupported-content", "verification-failed"];
+export const TEMPLATE_PLAN_ERROR_CODES: readonly ["archive-unreadable", "part-missing", "xml-unreadable", "plan-invalid", "sha-mismatch", "unknown-block", "hash-mismatch", "block-unplaced", "block-placed-twice", "strip-label-mismatch", "label-not-writable", "merge-invalid", "reference-span-invalid", "reference-target-unplaced", "highlight-span-invalid", "numbering-unknown", "style-unknown", "tracked-changes", "unsupported-content", "verification-failed"];
 
 // @public
 export type TemplatePlan = {
@@ -2138,6 +2138,7 @@ export type TemplatePlanBlockResult = {
     text: "identical" | "mismatch" | "omitted";
     emphasis: "identical" | "mismatch" | "omitted";
     strippedPrefix?: string;
+    labelAsText?: string;
     sourceLabel: string | null;
     outputLabel: string | null;
     omitReason?: TemplatePlanOmitReason;
@@ -2199,6 +2200,7 @@ export type TemplatePlanNestedParagraph = {
     styleId?: string;
     numbering?: TemplatePlanNumbering | null;
     stripLabel?: string;
+    labelAsText?: boolean;
 };
 
 // @public (undocumented)
@@ -2279,6 +2281,7 @@ export type TemplatePlanReport = {
         emphasisMismatch: number;
         labelChanged: number;
         labelLost: number;
+        labelAsText: number;
     };
     footnotes: TemplatePlanNoteCounts;
     endnotes: TemplatePlanNoteCounts;
@@ -2328,6 +2331,7 @@ export type TemplatePlanSourceItem = {
     styleId?: string;
     numbering?: TemplatePlanNumbering | null;
     stripLabel?: string;
+    labelAsText?: boolean;
     mergeNext?: TemplatePlanMerge;
     cellStyleId?: string;
     nested?: TemplatePlanNestedParagraph[];

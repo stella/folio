@@ -257,6 +257,7 @@ describe("applyTemplatePlan", () => {
       emphasisMismatch: 0,
       labelChanged: 0,
       labelLost: 0,
+      labelAsText: 0,
     });
     expect(
       report.blocks.map(({ blockId, disposition, text }) => [
@@ -671,6 +672,96 @@ describe("applyTemplatePlan numbering", () => {
     // The source showed "a)", "b)" and a manual "1."; the report says so.
     expect(report.counts).toMatchObject({ labelChanged: 2, labelLost: 1 });
     expect(report.ok).toBe(true);
+  });
+
+  test("writes an automatic label as text when no list prints it", async () => {
+    const plan = fullPlan();
+    plan.body = plan.body.map((item) =>
+      item.kind === "source" &&
+      (item.blockId === SOURCE_IDS.letterA ||
+        item.blockId === SOURCE_IDS.letterB)
+        ? { ...item, numbering: null, labelAsText: true }
+        : item,
+    );
+    plan.references = [];
+    const { docx, report } = await apply(plan);
+    const blocks = flatten(unwrap(await analyzeDocxBlocks(docx)).blocks);
+    const sourceText = (id: string): string =>
+      flatten(fixture.sourceManifest.blocks).find((block) => block.id === id)
+        ?.text ?? "";
+    const written = report.blocks.filter(
+      ({ labelAsText }) => labelAsText !== undefined,
+    );
+
+    expect(
+      written.map(
+        ({ blockId, labelAsText, sourceLabel, outputLabel, text }) => ({
+          blockId,
+          labelAsText,
+          sourceLabel,
+          outputLabel,
+          text,
+        }),
+      ),
+    ).toEqual([
+      {
+        blockId: SOURCE_IDS.letterA,
+        labelAsText: "a)",
+        sourceLabel: "a)",
+        outputLabel: null,
+        text: "identical",
+      },
+      {
+        blockId: SOURCE_IDS.letterB,
+        labelAsText: "b)",
+        sourceLabel: "b)",
+        outputLabel: null,
+        text: "identical",
+      },
+    ]);
+    // The label is text now: the output's own paragraph starts with it.
+    expect(
+      written.map(
+        ({ outputBlockId }) =>
+          blocks.find((block) => block.id === outputBlockId)?.text,
+      ),
+    ).toEqual([
+      `a)\t${sourceText(SOURCE_IDS.letterA)}`,
+      `b)\t${sourceText(SOURCE_IDS.letterB)}`,
+    ]);
+    expect(report.counts).toMatchObject({ labelAsText: 2, labelLost: 0 });
+    expect(report.ok).toBe(true);
+    expect(
+      unwrap(
+        await verifyTemplatePlanOutput({
+          source: fixture.source,
+          template: fixture.template,
+          plan,
+          output: docx,
+        }),
+      ).counts,
+    ).toEqual(report.counts);
+  });
+
+  test("refuses to write a label as text beside a list or where none shows", async () => {
+    const asText = (blockId: string, numbering?: null): TemplatePlan => {
+      const plan = fullPlan();
+      plan.references = [];
+      plan.body = plan.body.map((item) => {
+        if (item.kind !== "source" || item.blockId !== blockId) {
+          return item;
+        }
+        return numbering === undefined
+          ? { ...item, labelAsText: true }
+          : { ...item, numbering, labelAsText: true };
+      });
+      return plan;
+    };
+    // Left in its list the paragraph would show its number twice.
+    expect(await refusal(asText(SOURCE_IDS.letterA))).toBe("plan-invalid");
+    expect(await refusal(asText(SOURCE_IDS.link, null))).toBe(
+      "label-not-writable",
+    );
   });
 
   test("refuses a list the template does not define", async () => {

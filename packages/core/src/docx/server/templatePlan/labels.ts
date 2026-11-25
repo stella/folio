@@ -3,7 +3,10 @@
  * the same marker code the document parser uses.
  */
 import { finalizeParagraphFormatting } from "@stll/docx-core";
-import type { ParagraphNumberingOverride } from "@stll/docx-core/model";
+import type {
+  LevelSuffix,
+  ParagraphNumberingOverride,
+} from "@stll/docx-core/model";
 
 import type { Paragraph } from "../../../types/document";
 import {
@@ -30,6 +33,12 @@ export type ParagraphLabel = {
   numberOnly: string | null;
   /** The label as a `REF \n` field shows it: without a trailing period. */
   paragraphNumber: string | null;
+  /**
+   * The label and what its list puts after it, when the label can stand as
+   * text: it reads the same wherever the file is opened. Null for a bullet,
+   * whose glyph belongs to a font, and for a number a language spells.
+   */
+  asText: { label: string; suffix: LevelSuffix } | null;
 };
 
 const NO_LABEL: ParagraphLabel = {
@@ -37,6 +46,45 @@ const NO_LABEL: ParagraphLabel = {
   numbering: null,
   numberOnly: null,
   paragraphNumber: null,
+  asText: null,
+};
+
+/** Counter formats every consumer and language writes with the same characters. */
+const PLAIN_FORMATS: ReadonlySet<string> = new Set([
+  "decimal",
+  "decimalZero",
+  "upperRoman",
+  "lowerRoman",
+  "upperLetter",
+  "lowerLetter",
+]);
+
+const LEVEL_PLACEHOLDER = /%([1-9])/gu;
+
+type AsTextOptions = {
+  label: string;
+  /** The level text the label was rendered from. */
+  template: string;
+  levelFormats: readonly string[] | undefined;
+  suffix: LevelSuffix | undefined;
+};
+
+const labelAsText = ({
+  label,
+  template,
+  levelFormats,
+  suffix,
+}: AsTextOptions): ParagraphLabel["asText"] => {
+  if (label.trim() === "") {
+    return null;
+  }
+  for (const [, digit] of template.matchAll(LEVEL_PLACEHOLDER)) {
+    const format = levelFormats?.[Number(digit) - 1];
+    if (format === undefined || !PLAIN_FORMATS.has(format)) {
+      return null;
+    }
+  }
+  return { label, suffix: suffix ?? "tab" };
 };
 
 /**
@@ -202,11 +250,18 @@ export const createLabelCounter = ({
           numbering: numberingInfo,
           numberOnly: null,
           paragraphNumber: null,
+          asText: null,
         };
       }
       return {
         label,
         numbering: numberingInfo,
+        asText: labelAsText({
+          label,
+          template,
+          levelFormats: listRendering.levelNumFmts,
+          suffix: listRendering.markerSuffix,
+        }),
         paragraphNumber: stripTrailingPeriods(label.trim()),
         numberOnly: numberOnlyLabel({
           template,
