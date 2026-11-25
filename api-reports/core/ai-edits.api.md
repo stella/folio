@@ -954,6 +954,7 @@ export type FolioPendingSuggestionRecord = {
     provenance: "suggested";
     sourceDocumentFingerprint: string;
     commentId?: number;
+    retired?: "anchorRemoved";
 };
 
 // @public
@@ -974,7 +975,7 @@ export class FolioPendingSuggestionRegistry {
 }
 
 // @public (undocumented)
-export type FolioPendingSuggestionStaleReason = "missingAnchor" | "ambiguousAnchor" | "textChanged" | "unsupportedVersion" | "documentChanged" | "invalidRecord" | "applyFailed";
+export type FolioPendingSuggestionStaleReason = "anchorRemoved" | "missingAnchor" | "ambiguousAnchor" | "textChanged" | "unsupportedVersion" | "documentChanged" | "invalidRecord" | "applyFailed";
 
 // @public (undocumented)
 export type FolioReadReviewedStoryOptions = {

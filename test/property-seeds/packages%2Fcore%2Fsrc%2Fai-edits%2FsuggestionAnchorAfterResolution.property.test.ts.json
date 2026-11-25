@@ -1,0 +1,16 @@
+{
+  "suggestion-anchor-after-resolution": [
+    {
+      "seed": 44,
+      "path": "51:3:2:2:2:2:2:2:2:3:6:7:3:5:5",
+      "note": "A proposed comment on the paragraph a proposed split adds, once a rejection joins that paragraph away",
+      "date": "2026-11-25"
+    },
+    {
+      "seed": 55,
+      "path": "92:2:1:1:3:3:3:4:4:4:8:6:0:2:5:7:6:4:5:5:4:5:4:4:5:4:6:4:6:5:5:2",
+      "note": "A proposed comment on a paragraph pending tracked deletion and split, once one of those changes is accepted",
+      "date": "2026-11-25"
+    }
+  ]
+}

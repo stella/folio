@@ -55,6 +55,13 @@ export type FolioPendingSuggestionRecord = {
   provenance: "suggested";
   sourceDocumentFingerprint: string;
   commentId?: number;
+  /**
+   * Set when the record no longer restages: a review resolution removed the
+   * paragraph it names, and no paragraph a save holds keeps the suggestion's
+   * words or place. The suggestion stays pending in this session; loading the
+   * record reports it stale with this reason.
+   */
+  retired?: "anchorRemoved";
 };
 
 type StoredSuggestion = FolioPendingSuggestionRecord & {
@@ -62,6 +69,7 @@ type StoredSuggestion = FolioPendingSuggestionRecord & {
 };
 
 export type FolioPendingSuggestionStaleReason =
+  | "anchorRemoved"
   | "missingAnchor"
   | "ambiguousAnchor"
   | "textChanged"
@@ -351,49 +359,128 @@ const suggestionSnapshot = (state: EditorState) =>
     getDocumentStyleResolver(state),
   );
 
+type RejectedStory = ReturnType<typeof rejectEverySuggestionMapped>;
+
+/** `rejected` read as a snapshot, its paragraphs in the order a save lists them. */
+const settledSnapshot = ({ state }: RejectedStory): FolioAIEditSnapshot =>
+  createFolioAIEditSnapshotWithStyleResolver(
+    state.doc,
+    getDocumentStyleResolver(state),
+  );
+
+type SavedParagraphOptions = {
+  rejected: RejectedStory;
+  settled: FolioAIEditSnapshot;
+  /** The story as a save writes it. */
+  saved: FolioAIEditSnapshot;
+  /** Where the paragraph starts in `rejected`. */
+  paragraphStart: number;
+};
+
+type SavedParagraph = {
+  block: FolioAIEditSnapshot["blocks"][number];
+  anchor: FolioAIEditSnapshot["anchors"][string];
+  /** The text offset a position of `rejected` stands at in the paragraph. */
+  offsetAt: (position: number) => number;
+};
+
+/**
+ * The paragraph at `paragraphStart` of the rejected story, as a save names
+ * it: the saved package may name the paragraphs otherwise, and both read
+ * alike. `null` when the save reads other text there.
+ */
+const savedParagraphAt = ({
+  rejected,
+  settled,
+  saved,
+  paragraphStart,
+}: SavedParagraphOptions): SavedParagraph | null => {
+  const paragraph = rejected.state.doc.nodeAt(paragraphStart);
+  const index = settled.blocks.findIndex(
+    ({ id }) => settled.anchors[id]?.from === paragraphStart,
+  );
+  const block = index < 0 ? undefined : saved.blocks[index];
+  const anchor = block === undefined ? undefined : saved.anchors[block.id];
+  if (paragraph === null || block === undefined || anchor === undefined)
+    return null;
+  const clean = buildCleanBlockText(paragraph, paragraphStart, {
+    fieldResults: "text",
+  });
+  if (anchor.text !== clean.text) return null;
+  return {
+    block,
+    anchor,
+    offsetAt: (position) => {
+      const offset = clean.offsets.findIndex((at) => at >= position);
+      return offset < 0 ? clean.text.length : offset;
+    },
+  };
+};
+
 type CurrentSplitOptions = {
   record: StoredSuggestion;
-  live: FolioAIEditSnapshot;
+  /** The record's story as it is, every proposal shown. */
+  state: EditorState;
+  /** The same story as a save writes it, every proposal rejected. */
   saved: FolioAIEditSnapshot;
 };
 
-/** A split follows its own paragraph mark as edits move it through the story. */
+/**
+ * A split follows its own paragraph mark as edits move it through the story.
+ * It stands at the end of the paragraph that mark closes, which a save reads
+ * inside the paragraph the split joins back into; words other proposals show
+ * there are no saved text, so the offset counts only what a save holds.
+ * `null` when the mark is gone, or stands in no saved paragraph or at its
+ * edge.
+ */
 const currentSplitRecord = ({
   record,
-  live,
+  state,
   saved,
 }: CurrentSplitOptions): StoredSuggestion | null => {
   const { operation, suggestionId, splitRevisionId } = record;
   if (operation.type !== "splitBlock" || splitRevisionId === undefined)
     return null;
-  const doc = sourceDocumentOf(live);
-  for (const carrier of Object.values(live.anchors)) {
-    const paragraph = doc.nodeAt(carrier.from);
-    if (paragraph?.type.name !== "paragraph") continue;
-    const mark = expectParagraphAttrs(paragraph).pPrMark;
+  const ends: number[] = [];
+  state.doc.descendants((node, position) => {
+    if (ends.length > 0) return false;
+    if (node.type.name !== "paragraph") return true;
+    const mark = expectParagraphAttrs(node).pPrMark;
     if (
-      mark?.kind !== "ins" ||
-      mark.info.id !== splitRevisionId ||
-      mark.info.suggestionId !== suggestionId
+      mark?.kind === "ins" &&
+      mark.info.id === splitRevisionId &&
+      mark.info.suggestionId === suggestionId
     )
-      continue;
-    const anchor = saved.anchors[carrier.id];
-    if (!anchor?.text.startsWith(carrier.text)) return null;
-    return {
-      ...record,
-      operation: {
-        ...operation,
-        blockId: carrier.id,
-        offset: carrier.text.length,
-      },
-      anchor: {
-        blockId: carrier.id,
-        paraId: getFolioParaIdFromBlockId(carrier.id),
-        originalTextHash: anchor.textHash,
-      },
-    };
-  }
-  return null;
+      ends.push(position + node.nodeSize - 1);
+    return false;
+  });
+  const end = ends.at(0);
+  if (end === undefined) return null;
+  const rejected = rejectEverySuggestionMapped(state);
+  const at = rejected.mapping.map(end, -1);
+  const $at = rejected.state.doc.resolve(at);
+  if ($at.parent.type.name !== "paragraph") return null;
+  const paragraph = savedParagraphAt({
+    rejected,
+    settled: settledSnapshot(rejected),
+    saved,
+    paragraphStart: $at.before(),
+  });
+  if (paragraph === null) return null;
+  const { block, anchor, offsetAt } = paragraph;
+  const offset = offsetAt(at);
+  // At either end of the saved paragraph it splits no saved words: no split
+  // restages there.
+  if (offset === 0 || offset >= anchor.text.length) return null;
+  return {
+    ...record,
+    operation: { ...operation, blockId: block.id, offset },
+    anchor: {
+      blockId: block.id,
+      paraId: getFolioParaIdFromBlockId(block.id),
+      originalTextHash: anchor.textHash,
+    },
+  };
 };
 
 type RangeProposalOptions = {
@@ -571,11 +658,7 @@ const currentTextRecords = ({
       spans.set($at.before(), { first: index, last: index });
     else span.last = index;
   }
-  // The saved package may name the paragraphs otherwise; both read alike.
-  const settled = createFolioAIEditSnapshotWithStyleResolver(
-    rejected.state.doc,
-    getDocumentStyleResolver(rejected.state),
-  );
+  const settled = settledSnapshot(rejected);
   const ids = records.map(({ operation }) => operation.id);
   const nextId = (position: number): string => {
     const known = ids[position];
@@ -589,30 +672,17 @@ const currentTextRecords = ({
   };
   const current: StoredSuggestion[] = [];
   for (const [paragraphStart, { first, last }] of spans) {
-    const paragraph = rejected.state.doc.nodeAt(paragraphStart);
     const start = pieces[first];
     const end = pieces[last];
-    const index = settled.blocks.findIndex(
-      ({ id }) => settled.anchors[id]?.from === paragraphStart,
-    );
-    const block = saved.blocks[index];
-    const anchor = block === undefined ? undefined : saved.anchors[block.id];
-    if (
-      paragraph === null ||
-      start === undefined ||
-      end === undefined ||
-      block === undefined ||
-      anchor === undefined
-    )
-      return null;
-    const clean = buildCleanBlockText(paragraph, paragraphStart, {
-      fieldResults: "text",
+    const paragraph = savedParagraphAt({
+      rejected,
+      settled,
+      saved,
+      paragraphStart,
     });
-    if (anchor.text !== clean.text) return null;
-    const offsetAt = (position: number) => {
-      const offset = clean.offsets.findIndex((at) => at >= position);
-      return offset < 0 ? clean.text.length : offset;
-    };
+    if (start === undefined || end === undefined || paragraph === null)
+      return null;
+    const { block, anchor, offsetAt } = paragraph;
     const from = offsetAt(savedStart(start));
     const to = Math.max(from, offsetAt(rejected.mapping.map(end.to, -1)));
     let replace = "";
@@ -661,40 +731,38 @@ type PlacedRecordOptions = {
 /**
  * `record`, a block insertion whose anchor paragraph is gone, anchored where
  * its paragraphs stand: before the next saved paragraph beside them, or,
- * when none follows, after the previous one. A record of another kind, or
- * one with no saved paragraph beside its own, is a state the rules that
- * remove paragraphs never leave: that panics.
+ * when none follows, after the previous one. `null` for a record of another
+ * kind, whose words a save does not hold once its paragraph is gone, and
+ * for an insertion with no paragraph of its own or no saved one beside it.
  */
 const placedRecord = ({
   record,
   live,
   saved,
   ranges,
-}: PlacedRecordOptions): StoredSuggestion => {
-  const { operation, suggestionId } = record;
+}: PlacedRecordOptions): StoredSuggestion | null => {
+  const { operation } = record;
   if (
     operation.type !== "insertAfterBlock" &&
     operation.type !== "insertBeforeBlock"
   )
-    return panic(
-      "A pending suggestion's paragraph is gone, and only a block insertion keeps a place without it",
-      { suggestionId, type: operation.type },
-    );
+    return null;
   const savedIds = new Set(saved.blocks.map(({ id }) => id));
-  // The first paragraph the suggestion adds.
-  const index = live.blocks.findIndex(({ id }) => {
+  // A paragraph the suggestion adds: one a save does not hold, or one it
+  // covers whole, as rejecting it can leave an empty paragraph that keeps
+  // its id.
+  const isOwn = ({ id }: FolioAIEditSnapshot["blocks"][number]) => {
     const anchor = live.anchors[id];
-    return (
-      !savedIds.has(id) &&
-      anchor !== undefined &&
-      ranges.some(({ from, to }) => from <= anchor.to && anchor.from <= to)
-    );
-  });
+    if (anchor === undefined) return false;
+    return savedIds.has(id)
+      ? ranges.some(
+          ({ from, to }) => from <= anchor.from + 1 && anchor.to - 1 <= to,
+        )
+      : ranges.some(({ from, to }) => from <= anchor.to && anchor.from <= to);
+  };
+  const index = live.blocks.findIndex(isOwn);
   const placed = live.blocks.at(index);
-  if (index < 0 || placed === undefined)
-    return panic("A pending block insertion shows no paragraph of its own", {
-      suggestionId,
-    });
+  if (index < 0 || placed === undefined) return null;
   const container = containerKey(placed);
   // The nearest saved paragraph in `step`'s direction, if it stands in the
   // same container: a table or another container between them is no place
@@ -706,7 +774,8 @@ const placedRecord = ({
       at += step
     ) {
       const block = live.blocks.at(at);
-      if (block === undefined || !savedIds.has(block.id)) continue;
+      if (block === undefined || !savedIds.has(block.id) || isOwn(block))
+        continue;
       return containerKey(block) === container ? block : undefined;
     }
     return undefined;
@@ -715,11 +784,7 @@ const placedRecord = ({
   const neighbour = next ?? besideIn(-1);
   const anchor =
     neighbour === undefined ? undefined : saved.anchors[neighbour.id];
-  if (neighbour === undefined || anchor === undefined)
-    return panic(
-      "A pending block insertion whose anchor is gone has no saved paragraph beside it",
-      { suggestionId },
-    );
+  if (neighbour === undefined || anchor === undefined) return null;
   return {
     ...record,
     operation: {
@@ -733,6 +798,15 @@ const placedRecord = ({
       originalTextHash: anchor.textHash,
     },
   };
+};
+
+/**
+ * `record` once nothing a save holds keeps its words or place: it keeps the
+ * anchor it had, for the host to read, and restages nowhere.
+ */
+const retiredRecord = (record: StoredSuggestion): StoredSuggestion => {
+  const { splitRevisionId: _, ...rest } = record;
+  return { ...rest, retired: "anchorRemoved" };
 };
 
 const storyFromUnknown = (value: unknown): FolioDocumentStoryHandle | null => {
@@ -784,6 +858,20 @@ const paraIdCountsOf = (snapshot: FolioAIEditSnapshot): Map<string, number> => {
 const recordKey = (record: FolioPendingSuggestionRecord): string =>
   canonicalJson([record.story, record.suggestionId, record.operation.id]);
 
+/** A persisted `retired` field: `undefined` when absent, `null` when invalid. */
+const retirementFromUnknown = (
+  value: unknown,
+): FolioPendingSuggestionRecord["retired"] | null => {
+  switch (value) {
+    case undefined:
+      return undefined;
+    case "anchorRemoved":
+      return "anchorRemoved";
+    default:
+      return null;
+  }
+};
+
 const parseRecord = (value: unknown): FolioPendingSuggestionRecord | null => {
   if (!isObject(value) || !isObject(value["anchor"])) return null;
   const story = storyFromUnknown(value["story"]);
@@ -803,6 +891,8 @@ const parseRecord = (value: unknown): FolioPendingSuggestionRecord | null => {
   ) {
     return null;
   }
+  const retired = retirementFromUnknown(value["retired"]);
+  if (retired === null) return null;
   let operation: FolioAIEditOperation;
   try {
     const batch = parseFolioDocumentOperationBatch({
@@ -862,6 +952,7 @@ const parseRecord = (value: unknown): FolioPendingSuggestionRecord | null => {
       Number.isSafeInteger(value["commentId"]) && {
         commentId: value["commentId"],
       }),
+    ...(retired !== undefined && { retired }),
   };
 };
 
@@ -894,9 +985,12 @@ export class FolioPendingSuggestionRegistry {
 
   /**
    * Anchor every live record whose paragraph is gone from its story, a
-   * resolution or an edit having removed it, beside the paragraphs its
-   * suggestion added ({@link placedRecord}): a record never names a removed
-   * or absorbed paragraph. Run after the change publishes.
+   * resolution or an edit having removed it, where a save keeps its
+   * suggestion: a split at its own paragraph mark, text proposals over the
+   * saved words their marks cover, and block insertions beside the
+   * paragraphs they add ({@link placedRecord}). A record none of these
+   * places is retired ({@link retiredRecord}): no record restages on a
+   * removed or absorbed paragraph. Run after the change publishes.
    */
   placeRemovedAnchors({
     activeSuggestionIds,
@@ -912,7 +1006,8 @@ export class FolioPendingSuggestionRegistry {
       if (
         this.records.get(key) !== record ||
         !activeSuggestionIds.has(suggestionId) ||
-        anchor.paraId === null
+        anchor.paraId === null ||
+        record.retired !== undefined
       )
         continue;
       const storyKey = canonicalJson(story);
@@ -935,7 +1030,7 @@ export class FolioPendingSuggestionRegistry {
           ? (savedSource?.(story) ?? null)
           : null;
       if (saved !== null) {
-        const split = currentSplitRecord({ record, live: view.live, saved });
+        const split = currentSplitRecord({ record, state: view.state, saved });
         if (split !== null) {
           this.records.set(key, split);
           continue;
@@ -960,15 +1055,13 @@ export class FolioPendingSuggestionRegistry {
         getSuggestions(view.state).find(
           (entry) => entry.suggestionId === suggestionId,
         )?.ranges ?? [];
-      this.records.set(
-        key,
-        placedRecord({
-          record,
-          live: view.live,
-          saved: createPendingSuggestionSourceSnapshot(view.state, new Set()),
-          ranges,
-        }),
-      );
+      const placed = placedRecord({
+        record,
+        live: view.live,
+        saved: createPendingSuggestionSourceSnapshot(view.state, new Set()),
+        ranges,
+      });
+      this.records.set(key, placed ?? retiredRecord(record));
     }
   }
 
@@ -995,8 +1088,9 @@ export class FolioPendingSuggestionRegistry {
       [...survivors.keys()].map((paraId) => finalSurvivor(survivors, paraId)),
     );
     const affected = [...this.records].filter(
-      ([, { suggestionId, anchor }]) =>
+      ([, { suggestionId, anchor, retired }]) =>
         activeSuggestionIds.has(suggestionId) &&
+        retired === undefined &&
         anchor.paraId !== null &&
         (survivors.has(anchor.paraId) || absorbing.has(anchor.paraId)),
     );
@@ -1137,7 +1231,7 @@ export class FolioPendingSuggestionRegistry {
       string,
       { snapshot: FolioAIEditSnapshot; fingerprint: string }
     >();
-    const liveStories = new Map<string, FolioAIEditSnapshot | null>();
+    const liveStories = new Map<string, EditorState | null>();
     const commentIdsByStory = new Map<string, Set<number>>();
     for (const record of this.records.values()) {
       if (
@@ -1171,15 +1265,14 @@ export class FolioPendingSuggestionRegistry {
           record.splitRevisionId !== undefined &&
           stateForStory !== undefined
         ) {
-          let live = liveStories.get(storyKey);
-          if (live === undefined) {
-            const state = stateForStory(record.story);
-            live = state === null ? null : suggestionSnapshot(state);
-            liveStories.set(storyKey, live);
+          let state = liveStories.get(storyKey);
+          if (state === undefined) {
+            state = stateForStory(record.story);
+            liveStories.set(storyKey, state);
           }
-          if (live !== null)
+          if (state !== null)
             updated =
-              currentSplitRecord({ record, live, saved: saved.snapshot }) ??
+              currentSplitRecord({ record, state, saved: saved.snapshot }) ??
               record;
         }
         const current = {
@@ -1235,6 +1328,8 @@ export class FolioPendingSuggestionRegistry {
           ? { status: "restaged", suggestionId: record.suggestionId }
           : { status: "stale", suggestionId, reason: "invalidRecord" };
       }
+      if (record.retired !== undefined)
+        return { status: "stale", suggestionId, reason: record.retired };
       const storyKey = canonicalJson(record.story);
       if (!baselines.has(storyKey)) {
         const snapshot = snapshotForStory(record.story);
