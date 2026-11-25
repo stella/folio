@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "title": "PINNED #1842, fingerprint 64dd09191ba08e3a: a comment on words a pending join runs on stays with the paragraph before an inserted paragraph the batch retracts",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "plain",
+  "mode": "tracked-changes",
+  "seed": 1856127900,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 400632969,
+      "operations": [
+        {
+          "type": "commentOnRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "5E88C024",
+            "startOffset": 35,
+            "endOffset": 41,
+            "selectedTextHash": "h8c37xr"
+          },
+          "comment": {
+            "text": "Clause clause buyer schedule supplier."
+          }
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 584880260,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "412DDC7F",
+          "text": "Period clause warranty schedule invoice."
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 201233078,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "5E88C024",
+          "separator": " "
+        },
+        {
+          "type": "insertAfterBlock",
+          "blockId": "483CD5EB",
+          "text": "Notice notice period.",
+          "styleId": "Heading2"
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 1209139630,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "@6"
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from unpin+dropOperation+insert of 79864710ccc1c918"
+}
