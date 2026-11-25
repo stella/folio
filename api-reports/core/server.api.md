@@ -2168,7 +2168,7 @@ export type TemplatePlanHighlight = {
 
 // @public (undocumented)
 export type TemplatePlanIssue = {
-    code: "text-mismatch" | "emphasis-mismatch" | "note-mismatch" | "block-missing" | "reference-broken" | "bookmark-dangling" | "field-unbalanced" | "relationship-dangling" | "note-dangling" | "numbering-dangling" | "style-dangling" | "prompting-field-left" | "field-not-frozen" | "update-fields-mismatch" | "conformance";
+    code: "text-mismatch" | "emphasis-mismatch" | "note-mismatch" | "block-missing" | "reference-broken" | "bookmark-dangling" | "field-unbalanced" | "relationship-dangling" | "note-dangling" | "numbering-dangling" | "style-dangling" | "style-mismatch" | "numbering-mismatch" | "template-mismatch" | "prompting-field-left" | "field-not-frozen" | "update-fields-mismatch" | "conformance";
     message: string;
     blockId?: string;
     part?: string;

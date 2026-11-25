@@ -312,7 +312,7 @@ describe("applyTemplatePlan", () => {
     const footnotes =
       (await readPart(applied.docx, "word/footnotes.xml")) ?? "";
     expect(footnotes).toContain('<w:pStyle w:val="FootnoteText"/>');
-    expect(footnotes).toContain("<w:i/><w:iCs/>");
+    expect(footnotes).toContain("<w:i/>");
     expect(documentXml).toContain(
       '<w:rStyle w:val="FootnoteReference"/></w:rPr><w:footnoteReference w:id="1"/>',
     );
@@ -331,7 +331,7 @@ describe("applyTemplatePlan", () => {
       output: 2,
     });
     expect(documentXml).toContain(
-      '<w:r><w:rPr><w:i/><w:iCs/></w:rPr><w:t xml:space="preserve">services</w:t></w:r>',
+      '<w:r><w:rPr><w:i/></w:rPr><w:t xml:space="preserve">services</w:t></w:r>',
     );
     expect(documentXml).toContain(
       '<w:rPr><w:highlight w:val="yellow"/></w:rPr><w:t xml:space="preserve">[to be completed]</w:t>',
@@ -341,7 +341,7 @@ describe("applyTemplatePlan", () => {
     );
     // The character style's bold is stated on the run; the style id is not.
     expect(documentXml).toContain(
-      '<w:rPr><w:b/><w:bCs/></w:rPr><w:t xml:space="preserve">this agreement</w:t>',
+      '<w:rPr><w:b/></w:rPr><w:t xml:space="preserve">this agreement</w:t>',
     );
     expect(documentXml).toContain('<w:vertAlign w:val="subscript"/>');
     expect(documentXml).not.toContain("Times New Roman");
@@ -405,7 +405,7 @@ describe("applyTemplatePlan", () => {
 
   test("rebuilds the table on the template's table style", () => {
     expect(documentXml).toContain(
-      '<w:tbl><w:tblPr><w:tblStyle w:val="HouseTable"/><w:tblW w:w="5000" w:type="pct"/></w:tblPr><w:tblGrid><w:gridCol w:w="3000"/><w:gridCol w:w="3000"/></w:tblGrid><w:tr><w:trPr><w:tblHeader/></w:trPr><w:tc><w:tcPr><w:tcW w:w="3000" w:type="dxa"/></w:tcPr><w:p><w:pPr><w:pStyle w:val="HouseBody"/></w:pPr><w:r><w:rPr><w:b/><w:bCs/></w:rPr><w:t xml:space="preserve">Item</w:t></w:r></w:p></w:tc>',
+      '<w:tbl><w:tblPr><w:tblStyle w:val="HouseTable"/><w:tblW w:w="5000" w:type="pct"/></w:tblPr><w:tblGrid><w:gridCol w:w="3000"/><w:gridCol w:w="3000"/></w:tblGrid><w:tr><w:trPr><w:tblHeader/></w:trPr><w:tc><w:tcPr><w:tcW w:w="3000" w:type="dxa"/></w:tcPr><w:p><w:pPr><w:pStyle w:val="HouseBody"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">Item</w:t></w:r></w:p></w:tc>',
     );
     expect(documentXml).not.toContain("D9D9D9");
   });
@@ -1215,7 +1215,7 @@ describe("verifyTemplatePlanOutput", () => {
   test("catches lost italics and a lost highlight", async () => {
     const italics = await tampered((xml) =>
       xml.replace(
-        '<w:rPr><w:i/><w:iCs/></w:rPr><w:t xml:space="preserve">services</w:t>',
+        '<w:rPr><w:i/></w:rPr><w:t xml:space="preserve">services</w:t>',
         '<w:t xml:space="preserve">services</w:t>',
       ),
     );
@@ -1289,7 +1289,11 @@ describe("verifyTemplatePlanOutput", () => {
     const style = await tampered((xml) =>
       xml.replace('<w:pStyle w:val="HouseBody"/>', '<w:pStyle w:val="Gone"/>'),
     );
-    expect(style.issues.map(({ code }) => code)).toEqual(["style-dangling"]);
+    // The first paragraph of that style is one the template keeps.
+    expect(style.issues.map(({ code }) => code)).toEqual([
+      "template-mismatch",
+      "style-dangling",
+    ]);
   });
 
   test("catches update on open that was not set", async () => {
@@ -1300,6 +1304,80 @@ describe("verifyTemplatePlanOutput", () => {
 
     expect(report.issues.map(({ code }) => code)).toEqual([
       "update-fields-mismatch",
+    ]);
+  });
+
+  test("catches a kept template block that reads differently", async () => {
+    const report = await tampered((xml) =>
+      xml.replace(">Contents<", ">Index<"),
+    );
+
+    expect(report.issues).toEqual([
+      expect.objectContaining({
+        code: "template-mismatch",
+        blockId: TEMPLATE_IDS.tocHeading,
+      }),
+    ]);
+  });
+
+  test("catches a placed paragraph on another style of the template", async () => {
+    const report = await tampered((xml) =>
+      xml.replace(
+        '<w:pStyle w:val="HouseClause"/></w:pPr><w:r><w:t xml:space="preserve">The Provider',
+        '<w:pStyle w:val="HouseBody"/></w:pPr><w:r><w:t xml:space="preserve">The Provider',
+      ),
+    );
+
+    expect(report.issues).toEqual([
+      expect.objectContaining({
+        code: "style-mismatch",
+        blockId: SOURCE_IDS.clause,
+      }),
+    ]);
+  });
+
+  test("catches a rebuilt table on another table style", async () => {
+    const report = await tampered((xml) =>
+      xml.replace(
+        '<w:tblStyle w:val="HouseTable"/><w:tblW w:w="5000" w:type="pct"/>',
+        '<w:tblW w:w="5000" w:type="pct"/>',
+      ),
+    );
+
+    expect(report.issues).toEqual([
+      expect.objectContaining({
+        code: "style-mismatch",
+        blockId: SOURCE_IDS.table,
+      }),
+    ]);
+  });
+
+  test("catches a target bookmark that no longer holds the whole target", async () => {
+    const report = await tampered((xml) =>
+      xml.replace(
+        /(<w:bookmarkStart w:id="3" w:name="[^"]+"\/>)(<w:r>.*?<\/w:r>)(<w:bookmarkEnd w:id="3"\/>)/u,
+        "$1$3$2",
+      ),
+    );
+
+    expect(report.issues.map(({ code }) => code)).toEqual(["reference-broken"]);
+    expect(report.references.results.map(({ status }) => status)).toEqual([
+      "ok",
+      "missing-bookmark",
+    ]);
+  });
+
+  test("catches a level patch the numbering part does not carry", async () => {
+    const report = await tampered(
+      (xml) => xml.replace('w:val="Article %1"', 'w:val="Section %1"'),
+      "word/numbering.xml",
+    );
+
+    expect(report.issues).toEqual([
+      expect.objectContaining({
+        code: "numbering-mismatch",
+        part: "word/numbering.xml",
+      }),
     ]);
   });
 

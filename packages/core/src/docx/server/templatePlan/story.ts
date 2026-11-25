@@ -100,7 +100,20 @@ export const createStoryState = (): StoryState => ({
   strayFieldEnds: 0,
 });
 
-export type ParagraphBookmark = { name: string; id: string };
+/** A bookmark start, with how many atoms of its paragraph come before it. */
+/**
+ * Close a story at its end: a field still open there never closes, and must
+ * not swallow the text of the story read next with the same state.
+ */
+export const endStory = (state: StoryState): void => {
+  state.strayFieldEnds += state.open.length;
+  state.open = [];
+};
+
+export type ParagraphBookmark = { name: string; id: string; atomIndex: number };
+
+/** A bookmark end, with how many atoms of its paragraph come before it. */
+export type ParagraphBookmarkEnd = { id: string; atomIndex: number };
 
 export type ParagraphRead = {
   element: XmlElement;
@@ -116,7 +129,7 @@ export type ParagraphRead = {
   /** Fields of earlier paragraphs still open where this one starts. */
   openFieldsAtStart: number;
   bookmarks: ParagraphBookmark[];
-  bookmarkEndIds: string[];
+  bookmarkEnds: ParagraphBookmarkEnd[];
   inlineObjects: number;
   /** Names of content the reader has no text for and the transfer cannot carry. */
   unsupported: string[];
@@ -423,6 +436,8 @@ const readInline = (
           getLocalName(child.name) === "oMathPara")
       ) {
         read.inlineObjects += 1;
+        // An equation may hold tracked runs of its own.
+        state.trackedChanges += countContentRevisions(child);
         pushAtom(walk, {
           kind: "object",
           text: "",
@@ -470,9 +485,13 @@ const readInline = (
       read.bookmarks.push({
         name: wAttr(child, "name") ?? "",
         id: wAttr(child, "id") ?? "",
+        atomIndex: read.atoms.length,
       });
     } else if (name === "bookmarkEnd") {
-      read.bookmarkEndIds.push(wAttr(child, "id") ?? "");
+      read.bookmarkEnds.push({
+        id: wAttr(child, "id") ?? "",
+        atomIndex: read.atoms.length,
+      });
     } else if (!IGNORED_INLINE_CHILDREN.has(name) && !inCode(state)) {
       read.unsupported.push(name);
     }
@@ -512,7 +531,7 @@ export const readParagraph = (
     fieldIndices: [],
     openFieldsAtStart: state.open.length,
     bookmarks: [],
-    bookmarkEndIds: [],
+    bookmarkEnds: [],
     inlineObjects: 0,
     unsupported: [],
     hasSectionBreak: wChild(properties, "sectPr") !== null,
@@ -608,6 +627,9 @@ const walkRows = (
             walkCells(cell);
           } else if (cellName !== null && CONTENT_REVISIONS.has(cellName)) {
             visitor.tracked(cell);
+            if (REVISION_INCLUDED.has(cellName)) {
+              walkCells(cell);
+            }
           }
         }
       };
@@ -621,6 +643,9 @@ const walkRows = (
       walkRows(child, visitor, depth, rowCounter);
     } else if (name !== null && CONTENT_REVISIONS.has(name)) {
       visitor.tracked(child);
+      if (REVISION_INCLUDED.has(name)) {
+        walkRows(child, visitor, depth, rowCounter);
+      }
     }
   }
 };
@@ -650,7 +675,11 @@ export const walkBlocks = (
     } else if (name !== null && BLOCK_WRAPPERS.has(name)) {
       walkBlocks(child, visitor, depth);
     } else if (name !== null && CONTENT_REVISIONS.has(name)) {
+      // An insertion's blocks are part of the story; a deletion's are not.
       visitor.tracked(child);
+      if (REVISION_INCLUDED.has(name)) {
+        walkBlocks(child, visitor, depth);
+      }
     } else if (name === null || !IGNORED_BLOCK_CHILDREN.has(name)) {
       visitor.unread(child);
     }

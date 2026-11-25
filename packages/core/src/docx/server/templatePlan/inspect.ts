@@ -12,17 +12,18 @@ import { styleNumbering } from "./labels";
 import { guarded, readPartText } from "./package";
 import {
   createStoryState,
+  endStory,
   readParagraph,
   type StoryField,
   walkBlocks,
 } from "./story";
-import type {
-  DocxTemplateBookmark,
-  DocxTemplateField,
-  DocxTemplateInspection,
-  DocxTemplateNumbering,
-  DocxTemplateSection,
-  DocxTemplateStyle,
+import {
+  type DocxTemplateBookmark,
+  type DocxTemplateField,
+  type DocxTemplateInspection,
+  type DocxTemplateNumbering,
+  type DocxTemplateSection,
+  type DocxTemplateStyle,
   TemplatePlanError,
 } from "./types";
 import { isW, type RawPart, readRawPart, walkElements, wAttr } from "./xml";
@@ -142,6 +143,8 @@ export const partFields = (part: RawPart): StoryField[] => {
     for (const note of part.root.elements ?? []) {
       if (note.type === "element") {
         readUnder(note);
+        // A field left open in one note does not reach into the next.
+        endStory(state);
       }
     }
   } else {
@@ -176,6 +179,35 @@ export const headerFooterPaths = ({ pkg }: AnalyzedDocument): string[] =>
     .map(({ target }) => pkg.resolveDocumentTarget(target))
     .filter((path) => pkg.paths.has(path));
 
+/**
+ * The header and footer parts of a package, read. A part the document names
+ * that has no readable root is a refusal: skipping it would hide its fields.
+ */
+export const readHeaderFooterParts = async (
+  analyzed: AnalyzedDocument,
+): Promise<Result<RawPart[], TemplatePlanError>> => {
+  const parts: RawPart[] = [];
+  for (const path of headerFooterPaths(analyzed)) {
+    // oxlint-disable-next-line no-await-in-loop -- serialized reads keep the archive budget exact
+    const xml = await readPartText(analyzed.pkg, path);
+    if (Result.isError(xml)) {
+      return xml;
+    }
+    const part = xml.value === null ? null : readRawPart(path, xml.value);
+    if (part === null) {
+      return Result.err(
+        new TemplatePlanError({
+          message: `The part ${path} could not be read.`,
+          code: "xml-unreadable",
+          part: path,
+        }),
+      );
+    }
+    parts.push(part);
+  }
+  return Result.ok(parts);
+};
+
 /** Build the inspection of an analysed template. */
 export const inspectAnalyzedTemplate = async (
   analyzed: AnalyzedDocument,
@@ -194,18 +226,11 @@ export const inspectAnalyzedTemplate = async (
     return inspected;
   });
   const bookmarks = bookmarksOf(document);
-  const others: RawPart[] = [];
-  for (const path of headerFooterPaths(analyzed)) {
-    // oxlint-disable-next-line no-await-in-loop -- serialized reads keep the archive budget exact
-    const xml = await readPartText(pkg, path);
-    if (Result.isError(xml)) {
-      return xml;
-    }
-    const part = xml.value === null ? null : readRawPart(path, xml.value);
-    if (part !== null) {
-      others.push(part);
-    }
+  const headersAndFooters = await readHeaderFooterParts(analyzed);
+  if (Result.isError(headersAndFooters)) {
+    return headersAndFooters;
   }
+  const others: RawPart[] = [...headersAndFooters.value];
   for (const notes of [footnotes, endnotes]) {
     if (notes.part !== null) {
       others.push(notes.part);

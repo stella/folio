@@ -20,6 +20,7 @@ import {
 } from "./package";
 import {
   createStoryState,
+  endStory,
   type ParagraphRead,
   readParagraph,
   type StoryState,
@@ -365,6 +366,8 @@ const analyzeNotes = (
         notes.state.trackedChanges += 1;
       },
     });
+    // Each note is a story of its own.
+    endStory(notes.state);
     const note: AnalyzedNote = {
       id,
       element,
@@ -433,6 +436,25 @@ export const analyzeDocument = async (
     );
   }
 
+  // A part the document names and the package does not hold is not the same
+  // as a part the document never had: reading on would lose what it carried.
+  for (const kind of [
+    "styles",
+    "numbering",
+    "footnotes",
+    "endnotes",
+  ] as const) {
+    const missing = pkg.missingPartPath(kind);
+    if (missing !== null) {
+      return Result.err(
+        new TemplatePlanError({
+          message: `The main document names the part ${missing}, which the package does not hold.`,
+          code: "part-missing",
+          part: missing,
+        }),
+      );
+    }
+  }
   const stylesPath = pkg.partPath("styles");
   const numberingPath = pkg.partPath("numbering");
   const footnotesPath = pkg.partPath("footnotes");

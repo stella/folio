@@ -35,6 +35,8 @@ export type LoadedPackage = {
   documentRelationships: RelationshipMap;
   /** The path of the part the main document names for `kind`, when it names one. */
   partPath: (kind: DocumentPartKind) => string | null;
+  /** The path the main document names for `kind` when the package holds no such entry. */
+  missingPartPath: (kind: DocumentPartKind) => string | null;
   /** The package path a relationship of the main document points at. */
   resolveDocumentTarget: (target: string) => string;
 };
@@ -106,6 +108,15 @@ export const loadPackage = async (
   }
   const resolveDocumentTarget = (target: string): string =>
     resolveRelativePath(documentRelationshipsPath, target);
+  const declaredPath = (kind: DocumentPartKind): string | null => {
+    const relationship = [...documentRelationships.values()].find(
+      ({ type, targetMode }) =>
+        type === RELATIONSHIP_TYPES[kind] && targetMode !== "External",
+    );
+    return relationship === undefined
+      ? null
+      : resolveDocumentTarget(relationship.target);
+  };
   return Result.ok({
     bytes,
     sha256: sha256Hex(bytes),
@@ -117,15 +128,12 @@ export const loadPackage = async (
     documentRelationshipsPath,
     documentRelationships,
     partPath: (kind) => {
-      const relationship = [...documentRelationships.values()].find(
-        ({ type, targetMode }) =>
-          type === RELATIONSHIP_TYPES[kind] && targetMode !== "External",
-      );
-      if (relationship === undefined) {
-        return null;
-      }
-      const path = resolveDocumentTarget(relationship.target);
-      return paths.has(path) ? path : null;
+      const path = declaredPath(kind);
+      return path !== null && paths.has(path) ? path : null;
+    },
+    missingPartPath: (kind) => {
+      const path = declaredPath(kind);
+      return path === null || paths.has(path) ? null : path;
     },
     resolveDocumentTarget,
   });

@@ -35,7 +35,7 @@ import {
   tableXml,
   templateCharacterStyles,
 } from "./emit";
-import { headerFooterPaths } from "./inspect";
+import { readHeaderFooterParts } from "./inspect";
 import { styleNumbering } from "./labels";
 import { guarded, readPartText, relationshipsPathFor } from "./package";
 import {
@@ -335,9 +335,40 @@ const editNumbering = (
           .map((level) => {
             const start = starts.get(level);
             const kept = inherited.get(level);
-            return start === undefined
-              ? raw(kept)
-              : `<${w}:lvlOverride ${w}:ilvl="${level}"><${w}:startOverride ${w}:val="${start}"/>${raw(wChild(kept, "lvl"))}</${w}:lvlOverride>`;
+            if (start === undefined) {
+              return raw(kept);
+            }
+            const startOverride = (prefix: string): string =>
+              `<${prefix}:startOverride ${prefix}:val="${start}"/>`;
+            const keptRange = kept === undefined ? null : rangeOf(kept);
+            const keptInner =
+              kept === undefined ? null : innerRangeOf(part.xml, kept);
+            const keptPrefix = kept?.name?.includes(":")
+              ? kept.name.slice(0, kept.name.indexOf(":"))
+              : null;
+            if (
+              kept === undefined ||
+              keptRange === null ||
+              keptInner === null ||
+              keptPrefix === null
+            ) {
+              return `<${w}:lvlOverride ${w}:ilvl="${level}">${startOverride(w)}</${w}:lvlOverride>`;
+            }
+            // The restart goes into the base override as written, so a
+            // prefix that override binds stays bound for the level it holds.
+            const replaced = wChild(kept, "startOverride");
+            const replacedRange = replaced === null ? null : rangeOf(replaced);
+            const rest =
+              replacedRange === null
+                ? part.xml.slice(keptInner.start, keptInner.end)
+                : part.xml.slice(keptInner.start, replacedRange.start) +
+                  part.xml.slice(replacedRange.end, keptInner.end);
+            return (
+              part.xml.slice(keptRange.start, keptInner.start) +
+              startOverride(keptPrefix) +
+              rest +
+              part.xml.slice(keptInner.end, keptRange.end)
+            );
           })
           .join("");
         return `<${w}:num ${w}:numId="${numId}"><${w}:abstractNumId ${w}:val="${abstractNumId}"/>${overrides}</${w}:num>`;
@@ -379,6 +410,8 @@ type NotePartState = {
   prefixes: PartPrefixes;
   relationships: RelationshipsEditor;
   nextId: number;
+  /** Whether a part the template does not use for notes already has `path`. */
+  pathTaken: boolean;
   /** New id by source id, in the order references were written. */
   allocated: Map<string, number>;
 };
@@ -446,6 +479,9 @@ const writeOutput = async ({
     );
   }
 
+  // A notes part the template lacks is written under the usual name, the one
+  // the engine reads notes back from. Another part may already sit there.
+  const takenPaths = new Set([...pkg.paths].map((path) => path.toLowerCase()));
   const notePartState = async (
     kind: NoteKind,
   ): Promise<Result<NotePartState, TemplatePlanError>> => {
@@ -488,6 +524,7 @@ const writeOutput = async ({
       prefixes,
       relationships,
       nextId: maxOf(existing.usedIds, 0) + 1,
+      pathTaken: existing.path === null && takenPaths.has(path.toLowerCase()),
       allocated: new Map(),
     });
   };
@@ -527,18 +564,13 @@ const writeOutput = async ({
       noteDrawingIds(notes.part.root);
     }
   }
-  const headerFooterParts: RawPart[] = [];
-  for (const path of headerFooterPaths(template)) {
-    // oxlint-disable-next-line no-await-in-loop -- serialized reads keep the archive budget exact
-    const xml = await readTemplateText(path);
-    if (Result.isError(xml)) {
-      return xml;
-    }
-    const part = xml.value === null ? null : readRawPart(path, xml.value);
-    if (part !== null) {
-      headerFooterParts.push(part);
-      noteDrawingIds(part.root);
-    }
+  const headersAndFooters = await readHeaderFooterParts(template);
+  if (Result.isError(headersAndFooters)) {
+    return headersAndFooters;
+  }
+  const headerFooterParts = headersAndFooters.value;
+  for (const part of headerFooterParts) {
+    noteDrawingIds(part.root);
   }
   const shared: EmitShared = {
     styles: templateCharacterStyles(template),
@@ -780,6 +812,16 @@ const writeOutput = async ({
             });
       partXml = appended === state.existing.part.xml ? null : appended;
     } else if (markup.length > 0) {
+      if (state.pathTaken) {
+        // Writing the notes there would replace that part's bytes.
+        return Result.err(
+          new TemplatePlanError({
+            code: "unsupported-content",
+            message: `The template keeps another part at ${state.path}, where its ${kind}s would go.`,
+            part: state.path,
+          }),
+        );
+      }
       const separators = [-1, 0]
         .map(
           (id, index) =>

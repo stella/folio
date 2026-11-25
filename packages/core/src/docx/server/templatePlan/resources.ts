@@ -180,7 +180,7 @@ export const objectFingerprint = (element: XmlElement): string => {
   const parts: string[] = [];
   const visit = (node: XmlElement): void => {
     if (node.type === "text") {
-      parts.push(`#${String(node.text ?? "")}`);
+      parts.push(JSON.stringify(["text", String(node.text ?? "")]));
       return;
     }
     if (node.type !== "element") {
@@ -196,13 +196,23 @@ export const objectFingerprint = (element: XmlElement): string => {
           !isRelationshipAttribute(node, name) &&
           !(local === DRAWING_PROPERTIES && name === "id"),
       )
-      .map(([name, value]) => `${getLocalName(name)}=${String(value)}`)
-      .toSorted();
-    parts.push(`<${node.namespaceUri ?? ""}|${local}|${attributes.join("|")}>`);
+      .map(([name, value]): [string, string] => [
+        getLocalName(name),
+        String(value),
+      ])
+      .toSorted(
+        ([leftName, leftValue], [rightName, rightValue]) =>
+          leftName.localeCompare(rightName) ||
+          leftValue.localeCompare(rightValue),
+      );
+    // Structured, so no value can pass for a second attribute.
+    parts.push(
+      JSON.stringify(["open", node.namespaceUri ?? "", local, attributes]),
+    );
     for (const child of node.elements ?? []) {
       visit(child);
     }
-    parts.push("</>");
+    parts.push(JSON.stringify(["close"]));
   };
   visit(element);
   return sha256Hex(parts.join("\u0000"));

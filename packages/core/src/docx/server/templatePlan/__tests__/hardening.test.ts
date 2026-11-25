@@ -809,7 +809,7 @@ describe("emphasis from styles", () => {
 
     expect(report.emphasisSpans).toMatchObject({ expected: 1, output: 1 });
     expect(document).toContain(
-      '<w:r><w:rPr><w:rStyle w:val="Hyperlink"/><w:b/><w:bCs/></w:rPr><w:t xml:space="preserve">bold link</w:t></w:r><w:r><w:rPr><w:rStyle w:val="Hyperlink"/></w:rPr><w:t xml:space="preserve"> plain link</w:t></w:r>',
+      '<w:r><w:rPr><w:rStyle w:val="Hyperlink"/><w:b/></w:rPr><w:t xml:space="preserve">bold link</w:t></w:r><w:r><w:rPr><w:rStyle w:val="Hyperlink"/></w:rPr><w:t xml:space="preserve"> plain link</w:t></w:r>',
     );
   });
 
@@ -823,7 +823,7 @@ describe("emphasis from styles", () => {
     const { docx } = unwrap(await applyFor({ source, template }));
 
     expect(await documentOf(docx)).toContain(
-      '<w:r><w:t xml:space="preserve">bold by default</w:t></w:r><w:r><w:rPr><w:b w:val="0"/><w:bCs w:val="0"/></w:rPr><w:t xml:space="preserve"> not bold</w:t></w:r>',
+      '<w:r><w:t xml:space="preserve">bold by default</w:t></w:r><w:r><w:rPr><w:b w:val="0"/></w:rPr><w:t xml:space="preserve"> not bold</w:t></w:r>',
     );
   });
 });

@@ -12,7 +12,7 @@ import {
   replacePart,
   TEMPLATE_IDS,
 } from "./fixtures";
-import { planFor, unwrap } from "./planning";
+import { planFor, unwrap, verifyFor } from "./planning";
 
 describe("innerRangeOf", () => {
   test("finds the content after an opening tag whose attribute holds '>'", () => {
@@ -74,6 +74,22 @@ describe("applyTemplatePlan edge content", () => {
     expect(document).toContain("<w:noBreakHyphen/>");
     expect(document).toContain('<w:sym w:font="Wingdings" w:char="F0FC"/>');
     expect(document).toContain('<w:br w:type="column"/>');
+
+    // The same text with the break after it is another reading.
+    const moved = document.replace(
+      /(<w:r><w:br w:type="column"\/><\/w:r>)(<w:r>.*?<\/w:r>)/u,
+      "$2$1",
+    );
+    expect(moved).not.toBe(document);
+    const movedReport = await verifyFor({
+      source,
+      template,
+      plan,
+      output: await replacePart(docx, "word/document.xml", moved),
+    });
+    expect(movedReport.issues.map(({ code }) => code)).toEqual([
+      "text-mismatch",
+    ]);
   });
 
   test("drops a bookmark half whose other half sits in a dropped template block", async () => {
@@ -168,5 +184,41 @@ describe("applyTemplatePlan edge content", () => {
     expect(
       unwrap(await analyzeDocxBlocks(docx)).blocks.map(({ label }) => label),
     ).toEqual(["(ii)", "(iii)"]);
+
+    // A list that starts elsewhere, or a paragraph at another level, is not
+    // the numbering the plan asked for.
+    const restarted = patched.replace(
+      '<w:startOverride w:val="2"/>',
+      '<w:startOverride w:val="1"/>',
+    );
+    expect(restarted).not.toBe(patched);
+    const restartedReport = await verifyFor({
+      source,
+      template,
+      plan,
+      output: await replacePart(docx, "word/numbering.xml", restarted),
+    });
+    expect(restartedReport.issues).toEqual([
+      expect.objectContaining({
+        code: "numbering-mismatch",
+        part: "word/numbering.xml",
+      }),
+    ]);
+
+    const document = (await readPart(docx, "word/document.xml")) ?? "";
+    const relevelled = document.replace(
+      '<w:ilvl w:val="4"/>',
+      '<w:ilvl w:val="3"/>',
+    );
+    expect(relevelled).not.toBe(document);
+    const relevelledReport = await verifyFor({
+      source,
+      template,
+      plan,
+      output: await replacePart(docx, "word/document.xml", relevelled),
+    });
+    expect(relevelledReport.issues).toEqual([
+      expect.objectContaining({ code: "numbering-mismatch", blockId: "p0" }),
+    ]);
   });
 });

@@ -7,9 +7,15 @@ import type { Style } from "../../../types/document";
 import type { XmlElement } from "../../xmlParser";
 import { wAttr, wChild, wChildren, wChildVal } from "./xml";
 
+/**
+ * In `CT_RPr` order. Bold and italic for complex scripts are properties of
+ * their own: a run may state one and not the other.
+ */
 const TOGGLES = [
   "b",
+  "bCs",
   "i",
+  "iCs",
   "caps",
   "smallCaps",
   "strike",
@@ -33,7 +39,9 @@ export type EmphasisOverride = Partial<Record<Toggle, boolean>> & {
 
 export const NO_EMPHASIS: Emphasis = Object.freeze({
   b: false,
+  bCs: false,
   i: false,
+  iCs: false,
   caps: false,
   smallCaps: false,
   strike: false,
@@ -49,7 +57,9 @@ type RunFormatting = Style["rPr"];
 /** Toggle properties: stated on at two style tiers, they cancel (ECMA-376 §17.7.3). */
 const XOR_TOGGLES: ReadonlySet<Toggle> = new Set([
   "b",
+  "bCs",
   "i",
+  "iCs",
   "caps",
   "smallCaps",
   "strike",
@@ -63,8 +73,12 @@ const formattingToggle = (
   switch (toggle) {
     case "b":
       return rPr?.bold;
+    case "bCs":
+      return rPr?.boldCs;
     case "i":
       return rPr?.italic;
+    case "iCs":
+      return rPr?.italicCs;
     case "caps":
       return rPr?.allCaps;
     case "smallCaps":
@@ -286,23 +300,12 @@ export const runPropertiesXml = ({
   if (rStyle) {
     out.push(`<${prefix}:rStyle ${prefix}:val="${escapeAttribute(rStyle)}"/>`);
   }
-  const toggle = (name: Toggle, complexScript?: string): void => {
+  for (const name of TOGGLES) {
     const value = stated.get(name);
-    if (value === undefined) {
-      return;
+    if (value !== undefined) {
+      out.push(onOff(prefix, name, value === "1"));
     }
-    out.push(onOff(prefix, name, value === "1"));
-    if (complexScript !== undefined) {
-      out.push(onOff(prefix, complexScript, value === "1"));
-    }
-  };
-  toggle("b", "bCs");
-  toggle("i", "iCs");
-  toggle("caps");
-  toggle("smallCaps");
-  toggle("strike");
-  toggle("dstrike");
-  toggle("vanish");
+  }
   for (const name of ["highlight", "u", "vertAlign"] as const) {
     const value = stated.get(name);
     if (value !== undefined) {

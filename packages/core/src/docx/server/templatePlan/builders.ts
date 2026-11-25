@@ -364,7 +364,13 @@ export const freezeFields = (
       }
       const instruction = wAttr(element, "instr") ?? "";
       const range = rangeOf(element);
-      if (wanted(instruction) && range !== null) {
+      // A prefix the field declares itself is in scope for its runs only
+      // while the field stands; such a field stays live rather than leave
+      // its result with a prefix nothing binds.
+      const declaresPrefix = Object.keys(element.attributes ?? {}).some(
+        (attribute) => attribute === "xmlns" || attribute.startsWith("xmlns:"),
+      );
+      if (wanted(instruction) && range !== null && !declaresPrefix) {
         count(instruction);
         const inner = innerRangeOf(part.xml, element);
         if (inner === null) {

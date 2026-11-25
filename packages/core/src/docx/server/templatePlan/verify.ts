@@ -2,7 +2,20 @@
  * Verification of an applied template plan. The output package is read back
  * with the same reader that analysed the source and compared, block by block,
  * against what the plan resolves to from the source alone: text, stated
- * emphasis, notes, references and the integrity of every id the body uses.
+ * emphasis, notes, references, paragraph style and list membership, and the
+ * integrity of every id the body uses. A kept template block must read as
+ * the template has it.
+ *
+ * Limits. These are not compared, so a change to them passes:
+ * - run formatting other than emphasis and highlight (fonts, sizes, colours)
+ *   and paragraph formatting other than the style and the list, on placed
+ *   and on kept blocks alike;
+ * - the content of headers, footers and text boxes, beyond the fields they
+ *   carry;
+ * - cell spans and merges of a table;
+ * - levels of the numbering part the plan neither patches nor restarts;
+ * - what a field shows once it updates: a cached result is compared, the
+ *   label a list will render is only predicted.
  */
 import { Result } from "better-result";
 
@@ -31,10 +44,12 @@ import {
   signatureHighlight,
   signatureWithoutHighlight,
 } from "./emphasis";
-import { headerFooterPaths, partFields } from "./inspect";
+import { partFields, readHeaderFooterParts } from "./inspect";
+import { styleNumbering } from "./labels";
 import { guarded, readPartText } from "./package";
 import {
   type ExpectedPiece,
+  type ExpectedSegment,
   hyperlinkFieldLink,
   paragraphPieces,
   piecesContent,
@@ -55,6 +70,7 @@ import {
   type AtomKind,
   type AtomLink,
   createStoryState,
+  endStory,
   type ParagraphRead,
   readParagraph,
   type StoryField,
@@ -80,6 +96,8 @@ import {
   readRawPart,
   walkElements,
   wAttr,
+  wChild,
+  wChildren,
   wChildVal,
   wName,
 } from "./xml";
@@ -98,7 +116,7 @@ const BOOKMARK_FIELD_KINDS: ReadonlySet<string> = new Set([
 /**
  * What a reader gets from one paragraph or note: its text, and per unit of
  * text the emphasis stated and the address linked to; plus the things that
- * take no text, page breaks and objects, in order.
+ * take no text, page breaks and objects, in order and with their offsets.
  */
 type Content = {
   text: string;
@@ -133,11 +151,14 @@ const appendUnit = (
     content.signatures.push(signature);
     content.links.push(link);
   }
+  // A mark carries the offset it sits at: a break after the text is not the
+  // break before it.
+  const at = content.text.length - text.length;
   if (kind === "pageBreak") {
-    content.marks.push(`break:${wAttr(element, "type") ?? "page"}`);
+    content.marks.push(`${at}:break:${wAttr(element, "type") ?? "page"}`);
   } else if (kind === "object" && element !== null) {
     content.marks.push(
-      `object:${objectFingerprint(element)}:${objectTargets(element, origin, resources).join(",")}`,
+      `${at}:object:${objectFingerprint(element)}:${objectTargets(element, origin, resources).join(",")}`,
     );
   }
 };
@@ -364,6 +385,7 @@ const partText = (part: RawPart): string => {
     for (const note of part.root.elements ?? []) {
       if (note.type === "element") {
         readUnder(note);
+        endStory(state);
       }
     }
   } else {
@@ -392,6 +414,56 @@ const CONFORMANCE_RANK = {
 } as const;
 
 const NUMBER_SWITCH = /\\[nrw]\b/u;
+
+/** The style and the list a paragraph states for itself. */
+type StatedProperties = {
+  styleId: string | null;
+  numId: number | null;
+  ilvl: number | null;
+};
+
+const statedProperties = (paragraph: XmlElement): StatedProperties => {
+  const properties = wChild(paragraph, "pPr");
+  const numbering = wChild(properties, "numPr");
+  return {
+    styleId: wChildVal(properties, "pStyle"),
+    numId: integerOrNull(wChildVal(numbering, "numId")),
+    ilvl: integerOrNull(wChildVal(numbering, "ilvl")),
+  };
+};
+
+/** Whether a bookmark of `read` holds all of the paragraph's content. */
+const bookmarkEncloses = (
+  read: ParagraphRead | null,
+  name: string,
+): boolean => {
+  const start = read?.bookmarks.find((bookmark) => bookmark.name === name);
+  const end =
+    start === undefined
+      ? undefined
+      : read?.bookmarkEnds.find(({ id }) => id === start.id);
+  return (
+    read !== null &&
+    start !== undefined &&
+    end !== undefined &&
+    start.atomIndex === 0 &&
+    end.atomIndex === read.atoms.length
+  );
+};
+
+const segmentLength = (segment: ExpectedSegment): number =>
+  piecesContent(segment.kind === "piece" ? [segment.piece] : segment.pieces)
+    .text.length;
+
+/** The rows and cells of a table, without the ids of what they hold. */
+const tableShape = (block: AnalyzedBlock): string =>
+  JSON.stringify(
+    (block.block.cells ?? []).map(({ row, col, blockIds }) => [
+      row,
+      col,
+      blockIds.length,
+    ]),
+  );
 
 type ReportArgs = {
   source: AnalyzedDocument;
@@ -429,9 +501,68 @@ export const reportTemplatePlanOutput = async ({
   if (Result.isError(outputResourcesRead)) {
     return outputResourcesRead;
   }
+  const templateResourcesRead = await readStoryResources(template);
+  if (Result.isError(templateResourcesRead)) {
+    return templateResourcesRead;
+  }
   const sourceResources = sourceResourcesRead.value;
   const outputResources = outputResourcesRead.value;
+  const templateResources = templateResourcesRead.value;
   const characterStyles = templateCharacterStyles(template);
+
+  // The style and the list the plan gives each paragraph. A slot keeps what
+  // its template paragraph states; any other paragraph gets what the plan
+  // resolves to, with a list its style binds cancelled when the plan says so.
+  const slotBlocks = new Map<ResolvedParagraph, AnalyzedBlock>();
+  for (const item of resolved.items) {
+    if (item.kind === "slot") {
+      slotBlocks.set(item.paragraph, item.templateBlock);
+    }
+  }
+  for (const slot of resolved.nestedSlots) {
+    slotBlocks.set(slot.paragraph, slot.templateBlock);
+  }
+  const slottedTemplateBlocks = new Set(slotBlocks.values());
+  const plannedProperties = (
+    paragraph: ResolvedParagraph,
+  ): StatedProperties => {
+    const slot = slotBlocks.get(paragraph);
+    if (slot !== undefined) {
+      return statedProperties(slot.element);
+    }
+    const { styleId, numbering } = paragraph;
+    if (numbering.kind === "direct") {
+      return { styleId, numId: numbering.numId, ilvl: numbering.ilvl };
+    }
+    const cancelsList =
+      numbering.kind === "none" &&
+      styleNumbering(
+        styleId ?? template.defaultStyleId,
+        template.styles,
+        template.numbering,
+      )?.kind === "reference";
+    return { styleId, numId: cancelsList ? 0 : null, ilvl: null };
+  };
+  const checkProperties = (
+    planned: StatedProperties,
+    stated: StatedProperties,
+    blockId: string,
+  ): void => {
+    if (stated.styleId !== planned.styleId) {
+      issues.push({
+        code: "style-mismatch",
+        message: `Block ${blockId} has the style ${stated.styleId ?? "(none)"}, the plan gives it ${planned.styleId ?? "(none)"}.`,
+        blockId,
+      });
+    }
+    if (stated.numId !== planned.numId || stated.ilvl !== planned.ilvl) {
+      issues.push({
+        code: "numbering-mismatch",
+        message: `Block ${blockId} is not in the list, or at the level, the plan gives it.`,
+        blockId,
+      });
+    }
+  };
 
   // Which output block each resolved paragraph was written as.
   const outputOf = new Map<ResolvedParagraph, AnalyzedBlock>();
@@ -530,6 +661,53 @@ export const reportTemplatePlanOutput = async ({
           item.block.block.id,
         );
         const outputNested = nestedParagraphs(out.story, block.block.id);
+        // A kept block reads as the template has it: the same paragraphs,
+        // each with its text, links, objects, emphasis, style and list. A
+        // frozen field keeps its result, so it reads the same too.
+        const keptAsWritten =
+          templateNested.length === outputNested.length &&
+          tableShape(item.block) === tableShape(block) &&
+          templateNested.every((templateParagraph, index) => {
+            const outputParagraph = outputNested[index];
+            if (
+              outputParagraph === undefined ||
+              templateParagraph.read === null ||
+              outputParagraph.read === null
+            ) {
+              return false;
+            }
+            if (slottedTemplateBlocks.has(templateParagraph)) {
+              return true;
+            }
+            const before = statedProperties(templateParagraph.element);
+            const after = statedProperties(outputParagraph.element);
+            const was = outputContent({
+              read: templateParagraph.read,
+              origin: "document",
+              resources: templateResources,
+              styles: characterStyles,
+            });
+            const is = outputContent({
+              read: outputParagraph.read,
+              origin: "document",
+              resources: outputResources,
+              styles: characterStyles,
+            });
+            return (
+              before.styleId === after.styleId &&
+              before.numId === after.numId &&
+              before.ilvl === after.ilvl &&
+              sameReading(was, is) &&
+              sameList(was.signatures, is.signatures)
+            );
+          });
+        if (!keptAsWritten) {
+          issues.push({
+            code: "template-mismatch",
+            message: `Template block ${item.block.block.id} does not read as the template has it.`,
+            blockId: item.block.block.id,
+          });
+        }
         for (const slot of resolved.nestedSlots) {
           if (slot.templateBlock.topLevelId !== item.block.block.id) {
             continue;
@@ -553,6 +731,17 @@ export const reportTemplatePlanOutput = async ({
           break;
         }
         mapTable(item.cells, item.block, block);
+        const tableStyle = wChildVal(
+          wChild(block.element, "tblPr"),
+          "tblStyle",
+        );
+        if (tableStyle !== item.styleId) {
+          issues.push({
+            code: "style-mismatch",
+            message: `Table ${item.block.block.id} has the style ${tableStyle ?? "(none)"}, the plan gives it ${item.styleId ?? "(none)"}.`,
+            blockId: item.block.block.id,
+          });
+        }
         break;
       }
       default:
@@ -601,6 +790,11 @@ export const reportTemplatePlanOutput = async ({
       styles: characterStyles,
     });
     tally(spans.output, actual.signatures);
+    checkProperties(
+      plannedProperties(paragraph),
+      statedProperties(block.element),
+      blockId,
+    );
     const text = sameReading(actual, expected) ? "identical" : "mismatch";
     const emphasis = sameList(actual.signatures, expected.signatures)
       ? "identical"
@@ -798,15 +992,19 @@ export const reportTemplatePlanOutput = async ({
     const fields = (block?.read?.fieldIndices ?? [])
       .map((index) => out.story.state.fields[index])
       .filter((field) => field?.kind === "REF");
-    // Fields come in the order the segments were written.
+    // Fields come in the order the segments were written, each over the
+    // text its segment stands at.
+    let offset = 0;
     const ordered = paragraph.segments.flatMap((segment) => {
+      const at = offset;
+      offset += segmentLength(segment);
       const entry =
         segment.kind === "reference"
           ? entries.find(({ reference }) => reference === segment.reference)
           : undefined;
-      return entry === undefined ? [] : [entry];
+      return entry === undefined ? [] : [{ entry, at }];
     });
-    for (const [index, entry] of ordered.entries()) {
+    for (const [index, { entry, at }] of ordered.entries()) {
       const field = fields[index];
       const bookmark = resolved.bookmarks.get(entry.target)?.name ?? "";
       const targetBlock = outputOf.get(entry.target);
@@ -826,12 +1024,20 @@ export const reportTemplatePlanOutput = async ({
       if (
         field === undefined ||
         fieldBookmarkOf(field.instruction) !== bookmark ||
-        field.instruction.trim() !== entry.instruction.trim()
+        field.instruction.trim() !== entry.instruction.trim() ||
+        // A field over other characters would replace those when it updates.
+        // Offsets only compare over the same text; other text is an issue
+        // of its own.
+        (comparisons.get(paragraph)?.text === "identical" &&
+          (field.paragraphOrdinal !== block?.read?.ordinal ||
+            field.resultStart !== at))
       ) {
         status = "missing-field";
       } else if (
         targetBlock === undefined ||
-        outputBookmarks.get(bookmark) !== targetBlock
+        outputBookmarks.get(bookmark) !== targetBlock ||
+        // The bookmark is the target's whole content, no more and no less.
+        !bookmarkEncloses(targetBlock.read, bookmark)
       ) {
         status = "missing-bookmark";
       } else if (field.result !== entry.reference.expectedText) {
@@ -855,6 +1061,66 @@ export const reportTemplatePlanOutput = async ({
         predictedText,
         status,
       });
+    }
+  }
+
+  // The lists the plan makes and the levels it patches, as the output's
+  // numbering part states them.
+  const outputNumbering =
+    out.numberingPath === null || out.numberingXml === null
+      ? null
+      : readRawPart(out.numberingPath, out.numberingXml);
+  const numberingMismatch = (message: string): void => {
+    issues.push({
+      code: "numbering-mismatch",
+      message,
+      ...(out.numberingPath === null ? {} : { part: out.numberingPath }),
+    });
+  };
+  for (const mint of resolved.mints) {
+    const instance = wChildren(outputNumbering?.root, "num").find(
+      (element) => integerOrNull(wAttr(element, "numId")) === mint.numId,
+    );
+    if (
+      instance === undefined ||
+      integerOrNull(wChildVal(instance, "abstractNumId")) !== mint.abstractNumId
+    ) {
+      numberingMismatch(
+        `List ${mint.numId} is not an instance of list definition ${mint.abstractNumId}.`,
+      );
+      continue;
+    }
+    for (const [level, start] of mint.starts) {
+      const override = wChildren(instance, "lvlOverride").find(
+        (element) => integerOrNull(wAttr(element, "ilvl")) === level,
+      );
+      if (integerOrNull(wChildVal(override, "startOverride")) !== start) {
+        numberingMismatch(
+          `Level ${level} of list ${mint.numId} does not start at ${start}.`,
+        );
+      }
+    }
+  }
+  for (const patch of plan.numberingPatches ?? []) {
+    const definition = wChildren(outputNumbering?.root, "abstractNum").find(
+      (element) =>
+        integerOrNull(wAttr(element, "abstractNumId")) === patch.abstractNumId,
+    );
+    const level = wChildren(definition, "lvl").find(
+      (element) => integerOrNull(wAttr(element, "ilvl")) === patch.ilvl,
+    );
+    const planned = {
+      start: patch.start === undefined ? undefined : String(patch.start),
+      numFmt: patch.numFmt,
+      suff: patch.suff,
+      lvlText: patch.lvlText,
+    };
+    for (const [name, value] of Object.entries(planned)) {
+      if (value !== undefined && wChildVal(level, name) !== value) {
+        numberingMismatch(
+          `Level ${patch.ilvl} of list definition ${patch.abstractNumId} does not carry the planned ${name}.`,
+        );
+      }
     }
   }
 
@@ -1009,20 +1275,16 @@ export const reportTemplatePlanOutput = async ({
   // Fields the output still carries, and whether the planned freeze took.
   const outputParts: { part: string; fields: StoryField[]; text: string }[] =
     [];
-  for (const path of headerFooterPaths(out)) {
-    // oxlint-disable-next-line no-await-in-loop -- serialized reads keep the archive budget exact
-    const xml = await readPartText(out.pkg, path);
-    if (Result.isError(xml)) {
-      return xml;
-    }
-    const part = xml.value === null ? null : readRawPart(path, xml.value);
-    if (part !== null) {
-      outputParts.push({
-        part: path,
-        fields: partFields(part),
-        text: partText(part),
-      });
-    }
+  const outputHeadersAndFooters = await readHeaderFooterParts(out);
+  if (Result.isError(outputHeadersAndFooters)) {
+    return outputHeadersAndFooters;
+  }
+  for (const part of outputHeadersAndFooters.value) {
+    outputParts.push({
+      part: part.path,
+      fields: partFields(part),
+      text: partText(part),
+    });
   }
   for (const notes of [out.footnotes, out.endnotes]) {
     if (notes.part !== null) {
@@ -1139,16 +1401,12 @@ export const reportTemplatePlanOutput = async ({
         );
       }
     }
-    for (const path of headerFooterPaths(template)) {
-      // oxlint-disable-next-line no-await-in-loop -- serialized reads keep the archive budget exact
-      const xml = await readPartText(template.pkg, path);
-      if (Result.isError(xml)) {
-        return xml;
-      }
-      const part = xml.value === null ? null : readRawPart(path, xml.value);
-      if (part !== null) {
-        frozenFields.push(...countByKind(path, frozenIn(partFields(part))));
-      }
+    const templateHeadersAndFooters = await readHeaderFooterParts(template);
+    if (Result.isError(templateHeadersAndFooters)) {
+      return templateHeadersAndFooters;
+    }
+    for (const part of templateHeadersAndFooters.value) {
+      frozenFields.push(...countByKind(part.path, frozenIn(partFields(part))));
     }
   }
 

@@ -77,9 +77,12 @@ export const createRelationshipsEditor = (
     existing ??
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="${PACKAGE_RELATIONSHIPS_NAMESPACE}"></Relationships>`;
   const known = parseRelationships(source);
+  // Ids are strings: every one in use is reserved as written, and the
+  // counter only follows suffixes it can count on exactly.
+  const reserved = new Set(known.keys());
   let next = 1;
-  for (const id of known.keys()) {
-    const number = /^rId(?<number>\d+)$/u.exec(id)?.groups?.["number"];
+  for (const id of reserved) {
+    const number = /^rId(?<number>\d{1,15})$/u.exec(id)?.groups?.["number"];
     if (number !== undefined) {
       next = Math.max(next, Number(number) + 1);
     }
@@ -107,11 +110,12 @@ export const createRelationshipsEditor = (
         return reused;
       }
       let id = `rId${next}`;
-      while (known.has(id)) {
+      while (reserved.has(id)) {
         next += 1;
         id = `rId${next}`;
       }
       next += 1;
+      reserved.add(id);
       added.set(key, id);
       markup.push(
         `<${elementName} Id="${id}" Type="${escapeXmlAttribute(type)}" Target="${escapeXmlAttribute(target)}"${external ? ' TargetMode="External"' : ""}/>`,

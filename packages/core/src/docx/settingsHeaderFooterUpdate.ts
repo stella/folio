@@ -8,8 +8,10 @@ import {
   getChildElements,
   getLocalName,
   getNamespaceUri,
+  NAMESPACES,
   parseXmlDocument,
   WORDPROCESSINGML_NAMESPACE_URIS,
+  type XmlElement,
 } from "./xmlParser";
 
 const XML_TOKEN =
@@ -17,6 +19,48 @@ const XML_TOKEN =
 const SETTINGS_CHILD_ORDINALS: ReadonlyMap<string, number> = new Map(
   SETTINGS_CHILDREN.map((name, index) => [name, index] as const),
 );
+
+/** The schema ordinals of the settings a compatibility wrapper may stand for. */
+const wrappedOrdinals = (wrapper: XmlElement): number[] => {
+  const ordinals: number[] = [];
+  for (const branch of getChildElements(wrapper)) {
+    for (const child of getChildElements(branch)) {
+      const ordinal = WORDPROCESSINGML_NAMESPACE_URIS.has(
+        getNamespaceUri(child) ?? "",
+      )
+        ? SETTINGS_CHILD_ORDINALS.get(getLocalName(child.name))
+        : undefined;
+      if (ordinal !== undefined) ordinals.push(ordinal);
+    }
+  }
+  return ordinals;
+};
+
+/**
+ * Where a child of `w:settings` sits relative to the flag at `childOrder`.
+ * A child of another namespace (the math properties, the schema library,
+ * later extensions) follows every on/off child. A compatibility wrapper sits
+ * where the settings it stands for sit; one that holds the flag itself, or
+ * settings on both sides of it, leaves the flag no place.
+ */
+const placeOf = (
+  child: XmlElement,
+  childOrder: number,
+): "preceding" | "following" | "unplaceable" => {
+  const namespaceUri = getNamespaceUri(child) ?? "";
+  if (WORDPROCESSINGML_NAMESPACE_URIS.has(namespaceUri)) {
+    return (SETTINGS_CHILD_ORDINALS.get(getLocalName(child.name)) ?? -1) >
+      childOrder
+      ? "following"
+      : "preceding";
+  }
+  if (namespaceUri !== NAMESPACES.mc) return "following";
+  const ordinals = wrappedOrdinals(child);
+  const before = ordinals.some((ordinal) => ordinal < childOrder);
+  const after = ordinals.some((ordinal) => ordinal > childOrder);
+  if (ordinals.includes(childOrder) || (before && after)) return "unplaceable";
+  return after ? "following" : "preceding";
+};
 
 /** The on/off children of `w:settings` a caller may set without re-serializing the part. */
 export type SettingsOnOffChild = "evenAndOddHeaders" | "updateFields";
@@ -88,15 +132,9 @@ export const updateSettingsOnOffChild = (
     if (stack.length === 1) {
       const child = children[childIndex];
       if (child?.name !== name) return null;
-      // A child of another namespace (the math properties, the schema
-      // library, later extensions) sits after every on/off child in the
-      // schema's order, so the flag goes before it too.
-      if (
-        firstFollowingChildStart < 0 &&
-        (!WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(child) ?? "") ||
-          (SETTINGS_CHILD_ORDINALS.get(getLocalName(child.name)) ?? -1) >
-            childOrder)
-      ) {
+      const place = placeOf(child, childOrder);
+      if (place === "unplaceable") return null;
+      if (firstFollowingChildStart < 0 && place === "following") {
         firstFollowingChildStart = token.index;
       }
       childStart = token.index;
