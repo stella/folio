@@ -37,16 +37,20 @@ const apply = (document: Document, op: DocumentOp) => {
   if (result.isErr()) throw result.error;
   return result.value;
 };
-const deletion = (blockIds: string[]): DeleteBlocksOp => ({
+const directDeletion = (blockIds: readonly string[]): DeleteBlocksOp => ({
   type: DOCUMENT_OP_TYPES.DELETE_BLOCKS,
   story: OP_STORIES.MAIN,
   blockIds,
+});
+const deletion = (blockIds: readonly string[]): DeleteBlocksOp => ({
+  ...directDeletion(blockIds),
   revision: { id: 100, author: "Reviewer", date: "2026-02-03T04:05:06Z" },
   newIds: { revision: Array.from({ length: 32 }, (_, index) => 101 + index) },
 });
 const assertLaws = (document: Document, op: DeleteBlocksOp) => {
   const tracked = apply(document, op);
-  const direct = apply(document, { ...op, revision: undefined });
+  const { revision: _revision, ...directOp } = op;
+  const direct = apply(document, directOp);
   for (const decision of Object.values(REVISION_DECISIONS)) {
     const resolved = apply(tracked.document, {
       type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
@@ -80,7 +84,7 @@ test("terminal deletions inherit the preceding paragraph's properties across a d
     type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
     story: OP_STORIES.MAIN,
     blockId: "00000002",
-    patch: { numPr: { kind: "reference", numId: 2, ilvl: 0 } },
+    patch: { numPr: paragraphNumberingReference({ numId: 2, ilvl: 0 }) },
   } satisfies DocumentOp;
   const deleteTable = {
     type: DOCUMENT_OP_TYPES.DELETE_TABLE,
@@ -112,14 +116,11 @@ test("terminal deletions inherit the preceding paragraph's properties across a d
   ];
   const directNumbered = apply(document, numberClosing);
   const directTable = apply(directNumbered.document, deleteTable);
-  const directClosing = apply(directTable.document, {
-    ...deletion(["00000002"]),
-    revision: undefined,
-  });
-  const direct = apply(directClosing.document, {
-    ...deletion(["00000002"]),
-    revision: undefined,
-  });
+  const directClosing = apply(
+    directTable.document,
+    directDeletion(["00000002"]),
+  );
+  const direct = apply(directClosing.document, directDeletion(["00000002"]));
   expect(
     resolveTracked(preceding.document, revisions, REVISION_DECISIONS.ACCEPT),
   ).toStrictEqual(direct.document);
@@ -289,10 +290,7 @@ test("inverse restores a retired comment whose surviving anchors followed the de
     },
   };
 
-  const edit = apply(document, {
-    ...deletion([removed.paraId ?? ""]),
-    revision: undefined,
-  });
+  const edit = apply(document, directDeletion([removed.paraId ?? ""]));
   expect(edit.document.package.document.comments).toBeUndefined();
   expect(edit.touched.modified).toEqual([following.paraId]);
 
@@ -521,8 +519,7 @@ test("a tracked deletion removes a mark its own author's pending insertion added
       ),
     ).toEqual(
       storyParagraphs(
-        apply(document, { ...deletion(ids), revision: undefined }).document
-          .package.document,
+        apply(document, directDeletion(ids)).document.package.document,
       ).map(({ paragraph: block }) => block.content),
     );
     const undo = applyDocumentOps(
@@ -1189,7 +1186,7 @@ test.each(
       ...after,
     ]);
     const op = deletion(["00000001"]);
-    const direct = apply(document, { ...op, revision: undefined });
+    const direct = apply(document, directDeletion(op.blockIds));
     const tracked = applyDocumentOp(document, op);
     if (tracked.isErr()) {
       // Nothing to record, where the direct deletion still changes something.

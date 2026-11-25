@@ -1258,18 +1258,18 @@ export const deleteBlocks = ({
           ...sectionBoundaries,
         };
   const finalReview = reviewFieldsOf(last.paragraph);
-  const propertySourceIndex =
+  const formattingSourceIndex =
     terminal && op.revision !== undefined
       ? terminalPropertySource(list, previousIndex)
       : previousIndex;
-  const propertySource = list[propertySourceIndex];
+  const formattingSource = list[formattingSourceIndex];
   if (
     terminal &&
-    propertySource?.type === "paragraph" &&
-    givesProperties(list, propertySourceIndex)
+    formattingSource?.type === "paragraph" &&
+    givesProperties(list, formattingSourceIndex)
   ) {
     const formatting = withMarkFormatting(
-      paragraphPropertiesOf(propertySource.formatting),
+      paragraphPropertiesOf(formattingSource.formatting),
       last.paragraph.formatting,
     );
     delete finalReview.formatting;
