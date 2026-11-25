@@ -47,6 +47,7 @@ import {
   createFolioAIEditSnapshot,
   createPendingSuggestionSourceSnapshot,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+  type FolioDocumentOperationResult,
   type FolioDocumentOperationStatus,
   type FolioDocumentOperationUndoResult,
   FolioPendingSuggestionRegistry,
