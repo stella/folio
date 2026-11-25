@@ -1204,10 +1204,12 @@ export type JoinSources =
        */
       insertedRowIds?: ReadonlySet<string>;
       /**
-       * Paragraphs a pending insertion added after the paragraph before
-       * them, which took over its mark (that mark is inserted with
-       * `survivor: "first"`): removing one under tracking retracts the
-       * insertion, so the paragraph before keeps its own mark and identity.
+       * Paragraphs a pending insertion by the capturing author added after
+       * the paragraph before them, taking over its mark (that mark is
+       * inserted with `survivor: "first"`), and holding only that author's
+       * inserted words: that author removing one under tracking retracts
+       * the insertion, so the paragraph before keeps its own mark and
+       * identity. Another author's deletion of it is an ordinary one.
        */
       addedAfterIds?: ReadonlySet<string>;
     }
@@ -1268,7 +1270,24 @@ const ZERO_WIDTH_INLINES: ReadonlySet<string> = new Set([
 const JOINING_MARK_KINDS: ReadonlySet<string> = new Set(["del", "moveFrom"]);
 
 /** The paraIds of the paragraphs of `bytes` whose mark accepting removes. */
-const markedJoinSourcesOf = async (bytes: Uint8Array): Promise<JoinSources> => {
+/** Whether `inline` is that author's pending insertion, or a zero-width anchor. */
+const insertedBy = (inline: unknown, author: string): boolean => {
+  if (typeof inline !== "object" || inline === null) return false;
+  const type: unknown = Reflect.get(inline, "type");
+  if (typeof type === "string" && ZERO_WIDTH_INLINES.has(type)) return true;
+  if (type !== "insertion") return false;
+  const info: unknown = Reflect.get(inline, "info");
+  return (
+    typeof info === "object" &&
+    info !== null &&
+    Reflect.get(info, "author") === author
+  );
+};
+
+const markedJoinSourcesOf = async (
+  bytes: Uint8Array,
+  author?: string,
+): Promise<JoinSources> => {
   const ids = new Set<string>();
   const emptyIds = new Set<string>();
   const deletedContentIds = new Set<string>();
@@ -1283,8 +1302,13 @@ const markedJoinSourcesOf = async (bytes: Uint8Array): Promise<JoinSources> => {
       if (type === "paragraph") {
         const id: unknown = Reflect.get(block, "paraId");
         if (inserted && typeof id === "string") insertedRowIds.add(id);
+        const content: unknown = Reflect.get(block, "content");
         if (
+          author !== undefined &&
           typeof id === "string" &&
+          Array.isArray(content) &&
+          content.length > 0 &&
+          content.every((inline) => insertedBy(inline, author)) &&
           typeof previousMark === "object" &&
           previousMark !== null &&
           Reflect.get(previousMark, "kind") === "ins" &&
@@ -4368,8 +4392,9 @@ const acceptedOwnerId = (model: Model, row: ModelRow): string => {
     // A live-only row (a join's source, a paragraph pending deletion) is not
     // in the accepted document the ids are read from.
     if (later.outsidePreState === true) continue;
-    // Removing a paragraph a pending insertion added retracts it: it never
-    // carries the words, and the paragraph before keeps its own mark.
+    // Its own author removing a paragraph a pending insertion added retracts
+    // it: it never carries the words, and the paragraph before keeps its
+    // own mark.
     if (
       model.mode === "tracked-changes" &&
       later.removed &&
@@ -5008,7 +5033,7 @@ export const capture = async (
     rows: withLiveMintedIds(accepted.rows, liveRows),
     resolvedStory: accepted.story,
     liveRows,
-    joinSources: await markedJoinSourcesOf(bytes),
+    joinSources: await markedJoinSourcesOf(bytes, editable.author),
     numberingSource: {
       type: "package",
       bytes: accepted.bytes,
