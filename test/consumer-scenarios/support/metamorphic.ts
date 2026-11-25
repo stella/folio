@@ -76,6 +76,7 @@ import {
   markDeletedIds,
   resolvedState,
   type Row,
+  wordsDeletedIds,
 } from "./oracle.ts";
 import { createParagraphIdentityRemapping } from "./paragraph-identity.ts";
 import { createRandom, type Random } from "./random.ts";
@@ -1387,7 +1388,11 @@ export const startRelations = async ({
       joinsInto:
         batchMode === "suggested"
           ? new Map()
-          : pendingJoinTargets(preRows, joinSources),
+          : pendingJoinTargets({
+              rows: preRows,
+              markDeleted: joinSources,
+              wordsDeleted: wordsDeletedIds(pre),
+            }),
       goWhole: blanksGoingWhole(preRows, joinSources),
     })) {
       const snapshot =

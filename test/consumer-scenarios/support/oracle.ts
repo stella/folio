@@ -4723,6 +4723,16 @@ export const commentIdsInTableOf = (
     .sort((left, right) => left - right);
 };
 
+/** The live paragraphs holding words whose deletion is pending. */
+export const wordsDeletedIds = (reviewer: Reviewer): Set<string> =>
+  new Set(
+    reviewer
+      .getChanges()
+      .flatMap(({ type, blockId }) =>
+        type === "deletion" && blockId !== null ? [blockId] : [],
+      ),
+  );
+
 /** The live paragraphs whose own mark is a pending deletion. */
 export const markDeletedIds = (reviewer: Reviewer): Set<string> =>
   new Set(
