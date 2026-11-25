@@ -59,6 +59,12 @@
       "path": "82:26:2:4:4:4:4:4:4:4:4:4:8:17:4:14:14:14:14:14:41:18:18",
       "note": "Nightly #2778: repeated suggested link edits preserve the selections their publishes showed through undo and redo.",
       "date": "2026-11-16"
+    },
+    {
+      "seed": 2052632381,
+      "path": "12:0:1:12:1:3:1:3:6:13:22:22:22:12:4:5:3:6:6:6:6:30:1:1:1:5:1:1:9:9:9:9:9:9:9",
+      "note": "A suggested link over the author's own insertion beside an empty link leaves the empty link out of the tracked deletion: a suggestion records an empty container only with a stretch that records something else.",
+      "date": "2026-11-25"
     }
   ],
   "tracked input addresses skip rendered deletions after bookmark atoms": [
