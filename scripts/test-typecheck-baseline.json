@@ -2429,9 +2429,7 @@
     "TS2345": 3
   },
   "packages/docx-core/src/ops/__tests__/blockDeletion.test.ts": {
-    "TS2322": 1,
     "TS2345": 5,
-    "TS2375": 1,
     "TS2769": 8,
     "TS4104": 1
   },
