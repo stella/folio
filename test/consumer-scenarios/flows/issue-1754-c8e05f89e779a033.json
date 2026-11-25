@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "title": "PINNED #1754, reported seed 1047067976: a comment in a tracked inserted cell round-trips save and reopen after a tracked replacement there",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "trackedChanges",
+  "mode": "tracked-changes",
+  "seed": 1047067976,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 2622869001,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "483CD5EB",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ],
+      "atomic": true
+    },
+    {
+      "action": "add_comment",
+      "seed": 727361991
+    },
+    {
+      "action": "core batch",
+      "seed": 3630775553,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "replaceInBlock",
+          "blockId": "@6",
+          "find": "Value",
+          "replace": "amended",
+          "precondition": {
+            "blockTextHash": "h3yqnic"
+          }
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from random flow seed 1047067976"
+}

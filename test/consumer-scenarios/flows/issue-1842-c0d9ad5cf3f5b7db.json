@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "title": "PINNED #1842, reported seed 1047068675: a comment over merged text survives a tracked deletion and insertion beside the merge",
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "unusedNumbering",
+  "mode": "tracked-changes",
+  "seed": 1047068675,
+  "steps": [
+    {
+      "action": "add_comment",
+      "seed": 4078364631
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 2750752094,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "5E88C024",
+          "separator": " "
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 1927092833,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "483CD5EB"
+        },
+        {
+          "type": "insertAfterBlock",
+          "blockId": "483CD5EB",
+          "text": "Goods written term period agreement delivery agreement payment.",
+          "styleId": "Heading2"
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from collisions flow seed 1047068675"
+}

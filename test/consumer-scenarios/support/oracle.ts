@@ -2392,10 +2392,80 @@ const addComment = (
 const diffPieces = (text: string): Set<string> =>
   new Set(text.match(/[\p{L}\p{N}_]+|[^\s\p{L}\p{N}_]/gu) ?? []);
 
+const WORD_CHARACTER = /[\p{L}\p{N}\p{M}\p{Pc}]/u;
+const ONE_WORD =
+  /^[^\p{L}\p{N}\p{M}\p{Pc}]*[\p{L}\p{N}\p{M}\p{Pc}]*[^\p{L}\p{N}\p{M}\p{Pc}]*$/u;
+
+const sharedLength = (left: string[], right: string[]): number => {
+  let length = 0;
+  while (
+    length < Math.min(left.length, right.length) &&
+    left[length] === right[length]
+  )
+    length++;
+  return length;
+};
+
+/** Whether `characters[0, index)` ends on a word boundary. */
+const endsWord = (characters: readonly string[], index: number): boolean =>
+  index <= 0 ||
+  index >= characters.length ||
+  !WORD_CHARACTER.test(characters[index - 1] ?? "") ||
+  !WORD_CHARACTER.test(characters[index] ?? "");
+
+/** The longest shared length up to `length` ending on a word boundary of both. */
+const wordAligned = (
+  left: readonly string[],
+  right: readonly string[],
+  length: number,
+): number => {
+  for (let candidate = length; candidate > 0; candidate--)
+    if (endsWord(left, candidate) && endsWord(right, candidate))
+      return candidate;
+  return 0;
+};
+
+type KeptEdges = { prefix: number; suffix: number };
+
+/**
+ * How many characters a direct replacement of `removed` by `inserted` that
+ * share no word or mark keeps at each end, in UTF-16 units: the smallest
+ * change keeps shared whole words first and, once what is left is one word
+ * on both sides, shared letters ("defined" to "updated" keeps "ed").
+ */
+const smallestChangeKeeps = (removed: string, inserted: string): KeptEdges => {
+  let old = [...removed];
+  let added = [...inserted];
+  const kept = { prefix: 0, suffix: 0 };
+  for (const granularity of ["word", "letter"] as const) {
+    const oneWord =
+      ONE_WORD.test(old.join("")) && ONE_WORD.test(added.join(""));
+    if (granularity === "letter" && !oneWord) break;
+    const shared = sharedLength(old, added);
+    const prefix = oneWord ? shared : wordAligned(old, added, shared);
+    kept.prefix += old.slice(0, prefix).join("").length;
+    old = old.slice(prefix);
+    added = added.slice(prefix);
+    const reversed = sharedLength(old.toReversed(), added.toReversed());
+    const suffix = oneWord
+      ? reversed
+      : wordAligned(old.toReversed(), added.toReversed(), reversed);
+    kept.suffix += old.slice(old.length - suffix).join("").length;
+    old = old.slice(0, old.length - suffix);
+    added = added.slice(0, added.length - suffix);
+    if (oneWord) break;
+  }
+  return kept;
+};
+
 /**
  * What becomes of a comment over `text[start, end)` once the edits apply.
- * The words that replace a range go past the end of a comment the range
- * reaches, so a comment every word of which edits take goes with them. A
+ * A comment goes with its words: one every character of which the edits
+ * remove retires, and one with a character left keeps a range over it. The
+ * words that replace a range go past the end of a comment the range
+ * reaches. A direct edit, and a tracked one meeting a comment once accepted,
+ * writes the smallest change, which keeps the characters the old and new
+ * text share at its ends (`smallestChangeKeeps`), and the comment on them. A
  * replacement sharing a word or mark with the covered text may keep that
  * piece through a word diff, and the comment on it: neither is predicted.
  * Neither is it on an engine that hands the comment to the new words.
@@ -2416,6 +2486,7 @@ const coveredRangeFate = (
     if (edit === undefined) return "kept";
     covering.add(edit);
   }
+  let fate: "removed" | "kept" = "removed";
   for (const edit of covering) {
     if (edit.replace === "") continue;
     if (engine !== "canonical") return "ambiguous";
@@ -2426,8 +2497,17 @@ const coveredRangeFate = (
     );
     if ([...diffPieces(covered)].some((piece) => kept.has(piece)))
       return "ambiguous";
+    const { prefix, suffix } = smallestChangeKeeps(
+      text.slice(edit.start, edit.end),
+      edit.replace,
+    );
+    if (
+      (prefix > 0 && start < edit.start + prefix) ||
+      (suffix > 0 && edit.end - suffix < end)
+    )
+      fate = "kept";
   }
-  return "removed";
+  return fate;
 };
 
 const coveredRangeWasRemoved = (
@@ -3993,6 +4073,39 @@ const anchorDisposition = (
     if (fates.length > 0 && fates.every((fate) => fate === "removed"))
       return "removed";
     if (fates.some((fate) => fate !== "kept")) return "ambiguous";
+  }
+  // A later effect can leave a join's accepted owner unproven, but not bring
+  // back words an edit of the joined paragraph itself already took: the edits
+  // within its slice of the joined text still decide whether its comment goes.
+  if (
+    view.type === "pending-join" &&
+    mapped === undefined &&
+    view.row.pre !== undefined &&
+    entry.anchor !== ""
+  ) {
+    const sliceEnd = view.offset + view.text.length;
+    const within = view.row.edits.filter(
+      (edit) => edit.start >= view.offset && edit.end <= sliceEnd,
+    );
+    const sourceText = view.row.pre.text;
+    const fates = quotePlacements({
+      text: sourceText,
+      quote: entry.anchor,
+      first: view.offset,
+      limit: sliceEnd,
+    })
+      .filter((start) => start + entry.anchor.length <= sliceEnd)
+      .map((start) =>
+        coveredRangeFate(
+          model.engine,
+          within,
+          sourceText,
+          start,
+          start + entry.anchor.length,
+        ),
+      );
+    if (fates.length > 0 && fates.every((fate) => fate === "removed"))
+      return "removed";
   }
   // An unproven join keeps the existing preservation check; it does not excuse loss.
   if (!located?.pre || located.removed || entry.anchor === "") return "kept";

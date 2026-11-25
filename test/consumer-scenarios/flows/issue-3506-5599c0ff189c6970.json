@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "title": "PINNED #3506, reported seed 1047067940: accepting a tracked replacement keeps a comment over the letters old and new words share",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "lists",
+  "mode": "tracked-changes",
+  "seed": 746948072,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 540833140,
+      "operations": [
+        {
+          "type": "commentOnRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "79D25458",
+            "startOffset": 8,
+            "endOffset": 15,
+            "selectedTextHash": "hhecxly"
+          },
+          "comment": {
+            "text": "Warranty term invoice."
+          }
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 4018856216,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "replaceInBlock",
+          "blockId": "79D25458",
+          "find": "remarks",
+          "replace": "revised",
+          "precondition": {
+            "blockTextHash": "hlum93w"
+          }
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from dropOperation+insert of e83d9fbe5daef86d"
+}

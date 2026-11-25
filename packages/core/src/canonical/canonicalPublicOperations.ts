@@ -4529,7 +4529,54 @@ type ResolveCanonicalPublicOperationOptions = {
   mintList: ReturnType<typeof createBatchListMinter>;
   /** The blocks the batch deletes, and those it inserts beside. */
   besideDeletions: BesideDeletions;
+  /** The comments the batch adds, which stand before its edits run. */
+  batchComments: readonly BatchCommentOperation[];
 };
+
+type BatchCommentOperation = Extract<
+  FolioDocumentOperation,
+  { type: "commentOnBlock" | "commentOnRange" }
+>;
+
+type CleanTextSpan = { start: number; end: number };
+
+/**
+ * The words of `blockId` the batch's comments cover, in its clean text: a
+ * batch's comments run before its edits, so an edit there meets them as it
+ * meets the comments the paragraph already holds. A comment whose target no
+ * longer matches covers nothing; its own resolution refuses it.
+ */
+const batchCommentSpans = (
+  comments: readonly BatchCommentOperation[],
+  blockId: string,
+  text: string,
+): CleanTextSpan[] =>
+  comments.flatMap((comment): CleanTextSpan[] => {
+    switch (comment.type) {
+      case "commentOnRange": {
+        const { range } = comment;
+        return range.blockId === blockId &&
+          hashFolioAIBlockText(
+            text.slice(range.startOffset, range.endOffset),
+          ) === range.selectedTextHash
+          ? [{ start: range.startOffset, end: range.endOffset }]
+          : [];
+      }
+      case "commentOnBlock": {
+        if (comment.blockId !== blockId) return [];
+        if (comment.quote === undefined)
+          return [{ start: 0, end: text.length }];
+        const start = text.indexOf(comment.quote);
+        return start < 0 || comment.quote === ""
+          ? []
+          : [{ start, end: start + comment.quote.length }];
+      }
+      default: {
+        const unreachable: never = comment;
+        return unreachable;
+      }
+    }
+  });
 
 type BesideDeletions = {
   deleted: ReadonlySet<string>;
@@ -5133,6 +5180,11 @@ export class CanonicalPublicOperations {
         ...(normalizations.length === 0 ? {} : { normalizations }),
       };
     };
+    const batchComments = batch.operations.filter(
+      (operation): operation is BatchCommentOperation =>
+        operation.type === "commentOnBlock" ||
+        operation.type === "commentOnRange",
+    );
     const besideDeletions: BesideDeletions = {
       deleted: new Set(
         batch.operations.flatMap((operation) =>
@@ -5313,6 +5365,7 @@ export class CanonicalPublicOperations {
         suggested: batch.mode === "suggested",
         mintList,
         besideDeletions,
+        batchComments,
       });
       if (compiled.isErr()) {
         // An operation only the tracked vocabulary refuses still claims what
@@ -5330,6 +5383,7 @@ export class CanonicalPublicOperations {
                 suggested: false,
                 mintList,
                 besideDeletions,
+                batchComments,
               })
             : undefined;
         if (direct?.isOk()) {
@@ -5391,6 +5445,7 @@ export class CanonicalPublicOperations {
         suggested: batch.mode === "suggested",
         mintList,
         besideDeletions: NO_BESIDE_DELETIONS,
+        batchComments,
       });
       if (alone.isErr()) {
         refuseResolution(operation.id, alone.error);
@@ -7229,6 +7284,7 @@ export class CanonicalPublicOperations {
     suggested,
     mintList,
     besideDeletions,
+    batchComments,
   }: ResolveCanonicalPublicOperationOptions) {
     const refusal = (reason: FolioAIEditSkipReason, message?: string) =>
       Result.err(
@@ -7940,25 +7996,43 @@ export class CanonicalPublicOperations {
           : planTextChanges,
         ...(tracked ? { keepFieldsOf: planTextChanges } : {}),
       });
-      // A word diff can strike unchanged text at a comment edge and then
-      // reinsert it outside the range. Use the direct cuts when source text
-      // under review also determines standing comment coverage.
-      if (
-        tracked &&
-        planned?.some((change) =>
-          clean.offsets
-            .slice(start + change.start, start + change.end)
-            .some((position) =>
-              paragraph.node
-                .nodeAt(position - paragraph.start)
-                ?.marks.some((mark) => mark.type.name === "comment"),
-            ),
-        )
-      )
-        planned = planReplacementChanges({
+      // A comment goes with exactly the words the edit takes, so its fate
+      // must not depend on the mode: accepting the tracked edit equals making
+      // it directly. A word diff can strike unchanged text at a comment edge
+      // and reinsert it outside the range, or keep a word the direct cuts
+      // take. Where either plan changes words under a comment, the tracked
+      // edit takes the direct cuts: a comment the paragraph holds, or one the
+      // batch adds, which stands before the edit runs.
+      const addedComments = tracked
+        ? batchCommentSpans(batchComments, blockId, clean.text)
+        : [];
+      const changesCommentedWords = (
+        changes: readonly { start: number; end: number }[] | null,
+      ) =>
+        changes?.some(
+          (change) =>
+            clean.offsets
+              .slice(start + change.start, start + change.end)
+              .some((position) =>
+                paragraph.node
+                  .nodeAt(position - paragraph.start)
+                  ?.marks.some((mark) => mark.type.name === "comment"),
+              ) ||
+            (change.end > change.start &&
+              addedComments.some(
+                (span) =>
+                  span.start < start + change.end &&
+                  start + change.start < span.end,
+              )),
+        ) === true;
+      if (tracked && changesCommentedWords([{ start: 0, end: end - start }])) {
+        const directCuts = planReplacementChanges({
           ...replacementSource,
           planChanges: planTextChanges,
         });
+        if (changesCommentedWords(planned) || changesCommentedWords(directCuts))
+          planned = directCuts;
+      }
       // The segments above keep the references, or the replacement edits
       // them, so a plan always exists and reproduces the replacement.
       if (planned === null)
