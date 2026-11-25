@@ -1265,6 +1265,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
 
     const {
       zoom,
+      isInitialFitPending,
       zoomRef,
       setZoomWithViewportAnchor,
       scrollPageInfo,
@@ -1273,6 +1274,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       scrollContainerRef,
       scrollContainer,
       pagedEditorRef,
+      editorController,
       initialZoom,
     });
 
@@ -5318,7 +5320,14 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
               }
             >
               {/* Main content area */}
-              <div style={mainContentStyle}>
+              <div
+                inert={isInitialFitPending}
+                style={
+                  isInitialFitPending
+                    ? { ...mainContentStyle, visibility: "hidden" }
+                    : mainContentStyle
+                }
+              >
                 {/* Wrapper for toolbar + scroll container + outline overlay */}
                 <div
                   style={{
@@ -5815,6 +5824,18 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                 </div>
                 {/* end wrapper for scroll container + outline */}
               </div>
+              {isInitialFitPending && (
+                <div
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                  }}
+                >
+                  {loadingIndicator || <DefaultLoadingIndicator />}
+                </div>
+              )}
 
               {/* Hyperlink popup */}
               <HyperlinkPopup

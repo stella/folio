@@ -7,6 +7,7 @@ import {
 } from "react";
 import type { Dispatch, RefObject, SetStateAction } from "react";
 
+import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 import { scrollEditorTo } from "@stll/folio-core/paged-layout/editorScrollRoot";
 import { fitWidthZoom } from "@stll/folio-core/paged-layout/fitWidthZoom";
 import { computeScrollPageInfo } from "@stll/folio-core/paged-layout/scrollPageInfo";
@@ -29,6 +30,7 @@ export type UseZoomAndPageInfoArgs = {
   scrollContainerRef: RefObject<HTMLDivElement | null>;
   scrollContainer: HTMLDivElement | null;
   pagedEditorRef: RefObject<PagedEditorRef | null>;
+  editorController: Pick<FolioEditor, "getLayout" | "on"> | null;
   /**
    * Initial zoom on mount as a number (1 = 100%), or `"fit-width"` to size the
    * page to the scroll container's width and keep it fit as the container
@@ -39,6 +41,7 @@ export type UseZoomAndPageInfoArgs = {
 
 export type UseZoomAndPageInfoReturn = {
   zoom: number;
+  isInitialFitPending: boolean;
   /** Stable ref that mirrors `zoom` for use in callbacks that need the
    *  current zoom without re-binding (e.g., scroll handlers). */
   zoomRef: RefObject<number>;
@@ -59,12 +62,14 @@ export function useZoomAndPageInfo({
   scrollContainerRef,
   scrollContainer: scrollContainerEl,
   pagedEditorRef,
+  editorController,
   initialZoom,
 }: UseZoomAndPageInfoArgs): UseZoomAndPageInfoReturn {
   const fitToWidth = initialZoom === "fit-width";
-  const [zoom, setZoom] = useState(
-    typeof initialZoom === "number" ? initialZoom : 1,
+  const [resolvedZoom, setZoom] = useState(
+    typeof initialZoom === "number" ? initialZoom : null,
   );
+  const zoom = resolvedZoom ?? 1;
   const zoomRef = useRef(zoom);
   const pendingZoomAnchorRef = useRef<ViewportCenterZoomAnchor | null>(null);
 
@@ -184,27 +189,18 @@ export function useZoomAndPageInfo({
     };
   }, [scrollContainerEl, scheduleScrollPageInfoFade, updateScrollPageInfo]);
 
-  // fit-width: scale the page so its width fills the scroll container, and keep
-  // it fit as the container resizes. The page's natural width comes from the
-  // laid-out geometry (`layout.pages[0].size.w`), so the scaled page never has
-  // to be measured in the DOM; a rAF retry covers the window before the first
-  // layout completes. A manual zoom afterwards wins (this only re-fires on a
-  // container resize), matching the documented "override the fit" behaviour.
-  // The fit basis reserves the widest scrollbar gutter seen on this container,
-  // so a gutter the fit itself toggles cannot feed back into the next fit.
-  useEffect(() => {
-    if (!fitToWidth || !scrollContainerEl) {
+  // Resolve the initial fit against the first completed layout, even if the
+  // document waits on fonts. Subsequent fits follow container resizes so edits
+  // do not override a manual zoom. Reserve the widest scrollbar gutter so
+  // fitting cannot make the scrollbar toggle repeatedly.
+  useLayoutEffect(() => {
+    if (!fitToWidth || !scrollContainerEl || !editorController) {
       return undefined;
     }
     let rafId = 0;
     let reservedEdge = 0;
-    const applyFit = () => {
-      const pageWidth =
-        pagedEditorRef.current?.getLayout()?.pages[0]?.size.w ?? 0;
-      if (pageWidth <= 0) {
-        rafId = requestAnimationFrame(applyFit); // layout not ready yet
-        return;
-      }
+    let hasFitted = false;
+    const applyFit = (pageWidth: number) => {
       const fit = fitWidthZoom({
         offsetWidth: scrollContainerEl.offsetWidth,
         clientWidth: scrollContainerEl.clientWidth,
@@ -212,31 +208,50 @@ export function useZoomAndPageInfo({
         reservedEdge,
       });
       reservedEdge = fit.reservedEdge;
+      if (fit.zoom === null) {
+        return;
+      }
+      const fittedZoom = fit.zoom;
+      hasFitted = true;
       // Guard against a redundant zoom set (which would re-anchor the scroll)
       // and sub-percent jitter.
-      if (fit.zoom !== null && Math.abs(fit.zoom - zoomRef.current) > 0.005) {
-        setZoomWithViewportAnchor(fit.zoom);
+      if (Math.abs(fittedZoom - zoomRef.current) > 0.005) {
+        setZoomWithViewportAnchor(fittedZoom);
+      } else {
+        // A wide container can have a valid fit of 100%, the provisional
+        // value. Resolve it so the fitted page can replace the loading sheet.
+        setZoom((previous) => previous ?? fittedZoom);
       }
     };
+    const fitCurrentLayout = () => {
+      applyFit(editorController.getLayout()?.pages.at(0)?.size.w ?? 0);
+    };
+    const unsubscribe = editorController.on("layoutComplete", (layout) => {
+      if (!hasFitted) {
+        applyFit(layout.pages.at(0)?.size.w ?? 0);
+      }
+    });
     const observer = new ResizeObserver(() => {
       cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(applyFit);
+      rafId = requestAnimationFrame(fitCurrentLayout);
     });
     observer.observe(scrollContainerEl);
-    applyFit();
+    fitCurrentLayout();
     return () => {
+      unsubscribe();
       cancelAnimationFrame(rafId);
       observer.disconnect();
     };
   }, [
     fitToWidth,
     scrollContainerEl,
-    pagedEditorRef,
+    editorController,
     setZoomWithViewportAnchor,
   ]);
 
   return {
     zoom,
+    isInitialFitPending: fitToWidth && resolvedZoom === null,
     zoomRef,
     setZoomWithViewportAnchor,
     scrollPageInfo,
