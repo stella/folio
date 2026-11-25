@@ -25,6 +25,7 @@ import {
 } from "../prosemirror/attrs";
 import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
 import { createListLabelCounter } from "../prosemirror/listLabels";
+import { CLEARED_LIST_RENDERING_ATTRS } from "../prosemirror/listMarker";
 import {
   paragraphNumberingAttr,
   readParagraphNumberingAttr,
@@ -1208,17 +1209,15 @@ const snapshotListAttrs = (
   const currentStyleNumbering = styleNumberingAttr(attrs.styleId);
   const currentAttrs = { ...attrs };
   delete currentAttrs.numPrFromStyle;
-  const cancelsStaleStyleNumbering =
-    (attrs.numPr === null || attrs.numPr === undefined) &&
-    currentStyleNumbering === null &&
-    attrs._propertyChanges !== null &&
-    attrs._propertyChanges !== undefined &&
-    attrs._propertyChanges.length > 0;
+  const dropsCachedStyleNumbering =
+    attrs.numPr == null &&
+    attrs.numPrFromStyle != null &&
+    currentStyleNumbering === null;
   return {
     ...currentAttrs,
-    ...(cancelsStaleStyleNumbering
-      ? { numPr: paragraphNumberingAttr({ kind: "none" }) }
-      : {}),
+    // Drop the cached marker while leaving authored numbering and the
+    // original review stream available to the list counter.
+    ...(dropsCachedStyleNumbering ? CLEARED_LIST_RENDERING_ATTRS : {}),
     ...(currentStyleNumbering === null
       ? {}
       : { numPrFromStyle: currentStyleNumbering }),
