@@ -22,8 +22,7 @@ import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
 import { DocxEditor } from "./DocxEditor";
 import type { DocxEditorRef } from "./DocxEditor.props";
 
-// The host gets one copy of the editor's document per settled change, in
-// both sessions, and never the document the editor holds: a change still in
+// The host gets one copy of the editor's document per settled change, and never the document the editor holds: a change still in
 // progress (typing, a margin drag) copies nothing until it settles.
 
 const previousActEnvironment = Reflect.get(
@@ -35,9 +34,6 @@ afterAll(() => {
   Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", previousActEnvironment);
   GlobalRegistrator.unregister();
 });
-
-const SESSIONS = ["canonical"] as const;
-type Session = (typeof SESSIONS)[number];
 
 /** Whether `value` is a whole document, not some of its content. */
 const isDocument = (value: unknown): boolean =>
@@ -108,7 +104,6 @@ const documentWithFootnote = (): Document => {
 };
 
 const mountEditor = async (
-  session: Session,
   source: Document,
   options: { showRuler?: boolean } = {},
 ) => {
@@ -130,7 +125,6 @@ const mountEditor = async (
           ref={editor}
           accessibleName="Document editor"
           documentBuffer={bytes}
-          experimentalSession={session}
           showToolbar={false}
           {...(options.showRuler ? { showRuler: true } : {})}
           onChange={onChange}
@@ -169,110 +163,101 @@ const expectHostOwnsCopy = (
   ).toBeGreaterThan(0);
 };
 
-test.each(SESSIONS)(
-  "typing in the %s session's body copies the document once, when the edit settles",
-  async (session) => {
-    const mounted = await mountEditor(
-      session,
-      createEmptyDocument({ initialText: "Start" }),
+test("typing in the body copies the document once, when the edit settles", async () => {
+  const mounted = await mountEditor(
+    createEmptyDocument({ initialText: "Start" }),
+  );
+  const counter = countDocumentCopies();
+  try {
+    const view =
+      mounted.ref().getEditorRef()?.getView() ?? panic("Expected a view");
+    await act(async () => {
+      typeInto(view, "N");
+      typeInto(view, "O");
+      typeInto(view, "P");
+    });
+    expect(counter.copies()).toBe(0);
+    expect(mounted.changes).toHaveLength(0);
+    await act(settle);
+    counter.stop();
+    expect(view.state.doc.textContent).toContain("NOP");
+    expect(mounted.changes).toHaveLength(1);
+    expect(counter.copies()).toBe(1);
+    expectHostOwnsCopy(
+      mounted.changes[0] ?? panic("Expected a notified document"),
+      mounted.ref,
     );
-    const counter = countDocumentCopies();
-    try {
-      const view =
-        mounted.ref().getEditorRef()?.getView() ?? panic("Expected a view");
-      await act(async () => {
-        typeInto(view, "N");
-        typeInto(view, "O");
-        typeInto(view, "P");
-      });
-      expect(counter.copies()).toBe(0);
-      expect(mounted.changes).toHaveLength(0);
-      await act(settle);
-      counter.stop();
-      expect(view.state.doc.textContent).toContain("NOP");
-      expect(mounted.changes).toHaveLength(1);
-      expect(counter.copies()).toBe(1);
-      expectHostOwnsCopy(
-        mounted.changes[0] ?? panic("Expected a notified document"),
-        mounted.ref,
-      );
-    } finally {
-      counter.stop();
-      await mounted.unmount();
-    }
-  },
-);
+  } finally {
+    counter.stop();
+    await mounted.unmount();
+  }
+});
 
-test.each(SESSIONS)(
-  "typing in a note in the %s session copies the document once, when the edit settles",
-  async (session) => {
-    const mounted = await mountEditor(session, documentWithFootnote());
-    const counter = { stop: () => {} };
-    try {
-      const paged = mounted.ref().getEditorRef() ?? panic("Expected paged ref");
-      const body = paged.getView() ?? panic("Expected a body view");
-      // happy-dom paints no pages; this is the delegated double-click path.
-      const pages =
-        mounted.container.querySelector(".paged-editor__pages") ??
-        panic("Expected pages container");
-      const target = document.createElement("span");
-      target.dataset["noteKind"] = "footnote";
-      target.dataset["noteId"] = "1";
-      pages.append(target);
-      await act(async () =>
-        target.dispatchEvent(
-          new MouseEvent("click", {
-            detail: 2,
-            bubbles: true,
-            cancelable: true,
-          }),
+test("typing in a note copies the document once, when the edit settles", async () => {
+  const mounted = await mountEditor(documentWithFootnote());
+  const counter = { stop: () => {} };
+  try {
+    const paged = mounted.ref().getEditorRef() ?? panic("Expected paged ref");
+    const body = paged.getView() ?? panic("Expected a body view");
+    // happy-dom paints no pages; this is the delegated double-click path.
+    const pages =
+      mounted.container.querySelector(".paged-editor__pages") ??
+      panic("Expected pages container");
+    const target = document.createElement("span");
+    target.dataset["noteKind"] = "footnote";
+    target.dataset["noteId"] = "1";
+    pages.append(target);
+    await act(async () =>
+      target.dispatchEvent(
+        new MouseEvent("click", {
+          detail: 2,
+          bubbles: true,
+          cancelable: true,
+        }),
+      ),
+    );
+    const note = paged.getActiveView() ?? panic("Expected the note view");
+    expect(note).not.toBe(body);
+    await act(async () => {
+      note.dispatch(
+        note.state.tr.setSelection(
+          TextSelection.create(note.state.doc, note.state.doc.content.size - 1),
         ),
       );
-      const note = paged.getActiveView() ?? panic("Expected the note view");
-      expect(note).not.toBe(body);
-      await act(async () => {
-        note.dispatch(
-          note.state.tr.setSelection(
-            TextSelection.create(
-              note.state.doc,
-              note.state.doc.content.size - 1,
-            ),
-          ),
-        );
-      });
-      await act(settle);
-      mounted.changes.length = 0;
+    });
+    await act(settle);
+    mounted.changes.length = 0;
 
-      const typing = countDocumentCopies();
-      counter.stop = typing.stop;
-      await act(async () => {
-        typeInto(note, "N");
-        typeInto(note, "O");
-        typeInto(note, "P");
-      });
-      expect(typing.copies()).toBe(0);
-      expect(mounted.changes).toHaveLength(0);
-      await act(settle);
-      typing.stop();
-      expect(note.state.doc.textContent).toContain("NOP");
-      expect(mounted.changes).toHaveLength(1);
-      expect(typing.copies()).toBe(1);
-      const notified =
-        mounted.changes[0] ?? panic("Expected a notified document");
-      expect(JSON.stringify(notified.package.footnotes ?? [])).toContain("NOP");
-      expectHostOwnsCopy(notified, mounted.ref);
-    } finally {
-      counter.stop();
-      await mounted.unmount();
-    }
-  },
-);
+    const typing = countDocumentCopies();
+    counter.stop = typing.stop;
+    await act(async () => {
+      typeInto(note, "N");
+      typeInto(note, "O");
+      typeInto(note, "P");
+    });
+    expect(typing.copies()).toBe(0);
+    expect(mounted.changes).toHaveLength(0);
+    await act(settle);
+    typing.stop();
+    expect(note.state.doc.textContent).toContain("NOP");
+    expect(mounted.changes).toHaveLength(1);
+    expect(typing.copies()).toBe(1);
+    const notified =
+      mounted.changes[0] ?? panic("Expected a notified document");
+    expect(JSON.stringify(notified.package.footnotes ?? [])).toContain("NOP");
+    expectHostOwnsCopy(notified, mounted.ref);
+  } finally {
+    counter.stop();
+    await mounted.unmount();
+  }
+});
 
-test("a margin drag in the legacy session copies the document once, when the drag settles", async () => {
+test("a margin drag copies the document once, when the drag settles", async () => {
   const mounted = await mountEditor(
-    "legacy",
     createEmptyDocument({ initialText: "Start" }),
-    { showRuler: true },
+    {
+      showRuler: true,
+    },
   );
   const counter = { stop: () => {} };
   try {
@@ -312,8 +297,8 @@ test("a margin drag in the legacy session copies the document once, when the dra
   }
 });
 
-test("the notes getDocument hands the host in the legacy session are the host's own", async () => {
-  const mounted = await mountEditor("legacy", documentWithFootnote());
+test("the notes getDocument hands the host are the host's own", async () => {
+  const mounted = await mountEditor(documentWithFootnote());
   try {
     const handed =
       mounted.ref().getDocument() ?? panic("Expected the editor's document");
@@ -329,9 +314,8 @@ test("the notes getDocument hands the host in the legacy session are the host's 
   }
 });
 
-test("the controller's getDocument in the legacy session is read-only: a host writes its own copy, and the editor's document and its undo stay", async () => {
+test("the controller's getDocument is read-only: a host writes its own copy, and the editor's document and its undo stay", async () => {
   const mounted = await mountEditor(
-    "legacy",
     createEmptyDocument({ initialText: "Start" }),
   );
   try {
@@ -389,8 +373,8 @@ const countCopyOwnerCopies = () => {
   };
 };
 
-test("getDocument in the legacy session takes one copy, and shares no object with the editor's document or an earlier call's", async () => {
-  const mounted = await mountEditor("legacy", documentWithFootnote());
+test("getDocument takes one copy, and shares no object with the editor's document or an earlier call's", async () => {
+  const mounted = await mountEditor(documentWithFootnote());
   const counter = countCopyOwnerCopies();
   try {
     const view =

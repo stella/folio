@@ -43,9 +43,7 @@ import { propertyTestTimeout } from "../../../../test/property-testing";
 import { reviewDifferences } from "../../../../test/reviewDifferences";
 import {
   SERIALIZATION_PATH_CASES,
-  serializationDiagnosticSource,
   serializationPathSource,
-  serializationTripwireDiagnosticSource,
 } from "../../../../test/serializationPaths";
 import { DocxEditor } from "./DocxEditor";
 import type { DocxEditorRef } from "./DocxEditor.props";
@@ -76,51 +74,46 @@ const createHostMutationObserver = () => {
   };
 };
 
-for (const experimentalSession of [undefined, "canonical"] as const) {
-  test(`document history shortcuts in ${experimentalSession ?? "default"} ${experimentalSession === "legacy" ? "remain enabled in the legacy session" : "leave canonical history to the editor"}`, async () => {
-    const container = document.createElement("div");
-    document.body.append(container);
-    const root = createRoot(container);
-    const initialDocument = createEmptyDocument({ initialText: "Start" });
-    try {
-      await act(async () => {
-        root.render(
-          <IntlProvider
-            locale="en"
-            timeZone="UTC"
-            messages={getFolioMessages("en")}
-          >
-            <DocxEditor
-              accessibleName="Document editor"
-              document={initialDocument}
-              {...(experimentalSession === undefined
-                ? {}
-                : { experimentalSession })}
-              showToolbar={false}
-            />
-          </IntlProvider>,
-        );
+test("document history shortcuts leave canonical history to the editor", async () => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const initialDocument = createEmptyDocument({ initialText: "Start" });
+  try {
+    await act(async () => {
+      root.render(
+        <IntlProvider
+          locale="en"
+          timeZone="UTC"
+          messages={getFolioMessages("en")}
+        >
+          <DocxEditor
+            accessibleName="Document editor"
+            document={initialDocument}
+            showToolbar={false}
+          />
+        </IntlProvider>,
+      );
+    });
+    for (const shortcut of [
+      { key: "z", ctrlKey: true },
+      { key: "y", ctrlKey: true },
+      { key: "Z", metaKey: true, shiftKey: true },
+    ]) {
+      const event = new KeyboardEvent("keydown", {
+        ...shortcut,
+        cancelable: true,
       });
-      for (const shortcut of [
-        { key: "z", ctrlKey: true },
-        { key: "y", ctrlKey: true },
-        { key: "Z", metaKey: true, shiftKey: true },
-      ]) {
-        const event = new KeyboardEvent("keydown", {
-          ...shortcut,
-          cancelable: true,
-        });
-        await act(async () => {
-          document.dispatchEvent(event);
-        });
-        expect(event.defaultPrevented).toBe(experimentalSession === "legacy");
-      }
-    } finally {
-      await act(async () => root.unmount());
-      container.remove();
+      await act(async () => {
+        document.dispatchEvent(event);
+      });
+      expect(event.defaultPrevented).toBe(false);
     }
-  });
-}
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});
 
 test("canonical edits save and reopen the canonical text and paragraph identity", async () => {
   const container = document.createElement("div");
@@ -980,7 +973,7 @@ test.each(["uncontrolled", "controlled"] as const)(
             author: "Explicit author",
           }),
         ).toBe(true);
-        // Stable host props preserve an explicit session override; a later effective mode change replaces it.
+        // A later effective mode change replaces the stable host props.
         await act(async () => root.render(render("editing")));
         await act(async () => {
           view.dispatch(
@@ -1478,105 +1471,16 @@ const createSaveNotifications = () => {
   };
 };
 
-for (const session of [undefined, "canonical"] as const)
-  test.each(SERIALIZATION_PATH_CASES)(
-    `React ${session ?? "default"} $kind reports the returned write path through save`,
-    async (scenario) => {
-      const container = document.createElement("div");
-      document.body.append(container);
-      const root = createRoot(container);
-      const editor = createRef<DocxEditorRef>();
-      const notifications = createSaveNotifications();
-      const model = serializationPathSource();
-      const bytes = await createDocx(model);
-      try {
-        await act(async () =>
-          root.render(
-            <IntlProvider
-              locale="en"
-              timeZone="UTC"
-              messages={getFolioMessages("en")}
-            >
-              <DocxEditor
-                ref={editor}
-                accessibleName="Document editor"
-                {...(scenario.source === "model"
-                  ? { document: model }
-                  : { documentBuffer: bytes })}
-                {...(session === undefined
-                  ? {}
-                  : { experimentalSession: session })}
-                featureFlags={scenario.flags}
-                onError={notifications.onError}
-                onSave={notifications.onSave}
-                showToolbar={false}
-              />
-            </IntlProvider>,
-          ),
-        );
-        const adapter = editor.current ?? panic("Expected React editor");
-        if (scenario.source === "package")
-          await act(async () => adapter.loadDocumentBuffer(bytes));
-        await act(async () => adapter.ensureEditorView({ focus: false }));
-        const api = adapter.getEditor() ?? panic("Expected controller");
-        const view = api.getView() ?? panic("Expected editable body");
-        await act(async () => {
-          if (session !== "legacy")
-            expect(
-              api.applyCanonicalOperations([
-                {
-                  type: DOCUMENT_OP_TYPES.INSERT_TEXT,
-                  at: { story: "main", blockId: "12345678", offset: 1 },
-                  text: "x",
-                  runProps: "inherit",
-                },
-              ]),
-            ).toBe(true);
-          else view.dispatch(view.state.tr.insertText("x", 2));
-        });
-        const paths: FolioDocxSerializationPath[] = [];
-        const declines: SelectiveSaveDecline[] = [];
-        const diagnostics: SaveDiagnostic[] = [];
-        let saved: ArrayBuffer | null = null;
-        await act(async () => {
-          saved = await adapter.save({
-            selective: scenario.mode !== "full",
-            onSerializationPath: (path) => paths.push(path),
-            onSelectiveDecline: (decline) => declines.push(decline),
-            onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
-          });
-        });
-        if (!saved) panic("Expected saved React package");
-        expect(paths).toEqual([scenario.expectedPath]);
-        expect(declines).toEqual(scenario.expectedDeclines);
-        expect(diagnostics).toEqual(
-          session !== "legacy" && scenario.kind === "declined"
-            ? [CANONICAL_SAVE_FALLBACK_DIAGNOSTIC]
-            : [],
-        );
-        expect(notifications.errors).toEqual([]);
-        expect(notifications.saved).toEqual([saved]);
-        const reopened = await parseDocx(saved, { preloadFonts: false });
-        expect(reopened.package.document.content.at(0)).toMatchObject({
-          type: "paragraph",
-          content: [
-            { type: "run", content: [{ type: "text", text: "Bxody" }] },
-          ],
-        });
-      } finally {
-        await act(async () => root.unmount());
-        container.remove();
-      }
-    },
-  );
-
-for (const session of [undefined, "canonical"] as const)
-  test(`a fresh ${session ?? "default"} model saves without a source package`, async () => {
+test.each(SERIALIZATION_PATH_CASES)(
+  `React $kind reports the returned write path through save`,
+  async (scenario) => {
     const container = document.createElement("div");
     document.body.append(container);
     const root = createRoot(container);
     const editor = createRef<DocxEditorRef>();
-    const model = createEmptyDocument({ initialText: "Fresh" });
+    const notifications = createSaveNotifications();
+    const model = serializationPathSource();
+    const bytes = await createDocx(model);
     try {
       await act(async () =>
         root.render(
@@ -1588,179 +1492,137 @@ for (const session of [undefined, "canonical"] as const)
             <DocxEditor
               ref={editor}
               accessibleName="Document editor"
-              document={model}
-              {...(session === undefined
-                ? {}
-                : { experimentalSession: session })}
+              {...(scenario.source === "model"
+                ? { document: model }
+                : { documentBuffer: bytes })}
+              featureFlags={scenario.flags}
+              onError={notifications.onError}
+              onSave={notifications.onSave}
               showToolbar={false}
             />
           </IntlProvider>,
         ),
       );
       const adapter = editor.current ?? panic("Expected React editor");
+      if (scenario.source === "package")
+        await act(async () => adapter.loadDocumentBuffer(bytes));
       await act(async () => adapter.ensureEditorView({ focus: false }));
-      const view =
-        adapter.getEditor()?.getView() ?? panic("Expected editable view");
+      const api = adapter.getEditor() ?? panic("Expected controller");
       await act(async () => {
-        if (session === "legacy")
-          view.dispatch(view.state.tr.insertText("!", 2));
-        else {
-          view.dispatch(
-            view.state.tr.setSelection(TextSelection.create(view.state.doc, 2)),
-          );
-          view.dom.dispatchEvent(
-            new InputEvent("beforeinput", {
-              bubbles: true,
-              cancelable: true,
-              inputType: "insertText",
-              data: "!",
-            }),
-          );
-        }
+        expect(
+          api.applyCanonicalOperations([
+            {
+              type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+              at: { story: "main", blockId: "12345678", offset: 1 },
+              text: "x",
+              runProps: "inherit",
+            },
+          ]),
+        ).toBe(true);
       });
+      const paths: FolioDocxSerializationPath[] = [];
+      const declines: SelectiveSaveDecline[] = [];
+      const diagnostics: SaveDiagnostic[] = [];
       let saved: ArrayBuffer | null = null;
       await act(async () => {
-        saved = await adapter.save();
+        saved = await adapter.save({
+          selective: scenario.mode !== "full",
+          onSerializationPath: (path) => paths.push(path),
+          onSelectiveDecline: (decline) => declines.push(decline),
+          onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+        });
       });
-      if (!saved) panic("Expected a saved package from the fresh model");
+      if (!saved) panic("Expected saved React package");
+      expect(paths).toEqual([scenario.expectedPath]);
+      expect(declines).toEqual(scenario.expectedDeclines);
+      expect(diagnostics).toEqual(
+        scenario.kind === "declined"
+          ? [CANONICAL_SAVE_FALLBACK_DIAGNOSTIC]
+          : [],
+      );
+      expect(notifications.errors).toEqual([]);
+      expect(notifications.saved).toEqual([saved]);
       const reopened = await parseDocx(saved, { preloadFonts: false });
-      expect(toProseDoc(reopened).textContent).toBe("F!resh");
+      expect(reopened.package.document.content.at(0)).toMatchObject({
+        type: "paragraph",
+        content: [{ type: "run", content: [{ type: "text", text: "Bxody" }] }],
+      });
     } finally {
       await act(async () => root.unmount());
       container.remove();
     }
-  });
+  },
+);
 
-for (const session of [undefined, "canonical"] as const)
-  for (const callback of [
-    "onSerializationPath",
-    "onSelectiveDecline",
-    "onDiagnostic",
-  ] as const)
-    for (const diagnosticStage of session === "legacy" &&
-    callback === "onDiagnostic"
-      ? (["selective", "tripwire"] as const)
-      : (["selective"] as const))
-      test(`React ${session ?? "default"} ${callback} ${diagnosticStage} failure leaves the edited snapshot unsaved`, async () => {
-        const container = document.createElement("div");
-        document.body.append(container);
-        const root = createRoot(container);
-        const editor = createRef<DocxEditorRef>();
-        const notifications = createSaveNotifications();
-        const scenario =
-          SERIALIZATION_PATH_CASES.find((item) => item.kind === "declined") ??
-          panic("Missing refusal case");
-        const diagnosticSource =
-          diagnosticStage === "tripwire"
-            ? serializationTripwireDiagnosticSource
-            : serializationDiagnosticSource;
-        const diagnosticModel =
-          session === "legacy" && callback === "onDiagnostic"
-            ? await diagnosticSource()
-            : null;
-        const normalFlags = diagnosticModel ? undefined : scenario.flags;
-        const featureFlags =
-          diagnosticStage === "tripwire"
-            ? (SERIALIZATION_PATH_CASES.find(
-                (item) => item.kind === "selective with tripwire",
-              )?.flags ?? panic("Missing tripwire case"))
-            : normalFlags;
-        const bytes =
-          diagnosticModel?.originalBuffer ??
-          (await createDocx(serializationPathSource()));
-        let callbackCount = 0;
-        const declines: SelectiveSaveDecline[] = [];
-        try {
-          await act(async () =>
-            root.render(
-              <IntlProvider
-                locale="en"
-                timeZone="UTC"
-                messages={getFolioMessages("en")}
-              >
-                <DocxEditor
-                  ref={editor}
-                  accessibleName="Document editor"
-                  documentBuffer={bytes}
-                  {...(session === undefined
-                    ? {}
-                    : { experimentalSession: session })}
-                  featureFlags={featureFlags}
-                  onError={notifications.onError}
-                  onSave={notifications.onSave}
-                  showToolbar={false}
-                />
-              </IntlProvider>,
-            ),
-          );
-          const adapter = editor.current ?? panic("Expected React editor");
-          await act(async () => {
-            if (diagnosticModel) adapter.loadDocument(diagnosticModel);
-            else await adapter.loadDocumentBuffer(bytes);
-          });
-          await act(async () => adapter.ensureEditorView({ focus: false }));
-          const api = adapter.getEditor() ?? panic("Expected controller");
-          const view = api.getView() ?? panic("Expected body view");
-          await act(async () => {
-            if (session !== "legacy")
-              expect(
-                api.applyCanonicalOperations([
-                  {
-                    type: DOCUMENT_OP_TYPES.INSERT_TEXT,
-                    at: { story: "main", blockId: "12345678", offset: 1 },
-                    text: "x",
-                    runProps: "inherit",
-                  },
-                ]),
-              ).toBe(true);
-            else view.dispatch(view.state.tr.insertText("x", 2));
-          });
-          expect(adapter.hasPendingChanges()).toBe(true);
-          await act(async () => {
-            expect(
-              await adapter.save({
-                onDiagnostic: () => {},
-                onSelectiveDecline: (decline) => declines.push(decline),
-                [callback]: () => {
-                  callbackCount += 1;
-                  if (diagnosticStage === "tripwire" && callbackCount === 1)
-                    return;
-                  panic("Host save callback failed");
-                },
-              }),
-            ).toBeNull();
-          });
-          if (diagnosticStage === "tripwire") {
-            expect(callbackCount).toBe(2);
-            expect(declines).toEqual([]);
-          }
-          expect(notifications.errors).toHaveLength(1);
-          expect(notifications.errors.at(0)?.message).toBe(
-            "Host save callback failed",
-          );
-          expect(notifications.saved).toEqual([]);
-          expect(adapter.hasPendingChanges()).toBe(true);
-        } finally {
-          await act(async () => root.unmount());
-          container.remove();
-        }
-      });
+test(`a fresh model saves without a source package`, async () => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const editor = createRef<DocxEditorRef>();
+  const model = createEmptyDocument({ initialText: "Fresh" });
+  try {
+    await act(async () =>
+      root.render(
+        <IntlProvider
+          locale="en"
+          timeZone="UTC"
+          messages={getFolioMessages("en")}
+        >
+          <DocxEditor
+            ref={editor}
+            accessibleName="Document editor"
+            document={model}
+            showToolbar={false}
+          />
+        </IntlProvider>,
+      ),
+    );
+    const adapter = editor.current ?? panic("Expected React editor");
+    await act(async () => adapter.ensureEditorView({ focus: false }));
+    const view =
+      adapter.getEditor()?.getView() ?? panic("Expected editable view");
+    await act(async () => {
+      view.dispatch(
+        view.state.tr.setSelection(TextSelection.create(view.state.doc, 2)),
+      );
+      view.dom.dispatchEvent(
+        new InputEvent("beforeinput", {
+          bubbles: true,
+          cancelable: true,
+          inputType: "insertText",
+          data: "!",
+        }),
+      );
+    });
+    let saved: ArrayBuffer | null = null;
+    await act(async () => {
+      saved = await adapter.save();
+    });
+    if (!saved) panic("Expected a saved package from the fresh model");
+    const reopened = await parseDocx(saved, { preloadFonts: false });
+    expect(toProseDoc(reopened).textContent).toBe("F!resh");
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});
 
-const failHostTripwire = () => panic("Host tripwire failed");
-const tripwireFeatureFlags = {
-  selectiveSave: true,
-  selectiveSaveTripwire: true,
-};
-
-for (const session of [undefined, "canonical"] as const)
-  test(`React ${session ?? "default"} host tripwire exceptions propagate after save acknowledgement`, async () => {
+for (const callback of [
+  "onSerializationPath",
+  "onSelectiveDecline",
+  "onDiagnostic",
+] as const)
+  test(`React ${callback} failure leaves the edited snapshot unsaved`, async () => {
     const container = document.createElement("div");
     document.body.append(container);
     const root = createRoot(container);
     const editor = createRef<DocxEditorRef>();
     const notifications = createSaveNotifications();
+    const scenario =
+      SERIALIZATION_PATH_CASES.find((item) => item.kind === "declined") ??
+      panic("Missing refusal case");
     const bytes = await createDocx(serializationPathSource());
-    const paths: FolioDocxSerializationPath[] = [];
+    const declines: SelectiveSaveDecline[] = [];
     try {
       await act(async () =>
         root.render(
@@ -1773,11 +1635,7 @@ for (const session of [undefined, "canonical"] as const)
               ref={editor}
               accessibleName="Document editor"
               documentBuffer={bytes}
-              {...(session === undefined
-                ? {}
-                : { experimentalSession: session })}
-              featureFlags={tripwireFeatureFlags}
-              onSelectiveSaveTripwire={failHostTripwire}
+              featureFlags={scenario.flags}
               onError={notifications.onError}
               onSave={notifications.onSave}
               showToolbar={false}
@@ -1789,32 +1647,104 @@ for (const session of [undefined, "canonical"] as const)
       await act(async () => adapter.loadDocumentBuffer(bytes));
       await act(async () => adapter.ensureEditorView({ focus: false }));
       const api = adapter.getEditor() ?? panic("Expected controller");
-      const view = api.getView() ?? panic("Expected body view");
       await act(async () => {
-        if (session !== "legacy")
-          expect(
-            api.applyCanonicalOperations([
-              {
-                type: DOCUMENT_OP_TYPES.INSERT_TEXT,
-                at: { story: "main", blockId: "12345678", offset: 1 },
-                text: "x",
-                runProps: "inherit",
-              },
-            ]),
-          ).toBe(true);
-        else view.dispatch(view.state.tr.insertText("x", 2));
+        expect(
+          api.applyCanonicalOperations([
+            {
+              type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+              at: { story: "main", blockId: "12345678", offset: 1 },
+              text: "x",
+              runProps: "inherit",
+            },
+          ]),
+        ).toBe(true);
       });
+      expect(adapter.hasPendingChanges()).toBe(true);
       await act(async () => {
-        await expect(
-          adapter.save({ onSerializationPath: (path) => paths.push(path) }),
-        ).rejects.toThrow("Host tripwire failed");
+        expect(
+          await adapter.save({
+            onDiagnostic: () => {},
+            onSelectiveDecline: (decline) => declines.push(decline),
+            [callback]: () => {
+              panic("Host save callback failed");
+            },
+          }),
+        ).toBeNull();
       });
-      expect(paths).toEqual(["selective"]);
-      expect(notifications.errors).toEqual([]);
+      expect(notifications.errors).toHaveLength(1);
+      expect(notifications.errors.at(0)?.message).toBe(
+        "Host save callback failed",
+      );
       expect(notifications.saved).toEqual([]);
-      expect(adapter.hasPendingChanges()).toBe(false);
+      expect(adapter.hasPendingChanges()).toBe(true);
     } finally {
       await act(async () => root.unmount());
       container.remove();
     }
   });
+
+const failHostTripwire = () => panic("Host tripwire failed");
+const tripwireFeatureFlags = {
+  selectiveSave: true,
+  selectiveSaveTripwire: true,
+};
+
+test(`React host tripwire exceptions propagate after save acknowledgement`, async () => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const editor = createRef<DocxEditorRef>();
+  const notifications = createSaveNotifications();
+  const bytes = await createDocx(serializationPathSource());
+  const paths: FolioDocxSerializationPath[] = [];
+  try {
+    await act(async () =>
+      root.render(
+        <IntlProvider
+          locale="en"
+          timeZone="UTC"
+          messages={getFolioMessages("en")}
+        >
+          <DocxEditor
+            ref={editor}
+            accessibleName="Document editor"
+            documentBuffer={bytes}
+            featureFlags={tripwireFeatureFlags}
+            onSelectiveSaveTripwire={failHostTripwire}
+            onError={notifications.onError}
+            onSave={notifications.onSave}
+            showToolbar={false}
+          />
+        </IntlProvider>,
+      ),
+    );
+    const adapter = editor.current ?? panic("Expected React editor");
+    await act(async () => adapter.loadDocumentBuffer(bytes));
+    await act(async () => adapter.ensureEditorView({ focus: false }));
+    const api = adapter.getEditor() ?? panic("Expected controller");
+    await act(async () => {
+      expect(
+        api.applyCanonicalOperations([
+          {
+            type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+            at: { story: "main", blockId: "12345678", offset: 1 },
+            text: "x",
+            runProps: "inherit",
+          },
+        ]),
+      ).toBe(true);
+    });
+    await act(async () => {
+      await expect(
+        adapter.save({ onSerializationPath: (path) => paths.push(path) }),
+      ).rejects.toThrow("Host tripwire failed");
+    });
+    expect(paths).toEqual(["selective"]);
+    expect(notifications.errors).toEqual([]);
+    expect(notifications.saved).toEqual([]);
+    expect(adapter.hasPendingChanges()).toBe(false);
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});

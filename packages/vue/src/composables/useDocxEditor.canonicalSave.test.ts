@@ -53,9 +53,7 @@ import { reviewDifferences } from "../../../../test/reviewDifferences";
 import { canonicalReviewBlocks } from "../../../../test/reviewProjection";
 import {
   SERIALIZATION_PATH_CASES,
-  serializationDiagnosticSource,
   serializationPathSource,
-  serializationTripwireDiagnosticSource,
 } from "../../../../test/serializationPaths";
 import { saveDocumentForHost } from "./useDocxEditorRefApi";
 
@@ -116,99 +114,90 @@ test.each([
     }
   },
 );
-test.each([undefined, "canonical"] as const)(
-  "%s history keys have one editor owner and no document-level owner",
-  async (session) => {
-    const container = document.createElement("div");
-    const hidden = document.createElement("div");
-    const pages = document.createElement("div");
-    document.body.append(container, hidden, pages);
-    const holder: { editor: ReturnType<typeof useDocxEditor> | null } = {
-      editor: null,
-    };
-    const app = createApp(
-      defineComponent({
-        setup() {
-          holder.editor = useDocxEditor({
-            hiddenContainer: shallowRef(hidden),
-            pagesContainer: shallowRef(pages),
-            ...(session === undefined ? {} : { experimentalSession: session }),
-          });
-          useKeyboardShortcuts({
-            showFindReplace: shallowRef(false),
-            showHyperlink: shallowRef(false),
-            handleZoomKeyDown: () => {},
-            scope: () => "document",
-            roots: [shallowRef(container)],
-          });
-          return () => h("div");
-        },
-      }),
+test("history keys have one editor owner and no document-level owner", async () => {
+  const container = document.createElement("div");
+  const hidden = document.createElement("div");
+  const pages = document.createElement("div");
+  document.body.append(container, hidden, pages);
+  const holder: { editor: ReturnType<typeof useDocxEditor> | null } = {
+    editor: null,
+  };
+  const app = createApp(
+    defineComponent({
+      setup() {
+        holder.editor = useDocxEditor({
+          hiddenContainer: shallowRef(hidden),
+          pagesContainer: shallowRef(pages),
+        });
+        useKeyboardShortcuts({
+          showFindReplace: shallowRef(false),
+          showHyperlink: shallowRef(false),
+          handleZoomKeyDown: () => {},
+          scope: () => "document",
+          roots: [shallowRef(container)],
+        });
+        return () => h("div");
+      },
+    }),
+  );
+  app.mount(container);
+  try {
+    const editor = holder.editor ?? panic("Expected mounted Vue editor");
+    await editor.loadBuffer(
+      await createDocx(createEmptyDocument({ initialText: "Start" })),
     );
-    app.mount(container);
-    try {
-      const editor = holder.editor ?? panic("Expected mounted Vue editor");
-      await editor.loadBuffer(
-        await createDocx(createEmptyDocument({ initialText: "Start" })),
-      );
-      const view =
-        editor.editorView.value ?? panic("Expected body editor view");
-      const insert = (text: string) => {
-        view.dispatch(
-          closeHistory(
-            view.state.tr.setSelection(
-              TextSelection.create(
-                view.state.doc,
-                view.state.doc.content.size - 1,
-              ),
+    const view = editor.editorView.value ?? panic("Expected body editor view");
+    const insert = (text: string) => {
+      view.dispatch(
+        closeHistory(
+          view.state.tr.setSelection(
+            TextSelection.create(
+              view.state.doc,
+              view.state.doc.content.size - 1,
             ),
           ),
-        );
-        if (session !== "legacy") {
-          view.dom.dispatchEvent(
-            new InputEvent("beforeinput", {
-              bubbles: true,
-              cancelable: true,
-              inputType: "insertText",
-              data: text,
-            }),
-          );
-        } else {
-          view.dispatch(view.state.tr.insertText(text));
-        }
-      };
-      insert("1");
-      insert("2");
-      const key = (chord: string) =>
-        new KeyboardEvent("keydown", {
+        ),
+      );
+      view.dom.dispatchEvent(
+        new InputEvent("beforeinput", {
           bubbles: true,
           cancelable: true,
-          ctrlKey: !isMacPlatform(),
-          metaKey: isMacPlatform(),
-          key: chord,
-        });
-      for (const chord of ["z", "y"]) {
-        const event = key(chord);
-        document.dispatchEvent(event);
-        expect(event.defaultPrevented).toBe(false);
-        expect(view.state.doc.textContent).toBe("Start12");
-      }
-      const undo = key("z");
-      view.dom.dispatchEvent(undo);
-      expect(undo.defaultPrevented).toBe(true);
-      expect(view.state.doc.textContent).toBe("Start1");
-      const redo = key("y");
-      view.dom.dispatchEvent(redo);
-      expect(redo.defaultPrevented).toBe(true);
+          inputType: "insertText",
+          data: text,
+        }),
+      );
+    };
+    insert("1");
+    insert("2");
+    const key = (chord: string) =>
+      new KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        ctrlKey: !isMacPlatform(),
+        metaKey: isMacPlatform(),
+        key: chord,
+      });
+    for (const chord of ["z", "y"]) {
+      const event = key(chord);
+      document.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(false);
       expect(view.state.doc.textContent).toBe("Start12");
-    } finally {
-      app.unmount();
-      container.remove();
-      hidden.remove();
-      pages.remove();
     }
-  },
-);
+    const undo = key("z");
+    view.dom.dispatchEvent(undo);
+    expect(undo.defaultPrevented).toBe(true);
+    expect(view.state.doc.textContent).toBe("Start1");
+    const redo = key("y");
+    view.dom.dispatchEvent(redo);
+    expect(redo.defaultPrevented).toBe(true);
+    expect(view.state.doc.textContent).toBe("Start12");
+  } finally {
+    app.unmount();
+    container.remove();
+    hidden.remove();
+    pages.remove();
+  }
+});
 
 test("canonical edits save and reopen the canonical text and paragraph identity", async () => {
   const container = document.createElement("div");
@@ -1128,289 +1117,234 @@ test.each(CANONICAL_SAVE_SEEDS)(
   },
 );
 
-for (const session of [undefined, "canonical"] as const)
-  test.each(SERIALIZATION_PATH_CASES)(
-    `Vue ${session ?? "default"} $kind reports the returned write path through save`,
-    async (scenario) => {
-      const container = document.createElement("div");
-      const hidden = document.createElement("div");
-      const pages = document.createElement("div");
-      document.body.append(container, hidden, pages);
-      const errors: Error[] = [];
-      const savedCallbacks: ArrayBuffer[] = [];
-      let clears = 0;
-      const holder: { adapter: ReturnType<typeof useDocxEditor> | null } = {
-        adapter: null,
-      };
-      const app = createApp(
-        defineComponent({
-          setup() {
-            holder.adapter = useDocxEditor({
-              hiddenContainer: shallowRef(hidden),
-              pagesContainer: shallowRef(pages),
-              ...(session === undefined
-                ? {}
-                : { experimentalSession: session }),
-              featureFlags: scenario.flags,
-              onError: (error) => errors.push(error),
-            });
-            return () => h("div");
+test.each(SERIALIZATION_PATH_CASES)(
+  `Vue $kind reports the returned write path through save`,
+  async (scenario) => {
+    const container = document.createElement("div");
+    const hidden = document.createElement("div");
+    const pages = document.createElement("div");
+    document.body.append(container, hidden, pages);
+    const errors: Error[] = [];
+    const savedCallbacks: ArrayBuffer[] = [];
+    let clears = 0;
+    const holder: { adapter: ReturnType<typeof useDocxEditor> | null } = {
+      adapter: null,
+    };
+    const app = createApp(
+      defineComponent({
+        setup() {
+          holder.adapter = useDocxEditor({
+            hiddenContainer: shallowRef(hidden),
+            pagesContainer: shallowRef(pages),
+            featureFlags: scenario.flags,
+            onError: (error) => errors.push(error),
+          });
+          return () => h("div");
+        },
+      }),
+    );
+    app.mount(container);
+    try {
+      const adapter = holder.adapter ?? panic("Expected Vue composable");
+      const model = serializationPathSource();
+      if (scenario.source === "package")
+        await adapter.loadBuffer(await createDocx(model));
+      else adapter.loadDocument(model);
+      expect(
+        adapter.editor.applyCanonicalOperations([
+          {
+            type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+            at: { story: "main", blockId: "12345678", offset: 1 },
+            text: "x",
+            runProps: "inherit",
           },
-        }),
+        ]),
+      ).toBe(true);
+      const paths: FolioDocxSerializationPath[] = [];
+      const declines: SelectiveSaveDecline[] = [];
+      const diagnostics: SaveDiagnostic[] = [];
+      const saved = await saveDocumentForHost(
+        {
+          saveDocument: adapter.save,
+          clearCommentsDirty: () => {
+            clears += 1;
+          },
+          onSave: (buffer) => savedCallbacks.push(buffer),
+        },
+        {
+          selective: scenario.mode !== "full",
+          onSerializationPath: (path) => paths.push(path),
+          onSelectiveDecline: (decline) => declines.push(decline),
+          onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+        },
       );
-      app.mount(container);
-      try {
-        const adapter = holder.adapter ?? panic("Expected Vue composable");
-        const model = serializationPathSource();
-        if (scenario.source === "package")
-          await adapter.loadBuffer(await createDocx(model));
-        else adapter.loadDocument(model);
-        const view =
-          adapter.editorView.value ?? panic("Expected Vue body view");
-        if (session !== "legacy")
-          expect(
-            adapter.editor.applyCanonicalOperations([
-              {
-                type: DOCUMENT_OP_TYPES.INSERT_TEXT,
-                at: { story: "main", blockId: "12345678", offset: 1 },
-                text: "x",
-                runProps: "inherit",
-              },
-            ]),
-          ).toBe(true);
-        else view.dispatch(view.state.tr.insertText("x", 2));
-        const paths: FolioDocxSerializationPath[] = [];
-        const declines: SelectiveSaveDecline[] = [];
-        const diagnostics: SaveDiagnostic[] = [];
-        const saved = await saveDocumentForHost(
+      if (!saved) panic("Expected saved Vue package");
+      expect(paths).toEqual([scenario.expectedPath]);
+      expect(declines).toEqual(scenario.expectedDeclines);
+      expect(diagnostics).toEqual(
+        scenario.kind === "declined"
+          ? [CANONICAL_SAVE_FALLBACK_DIAGNOSTIC]
+          : [],
+      );
+      expect(errors).toEqual([]);
+      expect(savedCallbacks).toEqual([saved]);
+      expect(clears).toBe(1);
+      const reopened = await parseDocx(saved, { preloadFonts: false });
+      expect(reopened.package.document.content.at(0)).toMatchObject({
+        type: "paragraph",
+        content: [{ type: "run", content: [{ type: "text", text: "Bxody" }] }],
+      });
+    } finally {
+      app.unmount();
+      container.remove();
+      hidden.remove();
+      pages.remove();
+    }
+  },
+);
+
+for (const callback of [
+  "onSerializationPath",
+  "onSelectiveDecline",
+  "onDiagnostic",
+] as const)
+  test(`Vue ${callback} failure leaves the edited snapshot unsaved`, async () => {
+    const container = document.createElement("div");
+    const hidden = document.createElement("div");
+    const pages = document.createElement("div");
+    document.body.append(container, hidden, pages);
+    const errors: Error[] = [];
+    let saves = 0;
+    let clears = 0;
+    const holder: { adapter: ReturnType<typeof useDocxEditor> | null } = {
+      adapter: null,
+    };
+    const scenario =
+      SERIALIZATION_PATH_CASES.find((item) => item.kind === "declined") ??
+      panic("Missing refusal case");
+    const app = createApp(
+      defineComponent({
+        setup() {
+          holder.adapter = useDocxEditor({
+            hiddenContainer: shallowRef(hidden),
+            pagesContainer: shallowRef(pages),
+            featureFlags: scenario.flags,
+            onError: (error) => errors.push(error),
+          });
+          return () => h("div");
+        },
+      }),
+    );
+    app.mount(container);
+    const declines: SelectiveSaveDecline[] = [];
+    try {
+      const adapter = holder.adapter ?? panic("Expected Vue editor");
+      await adapter.loadBuffer(await createDocx(serializationPathSource()));
+      expect(
+        adapter.editor.applyCanonicalOperations([
+          {
+            type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+            at: { story: "main", blockId: "12345678", offset: 1 },
+            text: "x",
+            runProps: "inherit",
+          },
+        ]),
+      ).toBe(true);
+      expect(adapter.isDirty.value).toBe(true);
+      expect(
+        await saveDocumentForHost(
           {
             saveDocument: adapter.save,
             clearCommentsDirty: () => {
               clears += 1;
             },
-            onSave: (buffer) => savedCallbacks.push(buffer),
+            onSave: () => {
+              saves += 1;
+            },
           },
           {
-            selective: scenario.mode !== "full",
-            onSerializationPath: (path) => paths.push(path),
+            onDiagnostic: () => {},
             onSelectiveDecline: (decline) => declines.push(decline),
-            onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
-          },
-        );
-        if (!saved) panic("Expected saved Vue package");
-        expect(paths).toEqual([scenario.expectedPath]);
-        expect(declines).toEqual(scenario.expectedDeclines);
-        expect(diagnostics).toEqual(
-          session !== "legacy" && scenario.kind === "declined"
-            ? [CANONICAL_SAVE_FALLBACK_DIAGNOSTIC]
-            : [],
-        );
-        expect(errors).toEqual([]);
-        expect(savedCallbacks).toEqual([saved]);
-        expect(clears).toBe(1);
-        const reopened = await parseDocx(saved, { preloadFonts: false });
-        expect(reopened.package.document.content.at(0)).toMatchObject({
-          type: "paragraph",
-          content: [
-            { type: "run", content: [{ type: "text", text: "Bxody" }] },
-          ],
-        });
-      } finally {
-        app.unmount();
-        container.remove();
-        hidden.remove();
-        pages.remove();
-      }
-    },
-  );
-
-for (const session of [undefined, "canonical"] as const)
-  for (const callback of [
-    "onSerializationPath",
-    "onSelectiveDecline",
-    "onDiagnostic",
-  ] as const)
-    for (const diagnosticStage of session === "legacy" &&
-    callback === "onDiagnostic"
-      ? (["selective", "tripwire"] as const)
-      : (["selective"] as const))
-      test(`Vue ${session ?? "default"} ${callback} ${diagnosticStage} failure leaves the edited snapshot unsaved`, async () => {
-        const container = document.createElement("div");
-        const hidden = document.createElement("div");
-        const pages = document.createElement("div");
-        document.body.append(container, hidden, pages);
-        const errors: Error[] = [];
-        let saves = 0;
-        let clears = 0;
-        const holder: { adapter: ReturnType<typeof useDocxEditor> | null } = {
-          adapter: null,
-        };
-        const scenario =
-          SERIALIZATION_PATH_CASES.find((item) => item.kind === "declined") ??
-          panic("Missing refusal case");
-        const diagnosticSource =
-          diagnosticStage === "tripwire"
-            ? serializationTripwireDiagnosticSource
-            : serializationDiagnosticSource;
-        const diagnosticModel =
-          session === "legacy" && callback === "onDiagnostic"
-            ? await diagnosticSource()
-            : null;
-        const normalFlags = diagnosticModel ? undefined : scenario.flags;
-        const featureFlags =
-          diagnosticStage === "tripwire"
-            ? (SERIALIZATION_PATH_CASES.find(
-                (item) => item.kind === "selective with tripwire",
-              )?.flags ?? panic("Missing tripwire case"))
-            : normalFlags;
-        const app = createApp(
-          defineComponent({
-            setup() {
-              holder.adapter = useDocxEditor({
-                hiddenContainer: shallowRef(hidden),
-                pagesContainer: shallowRef(pages),
-                ...(session === undefined
-                  ? {}
-                  : { experimentalSession: session }),
-                featureFlags,
-                onError: (error) => errors.push(error),
-              });
-              return () => h("div");
+            [callback]: () => {
+              panic("Host save callback failed");
             },
-          }),
-        );
-        app.mount(container);
-        let callbackCount = 0;
-        const declines: SelectiveSaveDecline[] = [];
-        try {
-          const adapter = holder.adapter ?? panic("Expected Vue editor");
-          if (diagnosticModel) adapter.loadDocument(diagnosticModel);
-          else
-            await adapter.loadBuffer(
-              await createDocx(serializationPathSource()),
-            );
-          const view = adapter.editorView.value ?? panic("Expected body view");
-          if (session !== "legacy")
-            expect(
-              adapter.editor.applyCanonicalOperations([
-                {
-                  type: DOCUMENT_OP_TYPES.INSERT_TEXT,
-                  at: { story: "main", blockId: "12345678", offset: 1 },
-                  text: "x",
-                  runProps: "inherit",
-                },
-              ]),
-            ).toBe(true);
-          else view.dispatch(view.state.tr.insertText("x", 2));
-          expect(adapter.isDirty.value).toBe(true);
-          expect(
-            await saveDocumentForHost(
-              {
-                saveDocument: adapter.save,
-                clearCommentsDirty: () => {
-                  clears += 1;
-                },
-                onSave: () => {
-                  saves += 1;
-                },
-              },
-              {
-                onDiagnostic: () => {},
-                onSelectiveDecline: (decline) => declines.push(decline),
-                [callback]: () => {
-                  callbackCount += 1;
-                  if (diagnosticStage === "tripwire" && callbackCount === 1)
-                    return;
-                  panic("Host save callback failed");
-                },
-              },
-            ),
-          ).toBeNull();
-          if (diagnosticStage === "tripwire") {
-            expect(callbackCount).toBe(2);
-            expect(declines).toEqual([]);
-          }
-          expect(errors).toHaveLength(1);
-          expect(errors.at(0)?.message).toBe("Host save callback failed");
-          expect(saves).toBe(0);
-          expect(clears).toBe(0);
-          expect(adapter.isDirty.value).toBe(true);
-        } finally {
-          app.unmount();
-          container.remove();
-          hidden.remove();
-          pages.remove();
-        }
-      });
-
-for (const session of [undefined, "canonical"] as const)
-  for (const operation of ["save", "getDocx"] as const)
-    test(`Vue ${session ?? "default"} host tripwire exceptions propagate after ${operation}`, async () => {
-      const container = document.createElement("div");
-      const hidden = document.createElement("div");
-      const pages = document.createElement("div");
-      document.body.append(container, hidden, pages);
-      const errors: Error[] = [];
-      let comparisons = 0;
-      const paths: FolioDocxSerializationPath[] = [];
-      const holder: { adapter: ReturnType<typeof useDocxEditor> | null } = {
-        adapter: null,
-      };
-      const app = createApp(
-        defineComponent({
-          setup() {
-            holder.adapter = useDocxEditor({
-              hiddenContainer: shallowRef(hidden),
-              pagesContainer: shallowRef(pages),
-              ...(session === undefined
-                ? {}
-                : { experimentalSession: session }),
-              featureFlags: {
-                selectiveSave: true,
-                selectiveSaveTripwire: true,
-              },
-              onError: (error) => errors.push(error),
-              onSelectiveSaveTripwire: () => {
-                comparisons += 1;
-                panic("Host tripwire failed");
-              },
-            });
-            return () => h("div");
           },
-        }),
-      );
-      app.mount(container);
-      try {
-        const adapter = holder.adapter ?? panic("Expected Vue editor");
-        await adapter.loadBuffer(await createDocx(serializationPathSource()));
-        const view = adapter.editorView.value ?? panic("Expected body view");
-        if (session !== "legacy") {
-          expect(
-            adapter.editor.applyCanonicalOperations([
-              {
-                type: DOCUMENT_OP_TYPES.INSERT_TEXT,
-                at: { story: "main", blockId: "12345678", offset: 1 },
-                text: "x",
-                runProps: "inherit",
-              },
-            ]),
-          ).toBe(true);
-        } else view.dispatch(view.state.tr.insertText("x", 2));
-        await expect(
-          operation === "save"
-            ? adapter.save({ onSerializationPath: (path) => paths.push(path) })
-            : adapter.editor.getDocx({
-                onSerializationPath: (path) => paths.push(path),
-              }),
-        ).rejects.toThrow("Host tripwire failed");
-        expect(comparisons).toBe(1);
-        expect(paths).toEqual(["selective"]);
-        expect(errors).toEqual([]);
-        expect(adapter.isDirty.value).toBe(operation === "getDocx");
-      } finally {
-        app.unmount();
-        container.remove();
-        hidden.remove();
-        pages.remove();
-      }
-    });
+        ),
+      ).toBeNull();
+      expect(errors).toHaveLength(1);
+      expect(errors.at(0)?.message).toBe("Host save callback failed");
+      expect(saves).toBe(0);
+      expect(clears).toBe(0);
+      expect(adapter.isDirty.value).toBe(true);
+    } finally {
+      app.unmount();
+      container.remove();
+      hidden.remove();
+      pages.remove();
+    }
+  });
+
+for (const operation of ["save", "getDocx"] as const)
+  test(`Vue host tripwire exceptions propagate after ${operation}`, async () => {
+    const container = document.createElement("div");
+    const hidden = document.createElement("div");
+    const pages = document.createElement("div");
+    document.body.append(container, hidden, pages);
+    const errors: Error[] = [];
+    let comparisons = 0;
+    const paths: FolioDocxSerializationPath[] = [];
+    const holder: { adapter: ReturnType<typeof useDocxEditor> | null } = {
+      adapter: null,
+    };
+    const app = createApp(
+      defineComponent({
+        setup() {
+          holder.adapter = useDocxEditor({
+            hiddenContainer: shallowRef(hidden),
+            pagesContainer: shallowRef(pages),
+            featureFlags: {
+              selectiveSave: true,
+              selectiveSaveTripwire: true,
+            },
+            onError: (error) => errors.push(error),
+            onSelectiveSaveTripwire: () => {
+              comparisons += 1;
+              panic("Host tripwire failed");
+            },
+          });
+          return () => h("div");
+        },
+      }),
+    );
+    app.mount(container);
+    try {
+      const adapter = holder.adapter ?? panic("Expected Vue editor");
+      await adapter.loadBuffer(await createDocx(serializationPathSource()));
+      expect(
+        adapter.editor.applyCanonicalOperations([
+          {
+            type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+            at: { story: "main", blockId: "12345678", offset: 1 },
+            text: "x",
+            runProps: "inherit",
+          },
+        ]),
+      ).toBe(true);
+      await expect(
+        operation === "save"
+          ? adapter.save({ onSerializationPath: (path) => paths.push(path) })
+          : adapter.editor.getDocx({
+              onSerializationPath: (path) => paths.push(path),
+            }),
+      ).rejects.toThrow("Host tripwire failed");
+      expect(comparisons).toBe(1);
+      expect(paths).toEqual(["selective"]);
+      expect(errors).toEqual([]);
+      expect(adapter.isDirty.value).toBe(operation === "getDocx");
+    } finally {
+      app.unmount();
+      container.remove();
+      hidden.remove();
+      pages.remove();
+    }
+  });

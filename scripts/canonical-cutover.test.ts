@@ -4,12 +4,10 @@ import fc from "fast-check";
 import {
   CANONICAL_CAPABILITIES,
   CANONICAL_GAP,
-  usesCanonicalSession,
 } from "../packages/core/src/types/canonicalCapabilities";
 import { assertProperty, propertyTestTimeout } from "../test/property-testing";
 import {
   canonicalCutoverDocs,
-  checkCanonicalBaseline,
   inspectCanonicalSources,
   PUBLIC_OPERATION_SOURCE_GAPS,
 } from "./lib/canonical-cutover";
@@ -17,9 +15,7 @@ import {
 setDefaultTimeout(propertyTestTimeout(10_000));
 
 const selectors = Object.keys(CANONICAL_GAP)
-  .map(
-    (key) => `usesCanonicalSession(experimentalSession, CANONICAL_GAP.${key});`,
-  )
+  .map((key) => `void CANONICAL_GAP.${key};`)
   .join("\n");
 const source = (text: string, file = "packages/react/src/fixture.tsx") => ({
   file,
@@ -29,132 +25,31 @@ const failuresOf = (text: string, file?: string) =>
   inspectCanonicalSources([source(selectors), source(text, file)]).failures;
 
 describe("canonical cutover guard", () => {
-  test("every ledger id has a typed selector with exact session semantics", () => {
+  test("every ledger id has a source site", () => {
     const inspected = inspectCanonicalSources([source(selectors)]);
     expect(inspected.failures).toEqual([]);
     expect([...inspected.sites.keys()].sort()).toEqual(
       Object.keys(CANONICAL_CAPABILITIES).sort(),
     );
-    for (const id of Object.values(CANONICAL_GAP)) {
-      expect(usesCanonicalSession("canonical", id)).toBe(true);
-      // The canonical session is the default; only "legacy" opts out.
-      expect(usesCanonicalSession(undefined, id)).toBe(true);
-      expect(usesCanonicalSession("legacy", id)).toBe(false);
-    }
   });
 
   test("every removed ledger reference becomes an orphan", () => {
     for (const key of Object.keys(CANONICAL_GAP)) {
       const inspected = inspectCanonicalSources([
-        source(
-          selectors.replace(
-            `usesCanonicalSession(experimentalSession, CANONICAL_GAP.${key});`,
-            "",
-          ),
-        ),
+        source(selectors.replace(`void CANONICAL_GAP.${key};`, "")),
       ]);
       expect(inspected.failures).toHaveLength(1);
       expect(inspected.failures.at(0)).toContain("has no source site");
     }
   });
 
-  test("rejects raw selectors across syntax and Vue templates", () => {
-    assertProperty(
-      fc.property(
-        fc.constantFrom(
-          "experimentalSession",
-          "props.experimentalSession",
-          "deps.getExperimentalSession?.()",
-          "sessionRef.current",
-        ),
-        fc.constantFrom("===", "!==", "==", "!="),
-        fc.constantFrom('"canonical"', "'canonical'", "undefined"),
-        (selector, operator, value) => {
-          const expression = `${selector} ${operator} ${value}`;
-          for (const fixture of [
-            source(`if (${expression}) refuse();`),
-            source(
-              `<template><button v-if="${expression.replaceAll('"', "'")}"></button></template>`,
-              "packages/vue/src/fixture.vue",
-            ),
-          ])
-            expect(
-              inspectCanonicalSources([
-                source(selectors),
-                fixture,
-              ]).failures.some((failure) =>
-                failure.includes("raw session comparison"),
-              ),
-            ).toBe(true);
-        },
-      ),
-      { id: "rejects raw selectors across syntax and Vue templates" },
-    );
-  });
-
-  test("namespace-qualified guards count branches and resolve their ledger ids", () => {
-    assertProperty(
-      fc.property(
-        fc.constantFrom(...Object.entries(CANONICAL_GAP)),
-        fc.constantFrom("caps", "canonical", "ledger1"),
-        fc.boolean(),
-        fc.boolean(),
-        ([key, gap], namespace, bracketGuard, bracketGap) => {
-          const call = bracketGuard
-            ? `${namespace}["usesCanonicalSession"]`
-            : `${namespace}.usesCanonicalSession`;
-          const tag = bracketGap
-            ? `${namespace}["CANONICAL_GAP"]["${key}"]`
-            : `${namespace}.CANONICAL_GAP.${key}`;
-          const fixture = source(
-            `import * as ${namespace} from "@stll/folio-core/types/canonicalCapabilities"; if (${call}(experimentalSession, ${tag})) edit();`,
-          );
-          const inspected = inspectCanonicalSources([
-            source(selectors, "packages/react/src/other.tsx"),
-            fixture,
-          ]);
-          expect(inspected.failures).toEqual([]);
-          expect(inspected.branches[fixture.file]).toBe(1);
-          expect(inspected.sites.get(gap)?.has(fixture.file)).toBe(true);
-          expect(
-            checkCanonicalBaseline(inspected.branches, {
-              "packages/react/src/other.tsx": Object.keys(CANONICAL_GAP).length,
-            }),
-          ).toContain(
-            `${fixture.file}: session branches increased from 0 to 1`,
-          );
-        },
-      ),
-      {
-        id: "namespace-qualified guards count branches and resolve their ledger ids",
-      },
-    );
-    for (const call of [
-      "caps.usesCanonicalSession(experimentalSession)",
-      "caps.usesCanonicalSession(experimentalSession, caps.CANONICAL_GAP.unknown)",
-      "caps.usesCanonicalSession(experimentalSession, 'free-text')",
-      "new caps.CanonicalSessionRefusalError({ message: 'refused' })",
-    ]) {
-      expect(
-        failuresOf(
-          `import * as caps from "@stll/folio-core/types/canonicalCapabilities"; ${call};`,
-        ).length,
-      ).toBeGreaterThan(0);
-    }
-  });
-
   test("rejects unknown and missing gate/refusal ids", () => {
     for (const fixture of [
-      "usesCanonicalSession(experimentalSession);",
-      'import { usesCanonicalSession as hidden } from "@stll/folio-core/types/canonicalCapabilities"; hidden(experimentalSession, CANONICAL_GAP.comments);',
-      "const alias = experimentalSession; if (alias === 'canonical') refuse();",
-      "if (experimentalSession) refuse();",
       "refuseCanonicalModelEdit('free-text');",
       "handleSessionRefusal('Note story unavailable');",
-      "usesCanonicalSession(experimentalSession, 'free-text');",
-      "usesCanonicalSession(experimentalSession, CANONICAL_GAP.unknown);",
       "new CanonicalSessionRefusalError({ message: 'refused' });",
       "new CanonicalSessionError({ reason: 'refused', message: 'refused' });",
+      'import { CANONICAL_GAP as hidden } from "@stll/folio-core/types/canonicalCapabilities"; void hidden.comments;',
     ])
       expect(failuresOf(fixture).length).toBeGreaterThan(0);
   });
@@ -307,29 +202,6 @@ describe("canonical cutover guard", () => {
 
   test("canonical history functions are not PM history installations", () => {
     expect(failuresOf("const history = () => true; history();")).toEqual([]);
-  });
-
-  test("per-file counts require every decrease and reject every increase", () => {
-    assertProperty(
-      fc.property(
-        fc.nat({ max: 1000 }),
-        fc.nat({ max: 1000 }),
-        (before, after) => {
-          const failures = checkCanonicalBaseline(
-            { "fixture.ts": after },
-            { "fixture.ts": before },
-          );
-          expect(failures.length).toBe(before === after ? 0 : 1);
-          if (after > before) expect(failures.at(0)).toContain("increased");
-          if (after < before) expect(failures.at(0)).toContain("decrease");
-        },
-      ),
-      {
-        id: "per-file counts require every decrease and reject every increase",
-      },
-    );
-    expect(checkCanonicalBaseline({ "new.ts": 1 }, {})).toHaveLength(1);
-    expect(checkCanonicalBaseline({}, { "removed.ts": 1 })).toHaveLength(1);
   });
 
   test("canonical save ownership rejects PM-derived signals and manufactured snapshots", () => {

@@ -7,24 +7,10 @@ import {
 } from "./lib/canonical-command-census";
 import {
   canonicalCutoverDocs,
-  checkCanonicalBaseline,
   inspectCanonicalSources,
 } from "./lib/canonical-cutover";
 
-const readBaseline = (value: unknown): Record<string, number> => {
-  if (typeof value !== "object" || value === null || Array.isArray(value))
-    throw new Error("Invalid canonical baseline");
-  const counts: Record<string, number> = {};
-  for (const [file, count] of Object.entries(value)) {
-    if (typeof count !== "number" || !Number.isSafeInteger(count) || count <= 0)
-      throw new Error(`Invalid canonical baseline count for ${file}`);
-    counts[file] = count;
-  }
-  return counts;
-};
-
 const root = resolve(import.meta.dir, "..");
-const baselineFile = "scripts/canonical-cutover-baseline.json";
 const commandsBaselineFile = "scripts/canonical-command-baseline.json";
 const docsFile = "docs/canonical-cutover.md";
 const tracked = Bun.spawnSync(
@@ -56,11 +42,6 @@ const result = inspectCanonicalSources(
 const failures = [...result.failures];
 const docs = canonicalCutoverDocs(result);
 const write = process.argv.includes("--write");
-const baseline = write
-  ? result.branches
-  : readBaseline(JSON.parse(readFileSync(resolve(root, baselineFile), "utf8")));
-if (!write) failures.push(...checkCanonicalBaseline(result.branches, baseline));
-// Baseline edits cannot fund increases. On the introducing PR there is no parent baseline.
 const mergeBase = Bun.spawnSync(
   [
     "git",
@@ -74,25 +55,6 @@ const mergeBase = Bun.spawnSync(
 );
 if (mergeBase.exitCode !== 0) throw new Error(mergeBase.stderr.toString());
 const base = mergeBase.stdout.toString().trim();
-const exists = Bun.spawnSync(
-  ["git", "ls-tree", "--name-only", base, baselineFile],
-  { cwd: root },
-);
-if (exists.exitCode !== 0) throw new Error(exists.stderr.toString());
-if (exists.stdout.toString().trim() !== "") {
-  const prior = Bun.spawnSync(["git", "show", `${base}:${baselineFile}`], {
-    cwd: root,
-  });
-  if (prior.exitCode !== 0) throw new Error(prior.stderr.toString());
-  const parent = readBaseline(JSON.parse(prior.stdout.toString()));
-  for (const [file, count] of Object.entries(baseline)) {
-    const previous = parent[file] ?? 0;
-    if (typeof count !== "number" || count > previous)
-      failures.push(
-        `${file}: committed baseline cannot increase above ${previous}`,
-      );
-  }
-}
 const commandBaseline = Object.fromEntries(result.remainingCommands);
 const parentPathsResult = Bun.spawnSync(
   [
@@ -172,10 +134,6 @@ if (failures.length > 0) {
   process.exit(1);
 }
 if (write) {
-  writeFileSync(
-    resolve(root, baselineFile),
-    `${JSON.stringify(result.branches, null, 2)}\n`,
-  );
   writeFileSync(resolve(root, docsFile), docs);
   writeFileSync(
     resolve(root, commandsBaselineFile),
@@ -183,5 +141,5 @@ if (write) {
   );
 }
 console.log(
-  `Canonical cutover: ${result.sites.size} capabilities; ${Object.values(result.branches).reduce((sum, count) => sum + count, 0)} session branches; ${[...result.remainingCommands.values()].reduce((sum, commands) => sum + commands.length, 0)} remaining command registrations (base: ${[...parentCommands.values()].reduce((sum, commands) => sum + commands.length, 0)}).`,
+  `Canonical cutover: ${result.sites.size} capabilities; ${[...result.remainingCommands.values()].reduce((sum, commands) => sum + commands.length, 0)} remaining command registrations (base: ${[...parentCommands.values()].reduce((sum, commands) => sum + commands.length, 0)}).`,
 );

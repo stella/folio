@@ -360,23 +360,6 @@ export const CANONICAL_CAPABILITIES: {
 } as const satisfies Record<CanonicalGap, CanonicalCapability>;
 
 /**
- * The engine an editor edits with. The canonical session is the default;
- * `"legacy"` opts out to the ProseMirror-owned engine.
- */
-export type EditorSession = "canonical" | "legacy";
-
-/**
- * Whether an editor runs the canonical session: every editor does unless its
- * host selected `"legacy"`. This is the one place the default is decided.
- * The gap argument is a typed tag counted by the source guard, not a runtime policy.
- * Retire a gap by removing its sites and ledger entry.
- */
-export const usesCanonicalSession = (
-  session: EditorSession | undefined,
-  _gap: CanonicalGap,
-): boolean => session !== "legacy";
-
-/**
  * The engine a headless reviewer holds its document in: the canonical
  * session, as the editors do.
  */
