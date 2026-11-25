@@ -1,5 +1,5 @@
 /** Whole-paragraph deletion within one block list, including its final paragraph. */
-import { Result } from "better-result";
+import { panic, Result } from "better-result";
 
 import type {
   BlockContent,
@@ -923,12 +923,10 @@ export const deleteBlocks = ({
       },
     });
   }
-  const broken = list[first.index - 1];
+  const blockBefore = list[first.index - 1];
+  const broken = blockBefore?.type === "paragraph" ? blockBefore : undefined;
   const takenOver =
-    owner !== undefined &&
-    terminal &&
-    op.move !== true &&
-    broken?.type === "paragraph"
+    owner !== undefined && terminal && op.move !== true && broken !== undefined
       ? takenOverBreakRecords({
           broken,
           paragraphs: found.map(({ paragraph }) => paragraph),
@@ -936,7 +934,7 @@ export const deleteBlocks = ({
           held,
         })
       : undefined;
-  if (takenOver !== undefined) {
+  if (takenOver !== undefined && broken !== undefined) {
     const rejected = applyOps(document, [
       {
         type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
@@ -948,7 +946,36 @@ export const deleteBlocks = ({
     if (rejected.isErr())
       return refuse(rejected.error.reason, rejected.error.message);
     const { document: retracted, inverse, touched } = rejected.value;
-    return Result.ok({ document: retracted, inverse, touched });
+    // Its own pending property changes are no part of the insertion: they
+    // stay on `broken`, over the properties its mark gets back, as deleting
+    // the paragraphs directly leaves its properties.
+    if ((broken.propertyChanges?.length ?? 0) === 0)
+      return Result.ok({ document: retracted, inverse, touched });
+    const survivor =
+      storyParagraphs(storyBody(retracted, op.story)).find(
+        ({ paragraph }) =>
+          idKey(paragraph.paraId ?? "") === idKey(broken.paraId ?? ""),
+      )?.paragraph ??
+      panic("A taken-back insertion lost the paragraph it broke.");
+    const { pPrMark: _addedMark, ...restyle } = reviewFieldsOf(broken);
+    const kept = applyOps(retracted, [
+      {
+        type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
+        story: op.story,
+        blockId: survivor.paraId ?? "",
+        expected: reviewFieldsOf(survivor),
+        review:
+          survivor.pPrMark === undefined
+            ? restyle
+            : { ...restyle, pPrMark: survivor.pPrMark },
+      },
+    ]);
+    if (kept.isErr()) return refuse(kept.error.reason, kept.error.message);
+    return Result.ok({
+      document: kept.value.document,
+      inverse: [...kept.value.inverse, ...inverse],
+      touched,
+    });
   }
   // Tracked, a paragraph a table or another block follows loses its words
   // and its own mark, as the default editor records it; accepting removes

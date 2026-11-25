@@ -1147,6 +1147,12 @@ export const paragraphContentVerdict: (input: {
 }) => ParagraphContentVerdict;
 
 // @public
+export const paragraphHoldsContent: (paragraph: Paragraph) => ParagraphContentVerdict;
+
+// @public
+export const paragraphHoldsContentOnceAccepted: (paragraph: Paragraph) => ParagraphContentVerdict;
+
+// @public
 export const paragraphIdsIn: (value: unknown) => string[];
 
 // @public

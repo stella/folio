@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "title": "PINNED #1350: a paragraph deleted after a table, with a table put after it, stays empty between the tables once the tracked batch is accepted, as applied directly",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "tables",
+  "mode": "tracked-changes",
+  "seed": 788162332,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 38310668,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "6FFB97E7"
+        },
+        {
+          "type": "insertTable",
+          "blockId": "6FFB97E7",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from reseed+splice of ac1b163976f0b53f"
+}
