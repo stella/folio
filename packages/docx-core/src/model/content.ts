@@ -400,21 +400,24 @@ export type MarkupRangeMarker = WritableRecord & {
 
 /**
  * The cut a kept range marker stands in: the date of the revision it was kept
- * from, and, where only one side of it is a piece of that cut (`piece`), that
- * side: its record, or the pending change beside the marker once resolved,
- * takes the marker with no alike record across from it.
+ * from, and the pending changes beside the marker that took its seam and hold
+ * a piece of that cut (`holders`): resolved, such a change takes the marker
+ * with no alike record across from it.
  */
 export type KeptCut = WritableRecord & {
   keptFrom: string;
-  piece?: KeptCutPiece;
+  holders?: KeptCutHolders;
 };
 
 /**
- * The side of a kept marker whose record, or the pending change that took
- * its seam, is a piece of its cut; `both` where pending changes either side
- * took it.
+ * The revision ids of the pending changes either side of a kept marker that
+ * hold a piece of its cut: the one before it, the one after it, or both. A
+ * holder no longer standing beside the marker holds nothing. A seam-scoped
+ * marker waits on the whole cut, even where it has a holder on one side.
  */
-export type KeptCutPiece = "before" | "after" | "both";
+export type KeptCutHolders = WritableRecord & { scope?: "seam" } & (
+    { before: number; after?: number } | { before?: number; after: number }
+  );
 
 /** Added-revision ancestors that own a copied bookmark or move boundary. */
 type CopyOriginAncestorOrdinals = readonly [number, ...number[]];

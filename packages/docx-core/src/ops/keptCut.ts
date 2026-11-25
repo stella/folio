@@ -1,14 +1,15 @@
 /**
  * The cut a kept range marker stands in (`KeptCut`): review state a
  * resolution records on a marker it kept from removed content and could not
- * place inside a piece of the record that content cut. It is never written.
+ * place inside a piece of the record that content cut.
  */
 
+import { MAX_REVISION_ID } from "../model/document";
 import type {
   BlockContent,
   DocumentBody,
   KeptCut,
-  KeptCutPiece,
+  KeptCutHolders,
   Paragraph,
   ParagraphContent,
   RecordField,
@@ -33,30 +34,82 @@ const carriesKeptCut = (node: InlineNode): node is KeptCutCarrier =>
   isBoundary(node);
 
 /**
+ * The side of a kept marker whose pending change holds a piece of its cut,
+ * as its holders name it: `both` where changes either side hold one. Derived
+ * from {@link KeptCutHolders}; never stored.
+ */
+export type KeptCutPiece = "before" | "after" | "both";
+
+export const isKeptCutPiece = (value: unknown): value is KeptCutPiece =>
+  value === "before" || value === "after" || value === "both";
+
+export const keptCutHolders = ({
+  before,
+  after,
+}: {
+  before?: number | undefined;
+  after?: number | undefined;
+}): KeptCutHolders | undefined => {
+  if (before === undefined) return after === undefined ? undefined : { after };
+  return after === undefined ? { before } : { before, after };
+};
+
+/** The side `holders` name. */
+const pieceOf = (
+  holders: KeptCutHolders | undefined,
+): KeptCutPiece | undefined => {
+  if (holders === undefined) return undefined;
+  if (
+    holders.scope === "seam" ||
+    (holders.before !== undefined && holders.after !== undefined)
+  )
+    return "both";
+  return holders.before === undefined ? "after" : "before";
+};
+
+/** Retain the seam scope when its pending holders change. */
+const withHolderScope = (
+  holders: KeptCutHolders | undefined,
+  scope: KeptCutHolders["scope"],
+): KeptCutHolders | undefined =>
+  holders === undefined || scope === undefined
+    ? holders
+    : { ...holders, scope };
+
+/** `cut` with `holders`, or with none. */
+const cutHeldBy = (
+  cut: KeptCut,
+  holders: KeptCutHolders | undefined,
+): KeptCut =>
+  holders === undefined
+    ? { keptFrom: cut.keptFrom }
+    : { keptFrom: cut.keptFrom, holders };
+
+/**
  * `node` marked as standing in `cut`, when it is a range marker. A marker
  * already standing in a cut keeps the revision it was first kept from and
- * the piece first named for it: whichever order kept it and then floated it
- * with another removal's seam, it records the same cut.
+ * the holders first named for it: whichever order kept it and then floated
+ * it with another removal's seam, it records the same cut.
  */
 const withKeptCut = (node: InlineNode, cut: KeptCut): InlineNode => {
   if (!carriesKeptCut(node)) return node;
   const known = node.keptCut;
   if (known === undefined) return Object.assign({}, node, { keptCut: cut });
-  if (known.piece !== undefined || cut.piece === undefined) return node;
+  if (known.holders !== undefined || cut.holders === undefined) return node;
   return Object.assign({}, node, {
-    keptCut: { ...known, piece: cut.piece },
+    keptCut: cutHeldBy(known, cut.holders),
   });
 };
 
 /**
- * `node` with every marked range marker it stands for naming `piece` as the
- * side whose record is a piece of its cut, keeping what the resolution
- * recorded per marker. An unmarked marker stays unmarked, and one already
- * naming a piece keeps it.
+ * `node` with every marked range marker it stands for naming `holders` as
+ * the pending changes beside it holding a piece of its cut, keeping what the
+ * resolution recorded per marker. An unmarked marker stays unmarked, and one
+ * already naming holders keeps them.
  */
-export const withKeptCutPieceRecorded = (
+export const withKeptCutHoldersRecorded = (
   node: InlineNode,
-  piece: KeptCutPiece,
+  holders: KeptCutHolders,
   known: WeakMap<InlineNode, string>,
 ): InlineNode =>
   changeStandingMarkers(
@@ -64,13 +117,47 @@ export const withKeptCutPieceRecorded = (
     keepingRecord(
       (marker) =>
         carriesKeptCut(marker) && marker.keptCut !== undefined
-          ? withKeptCut(marker, { ...marker.keptCut, piece })
+          ? withKeptCut(marker, cutHeldBy(marker.keptCut, holders))
           : marker,
       known,
     ),
   );
 
-/** `node` with every marker it stands for naming no side as its cut's piece. */
+/** Whether all markers in this record name the revision on the given side. */
+export const keptCutHeldBy = (
+  node: InlineNode,
+  { side, id }: { side: "before" | "after"; id: number },
+): boolean => {
+  if (node.type === "deletion")
+    return (
+      node.content.length > 0 &&
+      node.content.every((child) => keptCutHeldBy(child, { side, id }))
+    );
+  return carriesKeptCut(node) && node.keptCut?.holders?.[side] === id;
+};
+
+/** Move a cut's holder to the revision taking its join. */
+export const withKeptCutHolderHandedOver = (
+  node: InlineNode,
+  { side, from, to }: { side: "before" | "after"; from: number; to: number },
+  known: WeakMap<InlineNode, string>,
+): InlineNode =>
+  changeStandingMarkers(
+    node,
+    keepingRecord((marker) => {
+      if (!carriesKeptCut(marker)) return marker;
+      const cut = marker.keptCut;
+      const holders = cut?.holders;
+      if (cut === undefined || holders?.[side] !== from) return marker;
+      const next =
+        side === "before"
+          ? { ...holders, before: to }
+          : { ...holders, after: to };
+      return Object.assign({}, marker, { keptCut: cutHeldBy(cut, next) });
+    }, known),
+  );
+
+/** `node` with every marker it stands for naming no holder of its cut. */
 export const withKeptCutPieceConsumed = (
   node: InlineNode,
   known: WeakMap<InlineNode, string>,
@@ -78,12 +165,43 @@ export const withKeptCutPieceConsumed = (
   changeStandingMarkers(
     node,
     keepingRecord((marker) => {
-      if (!carriesKeptCut(marker) || marker.keptCut?.piece === undefined)
+      if (!carriesKeptCut(marker) || marker.keptCut?.holders === undefined)
         return marker;
-      const { piece: _consumed, ...cut } = marker.keptCut;
-      return Object.assign({}, marker, { keptCut: cut });
+      return Object.assign({}, marker, {
+        keptCut: cutHeldBy(marker.keptCut, undefined),
+      });
     }, known),
   );
+
+/** Point a cut at the copies or successors of its holders. */
+export const remapKeptCutHolders = (
+  cut: KeptCut,
+  successor: (id: number) => number | undefined,
+): KeptCut => {
+  const holders = cut.holders;
+  if (holders === undefined) return cut;
+  const before =
+    holders.before === undefined ? undefined : successor(holders.before);
+  const after =
+    holders.after === undefined ? undefined : successor(holders.after);
+  if (before === holders.before && after === holders.after) return cut;
+  return cutHeldBy(
+    cut,
+    withHolderScope(keptCutHolders({ before, after }), holders.scope),
+  );
+};
+
+/** Redirect holder references on a marker when its revisions are reminted. */
+export const withKeptCutHoldersRenamed = (
+  node: InlineNode,
+  successor: (id: number) => number,
+): InlineNode => {
+  if (!carriesKeptCut(node) || node.keptCut === undefined) return node;
+  const cut = remapKeptCutHolders(node.keptCut, successor);
+  return cut === node.keptCut
+    ? node
+    : Object.assign({}, node, { keptCut: cut });
+};
 
 /** The earliest revision a marker `node` stands for was kept from. */
 export const keptCutFrom = (node: InlineNode): string | undefined => {
@@ -104,7 +222,7 @@ export const keptCutPiece = (node: InlineNode): KeptCutPiece | undefined => {
     const pieces = new Set(node.content.map(keptCutPiece));
     return pieces.size === 1 ? pieces.values().next().value : undefined;
   }
-  return carriesKeptCut(node) ? node.keptCut?.piece : undefined;
+  return carriesKeptCut(node) ? pieceOf(node.keptCut?.holders) : undefined;
 };
 
 /**
@@ -237,7 +355,7 @@ const withKeptCutsFromChanges = (
     from: number,
     step: 1 | -1,
     { keptFrom, count }: { keptFrom: string; count: number },
-    piece: KeptCutPiece,
+    holders: KeptCutHolders,
   ): void => {
     let boundaries = 0;
     for (let index = from; ; index += step) {
@@ -250,18 +368,19 @@ const withKeptCutsFromChanges = (
         return;
       boundaries += keptBoundaryCount(node);
       if (boundaries > count) return;
-      out[index] = withKeptCuts(node, { keptFrom, piece });
+      out[index] = withKeptCuts(node, { keptFrom, holders });
     }
   };
   for (const [index, node] of nodes.entries()) {
     const joins = isTrackedWrapper(node) ? node.resolutionJoins : undefined;
     const kept =
       joins === undefined ? undefined : writtenOnChange(joins)?.change;
-    if (joins === undefined || kept === undefined) continue;
+    if (joins === undefined || kept === undefined || !isTrackedWrapper(node))
+      continue;
     const count = kept.keptCount ?? Number.POSITIVE_INFINITY;
     const named = { keptFrom: kept.keptFrom, count };
-    if (joins.before > 0) mark(index - 1, -1, named, "after");
-    if (joins.after > 0) mark(index + 1, 1, named, "before");
+    if (joins.before > 0) mark(index - 1, -1, named, { after: node.info.id });
+    if (joins.after > 0) mark(index + 1, 1, named, { before: node.info.id });
   }
   // A deferred seam's group dates the boundaries kept standing at the seam:
   // the run of unmarked markers its blockers stand beside, naming the
@@ -299,16 +418,27 @@ const withKeptCutsFromChanges = (
     const afterSeams = new Set(after.map(seamOf));
     const across = before.find((group) => afterSeams.has(seamOf(group)));
     const group = across ?? after.at(0) ?? before.at(0);
+    // The groups' changes stand either side of the run: they hold its piece.
+    const beforeId = changeAtEdge(
+      start === 0 ? undefined : out[start - 1],
+      "end",
+    );
+    const afterId = changeAtEdge(out[end], "start");
     if (group !== undefined) {
-      let piece: KeptCutPiece = "before";
-      if (across !== undefined) piece = "both";
-      else if (after.includes(group)) piece = "after";
       const cut = {
         keptFrom: group.keptFrom,
         count: group.keptCount ?? Number.POSITIVE_INFINITY,
       };
-      if (piece === "after") mark(end - 1, -1, cut, piece);
-      else mark(start, 1, cut, piece);
+      if (
+        across !== undefined &&
+        beforeId !== undefined &&
+        afterId !== undefined
+      )
+        mark(start, 1, cut, { before: beforeId, after: afterId });
+      else if (after.includes(group) && afterId !== undefined)
+        mark(end - 1, -1, cut, { after: afterId });
+      else if (beforeId !== undefined)
+        mark(start, 1, cut, { before: beforeId });
     }
     start = end;
   }
@@ -319,8 +449,13 @@ const withKeptCutsFromChanges = (
 export const paragraphKeptCutsFromChanges = (
   content: readonly ParagraphContent[],
   writtenOnChange: (joins: SeamJoins) => VersionOneKept | undefined,
-): ParagraphContent[] =>
-  asParagraphContent(withKeptCutsFromChanges(content, writtenOnChange));
+  legacyPiece?: LegacyKeptCutPiece,
+): ParagraphContent[] => {
+  const cuts = withKeptCutsFromChanges(content, writtenOnChange);
+  return asParagraphContent(
+    legacyPiece === undefined ? cuts : settleKeptCuts(cuts, { legacyPiece }),
+  );
+};
 
 /** How many range boundaries a kept marker `node` stands for. */
 const keptBoundaryCount = (node: InlineNode): number =>
@@ -328,21 +463,42 @@ const keptBoundaryCount = (node: InlineNode): number =>
     ? node.content.reduce((sum, child) => sum + keptBoundaryCount(child), 0)
     : 1;
 
-const KEPT_CUT_PIECES = {
+const KEPT_CUT_HOLDER_FIELDS = {
   before: true,
   after: true,
-  both: true,
-} as const satisfies Record<KeptCutPiece, true>;
+  scope: true,
+} as const satisfies Record<RecordField<KeptCutHolders>, true>;
 
 const KEPT_CUT_FIELDS = {
   keptFrom: true,
-  piece: true,
+  holders: true,
 } as const satisfies Record<RecordField<KeptCut>, true>;
+
+const isRevisionId = (value: unknown): boolean =>
+  typeof value === "number" &&
+  Number.isInteger(value) &&
+  value >= 0 &&
+  value <= MAX_REVISION_ID;
+
+/** Whether `holders` names a revision on one side of a marker, or both. */
+const isKeptCutHolders = (holders: unknown): holders is KeptCutHolders => {
+  if (typeof holders !== "object" || holders === null || Array.isArray(holders))
+    return false;
+  const keys = Object.keys(holders);
+  return (
+    (Object.hasOwn(holders, "before") || Object.hasOwn(holders, "after")) &&
+    keys.every((key) => {
+      if (!Object.hasOwn(KEPT_CUT_HOLDER_FIELDS, key)) return false;
+      const value = Reflect.get(holders, key);
+      return key === "scope" ? value === "seam" : isRevisionId(value);
+    })
+  );
+};
 
 /**
  * Whether `cut` is a well-formed kept cut: exactly its fields, kept from a
- * dated revision, naming one side as its piece if any. The contract and the
- * review history reader share it.
+ * dated revision, naming the revisions holding its piece if any. The
+ * contract and the review history reader share it.
  */
 export const isKeptCut = (cut: unknown): cut is KeptCut =>
   typeof cut === "object" &&
@@ -351,9 +507,7 @@ export const isKeptCut = (cut: unknown): cut is KeptCut =>
   Object.keys(cut).every((key) => Object.hasOwn(KEPT_CUT_FIELDS, key)) &&
   "keptFrom" in cut &&
   typeof cut.keptFrom === "string" &&
-  (!("piece" in cut) ||
-    (typeof cut.piece === "string" &&
-      Object.hasOwn(KEPT_CUT_PIECES, cut.piece)));
+  (!("holders" in cut) || isKeptCutHolders(cut.holders));
 
 const hasValidKeptCuts = (nodes: readonly InlineNode[]): boolean =>
   nodes.every((node) => {
@@ -386,45 +540,48 @@ export const hasValidKeptCutsInBlocks = (
     }
   });
 
-/**
- * `node` with every marker it stands for naming a side as its cut's piece
- * keeping that name only where `facing` says the change that took its seam
- * still stands, keeping what the resolution recorded per marker.
- */
-const withKeptCutPiecesFacing = (
+/** The id of the pending change at a record edge. */
+export const changeAtEdge = (
+  node: InlineNode | undefined,
+  edge: "start" | "end",
+): number | undefined => {
+  if (node === undefined) return undefined;
+  if (isTrackedWrapper(node)) return node.info.id;
+  const children = childNodes(node);
+  return changeAtEdge(
+    edge === "start" ? children?.at(0) : children?.at(-1),
+    edge,
+  );
+};
+
+/** Keep each holder only while that revision is still at the facing edge. */
+const withFacingHolders = (
   node: InlineNode,
-  facing: Readonly<Record<KeptCutPiece, boolean>>,
+  facing: { before: KeptCutEdge; after: KeptCutEdge },
   known: WeakMap<InlineNode, string>,
 ): InlineNode =>
   changeStandingMarkers(
     node,
     keepingRecord((marker) => {
-      if (!carriesKeptCut(marker) || marker.keptCut?.piece === undefined)
-        return marker;
-      if (facing[marker.keptCut.piece]) return marker;
-      const { piece: _consumed, ...cut } = marker.keptCut;
-      return Object.assign({}, marker, { keptCut: cut });
+      if (!carriesKeptCut(marker)) return marker;
+      const cut = marker.keptCut;
+      const holders = cut?.holders;
+      if (cut === undefined || holders === undefined) return marker;
+      const keep = (side: "before" | "after") =>
+        facing[side] === KEPT_CUT_EDGES.UNSETTLED ||
+        facing[side] === holders[side];
+      const before = keep("before") ? holders.before : undefined;
+      const after = keep("after") ? holders.after : undefined;
+      if (before === holders.before && after === holders.after) return marker;
+      const facingHolders = withHolderScope(
+        keptCutHolders({ before, after }),
+        holders.scope,
+      );
+      return Object.assign({}, marker, {
+        keptCut: cutHeldBy(cut, facingHolders),
+      });
     }, known),
   );
-
-/**
- * Whether a pending change stands at `node`'s `edge`: the node itself, or
- * one at that edge of the records it holds, whose resolution can still let
- * the pieces across from it meet.
- */
-const pendingAtEdge = (
-  node: InlineNode | undefined,
-  edge: "start" | "end",
-): boolean => {
-  if (node === undefined) return false;
-  if (isTrackedWrapper(node)) return true;
-  const children = childNodes(node);
-  if (children === undefined) return false;
-  return pendingAtEdge(
-    edge === "start" ? children.at(0) : children.at(-1),
-    edge,
-  );
-};
 
 /** The sides of a run of kept markers whose records a resolution removes. */
 export type KeptRunSides = { before: boolean; after: boolean };
@@ -465,11 +622,13 @@ export const withKeptCutBesideRemoved = (
   changeStandingMarkers(
     node,
     keepingRecord((marker) => {
-      if (!carriesKeptCut(marker) || marker.keptCut?.piece === undefined)
+      if (!carriesKeptCut(marker) || marker.keptCut === undefined)
         return marker;
-      const { piece, ...cut } = marker.keptCut;
-      return pieceGoes(piece, gone)
-        ? Object.assign({}, marker, { keptCut: cut })
+      const piece = pieceOf(marker.keptCut.holders);
+      return piece !== undefined && pieceGoes(piece, gone)
+        ? Object.assign({}, marker, {
+            keptCut: cutHeldBy(marker.keptCut, undefined),
+          })
         : marker;
     }, known),
   );
@@ -478,7 +637,6 @@ export const withKeptCutBesideRemoved = (
 export const KEPT_CUT_EDGES: Readonly<{
   readonly NOTHING: "nothing";
   readonly PENDING_MARK: "pendingMark";
-  readonly PENDING_CHANGE: "pendingChange";
   readonly UNSETTLED: "unsettled";
 }> = Object.freeze({
   /** Nothing pending: a cut there waits on nothing. */
@@ -489,8 +647,6 @@ export const KEPT_CUT_EDGES: Readonly<{
    * seam, so it holds no piece a marker names.
    */
   PENDING_MARK: "pendingMark",
-  /** A pending tracked change, which can hold a piece a marker names. */
-  PENDING_CHANGE: "pendingChange",
   /**
    * Not known yet: the edge of a nested list, which the paragraph's own
    * settlement reads once the joins stand. Its markers keep what they have.
@@ -498,20 +654,14 @@ export const KEPT_CUT_EDGES: Readonly<{
   UNSETTLED: "unsettled",
 } as const);
 
-type KeptCutEdge = (typeof KEPT_CUT_EDGES)[keyof typeof KEPT_CUT_EDGES];
+type KeptCutEdge =
+  number | (typeof KEPT_CUT_EDGES)[keyof typeof KEPT_CUT_EDGES];
 
-/** Whether a cut at an edge waits there, and whether a piece named there stands. */
-const EDGE_READING = {
-  nothing: { waits: false, holdsPiece: false },
-  pendingMark: { waits: true, holdsPiece: false },
-  pendingChange: { waits: true, holdsPiece: true },
-  unsettled: { waits: true, holdsPiece: true },
-} as const satisfies Record<
-  KeptCutEdge,
-  { waits: boolean; holdsPiece: boolean }
->;
+type LegacyKeptCutPiece = (cut: KeptCut) => KeptCutPiece | undefined;
 
 type SettleKeptCutsOptions = {
+  /** When reading positional history, bind it to the revisions at the seam. */
+  legacyPiece?: LegacyKeptCutPiece;
   /** What the resolution recorded about each marker, kept on its copies. */
   known?: WeakMap<InlineNode, string>;
   /** Told of every record rebuilt around a cleared marker. */
@@ -532,15 +682,14 @@ export const settleKeptCuts = (
   nodes: readonly InlineNode[],
   {
     known = new WeakMap(),
+    legacyPiece,
     rebuilt,
     outside = { start: KEPT_CUT_EDGES.NOTHING, end: KEPT_CUT_EDGES.NOTHING },
   }: SettleKeptCutsOptions = {},
 ): readonly InlineNode[] => {
   let out: InlineNode[] | undefined;
   const edgeOf = (node: InlineNode | undefined, edge: "start" | "end") =>
-    pendingAtEdge(node, edge)
-      ? KEPT_CUT_EDGES.PENDING_CHANGE
-      : KEPT_CUT_EDGES.NOTHING;
+    changeAtEdge(node, edge) ?? KEPT_CUT_EDGES.NOTHING;
   const pendingBefore = (index: number): KeptCutEdge =>
     index === 0 ? outside.start : edgeOf(nodes[index - 1], "end");
   const pendingAfter = (index: number): KeptCutEdge =>
@@ -558,6 +707,7 @@ export const settleKeptCuts = (
           ? children
           : settleKeptCuts(children, {
               known,
+              ...(legacyPiece === undefined ? {} : { legacyPiece }),
               ...(rebuilt === undefined ? {} : { rebuilt }),
               outside: {
                 start: pendingBefore(start),
@@ -579,23 +729,43 @@ export const settleKeptCuts = (
       if (node === undefined || !isKeptBoundaryCarrier(node)) break;
     }
     const run = nodes.slice(start, end);
-    const before = EDGE_READING[pendingBefore(start)];
-    const after = EDGE_READING[pendingAfter(end - 1)];
+    const before = pendingBefore(start);
+    const after = pendingAfter(end - 1);
     const waiting =
       run.some((node) => node.type === "deletion") ||
-      before.waits ||
-      after.waits;
-    // A marker names a side as its cut's piece only while the pending change
-    // that took its seam stands there: resolving that change consumes it.
-    const facing = {
-      before: before.holdsPiece,
-      after: after.holdsPiece,
-      both: before.holdsPiece || after.holdsPiece,
-    } as const satisfies Record<KeptCutPiece, boolean>;
+      before !== KEPT_CUT_EDGES.NOTHING ||
+      after !== KEPT_CUT_EDGES.NOTHING;
     for (const [offset, node] of run.entries()) {
-      const settled = waiting
-        ? withKeptCutPiecesFacing(node, facing, known)
-        : withoutKeptCutsRecorded(node, known);
+      let settled;
+      if (legacyPiece === undefined) {
+        settled = waiting
+          ? withFacingHolders(node, { before, after }, known)
+          : withoutKeptCutsRecorded(node, known);
+      } else {
+        settled = changeStandingMarkers(node, (marker) => {
+          if (!carriesKeptCut(marker) || marker.keptCut === undefined)
+            return marker;
+          const piece = legacyPiece(marker.keptCut);
+          if (piece === undefined) return marker;
+          const holders = keptCutHolders({
+            before:
+              piece !== "after" && typeof before === "number"
+                ? before
+                : undefined,
+            after:
+              piece !== "before" && typeof after === "number"
+                ? after
+                : undefined,
+          });
+          return withKeptCut(
+            marker,
+            cutHeldBy(
+              marker.keptCut,
+              withHolderScope(holders, piece === "both" ? "seam" : undefined),
+            ),
+          );
+        });
+      }
       if (settled === node) continue;
       out ??= [...nodes];
       out[start + offset] = settled;

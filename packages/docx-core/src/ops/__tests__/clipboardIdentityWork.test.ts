@@ -132,6 +132,7 @@ test("clipboard allocation skips occupied IDs and reserved candidates within the
     properties: { id, sdtType: "richText" },
     content: [run("control")],
   });
+  const keptFrom = "2026-03-04T05:00:00Z";
   const document: Document = {
     package: {
       document: {
@@ -147,6 +148,11 @@ test("clipboard allocation skips occupied IDs and reserved candidates within the
                 deferredRemove: [{ depth: 0, blockers: [12] }],
               },
             },
+            {
+              type: "bookmarkEnd",
+              id: 2,
+              keptCut: { keptFrom, holders: { before: 13 } },
+            },
             control(10),
           ]),
         ],
@@ -154,7 +160,17 @@ test("clipboard allocation skips occupied IDs and reserved candidates within the
     },
   };
   const intent = clipboard([
-    paragraph("00000001", [revision(99), control(99)]),
+    paragraph("00000001", [
+      {
+        type: "bookmarkStart",
+        id: 1,
+        name: "paste",
+        keptCut: { keptFrom, holders: { before: 10, after: 99 } },
+      },
+      revision(99),
+      { type: "bookmarkEnd", id: 1 },
+      control(99),
+    ]),
     paragraph("00000002", [run("tail")]),
   ]);
   const mode = {
@@ -163,7 +179,7 @@ test("clipboard allocation skips occupied IDs and reserved candidates within the
     idLease: {
       blocks: [
         { kind: ID_LEASE_KINDS.PARAGRAPH, start: 10, end: 12 },
-        { kind: ID_LEASE_KINDS.REVISION, start: 10, end: 14 },
+        { kind: ID_LEASE_KINDS.REVISION, start: 10, end: 15 },
         { kind: ID_LEASE_KINDS.CONTROL, start: 10, end: 13 },
       ],
     },
@@ -179,11 +195,20 @@ test("clipboard allocation skips occupied IDs and reserved candidates within the
       "0000000B",
     );
     expect(ids.packageIdentityKeys(edit.document.package)).toContain(
-      "revision:13",
+      "revision:14",
     );
     expect(ids.packageIdentityKeys(edit.document.package)).toContain(
       "control:12",
     );
+    const pasted = edit.document.package.document.content.flatMap((block) =>
+      block.type === "paragraph" ? block.content : [],
+    );
+    expect(pasted).toContainEqual({
+      type: "bookmarkStart",
+      id: 1,
+      name: "paste",
+      keptCut: { keptFrom, holders: { after: 14 } },
+    });
     expect(
       applyDocumentOps(edit.document, edit.inverse).unwrap().document,
     ).toEqual(document);

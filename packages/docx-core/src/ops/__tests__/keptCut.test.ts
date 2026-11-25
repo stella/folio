@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import type { Document, ParagraphContent } from "../../model/document";
+import type {
+  Document,
+  KeptCutHolders,
+  ParagraphContent,
+} from "../../model/document";
 import { contractViolation } from "../contract";
 import { isKeptCut, settleKeptCuts } from "../keptCut";
 import type { InlineNode } from "../leaves";
@@ -41,11 +45,14 @@ describe("a kept range marker's cut", () => {
     expect(contractViolation(marked(other))).toBeDefined();
   });
 
-  test("a cut names one side as its piece, or none", () => {
+  test("a cut names a revision on either side, both, or neither", () => {
     expect(isKeptCut(CUT)).toBe(true);
-    expect(isKeptCut({ ...CUT, piece: "before" })).toBe(true);
-    expect(isKeptCut({ ...CUT, piece: "after" })).toBe(true);
-    expect(isKeptCut({ ...CUT, piece: "inside" })).toBe(false);
+    expect(isKeptCut({ ...CUT, holders: { before: 0 } })).toBe(true);
+    expect(isKeptCut({ ...CUT, holders: { after: 4 } })).toBe(true);
+    expect(isKeptCut({ ...CUT, holders: { before: 0, after: 4 } })).toBe(true);
+    expect(isKeptCut({ ...CUT, holders: {} })).toBe(false);
+    expect(isKeptCut({ ...CUT, holders: { after: -1 } })).toBe(false);
+    expect(isKeptCut({ ...CUT, piece: "after" })).toBe(false);
   });
 
   test("stays while a pending change waits beside the markers, and goes once none does", () => {
@@ -101,18 +108,26 @@ describe("a kept range marker's cut", () => {
         { type: "run", content: [{ type: "text", text: "a" }] },
       ],
     };
-    const marker = (piece: "before" | "after"): InlineNode => ({
+    const marker = (holders: KeptCutHolders): InlineNode => ({
       type: "bookmarkEnd",
       id: 1,
-      keptCut: { ...CUT, piece },
+      keptCut: { ...CUT, holders },
     });
     // The cut and its piece wait on the same change.
-    expect(cuts(settleKeptCuts([link("b"), marker("after"), holding]))).toEqual(
-      [{ ...CUT, piece: "after" }],
-    );
+    expect(
+      cuts(settleKeptCuts([link("b"), marker({ after: 4 }), holding])),
+    ).toEqual([{ ...CUT, holders: { after: 4 } }]);
+    expect(
+      cuts(settleKeptCuts([link("b"), marker({ after: 5 }), holding])),
+    ).toEqual([CUT]);
+    expect(
+      cuts(
+        settleKeptCuts([link("b"), marker({ before: 3, after: 4 }), holding]),
+      ),
+    ).toEqual([{ ...CUT, holders: { after: 4 } }]);
     // A piece naming a side where no change waits is consumed.
     expect(
-      cuts(settleKeptCuts([link("b"), marker("before"), holding])),
+      cuts(settleKeptCuts([link("b"), marker({ before: 4 }), holding])),
     ).toEqual([CUT]);
   });
 

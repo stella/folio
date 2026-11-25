@@ -454,6 +454,17 @@ const CONTENT_CONTROL_STACK = "contentControls";
 
 const ownReservedKeys: OwnKeys = (entries, { heldBy }) => {
   const keys: string[] = [];
+  if (heldBy === "keptCut") {
+    const holders = fieldOf(entries, "holders");
+    if (typeof holders === "object" && holders !== null) {
+      for (const side of ["before", "after"] as const) {
+        const id = Reflect.get(holders, side);
+        if (typeof id === "number")
+          keys.push(slotKey({ space: IDENTITY_SPACES.REVISION, id }));
+      }
+    }
+    return { keys, shareable: true };
+  }
   if (heldBy === "deferredRemove") {
     const blockers = fieldOf(entries, "blockers");
     if (Array.isArray(blockers)) {

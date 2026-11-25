@@ -71,8 +71,10 @@ import {
   idKey,
   packageIdentityKeys,
   packageReservedIdentityKeys,
+  slotKey,
 } from "./ids";
 import { deleteBetween, gapAfterInserted } from "./inline";
+import { isKeptCut, remapKeptCutHolders } from "./keptCut";
 import {
   alikeDepth,
   asParagraphContent,
@@ -2511,7 +2513,9 @@ const identifyClipboardParagraphs = ({
     return id;
   };
   const remintedControls = new WeakSet<object>();
+  const keptMarkers: { keptCut: unknown }[] = [];
   visit(copy, (value) => {
+    if ("keptCut" in value) keptMarkers.push(value);
     if (
       "type" in value &&
       value.type === "inlineSdt" &&
@@ -2554,6 +2558,14 @@ const identifyClipboardParagraphs = ({
         value.id = freshId("bookmark", value.id);
     }
   });
+  for (const marker of keptMarkers) {
+    const cut = marker.keptCut;
+    if (!isKeptCut(cut)) continue;
+    // Only copied revisions can hold the pasted cut.
+    marker.keptCut = remapKeptCutHolders(cut, (id) =>
+      remapped.get(slotKey({ space: IDENTITY_SPACES.REVISION, id })),
+    );
+  }
   if (leaseExhausted)
     return Result.err(
       new DocumentOpRefusal({
