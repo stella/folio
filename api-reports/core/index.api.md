@@ -120,30 +120,6 @@ export type AISuggestionSeverity = "typo" | "style" | "substantive";
 export type AISuggestionStatus = "pending" | "accepted" | "rejected" | "stale";
 
 // @public (undocumented)
-export const applyFolioAIEditOperations: (options: ApplyFolioAIEditOperationsOptions) => FolioAIEditApplyOutcome;
-
-// @public (undocumented)
-export const applyFolioDocumentOperations: (input: ApplyFolioDocumentOperationsOptions) => FolioDocumentOperationResult;
-
-// @public (undocumented)
-export type ApplyFolioDocumentOperationsOptions = {
-    view: FolioAIEditView;
-    snapshot: FolioAIEditSnapshot;
-    batch: FolioDocumentOperationBatch;
-    story?: FolioDocumentOperationStory;
-    author?: string;
-    createCommentId?: (text: string) => number;
-    createUndoHandle?: () => FolioDocumentOperationUndoHandle;
-    revisionStamp?: FolioRevisionStamp;
-    wordDiff?: FolioWordDiffOptions;
-    tableTemplates?: FolioTableTemplates;
-    replacementBackground?: FolioReplacementBackground;
-    undefinedReferences: FolioUndefinedReferencePolicy;
-    pendingSuggestionIds?: ReadonlySet<string>;
-    restagesSuggestions?: boolean;
-};
-
-// @public (undocumented)
 export type ApplyResult = {
     applied: string[];
     stale: string[];

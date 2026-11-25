@@ -157,7 +157,6 @@ export {
 } from "./ai-suggestions/types";
 export { applySuggestions, type ApplyResult } from "./ai-suggestions/apply";
 export {
-  applyFolioAIEditOperations,
   createFolioAIEditSnapshot,
   diffWordSegments,
   hashFolioAIBlockText,
@@ -199,7 +198,6 @@ export {
   type FolioAIInlineFormattingPatch,
   type FolioAIParagraphSpacing,
   type FolioAISignatureParty,
-  applyFolioDocumentOperations,
   assertSupportedFolioDocumentOperationVersion,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   FOLIO_DOCUMENT_OPERATION_BATCH_MODES,
@@ -219,7 +217,6 @@ export {
   isFolioDocumentOperationModeSupported,
   parseFolioDocumentOperationBatch,
   UnsupportedFolioDocumentOperationVersionError,
-  type ApplyFolioDocumentOperationsOptions,
   type FolioDocumentOperation,
   type FolioDocumentOperationAffectedTarget,
   type FolioDocumentOperationBatch,

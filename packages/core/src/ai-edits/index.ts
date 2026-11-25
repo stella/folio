@@ -1,5 +1,4 @@
 export {
-  applyFolioAIEditOperations,
   type FolioAIEditApplyOutcome,
   type FolioAIEditView,
   type FolioWordDiffOptions,
@@ -109,7 +108,6 @@ export type {
   FolioDocumentSectionReadResult,
 } from "./types";
 export {
-  applyFolioDocumentOperations,
   assertSupportedFolioDocumentOperationVersion,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   FOLIO_DOCUMENT_OPERATION_BATCH_MODES,
@@ -129,7 +127,6 @@ export {
   isFolioDocumentOperationModeSupported,
   parseFolioDocumentOperationBatch,
   UnsupportedFolioDocumentOperationVersionError,
-  type ApplyFolioDocumentOperationsOptions,
   type FolioDocumentOperation,
   type FolioDocumentOperationAffectedTarget,
   type FolioDocumentOperationBatch,

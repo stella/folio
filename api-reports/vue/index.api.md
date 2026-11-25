@@ -16,7 +16,6 @@ import { AISuggestionPreset } from '@stll/folio-core/ai-suggestions/types';
 import { AISuggestionSeverity } from '@stll/folio-core/ai-suggestions/types';
 import { AISuggestionStatus } from '@stll/folio-core/ai-suggestions/types';
 import { App } from 'vue';
-import { applyFolioAIEditOperations } from '@stll/folio-core/ai-edits';
 import { ApplyResult } from '@stll/folio-core/ai-suggestions/apply';
 import { applySuggestions } from '@stll/folio-core/ai-suggestions/apply';
 import { BlockRect } from '@stll/folio-core/paged-layout/blockGeometry';
@@ -211,8 +210,6 @@ export { AISuggestionPreset }
 export { AISuggestionSeverity }
 
 export { AISuggestionStatus }
-
-export { applyFolioAIEditOperations }
 
 export { ApplyResult }
 
