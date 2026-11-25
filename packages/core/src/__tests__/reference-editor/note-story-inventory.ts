@@ -1,4 +1,4 @@
-import type { Document } from "../types/document";
+import type { Document } from "../../types/document";
 
 type NoteStories = Pick<Document["package"], "footnotes" | "endnotes">;
 

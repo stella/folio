@@ -6,7 +6,7 @@ import { finalizeParagraphFormatting } from "@stll/docx-core/model";
 import { ZipArchive } from "@stll/docx-core/zip";
 
 import { expectParagraphBlock } from "../../../../test/paragraphBlock";
-import { applyFolioAIEditOperations } from "../ai-edits/apply";
+import { applyFolioAIEditOperations } from "../__tests__/reference-editor/apply";
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
 import {

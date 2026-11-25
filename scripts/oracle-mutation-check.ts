@@ -53,10 +53,9 @@ const MUTATIONS: Mutation[] = [
   {
     id: "inserted-last-word",
     bug: "An inserted paragraph loses its last word.",
-    file: "ai-edits/apply.js",
-    before: "for (const [paragraphIndex, text] of insertTexts.entries()) {",
-    after:
-      'for (const [paragraphIndex, originalText] of insertTexts.entries()) {\n\t\tconst text = originalText.replace(/\\s+\\S+$/u, "");',
+    file: "canonical/canonicalPublicOperations.js",
+    before: "content = emphasisRuns(line);",
+    after: 'content = emphasisRuns(line.replace(/\\s+\\S+$/u, ""));',
     check: "the requested-outcome oracle and paragraph insertion scenarios",
     scenarios: ["requested-outcome.test.ts", "operations.test.ts"],
     only: "plain / direct: every (collision|operation type)",
@@ -65,11 +64,9 @@ const MUTATIONS: Mutation[] = [
   {
     id: "input-batch-order",
     bug: "Position-changing batch operations execute in input order.",
-    file: "ai-edits/apply.js",
-    before:
-      "const executionOrder = executableResolved.toSorted((left, right) => {",
-    after:
-      "const executionOrder = executableResolved;\n\tconst unusedSortedOrder = executableResolved.toSorted((left, right) => {",
+    file: "canonical/canonicalPublicOperations.js",
+    before: /const executionOrder = orderCanonicalBatch\(\{[^}]+\}\);/gu,
+    after: "const executionOrder = resolved;",
     check: "collision batch scenarios and fixed collision fuzz",
     scenarios: ["requested-outcome.test.ts", "operations.test.ts"],
     only: "(plain|tables) / direct: every collision does what its applied operations asked",
@@ -90,11 +87,10 @@ const MUTATIONS: Mutation[] = [
   {
     id: "false-applied-receipt",
     bug: "A skipped undefined-style operation reports applied.",
-    file: "ai-edits/apply.js",
-    before:
-      'if (undefinedStyle !== void 0) {\n\t\t\tskipped.push({\n\t\t\t\tid: operation.id,\n\t\t\t\treason: "missingStyle",',
+    file: "canonical/canonicalPublicOperations.js",
+    before: /applied,\s*skipped: ordered,/gu,
     after:
-      'if (undefinedStyle !== void 0) {\n\t\t\tapplied.push({ id: operation.id });\n\t\t\tskipped.push({\n\t\t\t\tid: operation.id,\n\t\t\t\treason: "missingStyle",',
+      'applied: [...applied, ...ordered.filter(({ reason }) => reason === "missingStyle").map(({ id }) => ({ id }))], skipped: ordered,',
     check: "undefined-style receipt scenarios",
     scenarios: ["operations.test.ts", "requested-outcome.test.ts"],
     only: "insertAfterBlock with styleId NoSuchStyle is refused, not applied \\(direct\\)",

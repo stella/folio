@@ -9,7 +9,6 @@ import { assertProperty, propertyTestTimeout } from "../test/property-testing";
 import {
   canonicalCutoverDocs,
   inspectCanonicalSources,
-  PUBLIC_OPERATION_SOURCE_GAPS,
 } from "./lib/canonical-cutover";
 
 setDefaultTimeout(propertyTestTimeout(10_000));
@@ -153,68 +152,28 @@ describe("canonical cutover guard", () => {
     const mutationFixtures = fixtures.filter(
       ({ gap }) => CANONICAL_CAPABILITIES[gap].kind === "mutation-source",
     );
-    const publicGaps = mutationSources
-      .filter(
-        ([id, capability]) =>
-          capability.owner === "document-operations" &&
-          !mutationFixtures.some(({ gap }) => gap === id),
-      )
-      .map(([id]) => id);
-    expect(
-      [
-        ...new Set([...mutationFixtures.map(({ gap }) => gap), ...publicGaps]),
-      ].sort(),
-    ).toEqual(mutationSources.map(([id]) => id).sort());
-    const sourceGaps = [
-      ...new Set([...publicGaps, ...PUBLIC_OPERATION_SOURCE_GAPS]),
-    ];
-    const markers = sourceGaps
-      .map((gap) => `// canonical-gap: ${gap}`)
-      .join("\n");
-    for (const applier of [
-      "applyFolioAIEditOperations",
-      "applyFolioAIEditOperationsInPackage",
-    ]) {
-      const call = `\n${applier}({ undefinedReferences: "refuse" });`;
-      for (const removed of sourceGaps) {
-        const fixture =
-          markers
-            .split("\n")
-            .filter((line) => line !== `// canonical-gap: ${removed}`)
-            .join("\n") + call;
-        expect(
-          failuresOf(
-            fixture,
-            "packages/core/src/document-operations-apply.ts",
-          ).some((failure) =>
-            failure.includes(`${removed} source needs its ledger marker`),
-          ),
-        ).toBe(true);
-      }
-      expect(
-        failuresOf(
-          `${markers}${call}`,
-          "packages/core/src/document-operations-apply.ts",
-        ),
-      ).toEqual([]);
-    }
+    expect(mutationFixtures.map(({ gap }) => gap).sort()).toEqual(
+      mutationSources.map(([id]) => id).sort(),
+    );
   });
 
-  test("save conversions require the routing capability marker", () => {
+  test("production callers cannot reconstruct a document from PM", () => {
     const file = "packages/core/src/controller/fixture.ts";
-    const code = "fromProseDoc(state.doc, original);";
-    expect(failuresOf(code, file)).toContain(
-      `${file}:1: ${CANONICAL_GAP.save} source needs its ledger marker`,
+    const failure = "the reference editor owns PM document reconstruction";
+    expect(failuresOf("fromProseDoc(state.doc, original);", file)).toContain(
+      `${file}:1: ${failure}`,
     );
-    expect(
-      failuresOf(`// canonical-gap: ${CANONICAL_GAP.save}\n${code}`, file),
-    ).toEqual([]);
+    for (const source of [
+      'import { fromProseDoc as project } from "../prosemirror/conversion";\nproject(state.doc, original);',
+      'import * as conversion from "../prosemirror/conversion";\nconversion["fromProseDoc"](state.doc, original);',
+    ])
+      expect(failuresOf(source, file)).toContain(`${file}:2: ${failure}`);
   });
 
   test("cannot keep a dead source alive with an orphan comment", () => {
     expect(
       failuresOf(
-        "// canonical-gap: pm-save-projection\nconst unrelated = true;",
+        `// canonical-gap: ${CANONICAL_GAP.dispatch}\nconst unrelated = true;`,
       ).some((failure) => failure.includes("orphan canonical gap marker")),
     ).toBe(true);
   });

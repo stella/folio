@@ -7440,20 +7440,6 @@ function convertPMTextBox(
 }
 
 /**
- * Update a Document with content from a ProseMirror document
- * Preserves all non-content parts of the original document
- */
-export function updateDocumentContent(
-  originalDocument: Document,
-  pmDoc: PMNode,
-): Document {
-  // canonical-gap: pm-save-projection
-  return fromProseDoc(pmDoc, originalDocument, {
-    stylesheetSource: { type: "package" },
-  });
-}
-
-/**
  * Convert a ProseMirror document back to an array of `BlockContent` blocks
  * (paragraphs, tables, and block-level content controls).
  *

@@ -920,7 +920,7 @@ test.each([
         expect(error).toBeInstanceOf(CanonicalSaveDiagnosticError);
         if (!(error instanceof CanonicalSaveDiagnosticError))
           panic("Expected typed save diagnostic");
-        expect(error.gap).toBe("pm-save-projection");
+        expect(error.gap).toBe("save-serialization");
         expect(error.diagnostic).toEqual({
           type: "selectiveSaveRefused",
           part: "word/document.xml",
@@ -1090,7 +1090,7 @@ test.each(CANONICAL_SAVE_SEEDS)(
           type: "selectiveSaveRefused",
           part: "word/document.xml",
         });
-        expect(error.gap).toBe("pm-save-projection");
+        expect(error.gap).toBe("save-serialization");
       }
       // The prior sequence began composition after capture; also cover capture during composition.
       const errorsBeforeComposition = errors.length;
@@ -1103,7 +1103,7 @@ test.each(CANONICAL_SAVE_SEEDS)(
         expect(error).toBeInstanceOf(CanonicalSessionError);
         if (!(error instanceof CanonicalSessionError))
           panic("Expected composition save refusal");
-        expect(error.ground.gap).toBe("pm-save-projection");
+        expect(error.ground.gap).toBe("save-serialization");
         expect(error.reason).toBe("refused");
       }
       expect(api.updateCanonicalInputLifecycle("endComposition")).toBe(true);

@@ -18,6 +18,7 @@ import { ZipArchive } from "@stll/docx-core/zip";
 
 import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 import { createReferenceEditorRuntime } from "../__tests__/createReferenceEditorKit";
+import { projectReferenceDocument } from "../__tests__/reference-editor/projectReferenceDocument";
 import {
   buildTextBoxTableDocument,
   findTextBoxShape,
@@ -26,7 +27,6 @@ import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { parseDocx } from "../docx/parser";
 import { createDocx, createEmptyDocx, repackDocx } from "../docx/rezip";
-import { updateDocumentContent } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { ensureParaIdsInState } from "../prosemirror/paraIds";
 import { schema, singletonManager } from "../prosemirror/schema";
@@ -279,7 +279,7 @@ const makeParaIdBaseline = async (
     }),
   );
   return repackDocx({
-    ...updateDocumentContent(document, state.doc),
+    ...projectReferenceDocument(document, state.doc),
     originalBuffer: source,
   });
 };

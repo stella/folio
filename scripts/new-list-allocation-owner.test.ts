@@ -28,7 +28,7 @@ test("AI new-list allocation has one resolver and one batch owner", async () => 
   }
 
   expect(resolverFiles.toSorted()).toEqual([
-    "ai-edits/apply.ts",
+    "__tests__/reference-editor/apply.ts",
     "ai-edits/newListNumbering.ts",
   ]);
   expect(newListMintFiles).toEqual(["ai-edits/newListNumbering.ts"]);
@@ -46,7 +46,9 @@ const between = (text: string, start: string, end: string): string => {
 };
 
 test("deferred new lists are allocated only at will-apply boundaries", async () => {
-  const source = await Bun.file(path.join(root, "ai-edits/apply.ts")).text();
+  const source = await Bun.file(
+    path.join(root, "__tests__/reference-editor/apply.ts"),
+  ).text();
   const loop = between(
     source,
     "for (const executionGroup of executionGroups)",

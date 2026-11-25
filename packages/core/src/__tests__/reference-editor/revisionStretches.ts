@@ -23,12 +23,12 @@ import type { Transaction } from "prosemirror-state";
 import {
   expectRunPropertyChangeMarkAttrs,
   expectTrackedChangeMarkAttrs,
-} from "../prosemirror/attrs";
+} from "../../prosemirror/attrs";
 import {
   applyMarksToRunFormattingRepresentation,
   expandRunFormattingCarrier,
   type RunFormattingCarrierRepresentation,
-} from "../prosemirror/runFormattingInlineCarriers";
+} from "../../prosemirror/runFormattingInlineCarriers";
 
 type Stretch = { id: number; interrupted: boolean };
 

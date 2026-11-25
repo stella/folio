@@ -1042,7 +1042,7 @@ const CanonicalImageRelationshipRefusalErrorBase: TaggedErrorClass<"CanonicalIma
 
 export class CanonicalImageRelationshipRefusalError extends CanonicalImageRelationshipRefusalErrorBase<{
   message: string;
-  gap: typeof CANONICAL_GAP.save;
+  gap: typeof CANONICAL_GAP.saveSerialization;
   part: string;
   relationshipId: string;
   reason: "conflict" | "unresolved" | "missingMedia" | "unsafeTarget";
@@ -1159,7 +1159,7 @@ export const publishCanonicalImageResources = async ({
       ): never => {
         throw new CanonicalImageRelationshipRefusalError({
           message,
-          gap: CANONICAL_GAP.save,
+          gap: CANONICAL_GAP.saveSerialization,
           part: relsPath,
           relationshipId: id,
           reason,

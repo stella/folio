@@ -8,9 +8,8 @@ export const CANONICAL_GAP = {
   modelEdits: "direct-model-edits",
   sectionProperties: "section-properties",
   dispatch: "unclassified-transactions",
-  save: "pm-save-projection",
+  saveSerialization: "save-serialization",
   suggestionPlugin: "pm-suggestion-plugin",
-  documentOperations: "pm-document-operations",
   publicComments: "publicOps.comments",
   publicUnsupportedInline: "publicOps.unsupportedInline",
   commentReplacementAlignment: "comment-replacement-alignment",
@@ -90,13 +89,13 @@ type CanonicalCapability = {
   adapters: readonly ("react" | "vue")[];
   summary: string;
   remainingCommands?: { registry: "extension-commands" };
-} & (
-  | {
-      owner: "document-operations";
-      legacySessionMutation: "pm-public-operations" | "canonical";
-    }
-  | { owner: "controller" | "adapters" | "prosemirror" | "ai-edits" }
-);
+  owner:
+    | "document-operations"
+    | "controller"
+    | "adapters"
+    | "prosemirror"
+    | "ai-edits";
+};
 
 export const CANONICAL_CAPABILITIES: {
   readonly "authority-routing": {
@@ -150,11 +149,11 @@ export const CANONICAL_CAPABILITIES: {
     readonly adapters: readonly ["react", "vue"];
     readonly summary: "A host plugin or raw dispatch that changes the document is refused, naming the transaction's meta keys; hosts express edits as document operations (applyDocumentOperations).";
   };
-  readonly "pm-save-projection": {
+  readonly "save-serialization": {
     readonly owner: "controller";
-    readonly kind: "routing";
+    readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Legacy save and read paths reconstruct documents from PM.";
+    readonly summary: "Canonical save waits for composition to finish and reports package serialization refusals and fidelity fallbacks.";
   };
   readonly "pm-suggestion-plugin": {
     readonly owner: "prosemirror";
@@ -162,23 +161,14 @@ export const CANONICAL_CAPABILITIES: {
     readonly adapters: readonly ["react", "vue"];
     readonly summary: "The legacy suggestion plugin produces PM transactions.";
   };
-  readonly "pm-document-operations": {
-    readonly owner: "document-operations";
-    readonly legacySessionMutation: "pm-public-operations";
-    readonly kind: "mutation-source";
-    readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Public document operations still execute against a held PM view.";
-  };
   readonly "publicOps.comments": {
     readonly owner: "document-operations";
-    readonly legacySessionMutation: "pm-public-operations";
-    readonly kind: "routing";
+    readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Canonical public comments compile to semantic operations; legacy sessions retain PM comments.";
+    readonly summary: "Public comment edits refuse when their anchors or revision structure cannot be represented.";
   };
   readonly "publicOps.unsupportedInline": {
     readonly owner: "document-operations";
-    readonly legacySessionMutation: "pm-public-operations";
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
     readonly summary: "Unsupported public payloads refuse with a typed compiler capability gap.";
@@ -191,7 +181,6 @@ export const CANONICAL_CAPABILITIES: {
   };
   readonly "publicOps.headlessSession": {
     readonly owner: "document-operations";
-    readonly legacySessionMutation: "canonical";
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
     readonly summary: "A reviewer refuses to resolve one story of a suggestion that reaches several, which resolves only whole.";
@@ -253,11 +242,12 @@ export const CANONICAL_CAPABILITIES: {
     summary:
       "A host plugin or raw dispatch that changes the document is refused, naming the transaction's meta keys; hosts express edits as document operations (applyDocumentOperations).",
   },
-  [CANONICAL_GAP.save]: {
+  [CANONICAL_GAP.saveSerialization]: {
     owner: "controller",
-    kind: "routing",
+    kind: "refusal",
     adapters: ["react", "vue"],
-    summary: "Legacy save and read paths reconstruct documents from PM.",
+    summary:
+      "Canonical save waits for composition to finish and reports package serialization refusals and fidelity fallbacks.",
   },
   [CANONICAL_GAP.suggestionPlugin]: {
     owner: "prosemirror",
@@ -265,24 +255,15 @@ export const CANONICAL_CAPABILITIES: {
     adapters: ["react", "vue"],
     summary: "The legacy suggestion plugin produces PM transactions.",
   },
-  [CANONICAL_GAP.documentOperations]: {
-    owner: "document-operations",
-    legacySessionMutation: "pm-public-operations",
-    kind: "mutation-source",
-    adapters: ["react", "vue"],
-    summary: "Public document operations still execute against a held PM view.",
-  },
   [CANONICAL_GAP.publicComments]: {
     owner: "document-operations",
-    legacySessionMutation: "pm-public-operations",
-    kind: "routing",
+    kind: "refusal",
     adapters: ["react", "vue"],
     summary:
-      "Canonical public comments compile to semantic operations; legacy sessions retain PM comments.",
+      "Public comment edits refuse when their anchors or revision structure cannot be represented.",
   },
   [CANONICAL_GAP.publicUnsupportedInline]: {
     owner: "document-operations",
-    legacySessionMutation: "pm-public-operations",
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
@@ -297,7 +278,6 @@ export const CANONICAL_CAPABILITIES: {
   },
   [CANONICAL_GAP.publicHeadlessSession]: {
     owner: "document-operations",
-    legacySessionMutation: "canonical",
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:

@@ -22,12 +22,7 @@ export type {
 } from "./schema";
 
 // Conversion
-export {
-  toProseDoc,
-  createEmptyDoc,
-  fromProseDoc,
-  updateDocumentContent,
-} from "./conversion";
+export { toProseDoc, createEmptyDoc, fromProseDoc } from "./conversion";
 export type {
   FromProseDocOptions,
   ProjectionReuse,

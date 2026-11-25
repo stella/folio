@@ -104,6 +104,19 @@ describe("createHiddenEditorApi", () => {
     expect(createHiddenEditorApi(makeDeps(null)).getView()).toBeNull();
   });
 
+  test("getDocument returns the loaded document before a session exists", () => {
+    const loaded = createEmptyDocument({ initialText: "Loaded text" });
+    const view = makeStubView();
+    view.state = view.state.apply(view.state.tr.insertText("Local view text"));
+    for (const currentView of [null, view]) {
+      const api = createHiddenEditorApi({
+        ...makeDeps(currentView),
+        getDocumentContext: () => loaded,
+      });
+      expect(api.getDocument()).toBe(loaded);
+    }
+  });
+
   test("getDocument returns null when the context document is null", () => {
     const api = createHiddenEditorApi(makeDeps(makeStubView()));
     expect(api.getDocument()).toBeNull();

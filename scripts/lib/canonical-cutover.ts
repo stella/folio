@@ -12,17 +12,6 @@ import {
   walkAst,
 } from "./oxc-ast";
 
-/** Legacy PM execution still owns these sources when canonical sessions refuse them. */
-export const PUBLIC_OPERATION_SOURCE_GAPS = Object.entries(
-  CANONICAL_CAPABILITIES,
-)
-  .filter(
-    ([, capability]) =>
-      capability.owner === "document-operations" &&
-      capability.legacySessionMutation === "pm-public-operations",
-  )
-  .map(([gap]) => gap);
-
 export type CanonicalSource = { file: string; source: string };
 
 const gapNames = new Map(Object.entries(CANONICAL_GAP));
@@ -112,19 +101,7 @@ const mutationGap = (
   parent: Node | undefined,
   text: string,
   file: string,
-  imports: Map<string, string>,
 ): string | undefined => {
-  if (node.type === "CallExpression") {
-    const name = nodeText(text, node.callee);
-    if (name === "fromProseDoc" || imports.get(name)?.endsWith(":fromProseDoc"))
-      return CANONICAL_GAP.save;
-    if (
-      (name === "applyFolioAIEditOperations" ||
-        name === "applyFolioAIEditOperationsInPackage") &&
-      file.endsWith("/document-operations-apply.ts")
-    )
-      return CANONICAL_GAP.documentOperations;
-  }
   const method =
     ((node.type === "MethodDefinition" ||
       node.type === "TSAbstractMethodDefinition") &&
@@ -459,17 +436,22 @@ export const inspectCanonicalSources = (
               `${file}: canonical refusal must carry its ground (a gap id or a document rule)`,
             );
         }
-        const mutation = mutationGap(
-          node,
-          ancestors.at(-1),
-          part,
-          file,
-          imports,
-        );
-        if (mutation) markerFor(node, mutation);
-        if (mutation === CANONICAL_GAP.documentOperations) {
-          for (const gap of PUBLIC_OPERATION_SOURCE_GAPS) markerFor(node, gap);
+        if (node.type === "CallExpression") {
+          const callee = node.callee;
+          const name =
+            callee.type === "MemberExpression"
+              ? memberKey(callee)
+              : text(callee);
+          if (
+            name === "fromProseDoc" ||
+            (name !== undefined && imports.get(name)?.endsWith(":fromProseDoc"))
+          )
+            failures.push(
+              `${file}:${lineOf(node.start).line + 1}: the reference editor owns PM document reconstruction`,
+            );
         }
+        const mutation = mutationGap(node, ancestors.at(-1), part, file);
+        if (mutation) markerFor(node, mutation);
         if (
           node.type === "IfStatement" &&
           text(node.test) === "intents === undefined"

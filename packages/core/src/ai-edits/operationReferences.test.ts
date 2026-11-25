@@ -12,6 +12,7 @@
 import { describe, expect, test } from "bun:test";
 import { EditorState, type Transaction } from "prosemirror-state";
 
+import { applyFolioDocumentOperations } from "../__tests__/reference-editor/document-operations-apply";
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   FOLIO_DOCUMENT_OPERATION_MODES,
@@ -19,7 +20,6 @@ import {
   type FolioDocumentOperationMode,
   isFolioDocumentOperationModeSupported,
 } from "../document-operations";
-import { applyFolioDocumentOperations } from "../document-operations-apply";
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";

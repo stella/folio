@@ -25,6 +25,7 @@ import {
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../../test/property-testing";
+import { projectReferenceDocument } from "../../__tests__/reference-editor/projectReferenceDocument";
 import type {
   BorderSpec,
   Document,
@@ -35,7 +36,6 @@ import type {
 } from "../../types/document";
 import { createEmptyDocument } from "../../utils/createDocument";
 import { STYLE_RESOLVED_PARAGRAPH_FIELDS } from "../paragraphFormattingProvenance";
-import { updateDocumentContent } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
@@ -206,7 +206,7 @@ const documentFor = (scenario: Scenario): Document => {
 };
 
 const rebuild = (document: Document): Document =>
-  updateDocumentContent(
+  projectReferenceDocument(
     document,
     toProseDoc(document, {
       styles: document.package.styles,

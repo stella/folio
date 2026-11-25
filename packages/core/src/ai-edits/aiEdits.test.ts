@@ -6,7 +6,11 @@ import { TableMap } from "prosemirror-tables";
 import { ReplaceStep } from "prosemirror-transform";
 
 import { expectParagraphBlock } from "../../../../test/paragraphBlock";
-import { applyFolioDocumentOperations } from "../document-operations-apply";
+import {
+  applyFolioAIEditOperations,
+  previewFolioAIEditOperationsWithResult,
+} from "../__tests__/reference-editor/apply";
+import { applyFolioDocumentOperations } from "../__tests__/reference-editor/document-operations-apply";
 import { NO_NUMBERING_IDS_IN_USE } from "../docx/numberingIds";
 import {
   acceptAIEditRevision,
@@ -17,10 +21,6 @@ import {
 import { RUN_FORMATTING_MARK_NAMES } from "../prosemirror/runFormattingMarkNames";
 import { schema as editorSchema } from "../prosemirror/schema";
 import { createStyleResolver } from "../prosemirror/styles/styleResolver";
-import {
-  applyFolioAIEditOperations,
-  previewFolioAIEditOperationsWithResult,
-} from "./apply";
 import { type FolioWordDiffOptions } from "./applyTypes";
 import { resolveFolioAITextRange } from "./blockRange";
 import { getTrackedChangesFromDoc } from "./read";

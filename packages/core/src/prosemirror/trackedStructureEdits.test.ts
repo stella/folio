@@ -24,10 +24,10 @@ import {
   type SelectionPlacement,
   summarizeState,
 } from "../__tests__/editorHarness";
+import { createNoteReferenceFollower } from "../__tests__/reference-editor/restoreNotes";
 import type { Document } from "../types/document";
 import { fromProseDoc } from "./conversion/fromProseDoc";
 import {
-  createNoteReferenceFollower,
   heldUnreferencedNotes,
   withoutUnreferencedNotes,
 } from "./noteReferenceReview";

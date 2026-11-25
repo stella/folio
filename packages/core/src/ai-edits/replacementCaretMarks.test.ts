@@ -10,8 +10,8 @@ import { describe, expect, test } from "bun:test";
 import type { Mark } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 
+import { insertCleanText } from "../__tests__/reference-editor/apply";
 import { schema } from "../prosemirror/schema";
-import { insertCleanText } from "./apply";
 
 const TEXT = "the quick brown fox";
 const FIND = "quick";
