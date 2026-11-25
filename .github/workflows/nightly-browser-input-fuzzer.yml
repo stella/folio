@@ -12,9 +12,9 @@ jobs:
   browser-input-fuzzer:
     name: Browser input fuzzer (nightly seeds)
     runs-on: ubuntu-24.04
-    # Phase caps: canonical 10 + host 8 + browser 39 + interleaving 12 = 69 min.
+    # Phase caps: canonical 10 + host 8 + browser 55 + interleaving 12 = 85 min.
     # Add seven minutes for setup, artifact upload and reporting.
-    timeout-minutes: 76
+    timeout-minutes: 92
     permissions:
       contents: read
     outputs:
@@ -78,7 +78,8 @@ jobs:
       - name: Run nightly browser fuzzer
         if: always()
         id: fuzz
-        timeout-minutes: 39
+        # Every pinned trace and seed passing takes about 44 minutes.
+        timeout-minutes: 55
         continue-on-error: true
         run: |
           # A step killed by its timeout leaves its web server running.
