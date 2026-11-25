@@ -52,7 +52,7 @@ import {
   storyBody,
   storyParagraphs,
 } from "./blocks";
-import { isCommentExhausted, linksEmptiedByRetirement } from "./comments";
+import { linksEmptiedByRetirement, newlyExhaustedCommentIds } from "./comments";
 import { planContiguousResolutionJoins } from "./contiguousResolutionJoins";
 import {
   acceptCopyOriginAncestor,
@@ -9295,14 +9295,9 @@ const planSingleRecordResolution = (
       current = restored.value.document;
     }
   }
-  const exhausted = (document.package.document.comments ?? []).filter(
-    ({ id, parentId }) =>
-      parentId === undefined &&
-      !isCommentExhausted({ type: "document", document, id }) &&
-      isCommentExhausted({ type: "document", document: current, id }),
-  );
+  const exhausted = newlyExhaustedCommentIds(document, current);
   const beforeRetirement = current;
-  for (const { id } of exhausted) {
+  for (const id of exhausted) {
     const retired = applyOps(current, [
       { type: DOCUMENT_OP_TYPES.DELETE_COMMENT, id, scope: "thread" },
     ]);
@@ -9314,7 +9309,7 @@ const planSingleRecordResolution = (
     before: beforeRetirement,
     after: current,
     story: op.story,
-    retired: new Set(exhausted.map(({ id }) => id)),
+    retired: new Set(exhausted),
   });
   if (emptiedLinks.length > 0) {
     const removed = applyOps(current, emptiedLinks);

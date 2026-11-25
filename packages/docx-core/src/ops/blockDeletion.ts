@@ -18,7 +18,7 @@ import {
   storyBody,
   storyParagraphs,
 } from "./blocks";
-import { isCommentExhausted } from "./comments";
+import { newlyExhaustedCommentIds } from "./comments";
 import type { DocumentEdit } from "./edits";
 import { structurallyEqual } from "./equality";
 import { freshenIdentities } from "./identity";
@@ -670,14 +670,7 @@ const withExhaustedCommentsRetired = ({
   ExhaustedCommentsRetirement,
   DocumentOpRefusal
 > => {
-  const exhaustedCommentIds = (before.package.document.comments ?? []).flatMap(
-    ({ id, parentId }) =>
-      parentId === undefined &&
-      !isCommentExhausted({ type: "document", document: before, id }) &&
-      isCommentExhausted({ type: "document", document: edit.document, id })
-        ? [id]
-        : [],
-  );
+  const exhaustedCommentIds = newlyExhaustedCommentIds(before, edit.document);
   if (exhaustedCommentIds.length === 0)
     return Result.ok({ edit, modified: [] });
   const retired = applyOps(
