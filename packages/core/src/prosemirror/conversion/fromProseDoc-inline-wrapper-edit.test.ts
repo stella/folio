@@ -11,6 +11,7 @@
 import { describe, expect, test } from "bun:test";
 import { EditorState, TextSelection } from "prosemirror-state";
 
+import { createSuggestionModePlugin } from "../../__tests__/reference-editor/suggestionMode";
 import type {
   Document,
   InlineWrapper,
@@ -20,7 +21,6 @@ import type {
 } from "../../types/document";
 import { createEmptyDocument } from "../../utils/createDocument";
 import { rejectAllChanges } from "../commands/comments";
-import { createSuggestionModePlugin } from "../plugins/suggestionMode";
 import { fromProseDoc } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
 

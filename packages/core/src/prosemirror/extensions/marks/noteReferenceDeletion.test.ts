@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { EditorState, TextSelection } from "prosemirror-state";
 
+import { createSuggestionModePlugin } from "../../../__tests__/reference-editor/suggestionMode";
 import { parseDocx } from "../../../docx/parser";
 import { createDocx } from "../../../docx/rezip";
 import { createEmptyDocument } from "../../../utils/createDocument";
 import { fromProseDoc } from "../../conversion/fromProseDoc";
 import { toProseDoc } from "../../conversion/toProseDoc";
-import { createSuggestionModePlugin } from "../../plugins/suggestionMode";
 import { schema } from "../../schema";
 import { FootnoteRefExtension } from "./FootnoteRefExtension";
 import { expandNoteReferenceDeletionRange } from "./noteReferenceDeletion";

@@ -32,7 +32,7 @@ import {
 import type { PreservedMarkup, SdtProperties } from "../../types/document";
 import { expectBlockSdtAttrs } from "../attrs";
 import { withCanonicalCommand } from "../canonicalCommands";
-import { SUGGESTION_BYPASS_META } from "../plugins/suggestionMode";
+import { SUGGESTION_BYPASS_META } from "../suggestionCommands";
 
 type ForceOption = { force?: boolean };
 

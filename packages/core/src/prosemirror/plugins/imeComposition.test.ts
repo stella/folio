@@ -21,7 +21,7 @@ import type { Transaction } from "prosemirror-state";
 import {
   createSuggestionModePlugin,
   suggestionModeKey,
-} from "./suggestionMode";
+} from "../../__tests__/reference-editor/suggestionMode";
 
 const schema = new Schema({
   nodes: {

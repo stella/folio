@@ -2,9 +2,9 @@ import { expect, test } from "bun:test";
 import { EditorState, NodeSelection, TextSelection } from "prosemirror-state";
 
 import { HeadlessEditorView } from "../../__tests__/editorHarness";
+import { createSuggestionModePlugin } from "../../__tests__/reference-editor/suggestionMode";
 import { acceptAllChanges } from "../commands/comments";
 import { schema } from "../schema";
-import { createSuggestionModePlugin } from "./suggestionMode";
 
 const bookmark = (type: "start" | "end", id: number) =>
   schema.node("bookmarkBoundary", {

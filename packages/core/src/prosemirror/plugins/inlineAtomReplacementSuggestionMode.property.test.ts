@@ -16,6 +16,7 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../../test/property-testing";
+import { createSuggestionModePlugin } from "../../__tests__/reference-editor/suggestionMode";
 import { acceptAllChanges, rejectAllChanges } from "../commands/comments";
 import { canonicalFieldNode } from "../fieldRepresentation";
 import { schema } from "../schema";
@@ -24,7 +25,6 @@ import {
   canCarryTrackedRunMark,
   TRACKED_RUN_INLINE_ATOM_DISPOSITIONS,
 } from "../trackedRunInlineAtoms";
-import { createSuggestionModePlugin } from "./suggestionMode";
 
 /** Every node-selectable inline atom a tracked run can own, from the disposition map. */
 const SELECTABLE_ATOMS: readonly PMNode[] = Object.keys(

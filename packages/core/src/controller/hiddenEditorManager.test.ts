@@ -23,6 +23,7 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import { createSuggestionModePlugin } from "../__tests__/reference-editor/suggestionMode";
 import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
 import type { FolioDocumentOperationStory } from "../document-operations";
 import { parseDocx } from "../docx/parser";
@@ -37,7 +38,6 @@ import { expectCommentRangeBoundaryAttrs } from "../prosemirror/commentRangeBoun
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { HyperlinkRemovalRefusal } from "../prosemirror/hyperlinkRemoval";
 import { insertTableOfContentsInView } from "../prosemirror/insertOperations";
-import { createSuggestionModePlugin } from "../prosemirror/plugins/suggestionMode";
 import { singletonManager } from "../prosemirror/schema";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import type { CanonicalCommentRequest } from "../types/canonicalComments";

@@ -10,8 +10,8 @@ import {
   parseShapeDocument,
   saveHarnessState,
 } from "../../__tests__/editorHarness";
+import { deleteSelectionAsSuggestion } from "../../__tests__/reference-editor/suggestionMode";
 import { FolioDocxReviewer } from "../../ai-edits/headless";
-import { deleteSelectionAsSuggestion } from "./suggestionMode";
 
 const project = (reviewer: FolioDocxReviewer) =>
   reviewer.snapshot().blocks.map((block) => {

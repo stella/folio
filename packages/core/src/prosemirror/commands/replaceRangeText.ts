@@ -8,7 +8,7 @@
 import type { Command } from "prosemirror-state";
 
 import { withCanonicalCommand } from "../canonicalCommands";
-import { deleteSelectionAsSuggestion } from "../plugins/suggestionMode";
+import { deleteSelectionAsSuggestion } from "../suggestionCommands";
 
 export type RangeTextReplacement = {
   from: number;

@@ -10,6 +10,7 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../../test/property-testing";
+import { createSuggestionModePlugin } from "../../__tests__/reference-editor/suggestionMode";
 import { FolioDocxReviewer } from "../../ai-edits/headless";
 import { ensureParaIds } from "../../docx/ensureParaIds";
 import { parseDocx } from "../../docx/parser";
@@ -37,7 +38,6 @@ import {
   createDocumentStylesPlugin,
   getDocumentStyleResolver,
 } from "../plugins/documentStyles";
-import { createSuggestionModePlugin } from "../plugins/suggestionMode";
 import { schema } from "../schema";
 import { acceptAllChanges, rejectAllChanges } from "./comments";
 

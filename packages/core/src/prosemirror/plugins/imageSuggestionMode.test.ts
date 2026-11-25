@@ -11,13 +11,13 @@ import { describe, expect, test } from "bun:test";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 
+import { createSuggestionModePlugin } from "../../__tests__/reference-editor/suggestionMode";
 import {
   acceptAIEditRevision,
   findNextChange,
   rejectAIEditRevision,
 } from "../commands/comments";
 import { schema } from "../schema";
-import { createSuggestionModePlugin } from "./suggestionMode";
 
 const PNG_DATA_URL = "data:image/png;base64,AA==";
 

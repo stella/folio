@@ -69,10 +69,6 @@ import {
   getDocumentBuiltInStyles,
   getDocumentStyleResolver,
 } from "../../plugins/documentStyleState";
-import {
-  makeRevisionInfo,
-  SUGGESTION_META,
-} from "../../plugins/suggestionMode";
 import { rebaseParagraphRuns } from "../../rebaseParagraphRuns";
 import type { ParagraphAttrs, ParagraphAttrsPatch } from "../../schema/nodes";
 import {
@@ -86,6 +82,7 @@ import {
   listIndentationProvenancePatch,
   paragraphAttrsFromResolvedStyle,
 } from "../../styles/resolvedStyleAttrs";
+import { makeRevisionInfo, SUGGESTION_META } from "../../suggestionCommands";
 import { createNodeExtension } from "../create";
 import type { ExtensionRuntime, NodeExtension } from "../types";
 

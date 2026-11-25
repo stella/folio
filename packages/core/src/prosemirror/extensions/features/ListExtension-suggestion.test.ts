@@ -2,10 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { Schema } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 
+import { createSuggestionModePlugin } from "../../../__tests__/reference-editor/suggestionMode";
 import { parseNumbering } from "../../../docx/numberingParser";
 import { acceptChange, rejectChange } from "../../commands/comments";
 import { createDocumentNumberingPlugin } from "../../plugins/documentNumbering";
-import { createSuggestionModePlugin } from "../../plugins/suggestionMode";
 import { toggleBulletList, toggleNumberedList } from "./ListExtension";
 
 const BULLET_NUMBERING = parseNumbering(`

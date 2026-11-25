@@ -52,7 +52,6 @@ import {
   createDocumentStylesPlugin,
   getDocumentStyleResolver,
 } from "../prosemirror/plugins/documentStyles";
-import { createSuggestionModePlugin } from "../prosemirror/plugins/suggestionMode";
 import { singletonManager } from "../prosemirror/schema";
 import { dispatchEditorTextInput } from "../prosemirror/textInput";
 import type { Document } from "../types/document";
@@ -61,6 +60,7 @@ import {
   createReferenceEditorRuntime,
 } from "./createReferenceEditorKit";
 import { repackWithEditorSectionRemovals } from "./reference-editor/ParagraphChangeTrackerExtension";
+import { createSuggestionModePlugin } from "./reference-editor/suggestionMode";
 
 export type EditorMode = "editing" | "suggesting";
 

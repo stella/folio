@@ -5,12 +5,12 @@ import { EditorState, TextSelection } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
-import { schema } from "../schema";
 import {
   createSuggestionModePlugin,
   handleSuggestionPaste,
   suggestionModeKey,
-} from "./suggestionMode";
+} from "../../__tests__/reference-editor/suggestionMode";
+import { schema } from "../schema";
 
 type AtomFixture = {
   name: string;

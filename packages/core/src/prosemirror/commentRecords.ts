@@ -49,8 +49,8 @@ import {
   type PlacedRange,
 } from "./pastePlacement";
 import { createPluginKeyOwner } from "./pluginKeyOwner";
-import { SUGGESTION_BYPASS_META } from "./plugins/suggestionMode";
 import { readRangeAnchorAttrs } from "./rangeAnchorAttrs";
+import { SUGGESTION_BYPASS_META } from "./suggestionCommands";
 
 export type CommentRecords = readonly Comment[];
 

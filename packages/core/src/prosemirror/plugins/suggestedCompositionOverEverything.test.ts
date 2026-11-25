@@ -10,8 +10,8 @@ import {
   parseShapeDocument,
   saveHarnessState,
 } from "../../__tests__/editorHarness";
+import { suggestionModeKey } from "../../__tests__/reference-editor/suggestionMode";
 import { FolioDocxReviewer } from "../../ai-edits/headless";
-import { suggestionModeKey } from "./suggestionMode";
 
 const blocks = (reviewer: FolioDocxReviewer) =>
   reviewer.snapshot().blocks.map(({ kind, text }) => ({ kind, text }));

@@ -6,11 +6,11 @@ import { describe, expect, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
 
 import { createReferenceEditorRuntime } from "../../__tests__/createReferenceEditorKit";
+import { createSuggestionModePlugin } from "../../__tests__/reference-editor/suggestionMode";
 import {
   ContentControlLockedError,
   ContentControlTypeError,
 } from "../../content-controls";
-import { createSuggestionModePlugin } from "../plugins/suggestionMode";
 import { schema, singletonManager } from "../schema";
 import {
   blockSdtAttrsToSdtProperties,

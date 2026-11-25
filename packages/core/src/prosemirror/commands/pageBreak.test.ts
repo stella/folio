@@ -6,8 +6,8 @@ import {
   type Transaction,
 } from "prosemirror-state";
 
+import { createSuggestionModePlugin } from "../../__tests__/reference-editor/suggestionMode";
 import { getTrackedChangesFromDoc } from "../../ai-edits/read";
-import { createSuggestionModePlugin } from "../plugins/suggestionMode";
 import { schema } from "../schema";
 import { insertPageBreak } from "./pageBreak";
 

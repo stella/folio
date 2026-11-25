@@ -42,17 +42,17 @@ import {
   removedNumberingAttr,
 } from "../../numberingAttr";
 import { getDocumentNumbering } from "../../plugins/documentNumbering";
-import {
-  makeRevisionInfo,
-  SUGGESTED_TEXT_INPUT_META,
-  SUGGESTION_META,
-  suggestRangeDeletion,
-} from "../../plugins/suggestionMode";
 import type { ParagraphAttrs, ParagraphAttrsPatch } from "../../schema/nodes";
 import {
   listLevelAttrPatch,
   listLevelIndentRemovalPatch,
 } from "../../styles/resolvedStyleAttrs";
+import {
+  makeRevisionInfo,
+  SUGGESTED_TEXT_INPUT_META,
+  SUGGESTION_META,
+  suggestRangeDeletion,
+} from "../../suggestionCommands";
 import { createExtension } from "../create";
 import { goToNextCell, goToPrevCell } from "../nodes/TableExtension";
 import { Priority } from "../types";
@@ -773,7 +773,7 @@ const suggestedListAutoformat = (autoformat: Plugin): Plugin =>
       }
       const start = $head.start();
       const tr = state.tr;
-      if (!suggestRangeDeletion(state, tr, start, $head.pos)) {
+      if (!suggestRangeDeletion({ state, tr, from: start, to: $head.pos })) {
         return null;
       }
       const from = tr.mapping.map(start);

@@ -13,10 +13,7 @@ import type { Command } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
 import { dispatchClipboardIntent } from "../clipboardIntent";
-import {
-  handleSuggestionPaste,
-  suggestionModeKey,
-} from "../plugins/suggestionMode";
+import { pasteAsSuggestion } from "../suggestionCommands";
 
 const PARAGRAPH_BREAK = /(?:\r\n?|\n)+/;
 
@@ -62,10 +59,7 @@ export function buildPlainTextSlice(text: string, schema: Schema): Slice {
  */
 export const pastePlainTextSlice = (view: EditorView, slice: Slice): void => {
   if (dispatchClipboardIntent(view, slice) !== undefined) return;
-  const suggesting = suggestionModeKey.getState(view.state);
-  if (suggesting?.active && handleSuggestionPaste(view, slice, suggesting)) {
-    return;
-  }
+  if (pasteAsSuggestion(view, slice)) return;
   view.dispatch(
     view.state.tr
       .replaceSelection(slice)
