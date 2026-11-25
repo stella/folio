@@ -7596,13 +7596,14 @@ export class CanonicalPublicOperations {
         : undefined;
     // Find the tables that will actually border the deleted paragraph.
     // A run of removed tables can expose another table behind it.
+    const batchRemovesTable = (block: PMNode): boolean =>
+      besideDeletions.tables.deleted.size > 0 &&
+      tableParagraphIds(block).some((id) =>
+        besideDeletions.tables.deleted.has(id),
+      );
     const tableWillBeRemoved = (block: PMNode): boolean =>
       block.type.name === "table" &&
-      ((tracked && tableGoes(block, "accept")) ||
-        (besideDeletions.tables.deleted.size > 0 &&
-          tableParagraphIds(block).some((id) =>
-            besideDeletions.tables.deleted.has(id),
-          )));
+      ((tracked && tableGoes(block, "accept")) || batchRemovesTable(block));
     const resolveDeletedPlacement = () => {
       let beforePos = paragraph.start - 1;
       let afterPos = beforePos + paragraph.node.nodeSize;
@@ -7613,8 +7614,19 @@ export class CanonicalPublicOperations {
         before = state.doc.resolve(beforePos).nodeBefore;
       }
       while (after !== null && tableWillBeRemoved(after)) {
+        const beyond = state.doc.resolve(afterPos + after.nodeSize).nodeAfter;
+        // Past a table only a pending deletion takes, a paragraph the batch
+        // deletes too leaves this one closing what remains: it still stands
+        // between the tables as the batch runs.
+        if (
+          !batchRemovesTable(after) &&
+          beyond?.type.name === "paragraph" &&
+          typeof beyond.attrs["paraId"] === "string" &&
+          besideDeletions.deleted.has(beyond.attrs["paraId"])
+        )
+          break;
         afterPos += after.nodeSize;
-        after = state.doc.resolve(afterPos).nodeAfter;
+        after = beyond;
       }
       const precedingId: unknown =
         before?.type.name === "paragraph" ? before.attrs["paraId"] : undefined;
