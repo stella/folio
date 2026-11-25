@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "tables",
+  "mode": "tracked-changes",
+  "seed": 788200043,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 3819495999,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "deleteTable",
+          "blockId": "1BF99289"
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 2300059871,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "79D25458"
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from random flow seed 788200043",
+  "title": "PINNED #1350: A table pending deletion cannot keep a deleted paragraph between tables"
+}
