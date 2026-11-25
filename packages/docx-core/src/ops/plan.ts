@@ -163,6 +163,14 @@ export const filterNewIds = (
   return withNewIds(op, newIds);
 };
 
+/** The table edits that may keep pending records on new rows and cells. */
+const DIRECT_TABLE_EDITS: ReadonlySet<DocumentOp["type"]> = new Set([
+  DOCUMENT_OP_TYPES.INSERT_COLUMN,
+  DOCUMENT_OP_TYPES.DELETE_COLUMN,
+  DOCUMENT_OP_TYPES.MERGE_CELLS,
+  DOCUMENT_OP_TYPES.SPLIT_CELL,
+]);
+
 type TrimAppliedNewIdsOptions = {
   before: Document;
   op: DocumentOp;
@@ -186,9 +194,15 @@ export const trimAppliedNewIds = ({
     const location = findStoryParagraph(body, key);
     return location === undefined ? [] : [location.paragraph];
   });
-  const identities = new Set(identityKeysIn(paragraphs));
-  const revisions = new Set(applied.revisions);
   const known = packageIdentityKeyIndex(before.package);
+  // A direct cell or column edit keeps pending records on the rows and cells
+  // it makes, outside every paragraph.
+  const identities = new Set(
+    DIRECT_TABLE_EDITS.has(op.type) && stampOf(op) === undefined
+      ? known.introducedIn(applied.document.package)
+      : identityKeysIn(paragraphs),
+  );
+  const revisions = new Set(applied.revisions);
   return filterNewIds(op, (space, id) => {
     const key = `${space}:${id}`;
     return (
