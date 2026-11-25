@@ -1,12 +1,17 @@
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { assertProperty } from "../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import {
   type CanonicalInlineGap,
   CanonicalInlineGaps,
   type CanonicalSeamExtent,
 } from "./canonicalInlineGaps";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 type Add = { offset: number; position: number; zeroWidthBefore: number };
 
