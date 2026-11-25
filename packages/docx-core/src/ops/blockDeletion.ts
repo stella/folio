@@ -1389,6 +1389,7 @@ export const deleteBlocks = ({
   // paragraph does.
   const trailing: Paragraph[] = [];
   let endFormatting = survivor.formatting;
+  let propertySource = previous;
   let reviewed = affected;
   if (retiredIndex !== undefined && retired?.type === "paragraph") {
     const ending = lastBlockPastBoundaries(list);
@@ -1401,6 +1402,7 @@ export const deleteBlocks = ({
       !sameParagraphProperties(retired.formatting, ending.formatting)
     ) {
       trailing.push(...paragraphsIn(list.slice(last.index + 1)));
+      propertySource = retired;
       endFormatting = withMarkFormatting(
         paragraphPropertiesOf(retired.formatting),
         ending.formatting,
@@ -1414,7 +1416,6 @@ export const deleteBlocks = ({
     ];
   }
   const endsContainer = trailing.at(-1) ?? (terminal ? last.paragraph : null);
-  const propertySource = trailing.length > 0 ? retired : previous;
   // The paragraphs whose own mark the tracked deletion records deleted.
   const losesMark = (paragraph: Paragraph) =>
     paragraph !== endsContainer && !trailing.includes(paragraph);
