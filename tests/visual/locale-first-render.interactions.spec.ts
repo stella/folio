@@ -26,17 +26,17 @@ for (const [adapter, host] of Object.entries(PLAYGROUND_HOSTS)) {
         page.getByText("Loading document…", { exact: true }),
       ).toHaveCount(0);
       await expect(
-        page.getByRole("button", { name: "File", exact: true }),
+        page.getByRole("button", { name: "Bold", exact: true }),
       ).toHaveCount(0);
     } finally {
       gate.resolve();
     }
 
     await expect(
-      page.getByRole("button", { name: "Soubor", exact: true }),
+      page.getByRole("button", { name: "Tučné", exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "File", exact: true }),
+      page.getByRole("button", { name: "Bold", exact: true }),
     ).toHaveCount(0);
   });
 }
