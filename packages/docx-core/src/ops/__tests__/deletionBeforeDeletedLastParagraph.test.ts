@@ -11,7 +11,12 @@
  */
 import { expect, test } from "bun:test";
 
-import type { BlockContent, Document, Paragraph } from "../../model/document";
+import {
+  type BlockContent,
+  type Document,
+  type Paragraph,
+  paragraphNumberingReference,
+} from "../../model/document";
 import {
   type AppliedDocumentOp,
   applyDocumentOp,
@@ -47,7 +52,7 @@ const paragraph = (
 const FORMATTINGS = {
   none: undefined,
   centered: { alignment: "center" },
-  numbered: { numPr: { kind: "reference", numId: 2, ilvl: 0 } },
+  numbered: { numPr: paragraphNumberingReference({ numId: 2, ilvl: 0 }) },
   "right-aligned": { alignment: "end" },
 } as const satisfies Record<string, Paragraph["formatting"]>;
 

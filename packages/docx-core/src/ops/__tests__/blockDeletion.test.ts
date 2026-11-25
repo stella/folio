@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
-import type {
-  BlockContent,
-  Document,
-  Paragraph,
-  ParagraphContent,
+import {
+  type BlockContent,
+  type Document,
+  type Paragraph,
+  type ParagraphContent,
+  paragraphNumberingReference,
 } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { storyParagraphs } from "../blocks";
@@ -954,8 +955,8 @@ test("a tracked deletion of a paragraph holding another author's insertion delet
 test("a tracked deletion of the paragraph whose mark the last paragraph's deletion took for its properties takes them back", () => {
   const info = { id: 5, author: "Other", date: "2026-01-02T03:04:05Z" };
   const numbered = {
-    numPr: { kind: "reference", numId: 2, ilvl: 0 },
-  } as const;
+    numPr: paragraphNumberingReference({ numId: 2, ilvl: 0 }),
+  };
   // Deleting "Closing." deleted the item's mark and gave the closing
   // paragraph the item's properties; deleting the item too takes them back,
   // and the closing paragraph takes those of the paragraph before the item.
