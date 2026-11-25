@@ -1515,6 +1515,6 @@ const verifyUnguarded = async ({
  * A refused plan is an error; a failed check is a report with `ok: false`.
  */
 export const verifyTemplatePlanOutput = async (
-  args: VerifyTemplatePlanOutputArgs,
+  input: VerifyTemplatePlanOutputArgs,
 ): Promise<Result<TemplatePlanReport, TemplatePlanError>> =>
-  await guarded(async () => await verifyUnguarded(args));
+  await guarded(async () => await verifyUnguarded(input));

@@ -1019,6 +1019,6 @@ const applyUnguarded = async ({
  * unless every placed block reads back identical.
  */
 export const applyTemplatePlan = async (
-  args: ApplyTemplatePlanArgs,
+  input: ApplyTemplatePlanArgs,
 ): Promise<Result<ApplyTemplatePlanResult, TemplatePlanError>> =>
-  await guarded(async () => await applyUnguarded(args));
+  await guarded(async () => await applyUnguarded(input));
