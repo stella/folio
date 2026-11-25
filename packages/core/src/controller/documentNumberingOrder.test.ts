@@ -11,10 +11,7 @@ import { paragraphNumberingReference } from "@stll/docx-core/model";
 
 import { fromMarkdown } from "../markdown/fromMarkdown";
 import * as listInstanceReferences from "../prosemirror/listInstanceReferences";
-import {
-  extractSelectionContext,
-  getSelectionContext,
-} from "../prosemirror/plugins/selectionTracker";
+import { extractSelectionContext } from "../prosemirror/plugins/selectionTracker";
 import { singletonManager } from "../prosemirror/schema";
 import { createHiddenEditorState } from "./hiddenEditorManager";
 
@@ -80,5 +77,4 @@ test("typing in a list item reads the package's numbering without rebuilding it"
   }
   const expected = { type: "bullet", level: 0, numId: 3 };
   expect(extractSelectionContext(state).listState).toEqual(expected);
-  expect(getSelectionContext(state)?.listState).toEqual(expected);
 });

@@ -113,7 +113,6 @@ import {
   createDocumentStylesPlugin,
 } from "../prosemirror/plugins/documentStyles";
 import { schema } from "../prosemirror/schema";
-import { createTextInputPlugin } from "../prosemirror/textInput";
 import {
   CANONICAL_GAP,
   CANONICAL_RULE,
@@ -239,8 +238,9 @@ const HIDDEN_EDITOR_ATTRIBUTES = {
 /**
  * Create ProseMirror state from document
  *
- * When an ExtensionManager is provided, it supplies the schema and plugins.
- * Otherwise falls back to the default singleton schema with no extension plugins.
+ * When an ExtensionManager is provided, it supplies the schema. The state
+ * paints the document before the canonical session's state replaces it, so it
+ * carries none of the extensions' editing plugins.
  */
 export type CreateHiddenEditorStateOptions = {
   /** The model; the editor state is built from it through `readModel`. */
@@ -291,12 +291,13 @@ export function createHiddenEditorState(
     document?.package.numbering,
   );
   // Numbering comes first: other plugins read it while they apply a
-  // transaction, which only sees the states of the plugins before them.
+  // transaction, which only sees the states of the plugins before them. The
+  // state only paints the document until the canonical session's state
+  // replaces it, so no editing plugin of the extensions is installed.
   const plugins: Plugin[] = [
     numberingPlugin,
     createCommentRecordsPlugin(document?.package.document.comments ?? []),
     ...externalPlugins,
-    ...(manager?.getPlugins() ?? [createTextInputPlugin()]),
     styleResolverPlugin,
   ];
 
