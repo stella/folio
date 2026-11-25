@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "title": "PINNED #1350: a paragraph deleted between a table put after the paragraph before it and one put after it stays empty once the tracked batch is accepted, as applied directly",
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "styleNumbered",
+  "mode": "tracked-changes",
+  "seed": 1518300418,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 3,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "7B806329",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "1BF99289"
+        },
+        {
+          "type": "insertTable",
+          "blockId": "1BF99289",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from reseed of 4061c41ca83e4a92"
+}
