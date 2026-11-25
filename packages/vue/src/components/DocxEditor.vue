@@ -46,13 +46,7 @@
     <LocaleLoading
       v-else-if="!localeReady"
       class="docx-editor-vue__locale-loading"
-    >
-      <template v-if="$slots['loading-indicator'] || loadingIndicator" #default>
-        <slot name="loading-indicator">
-          <VNodeRenderer v-if="loadingIndicator" :node="loadingIndicator" />
-        </slot>
-      </template>
-    </LocaleLoading>
+    />
     <div class="docx-editor-vue__toolbar-shell">
       <DocxEditorMenuBar
         :show-table-insert="props.showTableInsert !== false"

@@ -145,13 +145,10 @@ export const renderAsync = (
       setup() {
         return () => {
           if (!localeReady.value) {
-            return h(
-              LocaleLoading,
-              { class: editorOptions.className, style: editorOptions.style },
-              editorOptions.loadingIndicator == null
-                ? undefined
-                : () => editorOptions.loadingIndicator,
-            );
+            return h(LocaleLoading, {
+              class: editorOptions.className,
+              style: editorOptions.style,
+            });
           }
           return h(DocxEditor, {
             ...editorOptions,
