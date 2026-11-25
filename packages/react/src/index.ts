@@ -163,7 +163,6 @@ export {
   type ApplyResult,
 } from "@stll/folio-core/ai-suggestions/apply";
 export {
-  applyFolioAIEditOperations,
   createFolioAIEditSnapshot,
   diffWordSegments,
   hashFolioAIBlockText,
