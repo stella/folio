@@ -1,4 +1,3 @@
-import { closeHistory } from "prosemirror-history";
 /**
  * Ref-API assembler for the Vue `DocxEditor` shell.
  *
@@ -29,14 +28,13 @@ import type { EditorView } from "prosemirror-view";
 import type { Ref } from "vue";
 
 import {
-  applyFolioDocumentOperations,
   assertSupportedFolioDocumentOperationVersion,
   createFolioAIEditSnapshot,
   createFolioAIEditSnapshotWithStyleResolver,
   createPendingSuggestionSourceSnapshot,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+  type FolioDocumentOperationResult,
   type FolioDocumentOperationStatus,
-  type FolioDocumentOperationUndoHandle,
   type FolioDocumentOperationUndoResult,
   FolioPendingSuggestionRegistry,
   getCommentAnchorsFromDoc,
@@ -82,13 +80,9 @@ import {
   getSelectedText,
 } from "@stll/folio-core/prosemirror";
 import {
-  acceptAIEditRevision,
-  acceptSuggestion,
   findAIEditRevisionRange,
   findSuggestionRange,
   getSuggestions,
-  rejectAIEditRevision,
-  rejectSuggestion,
 } from "@stll/folio-core/prosemirror/commands/comments";
 import {
   blockSdtAttrsToSdtProperties,
@@ -109,23 +103,10 @@ import { getFolioParaIdFromBlockId } from "@stll/folio-core/types/block-id";
 import type { Comment } from "@stll/folio-core/types/content";
 import type { Document } from "@stll/folio-core/types/document";
 import type { ReadonlyDocument } from "@stll/folio-core/types/documentModel";
-import { canonicalJson } from "@stll/folio-core/utils/canonicalJson";
 
 import type { PagedEditorRef } from "../components/DocxEditor/pagedEditorRef";
 import type { DocxEditorRef } from "../components/DocxEditor/types";
 import type { UseFindReplaceReturn } from "./useFindReplace";
-
-type LiveDocumentOperationUndoEntry = {
-  undoHandle: FolioDocumentOperationUndoHandle;
-  afterState: EditorView["state"];
-  commentsBefore: Comment[];
-  /** The comments the batch ended on; a host may hand back a copy. */
-  commentsAfterJson: string;
-  /** Whether the editor's records hold the comments, so undo restores them. */
-  recorded: boolean;
-};
-
-let documentOperationUndoHandleCursor = Date.now();
 
 type OperationView = Pick<EditorView, "state" | "dispatch">;
 
@@ -277,7 +258,6 @@ export const saveDocumentForHost = async (
 export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
   exposed: DocxEditorRef;
 } {
-  const documentOperationUndoEntries: LiveDocumentOperationUndoEntry[] = [];
   const pendingSuggestionRegistry = new FolioPendingSuggestionRegistry();
   function print(): void {
     opts.onPrint?.();
@@ -506,37 +486,13 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
         });
       return canonical;
     }
-    // Through the document-operation applier, like the batch path, so a
-    // result the save-time check refuses never reaches the editor.
-    const { applied, skipped } = applyWithStagedOperationComments({
-      view,
-      createComment: (text) => opts.createAIEditComment(text, operationAuthor),
-      publishComments: opts.publishAIEditComments,
-      apply: (createCommentId, recordingView) =>
-        applyFolioDocumentOperations({
-          undefinedReferences,
-          view: recordingView,
-          snapshot,
-          batch: {
-            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-            operations,
-            mode,
-          },
-          author: operationAuthor,
-          createCommentId,
-        }),
-    });
-    if (mode === "suggested") {
-      pendingSuggestionRegistry.recordApplied({
-        snapshot,
-        story: { type: "main" },
-        operations,
-        applied,
-        author: operationAuthor,
-        activeSuggestionIds,
-      });
-    }
-    return { applied, skipped };
+    return {
+      applied: [],
+      skipped: operations.map((operation) => ({
+        id: operation.id,
+        reason: "unsupportedBlock" as const,
+      })),
+    };
   };
 
   const exposed = {
@@ -605,8 +561,8 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       author: operationAuthor = opts.author(),
     }) => {
       assertSupportedFolioDocumentOperationVersion(batch.version);
-      const view = opts.editorView.value;
-      if (!view) {
+      // Without a view or a canonical session nothing applies.
+      const unapplied = (): FolioDocumentOperationResult => {
         let status: FolioDocumentOperationStatus = "committed";
         if (batch.dryRun === true) {
           status = "previewed";
@@ -626,7 +582,9 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
           receipts: [],
           undoHandle: null,
         };
-      }
+      };
+      const view = opts.editorView.value;
+      if (!view) return unapplied();
       const activeBeforeCanonical = new Set(
         getSuggestions(view.state).map((s) => s.suggestionId),
       );
@@ -650,128 +608,36 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
           });
         return canonical;
       }
-      const existingUndoEntry = documentOperationUndoEntries.at(-1);
-      if (
-        existingUndoEntry &&
-        (!view.state.doc.eq(existingUndoEntry.afterState.doc) ||
-          canonicalJson(opts.getComments()) !==
-            existingUndoEntry.commentsAfterJson)
-      ) {
-        documentOperationUndoEntries.length = 0;
-      }
-      const commentsBefore = opts.getComments();
-      const closingView = {
-        get state() {
-          return view.state;
-        },
-        dispatch: (transaction: Parameters<EditorView["dispatch"]>[0]) => {
-          view.dispatch(closeHistory(transaction));
-        },
-      };
-      const activeSuggestionIds = new Set(
-        getSuggestions(view.state).map((s) => s.suggestionId),
-      );
-      const result = applyWithStagedOperationComments({
-        view: closingView,
-        createComment: (text) =>
-          opts.createAIEditComment(text, operationAuthor),
-        publishComments: opts.publishAIEditComments,
-        apply: (createCommentId, recordingView) =>
-          applyFolioDocumentOperations({
-            undefinedReferences,
-            view: recordingView,
-            snapshot,
-            batch,
-            author: operationAuthor,
-            createCommentId,
-            createUndoHandle: () => ({
-              type: "documentOperationUndo",
-              id: `vue-${String(documentOperationUndoHandleCursor++)}`,
-            }),
-          }),
-      });
-      if (batch.mode === "suggested" && result.status === "committed") {
-        pendingSuggestionRegistry.recordApplied({
-          snapshot,
-          story: { type: "main" },
-          operations: batch.operations,
-          applied: result.applied,
-          author: operationAuthor,
-          activeSuggestionIds,
-        });
-      }
-      if (result.undoHandle !== null) {
-        documentOperationUndoEntries.push({
-          undoHandle: result.undoHandle,
-          afterState: view.state,
-          commentsBefore,
-          commentsAfterJson: canonicalJson(opts.getComments()),
-          recorded: commentRecordsOf(view.state) !== null,
-        });
-      }
-      return result;
+      return unapplied();
     },
-    undoDocumentOperations: (undoHandle): FolioDocumentOperationUndoResult => {
-      const canonical = opts.editor.undoCanonicalDocumentOperations(undoHandle);
-      if (canonical) return canonical;
-      const entryIndex = documentOperationUndoEntries.findIndex(
-        (entry) =>
-          entry.undoHandle.type === undoHandle.type &&
-          entry.undoHandle.id === undoHandle.id,
-      );
-      if (entryIndex === -1) {
-        return { status: "rejected", undoHandle, reason: "unknownHandle" };
-      }
-      if (entryIndex !== documentOperationUndoEntries.length - 1) {
-        return { status: "rejected", undoHandle, reason: "notLatest" };
-      }
-
-      const entry = documentOperationUndoEntries.at(-1);
-      const view = opts.editorView.value;
-      if (!entry || !view) {
-        return { status: "rejected", undoHandle, reason: "unknownHandle" };
-      }
-      if (
-        !view.state.doc.eq(entry.afterState.doc) ||
-        canonicalJson(opts.getComments()) !== entry.commentsAfterJson
-      ) {
-        return { status: "rejected", undoHandle, reason: "documentChanged" };
-      }
-      if (!opts.editor.undo()) {
-        return { status: "rejected", undoHandle, reason: "documentChanged" };
-      }
-
-      // Undo restored records the editor holds; others are put back here.
-      if (!entry.recorded) opts.setComments(entry.commentsBefore);
-      documentOperationUndoEntries.pop();
-      return { status: "undone", undoHandle };
-    },
+    undoDocumentOperations: (undoHandle): FolioDocumentOperationUndoResult =>
+      opts.editor.undoCanonicalDocumentOperations(undoHandle) ?? {
+        status: "rejected",
+        undoHandle,
+        reason: "unknownHandle",
+      },
     applyAIEditOperations,
     acceptAIEditOperation: (revisionIds) => {
       const view = opts.editorView.value;
       if (!view) {
         return false;
       }
-      if (opts.editor.getCanonicalDocument()) {
-        return opts.editor.resolveCanonicalRevisions(
-          typeof revisionIds === "number" ? [revisionIds] : revisionIds,
-          "accept",
-        );
-      }
-      return acceptAIEditRevision(revisionIds)(view.state, view.dispatch);
+      if (!opts.editor.getCanonicalDocument()) return false;
+      return opts.editor.resolveCanonicalRevisions(
+        typeof revisionIds === "number" ? [revisionIds] : revisionIds,
+        "accept",
+      );
     },
     rejectAIEditOperation: (revisionIds) => {
       const view = opts.editorView.value;
       if (!view) {
         return false;
       }
-      if (opts.editor.getCanonicalDocument()) {
-        return opts.editor.resolveCanonicalRevisions(
-          typeof revisionIds === "number" ? [revisionIds] : revisionIds,
-          "reject",
-        );
-      }
-      return rejectAIEditRevision(revisionIds)(view.state, view.dispatch);
+      if (!opts.editor.getCanonicalDocument()) return false;
+      return opts.editor.resolveCanonicalRevisions(
+        typeof revisionIds === "number" ? [revisionIds] : revisionIds,
+        "reject",
+      );
     },
     undo: undoActiveView,
     redo: redoActiveView,
@@ -971,9 +837,7 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
             "accept",
             options?.author ?? opts.author(),
           )
-        : acceptSuggestion(suggestionId, {
-            author: options?.author ?? opts.author(),
-          })(view.state, view.dispatch);
+        : false;
       return { accepted, appliedAs: accepted ? appliedAs : null };
     },
     rejectSuggestion: (suggestionId) => {
@@ -981,13 +845,12 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       if (!view) {
         return false;
       }
-      if (opts.editor.getCanonicalDocument())
-        return opts.editor.resolveCanonicalSuggestion(
-          suggestionId,
-          "reject",
-          opts.author(),
-        );
-      return rejectSuggestion(suggestionId)(view.state, view.dispatch);
+      if (!opts.editor.getCanonicalDocument()) return false;
+      return opts.editor.resolveCanonicalSuggestion(
+        suggestionId,
+        "reject",
+        opts.author(),
+      );
     },
     scrollToSuggestion: (suggestionId) => {
       const view = opts.editorView.value;

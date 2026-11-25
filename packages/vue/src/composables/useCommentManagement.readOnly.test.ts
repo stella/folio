@@ -89,17 +89,15 @@ test("a read-only editor publishes no comment thread change", () => {
   }
 });
 
-test("an editable editor publishes each comment thread change", () => {
+test("without a canonical session a comment thread change reports the document read-only", () => {
   const harness = mountManagement(false);
   try {
     const { management } = harness;
     management.handleResolve(THREAD.id);
     management.handleDelete(THREAD.id);
-    expect(harness.changes).toHaveLength(2);
-    expect(harness.changes.at(0)?.at(0)?.done).toBe(true);
-    expect(harness.changes.at(1)).toEqual([]);
-    expect(management.commentsDirty.value).toBe(true);
-    expect(harness.refusals).toBe(0);
+    expect(harness.changes).toEqual([]);
+    expect(management.commentsDirty.value).toBe(false);
+    expect(harness.refusals).toBe(2);
   } finally {
     harness.unmount();
   }
