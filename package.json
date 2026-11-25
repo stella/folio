@@ -99,6 +99,8 @@
     "typecheck:tooling": "bun check --no-pretty --all --project=scripts/tsconfig.budgets.json",
     "typecheck:budget": "bun scripts/typecheck-budget.ts --check",
     "typecheck:budget:write": "bun scripts/typecheck-budget.ts --write",
+    "typecheck:tests": "bun scripts/test-typecheck-baseline.ts --check",
+    "typecheck:tests:write": "bun scripts/test-typecheck-baseline.ts --write-baseline",
     "test": "bun --filter '*' test && bun test scripts && bun test benchmarks/compare",
     "test:property": "bun scripts/property-areas.ts --all",
     "typegen": "bun scripts/i18n-typegen.ts packages/core/src/i18n/messages",

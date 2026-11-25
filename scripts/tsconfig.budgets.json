@@ -12,6 +12,8 @@
     "canonical-cutover.test.ts",
     "canonical-command-census.test.ts",
     "typecheck-budget.ts",
+    "test-typecheck-baseline.ts",
+    "test-typecheck-baseline.test.ts",
     "lib/exact-object.ts",
     "fuzz-failure-issues.ts",
     "fuzz-failure-issues.test.ts",
