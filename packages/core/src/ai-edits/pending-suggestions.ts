@@ -730,8 +730,8 @@ type PlacedRecordOptions = {
 
 /**
  * `record`, a block insertion whose anchor paragraph is gone, anchored where
- * its paragraphs stand: before the next saved paragraph beside them, or,
- * when none follows, after the previous one. `null` for a record of another
+ * its paragraphs stand, using a saved neighbour on the same side of other
+ * pending insertions when possible. `null` for a record of another
  * kind, whose words a save does not hold once its paragraph is gone, and
  * for an insertion with no paragraph of its own or no saved one beside it.
  */
@@ -750,7 +750,7 @@ const placedRecord = ({
   const savedIds = new Set(saved.blocks.map(({ id }) => id));
   // A paragraph the suggestion adds: one a save does not hold, or one it
   // covers whole, as rejecting it can leave an empty paragraph that keeps
-  // its id.
+  // its id. Use half-open ranges at neighbouring paragraph boundaries.
   const isOwn = ({ id }: FolioAIEditSnapshot["blocks"][number]) => {
     const anchor = live.anchors[id];
     if (anchor === undefined) return false;
@@ -758,7 +758,7 @@ const placedRecord = ({
       ? ranges.some(
           ({ from, to }) => from <= anchor.from + 1 && anchor.to - 1 <= to,
         )
-      : ranges.some(({ from, to }) => from <= anchor.to && anchor.from <= to);
+      : ranges.some(({ from, to }) => from < anchor.to && anchor.from < to);
   };
   const index = live.blocks.findIndex(isOwn);
   const placed = live.blocks.at(index);
@@ -768,20 +768,26 @@ const placedRecord = ({
   // same container: a table or another container between them is no place
   // beside it.
   const besideIn = (step: 1 | -1) => {
+    let crossesProposal = false;
     for (
       let at = index + step;
       at >= 0 && at < live.blocks.length;
       at += step
     ) {
       const block = live.blocks.at(at);
-      if (block === undefined || !savedIds.has(block.id) || isOwn(block))
-        continue;
-      return containerKey(block) === container ? block : undefined;
+      if (block === undefined || containerKey(block) !== container) break;
+      if (isOwn(block)) continue;
+      if (savedIds.has(block.id)) return { block, crossesProposal };
+      crossesProposal = true;
     }
     return undefined;
   };
   const next = besideIn(1);
-  const neighbour = next ?? besideIn(-1);
+  const previous = besideIn(-1);
+  const before =
+    next !== undefined &&
+    (!next.crossesProposal || previous?.crossesProposal !== false);
+  const neighbour = before ? next.block : previous?.block;
   const anchor =
     neighbour === undefined ? undefined : saved.anchors[neighbour.id];
   if (neighbour === undefined || anchor === undefined) return null;
@@ -789,12 +795,15 @@ const placedRecord = ({
     ...record,
     operation: {
       ...operation,
-      type: next === undefined ? "insertAfterBlock" : "insertBeforeBlock",
+      type: before ? "insertBeforeBlock" : "insertAfterBlock",
       blockId: neighbour.id,
+      ...(operation.precondition !== undefined && {
+        precondition: { blockTextHash: anchor.textHash },
+      }),
     },
     anchor: {
       blockId: neighbour.id,
-      paraId: neighbour.id,
+      paraId: getFolioParaIdFromBlockId(neighbour.id),
       originalTextHash: anchor.textHash,
     },
   };
@@ -999,7 +1008,11 @@ export class FolioPendingSuggestionRegistry {
   }: PlaceRemovedAnchorsOptions): void {
     const views = new Map<
       string,
-      { state: EditorState; live: FolioAIEditSnapshot } | null
+      {
+        state: EditorState;
+        live: FolioAIEditSnapshot;
+        saved?: FolioAIEditSnapshot | null;
+      } | null
     >();
     for (const [key, record] of Array.from(this.records)) {
       const { suggestionId, story, anchor } = record;
@@ -1025,11 +1038,12 @@ export class FolioPendingSuggestionRegistry {
       }
       if (view === null || view.live.anchors[anchor.paraId] !== undefined)
         continue;
-      const saved =
-        record.splitRevisionId !== undefined || proposesText(record.operation)
-          ? (savedSource?.(story) ?? null)
-          : null;
-      if (saved !== null) {
+      if (view.saved === undefined) view.saved = savedSource?.(story) ?? null;
+      const saved = view.saved;
+      if (
+        saved !== null &&
+        (record.splitRevisionId !== undefined || proposesText(record.operation))
+      ) {
         const split = currentSplitRecord({ record, state: view.state, saved });
         if (split !== null) {
           this.records.set(key, split);
@@ -1058,7 +1072,8 @@ export class FolioPendingSuggestionRegistry {
       const placed = placedRecord({
         record,
         live: view.live,
-        saved: createPendingSuggestionSourceSnapshot(view.state, new Set()),
+        saved:
+          saved ?? createPendingSuggestionSourceSnapshot(view.state, new Set()),
         ranges,
       });
       this.records.set(key, placed ?? retiredRecord(record));
@@ -1229,7 +1244,7 @@ export class FolioPendingSuggestionRegistry {
     const pending: FolioPendingSuggestionRecord[] = [];
     const savedStories = new Map<
       string,
-      { snapshot: FolioAIEditSnapshot; fingerprint: string }
+      { snapshot: FolioAIEditSnapshot; fingerprint: string } | null
     >();
     const liveStories = new Map<string, EditorState | null>();
     const commentIdsByStory = new Map<string, Set<number>>();
@@ -1244,32 +1259,45 @@ export class FolioPendingSuggestionRegistry {
       commentIds.add(record.commentId);
       commentIdsByStory.set(storyKey, commentIds);
     }
+    const savedStoryOf = (story: FolioDocumentStoryHandle) => {
+      const storyKey = canonicalJson(story);
+      const cached = savedStories.get(storyKey);
+      if (cached !== undefined) return cached;
+      const snapshot = snapshotForStory(
+        story,
+        commentIdsByStory.get(storyKey) ?? new Set<number>(),
+      );
+      const saved =
+        snapshot === null
+          ? null
+          : { snapshot, fingerprint: fingerprintOf(snapshot, story) };
+      savedStories.set(storyKey, saved);
+      return saved;
+    };
+    const liveStateOf = (story: FolioDocumentStoryHandle) => {
+      const storyKey = canonicalJson(story);
+      const cached = liveStories.get(storyKey);
+      if (cached !== undefined) return cached;
+      const state = stateForStory?.(story) ?? null;
+      liveStories.set(storyKey, state);
+      return state;
+    };
+    // An edit can cancel an earlier tracked insertion outright. Repair the
+    // surviving proposals at export even if there are no revisions to resolve.
+    if (stateForStory !== undefined)
+      this.placeRemovedAnchors({
+        activeSuggestionIds,
+        stateForStory: liveStateOf,
+        savedSource: (story) => savedStoryOf(story)?.snapshot ?? null,
+      });
+
     for (const [key, record] of this.records) {
       if (activeSuggestionIds.has(record.suggestionId)) {
-        const storyKey = canonicalJson(record.story);
-        let saved = savedStories.get(storyKey);
-        if (saved === undefined) {
-          const snapshot = snapshotForStory(
-            record.story,
-            commentIdsByStory.get(storyKey) ?? new Set<number>(),
-          );
-          if (!snapshot) continue;
-          saved = {
-            snapshot,
-            fingerprint: fingerprintOf(snapshot, record.story),
-          };
-          savedStories.set(storyKey, saved);
-        }
+        const saved = savedStoryOf(record.story);
+        if (saved === null) continue;
         let updated = record;
-        if (
-          record.splitRevisionId !== undefined &&
-          stateForStory !== undefined
-        ) {
-          let state = liveStories.get(storyKey);
-          if (state === undefined) {
-            state = stateForStory(record.story);
-            liveStories.set(storyKey, state);
-          }
+        if (record.splitRevisionId !== undefined) {
+          const state = liveStateOf(record.story);
           if (state !== null)
             updated =
               currentSplitRecord({ record, state, saved: saved.snapshot }) ??
@@ -1286,8 +1314,9 @@ export class FolioPendingSuggestionRegistry {
         this.records.delete(key);
       }
     }
-    for (const [storyKey, { fingerprint }] of savedStories) {
-      this.sourceFingerprints.set(storyKey, fingerprint);
+    for (const [storyKey, saved] of savedStories) {
+      if (saved !== null)
+        this.sourceFingerprints.set(storyKey, saved.fingerprint);
     }
     if (pending.length === 0) this.sourceFingerprints.clear();
     return pending;
