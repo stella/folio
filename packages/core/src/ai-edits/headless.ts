@@ -2038,7 +2038,7 @@ export class FolioDocxReviewer {
     }
     const absorptions = prepared.value.touched.absorbed ?? [];
     const sourceSnapshotForStory = (story: FolioEditableDocumentStoryHandle) =>
-      this.pendingSuggestionSource(story, new Set());
+      this.pendingSuggestionSource(story);
     // A live proposal on an absorbed paragraph now lives in the survivor, and
     // its record follows it there. Compare the session's saved snapshots:
     // rejecting a suggestion in a different projection can keep another id.
@@ -3825,22 +3825,11 @@ export class FolioDocxReviewer {
    * same states, so the text now describes exactly what a save would write.
    */
 
-  private getHeaderFooterStoryText(
-    story: FolioHeaderFooterStoryHandle,
-    source: HeaderFooter,
-  ): string {
-    return normalizeFolioAIBlockText(
-      getHeaderFooterText({
-        ...source,
-        content: source.content,
-      }),
-    );
+  private getHeaderFooterStoryText(source: HeaderFooter): string {
+    return normalizeFolioAIBlockText(getHeaderFooterText(source));
   }
 
-  private getNoteStoryText(
-    story: FolioNoteStoryHandle,
-    source: Footnote | Endnote,
-  ): string {
+  private getNoteStoryText(source: Footnote | Endnote): string {
     const { content } = source;
     return normalizeFolioAIBlockText(
       source.type === "footnote"
@@ -3858,13 +3847,13 @@ export class FolioDocxReviewer {
       if (!source) {
         return panic("A listed document story no longer exists", { story });
       }
-      return this.getHeaderFooterStoryText(story, source);
+      return this.getHeaderFooterStoryText(source);
     }
     const source = this.getNoteStory(story);
     if (!source) {
       return panic("A listed document story no longer exists", { story });
     }
-    return this.getNoteStoryText(story, source);
+    return this.getNoteStoryText(source);
   }
 
   /**

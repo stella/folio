@@ -46,11 +46,9 @@ import {
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
 const MAIN: FolioDocumentStoryHandle = { type: "main" };
-// Recorded formatting merge after a footnote split/deletion chain. The sweep
-// picks blocks through their ids, which each engine mints its own way, so
-// each engine reaches that merge from a seed of its own.
+// Recorded formatting merge after a footnote split/deletion chain, reached
+// through the block ids the canonical session mints.
 const TRACKED_STORY_REVISION = {
-  legacy: { seed: 1455, step: 44 },
   canonical: { seed: 3, step: 40 },
 } as const satisfies Record<
   ReturnType<typeof scenarioEngine>,

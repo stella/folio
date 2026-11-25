@@ -174,32 +174,22 @@ export type ReviewerEngine = NonNullable<
 >;
 
 /**
- * The engine scenarios open reviewers on: `FOLIO_SCENARIO_ENGINE`, else the
- * reviewer's own default, the canonical session. A scenario file that replays
- * on the legacy engine sets it before it opens anything; each scenario file
- * runs in its own process.
+ * The engine scenarios open reviewers on: the canonical session, the only
+ * one. `FOLIO_SCENARIO_ENGINE` may still name it.
  */
 export const scenarioEngine = (): ReviewerEngine => {
   const raw = process.env["FOLIO_SCENARIO_ENGINE"];
   if (raw === undefined || raw === "" || raw === "canonical")
     return "canonical";
-  if (raw === "legacy") return "legacy";
   throw new Error(`Invalid FOLIO_SCENARIO_ENGINE: ${raw}`);
 };
 
-/**
- * The reviewer a fixture is built with: always the legacy engine, so a
- * fixture's bytes, and the block ids flows pin in them, do not depend on the
- * engine a scenario runs on.
- */
+/** The reviewer a fixture is built with. */
 export const openFixtureBuilder = (
   bytes: Uint8Array,
   author = AUTHOR,
 ): Promise<Reviewer> =>
-  FolioDocxReviewer.fromBuffer(toArrayBuffer(bytes), {
-    author,
-    session: "legacy",
-  });
+  FolioDocxReviewer.fromBuffer(toArrayBuffer(bytes), { author });
 
 export const openReviewer = (
   bytes: Uint8Array,

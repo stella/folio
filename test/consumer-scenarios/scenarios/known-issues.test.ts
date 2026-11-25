@@ -158,13 +158,6 @@ describe("findings not yet filed", () => {
     );
   };
 
-  expectedFailure(
-    "LEGACY_REPLACEMENT_TAKES_COMMENT",
-    "replacing exactly the words a comment covers takes the comment with them",
-    FINDING_SYMPTOMS.LEGACY_REPLACEMENT_TAKES_COMMENT,
-    () => replaceCommentedWords("legacy"),
-  );
-
   test("the canonical session takes a comment with exactly the words it covers", () =>
     replaceCommentedWords("canonical"));
 
@@ -264,14 +257,6 @@ describe("fixed findings", () => {
       .getContent()
       .map((block) => block.text);
   };
-
-  test("a paragraph inserted after a block with a pending tracked merge stays its own paragraph once accepted on the legacy engine", async () => {
-    const accepted = await acceptedAfterInsertionBesideMerge("legacy");
-    assert.ok(
-      accepted.includes("New clause."),
-      `accepting glues the inserted paragraph onto the merged one: ${JSON.stringify(accepted)}`,
-    );
-  });
 
   test("a paragraph inserted after a block with a pending tracked merge runs into it once accepted on the canonical session", async () => {
     const accepted = await acceptedAfterInsertionBesideMerge("canonical");
@@ -672,13 +657,6 @@ describe("findings of the metamorphic relations (support/metamorphic.ts) and the
     );
     return anchors["direct"];
   };
-
-  test("two comments covering the same text anchor alike directly and tracked-then-accepted on the legacy engine", async () => {
-    assert.deepEqual(await anchorsAfterReplacingTwiceCommentedText("legacy"), [
-      "New clause text.",
-      "New clause text.",
-    ]);
-  });
 
   test("two comments covering the same text anchor alike directly and tracked-then-accepted on the canonical session", async () => {
     assert.deepEqual(

@@ -19,16 +19,8 @@ export const OPEN_ISSUES = {} as const;
  * repro in the scenario that pins it.
  */
 export const FINDINGS = {
-  LEGACY_TOC_REGENERATION_DANGLING_REFERENCES:
-    "Legacy generateTOC replaces existing _Toc bookmark names while prior TOC hyperlinks and PAGEREF instructions keep those names",
-  LEGACY_PARAGRAPH_TAB_EDITS_LOST:
-    "legacy paragraph tab commands edit PM attrs, but imported paragraph serialization retains original tabs; canonical descriptors retire this defect for canonical sessions",
   MARKDOWN_DROPS_TEXT_BOX:
     "docxToMarkdown writes nothing of a text box's paragraphs, which getContent() and read_document list as blocks (support/readers.ts leaves them out of the Markdown comparison until fixed)",
-  LEGACY_INSERT_AFTER_EMPTIED_JOIN:
-    "legacy insertAfterBlock after an emptied paragraph whose break is pending deletion puts the paragraph after the one the join leaves but with the emptied paragraph's properties; the canonical session gives it the properties of the paragraph the join leaves, which the joined paragraph has",
-  LEGACY_REPLACEMENT_TAKES_COMMENT:
-    "legacy replacement hands a comment over the words it replaces to the new words; they go past the end of that comment, which goes with its words, as the canonical session does (support/oracle.ts predicts where that comment goes on the canonical session only)",
 } as const;
 
 export type OpenIssue = keyof typeof OPEN_ISSUES;
@@ -85,27 +77,12 @@ export const matchesFailureSymptom = (
 };
 
 export const FINDING_SYMPTOMS: Record<Finding, FailureSymptom> = {
-  LEGACY_TOC_REGENERATION_DANGLING_REFERENCES:
-    /legacy TOC regeneration preserves previously referenced bookmark names/u,
-  LEGACY_PARAGRAPH_TAB_EDITS_LOST:
-    /legacy (?:setTabs|addTabStop|removeTabStop) serialization retains original paragraph tabs/u,
   MARKDOWN_DROPS_TEXT_BOX: /docxToMarkdown writes no text-box paragraph/u,
-  LEGACY_INSERT_AFTER_EMPTIED_JOIN:
-    /the result is not what was asked \(insertAfterBlock\):\s+"[^"]+": (?:kind|listLevel|numbering)/u,
-  LEGACY_REPLACEMENT_TAKES_COMMENT:
-    /legacy replacement keeps a comment over the words it replaced/u,
 };
 
-/**
- * The engines each finding reproduces on: a legacy finding's symptom on the
- * canonical session is a new failure, not that finding.
- */
+/** The engines each finding reproduces on. */
 export const FINDING_ENGINES = {
-  LEGACY_TOC_REGENERATION_DANGLING_REFERENCES: ["legacy"],
-  LEGACY_PARAGRAPH_TAB_EDITS_LOST: ["legacy"],
   MARKDOWN_DROPS_TEXT_BOX: ["canonical"],
-  LEGACY_INSERT_AFTER_EMPTIED_JOIN: ["legacy"],
-  LEGACY_REPLACEMENT_TAKES_COMMENT: ["legacy"],
 } as const satisfies Record<Finding, readonly ReviewerEngine[]>;
 
 const isFinding = (name: string): name is Finding =>
@@ -151,10 +128,7 @@ export const logRecordedFinding = (
  * finding; they run as expected failures there.
  */
 export const KNOWN_FAILING_CHECKED_IN_FLOWS: Readonly<Record<string, Finding>> =
-  {
-    "issue-1757-paragraph-after-emptied-paragraph-pending-break.json":
-      "LEGACY_INSERT_AFTER_EMPTIED_JOIN",
-  };
+  {};
 
 /**
  * Checked-in flow files with steps that apply nothing (support/fuzz.ts

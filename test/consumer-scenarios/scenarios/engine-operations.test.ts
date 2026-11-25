@@ -8,10 +8,7 @@
  *   change gives without it, and accepting every change gives the words of
  *   the same batch applied directly.
  *
- * Each operation is also applied on the legacy reviewer, and every
- * operation the legacy reviewer applies but the canonical one refuses is
- * counted by its typed refusal and printed, so what is left of the cutover
- * is measured on the same fixtures.
+ * A resolution the session refuses is counted and printed.
  */
 
 import assert from "node:assert/strict";
@@ -141,30 +138,19 @@ describe("operations on the canonical reviewer", () => {
             1,
             `${context}: neither applied nor refused`,
           );
-          const legacyReviewer = await openOn(bytes, "legacy");
-          const legacyBefore = reads(legacyReviewer);
-          const legacy = apply(legacyReviewer, operation, mode);
           if (result.applied.length === 0) {
             assert.ok(result.issues.length > 0, `${context}: no issue`);
             const skip = result.skipped[0];
-            // A no-op on the canonical reviewer changes nothing on the
-            // legacy one either, whatever that one reports.
+            // A no-op changes nothing.
             if (skip?.reason === "noopOperation") {
               assert.deepEqual(
-                reads(legacyReviewer),
-                legacyBefore,
-                `${context}: the canonical no-op changed the legacy reviewer`,
+                reads(canonical),
+                before,
+                `${context}: a no-op changed the reviewer`,
               );
               log.push(`${type}: no-op`);
               continue;
             }
-            if (legacy.applied.length > 0)
-              countRefusal(
-                skip?.canonicalRefusal === undefined
-                  ? // Not a typed gap: name the fixture so it can be replayed.
-                    `${type} / ${mode}: untyped ${skip?.reason ?? "unknown"} on ${name}`
-                  : `${type} / ${mode}: ${skip.canonicalRefusal.gap}`,
-              );
             log.push(`${type}: refused`);
             continue;
           }

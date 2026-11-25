@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
-import { scenarioEngine } from "../support/documents.ts";
 import { parseFlowFile } from "../support/flow-file.ts";
 import { runFlowFile, vacuousSteps } from "../support/fuzz.ts";
 import {
@@ -11,53 +10,6 @@ import {
   expectOperation,
   modelOf,
 } from "../support/oracle.ts";
-
-/** Read authored marker ownership independently of either comment projection. */
-const markerOwners = (document: unknown, commentId: number) => {
-  const owners = {
-    start: [] as string[],
-    end: [] as string[],
-    reference: [] as string[],
-  };
-  const visit = (value: unknown, paragraphId: string | undefined): void => {
-    if (Array.isArray(value)) {
-      for (const child of value) visit(child, paragraphId);
-      return;
-    }
-    if (typeof value !== "object" || value === null) return;
-    const owner =
-      "type" in value &&
-      value.type === "paragraph" &&
-      "paraId" in value &&
-      typeof value.paraId === "string"
-        ? value.paraId
-        : paragraphId;
-    if (
-      "id" in value &&
-      value.id === commentId &&
-      "type" in value &&
-      (value.type === "commentRangeStart" ||
-        value.type === "commentRangeEnd" ||
-        value.type === "commentReference")
-    ) {
-      assert.ok(owner, "An authored comment marker must belong to a paragraph");
-      switch (value.type) {
-        case "commentRangeStart":
-          owners.start.push(owner);
-          break;
-        case "commentRangeEnd":
-          owners.end.push(owner);
-          break;
-        case "commentReference":
-          owners.reference.push(owner);
-          break;
-      }
-    }
-    for (const child of Object.values(value)) visit(child, owner);
-  };
-  visit(document, undefined);
-  return owners;
-};
 
 const cases = [
   {
@@ -89,181 +41,43 @@ const appliedCounts = (run: Awaited<ReturnType<typeof runFlowFile>>) =>
     return effect.applied;
   });
 
-// These flows reach a comment over the replacement's new words only through
-// the legacy engine handing the comment to them
-// (LEGACY_REPLACEMENT_TAKES_COMMENT). The canonical session keeps the
-// comment with the words it covers, which the replacement deletes.
-const LEGACY_ONLY =
-  scenarioEngine() === "legacy"
-    ? false
-    : "LEGACY_REPLACEMENT_TAKES_COMMENT: the comment never reaches the new words";
-const CANONICAL_ONLY =
-  scenarioEngine() === "canonical"
-    ? false
-    : "LEGACY_REPLACEMENT_TAKES_COMMENT: the legacy engine hands the comment to the new words";
-
-for (const { file, story, applied } of cases)
-  test(
-    `${file} retires the accepted tail while retaining its pending live range`,
-    {
-      skip: LEGACY_ONLY,
-    },
-    async () => {
-      const flow = readFlow(file);
-      let captured: Awaited<ReturnType<typeof capture>> | undefined;
-      let commentId: number | undefined;
-      const observed = new Set<number>();
-      const run = await runFlowFile(flow, {
-        checks: [
-          {
-            name: "independent split-range ownership",
-            check: async ({ flow: current, index }) => {
-              if (index < flow.steps.length - 2) return;
-              observed.add(index);
-              const snapshot = await capture(
-                current.reviewer,
-                "tracked-changes",
-                { story },
-              );
-              const document = current.reviewer.toDocument();
-              // Read the authored story content once; sections also project the
-              // body paragraphs and must not count the same markers a second time.
-              const content =
-                story.type === "main"
-                  ? document.package.document.content
-                  : document.package.footnotes?.find(
-                      ({ id }) => id === story.noteId,
-                    )?.content;
-              assert.ok(content);
-              if (index === flow.steps.length - 2) {
-                captured = snapshot;
-                const accepted = snapshot.comments.at(0);
-                const live = snapshot.liveComments.at(0);
-                assert.ok(accepted && live);
-                assert.equal(snapshot.comments.length, 1);
-                assert.equal(snapshot.liveComments.length, 1);
-                commentId = accepted.id;
-                assert.equal(accepted.anchor, "updated");
-                assert.notEqual(live.blockId, accepted.blockId);
-                assert.ok(live.anchor.endsWith(accepted.anchor));
-                assert.deepEqual(markerOwners(content, accepted.id), {
-                  start: [live.blockId],
-                  end: [accepted.blockId],
-                  reference: [accepted.blockId],
-                });
-                assert.equal(
-                  modelOf(
-                    snapshot.rows,
-                    snapshot.liveRows,
-                    snapshot.joinSources,
-                  ).pendingJoins.size,
-                  0,
-                  "A tracked split is not a pending paragraph join",
-                );
-                return;
-              }
-              assert.ok(captured && commentId !== undefined);
-              assert.deepEqual(snapshot.comments, []);
-              assert.equal(
-                snapshot.liveComments.length,
-                1,
-                "Deleting the accepted coverage must keep the rejectable live thread",
-              );
-              assert.equal(snapshot.liveComments.at(0)?.id, commentId);
-              const owners = markerOwners(content, commentId);
-              assert.equal(owners.start.length, 1);
-              assert.equal(owners.end.length, 1);
-              assert.equal(owners.reference.length, 1);
-              const accepted = captured.comments.at(0);
-              assert.ok(accepted?.blockId);
-              const model = modelOf(
-                captured.rows,
-                captured.liveRows,
-                captured.joinSources,
-              );
-              expectOperation(model, {
-                type: "deleteBlock",
-                blockId: accepted.blockId,
-              });
-              assert.deepEqual(
-                compareComments(
-                  model,
-                  captured.comments,
-                  [],
-                  snapshot.rows,
-                  captured.liveComments,
-                  "tracked-changes",
-                ),
-                [],
-              );
-              assert.match(
-                compareComments(
-                  model,
-                  captured.comments,
-                  [accepted],
-                  snapshot.rows,
-                  captured.liveComments,
-                  "tracked-changes",
-                ).join("\n"),
-                /outlived/u,
-                "Retaining the thread on its removed accepted owner is an orphan",
-              );
-            },
-          },
-        ],
-      });
-      assert.deepEqual(vacuousSteps(run), []);
-      assert.deepEqual(appliedCounts(run), applied);
-      assert.deepEqual(
-        [...observed],
-        [flow.steps.length - 2, flow.steps.length - 1],
-      );
-    },
-  );
-
 for (const { file, story, applied, replaced } of cases)
-  test(
-    `${file} keeps the replaced words' thread rejectable through the split and the tail deletion`,
-    {
-      skip: CANONICAL_ONLY,
-    },
-    async () => {
-      const flow = readFlow(file);
-      let commentId: number | undefined;
-      const observed = new Set<number>();
-      const run = await runFlowFile(flow, {
-        checks: [
-          {
-            name: "replaced comment ownership",
-            check: async ({ flow: current, index }) => {
-              if (index < flow.steps.length - 2) return;
-              observed.add(index);
-              const snapshot = await capture(
-                current.reviewer,
-                "tracked-changes",
-                { story },
-              );
-              // The comment went with the words the replacement deleted: no
-              // accepted owner holds it, and its live thread stays rejectable.
-              assert.deepEqual(snapshot.comments, []);
-              assert.equal(snapshot.liveComments.length, 1);
-              const live = snapshot.liveComments.at(0);
-              assert.ok(live);
-              assert.equal(live.anchor, replaced);
-              commentId ??= live.id;
-              assert.equal(live.id, commentId);
-            },
+  test(`${file} keeps the replaced words' thread rejectable through the split and the tail deletion`, async () => {
+    const flow = readFlow(file);
+    let commentId: number | undefined;
+    const observed = new Set<number>();
+    const run = await runFlowFile(flow, {
+      checks: [
+        {
+          name: "replaced comment ownership",
+          check: async ({ flow: current, index }) => {
+            if (index < flow.steps.length - 2) return;
+            observed.add(index);
+            const snapshot = await capture(
+              current.reviewer,
+              "tracked-changes",
+              { story },
+            );
+            // The comment went with the words the replacement deleted: no
+            // accepted owner holds it, and its live thread stays rejectable.
+            assert.deepEqual(snapshot.comments, []);
+            assert.equal(snapshot.liveComments.length, 1);
+            const live = snapshot.liveComments.at(0);
+            assert.ok(live);
+            assert.equal(live.anchor, replaced);
+            commentId ??= live.id;
+            assert.equal(live.id, commentId);
           },
-        ],
-      });
-      assert.deepEqual(vacuousSteps(run), []);
-      assert.deepEqual(appliedCounts(run), applied);
-      assert.deepEqual(
-        [...observed],
-        [flow.steps.length - 2, flow.steps.length - 1],
-      );
-    },
-  );
+        },
+      ],
+    });
+    assert.deepEqual(vacuousSteps(run), []);
+    assert.deepEqual(appliedCounts(run), applied);
+    assert.deepEqual(
+      [...observed],
+      [flow.steps.length - 2, flow.steps.length - 1],
+    );
+  });
 
 test("a differing live locator cannot excuse unrelated accepted comment loss", () => {
   const source = {

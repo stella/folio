@@ -363,11 +363,6 @@ describe("save comparison block identity", () => {
       const savedBlock = saved.reopened.getComments().at(0)?.blockId;
       const engine = scenarioEngine();
       switch (engine) {
-        // The legacy save writes no id for a paragraph the package named none
-        // for: the reopened id is derived again, from the merged text.
-        case "legacy":
-          assert.notEqual(liveBlock, savedBlock);
-          break;
         // The canonical save writes the id it minted on opening: the reopened
         // package carries it, so it reads stable where the live one is
         // positional.
