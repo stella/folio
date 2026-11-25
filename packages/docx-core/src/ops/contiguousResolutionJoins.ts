@@ -47,6 +47,27 @@ const isPlainJoinParagraph = (
   isPlainTextContent(paragraph) &&
   Object.keys(paragraph).every((key) => plainFields.has(key));
 
+type KeepsFirstBesideOptions = {
+  paragraphAt: (index: number) => Paragraph | undefined;
+  start: number;
+  end: number;
+};
+
+/**
+ * Whether a mark in the run, or just before it, keeps its own paragraph on
+ * rejection: whether it still does depends on the joins after it, which the
+ * general path settles one at a time.
+ */
+const keepsFirstBeside = ({
+  paragraphAt,
+  start,
+  end,
+}: KeepsFirstBesideOptions): boolean => {
+  for (let index = Math.max(0, start - 1); index < end - 1; index++)
+    if (paragraphAt(index)?.pPrMark?.survivor === "first") return true;
+  return false;
+};
+
 type PlanPairOptions = { join: JoinPlan; first: Paragraph; second: Paragraph };
 
 type ContiguousJoinOptions = {
@@ -96,7 +117,8 @@ export const planContiguousResolutionJoins = ({
     end > paragraphCount ||
     survivor === undefined ||
     survivor.pPrMark !== undefined ||
-    !isPlainJoinParagraph(survivor)
+    !isPlainJoinParagraph(survivor) ||
+    keepsFirstBeside({ paragraphAt, start, end })
   )
     return { type: "fallback", reason: "joinShape" };
 

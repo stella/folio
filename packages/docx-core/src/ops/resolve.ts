@@ -172,6 +172,7 @@ import {
   type RevisionAbsorption,
   type RevisionDecision,
   SECTION_BOUNDARY_POLICIES,
+  type SetParagraphReviewOp,
 } from "./types";
 
 /** Applies operations atomically; `applyDocumentOps`, passed in to keep the modules acyclic. */
@@ -6593,6 +6594,40 @@ const cutGoesOn = ({
   );
 };
 
+type ReleasedFirstSurvivorOptions = {
+  story: OpStory;
+  previous: BlockContent | undefined;
+};
+
+/**
+ * The op that drops `survivor: "first"` from the mark of `previous`, the
+ * paragraph before one whose resolved mark joins it into the paragraph after
+ * it. That mark kept its paragraph because the joined one held the mark it had
+ * taken over; once the joined one goes, the paragraph after it, which was
+ * there before both, is the one a rejection keeps. Resolving the two marks in
+ * either order then keeps the same paragraph.
+ */
+const releasedFirstSurvivor = ({
+  story,
+  previous,
+}: ReleasedFirstSurvivorOptions): SetParagraphReviewOp[] => {
+  if (previous?.type !== "paragraph" || previous.pPrMark?.survivor !== "first")
+    return [];
+  const { survivor: _survivor, ...pPrMark } = previous.pPrMark;
+  const expected = reviewFieldsOf(previous);
+  return [
+    {
+      type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
+      story,
+      blockId:
+        previous.paraId ??
+        panic("A paragraph whose mark keeps it carries a paraId."),
+      expected,
+      review: { ...expected, pPrMark },
+    },
+  ];
+};
+
 const joinOps = (
   document: Document,
   { op, story, paraId, revisionId, added, depth, holders }: JoinPlan,
@@ -6744,6 +6779,9 @@ const joinOps = (
     const receiverEffects: ResolutionReceiverEffect[] = [
       { type: "paragraph-join", receiver },
     ];
+    const released = keepsFirst
+      ? []
+      : releasedFirstSurvivor({ story, previous });
     if (standing.length > 0) {
       return paragraphMarkPlan(
         [
@@ -6759,6 +6797,7 @@ const joinOps = (
               ...blocks.slice(followerIndex + 1),
             ],
           },
+          ...released,
         ],
         receiverEffects,
       );
@@ -6774,6 +6813,7 @@ const joinOps = (
             ? {}
             : { sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE }),
         },
+        ...released,
       ],
       receiverEffects,
     );

@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "title": "PINNED #3521, reported seed 1434858180: a suggested split of a suggested inserted paragraph leaves the paragraph after it its own id",
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "comments",
+  "mode": "suggested",
+  "seed": 1434858180,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 731505013,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "412DDC7F",
+          "text": "Second added clause."
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 1931235156,
+      "operations": [{ "type": "splitBlock", "blockId": "@1", "offset": 6 }]
+    }
+  ],
+  "origin": "shrunk from collisions flow seed 1434858180"
+}
