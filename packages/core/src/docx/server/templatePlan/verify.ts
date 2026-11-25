@@ -8,6 +8,7 @@ import { Result } from "better-result";
 
 import { resolveNamespaceUri } from "@stll/docx-core/xml/namespaces";
 
+import { isNumberingReference } from "../../numberingReference";
 import { parseSettings } from "../../settingsParser";
 import {
   OFFICE_RELATIONSHIP_NAMESPACE_URIS,
@@ -621,10 +622,9 @@ export const reportTemplatePlanOutput = async ({
         dangling.styles.add(styleId);
       }
     } else if (name === "numId") {
-      const numId = integerOrNull(wAttr(element, "val"));
+      const numId = integerOrNull(wAttr(element, "val")) ?? undefined;
       if (
-        numId !== null &&
-        numId !== 0 &&
+        isNumberingReference(numId) &&
         out.numbering?.hasNumbering(numId) !== true
       ) {
         dangling.numbering.add(String(numId));

@@ -104,7 +104,8 @@ export const wrapParagraphContentInBookmark = ({
   const declared = `<wrap xmlns:${prefixes.w}="${prefixes.wUri}" xmlns:${prefixes.r}="${RELATIONSHIPS_NAMESPACE}">${paragraphXml}</wrap>`;
   const offset = declared.indexOf(">") + 1;
   const part = readRawPart("paragraph", declared);
-  const paragraph = part === null ? null : elementChildren(part.root).at(0);
+  const paragraph =
+    part === null ? undefined : elementChildren(part.root).at(0);
   if (
     part === null ||
     paragraph === undefined ||

@@ -6,8 +6,9 @@
  */
 import { Result } from "better-result";
 
-import { FOLIO_HIGHLIGHT_COLOR_VALUES } from "../../../document-operations";
+import { HIGHLIGHT_COLOR_VALUES } from "../../../types/documentEnumValues";
 import { parseFieldInstruction } from "../../fieldParser";
+import { computeListRendering } from "../../numberingParser";
 import type { XmlElement } from "../../xmlParser";
 import type { AnalyzedBlock, AnalyzedDocument } from "./blocks";
 import {
@@ -163,8 +164,10 @@ const OMIT_REASONS: ReadonlySet<string> = new Set([
 ]);
 const MERGES: ReadonlySet<string> = new Set(["lineBreak", "space", "none"]);
 const SUFFIXES: ReadonlySet<string> = new Set(["tab", "space", "nothing"]);
+/** The highlight a plan may add; clearing one is not a mark. */
+const CLEARED_HIGHLIGHT = "none";
 const HIGHLIGHT_COLORS: ReadonlySet<string> = new Set(
-  FOLIO_HIGHLIGHT_COLOR_VALUES,
+  HIGHLIGHT_COLOR_VALUES.filter((color) => color !== CLEARED_HIGHLIGHT),
 );
 const LABEL_SPACE = /^[ \t ]+/u;
 const LEADING_SPACE = /^[ \t ]*/u;
@@ -662,7 +665,7 @@ export const resolvePlan = (
     const mintsInstance =
       numId === "new" || restartFrom !== undefined || group !== undefined;
     if (!mintsInstance) {
-      return templateNumbering.getLevel(numId, ilvl) === null
+      return computeListRendering({ numId, ilvl }, templateNumbering) === null
         ? unknown(`The template has no list ${numId} with level ${ilvl}.`)
         : Result.ok({ kind: "direct", numId, ilvl });
     }
@@ -677,11 +680,12 @@ export const resolvePlan = (
     }
     const abstractNumId =
       base === undefined ? null : templateNumbering.getAbstractNumId(base);
-    if (
-      base === undefined ||
-      abstractNumId === null ||
-      templateNumbering.getLevel(base, ilvl) === null
-    ) {
+    // The level as the list renders it, from the one reader of list levels.
+    const baseLevel =
+      base === undefined
+        ? null
+        : computeListRendering({ numId: base, ilvl }, templateNumbering);
+    if (base === undefined || abstractNumId === null || baseLevel === null) {
       return unknown(
         `Block ${blockId} starts a list the template does not define.`,
       );
@@ -694,8 +698,7 @@ export const resolvePlan = (
         numId: nextNumId,
         abstractNumId,
         ilvl,
-        start:
-          restartFrom ?? templateNumbering.getLevel(base, ilvl)?.start ?? 1,
+        start: restartFrom ?? baseLevel.levelStarts?.at(ilvl) ?? 1,
       };
       nextNumId += 1;
       mints.set(key, mint);

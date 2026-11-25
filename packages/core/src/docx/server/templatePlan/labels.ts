@@ -2,6 +2,7 @@
  * The automatic list label each paragraph of a story renders, counted with
  * the same marker code the document parser uses.
  */
+import { finalizeParagraphFormatting } from "@stll/docx-core";
 import type { ParagraphNumberingOverride } from "@stll/docx-core/model";
 
 import type { Paragraph } from "../../../types/document";
@@ -165,13 +166,14 @@ export const createLabelCounter = ({
               numbering,
             )
           : null;
+      const formatting = finalizeParagraphFormatting({
+        ...(numPr === undefined ? {} : { numPr }),
+        ...(inherits ? { numPrFromStyle: fromStyle } : {}),
+      });
       const paragraph: Paragraph = {
         type: "paragraph",
         content: [],
-        formatting: {
-          ...(numPr === undefined ? {} : { numPr }),
-          ...(inherits ? { numPrFromStyle: fromStyle } : {}),
-        },
+        ...(formatting === undefined ? {} : { formatting }),
         ...(listRendering === null ? {} : { listRendering }),
       };
       const template = listRendering?.marker ?? "";
@@ -190,6 +192,10 @@ export const createLabelCounter = ({
         abstractNumId === null
           ? null
           : { numId: resolved.numId, ilvl: resolved.ilvl, abstractNumId };
+      // A level whose run properties hide it counts and shows nothing.
+      if (listRendering.markerHidden === true) {
+        return { ...NO_LABEL, numbering: numberingInfo };
+      }
       if (listRendering.isBullet) {
         return {
           label,

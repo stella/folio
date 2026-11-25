@@ -531,6 +531,79 @@ describe("applyTemplatePlan", () => {
   });
 });
 
+describe("applyTemplatePlan slots", () => {
+  test("fills a paragraph inside a kept template table and bookmarks it", async () => {
+    const plan = fullPlan();
+    plan.body = [
+      ...plan.body.filter(
+        (item) => item.kind !== "source" || item.blockId !== SOURCE_IDS.mixed,
+      ),
+      {
+        kind: "slot",
+        templateBlockId: TEMPLATE_IDS.signatureLeft,
+        sourceBlockIds: [SOURCE_IDS.mixed],
+      },
+    ];
+    const [first] = plan.references ?? [];
+    if (first === undefined) {
+      throw new Error("the plan has no reference");
+    }
+    plan.references = [
+      { ...first, targetBlockId: SOURCE_IDS.mixed, instruction: "\\h" },
+    ];
+    plan.references[0] = {
+      ...first,
+      targetBlockId: SOURCE_IDS.mixed,
+      instruction: "\\h",
+      expectedText: "II",
+    };
+    const { docx, report } = await apply(plan);
+    const blocks = unwrap(await analyzeDocxBlocks(docx)).blocks;
+    const document = (await readPart(docx, "word/document.xml")) ?? "";
+
+    expect(blocks.at(-1)?.text).toBe(
+      `${SOURCE_TEXT.mixed}\t........................`,
+    );
+    expect(
+      report.blocks.find(({ blockId }) => blockId === "p16"),
+    ).toMatchObject({
+      disposition: "slot",
+      text: "identical",
+      emphasis: "identical",
+    });
+    // The cell keeps its own properties; only the paragraph's runs change.
+    expect(document).toMatch(
+      /<w:tc><w:tcPr><w:tcW w:w="4531" w:type="dxa"\/><\/w:tcPr><w:p><w:bookmarkStart w:id="\d+" w:name="_Ref\d{9}"\/><w:r><w:t xml:space="preserve">Line one<\/w:t><\/w:r>/u,
+    );
+    // Without a number switch the field shows the bookmarked text, not "II".
+    expect(report.references.results.at(0)).toMatchObject({
+      status: "ok",
+      predictedText: SOURCE_TEXT.mixed,
+    });
+    expect(report.references.predictionMismatch).toBe(1);
+    expect(report.ok).toBe(true);
+  });
+
+  test("refuses a slot in a template table the plan does not keep", async () => {
+    const plan = fullPlan();
+    plan.body = [
+      ...plan.body.filter(
+        (item) =>
+          (item.kind !== "source" || item.blockId !== SOURCE_IDS.mixed) &&
+          (item.kind !== "template" ||
+            !item.templateBlockIds.includes(TEMPLATE_IDS.signatures)),
+      ),
+      {
+        kind: "slot",
+        templateBlockId: TEMPLATE_IDS.signatureLeft,
+        sourceBlockIds: [SOURCE_IDS.mixed],
+      },
+    ];
+
+    expect(await refusal(plan)).toBe("unknown-block");
+  });
+});
+
 describe("applyTemplatePlan numbering", () => {
   test("starts a new list instance for a group and cancels a style's list", async () => {
     const plan = fullPlan();

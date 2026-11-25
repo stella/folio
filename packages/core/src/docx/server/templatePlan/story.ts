@@ -7,6 +7,7 @@ import type { ParagraphNumberingOverride } from "@stll/docx-core/model";
 
 import { parseFieldType } from "../../fieldParser";
 import { readParagraphNumbering } from "../../numberingReference";
+import { paraIdAttribute } from "../../paraIdAttribute";
 import { getLocalName, type XmlElement } from "../../xmlParser";
 import {
   elementChildren,
@@ -153,15 +154,6 @@ const headingLevelOf = (value: string | null): number | null => {
     level < BODY_TEXT_OUTLINE_LEVEL
     ? level
     : null;
-};
-
-const paraIdOf = (element: XmlElement): string | null => {
-  for (const [name, value] of Object.entries(element.attributes ?? {})) {
-    if (value !== undefined && getLocalName(name) === "paraId") {
-      return String(value);
-    }
-  }
-  return null;
 };
 
 const fieldKindOf = (instruction: string): string => {
@@ -423,7 +415,7 @@ export const readParagraph = (
     ordinal: state.paragraphOrdinal,
     styleId: wChildVal(properties, "pStyle"),
     numPr: readParagraphNumbering(wChild(properties, "numPr")),
-    paraId: paraIdOf(element),
+    paraId: paraIdAttribute(element) ?? null,
     outlineLevel: headingLevelOf(outline),
     atoms: [],
     text: "",

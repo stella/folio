@@ -1,3 +1,4 @@
+import { Result } from "better-result";
 import { expect, test } from "bun:test";
 import fc from "fast-check";
 import { readFileSync } from "node:fs";
@@ -32,6 +33,7 @@ import {
 } from "../docx/numberingParser";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
+import { analyzeDocxBlocks } from "../docx/server/templatePlan/blocks";
 import { convertParagraphAttrs } from "../layout-bridge/convert/paragraphAttrs";
 import { toFlowBlocks } from "../layout-bridge/convert/toFlowBlocks";
 import { newContext } from "../markdown/internals";
@@ -85,6 +87,7 @@ const PRODUCER_READERS = {
     "layout",
   "packages/core/src/prosemirror/numberedRefFields.ts::numberTargetForParagraph":
     "refs",
+  "packages/core/src/docx/server/templatePlan/labels.ts::next": "blockManifest",
 } as const;
 const COUNTER_OWNERS = new Set([
   "computeListMarker",
@@ -569,6 +572,7 @@ test(
           await assertSparseReaders(options);
           exercised.add("parser");
           exercised.add("canonical");
+          exercised.add("blockManifest");
           expect([...new Set(Object.values(PRODUCER_READERS))].sort()).toEqual(
             [...exercised].sort(),
           );
@@ -679,11 +683,17 @@ const assertSparseReaders = async ({
   expect(labels(normalizeCanonicalListRendering(document).document)).toEqual(
     expected,
   );
-  const parsed = await parseDocx(await createDocx(document), {
+  const packed = await createDocx(document);
+  const parsed = await parseDocx(packed, {
     detectVariables: false,
     preloadFonts: false,
   });
   expect(labels(parsed)).toEqual(expected);
+  const manifest = await analyzeDocxBlocks(new Uint8Array(packed));
+  if (Result.isError(manifest)) throw manifest.error;
+  expect(manifest.value.blocks.map(({ label }) => label ?? undefined)).toEqual(
+    expected,
+  );
   const pm = toProseDoc(parsed);
   const layoutBlocks = toFlowBlocks(pm).filter(
     (block) => block.kind === "paragraph",
