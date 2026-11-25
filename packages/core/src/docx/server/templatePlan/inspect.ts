@@ -28,6 +28,7 @@ import {
   TemplatePlanError,
 } from "./types";
 import {
+  integerOrNull,
   isW,
   type RawPart,
   readRawPart,
@@ -79,7 +80,8 @@ const statedIndents = ({
       const stated = (name: string): number | null =>
         twipsOrNull(wAttr(indent, name));
       indents.set(
-        `${wAttr(definition, "abstractNumId") ?? ""}:${wAttr(level, "ilvl") ?? ""}`,
+        // The same numbers the lookup is made with: `00` is definition 0.
+        `${String(integerOrNull(wAttr(definition, "abstractNumId")))}:${String(integerOrNull(wAttr(level, "ilvl")))}`,
         {
           left: stated("left") ?? stated("start"),
           hanging: stated("hanging"),

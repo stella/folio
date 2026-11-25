@@ -252,11 +252,15 @@ describe("applyTemplatePlan edge content", () => {
     const inches = await replacePart(
       base,
       "word/numbering.xml",
-      numbering.replace(
-        '<w:ind w:left="567" w:hanging="567"/>',
-        '<w:ind w:left="1in" w:hanging="0.5in"/>',
-      ),
+      numbering
+        .replace(
+          '<w:ind w:left="567" w:hanging="567"/>',
+          '<w:ind w:left="1in" w:hanging="0.5in"/>',
+        )
+        // Ids may be spelled with leading zeros.
+        .replace('<w:lvl w:ilvl="0">', '<w:lvl w:ilvl="00">'),
     );
+    expect(inches).not.toBe(base);
     expect(
       unwrap(await inspectDocxTemplate(inches))
         .numbering.abstractNums.at(0)
