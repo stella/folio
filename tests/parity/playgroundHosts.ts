@@ -12,8 +12,11 @@ import { spawnSync } from "node:child_process";
 const REACT_PORT_ENV = "FOLIO_PLAYGROUND_PORT";
 const VUE_PORT_ENV = "FOLIO_PLAYGROUND_VUE_PORT";
 
+/** How many probes may report a port another playground already holds. */
+const PORT_PROBE_ATTEMPTS = 8;
+
 /** A port the system reports free, read in a child process (no sync socket API). */
-const freePort = (): number => {
+const probedPort = (): number => {
   const probe = spawnSync(
     process.execPath,
     [
@@ -30,17 +33,39 @@ const freePort = (): number => {
   return port;
 };
 
-const portFrom = (name: string): number => {
+/**
+ * A free port none of `taken` is. Each probe closes its socket before the
+ * next, so the system may report the same port twice.
+ */
+const freePort = (taken: ReadonlySet<number>): number => {
+  for (let attempt = 0; attempt < PORT_PROBE_ATTEMPTS; attempt++) {
+    const port = probedPort();
+    if (!taken.has(port)) return port;
+  }
+  throw new Error("Could not find a playground port distinct from the others.");
+};
+
+const statedPort = (name: string): number | undefined => {
   const stated = Number(process.env[name]);
-  if (Number.isInteger(stated) && stated > 0) return stated;
-  const port = freePort();
+  return Number.isInteger(stated) && stated > 0 ? stated : undefined;
+};
+
+const portFrom = (name: string, taken: ReadonlySet<number>): number => {
+  const stated = statedPort(name);
+  if (stated !== undefined) return stated;
+  const port = freePort(taken);
   process.env[name] = String(port);
   return port;
 };
 
+const reactPort = portFrom(
+  REACT_PORT_ENV,
+  new Set([statedPort(VUE_PORT_ENV) ?? 0]),
+);
+
 export const PLAYGROUND_PORTS = {
-  react: portFrom(REACT_PORT_ENV),
-  vue: portFrom(VUE_PORT_ENV),
+  react: reactPort,
+  vue: portFrom(VUE_PORT_ENV, new Set([reactPort])),
 } as const;
 
 /** Server startup and cold-load readiness use the same host addresses. */
