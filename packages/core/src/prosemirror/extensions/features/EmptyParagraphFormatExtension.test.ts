@@ -16,12 +16,17 @@ import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 
+import { createReferenceEditorRuntime } from "../../../__tests__/createReferenceEditorKit";
 import { createEmptyDocument } from "../../../utils/createDocument";
 import { createDocumentStylesPlugin } from "../../plugins/documentStyles";
 import { schema, singletonManager } from "../../schema";
 import { createStyleResolver } from "../../styles/styleResolver";
 import { textFormattingToMarks } from "../marks/markUtils";
 import { splitBlockClearBorders } from "./BaseKeymapExtension";
+
+const referencePlugins = createReferenceEditorRuntime(
+  singletonManager.getSchema(),
+).plugins;
 
 const resolver = createStyleResolver(createEmptyDocument().package.styles);
 
@@ -32,7 +37,7 @@ function markNames(
 }
 
 function stateWith(doc: PMNode, withResolver = true): EditorState {
-  const plugins = [...singletonManager.getPlugins()];
+  const plugins = [...referencePlugins];
   if (withResolver) {
     plugins.push(createDocumentStylesPlugin(resolver));
   }
@@ -393,7 +398,7 @@ describe("splitBlockClearBorders — w:next style switch", () => {
       schema.text("Heading"),
     ]);
     const plugins = [
-      ...singletonManager.getPlugins(),
+      ...referencePlugins,
       createDocumentStylesPlugin(customResolver),
     ];
     let state = EditorState.create({
@@ -454,7 +459,7 @@ describe("splitBlockClearBorders — w:next style switch", () => {
       [schema.text("Heading")],
     );
     const plugins = [
-      ...singletonManager.getPlugins(),
+      ...referencePlugins,
       createDocumentStylesPlugin(customResolver),
     ];
     let state = EditorState.create({

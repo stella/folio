@@ -64,6 +64,7 @@ import {
   fieldInsertionParagraph,
 } from "../canonical/derivedFields";
 import { parseDocx } from "../docx/parser";
+import { clipboardTransformPlugin } from "../internal/clipboardTransformPlugin";
 import {
   type EditingFontContext,
   editingFontContextOf,
@@ -611,34 +612,7 @@ export const createHiddenEditorManager = (
         ...[
           ...(deps.getExtensionManager()?.getPlugins() ?? []),
           ...deps.getExternalPlugins(),
-        ].flatMap(({ props }) =>
-          props.transformPastedHTML === undefined &&
-          props.transformPasted === undefined &&
-          props.transformCopied === undefined &&
-          props.clipboardTextSerializer === undefined
-            ? []
-            : [
-                new PMPlugin({
-                  props: {
-                    ...(props.transformCopied === undefined
-                      ? {}
-                      : { transformCopied: props.transformCopied }),
-                    ...(props.clipboardTextSerializer === undefined
-                      ? {}
-                      : {
-                          clipboardTextSerializer:
-                            props.clipboardTextSerializer,
-                        }),
-                    ...(props.transformPastedHTML === undefined
-                      ? {}
-                      : { transformPastedHTML: props.transformPastedHTML }),
-                    ...(props.transformPasted === undefined
-                      ? {}
-                      : { transformPasted: props.transformPasted }),
-                  },
-                }),
-              ],
-        ),
+        ].flatMap(({ props }) => clipboardTransformPlugin(props)),
         // A host plugin's view observes the document the session shows; only
         // the session writes it.
         ...deps

@@ -6,7 +6,7 @@ import type { Transaction } from "prosemirror-state";
 import {
   getTrackedSectionEndpointRemoval,
   ParagraphChangeTrackerExtension,
-} from "../extensions/features/ParagraphChangeTrackerExtension";
+} from "../../__tests__/reference-editor/ParagraphChangeTrackerExtension";
 import { paragraphRemainsOf } from "../keptRangeBoundaries";
 import { schema as documentSchema } from "../schema";
 import { paragraphContentOf } from "../zeroWidthAnchors";

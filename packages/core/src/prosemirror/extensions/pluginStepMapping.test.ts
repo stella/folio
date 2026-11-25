@@ -15,10 +15,10 @@ import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { EditorState, type Plugin } from "prosemirror-state";
 import { StepMap } from "prosemirror-transform";
 
+import { ParagraphChangeTrackerExtension } from "../../__tests__/reference-editor/ParagraphChangeTrackerExtension";
+import { ParaIdAllocatorExtension } from "../../__tests__/reference-editor/ParaIdAllocatorExtension";
 import { randomSchema } from "../__tests__/randomTransactions";
 import { AutoBidiDetectionExtension } from "./features/AutoBidiDetectionExtension";
-import { ParagraphChangeTrackerExtension } from "./features/ParagraphChangeTrackerExtension";
-import { ParaIdAllocatorExtension } from "./features/ParaIdAllocatorExtension";
 import { RunIdentityExtension } from "./marks/RunIdentityExtension";
 
 const PARAGRAPHS = 600;

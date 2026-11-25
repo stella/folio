@@ -28,6 +28,7 @@ import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
 import { headerFooterToProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { schema, singletonManager } from "../prosemirror/schema";
 import type { HeaderFooter } from "../types/document";
+import { createReferenceEditorRuntime } from "./createReferenceEditorKit";
 
 function createFakeStyle(): Record<string, string> {
   const store: Record<string, string> = {};
@@ -169,7 +170,7 @@ function toggleListInHeader(
   let state = EditorState.create({
     doc: pmDoc,
     schema,
-    plugins: singletonManager.getPlugins(),
+    plugins: createReferenceEditorRuntime(singletonManager.getSchema()).plugins,
   });
   state = state.apply(
     state.tr.setSelection(TextSelection.create(state.doc, 1)),

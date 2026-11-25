@@ -10,14 +10,18 @@ import {
 import { Plugin } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
-import { createExtension } from "../create";
-import type { Extension, ExtensionContext, ExtensionRuntime } from "../types";
 import {
   historyKeyboardShortcuts,
   type HistoryShortcutOwner,
   redoCommand,
   undoCommand,
-} from "./historyCommands";
+} from "../../prosemirror/extensions/core/historyCommands";
+import { createExtension } from "../../prosemirror/extensions/create";
+import type {
+  Extension,
+  ExtensionContext,
+  ExtensionRuntime,
+} from "../../prosemirror/extensions/types";
 
 type HistoryOptions = {
   depth: number;
@@ -178,7 +182,6 @@ export const HistoryExtension: (
   ): ExtensionRuntime {
     return {
       plugins: [
-        // canonical-gap: pm-history
         history({
           depth: options.depth,
           newGroupDelay: options.newGroupDelay,

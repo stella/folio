@@ -6,6 +6,7 @@ import { EditorState as PMEditorState } from "prosemirror-state";
 import {
   type EditorMode,
   HARNESS_AUTHOR,
+  harnessManager,
   keyboardEventFor,
   parseShapeDocument,
 } from "../packages/core/src/__tests__/editorHarness";
@@ -24,7 +25,6 @@ import { serializeCanonicalSave } from "../packages/core/src/docx/canonicalSave"
 import { cloneDocumentWithParagraphPropertySources } from "../packages/core/src/docx/paragraphPropertySource";
 import { executeEditorCommand } from "../packages/core/src/prosemirror/executeEditorCommand";
 import { expectRangeAnchorAttrs } from "../packages/core/src/prosemirror/rangeAnchorAttrs";
-import { singletonManager } from "../packages/core/src/prosemirror/schema";
 import { selectionBounds } from "../packages/core/src/prosemirror/selectionBounds";
 import { CANONICAL_GAP } from "../packages/core/src/types/canonicalCapabilities";
 import type { CanonicalSaveSnapshot } from "../packages/core/src/types/canonicalSave";
@@ -142,6 +142,7 @@ export const createCanonicalEditorHarness = (
       expectedRows = [];
     }
   };
+  const extensions = harnessManager();
   const manager = createHiddenEditorManager({
     getHost: () => host,
     getDocument: () => source,
@@ -149,7 +150,7 @@ export const createCanonicalEditorHarness = (
     getEditingMode: () => mode,
     getSuggestionAuthor: () => HARNESS_AUTHOR,
     getStyles: () => source.package.styles,
-    getExtensionManager: () => singletonManager,
+    getExtensionManager: () => extensions,
     getExternalPlugins: () => [],
     getReadOnly: () => false,
     getDocumentIdentity: () => "conformance",
@@ -341,7 +342,7 @@ export const createCanonicalEditorHarness = (
   };
   return {
     authority: "canonical" as const,
-    commandManager: singletonManager,
+    commandManager: extensions,
     expectRefusals: (rows: readonly HarnessRefusalRow[]) => {
       validateHarnessRefusalRows(rows);
       caseRefusalRows = rows;

@@ -9,8 +9,9 @@ import {
   rejectAllChanges,
   rejectChange,
 } from "@stll/folio-core/prosemirror/commands/comments";
-import { ParagraphChangeTrackerExtension } from "@stll/folio-core/prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { schema } from "@stll/folio-core/prosemirror/schema";
+
+import { ParagraphChangeTrackerExtension } from "../src/__tests__/reference-editor/ParagraphChangeTrackerExtension";
 
 const sampleCommand = (state: EditorState, command: Command) => {
   let steps = 0;

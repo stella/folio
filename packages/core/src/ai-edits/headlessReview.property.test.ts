@@ -42,6 +42,7 @@ import {
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import { createReferenceEditorRuntime } from "../__tests__/createReferenceEditorKit";
 import { parseDocx } from "../docx/parser";
 import { repackDocx } from "../docx/rezip";
 import { attemptSelectiveSave } from "../docx/selectiveSave";
@@ -123,7 +124,8 @@ const makeParaIdBaseline = async (
     EditorState.create({
       schema,
       doc: toProseDoc(document),
-      plugins: singletonManager.getPlugins(),
+      plugins: createReferenceEditorRuntime(singletonManager.getSchema())
+        .plugins,
     }),
   );
   return repackDocx({

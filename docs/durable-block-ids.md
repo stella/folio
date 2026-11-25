@@ -12,12 +12,12 @@ original work against the OOXML spec and the existing folio code.
 
 ## Status
 
-| Work item                                   | Status                                                                                                                                                 |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| WI-1 ingest normalization (`ensureParaIds`) | Implemented — `packages/core/src/docx/ensureParaIds.ts`, exported from `@stll/folio-core/server`                                                       |
-| WI-2 editor ID lifecycle spec + tests       | Implemented — `packages/core/src/prosemirror/extensions/features/ParaIdAllocatorExtension.ts` (header documents the rules; co-located tests lock them) |
-| Table identity                              | Decided against durable table-level IDs — see below                                                                                                    |
-| WI-5 touched-paraIds change reporting       | Design only — see below                                                                                                                                |
+| Work item                                   | Status                                                                                                                                            |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| WI-1 ingest normalization (`ensureParaIds`) | Implemented — `packages/core/src/docx/ensureParaIds.ts`, exported from `@stll/folio-core/server`                                                  |
+| WI-2 editor ID lifecycle spec + tests       | Implemented — `packages/core/src/__tests__/reference-editor/ParaIdAllocatorExtension.ts` (header documents the rules; co-located tests lock them) |
+| Table identity                              | Decided against durable table-level IDs — see below                                                                                               |
+| WI-5 touched-paraIds change reporting       | Design only — see below                                                                                                                           |
 
 ## What already existed (do not rebuild)
 
@@ -25,7 +25,7 @@ original work against the OOXML spec and the existing folio code.
 | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | `w14:paraId` / `w14:textId` parsed off `<w:p>` (with a `w:paraId` prefix fallback) | `packages/core/src/docx/paragraphParser.ts`                                                                                  |
 | Both serialized back, emitted only when truthy                                     | `packages/core/src/docx/serializer/paragraphSerializer.ts`                                                                   |
-| In-editor allocator backfilling null/duplicate paraIds per doc-changed transaction | `packages/core/src/prosemirror/extensions/features/ParaIdAllocatorExtension.ts`                                              |
+| In-editor allocator backfilling null/duplicate paraIds per doc-changed transaction | `packages/core/src/__tests__/reference-editor/ParaIdAllocatorExtension.ts`                                                   |
 | Hex ID generation with the OOXML `ST_LongHexNumber` bound                          | `packages/core/src/utils/hexId.ts`                                                                                           |
 | Deterministic load-time backfill in the headless reviewer                          | `packages/core/src/ai-edits/headless.ts` (`ensureDeterministicParaIdsInState`)                                               |
 | Live lookup by paraId                                                              | `packages/core/src/prosemirror/utils/findParagraphByParaId.ts`                                                               |

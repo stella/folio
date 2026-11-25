@@ -7,26 +7,18 @@
  */
 
 import { panic } from "better-result";
-import { keymap } from "prosemirror-keymap";
 import { Schema } from "prosemirror-model";
 import type { MarkSpec, NodeSpec } from "prosemirror-model";
 import type { Plugin as PMPlugin } from "prosemirror-state";
 
-import { createNativeNavigationPlugin } from "../nativeSelection";
-import {
-  areTransactionInvariantsEnabled,
-  createTransactionInvariantPlugin,
-} from "../plugins/transactionInvariants";
-import { createTextInputPlugin } from "../textInput";
+import { createExtensionRuntime } from "../../internal/extensionRuntime";
 import type {
   AnyExtension,
   CommandFactory,
   CommandMap,
   ExtensionCommandMap,
-  ExtensionContext,
   FolioCommandArguments,
   FolioCommandName,
-  KeyboardShortcutMap,
 } from "./types";
 
 export class ExtensionManager {
@@ -71,46 +63,9 @@ export class ExtensionManager {
       );
     }
 
-    const ctx: ExtensionContext = { schema: this.schema };
-    const allKeyboardShortcuts: KeyboardShortcutMap[] = [];
-    const allPlugins: PMPlugin[] = [];
-    const allCommands: ExtensionCommandMap = {};
-
-    for (const ext of this.extensions) {
-      const runtime = ext.onSchemaReady(ctx);
-
-      if (runtime.commands) {
-        Object.assign(allCommands, runtime.commands);
-      }
-
-      if (runtime.keyboardShortcuts) {
-        allKeyboardShortcuts.push(runtime.keyboardShortcuts);
-      }
-
-      if (runtime.plugins) {
-        allPlugins.push(...runtime.plugins);
-      }
-    }
-
-    // Build final plugin array:
-    // Every editor runtime owns text input, and the caret a navigation key
-    // moves, at the DOM/model boundary. Install
-    // this centrally so body, header/footer, and note views share the policy.
-    // Extension plugins and merged keymaps retain their relative priority.
-    // The invariant check runs last so it sees what every other plugin's
-    // appended transactions left behind. Off unless a test or development
-    // build sets `globalThis.__folioTransactionInvariants`.
-    this.plugins = [
-      createTextInputPlugin(),
-      createNativeNavigationPlugin(),
-      ...allPlugins,
-      ...allKeyboardShortcuts.map((shortcuts) => keymap(shortcuts)),
-      ...(areTransactionInvariantsEnabled()
-        ? [createTransactionInvariantPlugin()]
-        : []),
-    ];
-
-    this.commands = allCommands;
+    const runtime = createExtensionRuntime(this.extensions, this.schema);
+    this.plugins = runtime.plugins;
+    this.commands = runtime.commandRegistry;
   }
 
   /**

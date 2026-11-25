@@ -9,8 +9,12 @@ import {
   paragraphPropertySourceTokenMatchesContract,
   PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR,
   setProseParagraphMarkupWithPropertySource,
-} from "../../../docx/paragraphPropertySource";
-import { deterministicHexId, generateHexId } from "../../../utils/hexId";
+} from "../../docx/paragraphPropertySource";
+import { createExtension } from "../../prosemirror/extensions/create";
+import type {
+  Extension,
+  ExtensionRuntime,
+} from "../../prosemirror/extensions/types";
 /**
  * ParaIdAllocator — assigns a stable `w14:paraId` to every paragraph.
  *
@@ -51,17 +55,19 @@ import { deterministicHexId, generateHexId } from "../../../utils/hexId";
  *   split therefore restores the same allocated id instead of minting
  *   another one.
  */
-import { ignoreTrackedChanges } from "../../paragraphChangeTrackerMeta";
+import { ignoreTrackedChanges } from "../../prosemirror/paragraphChangeTrackerMeta";
 import {
   deterministicParaIdSeedKey,
   isUsableParaId,
   type ParagraphPropertySourceSeed,
   paraIdAllocatorKey,
   visitAuthoredParagraphs,
-} from "../../paraIds";
-import { type PositionQuery, sweepPositions } from "../../positionSweep";
-import { createExtension } from "../create";
-import type { Extension, ExtensionRuntime } from "../types";
+} from "../../prosemirror/paraIds";
+import {
+  type PositionQuery,
+  sweepPositions,
+} from "../../prosemirror/positionSweep";
+import { deterministicHexId, generateHexId } from "../../utils/hexId";
 
 const deterministicSeedOf = (transaction: Transaction): string | undefined => {
   const seed: unknown = transaction.getMeta(deterministicParaIdSeedKey);
@@ -376,7 +382,7 @@ const createParaIdAllocatorPlugin = (): Plugin<ParagraphPropertySourceSeed> =>
       init: (_config, state) => collectParagraphPropertySourceSeed(state.doc),
       apply: (_transaction, seed) => seed,
     },
-    // canonical-gap: pm-paragraph-identity
+
     appendTransaction(transactions, oldState, newState) {
       // Skip selection-only / mark-only transactions — they can't have
       // created or duplicated a paragraph.

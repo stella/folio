@@ -86,37 +86,54 @@ describe("canonical cutover guard", () => {
     );
   });
 
+  test("retired engine plugins belong in test support", () => {
+    const fixtures = [
+      [
+        'import { history as pmHistory } from "prosemirror-history";',
+        "history",
+      ],
+      [
+        'import { columnResizing } from "prosemirror-tables";',
+        "columnResizing",
+      ],
+      [
+        'import { tableEditing as repair } from "prosemirror-tables";',
+        "tableEditing",
+      ],
+    ] as const;
+    for (const [code, primitive] of fixtures)
+      expect(failuresOf(code)).toContain(
+        `packages/react/src/fixture.tsx: ${primitive} belongs in the reference editor`,
+      );
+    expect(
+      failuresOf(
+        'import * as tables from "prosemirror-tables"; tables["tableEditing"]();',
+      ),
+    ).toContain(
+      "packages/react/src/fixture.tsx: tableEditing belongs in the reference editor",
+    );
+    expect(
+      failuresOf(
+        'import * as tables from "prosemirror-tables"; tables.TableMap;',
+      ).filter((failure) =>
+        failure.includes("belongs in the reference editor"),
+      ),
+    ).toEqual([]);
+    expect(
+      failuresOf(
+        'import { ParaIdAllocatorExtension } from "../__tests__/reference-editor/ParaIdAllocatorExtension";',
+      ),
+    ).toContain(
+      "packages/react/src/fixture.tsx: reference engine plugins belong in test support",
+    );
+  });
+
   test("mutation primitives require their actual capability markers", () => {
     const fixtures = [
-      {
-        gap: CANONICAL_GAP.history,
-        file: "packages/core/src/prosemirror/history.ts",
-        code: 'import { history as pmHistory } from "prosemirror-history";\npmHistory();',
-      },
-      {
-        gap: CANONICAL_GAP.tableGeometry,
-        file: "packages/core/src/prosemirror/table.ts",
-        code: "columnResizing();",
-      },
-      {
-        gap: CANONICAL_GAP.tableGeometry,
-        file: "packages/core/src/prosemirror/table.ts",
-        code: "tableEditing();",
-      },
       {
         gap: CANONICAL_GAP.suggestionPlugin,
         file: "packages/core/src/prosemirror/plugins/suggestionMode.ts",
         code: "const plugin = {\nappendTransaction() {}\n};",
-      },
-      {
-        gap: CANONICAL_GAP.paragraphIdentity,
-        file: "packages/core/src/prosemirror/features/ParaIdAllocatorExtension.ts",
-        code: "const plugin = {\nappendTransaction() {}\n};",
-      },
-      {
-        gap: CANONICAL_GAP.paragraphTracker,
-        file: "packages/core/src/prosemirror/features/ParagraphChangeTrackerExtension.ts",
-        code: "const plugin = {\nappendTransaction: () => null\n};",
       },
       {
         gap: CANONICAL_GAP.publicHeadlessSession,

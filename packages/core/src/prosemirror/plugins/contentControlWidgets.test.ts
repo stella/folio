@@ -21,6 +21,7 @@ import {
 const BOUND_PRESERVED = {
   children: [{ index: 8, xml: '<w:dataBinding w:xpath="/root/field"/>' }],
 };
+import { createReferenceEditorRuntime } from "../../__tests__/createReferenceEditorKit";
 import { schema, singletonManager } from "../schema";
 import {
   dispatchDatePick,
@@ -28,6 +29,10 @@ import {
   handleContentControlWidgetClick,
 } from "./contentControlWidgets";
 import type { ContentControlWidgetEvent } from "./contentControlWidgets";
+
+const referencePlugins = createReferenceEditorRuntime(
+  singletonManager.getSchema(),
+).plugins;
 
 type StubView = Pick<EditorView, "state" | "dispatch">;
 type StateRef = { state: EditorState };
@@ -105,7 +110,7 @@ describe("handleContentControlWidgetClick", () => {
       state: EditorState.create({
         doc: schema.node("doc", null, [sdt]),
         schema,
-        plugins: [...singletonManager.getPlugins()],
+        plugins: [...referencePlugins],
       }),
     };
     const { anchor, events, handled, prevented } = clickWidget({
@@ -143,7 +148,7 @@ describe("handleContentControlWidgetClick", () => {
       state: EditorState.create({
         doc: schema.node("doc", null, [sdt]),
         schema,
-        plugins: [...singletonManager.getPlugins()],
+        plugins: [...referencePlugins],
       }),
     };
 
@@ -181,7 +186,10 @@ describe("handleContentControlWidgetClick", () => {
         state: EditorState.create({
           doc: schema.node("doc", null, [sdt]),
           schema,
-          plugins: [...singletonManager.getPlugins()],
+          plugins: [
+            ...createReferenceEditorRuntime(singletonManager.getSchema())
+              .plugins,
+          ],
         }),
       };
 
@@ -214,7 +222,7 @@ describe("handleContentControlWidgetClick", () => {
       state: EditorState.create({
         doc: schema.node("doc", null, [sdt]),
         schema,
-        plugins: [...singletonManager.getPlugins()],
+        plugins: [...referencePlugins],
       }),
     };
 
@@ -249,7 +257,7 @@ describe("handleContentControlWidgetClick", () => {
       state: EditorState.create({
         doc: schema.node("doc", null, [sdt]),
         schema,
-        plugins: [...singletonManager.getPlugins()],
+        plugins: [...referencePlugins],
       }),
     };
 
@@ -281,7 +289,7 @@ describe("handleContentControlWidgetClick", () => {
       state: EditorState.create({
         doc: schema.node("doc", null, [sdt]),
         schema,
-        plugins: [...singletonManager.getPlugins()],
+        plugins: [...referencePlugins],
       }),
     };
 
@@ -316,7 +324,7 @@ describe("dispatchDropdownPick", () => {
     const initial = EditorState.create({
       doc: schema.node("doc", null, [sdt]),
       schema,
-      plugins: [...singletonManager.getPlugins()],
+      plugins: [...referencePlugins],
     });
     const ref = { state: initial };
     // The helper expects an `EditorView`; only `state` and `dispatch` are
@@ -347,7 +355,7 @@ describe("dispatchDropdownPick — lock handling", () => {
     const initial = EditorState.create({
       doc: schema.node("doc", null, [sdt]),
       schema,
-      plugins: [...singletonManager.getPlugins()],
+      plugins: [...referencePlugins],
     });
     const ref = { state: initial };
     expect(() =>
@@ -374,7 +382,7 @@ describe("dispatchDropdownPick — bound handling", () => {
     const initial = EditorState.create({
       doc: schema.node("doc", null, [sdt]),
       schema,
-      plugins: [...singletonManager.getPlugins()],
+      plugins: [...referencePlugins],
     });
     const ref = { state: initial };
     expect(() =>
@@ -400,7 +408,7 @@ describe("dispatchDatePick", () => {
     const initial = EditorState.create({
       doc: schema.node("doc", null, [sdt]),
       schema,
-      plugins: [...singletonManager.getPlugins()],
+      plugins: [...referencePlugins],
     });
     const ref = { state: initial };
     expect(() =>
@@ -424,7 +432,7 @@ describe("dispatchDatePick", () => {
     const initial = EditorState.create({
       doc: schema.node("doc", null, [sdt]),
       schema,
-      plugins: [...singletonManager.getPlugins()],
+      plugins: [...referencePlugins],
     });
     const ref = { state: initial };
     expect(() =>
@@ -442,7 +450,7 @@ describe("dispatchDatePick", () => {
     const initial = EditorState.create({
       doc: schema.node("doc", null, [sdt]),
       schema,
-      plugins: [...singletonManager.getPlugins()],
+      plugins: [...referencePlugins],
     });
     const ref = { state: initial };
     const ok = dispatchDatePick(viewLike(ref) as EditorView, 0, "2026-06-02");

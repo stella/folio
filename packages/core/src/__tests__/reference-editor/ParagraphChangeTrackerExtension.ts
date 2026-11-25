@@ -21,17 +21,22 @@ import {
   type RemovedSectionReference,
   type TrackedSectionEndpointRemoval,
   withTrackedSectionEndpointRemoval,
-} from "../../../internal/sectionEndpointResolution";
-import type { Document } from "../../../types/document";
+} from "../../internal/sectionEndpointResolution";
 import {
   countDocumentStructure,
   type DocumentStructureCounts,
-} from "../../documentStructureCounts";
+} from "../../prosemirror/documentStructureCounts";
+import { createExtension } from "../../prosemirror/extensions/create";
+import { droppedCellSections } from "../../prosemirror/extensions/features/pastedCellSections";
+import type {
+  Extension,
+  ExtensionRuntime,
+} from "../../prosemirror/extensions/types";
 import {
   enclosingParagraphIndexed,
   nodeAtIndexed,
   nodesBetweenIndexed,
-} from "../../indexedNodeLookup";
+} from "../../prosemirror/indexedNodeLookup";
 import {
   CHANGED_PARAGRAPH_RANGES_META,
   type ChangedParagraphRangeBatch,
@@ -46,17 +51,15 @@ import {
   referencesOf,
   SECTION_ENDPOINT_REMOVAL_META,
   STRUCTURAL_META,
-} from "../../paragraphChangeTrackerMeta";
+} from "../../prosemirror/paragraphChangeTrackerMeta";
 import {
   type PositionQuery,
   sweepPositions,
   type SweptPosition,
-} from "../../positionSweep";
-import { sectionPropertiesOf } from "../../sectionCarrier";
-import { sectionMarkEditsOf } from "../../sectionMarkEdits";
-import { createExtension } from "../create";
-import type { Extension, ExtensionRuntime } from "../types";
-import { droppedCellSections } from "./pastedCellSections";
+} from "../../prosemirror/positionSweep";
+import { sectionPropertiesOf } from "../../prosemirror/sectionCarrier";
+import { sectionMarkEditsOf } from "../../prosemirror/sectionMarkEdits";
+import type { Document } from "../../types/document";
 
 const SECTION_EDIT_META = "folioSectionEdit";
 
@@ -559,7 +562,7 @@ export function createParagraphChangeTrackerPlugin(): Plugin<InternalParagraphCh
         return newState;
       },
     },
-    // canonical-gap: pm-paragraph-tracker
+
     appendTransaction: (transactions, oldState, newState) =>
       sectionEditTransaction(transactions, oldState, newState),
   });
