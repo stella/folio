@@ -7263,21 +7263,21 @@ const cutGoesOn = ({
 };
 
 /**
- * Whether rejecting an added paragraph before trailing range boundaries
- * would leave a paragraph ending the list. The boundaries stay where they
- * are and do not require a paragraph of their own.
+ * An added paragraph that opens a section before trailing range boundaries
+ * can disappear on rejection. The original section break and the trailing
+ * boundaries keep the same placement.
  */
-const leavesParagraphBeforeTrailingBoundaries = (
+const opensSectionBeforeTrailingBoundaries = (
   blocks: readonly BlockContent[],
   index: number,
 ): boolean => {
   const follower = blockFollower(blocks, index);
-  return (
-    follower.block === undefined &&
-    follower.standing.length > 0 &&
-    blocks.findLast((block, at) => at < index && !isBlockBoundary(block))
-      ?.type === "paragraph"
+  if (follower.block !== undefined || follower.standing.length === 0)
+    return false;
+  const before = blocks.findLast(
+    (block, at) => at < index && !isBlockBoundary(block),
   );
+  return before?.type === "paragraph" && before.sectionProperties !== undefined;
 };
 
 const joinOps = (
@@ -7485,7 +7485,7 @@ const joinOps = (
     added &&
     next === undefined &&
     standing.length > 0 &&
-    leavesParagraphBeforeTrailingBoundaries(blocks, location.index);
+    opensSectionBeforeTrailingBoundaries(blocks, location.index);
   const tableBoundary =
     next?.type === "table"
       ? paragraphTableRunInBoundary(paragraph, next)
@@ -7917,8 +7917,8 @@ type RemoveEmptiedHolderOptions = {
  * them, as rejecting its mark with them at once does: only while it still
  * ends its block content control short of the container's end, with a block
  * before it, so the control keeps ending with that block, or still stands
- * before a block in a list that ends with a paragraph, or ends a list before
- * trailing range boundaries that another paragraph can precede.
+ * before a block in a list that ends with a paragraph, or opens a section
+ * before trailing range boundaries.
  */
 const removeEmptiedHolder = ({
   document,
@@ -7956,7 +7956,7 @@ const removeEmptiedHolder = ({
   if (
     !endsControl &&
     !standsBeforeBlock &&
-    !leavesParagraphBeforeTrailingBoundaries(blocks, index)
+    !opensSectionBeforeTrailingBoundaries(blocks, index)
   )
     return Result.ok(undefined);
   const removed = applyOps(document, [
