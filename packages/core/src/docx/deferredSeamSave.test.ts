@@ -51,7 +51,7 @@ const tracked = (): Document =>
     {
       type: "bookmarkEnd",
       id: 1,
-      keptCut: { keptFrom: "2026-03-04T05:00:02Z", piece: "after" },
+      keptCut: { keptFrom: "2026-03-04T05:00:02Z", holders: { after: 6 } },
     },
     {
       type: "insertion",
@@ -118,7 +118,7 @@ test("a deferred seam and its kept marker survive a save and resolves as before,
     {
       type: "bookmarkEnd",
       id: 1,
-      keptCut: { keptFrom: "2026-03-04T05:00:02Z", piece: "after" },
+      keptCut: { keptFrom: "2026-03-04T05:00:02Z", holders: { after: 6 } },
     },
     {
       type: "insertion",

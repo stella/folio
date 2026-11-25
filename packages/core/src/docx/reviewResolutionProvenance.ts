@@ -11,6 +11,8 @@ import {
   type CopyOriginAncestorList,
   isCopyOriginAncestors,
   isKeptCut,
+  isKeptCutPiece,
+  type KeptCutPiece,
   type VersionOneKept,
   type VersionOneKeptMarkers,
 } from "@stll/docx-core/ops";
@@ -548,13 +550,35 @@ const storedKeptCut = (value: unknown): unknown => {
   const { depth: _ignored, ...cut } = value;
   return cut;
 };
-const isStoredKeptCut = (value: unknown): boolean =>
-  isKeptCut(storedKeptCut(value));
+// Older marker history recorded the holder's side. Read that form and
+// bind it once the paragraph is assembled. The writer emits holder IDs only.
+const LEGACY_KEPT_CUT_PIECES = new WeakMap<KeptCut, KeptCutPiece>();
+
+export const legacyKeptCutPiece = (cut: KeptCut): KeptCutPiece | undefined =>
+  LEGACY_KEPT_CUT_PIECES.get(cut);
+
+const legacyStoredKeptCut = (value: unknown) => {
+  if (!record(value)) return undefined;
+  const { piece, ...cut } = value;
+  return isKeptCutPiece(piece) && isKeptCut(cut) && cut.holders === undefined
+    ? { cut, piece }
+    : undefined;
+};
+
+const isStoredKeptCut = (value: unknown): boolean => {
+  const cut = storedKeptCut(value);
+  return isKeptCut(cut) || legacyStoredKeptCut(cut) !== undefined;
+};
+
 /** The cut a kept range marker stands in (`folio:keptCut`). */
 export const parseKeptCut = (node: XmlElement): KeptCut | undefined => {
   const decoded = decodeAttribute(node, "keptCut", isStoredKeptCut);
   const cut = storedKeptCut(decoded?.value);
-  return isKeptCut(cut) ? cut : undefined;
+  if (isKeptCut(cut)) return cut;
+  const legacy = legacyStoredKeptCut(cut);
+  if (legacy === undefined) return undefined;
+  LEGACY_KEPT_CUT_PIECES.set(legacy.cut, legacy.piece);
+  return legacy.cut;
 };
 export const serializeKeptCut = (
   value: KeptCut | undefined,
