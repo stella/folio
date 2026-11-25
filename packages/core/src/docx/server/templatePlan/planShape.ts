@@ -38,6 +38,9 @@ const isOptionalString = (value: unknown): boolean =>
 const isCount = (value: unknown): value is number =>
   typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 
+/** A list id a plan may name: the first real one is 1. */
+const isListId = (value: unknown): boolean => isCount(value) && value >= 1;
+
 const isLevel = (value: unknown): boolean =>
   isCount(value) && value <= MAX_LIST_LEVEL;
 
@@ -74,7 +77,7 @@ const numberingIssue = (value: unknown, where: string): string | null => {
     return `${where} names a malformed list.`;
   }
   const { numId, ilvl, restartFrom, baseNumId, group } = value;
-  if (numId !== "new" && !(isCount(numId) && numId > 0)) {
+  if (numId !== "new" && !isListId(numId)) {
     return `${where} names a list that is neither an id nor "new".`;
   }
   if (!isLevel(ilvl)) {
@@ -83,7 +86,7 @@ const numberingIssue = (value: unknown, where: string): string | null => {
   if (restartFrom !== undefined && !isCount(restartFrom)) {
     return `${where} restarts a list from a value that is not a count.`;
   }
-  if (baseNumId !== undefined && !(isCount(baseNumId) && baseNumId > 0)) {
+  if (baseNumId !== undefined && !isListId(baseNumId)) {
     return `${where} bases a list on a malformed id.`;
   }
   if (group !== undefined && !(isString(group) && group !== "")) {
