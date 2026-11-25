@@ -85,11 +85,8 @@ import {
  * reviewed `.docx` back out — the server-side counterpart to the React
  * editor's live apply flow.
  *
- * The operation applier is shared, not forked: {@link applyFolioAIEditOperations}
- * only needs a {@link FolioAIEditView} seam (`{ state, dispatch }`), which a
- * headless `EditorState` satisfies via `state.apply(tr)`. The React editor and
- * this reviewer therefore run byte-for-byte the same anchor resolution,
- * word-diff redlines, and tracked-change bookkeeping.
+ * The editor and reviewer share the canonical operation compiler and document
+ * session for anchor resolution, tracked changes, and save snapshots.
  *
  * Save mirrors the editor's own path: a selective patch of only the changed
  * paragraphs in `document.xml` (leaving every untouched part byte-exact), with

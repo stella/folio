@@ -52,7 +52,7 @@ import {
   storyBody,
   storyParagraphs,
 } from "./blocks";
-import { isCommentExhausted, linksEmptiedByRetirement } from "./comments";
+import { linksEmptiedByRetirement, newlyExhaustedCommentIds } from "./comments";
 import { planContiguousResolutionJoins } from "./contiguousResolutionJoins";
 import {
   acceptCopyOriginAncestor,
@@ -3925,7 +3925,10 @@ const resolveList = ({
   /** The date of the earliest removed insertion that recorded each of them. */
   const removalDates = new Map<number, string>();
   /** The joins of the last removed insertion that recorded each of them. */
-  const removalJoins = new Map<number, Record<SourceOwnerSide, number>>();
+  const removalJoins = new Map<
+    number,
+    Record<SourceOwnerSide, number> & { type: "cut" | "carriedJoin" }
+  >();
   const recordSourceSeam = (index: number, depth: number): void => {
     recordExactSeam(index, depth);
     if (depth > 0)
@@ -4694,8 +4697,32 @@ const resolveList = ({
           const around = floating.has(out.length)
             ? enclosingRecordCut(node, index)
             : undefined;
+          // A rejected insertion can carry a kept join on both sides. Pass
+          // it to the edge when the other piece stands outside this list.
+          // If the enclosing cut already joined, its kept boundaries stand
+          // here instead and take the join at the same recorded depth.
+          const after = pending.at(index + 1);
+          const before = itemBefore(out, keptStart)?.node;
+          const crossesKeptCut =
+            (before !== undefined && standsInKeptCut(before)) ||
+            (after !== undefined && standsInKeptCut(after));
+          const atNestedEdge =
+            path.length > 0 && (before === undefined) !== (after === undefined);
+          const carriedJoin =
+            (atNestedEdge || crossesKeptCut) &&
+            joins !== undefined &&
+            joins.remove === 0 &&
+            kept.length === 0 &&
+            resolution.decision === REVISION_DECISIONS.REJECT &&
+            isAddedRevision(node)
+              ? Math.min(
+                  recordJoin(joins, "before"),
+                  recordJoin(joins, "after"),
+                )
+              : 0;
           const removalCut = Math.max(
             cutLevelsOnceResolved(node, index),
+            carriedJoin,
             around?.side === undefined ? (around?.depth ?? 0) : 0,
           );
           if (around?.side !== undefined) folds.push(out.length);
@@ -4711,6 +4738,7 @@ const resolveList = ({
               removalJoins.set(out.length, {
                 before: recordJoin(joins, "before"),
                 after: recordJoin(joins, "after"),
+                type: carriedJoin > 0 ? "carriedJoin" : "cut",
               });
           }
           // The kept markers beside it naming its side (or both) as their
@@ -5826,11 +5854,17 @@ const resolveList = ({
       passesJoinOn(seam, seam - count - 1, depth)
     )
       continue;
+    // A carried join can face its surviving piece through a pending revision.
+    // Read the contents of that revision at the facing edge.
+    const carriedJoinMeetsPiece =
+      removalJoins.get(recorded)?.type === "carriedJoin" &&
+      alikeDepth(recordAt(left?.node, "end"), recordAt(right?.node, "start")) >
+        0;
     if (
       kept === undefined &&
       (left === undefined ||
         right === undefined ||
-        !sameOwnFields(left.node, right.node))
+        (!sameOwnFields(left.node, right.node) && !carriedJoinMeetsPiece))
     )
       continue;
     exactSeams.delete(recorded);
@@ -7020,7 +7054,7 @@ const deferSplitSeam = ({
 
 /**
  * Whether the paragraph stands only for its pending insertions: rejecting
- * its added mark, which ended a block content control, left it in place.
+ * its added mark left it in place until its content is resolved.
  */
 const standsForInsertions = (paragraph: Paragraph): boolean =>
   paragraph.content.some(
@@ -7262,6 +7296,24 @@ const cutGoesOn = ({
   );
 };
 
+/**
+ * An added paragraph that opens a section before trailing range boundaries
+ * can disappear on rejection. The original section break and the trailing
+ * boundaries keep the same placement.
+ */
+const opensSectionBeforeTrailingBoundaries = (
+  blocks: readonly BlockContent[],
+  index: number,
+): boolean => {
+  const follower = blockFollower(blocks, index);
+  if (follower.block !== undefined || follower.standing.length === 0)
+    return false;
+  const before = blocks.findLast(
+    (block, at) => at < index && !isBlockBoundary(block),
+  );
+  return before?.type === "paragraph" && before.sectionProperties !== undefined;
+};
+
 const joinOps = (
   document: Document,
   { op, story, paraId, revisionId, added, depth, holders }: JoinPlan,
@@ -7463,6 +7515,11 @@ const joinOps = (
   // paragraph ends its container.
   const followsBlock = isOpaqueFollower(next);
   const containerFinal = endsItsContainer(body, location);
+  const endsBeforeBoundaries =
+    added &&
+    next === undefined &&
+    standing.length > 0 &&
+    opensSectionBeforeTrailingBoundaries(blocks, location.index);
   const tableBoundary =
     next?.type === "table"
       ? paragraphTableRunInBoundary(paragraph, next)
@@ -7546,6 +7603,7 @@ const joinOps = (
           // a cell, that paragraph's mark becomes the cell's terminator.
           (containerFinal &&
             itemBefore(blocks, location.index)?.type === "paragraph") ||
+          endsBeforeBoundaries ||
           // Ending a control, with the paragraphs joining it: removing them
           // leaves the control ending in whatever stands before them and the
           // container's end where it was, so a rejected added mark takes its
@@ -7760,14 +7818,15 @@ const joinOps = (
       review,
     },
   ];
-  // A rejected added mark ending a control or before a block, with pending
-  // insertions standing (its own or those joining it), keeps the paragraph
-  // only for them: rejecting them later removes it, as rejecting the mark
-  // with them does, where the container still ends as it must once it goes.
+  // A rejected added mark that can remove its emptied paragraph keeps it
+  // only for pending insertions. Rejecting those later removes it, just as
+  // rejecting them with the mark does.
   const leavesHolder =
     added &&
     op.decision === REVISION_DECISIONS.REJECT &&
-    ((endsControl && standsAfterBlock) || goesBeforeBlock);
+    ((endsControl && standsAfterBlock) ||
+      goesBeforeBlock ||
+      endsBeforeBoundaries);
   const held = leavesHolder ? holdingParagraph(paragraph.content) : undefined;
   if (held !== undefined)
     markOps.push({
@@ -7892,7 +7951,8 @@ type RemoveEmptiedHolderOptions = {
  * them, as rejecting its mark with them at once does: only while it still
  * ends its block content control short of the container's end, with a block
  * before it, so the control keeps ending with that block, or still stands
- * before a block in a list that ends with a paragraph.
+ * before a block in a list that ends with a paragraph, or opens a section
+ * before trailing range boundaries.
  */
 const removeEmptiedHolder = ({
   document,
@@ -7927,7 +7987,12 @@ const removeEmptiedHolder = ({
     anchor !== undefined &&
     isOpaqueFollower(blockFollower(blocks, index).block) &&
     blockListEndsInParagraph(blocks.filter((block) => !isBlockBoundary(block)));
-  if (!endsControl && !standsBeforeBlock) return Result.ok(undefined);
+  if (
+    !endsControl &&
+    !standsBeforeBlock &&
+    !opensSectionBeforeTrailingBoundaries(blocks, index)
+  )
+    return Result.ok(undefined);
   const removed = applyOps(document, [
     anchor === undefined
       ? {
@@ -9295,14 +9360,9 @@ const planSingleRecordResolution = (
       current = restored.value.document;
     }
   }
-  const exhausted = (document.package.document.comments ?? []).filter(
-    ({ id, parentId }) =>
-      parentId === undefined &&
-      !isCommentExhausted({ type: "document", document, id }) &&
-      isCommentExhausted({ type: "document", document: current, id }),
-  );
+  const exhausted = newlyExhaustedCommentIds(document, current);
   const beforeRetirement = current;
-  for (const { id } of exhausted) {
+  for (const id of exhausted) {
     const retired = applyOps(current, [
       { type: DOCUMENT_OP_TYPES.DELETE_COMMENT, id, scope: "thread" },
     ]);
@@ -9314,7 +9374,7 @@ const planSingleRecordResolution = (
     before: beforeRetirement,
     after: current,
     story: op.story,
-    retired: new Set(exhausted.map(({ id }) => id)),
+    retired: new Set(exhausted),
   });
   if (emptiedLinks.length > 0) {
     const removed = applyOps(current, emptiedLinks);

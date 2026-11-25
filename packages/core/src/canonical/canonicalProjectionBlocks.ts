@@ -16,18 +16,15 @@ import {
 } from "../docx/commentAnchorIndex";
 import { visitBookmarkBoundaries } from "../prosemirror/conversion/toProseDoc";
 import type { BlockContent, Paragraph } from "../types/document";
-import type {
-  CanonicalInlineGap,
-  CanonicalSeamExtent,
-} from "./canonicalInlineProjection";
+import type { CanonicalInlineGaps } from "./canonicalInlineGaps";
 
 export type ParagraphAddress = {
   blockId: string;
   container: readonly BlockContent[];
   start: number;
   text: string;
-  boundaries: readonly (readonly CanonicalInlineGap[])[];
-  seams: readonly (readonly CanonicalSeamExtent[])[];
+  /** Each offset's editor positions and the seams they stand for. */
+  gaps: CanonicalInlineGaps;
   node: PMNode;
   source: Paragraph;
 };
@@ -39,7 +36,7 @@ export type BlockParagraph = {
   container: readonly BlockContent[] | undefined;
   /** From the start of the top-level node holding it. */
   offset: number;
-  inline: Pick<ParagraphAddress, "text" | "boundaries" | "seams">;
+  inline: Pick<ParagraphAddress, "text" | "gaps">;
   node: PMNode;
   source: Paragraph;
 };

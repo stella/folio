@@ -7977,7 +7977,16 @@ export class CanonicalPublicOperations {
     if (
       operation.type === "commentOnBlock" ||
       operation.type === "commentOnRange"
-    )
+    ) {
+      // A proposed comment is shown, listed and resolved by the words it
+      // covers; one over no shown words (a paragraph whose text is empty or
+      // all deleted) would stage a suggestion no reviewer can see, as
+      // accepting the deletion of a proposed comment's words retires it.
+      if (options.batch.mode === "suggested" && start === end)
+        return refusal(
+          "emptyOperation",
+          "A proposed comment needs words of the paragraph to cover.",
+        );
       return Result.ok({
         ...resolvedComment,
         intents: [],
@@ -7985,6 +7994,7 @@ export class CanonicalPublicOperations {
         from: range.from,
         to: range.to,
       });
+    }
     const restyle =
       restyles &&
       operation.type === "replaceBlock" &&

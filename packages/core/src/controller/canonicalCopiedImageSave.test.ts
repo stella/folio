@@ -590,7 +590,7 @@ test.each(Object.values(FOLIO_DOCX_SERIALIZATION_MODE))(
       panic("Conflicting owning relationship unexpectedly saved");
     expect(result.error).toBeInstanceOf(CanonicalImageRelationshipRefusalError);
     expect(result.error).toMatchObject({
-      gap: CANONICAL_GAP.save,
+      gap: CANONICAL_GAP.saveSerialization,
       reason: "conflict",
       part: relationshipPath(part),
       relationshipId: source.conflictId,

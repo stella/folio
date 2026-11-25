@@ -17,7 +17,6 @@ import {
   type FolioDocumentOperation,
   type FolioDocumentOperationResult,
 } from "../document-operations";
-import { applyFolioDocumentOperations } from "../document-operations-apply";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import { pluginsForHeadlessRevisionResolution } from "../internal/headlessRevisionResolutionGuard";
@@ -37,6 +36,8 @@ import type {
   ParagraphContent,
   TextFormatting,
 } from "../types/document";
+import { createReferenceEditorRuntime } from "./createReferenceEditorKit";
+import { applyFolioDocumentOperations } from "./reference-editor/document-operations-apply";
 
 export const textRun = (
   text: string,
@@ -240,7 +241,9 @@ export const reviewerSessionState = async (
       doc: ensureParaIdsInDoc(toProseDoc(document)),
       plugins: [
         createDocumentNumberingPlugin(document.package.numbering),
-        ...pluginsForHeadlessRevisionResolution(singletonManager.getPlugins()),
+        ...pluginsForHeadlessRevisionResolution(
+          createReferenceEditorRuntime(singletonManager.getSchema()).plugins,
+        ),
         createDocumentStylesPlugin(document.package.styles),
       ],
     }),

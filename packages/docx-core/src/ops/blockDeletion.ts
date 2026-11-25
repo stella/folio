@@ -18,7 +18,7 @@ import {
   storyBody,
   storyParagraphs,
 } from "./blocks";
-import { isCommentExhausted } from "./comments";
+import { newlyExhaustedCommentIds } from "./comments";
 import type { DocumentEdit } from "./edits";
 import { structurallyEqual } from "./equality";
 import { freshenIdentities } from "./identity";
@@ -670,14 +670,7 @@ const withExhaustedCommentsRetired = ({
   ExhaustedCommentsRetirement,
   DocumentOpRefusal
 > => {
-  const exhaustedCommentIds = (before.package.document.comments ?? []).flatMap(
-    ({ id, parentId }) =>
-      parentId === undefined &&
-      !isCommentExhausted({ type: "document", document: before, id }) &&
-      isCommentExhausted({ type: "document", document: edit.document, id })
-        ? [id]
-        : [],
-  );
+  const exhaustedCommentIds = newlyExhaustedCommentIds(before, edit.document);
   if (exhaustedCommentIds.length === 0)
     return Result.ok({ edit, modified: [] });
   const retired = applyOps(
@@ -763,6 +756,30 @@ const breakRetiredBefore = (
   return candidate !== index - 1 && list[candidate]?.type === "paragraph"
     ? candidate
     : index - 1;
+};
+
+/**
+ * A table pending deletion still blocks a tracked paragraph join, but it
+ * does not supply properties to the closing paragraph. Look past such
+ * tables for the paragraph that supplies them in the accepted document.
+ */
+const terminalPropertySource = (
+  list: readonly BlockContent[],
+  index: number,
+): number => {
+  let candidate = index;
+  for (;;) {
+    const block = list[candidate];
+    if (
+      block?.type !== "table" ||
+      block.rows.length === 0 ||
+      !block.rows.every(
+        (row) => row.structuralChange?.type === "tableRowDeletion",
+      )
+    )
+      return candidate;
+    candidate = breakRetiredBefore(list, candidate);
+  }
 };
 
 /**
@@ -1241,9 +1258,18 @@ export const deleteBlocks = ({
           ...sectionBoundaries,
         };
   const finalReview = reviewFieldsOf(last.paragraph);
-  if (previous !== undefined && givesProperties(list, previousIndex)) {
+  const formattingSourceIndex =
+    terminal && op.revision !== undefined
+      ? terminalPropertySource(list, previousIndex)
+      : previousIndex;
+  const formattingSource = list[formattingSourceIndex];
+  if (
+    terminal &&
+    formattingSource?.type === "paragraph" &&
+    givesProperties(list, formattingSourceIndex)
+  ) {
     const formatting = withMarkFormatting(
-      paragraphPropertiesOf(previous.formatting),
+      paragraphPropertiesOf(formattingSource.formatting),
       last.paragraph.formatting,
     );
     delete finalReview.formatting;

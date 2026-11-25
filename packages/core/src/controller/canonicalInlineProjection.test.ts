@@ -148,7 +148,7 @@ test("explicit comment boundaries retain gap ordinals and validate mark coverage
 
   const mapped = project("exact").unwrap();
   expect(mapped.text).toBe("ABR");
-  expect(mapped.boundaries).toEqual([
+  expect(mapped.gaps.toBoundaries()).toEqual([
     [
       { position: 0, zeroWidthBefore: 0 },
       { position: 1, zeroWidthBefore: 1 },
@@ -202,7 +202,7 @@ test("generated collapsed and paired markers retain exact source gap ordinals", 
     }).unwrap();
     expect(mapped.text).toBe(paragraphLogicalText(source));
     expect(mapped.text).toBe("LR");
-    expect(mapped.boundaries).toEqual([
+    expect(mapped.gaps.toBoundaries()).toEqual([
       [{ position: 0, zeroWidthBefore: 0 }],
       expected,
       [{ position: position + 1, zeroWidthBefore: 0 }],
@@ -267,16 +267,16 @@ test("generated nonempty bookmark and move ranges preserve native gap geometry",
         }).unwrap();
         expect(mapped.text).toBe(paragraphLogicalText(source));
         expect(native.content.size).toBe(mapped.text.length + 2);
-        expect(mapped.boundaries.at(1)).toEqual([
+        expect(mapped.gaps.toBoundaries().at(1)).toEqual([
           { position: 1, zeroWidthBefore: 0 },
           { position: 2, zeroWidthBefore: 1 },
         ]);
-        expect(mapped.boundaries.at(1 + text.length)).toEqual([
+        expect(mapped.gaps.toBoundaries().at(1 + text.length)).toEqual([
           { position: 2 + text.length, zeroWidthBefore: 0 },
           { position: 3 + text.length, zeroWidthBefore: 1 },
         ]);
         const projection = createCanonicalSession(document).unwrap().projection;
-        for (const [offset, gaps] of mapped.boundaries.entries()) {
+        for (const [offset, gaps] of mapped.gaps.toBoundaries().entries()) {
           for (const gap of gaps) {
             const address = projection.addressAt(1 + gap.position).unwrap();
             expect(address.offset).toBe(offset);
@@ -321,13 +321,13 @@ test("nonempty comment ranges map their mark transitions to source gap ordinals"
     }).unwrap();
     // A seam shared by a range's start marker stands for the gap typed text
     // takes, before the marker; its extent still reaches after it.
-    expect(mapped.boundaries).toEqual([
+    expect(mapped.gaps.toBoundaries()).toEqual([
       [{ position: 0, zeroWidthBefore: 0 }],
       [{ position: 1, zeroWidthBefore: 0 }],
       [{ position: 2, zeroWidthBefore: 1 }],
       [{ position: 3, zeroWidthBefore: 0 }],
     ]);
-    expect(mapped.seams).toEqual([
+    expect(mapped.gaps.toSeams()).toEqual([
       [{ first: 0, last: 0 }],
       [{ first: 0, last: 1 }],
       [{ first: 0, last: 1 }],
@@ -482,7 +482,7 @@ test("generated erased containers keep unique source seams beside text and colla
       expect(preserved?.type).toBe("paragraph");
       if (preserved?.type !== "paragraph") return;
       expect(zeroWidth(preserved)).toEqual(zeroWidth(source));
-      for (const [offset, gaps] of mapped.boundaries.entries()) {
+      for (const [offset, gaps] of mapped.gaps.toBoundaries().entries()) {
         expect(new Set(gaps.map(({ position }) => position)).size).toBe(
           gaps.length,
         );
@@ -511,7 +511,7 @@ test("generated erased containers keep unique source seams beside text and colla
           });
           // Every ordinal a seam spans has the seam's editor position.
           expect(position.isOk()).toBe(
-            (mapped.seams[offset] ?? []).some(
+            (mapped.gaps.toSeams()[offset] ?? []).some(
               ({ first, last }) => first <= ordinal && ordinal <= last,
             ),
           );
@@ -796,7 +796,7 @@ test("story-owned eligibility preserves unpaired and cross-paragraph bookmark so
         .filter(({ node }) => node.type === marker.type)
         .map(({ node }) => node),
     ).toEqual([marker]);
-    for (const [offset, gaps] of mapped.boundaries.entries())
+    for (const [offset, gaps] of mapped.gaps.toBoundaries().entries())
       for (const gap of gaps) {
         const address = session.projection
           .addressAt(start + gap.position)
@@ -888,17 +888,17 @@ test("a paragraph's gaps and seams are projected with as many map operations how
       content: [run("a".repeat(length)), run("bc")],
     } satisfies Paragraph;
     const paragraph = toProseDoc(documentFor(source)).child(0);
-    let seams = 0;
-    let gaps = 0;
+    let projected: ReturnType<typeof projectCanonicalInline> | undefined;
     const operations = mapOperationsDuring(() => {
-      const projected = projectCanonicalInline({
+      projected = projectCanonicalInline({
         source,
         paragraph,
         pairedBookmarkIds: new Set(),
-      }).unwrap();
-      seams = projected.seams.flat().length;
-      gaps = projected.boundaries.flat().length;
+      });
     });
+    const table = (projected ?? panic("Missing projection")).unwrap().gaps;
+    const seams = table.toSeams().flat().length;
+    const gaps = table.toBoundaries().flat().length;
     // Every gap still has its seam.
     expect(seams).toBe(gaps);
     expect(gaps).toBeGreaterThan(length);

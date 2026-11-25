@@ -32,6 +32,7 @@ import {
   reviewerSessionState,
   textRun,
 } from "../__tests__/operationBatchDocuments";
+import { applyFolioAIEditOperations } from "../__tests__/reference-editor/apply";
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperation,
@@ -43,7 +44,6 @@ import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
 import { readParagraphNumberingAttr } from "../prosemirror/numberingAttr";
 import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import type { Comment, ParagraphContent } from "../types/document";
-import { applyFolioAIEditOperations } from "./apply";
 import { FolioDocxReviewer } from "./headless";
 import {
   changesFromSegments,

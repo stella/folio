@@ -1,5 +1,47 @@
 # @stll/docx-core
 
+## 0.45.0
+
+### Minor Changes
+
+- [#3531](https://github.com/stella/folio/pull/3531) [`c4ea819`](https://github.com/stella/folio/commit/c4ea819e3b32f853801b1e30783e49fb4112e02a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - AutoFit to contents runs in the canonical session: `setTableGrid` with no widths leaves the grid unmeasured, directly or as a tracked grid change.
+
+- [#3525](https://github.com/stella/folio/pull/3525) [`536b933`](https://github.com/stella/folio/commit/536b933f8c315dce659d1bcf97a121c3624a09da) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Paste tables, with the paragraphs around them, directly or as suggestions: the `pasteBlocks` editor intent places clipboard blocks at the caret, and the editor pastes clipboard tables through it.
+
+- [#3529](https://github.com/stella/folio/pull/3529) [`de6d5e8`](https://github.com/stella/folio/commit/de6d5e820179b3b89e71f67a5c5a138a621d2841) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Edit watermarks in the canonical session: `watermarkOperations` (from `storyPartsOpOf`, in `controller/canonicalWatermark`) journals a watermark change as one operation, and the Vue watermark dialog applies it instead of refusing.
+
+- [#3558](https://github.com/stella/folio/pull/3558) [`3ab1317`](https://github.com/stella/folio/commit/3ab1317358fc94f1e6a7cdffd1225a7f6498d9d0) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Direct cell merges, cell splits and column edits apply beside more pending table reviews. A merge across rows with different pending insertions or deletions keeps each row's change on the words it moves; splitting a cell with a pending property change gives each new cell a record of its own; a column edit beside a partial cell insertion or deletion, or a pending span change, lands in the same column whether the reviews are accepted or rejected. Removing a row that alone continues a vertical merge ends that merge, and a resolved row's merged cell keeps its pending paragraph marks when it is handed on.
+
+- [#3566](https://github.com/stella/folio/pull/3566) [`cfef00c`](https://github.com/stella/folio/commit/cfef00c3cb6f39ceca395c1526e43785d4b7274a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Kept range markers record the revision IDs that hold their cut so tracked changes resolve consistently across orders, including after reopening DOCX files with older review history.
+
+- [#3528](https://github.com/stella/folio/pull/3528) [`c6d444c`](https://github.com/stella/folio/commit/c6d444c04bd1b875ee5119884f4d6ec26c6229b6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Paste footnotes, endnotes and comments copied in the editor: `pasteBlocks` takes the `annotations` its references and markers name and copies each under a fresh id where its reference lands, directly or as a suggestion.
+
+### Patch Changes
+
+- [#3549](https://github.com/stella/folio/pull/3549) [`c183f97`](https://github.com/stella/folio/commit/c183f97b44c6a8f7dc21be9b6f474bcd07694fc1) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A direct replacement removes an empty hyperlink, content control or wrapper exactly when the part of its range between two range boundaries or comment anchors removes something else, as accepting the same suggestion does. Content already deleted or moved away no longer splits that part in a direct replacement.
+
+- [#3562](https://github.com/stella/folio/pull/3562) [`68889c7`](https://github.com/stella/folio/commit/68889c777b50affb6520eb57ec5093b800006cb5) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Resolving tracked changes keeps a range marker kept from a rejected link at the seam, in every order, when a join is held on its other side: an earlier pending insertion's, a pending deletion's, or a seam either handed over. A marker whose piece a pending deletion holds follows that deletion's seam once it is accepted, an insertion emptied by accepting the deletion it held hands its join on as accepting it does, and a removed insertion's cut goes with an earlier insertion it was made in past later insertions the same rejection removes.
+
+- [#3555](https://github.com/stella/folio/pull/3555) [`09186cf`](https://github.com/stella/folio/commit/09186cfbe0b1349453a69d3e5215df8b2874b2e0) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Resolving tracked changes places a range marker kept from a rejected link the same way in more orders: the piece it belongs to passes to the pending change that takes the seam of a removed or emptied change, a one-sided piece that is a pending insertion takes the marker, and accepting the change a marker named leaves it naming nothing.
+
+- [#3221](https://github.com/stella/folio/pull/3221) [`23fbe42`](https://github.com/stella/folio/commit/23fbe42eb5be676fde9ff58085027063c7b8550e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Materialize eligible plain paragraph review resolutions without joins in a single splice while preserving the native operation checks and undo effects.
+
+- [#3221](https://github.com/stella/folio/pull/3221) [`23fbe42`](https://github.com/stella/folio/commit/23fbe42eb5be676fde9ff58085027063c7b8550e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Resolve eligible contiguous chains of rejected tracked paragraph marks in one splice while retaining the individual native checks, receivers, and undo effects.
+
+- [#3550](https://github.com/stella/folio/pull/3550) [`45bb0d7`](https://github.com/stella/folio/commit/45bb0d7faae91fe138b0aa03def346159ed337f3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A canonical merge drops its separator only where, as the merge runs, every paragraph after the joined one is pending removal: a deletion the batch asks for but refuses, or makes only after the merge, no longer takes the separator away, so accepting a tracked or suggested merge reads as applying it directly. `@stll/docx-core/ops` exports `paragraphHoldsContent` and `paragraphHoldsContentOnceAccepted`.
+
+- [#3525](https://github.com/stella/folio/pull/3525) [`536b933`](https://github.com/stella/folio/commit/536b933f8c315dce659d1bcf97a121c3624a09da) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A suggested paste beside content pending removal keeps no extra paragraph for it once accepted.
+
+- [#3221](https://github.com/stella/folio/pull/3221) [`23fbe42`](https://github.com/stella/folio/commit/23fbe42eb5be676fde9ff58085027063c7b8550e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Resolve a contiguous run of rejected inserted paragraph marks with one splice inside a larger story.
+
+- [#3550](https://github.com/stella/folio/pull/3550) [`45bb0d7`](https://github.com/stella/folio/commit/45bb0d7faae91fe138b0aa03def346159ed337f3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A tracked deletion that takes back an author's own paragraph inserted after a container's last paragraph keeps the pending property changes that author made to that last paragraph since, so accepting reads as deleting the inserted paragraph directly, and rejecting still restores the original.
+
+- [#3564](https://github.com/stella/folio/pull/3564) [`b154b42`](https://github.com/stella/folio/commit/b154b42a9ac207c5c64d653dcbb95db655a4d447) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve paragraph IDs when resolving splits of pending insertions, including after saving and reopening a DOCX.
+
+- [#3552](https://github.com/stella/folio/pull/3552) [`504f7a8`](https://github.com/stella/folio/commit/504f7a8887252048d05c8183bd7b75b186935629) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A tracked or suggested paragraph put directly after one that ends a section, before a content control, preserved block or table, applies as the direct insertion: it opens the next section and holds its own inserted mark
+
+- [#3548](https://github.com/stella/folio/pull/3548) [`b6eeb79`](https://github.com/stella/folio/commit/b6eeb79aeb000c4e5553e7ba456c53bc0835e37e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Sequencing rebases an edit over a concurrent deletion whose ends name zero-width leaves when the edit has no position at an offset the deletion spans, instead of refusing every such pair. `trackedOrderPair` leaves out the pairs the transform still refuses, through the same `zeroWidthSpanOverlap` check.
+
 ## 0.44.0
 
 ### Minor Changes

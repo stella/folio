@@ -3466,6 +3466,8 @@ const recordJoinedDeletion = ({
   footprint,
 }: RecordJoinedDeletionOptions) => {
   if (model.engine !== "canonical" || model.mode !== "tracked-changes") return;
+  // Formatting a paragraph leaves the live text and its pending join intact.
+  if (operation.type === "setBlockParagraphProperties") return;
   const blockId = operation["blockId"];
   for (const join of model.pendingJoins.values()) {
     const sources = join.deletionSources;
@@ -4867,7 +4869,10 @@ export const markDeletedIds = (reviewer: Reviewer): Set<string> =>
   );
 
 /** The inserted marks in this story, including those of staged suggestions. */
-const markInsertedIds = (reviewer: Reviewer, story: Story): Set<string> => {
+export const markInsertedIds = (
+  reviewer: Reviewer,
+  story: Story,
+): Set<string> => {
   const ids = new Set<string>();
   const snapshot = reviewer.snapshotStory(story);
   if (snapshot === null) return ids;

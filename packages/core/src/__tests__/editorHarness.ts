@@ -43,8 +43,6 @@ import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { ExtensionManager } from "../prosemirror/extensions/ExtensionManager";
 import { ensureBaseDirectionInState } from "../prosemirror/extensions/features/AutoBidiDetectionExtension";
-import { repackWithEditorSectionRemovals } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
-import { createStarterKit } from "../prosemirror/extensions/StarterKit";
 import { ensureParaIdsInDoc } from "../prosemirror/paraIds";
 import {
   createDocumentNumberingPlugin,
@@ -58,6 +56,11 @@ import { createSuggestionModePlugin } from "../prosemirror/plugins/suggestionMod
 import { singletonManager } from "../prosemirror/schema";
 import { dispatchEditorTextInput } from "../prosemirror/textInput";
 import type { Document } from "../types/document";
+import {
+  createReferenceEditorKit,
+  createReferenceEditorRuntime,
+} from "./createReferenceEditorKit";
+import { repackWithEditorSectionRemovals } from "./reference-editor/ParagraphChangeTrackerExtension";
 
 export type EditorMode = "editing" | "suggesting";
 
@@ -265,7 +268,7 @@ export const harnessManager = (): ExtensionManager => {
     const invariants = globalThis.__folioTransactionInvariants;
     globalThis.__folioTransactionInvariants = undefined;
     try {
-      sharedManager = new ExtensionManager(createStarterKit());
+      sharedManager = new ExtensionManager(createReferenceEditorKit());
       sharedManager.buildSchema();
       sharedManager.initializeRuntime();
     } finally {
@@ -293,22 +296,26 @@ export type HarnessRuntime = "harness" | "document";
 
 const TRANSACTION_INVARIANTS_KEY = /^transactionInvariants\$/u;
 
+let documentRuntimePlugins: readonly Plugin[] | undefined;
+const referenceDocumentRuntimePlugins = (): readonly Plugin[] =>
+  (documentRuntimePlugins ??= createReferenceEditorRuntime(
+    singletonManager.getSchema(),
+  ).plugins.filter(
+    (plugin) => !TRANSACTION_INVARIANTS_KEY.test(pluginKeyName(plugin)),
+  ));
+
 const runtimePlugins = (runtime: HarnessRuntime): readonly Plugin[] =>
   runtime === "harness"
     ? harnessManager().getPlugins()
     : // The harness reports an invalid document itself (see harnessManager).
-      singletonManager
-        .getPlugins()
-        .filter(
-          (plugin) => !TRANSACTION_INVARIANTS_KEY.test(pluginKeyName(plugin)),
-        );
+      referenceDocumentRuntimePlugins();
 
 const pluginKeyName = (plugin: Plugin): string =>
   (plugin as unknown as { key?: unknown }).key?.toString() ?? "";
 
 /** The extension runtime whose plugins `state` holds. */
 export const harnessRuntimeManager = (state: EditorState): ExtensionManager => {
-  const [first] = singletonManager.getPlugins();
+  const first = documentRuntimePlugins?.at(0);
   return first !== undefined && state.plugins.includes(first)
     ? singletonManager
     : harnessManager();

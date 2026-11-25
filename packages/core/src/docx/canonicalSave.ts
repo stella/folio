@@ -39,7 +39,7 @@ const CanonicalSaveDiagnosticErrorBase: TaggedErrorClass<"CanonicalSaveDiagnosti
 /** Forward a fidelity fallback through the adapters' existing error channel. */
 export class CanonicalSaveDiagnosticError extends CanonicalSaveDiagnosticErrorBase<{
   message: string;
-  gap: typeof CANONICAL_GAP.save;
+  gap: typeof CANONICAL_GAP.saveSerialization;
   diagnostic: SaveDiagnostic;
 }> {}
 
@@ -48,7 +48,7 @@ export const canonicalSaveDiagnosticError = (
   diagnostic: SaveDiagnostic,
 ): CanonicalSaveDiagnosticError =>
   new CanonicalSaveDiagnosticError({
-    gap: CANONICAL_GAP.save,
+    gap: CANONICAL_GAP.saveSerialization,
     diagnostic,
     message: `Canonical save used a fidelity fallback: ${diagnostic.type} (${diagnostic.part}).`,
   });

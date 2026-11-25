@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "title": "Successive suggestions delete a closing run in batch order",
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "directNumbered",
+  "mode": "suggested",
+  "seed": 14,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 3487657278,
+      "expectedApplied": 2,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "5E88C024"
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "31617F9A"
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from collisions flow seed 2039738647"
+}

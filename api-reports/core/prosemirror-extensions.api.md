@@ -33,7 +33,7 @@ export class ExtensionManager {
     requireCommand(name: string): CommandFactory;
 }
 
-// @public (undocumented)
+// @public
 export type StarterKitOptions = {
     disable?: string[];
     historyDepth?: number;

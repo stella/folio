@@ -3,6 +3,7 @@ import { panic, Result } from "better-result";
 
 import type { Document, DocumentBody, Paragraph } from "../model/document";
 import { storyBody, storyParagraphs } from "./blocks";
+import { newlyExhaustedCommentIds } from "./comments";
 import { identityKeysIn, idKey, slotKey } from "./ids";
 import { gapAfterInserted } from "./inline";
 import {
@@ -471,6 +472,21 @@ export const planTrackedReplacement = (
       revision,
     });
     if (inserted.isErr()) return Result.err(inserted.error);
+  }
+  // Retracting one's own pending insertion physically removes text. Any
+  // range it exhausts goes with that text, even before review is resolved.
+  if (
+    plan.ops.some(
+      (op) =>
+        op.type === DOCUMENT_OP_TYPES.DELETE_RANGE && op.revision === undefined,
+    )
+  ) {
+    for (const id of newlyExhaustedCommentIds(document, plan.document()))
+      plan.ops.push({
+        type: DOCUMENT_OP_TYPES.DELETE_COMMENT,
+        id,
+        scope: "thread",
+      });
   }
   return Result.ok(plan.ops);
 };

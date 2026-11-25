@@ -769,7 +769,7 @@ test("canonical header edits and new footer and note stories survive adapter sav
       expect(error).toBeInstanceOf(CanonicalSaveDiagnosticError);
       if (!(error instanceof CanonicalSaveDiagnosticError))
         panic("Expected typed save diagnostic");
-      expect(error.gap).toBe("pm-save-projection");
+      expect(error.gap).toBe("save-serialization");
       expect(error.diagnostic).toEqual(CANONICAL_SAVE_FALLBACK_DIAGNOSTIC);
     }
     expect(editor.current?.hasPendingChanges()).toBe(false);
@@ -1455,7 +1455,7 @@ test.each(CANONICAL_SAVE_SEEDS)(
         if (!(error instanceof CanonicalSaveDiagnosticError))
           panic("Expected typed save diagnostic");
         expect(error.diagnostic).toEqual(CANONICAL_SAVE_FALLBACK_DIAGNOSTIC);
-        expect(error.gap).toBe("pm-save-projection");
+        expect(error.gap).toBe("save-serialization");
       }
     } finally {
       await act(async () => root.unmount());

@@ -7,13 +7,13 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import { separateRevisionStretches } from "../__tests__/reference-editor/revisionStretches";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown";
 import { expectRunPropertyChangeMarkAttrs } from "../prosemirror/attrs";
 import { schema } from "../prosemirror/schema";
 import { FolioDocxReviewer } from "./headless";
-import { separateRevisionStretches } from "./revisionStretches";
 import { createFolioAITextRangeHandle } from "./snapshot";
 
 test(

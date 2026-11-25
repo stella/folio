@@ -78,6 +78,16 @@ test("sequential replay orders every property-edit sibling before terminal break
             } else {
               assert.equal(propertyAt, ordered.length - 1);
             }
+            if (mode === "suggested") {
+              const earlierDeletions = new Set(
+                deletions.slice(0, -1).map(({ id }) => id),
+              );
+              assert.ok(
+                ordered
+                  .slice(retirementAt + 1)
+                  .every(({ id }) => !earlierDeletions.has(id)),
+              );
+            }
           }
         }
       }

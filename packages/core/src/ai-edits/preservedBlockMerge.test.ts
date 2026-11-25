@@ -1,10 +1,10 @@
 import { expect, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
 
+import { applyFolioAIEditOperations } from "../__tests__/reference-editor/apply";
 import { FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE } from "../document-operations";
 import { acceptAllChanges } from "../prosemirror/commands/comments";
 import { schema } from "../prosemirror/schema";
-import { applyFolioAIEditOperations } from "./apply";
 import { createFolioAIEditSnapshot } from "./snapshot";
 
 // Structural-edit fixtures had only joinable paragraphs, never opaque siblings.

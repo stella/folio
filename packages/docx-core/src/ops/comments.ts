@@ -657,6 +657,25 @@ export type CommentExhaustionInput =
       survivingNonCarrierContent: boolean;
     };
 
+/** Read coverage once per anchor kind for the requested roots in a document. */
+const commentExhaustionIn = (document: Document) => {
+  let covered: ReadonlySet<number> | undefined;
+  let anchored: ReadonlySet<number> | undefined;
+  return ({ anchorKind, id, parentId }: Comment): boolean => {
+    if (parentId !== undefined) return false;
+    switch (anchorKind) {
+      case "range":
+        covered ??= coveredCommentIds(document);
+        return !covered.has(id);
+      case "point":
+        anchored ??= sourceCommentAnchorIds(document);
+        return !anchored.has(id);
+      default:
+        return false;
+    }
+  };
+};
+
 /** Whether a known range lost its content or a known point lost its anchor. */
 export const isCommentExhausted = (input: CommentExhaustionInput): boolean => {
   if (input.type === "coverage")
@@ -665,14 +684,32 @@ export const isCommentExhausted = (input: CommentExhaustionInput): boolean => {
   const comment = document.package.document.comments?.find(
     (entry) => entry.id === id,
   );
-  if (comment === undefined || comment.parentId !== undefined) return false;
-  if (comment.anchorKind === "point")
-    return !sourceCommentAnchorIds(document).has(id);
-  return isCommentExhausted({
-    type: "coverage",
-    anchorKind: comment.anchorKind,
-    survivingNonCarrierContent: coveredCommentIds(document).has(id),
-  });
+  return comment !== undefined && commentExhaustionIn(document)(comment);
+};
+
+/** Root comment threads that still had coverage before an edit consumed it. */
+export const newlyExhaustedCommentIds = (
+  before: Document,
+  after: Document,
+): number[] => {
+  const previous = before.package.document.comments ?? [];
+  if (previous.length === 0) return [];
+  const current = new Map(
+    (after.package.document.comments ?? []).map((comment) => [
+      comment.id,
+      comment,
+    ]),
+  );
+  const wasExhausted = commentExhaustionIn(before);
+  const isExhausted = commentExhaustionIn(after);
+  const exhausted: number[] = [];
+  for (const source of previous) {
+    if (source.parentId !== undefined) continue;
+    const target = current.get(source.id);
+    if (target !== undefined && isExhausted(target) && !wasExhausted(source))
+      exhausted.push(source.id);
+  }
+  return exhausted;
 };
 
 type LinksEmptiedByRetirementOptions = {

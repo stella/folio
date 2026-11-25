@@ -321,3 +321,32 @@ test.each(CASES)(
     }
   },
 );
+
+test.each(Object.values(MODES))(
+  "rejecting an insertion after a section break preserves a trailing bookmark in every order",
+  (revision) => {
+    const document = withSections([
+      ANCHORS.empty.anchor,
+      { type: "bookmarkStart", id: 90, name: "_GoBack" },
+    ]);
+    const tracked = apply(document, {
+      type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+      story: OP_STORIES.MAIN,
+      at: { type: "after", blockId: "00000001" },
+      blocks: [paragraph("00000002", "New.")],
+      revision,
+      newIds: { revision: [101] },
+    });
+    const inserted = tracked.document.package.document.content.at(1);
+    if (inserted?.type !== "paragraph" || inserted.pPrMark === undefined)
+      throw new Error("Expected an inserted paragraph mark");
+    const mark = inserted.pPrMark.info.id;
+    const text = tracked.revisions.filter((id) => id !== mark);
+    expect(text).toHaveLength(1);
+    const reject = (current: Document, ids: readonly number[]) =>
+      resolve(current, ids, REVISION_DECISIONS.REJECT);
+    expect(reject(tracked.document, [mark, ...text])).toEqual(document);
+    expect(reject(reject(tracked.document, [mark]), text)).toEqual(document);
+    expect(reject(reject(tracked.document, text), [mark])).toEqual(document);
+  },
+);

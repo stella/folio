@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "title": "Replacing all the commented words of an inserted cell retires its comment before save",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "notes",
+  "mode": "tracked-changes",
+  "seed": 108063817,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 1428100054,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "412DDC7F",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 1868112133,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "commentOnRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "@1",
+            "startOffset": 0,
+            "endOffset": 4,
+            "selectedTextHash": "hyk3ifz"
+          },
+          "comment": {
+            "text": "Term party clause warranty payment invoice goods."
+          }
+        },
+        {
+          "type": "replaceRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "@1",
+            "startOffset": 0,
+            "endOffset": 4,
+            "selectedTextHash": "hyk3ifz"
+          },
+          "replace": "updated"
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from random flow seed 108063817"
+}

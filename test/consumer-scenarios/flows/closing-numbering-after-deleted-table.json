@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "tables",
+  "mode": "direct",
+  "seed": 293416777,
+  "title": "Deleting a numbered closing paragraph across a pending table deletion keeps the preceding paragraph's properties",
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 293416777,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "6FFB97E7",
+          "properties": {
+            "numbering": { "kind": "newList", "format": "bullet" }
+          }
+        },
+        {
+          "type": "deleteTable",
+          "blockId": "5CFDAD72"
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 293416777,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "6FFB97E7"
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "79D25458"
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from collisions flow seed 293416777"
+}
