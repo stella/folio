@@ -115,24 +115,67 @@ export const exactBytes = (bytes: Uint8Array): Uint8Array<ArrayBuffer> => {
     : copyBytes(bytes);
 };
 
-let crcTable: Uint32Array | null = null;
+/**
+ * Eight 256-entry CRC-32 tables, one after another: table 0 is the classic
+ * byte table, and table `k` advances a byte's contribution by `k` more bytes.
+ */
+let crcTables: Uint32Array | null = null;
 
-const tableCrc32: Crc32 = (data, previous = 0) => {
-  if (crcTable === null) {
-    crcTable = new Uint32Array(256);
-    for (let index = 0; index < 256; index++) {
-      let value = index;
-      for (let bit = 0; bit < 8; bit++) {
-        value = value & 1 ? 0xed_b8_83_20 ^ (value >>> 1) : value >>> 1;
-      }
-      crcTable[index] = value >>> 0;
+const buildCrcTables = (): Uint32Array => {
+  const tables = new Uint32Array(256 * 8);
+  for (let index = 0; index < 256; index++) {
+    let value = index;
+    for (let bit = 0; bit < 8; bit++) {
+      value = value & 1 ? 0xed_b8_83_20 ^ (value >>> 1) : value >>> 1;
+    }
+    tables[index] = value >>> 0;
+  }
+  for (let index = 0; index < 256; index++) {
+    // SAFETY: every index below is in 0..2047, inside the 2048 entries.
+    let value = tables[index]!;
+    for (let table = 1; table < 8; table++) {
+      value = tables[value & 0xff]! ^ (value >>> 8);
+      tables[table * 256 + index] = value >>> 0;
     }
   }
-  const table = crcTable;
+  return tables;
+};
+
+/**
+ * CRC-32 where the runtime offers none (browsers): eight bytes per step over
+ * eight tables, then byte by byte. The loops index the array; iterating a
+ * typed array with `for…of` runs an order of magnitude slower, and every
+ * entry an archive inflates is checked through here.
+ */
+const tableCrc32: Crc32 = (data, previous = 0) => {
+  crcTables ??= buildCrcTables();
+  const t = crcTables;
   let crc = ~previous >>> 0;
-  for (const byte of data) {
-    // SAFETY: the index is masked to 0..255 and the table has 256 entries.
-    crc = table[(crc ^ byte) & 0xff]! ^ (crc >>> 8);
+  const length = data.length;
+  const whole = length - (length % 8);
+  let index = 0;
+  // SAFETY: table indices are masked to 0..255 and offset by k * 256 for
+  // k in 0..7, inside the 2048 entries; data indices stay below `length`.
+  for (; index < whole; index += 8) {
+    const low =
+      (crc ^
+        (data[index]! |
+          (data[index + 1]! << 8) |
+          (data[index + 2]! << 16) |
+          (data[index + 3]! << 24))) >>>
+      0;
+    crc =
+      t[1792 + (low & 0xff)]! ^
+      t[1536 + ((low >>> 8) & 0xff)]! ^
+      t[1280 + ((low >>> 16) & 0xff)]! ^
+      t[1024 + (low >>> 24)]! ^
+      t[768 + data[index + 4]!]! ^
+      t[512 + data[index + 5]!]! ^
+      t[256 + data[index + 6]!]! ^
+      t[data[index + 7]!]!;
+  }
+  for (; index < length; index++) {
+    crc = t[(crc ^ data[index]!) & 0xff]! ^ (crc >>> 8);
   }
   return ~crc >>> 0;
 };
