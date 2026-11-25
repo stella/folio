@@ -5,7 +5,6 @@ import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperation,
 } from "../document-operations";
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import { FolioDocxReviewer } from "./headless";
 
 const blockId = "10000000";
@@ -32,7 +31,7 @@ const operations = [
 ] as const satisfies readonly FolioDocumentOperation[];
 
 for (const operation of operations)
-  test(`final views refuse a staged ${operation.id} without changing the live reviewer`, async () => {
+  test(`final views accept a staged ${operation.id} with the other changes, without changing the live reviewer`, async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await paragraphsDocx([[textRun("Alpha")], [textRun("Beta")]]),
       { session: "canonical" },
@@ -73,26 +72,22 @@ for (const operation of operations)
       suggestions: reviewer.exportPendingSuggestions(),
     });
     const before = state();
-    for (const read of [
-      () => reviewer.readReviewedStory({ view: "final" }),
-      () => reviewer.toResolvedDocument("accept"),
-    ]) {
-      expect(read).toThrow(
-        expect.objectContaining({
-          reason: "refused",
-          ground: { gap: CANONICAL_GAP.publicHeadlessSession },
-        }),
-      );
-      expect(state()).toEqual(before);
-    }
-    expect(reviewer.acceptSuggestion(operation.id)).toBe(true);
-    const final = reviewer.readReviewedStory({ view: "final" });
-    expect(final?.changes).toEqual([]);
     const expected = {
       replacement: ["Changed", "Updated"],
       insertion: ["Alpha", "Added paragraph", "Updated"],
       comment: ["Alpha", "Updated"],
     } satisfies Record<(typeof operations)[number]["id"], string[]>;
+    const viewed = reviewer.readReviewedStory({ view: "final" });
+    expect(viewed?.changes).toEqual([]);
+    expect(viewed?.snapshot.blocks.map(({ text }) => text)).toEqual(
+      expected[operation.id],
+    );
+    reviewer.toResolvedDocument("accept");
+    expect(state()).toEqual(before);
+    // The view reads as accepting the suggestion first does.
+    expect(reviewer.acceptSuggestion(operation.id)).toBe(true);
+    const final = reviewer.readReviewedStory({ view: "final" });
+    expect(final?.changes).toEqual([]);
     expect(final?.snapshot.blocks.map(({ text }) => text)).toEqual(
       expected[operation.id],
     );

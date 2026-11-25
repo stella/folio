@@ -2523,20 +2523,6 @@ export class FolioDocxReviewer {
         present = true;
       }
     }
-    // A main-story resolution can retire a note; check its pending state before that.
-    for (const handle of handles) {
-      const state = copy.getEditableStoryState(handle);
-      if (!state) continue;
-      if (getSuggestions(state).length > 0)
-        throw canonicalReviewerRefusal(
-          "project a story holding pending suggestions",
-        );
-      if (mode === "with-revision-census") {
-        const stats = getTrackedChangeStatsFromDoc(state.doc);
-        for (const id of stats.ids) ids.add(id);
-        present ||= stats.present;
-      }
-    }
     const operations: DocumentOp[] = [];
     const session = copy.engine.session;
     const unsubscribe = session.onCommitted(({ ops }) =>
@@ -2544,6 +2530,24 @@ export class FolioDocxReviewer {
     );
     let stories: FolioDocxComparisonStoryProjection[];
     try {
+      // Staged suggestions project to final as the rest does: each becomes
+      // an ordinary change, in the same projection commit.
+      copy.promoteSuggestionsOnSession(session);
+      // A main-story resolution can retire a note; read its pending state
+      // before that.
+      for (const handle of handles) {
+        const state = copy.getEditableStoryState(handle);
+        if (!state) continue;
+        if (getSuggestions(state).length > 0)
+          throw canonicalReviewerRefusal(
+            "project a story holding a suggestion the session will not accept",
+          );
+        if (mode === "with-revision-census") {
+          const stats = getTrackedChangeStatsFromDoc(state.doc);
+          for (const id of stats.ids) ids.add(id);
+          present ||= stats.present;
+        }
+      }
       stories = handles.map((handle) => {
         const exists = copy.resolveStoryOnSession(session, handle, "final");
         return { handle, snapshot: exists ? copy.snapshotStory(handle) : null };
@@ -3354,10 +3358,10 @@ export class FolioDocxReviewer {
   }
 
   /**
-   * Resolve one editable story to its original or final state. A canonical
-   * target story holding staged suggestions refuses; resolve those through
-   * the suggestion methods first. A lock that prevents any target change
-   * from resolving refuses before mutation.
+   * Resolve one editable story to its original or final state, its staged
+   * suggestions with its other changes. A suggestion that reaches another
+   * story resolves only whole, through the suggestion methods. A lock that
+   * prevents any target change from resolving refuses before mutation.
    */
   resolveReviewedStory({
     story = MAIN_STORY,
@@ -5181,6 +5185,10 @@ export class FolioDocxReviewer {
       positionalParaIds: this.positionalParaIds,
     });
     copy.pendingSuggestions = this.pendingSuggestions.clone();
+    // Every change resolves to the view, staged suggestions too: accepted,
+    // each becomes an ordinary change first; a rejection takes them with the
+    // rest.
+    if (view === "final") copy.promoteSuggestionsOnSession(created.value);
     const resolution = view === "final" ? copy.acceptAll() : copy.rejectAll();
     if (resolution.skipped.length > 0)
       throw new CanonicalSessionError({
@@ -5193,6 +5201,80 @@ export class FolioDocxReviewer {
         `read the ${view} view while suggestions remain pending`,
       );
     return copy;
+  }
+
+  /**
+   * Turn every staged suggestion into an ordinary tracked change, so that
+   * accepting every change accepts the suggestions too.
+   */
+  private promoteSuggestionsOnSession(session: CanonicalSession): void {
+    for (const suggestionId of this.activeSuggestionIds())
+      this.resolveSuggestionOnSession(
+        session,
+        suggestionId,
+        "accept",
+        this.author,
+      );
+  }
+
+  /**
+   * A story holding staged suggestions resolved to `view`: its suggestions
+   * resolve with its other changes, on a fork, and the fork's operations
+   * land here as one commit, so a refusal leaves this reviewer as it was. A
+   * suggestion that reaches another story resolves only whole, so resolving
+   * one of its stories refuses.
+   */
+  private resolveStoryWithSuggestions({
+    story,
+    view,
+    staged,
+  }: {
+    story: FolioEditableDocumentStoryHandle;
+    view: FolioResolvedReviewedView;
+    staged: ReadonlySet<string>;
+  }): boolean {
+    const key = editableStoryKey(story);
+    for (const handle of this.listStoryHandlesInternal()) {
+      if (editableStoryKey(handle) === key) continue;
+      const other = this.getEditableStoryState(handle);
+      if (
+        other &&
+        getSuggestions(other).some(({ suggestionId }) =>
+          staged.has(suggestionId),
+        )
+      )
+        throw canonicalReviewerRefusal(
+          "resolve one story of a suggestion that reaches another",
+        );
+    }
+    const copy = this.fork();
+    if (copy.engine.type !== "canonical")
+      return panic("A canonical fork must retain its engine");
+    const { session } = copy.engine;
+    const operations: DocumentOp[] = [];
+    const unsubscribe = session.onCommitted(({ ops }) =>
+      operations.push(...ops),
+    );
+    let resolved: boolean;
+    try {
+      for (const suggestionId of staged)
+        copy.resolveSuggestionOnSession(
+          session,
+          suggestionId,
+          view === "final" ? "accept" : "reject",
+          this.author,
+        );
+      const after = copy.getEditableStoryState(story);
+      if (after && getSuggestions(after).length > 0)
+        throw canonicalReviewerRefusal(
+          "resolve a story holding a suggestion the session will not resolve",
+        );
+      resolved = copy.resolveStoryOnSession(session, story, view);
+    } finally {
+      unsubscribe();
+    }
+    if (operations.length > 0) this.commitOpsOnSession(operations);
+    return resolved;
   }
 
   /**
@@ -5214,10 +5296,11 @@ export class FolioDocxReviewer {
     // to the view, `false` for one that does not.
     const state = this.getEditableStoryState(story);
     if (!state) return false;
-    if (getSuggestions(state).length > 0)
-      throw canonicalReviewerRefusal(
-        "resolve a story holding pending suggestions",
-      );
+    const staged = new Set(
+      getSuggestions(state).map(({ suggestionId }) => suggestionId),
+    );
+    if (staged.size > 0)
+      return this.resolveStoryWithSuggestions({ story, view, staged });
     const resolution = view === "final" ? "accept" : "reject";
     const section =
       story.type === "main"
