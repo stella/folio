@@ -125,13 +125,13 @@ import {
   seedCommentAllocator,
 } from "../prosemirror/commentIdAllocator";
 import { commentThreadIds } from "../prosemirror/commentRecords";
-import { ensureParaIdsInDoc } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import { paragraphListReferences } from "../prosemirror/listInstanceReferences";
 import { MAX_LIST_LEVEL } from "../prosemirror/listMarker";
 import {
   type NoteKey,
   noteReferenceStates,
 } from "../prosemirror/noteReferenceReview";
+import { ensureParaIdsInDoc } from "../prosemirror/paraIds";
 import {
   createDocumentNumberingPlugin,
   getDocumentNumbering,
@@ -165,9 +165,8 @@ import { canonicalJson } from "../utils/canonicalJson";
 import type {
   FolioReplacementBackground,
   FolioRevisionStamp,
-  FolioUndefinedReferencePolicy,
   FolioWordDiffOptions,
-} from "./apply";
+} from "./applyTypes";
 import { buildAnnotatedBlockTextWithNoteReferences } from "./clean-text";
 import {
   anchoredCommentIdsInBlocks,
@@ -220,6 +219,7 @@ import type {
   FolioAIEditOperation,
   FolioAIEditSnapshot,
 } from "./types";
+import type { FolioUndefinedReferencePolicy } from "./undefinedReferences";
 
 /**
  * How many document-operation batches a reviewer can step back through.

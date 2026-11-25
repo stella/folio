@@ -1,5 +1,5 @@
-import type { FolioUndefinedReferencePolicy } from "@stll/folio-core/ai-edits/apply";
 import type { FolioCommentAnchor } from "@stll/folio-core/ai-edits/read";
+import type { FolioUndefinedReferencePolicy } from "@stll/folio-core/ai-edits/undefinedReferences";
 import { createReply } from "@stll/folio-core/docx/replyToComment";
 import { createCommentIdAllocator } from "@stll/folio-core/prosemirror/commentIdAllocator";
 import type {

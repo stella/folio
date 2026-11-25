@@ -37,7 +37,7 @@ import {
 const { usePageSetupControls } = await import("./usePageSetupControls");
 import { CanonicalSaveDiagnosticError } from "@stll/folio-core/docx/canonicalSave";
 import type { SaveDiagnostic } from "@stll/folio-core/docx/saveDiagnostics";
-import { paragraphChangeTrackerKey } from "@stll/folio-core/prosemirror/extensions/features/ParagraphChangeTrackerExtension";
+import { paragraphChangeTrackerKey } from "@stll/folio-core/prosemirror/paragraphChangeTrackerMeta";
 import type { FolioDocxSerializationPath } from "@stll/folio-core/types/docxSerialization";
 import type { SelectiveSaveDecline } from "@stll/folio-core/types/selectiveSaveDecline";
 

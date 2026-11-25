@@ -13,11 +13,11 @@ import { FolioDocxReviewer } from "../ai-edits/headless";
 import { createFolioAIEditSnapshotWithStyleResolver } from "../ai-edits/snapshot";
 import type { FolioAIEditSnapshot } from "../ai-edits/types";
 import {
-  applyFolioDocumentOperations,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperation,
   type FolioDocumentOperationResult,
 } from "../document-operations";
+import { applyFolioDocumentOperations } from "../document-operations-apply";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import { pluginsForHeadlessRevisionResolution } from "../internal/headlessRevisionResolutionGuard";
@@ -25,7 +25,7 @@ import { resolveAllChangesInHeadlessState } from "../prosemirror/commands/commen
 import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { ensureBaseDirectionInState } from "../prosemirror/extensions/features/AutoBidiDetectionExtension";
-import { ensureParaIdsInDoc } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
+import { ensureParaIdsInDoc } from "../prosemirror/paraIds";
 import { createDocumentNumberingPlugin } from "../prosemirror/plugins/documentNumbering";
 import { createDocumentStylesPlugin } from "../prosemirror/plugins/documentStyles";
 import { getDocumentStyleResolver } from "../prosemirror/plugins/documentStyleState";

@@ -90,10 +90,9 @@ import {
 } from "../prosemirror/commentRecords";
 import { createEmptyDoc, toProseDoc } from "../prosemirror/conversion";
 import { registerEditorCommandOwner } from "../prosemirror/executeEditorCommand";
-import type { HistoryShortcutOwner } from "../prosemirror/extensions/core/HistoryExtension";
+import type { HistoryShortcutOwner } from "../prosemirror/extensions/core/historyCommands";
 import type { ExtensionManager } from "../prosemirror/extensions/ExtensionManager";
 import { ensureBaseDirectionInState } from "../prosemirror/extensions/features/AutoBidiDetectionExtension";
-import { ensureParaIdsInDoc } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import {
   toggleMarkForAllScripts,
   toggleUnderlineMark,
@@ -107,6 +106,7 @@ import {
   isCompositionKeyDown,
 } from "../prosemirror/nativeSelection";
 import { noteReferenceTransactionIssue } from "../prosemirror/noteReferenceOccurrences";
+import { ensureParaIdsInDoc } from "../prosemirror/paraIds";
 import { createDocumentNumberingPlugin } from "../prosemirror/plugins/documentNumbering";
 import {
   createDocumentStyleContextPlugin,

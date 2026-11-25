@@ -44,8 +44,8 @@ import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { ExtensionManager } from "../prosemirror/extensions/ExtensionManager";
 import { ensureBaseDirectionInState } from "../prosemirror/extensions/features/AutoBidiDetectionExtension";
 import { repackWithEditorSectionRemovals } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
-import { ensureParaIdsInDoc } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import { createStarterKit } from "../prosemirror/extensions/StarterKit";
+import { ensureParaIdsInDoc } from "../prosemirror/paraIds";
 import {
   createDocumentNumberingPlugin,
   getDocumentNumbering,

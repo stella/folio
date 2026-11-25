@@ -1,7 +1,7 @@
 import { sectionReferenceHistory } from "../docx/sectionReferenceHistory";
 import type { SectionProperties } from "../types/document";
 import { canonicalJson } from "../utils/canonicalJson";
-import type { FolioRevisionStamp } from "./apply";
+import type { FolioRevisionStamp } from "./applyTypes";
 
 type StageFinalSectionPropertiesOptions = {
   target: SectionProperties;

@@ -11,7 +11,7 @@ import {
 import { expectTableCellAttrs } from "../prosemirror/attrs";
 import { standaloneTableCellFromProseMirror } from "../prosemirror/conversion/fromProseDoc";
 import { standaloneTableCellToProseMirror } from "../prosemirror/conversion/toProseDoc";
-import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
+import { markStructuralChange } from "../prosemirror/paragraphChangeTrackerMeta";
 import { removeRowsWithoutCells } from "../prosemirror/tableGridMutation";
 import type { TableCell, TableCellFormatting } from "../types/document";
 import {

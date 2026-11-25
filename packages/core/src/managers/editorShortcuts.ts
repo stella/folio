@@ -15,7 +15,7 @@ import type { EditorView } from "prosemirror-view";
 
 import { getTableContext } from "../prosemirror/commands/table";
 import { executeEditorCommand } from "../prosemirror/executeEditorCommand";
-import type { HistoryShortcutOwner } from "../prosemirror/extensions/core/HistoryExtension";
+import type { HistoryShortcutOwner } from "../prosemirror/extensions/core/historyCommands";
 import { singletonManager } from "../prosemirror/schema";
 
 export const DEFAULT_KEYBOARD_SHORTCUT_SCOPE = "editor";

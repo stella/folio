@@ -166,16 +166,18 @@ describe("canonical cutover guard", () => {
             .filter((line) => line !== `// canonical-gap: ${removed}`)
             .join("\n") + call;
         expect(
-          failuresOf(fixture, "packages/core/src/document-operations.ts").some(
-            (failure) =>
-              failure.includes(`${removed} source needs its ledger marker`),
+          failuresOf(
+            fixture,
+            "packages/core/src/document-operations-apply.ts",
+          ).some((failure) =>
+            failure.includes(`${removed} source needs its ledger marker`),
           ),
         ).toBe(true);
       }
       expect(
         failuresOf(
           `${markers}${call}`,
-          "packages/core/src/document-operations.ts",
+          "packages/core/src/document-operations-apply.ts",
         ),
       ).toEqual([]);
     }

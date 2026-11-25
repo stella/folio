@@ -11,10 +11,8 @@ import {
   HeadlessEditorView,
 } from "../__tests__/editorHarness";
 import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
-import {
-  applyFolioDocumentOperations,
-  FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-} from "../document-operations";
+import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
+import { applyFolioDocumentOperations } from "../document-operations-apply";
 import {
   acceptAllSuggestions,
   rejectAllSuggestions,

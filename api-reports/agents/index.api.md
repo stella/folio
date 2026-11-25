@@ -33,7 +33,7 @@ import { FolioDocumentStoryHandle } from '@stll/folio-core/server';
 import { FolioDocxReviewer } from '@stll/folio-core/server';
 import { FolioReviewChange } from '@stll/folio-core/server';
 import { FolioRevisionStamp } from '@stll/folio-core/server';
-import { FolioUndefinedReferencePolicy } from '@stll/folio-core/ai-edits/apply';
+import { FolioUndefinedReferencePolicy } from '@stll/folio-core/ai-edits/undefinedReferences';
 import { FolioVersionDiff } from '@stll/folio-core/server';
 import { FolioVersionDiffSegment } from '@stll/folio-core/server';
 import { GenerateRedlineDocxOptions } from '@stll/folio-core/server';

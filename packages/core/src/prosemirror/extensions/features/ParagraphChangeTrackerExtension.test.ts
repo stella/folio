@@ -13,11 +13,13 @@ import {
 
 import {
   clearTrackedChanges,
+  ignoreTrackedChanges,
+  markChangedParagraphRanges,
+} from "../../paragraphChangeTrackerMeta";
+import {
   getChangedParagraphIds,
   hasStructuralChanges,
   hasUntrackedChanges,
-  ignoreTrackedChanges,
-  markChangedParagraphRanges,
   ParagraphChangeTrackerExtension,
 } from "./ParagraphChangeTrackerExtension";
 import { ParaIdAllocatorExtension } from "./ParaIdAllocatorExtension";

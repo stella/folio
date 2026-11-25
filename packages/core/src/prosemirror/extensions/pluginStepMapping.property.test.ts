@@ -36,11 +36,9 @@ import {
   randomOperations,
   randomSchema,
 } from "../__tests__/randomTransactions";
+import { paragraphChangeTrackerKey } from "../paragraphChangeTrackerMeta";
 import { AutoBidiDetectionExtension } from "./features/AutoBidiDetectionExtension";
-import {
-  ParagraphChangeTrackerExtension,
-  paragraphChangeTrackerKey,
-} from "./features/ParagraphChangeTrackerExtension";
+import { ParagraphChangeTrackerExtension } from "./features/ParagraphChangeTrackerExtension";
 import {
   mapParagraphKeepers,
   ParaIdAllocatorExtension,
