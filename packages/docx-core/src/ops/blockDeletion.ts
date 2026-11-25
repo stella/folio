@@ -923,12 +923,10 @@ export const deleteBlocks = ({
       },
     });
   }
-  const broken = list[first.index - 1];
+  const blockBefore = list[first.index - 1];
+  const broken = blockBefore?.type === "paragraph" ? blockBefore : undefined;
   const takenOver =
-    owner !== undefined &&
-    terminal &&
-    op.move !== true &&
-    broken?.type === "paragraph"
+    owner !== undefined && terminal && op.move !== true && broken !== undefined
       ? takenOverBreakRecords({
           broken,
           paragraphs: found.map(({ paragraph }) => paragraph),
@@ -936,7 +934,7 @@ export const deleteBlocks = ({
           held,
         })
       : undefined;
-  if (takenOver !== undefined) {
+  if (takenOver !== undefined && broken !== undefined) {
     const rejected = applyOps(document, [
       {
         type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
