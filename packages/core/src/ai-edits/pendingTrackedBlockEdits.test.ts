@@ -510,6 +510,43 @@ describe("replaceBlock on a paragraph pending deletion", () => {
     expect(await resolved(reviewer, "accept")).toEqual(TEXTS.slice(1));
   });
 
+  test("an inserted paragraph another author deleted is refused too", async () => {
+    const first = await open(await plainDocument());
+    apply(first, "tracked-changes", [
+      {
+        id: "insert",
+        type: "insertAfterBlock",
+        blockId: blockId(first, BUYER),
+        text: "Added schedule.",
+      },
+    ]);
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await first.toBuffer(),
+      { author: "Second Reviewer" },
+    );
+    const added = blockId(reviewer, "Added schedule.");
+    apply(reviewer, "tracked-changes", [
+      { id: "delete", type: "deleteBlock", blockId: added },
+    ]);
+    // Its mark is inserted and deleted: either resolution takes it, so a
+    // rewrite would run into the paragraph after once accepted.
+    for (const mode of MODES) {
+      const result = apply(reviewer, mode, [
+        {
+          id: "rewrite",
+          type: "replaceBlock",
+          blockId: added,
+          text: "Invoice term.",
+        },
+      ]);
+      expect(result.skipped).toMatchObject([
+        { id: "rewrite", reason: "pendingDeletion" },
+      ]);
+    }
+    expect(await resolved(reviewer, "accept")).toEqual(TEXTS);
+    expect(await resolved(reviewer, "reject")).toEqual(TEXTS);
+  });
+
   test("a paragraph whose mark alone is pending deletion is still rewritten", async () => {
     const reviewer = await open(await plainDocument());
     const supplier = blockId(reviewer, SUPPLIER);

@@ -1323,6 +1323,7 @@ export const modelOf = (
   rows: readonly Row[],
   live: readonly Row[] = rows,
   joinSources: JoinSources = ASSUMED_JOIN_SOURCES,
+  inTextBox: ReadonlySet<string> = new Set(),
 ): Model => {
   const model: Model = {
     engine: scenarioEngine(),
@@ -1373,6 +1374,10 @@ export const modelOf = (
   let joining = false;
   let joiningSources: Row[] = [];
   for (const [liveIndex, row] of live.entries()) {
+    // A text box's paragraphs are listed right after the paragraph it is
+    // drawn in, in a story of their own: words joining on run past them into
+    // the next paragraph of the joining one's story.
+    if (joining && inTextBox.has(row.id)) continue;
     if (known.has(row.id)) {
       // The paragraph left by a join is the one whose mark stays: the block
       // the joined ones run into, which keeps its identity.
@@ -5090,7 +5095,12 @@ export const assertRequestedOutcome = async (
     );
     return [];
   }
-  const model = modelOf(pre.rows, pre.liveRows, pre.joinSources);
+  const model = modelOf(
+    pre.rows,
+    pre.liveRows,
+    pre.joinSources,
+    pre.targets.inTextBox,
+  );
   if (
     outcome.applied.some(
       (operation) =>

@@ -143,6 +143,9 @@ export const VACUOUS_CHECKED_IN_FLOWS: Readonly<
   // This recorded request is refused; the final numbering edit is the
   // reader disagreement this flow guards.
   "1770-tracked-list-reader-agreement.json": [1],
+  // The rewrite of an inserted paragraph another author deleted is refused
+  // (pendingDeletion): the refusal, not a joined paragraph, is what it guards.
+  "issue-1757-rewrite-of-inserted-paragraph-deleted-by-another.json": [4],
   // The recorded reply step finds no unresolved comment; the later list edits
   // and rejection are the behavior this flow guards.
   "issue-1770-list-review-sequence.json": [4],
