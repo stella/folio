@@ -172,11 +172,11 @@ describe("loadFolioMessages", () => {
   });
 
   test("loads each translated catalog once, including regional aliases", async () => {
-    const german = loadFolioMessages("de-DE");
-    expect(german).toBeInstanceOf(Promise);
-    expect(loadFolioMessages("de")).toBe(german);
-    const resolved = await german;
-    expect(loadFolioMessages("de")).toBe(resolved);
+    const turkish = loadFolioMessages("tr-TR");
+    expect(turkish).toBeInstanceOf(Promise);
+    expect(loadFolioMessages("tr")).toBe(turkish);
+    const resolved = await turkish;
+    expect(loadFolioMessages("tr")).toBe(resolved);
     for (const locale of FOLIO_LOCALES) {
       expect(await loadFolioMessages(locale)).toEqual(getFolioMessages(locale));
     }
