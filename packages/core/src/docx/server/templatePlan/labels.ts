@@ -260,7 +260,7 @@ export const createLabelCounter = ({
           label,
           template,
           levelFormats: listRendering.levelNumFmts,
-          suffix: numbering.getLevel(resolved.numId, resolved.ilvl)?.suffix,
+          suffix: listRendering.markerSuffix,
         }),
         paragraphNumber: stripTrailingPeriods(label.trim()),
         numberOnly: numberOnlyLabel({
