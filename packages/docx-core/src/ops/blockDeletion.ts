@@ -60,6 +60,7 @@ import {
   reviewFieldsOf,
   sameParagraphProperties,
   stampInfo,
+  takesOverOtherSuggestion,
   withMarkFormatting,
   withReviewFields,
   WRAP_KINDS,
@@ -809,6 +810,103 @@ const unchanged = (
     touched: { modified: [], inserted: [], removed: [] },
   });
 
+type FinalDeletionTakenFromOptions = {
+  list: readonly BlockContent[];
+  following: BlockContent | undefined;
+  followerIndex: number;
+  /** The last paragraph the deletion selects. */
+  last: Paragraph;
+};
+
+/**
+ * The container's last paragraph, right after `last`, when its pending
+ * deletion took `last`'s mark: its words are all pending deletion and a
+ * pending change gave it `last`'s properties.
+ */
+const finalDeletionTakenFrom = ({
+  list,
+  following,
+  followerIndex,
+  last,
+}: FinalDeletionTakenFromOptions): Paragraph | undefined =>
+  following?.type === "paragraph" &&
+  markPendingDeletion(last) &&
+  blockFollower(list, followerIndex).block === undefined &&
+  paragraphHoldsContent(following) &&
+  !paragraphHoldsContentOnceAccepted(following) &&
+  (following.propertyChanges?.length ?? 0) > 0 &&
+  sameParagraphProperties(
+    paragraphPropertiesOf(following.formatting),
+    paragraphPropertiesOf(last.formatting),
+  )
+    ? following
+    : undefined;
+
+type FinalDeletionTakenBackOptions = BlockDeletionOptions & {
+  revision: RevisionStamp;
+  /** The last paragraph whose deletion took the selection's last mark. */
+  final: Paragraph;
+};
+
+/**
+ * The tracked deletion of `op`'s paragraphs and `final` together, once the
+ * property change `final`'s deletion gave it is rejected. The records the
+ * earlier deletion made on the marks and words stay as they are. A
+ * suggestion takes back no change of another suggestion or an ordinary one,
+ * as it folds into none.
+ */
+const withFinalDeletionTakenBack = ({
+  document,
+  op,
+  applyOps,
+  revision,
+  final,
+}: FinalDeletionTakenBackOptions): Result<DocumentEdit, DocumentOpRefusal> => {
+  const refuse = (reason: DocumentOpRefusal["reason"], message: string) =>
+    Result.err(new DocumentOpRefusal({ reason, message, opType: op.type }));
+  if (final.paraId === undefined)
+    return refuse(
+      DOCUMENT_OP_REFUSAL_REASONS.INVALID_BLOCK_ID,
+      "The last paragraph has no id to delete it by.",
+    );
+  if (
+    (final.propertyChanges ?? []).some((change) =>
+      takesOverOtherSuggestion(change, revision),
+    )
+  )
+    return refuse(
+      DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_PROPERTY_CHANGE,
+      "A suggestion cannot take back another pending paragraph property change.",
+    );
+  const takenBack = applyOps(document, [
+    {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: op.story,
+      revisionIds: (final.propertyChanges ?? []).map(({ info }) => info.id),
+      decision: REVISION_DECISIONS.REJECT,
+    },
+  ]);
+  if (takenBack.isErr())
+    return refuse(takenBack.error.reason, takenBack.error.message);
+  const deleted = deleteBlocks({
+    document: takenBack.value.document,
+    op: { ...op, blockIds: [...op.blockIds, final.paraId] },
+    applyOps,
+  });
+  if (deleted.isErr()) return deleted;
+  const { touched } = deleted.value;
+  return Result.ok({
+    ...deleted.value,
+    inverse: [...deleted.value.inverse, ...takenBack.value.inverse],
+    touched: {
+      ...touched,
+      modified: [
+        ...new Set([...touched.modified, ...takenBack.value.touched.modified]),
+      ],
+    },
+  });
+};
+
 export const deleteBlocks = ({
   document,
   op,
@@ -977,6 +1075,26 @@ export const deleteBlocks = ({
       touched,
     });
   }
+  // The container's last paragraph whose pending deletion took this one's
+  // mark, deleted its words and gave it this paragraph's properties: deleting
+  // this paragraph too takes that property change back and deletes both
+  // together, as deleting this paragraph first and the last one after does.
+  // The break the two retire is then the one before this paragraph, and the
+  // last paragraph takes that paragraph's properties.
+  const takenFinal = finalDeletionTakenFrom({
+    list,
+    following,
+    followerIndex,
+    last: last.paragraph,
+  });
+  if (op.revision !== undefined && op.move !== true && takenFinal !== undefined)
+    return withFinalDeletionTakenBack({
+      document,
+      op,
+      applyOps,
+      revision: op.revision,
+      final: takenFinal,
+    });
   // Tracked, a paragraph a table or another block follows loses its words
   // and its own mark, as the default editor records it; accepting removes
   // it, which needs what resolving that mark needs.
@@ -1305,30 +1423,15 @@ export const deleteBlocks = ({
     ),
   );
   // A mark a pending deletion already records deleted stays as it is: the
-  // break goes either way, under the deletion that took it first.
-  // Not where that deletion took the mark for the container's last
-  // paragraph, whose words it deleted and to which it gave this paragraph's
-  // properties: deleting this paragraph too leaves those properties on a
-  // paragraph nothing of this one reaches.
-  const finalTakeover =
-    following?.type === "paragraph" &&
-    blockFollower(list, followerIndex).block === undefined &&
-    paragraphHoldsContent(following) &&
-    !paragraphHoldsContentOnceAccepted(following) &&
-    (following.propertyChanges?.length ?? 0) > 0 &&
-    sameParagraphProperties(
-      paragraphPropertiesOf(following.formatting),
-      paragraphPropertiesOf(last.paragraph.formatting),
-    );
-  // So does an added mark whose later deletion already took it. A move's
-  // source records its own paragraphs' marks moved, so one already taken is
-  // not; a paragraph a pending deletion takes whole between the last
-  // paragraph and the break the move retires keeps its record.
+  // break goes either way, under the deletion that took it first. So does an
+  // added mark whose later deletion already took it. A move's source records
+  // its own paragraphs' marks moved, so one already taken is not; a
+  // paragraph a pending deletion takes whole between the last paragraph and
+  // the break the move retires keeps its record.
   const keepsDeletedMark = (paragraph: Paragraph) =>
     (markPendingDeletion(paragraph) ||
       paragraph.pPrMark?.deletion !== undefined) &&
-    !(op.move === true && selected.includes(paragraph)) &&
-    !(finalTakeover && paragraph === last.paragraph);
+    !(op.move === true && selected.includes(paragraph));
   // Another owner's added mark the deletion takes keeps that insertion and
   // records the deletion beside it, as a later deletion of an insertion does;
   // so does one's own that ends a section, and one's own on the last
@@ -1353,8 +1456,7 @@ export const deleteBlocks = ({
     paragraph.pPrMark.deletion === undefined &&
     (!isOwnRecord(paragraph.pPrMark.info, revision) ||
       paragraph.sectionProperties !== undefined ||
-      (beforeInsertedTable && paragraph === last.paragraph)) &&
-    !(finalTakeover && paragraph === last.paragraph);
+      (beforeInsertedTable && paragraph === last.paragraph));
   const overwrittenMark = reviewed.find(
     (paragraph) =>
       paragraph.pPrMark !== undefined &&
