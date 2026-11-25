@@ -1207,17 +1207,18 @@ const snapshotListAttrs = (
     return numbering === undefined ? null : paragraphNumberingAttr(numbering);
   };
   const currentStyleNumbering = styleNumberingAttr(attrs.styleId);
-  const currentAttrs = { ...attrs };
-  delete currentAttrs.numPrFromStyle;
   const dropsCachedStyleNumbering =
     attrs.numPr == null &&
     attrs.numPrFromStyle != null &&
     currentStyleNumbering === null;
+  // Drop the cached marker while leaving authored numbering and the
+  // original review stream available to the list counter.
+  const currentAttrs = dropsCachedStyleNumbering
+    ? { ...attrs, ...CLEARED_LIST_RENDERING_ATTRS }
+    : { ...attrs };
+  delete currentAttrs.numPrFromStyle;
   return {
     ...currentAttrs,
-    // Drop the cached marker while leaving authored numbering and the
-    // original review stream available to the list counter.
-    ...(dropsCachedStyleNumbering ? CLEARED_LIST_RENDERING_ATTRS : {}),
     ...(currentStyleNumbering === null
       ? {}
       : { numPrFromStyle: currentStyleNumbering }),
