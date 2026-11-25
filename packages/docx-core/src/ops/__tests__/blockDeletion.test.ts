@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
-import type {
-  BlockContent,
-  Document,
-  Paragraph,
-  ParagraphContent,
+import {
+  type BlockContent,
+  type Document,
+  type Paragraph,
+  type ParagraphContent,
+  paragraphNumberingReference,
 } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { storyParagraphs } from "../blocks";
@@ -951,14 +952,14 @@ test("a tracked deletion of a paragraph holding another author's insertion delet
   expect(undo.value.document).toStrictEqual(document);
 });
 
-test("a tracked deletion of the paragraph whose mark the last paragraph's deletion took for its properties is refused", () => {
+test("a tracked deletion of the paragraph whose mark the last paragraph's deletion took for its properties takes them back", () => {
   const info = { id: 5, author: "Other", date: "2026-01-02T03:04:05Z" };
   const numbered = {
-    numPr: { kind: "reference", numId: 2, ilvl: 0 },
-  } as const;
+    numPr: paragraphNumberingReference({ numId: 2, ilvl: 0 }),
+  };
   // Deleting "Closing." deleted the item's mark and gave the closing
-  // paragraph the item's properties; deleting the item too would leave them
-  // on a paragraph nothing of the item reaches.
+  // paragraph the item's properties; deleting the item too takes them back,
+  // and the closing paragraph takes those of the paragraph before the item.
   const item: Paragraph = {
     ...paragraph("00000002", "Item."),
     formatting: numbered,
@@ -974,6 +975,7 @@ test("a tracked deletion of the paragraph whose mark the last paragraph's deleti
             {
               type: "paragraphPropertyChange",
               info: { ...info, id: 6 },
+              resolvesWith: info.id,
               currentFormatting: numbered,
             },
           ],
@@ -989,13 +991,13 @@ test("a tracked deletion of the paragraph whose mark the last paragraph's deleti
       },
     ],
   });
-  const refused = applyDocumentOp(
+  const takenBack = apply(
     documentOf([paragraph("00000001", "Kept."), item, closing(true)]),
     deletion(["00000002"]),
   );
-  expect(refused.isErr() && refused.error.reason).toBe(
-    DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_DELETION,
-  );
+  const last = storyParagraphs(takenBack.document.package.document).at(-1);
+  expect(last?.paragraph.formatting).toBeUndefined();
+  expect(last?.paragraph.propertyChanges).toBeUndefined();
   // A closing paragraph that kept its own properties leaves the earlier
   // record standing.
   const tracked = apply(
