@@ -34,9 +34,19 @@
     ]"
     :style="style"
     :data-folio-locale-pending="!localeReady || undefined"
-    :aria-busy="!localeReady || undefined"
+    :aria-busy="localeStatus.type === 'loading' || undefined"
   >
-    <LocaleLoading v-if="!localeReady" class="docx-editor-vue__locale-loading">
+    <div
+      v-if="localeStatus.type === 'failed'"
+      class="docx-editor-vue__locale-loading docx-editor-vue__error"
+      role="alert"
+    >
+      {{ localeStatus.error.message }}
+    </div>
+    <LocaleLoading
+      v-else-if="!localeReady"
+      class="docx-editor-vue__locale-loading"
+    >
       <template v-if="$slots['loading-indicator'] || loadingIndicator" #default>
         <slot name="loading-indicator">
           <VNodeRenderer v-if="loadingIndicator" :node="loadingIndicator" />
@@ -775,7 +785,8 @@ const displayModeClass = computed(() =>
   displayMode.value === "all-markup" ? "" : `folio-root--${displayMode.value}`,
 );
 
-const { t, ready: localeReady } = useEditorTranslation();
+const { t, status: localeStatus } = useEditorTranslation(reportEditorError);
+const localeReady = computed(() => localeStatus.value.type === "ready");
 
 // Stable functional component that renders a host-supplied VNodeChild
 // (placeholder / loadingIndicator). Declaring it once — rather than minting a

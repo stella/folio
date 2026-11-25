@@ -175,7 +175,7 @@ export const renderAsync = (
         data-testid="folio-editor"
         style={{ height: "100%", width: "100%", ...editorOptions.style }}
       >
-        {editorOptions.loadingIndicator || <EditorLoadingIndicator />}
+        <EditorLoadingIndicator />
       </div>,
     );
     void loadFolioMessages(locale).then(

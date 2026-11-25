@@ -79,9 +79,22 @@ export const provideLocale = (
   provide(LOCALE_KEY, locale);
 };
 
-const useLocaleTranslator = (locale: MaybeRefOrGetter<string>) => {
+type LocaleStatus =
+  { type: "loading" } | { type: "ready" } | { type: "failed"; error: Error };
+
+const englishTranslation = {
+  translator: fallbackTranslator,
+  status: shallowRef<LocaleStatus>({ type: "ready" }),
+};
+
+const useLocaleTranslator = (
+  locale: MaybeRefOrGetter<string>,
+  onError?: (error: Error) => void,
+) => {
+  if (locale === defaultLocale) return englishTranslation;
+
   const translator = shallowRef(fallbackTranslator.value);
-  const ready = shallowRef(false);
+  const status = shallowRef<LocaleStatus>({ type: "loading" });
   let pending: Promise<void> | undefined;
   watch(
     () => toValue(locale),
@@ -89,50 +102,65 @@ const useLocaleTranslator = (locale: MaybeRefOrGetter<string>) => {
       const messages = getLoadedFolioMessages(tag);
       if (messages) {
         translator.value = createFolioTranslator(tag, messages);
-        ready.value = true;
+        status.value = { type: "ready" };
         pending = undefined;
         return;
       }
 
+      const hasTranslation = status.value.type === "ready";
+      if (!hasTranslation) status.value = { type: "loading" };
       let active = true;
       onCleanup(() => {
         active = false;
       });
-      pending = loadFolioMessages(tag).then((loaded) => {
-        if (active) {
-          translator.value = createFolioTranslator(tag, loaded);
-          ready.value = true;
-        }
-        return undefined;
-      });
+      pending = loadFolioMessages(tag).then(
+        (loaded) => {
+          if (active) {
+            translator.value = createFolioTranslator(tag, loaded);
+            status.value = { type: "ready" };
+          }
+          return undefined;
+        },
+        (cause: unknown) => {
+          if (!active) return undefined;
+          const error =
+            cause instanceof Error ? cause : new Error(String(cause));
+          if (!hasTranslation) status.value = { type: "failed", error };
+          if (!onError) throw error;
+          onError(error);
+          return undefined;
+        },
+      );
       return pending;
     },
     // Vue disposes non-sync watchers during SSR setup.
     { immediate: true, flush: "sync" },
   );
   onServerPrefetch(() => pending);
-  return { translator, ready };
+  return { translator, status };
 };
 
-const englishTranslation = {
-  translator: fallbackTranslator,
-  ready: shallowRef(true),
-};
+const EDITOR_TRANSLATION_KEY: InjectionKey<{
+  locale: MaybeRefOrGetter<string>;
+  translation: ReturnType<typeof useLocaleTranslator>;
+}> = Symbol("folioEditorTranslation");
 
-export const useEditorTranslation = () => {
+const translateWith =
+  (
+    translator: ReturnType<typeof useLocaleTranslator>["translator"],
+  ): TranslateFn =>
+  (key, values) =>
+    // SAFETY: use-intl's translator accepts the paths and ICU values used by SFCs.
+    (translator.value as TranslateFn)(key, values);
+
+export const useEditorTranslation = (onError: (error: Error) => void) => {
   const locale = inject(LOCALE_KEY, defaultLocale);
-  const { translator, ready } =
-    locale === defaultLocale ? englishTranslation : useLocaleTranslator(locale);
-
-  // Expose a stable callable so components always read the active translator.
-  const t: TranslateFn = (key, values) =>
-    // SAFETY: use-intl's translator is callable with (key, values); the cast
-    // narrows the broad overload set to the shape folio's SFCs use.
-    (translator.value as (k: string, v?: Record<string, unknown>) => string)(
-      key,
-      values,
-    );
-  return { t, ready };
+  const translation = useLocaleTranslator(locale, onError);
+  provide(EDITOR_TRANSLATION_KEY, { locale, translation });
+  return {
+    t: translateWith(translation.translator),
+    status: translation.status,
+  };
 };
 
 /**
@@ -140,8 +168,13 @@ export const useEditorTranslation = () => {
  * `folio` namespace of the active locale's catalog.
  */
 export const useTranslation = (): { t: TranslateFn } => {
-  const { t } = useEditorTranslation();
-  return { t };
+  const locale = inject(LOCALE_KEY, defaultLocale);
+  const inherited = inject(EDITOR_TRANSLATION_KEY, null);
+  const { translator } =
+    inherited?.locale === locale
+      ? inherited.translation
+      : useLocaleTranslator(locale);
+  return { t: translateWith(translator) };
 };
 
 /**
