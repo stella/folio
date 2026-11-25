@@ -3438,7 +3438,10 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
     );
 
     const serializeCurrentDocx = useCallback(
-      async (options?: FolioGetDocxOptions): Promise<ArrayBuffer | null> => {
+      async (
+        options: FolioGetDocxOptions | undefined,
+        purpose: "export" | "save",
+      ): Promise<ArrayBuffer | null> => {
         let tripwireResult:
           Parameters<NonNullable<typeof onSelectiveSaveTripwire>>[0] | null =
           null;
@@ -3463,6 +3466,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             // The saved package becomes the session's save baseline: later
             // saves patch it and count changes from this version.
             if (
+              purpose === "save" &&
               view &&
               pagedEditorRef.current?.getEditor() === editor &&
               editor.getView() === view &&
@@ -3496,7 +3500,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
     // framework-neutral controller's side-effect-free serialization method.
     const handleSave = useCallback(
       async (options?: FolioSaveOptions): Promise<ArrayBuffer | null> => {
-        const editor = pagedEditorRef.current?.getEditor();
         const serializationOptions = {
           onDiagnostic: options?.onDiagnostic,
           onSelectiveDecline: options?.onSelectiveDecline,
@@ -3506,9 +3509,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
               ? FOLIO_DOCX_SERIALIZATION_MODE.full
               : FOLIO_DOCX_SERIALIZATION_MODE.preferSelective,
         } as const satisfies FolioGetDocxOptions;
-        const buffer = editor
-          ? await editor.getDocx(serializationOptions)
-          : await serializeCurrentDocx(serializationOptions);
+        const buffer = await serializeCurrentDocx(serializationOptions, "save");
         if (!buffer) {
           return null;
         }
@@ -3521,7 +3522,8 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
 
     const documentIO = useMemo(
       () => ({
-        getDocx: serializeCurrentDocx,
+        getDocx: (options?: FolioGetDocxOptions) =>
+          serializeCurrentDocx(options, "export"),
         loadDocument: loadParsedDocument,
         loadDocx: loadBuffer,
       }),
