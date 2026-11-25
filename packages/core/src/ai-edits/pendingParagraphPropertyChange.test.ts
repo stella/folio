@@ -145,18 +145,3 @@ describe("canonical: an edit over a pending paragraph-property change", () => {
     expect(result.rejected).toBe("");
   });
 });
-
-describe("legacy: an edit over a pending paragraph-property change", () => {
-  test("is refused, and the pending change stays as it was", async () => {
-    const result = await edit({
-      session: "legacy",
-      author: "Editor",
-      properties: { spacing: { spaceAfter: 360 } },
-    });
-    expect(result.skipped).toEqual(["pendingParagraphPropertyChange"]);
-    expect(result.saved).toBe(
-      `<w:pPr><w:jc w:val="center"/>${CHANGE("Reviewer")}</w:pPr>`,
-    );
-    expect(result.rejected).toBe("");
-  });
-});

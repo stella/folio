@@ -10,7 +10,7 @@ import type { ParagraphContent } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { compareDocx } from "./compare";
 
-const SESSIONS: readonly HeadlessReviewerSession[] = ["canonical", "legacy"];
+const SESSIONS: readonly HeadlessReviewerSession[] = ["canonical"];
 const OPTIONS = {
   author: "Picture reviewer",
   timestamp: "2026-09-13T00:00:00.000Z",

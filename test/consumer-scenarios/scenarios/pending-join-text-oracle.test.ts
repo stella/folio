@@ -7,12 +7,7 @@ import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
 } from "@stll/folio-core/server";
 
-import {
-  FIXTURES,
-  openReviewer,
-  packDocument,
-  scenarioEngine,
-} from "../support/documents.ts";
+import { FIXTURES, openReviewer, packDocument } from "../support/documents.ts";
 import {
   assertRequestedOutcome,
   capture,
@@ -519,13 +514,10 @@ const applyUnmodelledStructural = async (
   return { pre, model, after: await capture(reviewer, "tracked-changes") };
 };
 
-// Replacing every word a comment covers takes the comment with them; only
-// the legacy engine hands it to the new words
-// (LEGACY_REPLACEMENT_TAKES_COMMENT), so that kind keeps it there alone.
+// Replacing every word a comment covers takes the comment with them, so a
+// replacement keeps no comment to check.
 const replacementKeepsComment =
-  scenarioEngine() === "legacy"
-    ? false
-    : "LEGACY_REPLACEMENT_TAKES_COMMENT: the comment goes with its replaced words";
+  "the comment goes with its replaced words" as const;
 
 for (const kind of [
   "splitBlock",
@@ -594,12 +586,7 @@ for (const kind of [
 
 test(
   "an applied unmodelled replaceBlock retires a joined destination's comment with its words",
-  {
-    skip:
-      scenarioEngine() === "canonical"
-        ? false
-        : "LEGACY_REPLACEMENT_TAKES_COMMENT: the legacy engine hands the comment to the new words",
-  },
+  {},
   async () => {
     const { reviewer, second } = await pending();
     await applyChecked(reviewer, {

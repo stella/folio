@@ -460,7 +460,6 @@ const objectDescription = (kind: ObjectKind): string => {
 };
 
 const SESSIONS = [
-  "legacy",
   "canonical",
 ] as const satisfies readonly HeadlessReviewerSession[];
 

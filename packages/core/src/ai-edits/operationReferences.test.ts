@@ -34,7 +34,6 @@ import { findIntroducedModelErrors } from "./result-validation";
 import { createFolioAIEditSnapshot } from "./snapshot";
 
 const SESSIONS = [
-  "legacy",
   "canonical",
 ] as const satisfies readonly HeadlessReviewerSession[];
 const ANCHOR = "1.2. Second clause.";

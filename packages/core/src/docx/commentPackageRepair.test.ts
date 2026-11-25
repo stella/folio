@@ -23,14 +23,13 @@ import { repackDocx } from "./rezip";
 const DOCUMENT_PART = "word/document.xml";
 const COMMENTS_PART = "word/comments.xml";
 const SESSIONS = [
-  "legacy",
   "canonical",
 ] as const satisfies readonly HeadlessReviewerSession[];
 
 /** The fixture's comment `w:id`s and paragraph ids, as `commentDocument` writes them. */
 const RESOLVED_COMMENT_ID = "1";
 const MISSING_COMMENT_ID = "47";
-const RESOLVED_COMMENT_PARA_ID = "63BD4A7E";
+const RESOLVED_COMMENT_PARA_ID = "00000002";
 
 type RepairShape = {
   name: string;

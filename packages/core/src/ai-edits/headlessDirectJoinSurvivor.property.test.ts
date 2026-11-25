@@ -27,7 +27,6 @@ import {
   type FolioDocumentOperation,
   type FolioDocumentOperationResult,
 } from "../document-operations";
-import { getParagraphPropertySourceToken } from "../docx/paragraphPropertySource";
 import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import * as directJoin from "./directJoin";
 import { type FolioDocumentStoryHandle, FolioDocxReviewer } from "./headless";
@@ -136,7 +135,7 @@ type Draw = {
 };
 
 const drawArbitrary: fc.Arbitrary<Draw> = fc.record({
-  engine: fc.constantFrom("legacy" as const, "canonical" as const),
+  engine: fc.constant("canonical" as const),
   type: fc.constantFrom("mergeBlockWithNext" as const, "deleteBlock" as const),
   target: fc.constantFrom(...TARGETS),
 });
@@ -221,85 +220,12 @@ const FINAL_IN_CELL: Draw = {
   target: { story: MAIN_STORY, text: "Cell two" },
 };
 const MERGE_IN_BODY: Draw = {
-  engine: "legacy",
+  engine: "canonical",
   type: "mergeBlockWithNext",
   target: { story: MAIN_STORY, text: "Body one" },
 };
 
 describe("a join applied directly", () => {
-  test.each([false, true])(
-    "a split and join preserve identity and source ownership (join listed first: %s)",
-    async (joinFirst) => {
-      const reviewer = await open(
-        await fixture(
-          paragraphXml("First words") + paragraphXml("Second words"),
-        ),
-        "legacy",
-      );
-      const [first, second] = reviewer.snapshotStory(MAIN_STORY)?.blocks ?? [];
-      if (!first || !second) throw new Error("Missing split/join fixture.");
-      const firstModel = reviewer.toDocument().package.document.content.at(0);
-      if (firstModel?.type !== "paragraph")
-        throw new Error("Missing source paragraph.");
-      const firstToken = getParagraphPropertySourceToken(firstModel);
-      expect(firstToken).toBeDefined();
-      const split = {
-        id: "split",
-        type: "splitBlock",
-        blockId: second.id,
-        offset: 6,
-      } as const satisfies FolioDocumentOperation;
-      const merge = {
-        id: "merge",
-        type: "mergeBlockWithNext",
-        blockId: first.id,
-        separator: " ",
-      } as const satisfies FolioDocumentOperation;
-      const result = reviewer.applyDocumentOperations(
-        {
-          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-          mode: "direct",
-          operations: joinFirst ? [merge, split] : [split, merge],
-        },
-        { undefinedReferences: "refuse" },
-      );
-      expect(result.skipped.map(({ id, reason }) => ({ id, reason }))).toEqual(
-        joinFirst ? [{ id: "split", reason: "overlappingOperation" }] : [],
-      );
-      const [joined, sibling] =
-        reviewer.snapshotStory(MAIN_STORY)?.blocks ?? [];
-      expect(joined?.text).toBe(
-        joinFirst ? "First words Second words" : "First words Second",
-      );
-      expect(joined?.id).toBe(second.id);
-      if (joinFirst) expect(sibling).toBeUndefined();
-      else {
-        expect(sibling?.text).toBe(" words");
-        expect(sibling?.id).not.toBe(first.id);
-        expect(sibling?.id).not.toBe(second.id);
-      }
-      const paragraphs = reviewer
-        .toDocument()
-        .package.document.content.filter((block) => block.type === "paragraph");
-      const tokens = paragraphs.map(getParagraphPropertySourceToken);
-      expect(tokens.at(0)).toBe(firstToken);
-      expect(tokens.at(1)).toBeUndefined();
-      const remaining = new Set(
-        (reviewer.snapshotStory(MAIN_STORY)?.blocks ?? []).map(({ id }) => id),
-      );
-      expect(remaining.size).toBe(joinFirst ? 1 : 2);
-      for (const target of result.receipts.flatMap(
-        ({ affected }) => affected,
-      )) {
-        if (target.type === "block")
-          expect(remaining.has(target.blockId)).toBe(
-            target.effect !== "deleted",
-          );
-      }
-    },
-    propertyTestTimeout(30_000),
-  );
-
   test(
     "settles chained joins and final deletions after every pre-resolved batch target runs",
     async () => {
@@ -316,8 +242,8 @@ describe("a join applied directly", () => {
             maxLength: kinds.length,
           }),
           async (order) => {
-            const direct = await open(buffer, "legacy");
-            const tracked = await open(buffer, "legacy");
+            const direct = await open(buffer, "canonical");
+            const tracked = await open(buffer, "canonical");
             const original = new Set(
               blocksOf(direct)
                 .flat()

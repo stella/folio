@@ -9,7 +9,7 @@
  */
 
 import { panic } from "better-result";
-import { describe, expect, spyOn, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { EditorState } from "prosemirror-state";
@@ -3385,54 +3385,6 @@ describe("headless document-operation undo history", () => {
 });
 
 describe("headless docx review discovery + resolve", () => {
-  test("serialization mismatch errors never retain document text", async () => {
-    const makeBaseline = async (text: string, paraId: string) => {
-      const document = createEmptyDocument();
-      document.package.document.content = [
-        {
-          type: "paragraph",
-          paraId,
-          content: [{ type: "run", content: [{ type: "text", text }] }],
-        },
-      ];
-      return createDocx(document);
-    };
-    const sensitiveText = "privileged serialization expectation";
-    const actualSensitiveText = "different serialized content";
-    // The legacy engine's save of a resolved story reopens the package and
-    // checks it against the story; the canonical session saves its model.
-    const expectedReviewer = await FolioDocxReviewer.fromBuffer(
-      await makeBaseline(sensitiveText, "21000010"),
-      { session: "legacy" },
-    );
-    const mismatchedReviewer = await FolioDocxReviewer.fromBuffer(
-      await makeBaseline(actualSensitiveText, "21000011"),
-      { session: "legacy" },
-    );
-    expect(expectedReviewer.resolveReviewedStory({ view: "final" })).toBe(true);
-
-    const reopen = spyOn(FolioDocxReviewer, "fromBuffer");
-    try {
-      reopen.mockResolvedValue(mismatchedReviewer);
-      const saving = expectedReviewer.toBuffer();
-      const rejection = await saving.then(
-        () => null,
-        (reason: unknown) => reason,
-      );
-      const serializedRejection = JSON.stringify(rejection);
-      expect(serializedRejection).not.toContain(sensitiveText);
-      expect(serializedRejection).not.toContain(actualSensitiveText);
-      expect(rejection).toMatchObject({
-        mismatches: ["text-projection", "block-projection"],
-        expectedBlockCount: 1,
-        actualBlockCount: 1,
-        remainingChangeCount: 0,
-      });
-    } finally {
-      reopen.mockRestore();
-    }
-  });
-
   test("getContentAsText labels every block with its stable id", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline);

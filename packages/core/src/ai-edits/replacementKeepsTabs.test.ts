@@ -44,7 +44,6 @@ const replace = (
   );
 
 describe.each([
-  "legacy",
   "canonical",
 ] as const satisfies readonly HeadlessReviewerSession[])(
   "a replacement across a tab (%s)",

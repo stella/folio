@@ -15,7 +15,6 @@ import { createEmptyDocument } from "../utils/createDocument";
 import { FolioDocxReviewer } from "./headless";
 
 const SESSIONS = [
-  "legacy",
   "canonical",
 ] as const satisfies readonly HeadlessReviewerSession[];
 

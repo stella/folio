@@ -6,16 +6,12 @@ import {
 } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, Selection, TextSelection } from "prosemirror-state";
-import type { Command, Plugin, Transaction } from "prosemirror-state";
 
 import {
   CONTENT_CONTROL_LOCK,
-  finalizeParagraphFormatting,
   lockedControlMessage,
   type LockedControlViolation,
   numberingLevelEntries,
-  REVIEW_CARRIERS,
-  setDocumentBodyComments,
 } from "@stll/docx-core/model";
 import {
   captureStoryParts,
@@ -27,7 +23,6 @@ import {
   packageResourcesOpOf,
   pendingSuggestionIdsIn,
   reconcileDocumentPartRelationships,
-  resolvedDocumentView,
   resolveSectionChange,
   resolveSectionChanges,
   sectionResolutionPatch,
@@ -57,28 +52,20 @@ import {
   createCanonicalSession,
   publishCanonicalProjection,
 } from "../canonical/canonicalSession";
-import {
-  matchInlineAtoms,
-  type MatchInlineAtomsOptions,
-} from "../compare/inline-atoms";
+import { type MatchInlineAtomsOptions } from "../compare/inline-atoms";
 import { matchInlineAtomsOnModel } from "../compare/inline-atoms-model";
 import {
   type InlineProvenanceTargetOptions,
-  matchInlineProvenance,
   planInlineProvenance,
 } from "../compare/inline-provenance";
 import { inlineProvenanceOperations } from "../compare/inline-provenance-model";
-import {
-  stageSectionBoundaryOperations,
-  stageSectionBoundaryProperties as stageMappedSectionBoundaryProperties,
-} from "../compare/section-boundary-properties";
+import { stageSectionBoundaryOperations } from "../compare/section-boundary-properties";
 import {
   importReferencedStyleDefinitions,
   type ImportReferencedStyleDefinitionsResult,
   styleClosureNumberingReferences,
 } from "../compare/style-resources";
 import {
-  applyFolioDocumentOperationsInPackage,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperationBatch,
   type FolioDocumentOperationBatchInput,
@@ -91,8 +78,6 @@ import {
   CanonicalSaveRepackRefusedError,
   serializeCanonicalSave,
 } from "../docx/canonicalSave";
-import { removeCommentMarkers } from "../docx/commentAnchorIndex";
-import { applyReplyThreadMarkers } from "../docx/commentReplyMarkers";
 /**
  * Headless `.docx` review path: buffer -> apply AI edits -> buffer, with
  * no `EditorView` and no DOM. A queue worker or agent can read a document,
@@ -112,55 +97,25 @@ import { applyReplyThreadMarkers } from "../docx/commentReplyMarkers";
  *
  * Scope: main, header, footer, footnote, and endnote blocks.
  */
-import { commentTextParagraph } from "../docx/commentTextParagraph";
-import { buildSections } from "../docx/documentParser";
 import { rebindDrawingImageRelationship } from "../docx/drawingRelationships";
 import {
   isSeparatorEndnote,
   isSeparatorFootnote,
 } from "../docx/footnoteParser";
-import { normalizeListModelRendering } from "../docx/listModelNormalization";
 import {
   createNumberingIdAllocator,
-  type NumberingIdsInUse,
   numberingNumIdsTaken,
 } from "../docx/numberingIds";
 import { getCachedNumberingMap } from "../docx/numberingParser";
 import { cloneDocumentWithParagraphPropertySources } from "../docx/paragraphPropertySource";
-import { visitDocxParagraphs } from "../docx/paragraphTraversal";
-import { parseDocx } from "../docx/parser";
-import { createReply } from "../docx/replyToComment";
-import { repackDocx } from "../docx/rezip";
-import { attemptSelectiveSave } from "../docx/selectiveSave";
 import {
   getEndnoteText,
   getFootnoteText,
   getHeaderFooterText,
 } from "../docx/storyPlainText";
-import { pluginsForHeadlessRevisionResolution } from "../internal/headlessRevisionResolutionGuard";
+import { expectCharacterStyleMarkAttrs } from "../prosemirror/attrs";
 import {
-  type RemovedSectionReference,
-  type TrackedSectionEndpointRemoval,
-  withTrackedSectionEndpointRemoval,
-} from "../internal/sectionEndpointResolution";
-import {
-  captureSectionReferenceInventory,
-  resolvedSectionReferenceLosses,
-  withSectionReferenceResolution,
-} from "../internal/sectionReferenceResolution";
-import {
-  expectCharacterStyleMarkAttrs,
-  expectFootnoteRefMarkAttrs,
-} from "../prosemirror/attrs";
-import {
-  acceptAIEditRevision,
-  acceptSuggestion,
   getSuggestions,
-  rejectAIEditRevision,
-  rejectEverySuggestion,
-  rejectSuggestion,
-  resolveAllChangesInHeadlessState,
-  revisionResolutionLockViolation,
   suggestionIdOfRevision,
   suggestionOwnersByRevision,
 } from "../prosemirror/commands/comments";
@@ -169,68 +124,32 @@ import {
   createCommentIdAllocator,
   seedCommentAllocator,
 } from "../prosemirror/commentIdAllocator";
-import {
-  commentThreadIds,
-  removeCommentAnchors,
-} from "../prosemirror/commentRecords";
-import {
-  fromProseDoc,
-  proseDocToBlocks,
-} from "../prosemirror/conversion/fromProseDoc";
-import {
-  footnoteToProseDoc,
-  headerFooterToProseDoc,
-  toProseDoc,
-} from "../prosemirror/conversion/toProseDoc";
-import { ensureBaseDirectionInState } from "../prosemirror/extensions/features/AutoBidiDetectionExtension";
-import {
-  getChangedParagraphIds,
-  getTrackedSectionEndpointRemoval,
-  hasStructuralChanges,
-  hasUntrackedChanges,
-} from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
+import { commentThreadIds } from "../prosemirror/commentRecords";
 import { ensureParaIdsInDoc } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
-import {
-  completeNumberingForDoc,
-  paragraphListReferences,
-} from "../prosemirror/listInstanceReferences";
+import { paragraphListReferences } from "../prosemirror/listInstanceReferences";
 import { MAX_LIST_LEVEL } from "../prosemirror/listMarker";
-import { lockedControlSpans } from "../prosemirror/lockedControls";
 import {
-  deleteNoteWithReference,
-  noteDeletionRevisions,
   type NoteKey,
-  noteKeysReferencedIn,
-  noteReferencesRestored,
   noteReferenceStates,
-  referenceDeletions,
-  referencedNotes,
 } from "../prosemirror/noteReferenceReview";
 import {
   createDocumentNumberingPlugin,
   getDocumentNumbering,
-  withDocumentNumbering,
 } from "../prosemirror/plugins/documentNumbering";
 import {
   createDocumentStyleContextPlugin,
-  createDocumentStylesPlugin,
   getDocumentStyleResolver,
-  withDocumentStyles,
 } from "../prosemirror/plugins/documentStyles";
 import { getFolioNodeRevisionCarriers } from "../prosemirror/revisionCarriers";
-import { schema, singletonManager } from "../prosemirror/schema";
+import { schema } from "../prosemirror/schema";
 import { sectionPropertiesOf } from "../prosemirror/sectionCarrier";
-import { storyListNumbering } from "../prosemirror/storyListNumbering";
-import { collapseEmptyTextBoxHosts } from "../prosemirror/textBoxHostCollapse";
 import {
   CANONICAL_GAP,
   CANONICAL_RULE,
   type HeadlessReviewerSession,
-  headlessReviewerUsesCanonicalSession,
 } from "../types/canonicalCapabilities";
 import type { Comment } from "../types/content";
 import type {
-  BlockContent,
   Document,
   Endnote,
   Footnote,
@@ -249,7 +168,6 @@ import type {
   FolioUndefinedReferencePolicy,
   FolioWordDiffOptions,
 } from "./apply";
-import { persistedBlock } from "./block-identity";
 import { buildAnnotatedBlockTextWithNoteReferences } from "./clean-text";
 import {
   anchoredCommentIdsInBlocks,
@@ -258,14 +176,11 @@ import {
   withoutLostCommentThreads,
 } from "./comment-lifecycle";
 import { stagedFinalSectionProperties } from "./finalSectionReview";
-import { noteReferenceEditsAllowed } from "./note-references";
-import { noteStoryInventory } from "./note-story-inventory";
 import {
   createPendingSuggestionSourceSnapshot,
   type FolioPendingSuggestionLoadResult,
   type FolioPendingSuggestionRecord,
   FolioPendingSuggestionRegistry,
-  withoutPendingSuggestionCommentMarks,
 } from "./pending-suggestions";
 import {
   type FolioAbsorbedBlock,
@@ -274,7 +189,6 @@ import {
   type FolioReviewResolution,
   type FolioReviewResolutionSkip,
   getCommentAnchorsFromDoc,
-  getTrackedChangeGroupIdsFromDoc,
   getTrackedChangesFromDoc,
   getTrackedChangesFromSnapshot,
   getTrackedChangeStatsFromDoc,
@@ -292,7 +206,6 @@ import {
   sourceDocumentOf,
 } from "./snapshot";
 import {
-  matchTableGeometry,
   matchTableGeometryOperations,
   type TableGeometryPairing,
 } from "./table-geometry";
@@ -302,42 +215,11 @@ import {
 } from "./table-template";
 import type {
   FolioAIBlock,
-  FolioAIEditAppliedOperation,
   FolioAIEditApplyMode,
   FolioAIEditApplyResult,
   FolioAIEditOperation,
   FolioAIEditSnapshot,
 } from "./types";
-import { withOperationHeadingStyles } from "./undefinedReferences";
-
-let undoHandleCursor = Date.now();
-
-/**
- * Build the note-free comment thread the apply layer references by id.
- * Mirrors `commentsHelpers.createComment` (a pure object literal there) so a
- * headless `commentOnBlock` / `comment` op serialises the same `comments.xml`
- * shape the editor produces.
- */
-type CreateReviewerCommentOptions = {
-  id: number;
-  text: string;
-  author: string;
-  /** The batch's revision-stamp date; the wall clock when the batch has none. */
-  date: string | undefined;
-};
-
-const createReviewerComment = ({
-  id,
-  text,
-  author,
-  date,
-}: CreateReviewerCommentOptions): Comment => ({
-  id,
-  anchorKind: "range",
-  author,
-  date: date ?? new Date().toISOString(),
-  content: [commentTextParagraph(text)],
-});
 
 /**
  * How many document-operation batches a reviewer can step back through.
@@ -346,18 +228,6 @@ const createReviewerComment = ({
  */
 export const FOLIO_DOCUMENT_OPERATION_UNDO_LIMIT = 100;
 
-type FolioDocumentOperationUndoEntry = {
-  undoHandle: FolioDocumentOperationUndoHandle;
-  story: FolioEditableDocumentStoryHandle;
-  beforeState: EditorState;
-  afterState: EditorState;
-  createdCommentsLengthBefore: number;
-  createdCommentsLengthAfter: number;
-  deletedCommentIds: ReadonlySet<number>;
-  beforeStyles: StyleDefinitions | undefined;
-  afterStyles: StyleDefinitions | undefined;
-};
-
 /** Options for {@link FolioDocxReviewer.fromBuffer}. */
 export type FolioDocxReviewerOptions = {
   /** Default author for tracked changes and comments. (default: `"AI"`) */
@@ -365,20 +235,9 @@ export type FolioDocxReviewerOptions = {
   /** Password for Agile-encrypted .docx files (Office 2010+). */
   password?: string | undefined;
   /**
-   * The engine the document is held in. (default: `"canonical"`)
-   *
-   * `"canonical"` loads the document into the canonical session the editors'
-   * canonical mode runs. Every read comes from it, and operations in every
-   * story, their undo, comment replies and resolution, the resolution of
-   * tracked changes and the save run on it as the canonical editor runs
-   * them, and resolved views are read from a second session resolved to
-   * the view; suggested batches stage on it and its suggestions resolve
-   * through its suggestion intent across all stories. Comparison
-   * inline-provenance matching throws a `CanonicalSessionError` under
-   * `publicOps.headlessSession`.
-   * Resolving one story to a view also refuses while it holds staged
-   * suggestions. Locks that prevent a complete view refuse rather than
-   * returning a partial view. These paths never fall back to the legacy engine.
+   * The engine the document is held in: the canonical session the editors
+   * run. Every read, operation, undo, resolution, resolved view and save runs
+   * on it; what the session cannot express throws a `CanonicalSessionError`.
    */
   session?: HeadlessReviewerSession;
 };
@@ -389,20 +248,20 @@ export type FolioDocxReviewerOptions = {
  * exactly the document a canonical editor shows, and its model is the
  * session's document.
  */
-type FolioReviewerEngineSource =
-  { type: "legacy" } | { type: "canonical"; session: CanonicalSession };
+type FolioReviewerEngineSource = {
+  type: "canonical";
+  session: CanonicalSession;
+};
 
 /**
  * A canonical reviewer's engine: the session, and the editor's public
  * operation compiler over it, which publishes into the reviewer's state.
  */
-type FolioReviewerEngine =
-  | { type: "legacy" }
-  | {
-      type: "canonical";
-      session: CanonicalSession;
-      operations: CanonicalPublicOperations;
-    };
+type FolioReviewerEngine = {
+  type: "canonical";
+  session: CanonicalSession;
+  operations: CanonicalPublicOperations;
+};
 
 /**
  * The main story's state of a canonical reviewer: the session's projection
@@ -628,13 +487,12 @@ const FolioRoomJournalErrorBase: TaggedErrorClass<"FolioRoomJournalError"> =
   TaggedError("FolioRoomJournalError");
 
 /**
- * Why a reviewer could not replay a room's journal. `legacyEngine`: only a
- * canonical reviewer follows a room. `revisionGap`: a batch is not the one
- * after the last the reviewer applied.
+ * Why a reviewer could not replay a room's journal. `revisionGap`: a batch is
+ * not the one after the last the reviewer applied.
  */
 export class FolioRoomJournalError extends FolioRoomJournalErrorBase<{
   message: string;
-  reason: "legacyEngine" | "revisionGap";
+  reason: "revisionGap";
   expectedRevision: number;
   receivedRevision: number | undefined;
 }> {}
@@ -645,38 +503,6 @@ const FolioDocumentStoryNotFoundErrorBase: TaggedErrorClass<"FolioDocumentStoryN
 export class FolioDocumentStoryNotFoundError extends FolioDocumentStoryNotFoundErrorBase<{
   message: string;
   story: FolioEditableDocumentStoryHandle;
-}> {}
-
-const FolioResolvedViewRefusedErrorBase: TaggedErrorClass<"FolioResolvedViewRefusedError"> =
-  TaggedError("FolioResolvedViewRefusedError");
-
-/** A resolved view whose revision resolution refused in some stories. */
-class FolioResolvedViewRefusedError extends FolioResolvedViewRefusedErrorBase<{
-  message: string;
-  view: FolioResolvedReviewedView;
-  stories: readonly OpStory[];
-}> {}
-
-const FOLIO_RESOLVED_STORY_SERIALIZATION_MISMATCHES = Object.freeze({
-  storyMissing: "story-missing",
-  revisionMarkupRemains: "revision-markup-remains",
-  textProjection: "text-projection",
-  blockProjection: "block-projection",
-} as const);
-
-type FolioResolvedStorySerializationMismatch =
-  (typeof FOLIO_RESOLVED_STORY_SERIALIZATION_MISMATCHES)[keyof typeof FOLIO_RESOLVED_STORY_SERIALIZATION_MISMATCHES];
-
-const FolioResolvedStorySerializationErrorBase: TaggedErrorClass<"FolioResolvedStorySerializationError"> =
-  TaggedError("FolioResolvedStorySerializationError");
-
-class FolioResolvedStorySerializationError extends FolioResolvedStorySerializationErrorBase<{
-  message: string;
-  story: FolioEditableDocumentStoryHandle;
-  mismatches: readonly FolioResolvedStorySerializationMismatch[];
-  expectedBlockCount: number;
-  actualBlockCount: number | null;
-  remainingChangeCount: number | null;
 }> {}
 
 export type FolioApplyDocumentOperationsToStoryOptions =
@@ -716,113 +542,6 @@ type FolioSecondaryStoryHandle = Exclude<
   FolioEditableDocumentStoryHandle,
   { type: "main" }
 >;
-
-type FolioSecondaryStoryState = {
-  handle: FolioSecondaryStoryHandle;
-  initialState: EditorState;
-  state: EditorState;
-};
-
-/** Blocks whose id folio minted, because the package names no id for them. */
-const mintedBlockOrdinals = (
-  snapshot: FolioAIEditSnapshot,
-): ReadonlySet<number> => {
-  const ordinals = new Set<number>();
-  for (const [ordinal, block] of snapshot.blocks.entries()) {
-    if (block.idStability === "positional") {
-      ordinals.add(ordinal);
-    }
-  }
-  return ordinals;
-};
-
-/**
- * What a block looks like once the story has been through the package.
- *
- * `idStability` is the snapshot's own fact rather than the package's, so it
- * goes. `minted` names the blocks whose id folio invented for a paragraph the
- * package gives no `w14:paraId`, and each of those stands down to its position.
- * A minted id is derived from the paragraph's text and ordinal, so resolving
- * its text can make an id-less paragraph derive a different id when reopened.
- * The two save paths also disagree about whether it reaches the file at all:
- * the selective patch keeps the author's id-less convention (see
- * `withoutMintedIds`) while a full repack writes the model's ids. Which path
- * ran is not what this check is about, so neither the id nor the choice between
- * them may decide it. An authored id is compared exactly as it is, and a block
- * that moved still fails.
- */
-const resolvedStoryBlockProjection = (
-  block: FolioAIBlock,
-  ordinal: number,
-  minted: ReadonlySet<number>,
-) => {
-  const persisted = persistedBlock(block);
-  return minted.has(ordinal)
-    ? { ...persisted, id: `minted-${String(ordinal)}` }
-    : persisted;
-};
-
-type FolioResolvedStoryExpectation = {
-  story: FolioEditableDocumentStoryHandle;
-  text: string;
-  blocks: readonly ReturnType<typeof resolvedStoryBlockProjection>[];
-  /** Positions the resolved story held a minted id at, read back after the save. */
-  minted: ReadonlySet<number>;
-};
-
-/**
- * The two halves of the expectation, from one projection.
- *
- * The reading text carries each block's id, so it has to be built from the
- * same projected blocks the block comparison uses; formatting the raw snapshot
- * instead would put a minted id back into the text and fail the check the
- * block projection just passed.
- */
-const resolvedStoryProjection = (
-  snapshot: FolioAIEditSnapshot,
-  minted: ReadonlySet<number>,
-): Pick<FolioResolvedStoryExpectation, "text" | "blocks"> => {
-  const blocks = snapshot.blocks.map((block, ordinal) =>
-    resolvedStoryBlockProjection(block, ordinal, minted),
-  );
-  return {
-    text: blocks
-      .filter(isFolioAIContentBlock)
-      .map(formatBlockForLLM)
-      .join("\n"),
-    blocks,
-  };
-};
-
-type FolioReviewerStateSnapshot = {
-  mainState: EditorState;
-  finalSectionPropertiesOverride: SectionProperties | undefined;
-  secondaryStoryStates: readonly FolioSecondaryStoryState[];
-  sectionReferenceRemovals: readonly RemovedSectionReference[];
-  removedHeaderFooterStories: readonly FolioHeaderFooterStoryHandle[];
-  removedNoteStories: readonly FolioNoteStoryHandle[];
-  importedStyles: StyleDefinitions | undefined;
-  importedMedia: ReadonlyMap<string, MediaFile>;
-  importedHeaders: ReadonlyMap<string, HeaderFooter>;
-  importedFooters: ReadonlyMap<string, HeaderFooter>;
-  createdComments: readonly Comment[];
-  deletedCommentIds: ReadonlySet<number>;
-  resolvedOverrides: ReadonlyMap<number, boolean>;
-  resolvedStoryExpectations: readonly FolioResolvedStoryExpectation[];
-};
-
-type FolioSavePath =
-  | { type: "full-repack"; reason: FolioReviewerRepackReason }
-  | { type: "selective-first"; changedParaIds: Set<string> };
-
-type FolioSaveSnapshot = {
-  document: Document;
-  path: FolioSavePath;
-  changedNoteParaIds: ReadonlySet<string>;
-  sectionReferenceRemovals: readonly RemovedSectionReference[];
-  sectionEndpointRemoval: TrackedSectionEndpointRemoval | null;
-  resolvedStoryExpectations: readonly FolioResolvedStoryExpectation[];
-};
 
 type ApplyDocumentOperationsInternalOptions = {
   story: FolioEditableDocumentStoryHandle;
@@ -1075,23 +794,6 @@ const noteStoryHandleOf = (key: string): FolioNoteStoryHandle | null => {
     : null;
 };
 
-/** The notes a story's text refers to, keyed as {@link noteStoryKey} keys them. */
-const referencedNoteKeys = (doc: PMNode): Set<string> => {
-  const keys = new Set<string>();
-  doc.descendants((node) => {
-    if (!node.isText) return true;
-    for (const mark of node.marks) {
-      if (mark.type.name !== "footnoteRef") continue;
-      const { id, noteType } = expectFootnoteRefMarkAttrs(mark);
-      keys.add(
-        `${noteType === "endnote" ? "endnote" : "footnote"}:${String(id)}`,
-      );
-    }
-    return false;
-  });
-  return keys;
-};
-
 /** One place a header or footer part is shown: its role in one section. */
 type HeaderFooterPlacement = { type: HeaderFooterType; section: number };
 
@@ -1133,28 +835,6 @@ export const isFolioResolvedReviewedView = (
   value: unknown,
 ): value is FolioResolvedReviewedView =>
   FOLIO_RESOLVED_REVIEWED_VIEWS.some((view) => view === value);
-
-const resolveReviewedState = (
-  state: EditorState,
-  view: FolioReviewedView,
-): EditorState => {
-  if (view === "current-markup") {
-    return state;
-  }
-  return resolveAllChangesInHeadlessState(
-    state,
-    view === "original" ? "reject" : "accept",
-  );
-};
-
-const createHeadlessPlugins = (
-  styles: Document["package"]["styles"],
-  numbering: NumberingDefinitions | null | undefined,
-): Plugin[] => [
-  createDocumentNumberingPlugin(numbering),
-  ...pluginsForHeadlessRevisionResolution(singletonManager.getPlugins()),
-  createDocumentStylesPlugin(styles),
-];
 
 /** A state's snapshot, of `doc` when it names the state's document otherwise spelled. */
 const createStateSnapshot = (
@@ -1595,26 +1275,6 @@ const carriedByGroup = (
   return { carries, moves };
 };
 
-/**
- * The changes of a story, by revision id, that a content control's lock keeps
- * from being resolved in `mode`: every physical revision of one change is
- * resolved together, so the change is held when resolving them would break a
- * lock. Empty without a locked control.
- */
-const lockHeldChanges = (
-  state: EditorState,
-  mode: "accept" | "reject",
-): Map<number, LockedControlViolation> => {
-  const held = new Map<number, LockedControlViolation>();
-  if (lockedControlSpans(state.doc).length === 0) return held;
-  for (const { id } of getTrackedChangesFromDoc(state.doc)) {
-    const ids = getTrackedChangeGroupIdsFromDoc(state.doc, id);
-    const violation = revisionResolutionLockViolation(state, ids, mode);
-    if (violation !== null) held.set(id, violation);
-  }
-  return held;
-};
-
 type StoryOwnNumberingOptions = {
   /** The session's numbering, with every list its operations started. */
   current: NumberingDefinitions | undefined;
@@ -1669,43 +1329,19 @@ export class FolioDocxReviewer {
    * alike; a legacy state already holds every id.
    */
   private snapshotOf(state: EditorState): FolioAIEditSnapshot {
-    return this.engine.type === "canonical"
-      ? createStateSnapshot(
-          state,
-          this.positionalParaIds,
-          ensureParaIdsInDoc(state.doc),
-        )
-      : createStateSnapshot(state, this.positionalParaIds);
+    return createStateSnapshot(
+      state,
+      this.positionalParaIds,
+      ensureParaIdsInDoc(state.doc),
+    );
   }
 
   /** Default author for tracked changes and comments. */
   readonly author: string;
-  /** The legacy reviewer's parsed model; a canonical one reads its session's. */
+  /** The model the reviewer was opened on; the readers follow the session's. */
   private readonly loadedDocument: Document;
-  private finalSectionPropertiesOverride: SectionProperties | undefined;
   private readonly originalBuffer: ArrayBuffer;
   private state: EditorState;
-  private readonly secondaryStoryStates = new Map<
-    string,
-    FolioSecondaryStoryState
-  >();
-  private readonly removedHeaderFooterStories = new Map<
-    string,
-    FolioHeaderFooterStoryHandle
-  >();
-  /** Notes whose reference a resolution removed: a note exists only through its reference. */
-  private readonly removedNoteStories = new Map<string, FolioNoteStoryHandle>();
-  private readonly sectionReferenceRemovals: RemovedSectionReference[] = [];
-  private importedStyles: StyleDefinitions | undefined;
-  private readonly importedMedia = new Map<string, MediaFile>();
-  private readonly importedHeaders = new Map<string, HeaderFooter>();
-  private readonly importedFooters = new Map<string, HeaderFooter>();
-  private readonly resolvedStoryExpectations = new Map<
-    string,
-    FolioResolvedStoryExpectation
-  >();
-  private readonly createdComments: Comment[] = [];
-  private deletedCommentIds: ReadonlySet<number> = new Set();
   /** Comments the body anchored when it was loaded, read as the editor projects it. */
   private readonly loadedMainCommentIds: ReadonlySet<number>;
   /**
@@ -1714,18 +1350,7 @@ export class FolioDocxReviewer {
    * pairs two documents' paragraphs by them.
    */
   private readonly positionalParaIds: ReadonlySet<string>;
-  private readonly documentOperationUndoEntries: FolioDocumentOperationUndoEntry[] =
-    [];
   private pendingSuggestions = new FolioPendingSuggestionRegistry();
-  /**
-   * Resolved-state overrides recorded by {@link resolveComment}, keyed by
-   * comment id. Applied on read ({@link getComments}) and on write
-   * ({@link toDocument}) rather than mutating the parsed `Comment` objects in
-   * place, matching how the parser/serializer treat `Comment` as immutable
-   * (`commentParser.ts` replaces array slots via spread; the serializer
-   * types its inputs `readonly Comment[]`).
-   */
-  private readonly resolvedOverrides = new Map<number, boolean>();
   /** The last room revision {@link applyRoomJournal} applied. */
   private roomRevision = 0;
   /** The resolved copies {@link resolvedSessionReader} last read, by view. */
@@ -1754,10 +1379,7 @@ export class FolioDocxReviewer {
     this.originalBuffer = args.originalBuffer;
     this.state = args.state;
     this.author = args.author;
-    this.engine =
-      args.engine.type === "legacy"
-        ? args.engine
-        : this.canonicalEngine(args.engine.session);
+    this.engine = this.canonicalEngine(args.engine.session);
     this.commentIds = args.commentIds?.clone() ?? createCommentIdAllocator();
     seedCommentAllocator(
       this.commentIds,
@@ -1773,115 +1395,7 @@ export class FolioDocxReviewer {
   }
 
   private registerComparisonAccess(): void {
-    if (this.engine.type === "canonical") {
-      comparisonAccessByReviewer.set(this, this.canonicalComparisonAccess());
-      return;
-    }
-    comparisonAccessByReviewer.set(
-      this,
-      Object.freeze({
-        stageTerminalTableReviewCarrier: (target) =>
-          this.stageTerminalTableReviewCarrier(target),
-        stageTargetStyles: (options) => this.stageTargetStyles(options),
-        createComparisonHeaderFooter: (source, story) =>
-          this.createComparisonHeaderFooter(source, story),
-        finalSectionProperties: () => this.currentFinalSectionProperties(),
-        stageFinalSectionProperties: ({ target, previous, revision }) =>
-          this.stageFinalSectionProperties({ target, previous, revision }),
-        stageMappedSectionBoundaries: (options) =>
-          this.stageMappedSectionBoundaries(options),
-        matchInlineAtoms: ({
-          story,
-          targetReviewer: _targetReviewer,
-          targetStory: _targetStory,
-          ...options
-        }) => {
-          const state = this.getEditableStoryState(story);
-          if (!state)
-            return panic("A compared story lost its editable state", { story });
-          const result = matchInlineAtoms({
-            ...options,
-            state,
-            author: this.author,
-          });
-          switch (result.status) {
-            case "matched":
-              if (result.transaction.docChanged) {
-                this.setEditableStoryState(
-                  story,
-                  state.apply(result.transaction),
-                );
-              }
-              return {
-                status: "matched",
-                nextRevisionId: result.nextRevisionId,
-                changedTargetBlockIds: result.changedTargetBlockIds,
-                rangeCount: result.rangeCount,
-                documentChanged: result.transaction.docChanged,
-              };
-            case "unalignable":
-            case "budget-exceeded":
-              return result;
-            default: {
-              const unreachable: never = result;
-              return panic("Unhandled inline atom result", {
-                result: unreachable,
-              });
-            }
-          }
-        },
-        matchInlineProvenance: ({
-          story,
-          targetReviewer: _targetReviewer,
-          targetStory: _targetStory,
-          ...options
-        }) => {
-          const state = this.getEditableStoryState(story);
-          if (!state)
-            return panic("A compared story lost its editable state", { story });
-          const result = matchInlineProvenance({
-            ...options,
-            state,
-            author: this.author,
-          });
-          switch (result.status) {
-            case "matched":
-              if (result.transaction.docChanged) {
-                this.setEditableStoryState(
-                  story,
-                  state.apply(result.transaction),
-                );
-              }
-              return {
-                status: "matched",
-                nextRevisionId: result.nextRevisionId,
-                changedTargetBlockIds: result.changedTargetBlockIds,
-                rangeCount: result.rangeCount,
-                documentChanged: result.transaction.docChanged,
-              };
-            case "unalignable":
-            case "budget-exceeded":
-              return result;
-            default: {
-              const unreachable: never = result;
-              return panic("Unhandled inline provenance result", {
-                result: unreachable,
-              });
-            }
-          }
-        },
-        projectStories: (mode) => this.projectComparisonStoriesInternal(mode),
-        snapshotReviewedStory: (options) =>
-          this.snapshotReviewedStoryInternal(options),
-        numberingDefinitions: () => this.baseDocument.package.numbering,
-        styleDefinitions: () =>
-          this.importedStyles ?? this.baseDocument.package.styles,
-        planTargetNumberingReferences: (target, references) =>
-          this.planTargetNumberingReferences(target, references),
-        stageTargetNumbering: (target, references, remappedNumIds) =>
-          this.stageTargetNumbering(target, references, remappedNumIds),
-      }),
-    );
+    comparisonAccessByReviewer.set(this, this.canonicalComparisonAccess());
   }
 
   private stageTargetStyles({
@@ -1892,7 +1406,7 @@ export class FolioDocxReviewer {
   }: StageTargetStylesOptions): ImportReferencedStyleDefinitionsResult {
     const destination = this.baseDocument.package;
     const sourcePackage = source.baseDocument.package;
-    const destinationStyles = this.importedStyles ?? destination.styles;
+    const destinationStyles = destination.styles;
     const sourceStylesById = new Map(
       sourcePackage.styles?.styles.map((style) => [style.styleId, style]),
     );
@@ -2005,63 +1519,9 @@ export class FolioDocxReviewer {
       reservedStyleIds: [...reservedStyleIds],
       materializeDefaultParagraphStyle,
     });
-    if (result.status === "imported" && this.engine.type === "canonical") {
+    if (result.status === "imported")
       this.stagePackageResourcesOnSession({ styles: result.styles });
-      return result;
-    }
-    if (result.status === "imported") this.installImportedStyles(result.styles);
     return result;
-  }
-
-  private installImportedStyles(
-    styles: StyleDefinitions | undefined,
-    restoredStory?: FolioEditableDocumentStoryHandle,
-  ): void {
-    this.importedStyles = styles;
-    const definitions = styles ?? this.loadedDocument.package.styles;
-    if (restoredStory?.type !== "main")
-      this.state = withDocumentStyles(this.state, definitions);
-    for (const entry of this.secondaryStoryStates.values()) {
-      if (
-        restoredStory !== undefined &&
-        editableStoryKey(entry.handle) === editableStoryKey(restoredStory)
-      ) {
-        continue;
-      }
-      const wasUntouched = entry.state === entry.initialState;
-      const refreshed = withDocumentStyles(entry.state, definitions);
-      entry.state = refreshed;
-      if (wasUntouched) entry.initialState = refreshed;
-    }
-  }
-
-  /**
-   * A raw final table has no paragraph mark after it for Word to merge into
-   * when the target ends in a paragraph. Folio-exact comparison adds this
-   * untracked receiver before planning; its private marker makes resolving in
-   * Folio restore the raw source view.
-   */
-  private stageTerminalTableReviewCarrier(target: PMNode): boolean {
-    const baseTerminalTable = this.state.doc.lastChild;
-    if (
-      baseTerminalTable?.type.name !== "table" ||
-      target.lastChild?.type.name !== "paragraph"
-    ) {
-      return false;
-    }
-    const paragraphType = this.state.schema.nodes["paragraph"];
-    if (!paragraphType) {
-      return panic(
-        "The schema has no paragraph node for a terminal-table review carrier",
-      );
-    }
-    const carrier = paragraphType.create({
-      reviewCarrier: REVIEW_CARRIERS.TERMINAL_TABLE,
-    });
-    this.state = this.state.apply(
-      this.state.tr.insert(this.state.doc.content.size, carrier),
-    );
-    return true;
   }
 
   private stageTargetNumbering(
@@ -2141,15 +1601,7 @@ export class FolioDocxReviewer {
       abstractNums: [...abstracts.values()],
       nums: [...nums.values()],
     };
-    if (this.engine.type === "canonical") {
-      this.stagePackageResourcesOnSession({ numbering });
-      return "staged";
-    }
-    this.baseDocument.package.numbering = numbering;
-    this.state = withDocumentNumbering(this.state, numbering);
-    for (const entry of this.secondaryStoryStates.values()) {
-      entry.state = withDocumentNumbering(entry.state, numbering);
-    }
+    this.stagePackageResourcesOnSession({ numbering });
     return "staged";
   }
 
@@ -2212,73 +1664,11 @@ export class FolioDocxReviewer {
 
   /** Parse a `.docx` buffer into a reviewer. */
   // canonical-gap: publicOps.headlessSession
-  static async fromBuffer(
+  static fromBuffer(
     buffer: ArrayBuffer,
     options: FolioDocxReviewerOptions = {},
   ): Promise<FolioDocxReviewer> {
-    if (headlessReviewerUsesCanonicalSession(options.session))
-      return FolioDocxReviewer.fromCanonicalBuffer(buffer, options);
-    const baseDocument = await parseDocx(buffer, {
-      detectVariables: false,
-      preloadFonts: false,
-      password: options.password,
-    });
-    return FolioDocxReviewer.legacyOver(baseDocument, {
-      originalBuffer: baseDocument.originalBuffer ?? buffer,
-      author: options.author ?? "AI",
-    });
-  }
-
-  /**
-   * A legacy reviewer over a parsed or resolved document. A resolved one names
-   * the ids its source read as positional, which its model now spells as ids.
-   */
-  private static legacyOver(
-    baseDocument: Document,
-    {
-      originalBuffer,
-      author,
-      positionalParaIds,
-    }: {
-      originalBuffer: ArrayBuffer;
-      author: string;
-      positionalParaIds?: ReadonlySet<string>;
-    },
-  ): FolioDocxReviewer {
-    // The change tracker feeds selective save, and the paraId allocator hands
-    // inserted paragraphs stable ids. Editor history and collaboration are
-    // intentionally absent: reviewer undo stores complete state snapshots,
-    // and headless resolution consumes its replacement transaction locally.
-    const plugins = createHeadlessPlugins(
-      baseDocument.package.styles,
-      baseDocument.package.numbering,
-    );
-    // Allocate paraIds up front (the editor does this on load) so every block
-    // anchors on a stable id and the selective-save path can key changed
-    // paragraphs by paraId. Deterministic (not random) allocation so a
-    // paraId-less document yields the SAME block ids on every parse: ops built
-    // from one parse's snapshot then resolve against another parse of the same
-    // bytes instead of skipping as stale anchors.
-    //
-    // `ensureBaseDirectionInState` seeds `dir` on RTL paragraphs the same way
-    // the editor load path does. It used to run only as a side effect of the
-    // paraId transaction, so a document that already carried a complete set of
-    // Word-authored paraIds silently skipped bidi seeding.
-    const state = ensureBaseDirectionInState(
-      EditorState.create({
-        schema,
-        doc: ensureParaIdsInDoc(toProseDoc(baseDocument)),
-        plugins,
-      }),
-    );
-    return new FolioDocxReviewer({
-      baseDocument,
-      originalBuffer,
-      state,
-      author,
-      engine: { type: "legacy" },
-      ...(positionalParaIds === undefined ? {} : { positionalParaIds }),
-    });
+    return FolioDocxReviewer.fromCanonicalBuffer(buffer, options);
   }
 
   /**
@@ -2347,39 +1737,19 @@ export class FolioDocxReviewer {
    * either leave the other as it is. The copy's undo history starts empty.
    */
   fork(): FolioDocxReviewer {
-    if (this.engine.type === "canonical") {
-      // A second session over the current document, as `toResolvedDocument`
-      // resolves on.
-      const document = readModel(this.engine.session.document);
-      const created = createCanonicalSession(document, document.package.styles);
-      if (created.isErr()) throw created.error;
-      const copy = new FolioDocxReviewer({
-        baseDocument: document,
-        originalBuffer: this.originalBuffer,
-        state: canonicalReviewerState(created.value),
-        author: this.author,
-        engine: { type: "canonical", session: created.value },
-        positionalParaIds: this.positionalParaIds,
-      });
-      copy.pendingSuggestions = this.pendingSuggestions.clone();
-      return copy;
-    }
-    return this.forkLegacy();
-  }
-
-  /** A constructor-backed copy over the legacy snapshot owner. */
-  private forkLegacy(): FolioDocxReviewer {
-    const snapshot = this.captureReviewerState();
+    // A second session over the current document, as `toResolvedDocument`
+    // resolves on.
+    const document = readModel(this.engine.session.document);
+    const created = createCanonicalSession(document, document.package.styles);
+    if (created.isErr()) throw created.error;
     const copy = new FolioDocxReviewer({
-      baseDocument: this.loadedDocument,
+      baseDocument: document,
       originalBuffer: this.originalBuffer,
-      state: snapshot.mainState.apply(snapshot.mainState.tr),
+      state: canonicalReviewerState(created.value),
       author: this.author,
-      engine: { type: "legacy" },
-      loadedMainCommentIds: this.loadedMainCommentIds,
-      commentIds: this.commentIds,
+      engine: { type: "canonical", session: created.value },
+      positionalParaIds: this.positionalParaIds,
     });
-    copy.restoreReviewerState(snapshot);
     copy.pendingSuggestions = this.pendingSuggestions.clone();
     return copy;
   }
@@ -2403,11 +1773,6 @@ export class FolioDocxReviewer {
         noteReferenceLabels,
         ...options
       }) => {
-        if (
-          this.engine.type !== "canonical" ||
-          targetReviewer.engine.type !== "canonical"
-        )
-          return refuse("match inline atoms against a legacy target");
         const result = matchInlineAtomsOnModel({
           ...options,
           document: this.engine.session.document,
@@ -2441,8 +1806,6 @@ export class FolioDocxReviewer {
         revisionStamp,
         ...options
       }) => {
-        if (this.engine.type !== "canonical")
-          return panic("Only a canonical reviewer matches on the session");
         const { session } = this.engine;
         const projected = session.projectStory(canonicalOpStory(story));
         if (projected.isErr()) throw projected.error;
@@ -2508,11 +1871,7 @@ export class FolioDocxReviewer {
   private projectComparisonStoriesOnSession(
     mode: FolioDocxComparisonProjectionMode,
   ): FolioDocxComparisonProjection {
-    if (this.engine.type !== "canonical")
-      return panic("Only a canonical reviewer projects comparison stories");
     const copy = this.fork();
-    if (copy.engine.type !== "canonical")
-      return panic("A canonical comparison fork must retain its engine");
     const handles = copy.listStoryHandlesInternal();
     const ids = new Set<number>();
     let present = false;
@@ -2578,13 +1937,6 @@ export class FolioDocxReviewer {
    * its journal holds the room's document, which `toBuffer` saves.
    */
   applyRoomJournal(journal: readonly SequencedBatch[]): void {
-    if (this.engine.type !== "canonical")
-      throw new FolioRoomJournalError({
-        message: "Only a canonical reviewer replays a room journal.",
-        reason: "legacyEngine",
-        expectedRevision: this.roomRevision + 1,
-        receivedRevision: journal.at(0)?.revision,
-      });
     for (const batch of journal) {
       const expectedRevision = this.roomRevision + 1;
       if (batch.revision !== expectedRevision)
@@ -2600,8 +1952,6 @@ export class FolioDocxReviewer {
   }
 
   private commitOpsOnSession(ops: readonly DocumentOp[]): boolean {
-    if (this.engine.type !== "canonical")
-      return panic("Only a canonical reviewer commits session operations");
     const prepared = this.engine.session.prepareOperations(this.state, ops);
     if (prepared.isErr()) {
       if (prepared.error.reason === "noChange") return false;
@@ -2615,8 +1965,6 @@ export class FolioDocxReviewer {
       FolioDocxComparisonAccess["stageMappedSectionBoundaries"]
     >[0],
   ): ReturnType<FolioDocxComparisonAccess["stageMappedSectionBoundaries"]> {
-    if (this.engine.type !== "canonical")
-      return panic("Only a canonical reviewer stages on the session");
     const { session } = this.engine;
     const result = stageSectionBoundaryOperations({
       document: readModel(session.document),
@@ -2639,66 +1987,9 @@ export class FolioDocxReviewer {
     };
   }
 
-  /** Restore the authoritative snapshot into an independent reviewer's collections. */
-  private restoreReviewerState(snapshot: FolioReviewerStateSnapshot): void {
-    const {
-      mainState,
-      finalSectionPropertiesOverride,
-      secondaryStoryStates,
-      sectionReferenceRemovals,
-      removedHeaderFooterStories,
-      removedNoteStories,
-      importedStyles,
-      importedMedia,
-      importedHeaders,
-      importedFooters,
-      createdComments,
-      deletedCommentIds,
-      resolvedOverrides,
-      resolvedStoryExpectations,
-      ...unhandled
-    } = snapshot;
-    // Every snapshot field needs an explicit fork disposition.
-    unhandled satisfies Record<string, never>;
-    this.state = mainState.apply(mainState.tr);
-    this.finalSectionPropertiesOverride = finalSectionPropertiesOverride;
-    for (const entry of secondaryStoryStates)
-      this.secondaryStoryStates.set(secondaryStoryKey(entry.handle), {
-        handle: entry.handle,
-        state: entry.state.apply(entry.state.tr),
-        initialState: entry.initialState.apply(entry.initialState.tr),
-      });
-    this.sectionReferenceRemovals.push(...sectionReferenceRemovals);
-    for (const handle of removedHeaderFooterStories)
-      this.removedHeaderFooterStories.set(headerFooterStoryKey(handle), handle);
-    for (const handle of removedNoteStories)
-      this.removedNoteStories.set(noteStoryKey(handle), handle);
-    this.importedStyles = importedStyles;
-    for (const [key, value] of importedMedia)
-      this.importedMedia.set(key, value);
-    for (const [key, value] of importedHeaders)
-      this.importedHeaders.set(key, value);
-    for (const [key, value] of importedFooters)
-      this.importedFooters.set(key, value);
-    this.createdComments.push(...createdComments);
-    this.deletedCommentIds = deletedCommentIds;
-    for (const [key, value] of resolvedOverrides)
-      this.resolvedOverrides.set(key, value);
-    for (const expectation of resolvedStoryExpectations)
-      this.resolvedStoryExpectations.set(
-        editableStoryKey(expectation.story),
-        expectation,
-      );
-  }
-
-  /**
-   * The model the readers read: the parsed package on the legacy engine, the
-   * session's document, as it is after every commit, on the canonical one.
-   */
+  /** The model the readers read: the session's document after every commit. */
   private get baseDocument(): Document {
-    return this.engine.type === "canonical"
-      ? readModel(this.engine.session.document)
-      : this.loadedDocument;
+    return readModel(this.engine.session.document);
   }
 
   /**
@@ -2707,8 +1998,6 @@ export class FolioDocxReviewer {
    * throws the session's refusal; nothing falls back to the legacy engine.
    */
   private publishOnSession(commit: CanonicalCommit): boolean {
-    if (this.engine.type !== "canonical")
-      return panic("Only a canonical reviewer publishes session commits");
     const { session } = this.engine;
     // A header, footer or note commit applies to that story's projection;
     // the body follows from the session below.
@@ -2749,7 +2038,7 @@ export class FolioDocxReviewer {
     }
     const absorptions = prepared.value.touched.absorbed ?? [];
     const sourceSnapshotForStory = (story: FolioEditableDocumentStoryHandle) =>
-      this.pendingSuggestionSource(story, new Set());
+      this.pendingSuggestionSource(story);
     // A live proposal on an absorbed paragraph now lives in the survivor, and
     // its record follows it there. Compare the session's saved snapshots:
     // rejecting a suggestion in a different projection can keep another id.
@@ -2981,48 +2270,15 @@ export class FolioDocxReviewer {
     return this.snapshotOf(this.state);
   }
 
-  /**
-   * The numbering ids every story but `story` defines: the package's and the
-   * lists each story started. Numbering ids are package-wide, while a story's
-   * state completes its numbering from its own paragraphs only.
-   */
-  private numberingIdsOutside(
-    story: FolioEditableDocumentStoryHandle,
-  ): NumberingIdsInUse {
-    const key = editableStoryKey(story);
-    const states = [
-      ...(story.type === "main" ? [] : [this.state]),
-      ...[...this.secondaryStoryStates.values()]
-        .filter(({ handle }) => editableStoryKey(handle) !== key)
-        .map(({ state }) => state),
-    ];
-    const numIds = new Set<number>();
-    const abstractNumIds = new Set<number>();
-    for (const state of states) {
-      const definitions = getDocumentNumbering(state)?.definitions;
-      for (const { numId } of definitions?.nums ?? []) numIds.add(numId);
-      for (const { abstractNumId } of definitions?.abstractNums ?? [])
-        abstractNumIds.add(abstractNumId);
-    }
-    return { numIds, abstractNumIds };
-  }
-
   /** Every suggestion id the document's stories still carry. */
   private activeSuggestionIds(): Set<string> {
     const active = new Set(
       getSuggestions(this.state).map(({ suggestionId }) => suggestionId),
     );
-    if (this.engine.type === "canonical") {
-      for (const handle of this.listStoryHandlesInternal()) {
-        if (handle.type === "main") continue;
-        const state = this.getEditableStoryState(handle);
-        for (const { suggestionId } of state ? getSuggestions(state) : [])
-          active.add(suggestionId);
-      }
-      return active;
-    }
-    for (const entry of this.secondaryStoryStates.values()) {
-      for (const { suggestionId } of getSuggestions(entry.state))
+    for (const handle of this.listStoryHandlesInternal()) {
+      if (handle.type === "main") continue;
+      const state = this.getEditableStoryState(handle);
+      for (const { suggestionId } of state ? getSuggestions(state) : [])
         active.add(suggestionId);
     }
     return active;
@@ -3033,45 +2289,34 @@ export class FolioDocxReviewer {
     const active = this.activeSuggestionIds();
     return this.pendingSuggestions.exportPendingSuggestions({
       activeSuggestionIds: active,
-      snapshotForStory: (story, commentIds) =>
-        this.pendingSuggestionSource(story, commentIds),
-      stateForStory: (story) =>
-        this.engine.type === "canonical"
-          ? this.getEditableStoryState(story)
-          : null,
+      snapshotForStory: (story) => this.pendingSuggestionSource(story),
+      stateForStory: (story) => this.getEditableStoryState(story),
     });
   }
 
   /**
    * A story as a save writes it, every pending suggestion rejected: what a
-   * suggestion record's fingerprint describes. On the canonical engine it is
-   * read from a session over the document the save writes, so a reviewer
-   * reopened on the saved package reads the same story.
+   * suggestion record's fingerprint describes. It is read from a session over
+   * the document the save writes, so a reviewer reopened on the saved package
+   * reads the same story.
    */
   private pendingSuggestionSource(
     story: FolioEditableDocumentStoryHandle,
-    commentIds: ReadonlySet<number>,
   ): FolioAIEditSnapshot | null {
-    if (this.engine.type === "canonical") {
-      if (!this.getEditableStoryState(story)) return null;
-      const document = this.toDocument();
-      const created = createCanonicalSession(document, document.package.styles);
-      if (created.isErr()) throw created.error;
-      const saved = new FolioDocxReviewer({
-        baseDocument: document,
-        originalBuffer: this.originalBuffer,
-        state: canonicalReviewerState(created.value),
-        author: this.author,
-        engine: { type: "canonical", session: created.value },
-        positionalParaIds: this.positionalParaIds,
-      }).getEditableStoryState(story);
-      return saved
-        ? createPendingSuggestionSourceSnapshot(saved, new Set())
-        : null;
-    }
-    const state = this.getEditableStoryState(story);
-    return state
-      ? createPendingSuggestionSourceSnapshot(state, commentIds)
+    if (!this.getEditableStoryState(story)) return null;
+    const document = this.toDocument();
+    const created = createCanonicalSession(document, document.package.styles);
+    if (created.isErr()) throw created.error;
+    const saved = new FolioDocxReviewer({
+      baseDocument: document,
+      originalBuffer: this.originalBuffer,
+      state: canonicalReviewerState(created.value),
+      author: this.author,
+      engine: { type: "canonical", session: created.value },
+      positionalParaIds: this.positionalParaIds,
+    }).getEditableStoryState(story);
+    return saved
+      ? createPendingSuggestionSourceSnapshot(saved, new Set())
       : null;
   }
 
@@ -3082,8 +2327,7 @@ export class FolioDocxReviewer {
     return this.pendingSuggestions.loadPendingSuggestions({
       records,
       snapshotForStory: (story) => this.snapshotStory(story),
-      sourceSnapshotForStory: (story, commentIds) =>
-        this.pendingSuggestionSource(story, commentIds),
+      sourceSnapshotForStory: (story) => this.pendingSuggestionSource(story),
       apply: (record, snapshot) => {
         const restage = {
           undefinedReferences: "refuse",
@@ -3100,16 +2344,10 @@ export class FolioDocxReviewer {
           ApplyDocumentOperationsInternalOptions,
           "createUndoEntry"
         >;
-        const result =
-          this.engine.type === "canonical"
-            ? this.applyDocumentOperationsOnSession({
-                ...restage,
-                operations: this.engine.operations,
-              })
-            : this.applyDocumentOperationsInternal({
-                ...restage,
-                createUndoEntry: false,
-              });
+        const result = this.applyDocumentOperationsOnSession({
+          ...restage,
+          operations: this.engine.operations,
+        });
         return { applied: result.applied, skipped: result.skipped };
       },
       activeSuggestionIds: () => this.activeSuggestionIds(),
@@ -3145,17 +2383,13 @@ export class FolioDocxReviewer {
         ? this.state.doc
         : this.readSecondaryStoryDoc(story);
     if (!doc) return null;
-    // Including the lists operations started, which only their paragraphs
-    // define so far on the legacy engine. The session defines every list it
-    // started in the package; a story reads those its paragraphs name.
-    const numbering =
-      this.engine.type === "canonical"
-        ? storyOwnNumbering({
-            current: this.baseDocument.package.numbering,
-            loaded: this.loadedDocument.package.numbering,
-            doc,
-          })
-        : completeNumberingForDoc(this.baseDocument.package.numbering, doc);
+    // The session defines every list it started in the package; a story
+    // reads those its paragraphs name.
+    const numbering = storyOwnNumbering({
+      current: this.baseDocument.package.numbering,
+      loaded: this.loadedDocument.package.numbering,
+      doc,
+    });
     return numberingLevelsOf(numbering).toSorted(
       (left, right) => left.numId - right.numId || left.level - right.level,
     );
@@ -3208,45 +2442,6 @@ export class FolioDocxReviewer {
     return sourceState ? this.snapshotOf(sourceState) : null;
   }
 
-  private projectComparisonStoriesInternal(
-    mode: FolioDocxComparisonProjectionMode,
-  ): FolioDocxComparisonProjection {
-    const handles = this.listStoryHandlesInternal();
-    const ids = new Set<number>();
-    let present = false;
-    if (mode === "with-revision-census") {
-      for (const change of this.currentFinalSectionProperties()
-        ?.propertyChanges ?? []) {
-        ids.add(change.info.id);
-        present = true;
-      }
-      // Census every arriving story before resolution mutates any reviewer
-      // state. The shared interpreter omits block ids, so this costs one
-      // carrier walk per story without constructing a throwaway snapshot.
-      for (const handle of handles) {
-        const state = this.getEditableStoryState(handle);
-        if (!state) {
-          continue;
-        }
-        const stats = getTrackedChangeStatsFromDoc(state.doc);
-        for (const id of stats.ids) ids.add(id);
-        present ||= stats.present;
-      }
-    }
-
-    const stories: FolioDocxComparisonStoryProjection[] = [];
-    for (const handle of handles) {
-      stories.push({
-        handle,
-        snapshot: this.resolveReviewedStorySnapshotInternal({
-          story: handle,
-          view: "final",
-        }),
-      });
-    }
-    return { stories, revisions: { ids: [...ids], present } };
-  }
-
   /**
    * One story's tables, in the document order {@link snapshotStory} numbers
    * them with, read through a reviewed view.
@@ -3297,7 +2492,7 @@ export class FolioDocxReviewer {
     if (!state || pairings.length === 0) {
       return revisionStamp.idSeed;
     }
-    if (this.engine.type === "canonical") {
+    {
       const matched = matchTableGeometryOperations({
         story: canonicalOpStory(story),
         baseTables: folioStoryTables(state.doc),
@@ -3317,22 +2512,6 @@ export class FolioDocxReviewer {
         this.commitOpsOnSession(matched.operations);
       return matched.nextRevisionId;
     }
-    const transaction = state.tr;
-    const { nextRevisionId } = matchTableGeometry({
-      tr: transaction,
-      baseTables: folioStoryTables(state.doc),
-      targetTables,
-      pairings,
-      revision: {
-        author: this.author,
-        date: revisionStamp.date,
-        idSeed: revisionStamp.idSeed,
-      },
-    });
-    if (transaction.docChanged) {
-      this.setEditableStoryState(story, state.apply(transaction));
-    }
-    return nextRevisionId;
   }
 
   /**
@@ -3367,36 +2546,7 @@ export class FolioDocxReviewer {
     story = MAIN_STORY,
     view,
   }: FolioResolveReviewedStoryOptions): boolean {
-    if (this.engine.type === "canonical")
-      return this.resolveStoryOnSession(this.engine.session, story, view);
-    return this.resolveReviewedStorySnapshotInternal({ story, view }) !== null;
-  }
-
-  private resolveReviewedStorySnapshotInternal({
-    story = MAIN_STORY,
-    view,
-  }: FolioResolveReviewedStoryOptions): FolioAIEditSnapshot | null {
-    if (!isFolioResolvedReviewedView(view)) {
-      throw new UnsupportedFolioReviewedViewError({
-        message:
-          "Only original and final views can replace editable story state.",
-        receivedView: view,
-      });
-    }
-    const sourceState = this.getEditableStoryState(story);
-    if (!sourceState) {
-      return null;
-    }
-    const resolvedState = resolveReviewedState(sourceState, view);
-    this.setEditableStoryState(story, resolvedState);
-    const snapshot = this.snapshotOf(resolvedState);
-    const minted = mintedBlockOrdinals(snapshot);
-    this.resolvedStoryExpectations.set(editableStoryKey(story), {
-      story,
-      minted,
-      ...resolvedStoryProjection(snapshot, minted),
-    });
-    return snapshot;
+    return this.resolveStoryOnSession(this.engine.session, story, view);
   }
 
   /**
@@ -3422,16 +2572,10 @@ export class FolioDocxReviewer {
       ...(options.wordDiff !== undefined && { wordDiff: options.wordDiff }),
       undefinedReferences: options.undefinedReferences,
     } satisfies Omit<ApplyDocumentOperationsInternalOptions, "createUndoEntry">;
-    const { applied, skipped } =
-      this.engine.type === "canonical"
-        ? this.applyDocumentOperationsOnSession({
-            ...internal,
-            operations: this.engine.operations,
-          })
-        : this.applyDocumentOperationsInternal({
-            ...internal,
-            createUndoEntry: false,
-          });
+    const { applied, skipped } = this.applyDocumentOperationsOnSession({
+      ...internal,
+      operations: this.engine.operations,
+    });
     return { applied, skipped };
   }
 
@@ -3455,15 +2599,10 @@ export class FolioDocxReviewer {
       ...(options.wordDiff !== undefined && { wordDiff: options.wordDiff }),
       undefinedReferences: options.undefinedReferences,
     } satisfies Omit<ApplyDocumentOperationsInternalOptions, "createUndoEntry">;
-    return this.engine.type === "canonical"
-      ? this.applyDocumentOperationsOnSession({
-          ...internal,
-          operations: this.engine.operations,
-        })
-      : this.applyDocumentOperationsInternal({
-          ...internal,
-          createUndoEntry: true,
-        });
+    return this.applyDocumentOperationsOnSession({
+      ...internal,
+      operations: this.engine.operations,
+    });
   }
 
   /** Apply a versioned operation batch to one editable document story. */
@@ -3487,164 +2626,10 @@ export class FolioDocxReviewer {
       ...(replacementBackground !== undefined && { replacementBackground }),
       undefinedReferences,
     } satisfies Omit<ApplyDocumentOperationsInternalOptions, "createUndoEntry">;
-    return this.engine.type === "canonical"
-      ? this.applyDocumentOperationsOnSession({
-          ...internal,
-          operations: this.engine.operations,
-        })
-      : this.applyDocumentOperationsInternal({
-          ...internal,
-          createUndoEntry: true,
-        });
-  }
-
-  /** Apply a batch; the notes whose references it deletes or removes follow them. */
-  private applyDocumentOperationsInternal(
-    options: ApplyDocumentOperationsInternalOptions,
-  ): FolioDocumentOperationResult {
-    // A comparison states each note's own changes as a story of its own.
-    if (noteReferenceEditsAllowed())
-      return this.applyDocumentOperationsToStoryState(options);
-    return this.withNotesFollowingReferences(() =>
-      this.applyDocumentOperationsToStoryState(options),
-    );
-  }
-
-  private applyDocumentOperationsToStoryState({
-    story,
-    batch,
-    author,
-    snapshot,
-    revisionStamp,
-    wordDiff,
-    tableTemplates,
-    replacementBackground,
-    undefinedReferences,
-    createUndoEntry,
-    restagesSuggestions,
-  }: ApplyDocumentOperationsInternalOptions): FolioDocumentOperationResult {
-    const validatedBatch = parseFolioDocumentOperationBatch(batch);
-    const beforeState = this.requireEditableStoryState(story);
-    const operationAuthor = author ?? this.author;
-    const sourceSnapshot = snapshot ?? this.snapshotOf(beforeState);
-    const createdCommentsLengthBefore = this.createdComments.length;
-    const beforeStyles = this.importedStyles;
-    const definitions = beforeStyles ?? this.loadedDocument.package.styles;
-    const candidateStyles =
-      undefinedReferences === "keep"
-        ? definitions
-        : withOperationHeadingStyles(definitions, validatedBatch.operations);
-    const candidateState =
-      candidateStyles === definitions
-        ? beforeState
-        : withDocumentStyles(beforeState, candidateStyles);
-    const view = {
-      state: candidateState,
-      dispatch: (transaction: Transaction) => {
-        view.state = view.state.apply(transaction);
-      },
-    };
-
-    const result = applyFolioDocumentOperationsInPackage({
-      view,
-      snapshot: sourceSnapshot,
-      batch: validatedBatch,
-      story: story.type === "main" ? "main" : story,
-      author: operationAuthor,
-      ...(revisionStamp !== undefined && { revisionStamp }),
-      ...(wordDiff !== undefined && { wordDiff }),
-      ...(tableTemplates !== undefined && { tableTemplates }),
-      ...(replacementBackground !== undefined && { replacementBackground }),
-      undefinedReferences,
-      numberingIdsElsewhere: this.numberingIdsOutside(story),
-      ...(restagesSuggestions === true
-        ? { restagesSuggestions }
-        : { pendingSuggestionIds: this.activeSuggestionIds() }),
-      createCommentId: (text) => {
-        const comment = createReviewerComment({
-          id: this.nextCommentId(),
-          text,
-          author: operationAuthor,
-          date: revisionStamp?.date,
-        });
-        this.createdComments.push(comment);
-        return comment.id;
-      },
-      ...(createUndoEntry && {
-        createUndoHandle: () => ({
-          type: "documentOperationUndo",
-          id: `headless-${String(undoHandleCursor++)}`,
-        }),
-      }),
+    return this.applyDocumentOperationsOnSession({
+      ...internal,
+      operations: this.engine.operations,
     });
-
-    // A run whose result was refused allocated comments that no range in the
-    // story names; only the applied operations' comments are the batch's.
-    const appliedCommentIds = new Set(
-      result.applied.flatMap(({ commentId }) =>
-        commentId === undefined ? [] : [commentId],
-      ),
-    );
-    const createdByBatch = this.createdComments.splice(
-      createdCommentsLengthBefore,
-    );
-    this.createdComments.push(
-      ...createdByBatch.filter((comment) => appliedCommentIds.has(comment.id)),
-    );
-    if (view.state !== candidateState)
-      this.setEditableStoryState(story, view.state);
-    if (candidateStyles !== definitions && view.state !== candidateState) {
-      const appliedIds = new Set(result.applied.map(({ id }) => id));
-      const committedStyles = withOperationHeadingStyles(
-        definitions,
-        validatedBatch.operations.filter(({ id }) => appliedIds.has(id)),
-      );
-      if (committedStyles !== definitions)
-        this.installImportedStyles(committedStyles);
-      else
-        this.setEditableStoryState(
-          story,
-          withDocumentStyles(view.state, definitions),
-        );
-    }
-    if (batch.mode === "suggested") {
-      const activeSuggestionIds = new Set(
-        getSuggestions(beforeState).map(({ suggestionId }) => suggestionId),
-      );
-      for (const { suggestionId } of getSuggestions(this.state))
-        activeSuggestionIds.add(suggestionId);
-      for (const entry of this.secondaryStoryStates.values()) {
-        for (const { suggestionId } of getSuggestions(entry.state)) {
-          activeSuggestionIds.add(suggestionId);
-        }
-      }
-      this.pendingSuggestions.recordApplied({
-        snapshot: sourceSnapshot,
-        story,
-        operations: batch.operations,
-        applied: result.applied,
-        author: operationAuthor,
-        activeSuggestionIds,
-      });
-    }
-    if (result.undoHandle !== null) {
-      this.documentOperationUndoEntries.push({
-        undoHandle: result.undoHandle,
-        story,
-        beforeState,
-        afterState: this.requireEditableStoryState(story),
-        createdCommentsLengthBefore,
-        createdCommentsLengthAfter: this.createdComments.length,
-        deletedCommentIds: this.deletedCommentIds,
-        beforeStyles,
-        afterStyles: this.importedStyles,
-      });
-      const excess =
-        this.documentOperationUndoEntries.length -
-        FOLIO_DOCUMENT_OPERATION_UNDO_LIMIT;
-      if (excess > 0) this.documentOperationUndoEntries.splice(0, excess);
-    }
-    return result;
   }
 
   /**
@@ -3656,42 +2641,7 @@ export class FolioDocxReviewer {
     undoHandle: FolioDocumentOperationUndoHandle,
   ): FolioDocumentOperationUndoResult {
     // The session's journal undoes the batch, comments included.
-    if (this.engine.type === "canonical")
-      return this.engine.operations.undo(undoHandle);
-    const entryIndex = this.documentOperationUndoEntries.findIndex(
-      (entry) =>
-        entry.undoHandle.type === undoHandle.type &&
-        entry.undoHandle.id === undoHandle.id,
-    );
-    if (entryIndex === -1) {
-      return { status: "rejected", undoHandle, reason: "unknownHandle" };
-    }
-    if (entryIndex !== this.documentOperationUndoEntries.length - 1) {
-      return { status: "rejected", undoHandle, reason: "notLatest" };
-    }
-
-    const entry = this.documentOperationUndoEntries.at(-1);
-    if (!entry) {
-      return { status: "rejected", undoHandle, reason: "unknownHandle" };
-    }
-    if (
-      this.requireEditableStoryState(entry.story) !== entry.afterState ||
-      this.createdComments.length !== entry.createdCommentsLengthAfter ||
-      this.deletedCommentIds !== entry.deletedCommentIds ||
-      this.importedStyles !== entry.afterStyles
-    ) {
-      return { status: "rejected", undoHandle, reason: "documentChanged" };
-    }
-
-    // A note whose reference the batch deleted gets its text back.
-    this.withNotesFollowingReferences(() =>
-      this.setEditableStoryState(entry.story, entry.beforeState),
-    );
-    if (entry.beforeStyles !== entry.afterStyles)
-      this.installImportedStyles(entry.beforeStyles, entry.story);
-    this.createdComments.length = entry.createdCommentsLengthBefore;
-    this.documentOperationUndoEntries.pop();
-    return { status: "undone", undoHandle };
+    return this.engine.operations.undo(undoHandle);
   }
 
   /**
@@ -3775,35 +2725,25 @@ export class FolioDocxReviewer {
     for (const relationshipId of pkg.headers?.keys() ?? []) {
       handles.push({ type: "header", relationshipId });
     }
-    for (const relationshipId of this.importedHeaders.keys()) {
-      handles.push({ type: "header", relationshipId });
-    }
     for (const relationshipId of pkg.footers?.keys() ?? []) {
       handles.push({ type: "footer", relationshipId });
     }
-    for (const relationshipId of this.importedFooters.keys()) {
-      handles.push({ type: "footer", relationshipId });
-    }
-    const notes = noteStoryInventory(pkg, this.removedNoteStories);
-    for (const footnote of notes.footnotes ?? []) {
+    for (const footnote of pkg.footnotes ?? []) {
       if (!isSeparatorFootnote(footnote)) {
         handles.push({ type: "footnote", noteId: footnote.id });
       }
     }
-    for (const endnote of notes.endnotes ?? []) {
+    for (const endnote of pkg.endnotes ?? []) {
       if (!isSeparatorEndnote(endnote)) {
         handles.push({ type: "endnote", noteId: endnote.id });
       }
     }
     // On the session, a part a resolution retired is gone, as a save drops it.
-    const retired =
-      this.engine.type === "canonical"
-        ? this.engine.session.retiredHeaderFooters()
-        : undefined;
+    const retired = this.engine.session.retiredHeaderFooters();
     return handles.filter((handle) => {
       if (handle.type === "header" || handle.type === "footer") {
         const key = headerFooterStoryKey(handle);
-        return !this.removedHeaderFooterStories.has(key) && !retired?.has(key);
+        return !retired.has(key);
       }
       return true;
     });
@@ -3887,15 +2827,12 @@ export class FolioDocxReviewer {
       if (!doc) continue;
       for (const id of coveredCommentIdsInProseDoc(doc)) covered.add(id);
     }
-    const definitions = this.withResolvedOverrides(
-      this.keptCommentThreads(
-        this.currentCommentDefinitions(),
-        this.state,
-        this.secondaryStoryStates.values(),
-      ).filter(
-        ({ id, parentId, anchorKind }) =>
-          anchorKind !== "range" || parentId !== undefined || covered.has(id),
-      ),
+    const definitions = this.keptCommentThreads(
+      this.currentCommentDefinitions(),
+      this.state,
+    ).filter(
+      ({ id, parentId, anchorKind }) =>
+        anchorKind !== "range" || parentId !== undefined || covered.has(id),
     );
     if (definitions.length === 0) {
       return [];
@@ -3976,48 +2913,21 @@ export class FolioDocxReviewer {
       );
     }
     if (removed.size === 0) return { deleted: [] };
-    if (this.engine.type === "canonical") {
-      const prepared = this.engine.session.prepareOperations(
-        this.state,
-        [...roots].map(([id, scope]) => ({
-          type: DOCUMENT_OP_TYPES.DELETE_COMMENT,
-          id,
-          scope,
-        })),
-      );
-      if (prepared.isErr()) throw prepared.error;
-      this.publishOnSession(prepared.value);
-    } else {
-      this.deleteCommentAnchors(removed);
-    }
+    const prepared = this.engine.session.prepareOperations(
+      this.state,
+      [...roots].map(([id, scope]) => ({
+        type: DOCUMENT_OP_TYPES.DELETE_COMMENT,
+        id,
+        scope,
+      })),
+    );
+    if (prepared.isErr()) throw prepared.error;
+    this.publishOnSession(prepared.value);
     return { deleted: [...removed].sort((left, right) => left - right) };
   }
 
   private currentCommentDefinitions(): Comment[] {
-    return [
-      ...(this.baseDocument.package.document.comments ?? []),
-      ...this.createdComments,
-    ].filter(({ id }) => !this.deletedCommentIds.has(id));
-  }
-
-  private deleteCommentAnchors(ids: ReadonlySet<number>): void {
-    for (const story of this.listStoryHandlesInternal()) {
-      this.getEditableStoryState(story);
-    }
-    const edits = [
-      { handle: MAIN_STORY, state: this.state },
-      ...this.secondaryStoryStates.values(),
-    ].flatMap(({ handle, state }) => {
-      const transaction = state.tr;
-      removeCommentAnchors(transaction, ids);
-      return transaction.docChanged
-        ? [{ handle, state: state.apply(transaction) }]
-        : [];
-    });
-    for (const { handle, state } of edits)
-      this.setEditableStoryState(handle, state);
-    this.deletedCommentIds = new Set([...this.deletedCommentIds, ...ids]);
-    for (const id of ids) this.resolvedOverrides.delete(id);
+    return [...(this.baseDocument.package.document.comments ?? [])];
   }
 
   /**
@@ -4034,86 +2944,7 @@ export class FolioDocxReviewer {
     input: FolioReviewReplyInput,
   ): FolioReviewCommentReply | null {
     const parentId = typeof target === "number" ? target : target.id;
-    if (this.engine.type === "canonical")
-      return this.replyOnSession(this.engine.session, parentId, input);
-    const existing = this.currentCommentDefinitions();
-    const reply = createReply({
-      comments: existing,
-      parentCommentId: parentId,
-      input: {
-        author: input.author ?? this.author,
-        text: input.text,
-        ...(input.initials !== undefined ? { initials: input.initials } : {}),
-        ...(input.date !== undefined && { date: input.date }),
-      },
-      commentIds: this.commentIds,
-    });
-    if (!reply) {
-      return null;
-    }
-    this.createdComments.push(reply);
-    this.anchorReplyInEditor({
-      parentId: reply.parentId ?? parentId,
-      replyId: reply.id,
-    });
-    return {
-      id: reply.id,
-      author: reply.author,
-      date: reply.date ?? null,
-      text: input.text,
-    };
-  }
-
-  private anchorReplyInEditor({
-    parentId,
-    replyId,
-  }: {
-    parentId: number;
-    replyId: number;
-  }): void {
-    for (const story of this.listStoryHandlesInternal()) {
-      const state = this.getEditableStoryState(story);
-      if (!state) continue;
-      const commentMark = state.schema.marks["comment"];
-      const referenceNode = state.schema.nodes["commentReference"];
-      if (!commentMark || !referenceNode) continue;
-
-      let from: number | null = null;
-      let to = 0;
-      let referenceAt: number | null = null;
-      state.doc.descendants((node, pos) => {
-        if (
-          node.type === referenceNode &&
-          node.attrs["commentId"] === parentId
-        ) {
-          referenceAt ??= pos + node.nodeSize;
-        }
-        if (
-          node.isInline &&
-          node.marks.some(
-            (mark) =>
-              mark.type === commentMark && mark.attrs["commentId"] === parentId,
-          )
-        ) {
-          from ??= pos;
-          to = pos + node.nodeSize;
-        }
-      });
-      if (referenceAt === null || from === null || from >= to) continue;
-
-      let transaction = state.tr;
-      transaction = transaction.addMark(
-        from,
-        to,
-        commentMark.create({ commentId: replyId }),
-      );
-      transaction = transaction.insert(
-        referenceAt,
-        referenceNode.create({ commentId: replyId }),
-      );
-      this.setEditableStoryState(story, state.apply(transaction));
-      return;
-    }
+    return this.replyOnSession(this.engine.session, parentId, input);
   }
 
   /**
@@ -4133,19 +2964,11 @@ export class FolioDocxReviewer {
     options: { resolved?: boolean } = {},
   ): boolean {
     const resolved = options.resolved ?? true;
-    if (this.engine.type === "canonical")
-      return this.resolveCommentOnSession(
-        this.engine.session,
-        commentId,
-        resolved,
-      );
-    const existing = this.currentCommentDefinitions();
-    const target = existing.find((comment) => String(comment.id) === commentId);
-    if (!target) {
-      return false;
-    }
-    this.resolvedOverrides.set(target.id, resolved);
-    return true;
+    return this.resolveCommentOnSession(
+      this.engine.session,
+      commentId,
+      resolved,
+    );
   }
 
   /** Run a semantic comment command as one session commit, as the editor does. */
@@ -4260,88 +3083,7 @@ export class FolioDocxReviewer {
   }
 
   private currentFinalSectionProperties(): SectionProperties | undefined {
-    return (
-      this.finalSectionPropertiesOverride ??
-      this.baseDocument.package.document.finalSectionProperties
-    );
-  }
-
-  private stageFinalSectionProperties(options: {
-    target: SectionProperties;
-    previous: SectionProperties;
-    revision: FolioRevisionStamp;
-  }): boolean {
-    const staged = stagedFinalSectionProperties({
-      ...options,
-      author: this.author,
-    });
-    if (!staged) return false;
-    this.finalSectionPropertiesOverride = staged;
-    return true;
-  }
-
-  private stageMappedSectionBoundaries({
-    target,
-    originalRevisionIdSeed,
-    maxRanges,
-    revision,
-    mapTargetProperties,
-  }: {
-    target: PMNode;
-    originalRevisionIdSeed: number;
-    maxRanges: number;
-    revision: FolioRevisionStamp;
-    mapTargetProperties: (args: {
-      kind: "inserted" | "retained";
-      current: SectionProperties | undefined;
-      target: SectionProperties;
-    }) =>
-      | { kind: "inserted"; target: SectionProperties }
-      | {
-          kind: "retained";
-          previous: SectionProperties;
-          target: SectionProperties;
-        }
-      | null;
-  }):
-    | {
-        status: "matched";
-        rangeCount: number;
-        nextRevisionId: number;
-        documentChanged: boolean;
-      }
-    | { status: "unalignable"; detail: string }
-    | { status: "budget-exceeded" } {
-    const result = stageMappedSectionBoundaryProperties({
-      state: this.state,
-      target,
-      originalRevisionIdSeed,
-      revisionStamp: revision,
-      author: this.author,
-      maxRanges,
-      mapTargetProperties,
-    });
-    if (result.status !== "matched") return result;
-    const documentChanged = result.transaction.docChanged;
-    if (documentChanged) this.state = this.state.apply(result.transaction);
-    return {
-      status: "matched",
-      rangeCount: result.rangeCount,
-      nextRevisionId: result.nextRevisionId,
-      documentChanged,
-    };
-  }
-
-  private resolveFinalSectionProperties(
-    mode: "accept" | "reject",
-    id: number,
-  ): number {
-    const current = this.currentFinalSectionProperties();
-    const resolved =
-      current && resolveSectionChange({ current, decision: mode, id });
-    if (!resolved) return 0;
-    this.finalSectionPropertiesOverride = resolved;
-    return 1;
+    return this.baseDocument.package.document.finalSectionProperties;
   }
 
   /**
@@ -4355,38 +3097,7 @@ export class FolioDocxReviewer {
    * removal. A held change stays pending as it is.
    */
   acceptChange(target: FolioReviewChange | number): boolean {
-    if (this.engine.type === "canonical")
-      return this.resolveChangeOnSession(target, "accept");
-    return this.resolveWithSectionReferenceHistory(() =>
-      this.withNotesFollowingReferences(() =>
-        this.acceptChangeInternal(target),
-      ),
-    );
-  }
-
-  private acceptChangeInternal(target: FolioReviewChange | number): boolean {
-    const id = revisionIdOf(target);
-    const ids = getTrackedChangeGroupIdsFromDoc(this.state.doc, id);
-    if (revisionResolutionLockViolation(this.state, ids, "accept") !== null)
-      return false;
-    // A suggested change first becomes an ordinary tracked change: a
-    // suggested paragraph insert is flagged on its node, which accepting the
-    // revision marks alone leaves behind, and a save drops a flagged node.
-    const suggestionId = suggestionIdOfRevision(this.state, id);
-    // Accepting its marks alone would leave the node flag a save drops.
-    if (
-      suggestionId !== null &&
-      !this.runCommand(acceptSuggestion(suggestionId, { author: this.author }))
-    ) {
-      return false;
-    }
-    let bodyChanged = false;
-    for (const memberId of ids) {
-      bodyChanged =
-        this.runCommand(acceptAIEditRevision(memberId)) || bodyChanged;
-    }
-    const sectionChanged = this.resolveFinalSectionProperties("accept", id) > 0;
-    return bodyChanged || sectionChanged;
+    return this.resolveChangeOnSession(target, "accept");
   }
 
   /**
@@ -4394,35 +3105,7 @@ export class FolioDocxReviewer {
    * deletion's text is restored. See {@link acceptChange} for targeting.
    */
   rejectChange(target: FolioReviewChange | number): boolean {
-    if (this.engine.type === "canonical")
-      return this.resolveChangeOnSession(target, "reject");
-    return this.resolveWithSectionReferenceHistory(() =>
-      this.withNotesFollowingReferences(() =>
-        this.rejectChangeInternal(target),
-      ),
-    );
-  }
-
-  private rejectChangeInternal(target: FolioReviewChange | number): boolean {
-    const id = revisionIdOf(target);
-    const ids = getTrackedChangeGroupIdsFromDoc(this.state.doc, id);
-    if (revisionResolutionLockViolation(this.state, ids, "reject") !== null)
-      return false;
-    // A suggestion is rejected whole, node flags included.
-    const suggestionId = suggestionIdOfRevision(this.state, id);
-    if (
-      suggestionId !== null &&
-      this.runCommand(rejectSuggestion(suggestionId))
-    ) {
-      return true;
-    }
-    let bodyChanged = false;
-    for (const memberId of ids) {
-      bodyChanged =
-        this.runCommand(rejectAIEditRevision(memberId)) || bodyChanged;
-    }
-    const sectionChanged = this.resolveFinalSectionProperties("reject", id) > 0;
-    return bodyChanged || sectionChanged;
+    return this.resolveChangeOnSession(target, "reject");
   }
 
   /** Convert one pending suggestion into an ordinary tracked change. */
@@ -4430,64 +3113,22 @@ export class FolioDocxReviewer {
     suggestionId: string,
     options?: { author?: string },
   ): boolean {
-    if (this.engine.type === "canonical")
-      return this.resolveSuggestionOnSession(
-        this.engine.session,
-        suggestionId,
-        "accept",
-        options?.author ?? this.author,
-      );
-    return this.resolveWithSectionReferenceHistory(() => {
-      let accepted = false;
-      for (const handle of this.listStoryHandlesInternal()) {
-        const state = this.getEditableStoryState(handle);
-        if (
-          !state ||
-          !getSuggestions(state).some(
-            (entry) => entry.suggestionId === suggestionId,
-          )
-        ) {
-          continue;
-        }
-        accepted =
-          this.runStoryCommand(
-            acceptSuggestion(suggestionId, {
-              author: options?.author ?? this.author,
-            }),
-            handle,
-          ) || accepted;
-      }
-      return accepted;
-    });
+    return this.resolveSuggestionOnSession(
+      this.engine.session,
+      suggestionId,
+      "accept",
+      options?.author ?? this.author,
+    );
   }
 
   /** Remove one pending suggestion without applying it. */
   rejectSuggestion(suggestionId: string): boolean {
-    if (this.engine.type === "canonical")
-      return this.resolveSuggestionOnSession(
-        this.engine.session,
-        suggestionId,
-        "reject",
-        this.author,
-      );
-    return this.resolveWithSectionReferenceHistory(() => {
-      let rejected = false;
-      for (const handle of this.listStoryHandlesInternal()) {
-        const state = this.getEditableStoryState(handle);
-        if (
-          !state ||
-          !getSuggestions(state).some(
-            (entry) => entry.suggestionId === suggestionId,
-          )
-        ) {
-          continue;
-        }
-        rejected =
-          this.runStoryCommand(rejectSuggestion(suggestionId), handle) ||
-          rejected;
-      }
-      return rejected;
-    });
+    return this.resolveSuggestionOnSession(
+      this.engine.session,
+      suggestionId,
+      "reject",
+      this.author,
+    );
   }
 
   /**
@@ -4504,16 +3145,12 @@ export class FolioDocxReviewer {
    * ordinary changes resolved.
    */
   acceptAll(): FolioReviewResolution {
-    return this.engine.type === "canonical"
-      ? this.resolveAllOnSession(this.engine.session, "accept")
-      : this.resolveAll("accept");
+    return this.resolveAllOnSession(this.engine.session, "accept");
   }
 
   /** Reject every tracked change in the package. See {@link acceptAll}. */
   rejectAll(): FolioReviewResolution {
-    return this.engine.type === "canonical"
-      ? this.resolveAllOnSession(this.engine.session, "reject")
-      : this.resolveAll("reject");
+    return this.resolveAllOnSession(this.engine.session, "reject");
   }
 
   /**
@@ -4525,8 +3162,6 @@ export class FolioDocxReviewer {
     target: FolioReviewChange | number,
     resolution: "accept" | "reject",
   ): boolean {
-    if (this.engine.type !== "canonical")
-      return panic("Only a canonical reviewer resolves on the session");
     const { session } = this.engine;
     const id = revisionIdOf(target);
     // A suggested change is rejected whole; accepting it first adopts it as
@@ -4660,425 +3295,6 @@ export class FolioDocxReviewer {
     };
   }
 
-  private resolveAll(mode: "accept" | "reject"): FolioReviewResolution {
-    return this.resolveWithSectionReferenceHistory(() => {
-      const skipped: FolioReviewResolutionSkip[] = [];
-      const resolved =
-        this.resolveEveryStory(mode, skipped) +
-        this.resolveEveryFinalSectionChange(mode);
-      return { resolved, skipped };
-    });
-  }
-
-  private resolveWithSectionReferenceHistory<T>(resolve: () => T): T {
-    const before = captureSectionReferenceInventory(
-      this.state.doc,
-      this.currentFinalSectionProperties(),
-    );
-    const result = resolve();
-    const removedEndpointReferences =
-      getTrackedSectionEndpointRemoval(this.state)?.removedReferences ?? [];
-    if (
-      before.revisionRelationships.size > 0 ||
-      removedEndpointReferences.length > 0
-    ) {
-      const after = captureSectionReferenceInventory(
-        this.state.doc,
-        this.currentFinalSectionProperties(),
-      );
-      const removed = resolvedSectionReferenceLosses({ before, after });
-      this.sectionReferenceRemovals.push(...removed);
-      for (const reference of [...removed, ...removedEndpointReferences]) {
-        if (
-          after.references.some(
-            ({ part, relationshipId }) =>
-              part === reference.part &&
-              relationshipId === reference.relationshipId,
-          )
-        )
-          continue;
-        const handle = {
-          type: reference.part,
-          relationshipId: reference.relationshipId,
-        };
-        this.removedHeaderFooterStories.set(
-          headerFooterStoryKey(handle),
-          handle,
-        );
-      }
-    }
-    return result;
-  }
-
-  private resolveEveryFinalSectionChange(mode: "accept" | "reject"): number {
-    const current = this.currentFinalSectionProperties();
-    const resolved = current && resolveSectionChanges(current, mode);
-    if (!resolved) return 0;
-    this.finalSectionPropertiesOverride = resolved;
-    return current?.propertyChanges?.length ?? 0;
-  }
-
-  private resolveEveryStory(
-    mode: "accept" | "reject",
-    skipped: FolioReviewResolutionSkip[],
-  ): number {
-    return this.withNotesFollowingReferences(() =>
-      this.resolveEveryStoryOnce(mode, skipped),
-    );
-  }
-
-  /**
-   * Change the body the way a note follows its reference: a note whose
-   * reference goes, goes too, as a note no text refers to does; a note whose
-   * reference an edit deletes as a tracked change has its text deleted with
-   * it; a note whose reference's deletion is rejected gets back the text that
-   * deletion took.
-   */
-  private withNotesFollowingReferences<T>(change: () => T): T {
-    const before = this.state.doc;
-    const result = change();
-    const after = this.state.doc;
-    const referencedAfter = referencedNoteKeys(after);
-    // A reference back in the body (a reject after an accept) brings its note back.
-    for (const key of referencedAfter) this.removedNoteStories.delete(key);
-    const unreferenced = new Set(
-      [...referencedNoteKeys(before)].filter(
-        (key) => !referencedAfter.has(key),
-      ),
-    );
-    // A note another story still refers to stays.
-    const referencedElsewhere =
-      unreferenced.size > 0
-        ? this.noteKeysReferencedOutsideBody(unreferenced)
-        : new Set<string>();
-    for (const key of unreferenced) {
-      if (referencedElsewhere.has(key)) continue;
-      const handle = noteStoryHandleOf(key);
-      if (handle) this.removedNoteStories.set(noteStoryKey(handle), handle);
-    }
-    const rejectedDeletions = referenceDeletions(before);
-    for (const key of noteReferencesRestored(before, after)) {
-      const handle = noteStoryHandleOf(key);
-      const state = handle ? this.getEditableStoryState(handle) : null;
-      const reference = rejectedDeletions.get(key);
-      // Only what went with the reference comes back, not the note's own deletions.
-      const revisions =
-        state && reference ? noteDeletionRevisions(state.doc, reference) : [];
-      if (handle && revisions.length > 0) {
-        this.runStoryCommand(rejectAIEditRevision(revisions), handle);
-      }
-    }
-    this.deleteNotesWithTheirReferences(before, after);
-    return result;
-  }
-
-  /** Delete the text of each note whose reference went from live to a tracked deletion. */
-  private deleteNotesWithTheirReferences(before: PMNode, after: PMNode): void {
-    const was = noteReferenceStates(before);
-    const deletions = referenceDeletions(after);
-    for (const [key, state] of noteReferenceStates(after)) {
-      if (state !== "deleted" || was.get(key) !== "live") continue;
-      const reference = deletions.get(key);
-      // A suggestion stays the body's own until it is accepted, and a moved
-      // reference keeps its note.
-      if (
-        !reference ||
-        reference.attrs["provenance"] === "suggested" ||
-        reference.attrs["moveKind"] != null
-      ) {
-        continue;
-      }
-      const handle = noteStoryHandleOf(key);
-      if (!handle || this.removedNoteStories.has(noteStoryKey(handle)))
-        continue;
-      this.runStoryCommand((storyState, dispatch) => {
-        const transaction = deleteNoteWithReference(storyState.tr, reference);
-        if (!transaction.docChanged) return false;
-        dispatch?.(transaction);
-        return true;
-      }, handle);
-    }
-  }
-
-  /**
-   * The notes a story other than the body refers to (a header, a footer, a
-   * comment, another note), leaving out references inside the `skipped` notes.
-   */
-  private noteKeysReferencedOutsideBody(
-    skipped: ReadonlySet<string>,
-  ): Set<string> {
-    const keys = new Set<string>(
-      noteKeysReferencedIn(this.currentCommentDefinitions()),
-    );
-    for (const handle of this.listStoryHandlesInternal()) {
-      if (handle.type === "main") continue;
-      let source: { content: BlockContent[] } | undefined;
-      if (handle.type === "footnote" || handle.type === "endnote") {
-        if (skipped.has(noteStoryKey(handle))) continue;
-        source = this.getNoteStory(handle);
-      } else {
-        source = this.getHeaderFooterStory(handle);
-      }
-      const state = this.secondaryStoryStates.get(
-        secondaryStoryKey(handle),
-      )?.state;
-      const found = state
-        ? referencedNoteKeys(state.doc)
-        : noteKeysReferencedIn(source?.content ?? []);
-      for (const key of found) keys.add(key);
-    }
-    return keys;
-  }
-
-  private resolveEveryStoryOnce(
-    mode: "accept" | "reject",
-    skipped: FolioReviewResolutionSkip[],
-  ): number {
-    let count = 0;
-    const resolvedStories: {
-      handle: FolioEditableDocumentStoryHandle;
-      state: EditorState;
-    }[] = [];
-    const refreshes: ((activeSuggestionIds: ReadonlySet<string>) => void)[] =
-      [];
-    const stories = this.listStoryHandlesInternal().flatMap((handle) => {
-      const state = this.getEditableStoryState(handle);
-      if (!state) return [];
-      const held = lockHeldChanges(state, mode);
-      const carried = revisionIdsCarriedByResolution(state.doc, mode);
-      return [
-        {
-          source: { handle, state },
-          changes: getTrackedChangesFromDoc(state.doc).map(({ id }) => {
-            const { carries, moves } = carriedByGroup(
-              id,
-              getTrackedChangeGroupIdsFromDoc(state.doc, id),
-              carried,
-            );
-            return {
-              id,
-              suggestionId: suggestionIdOfRevision(state, id),
-              violation: held.get(id),
-              carries,
-              moves,
-            };
-          }),
-        },
-      ];
-    });
-    const classified = classifyReviewLocks({
-      stories,
-      grouping: mode === "reject" ? "whole-proposal" : "individual-change",
-    });
-    for (const {
-      source: { handle, state },
-      changes,
-    } of classified.stories) {
-      const held = new Map<number, LockedControlViolation>();
-      for (const entry of changes) {
-        switch (entry.type) {
-          case "held":
-            held.set(entry.change.id, entry.violation);
-            break;
-          case "free":
-            break;
-          default: {
-            const unhandled: never = entry;
-            return panic("Unknown classified review lock", {
-              entry: unhandled,
-            });
-          }
-        }
-      }
-      if (held.size > 0) {
-        count += this.resolveStoryAroundHeldChanges(
-          handle,
-          mode,
-          held,
-          skipped,
-        );
-        continue;
-      }
-      const ordinaryCount = getTrackedChangesFromDoc(state.doc).filter(
-        ({ id }) =>
-          mode === "reject" || suggestionIdOfRevision(state, id) === null,
-      ).length;
-      count += ordinaryCount;
-      const withSuggestions =
-        mode === "accept" &&
-        ordinaryCount > 0 &&
-        getSuggestions(state).length > 0
-          ? this.acceptOrdinaryChangesWithSuggestions(state, handle)
-          : null;
-      if (withSuggestions) refreshes.push(withSuggestions.refresh);
-      let resolvedState = state;
-      if (mode === "reject") {
-        resolvedState = resolveAllChangesInHeadlessState(
-          rejectEverySuggestion(state),
-          mode,
-        );
-      } else if (ordinaryCount > 0) {
-        resolvedState =
-          withSuggestions?.state ??
-          resolveAllChangesInHeadlessState(state, mode);
-      }
-      resolvedStories.push({ handle, state: resolvedState });
-    }
-    for (const { handle, state } of resolvedStories)
-      this.setEditableStoryState(handle, state);
-    if (refreshes.length > 0) {
-      const activeSuggestionIds = new Set(
-        getSuggestions(this.state).map(({ suggestionId }) => suggestionId),
-      );
-      for (const entry of this.secondaryStoryStates.values()) {
-        for (const { suggestionId } of getSuggestions(entry.state))
-          activeSuggestionIds.add(suggestionId);
-      }
-      for (const refresh of refreshes) refresh(activeSuggestionIds);
-    }
-    return count;
-  }
-
-  /**
-   * Resolve each change of a story a content control's lock does not hold, on
-   * its own: the one-pass resolver takes the whole story or nothing. The held
-   * changes stay pending as they are and are reported in `skipped`.
-   */
-  private resolveStoryAroundHeldChanges(
-    handle: FolioEditableDocumentStoryHandle,
-    mode: "accept" | "reject",
-    held: ReadonlyMap<number, LockedControlViolation>,
-    skipped: FolioReviewResolutionSkip[],
-  ): number {
-    for (const [id, violation] of held)
-      skipped.push({
-        id,
-        reason: CONTENT_CONTROL_LOCK,
-        message: lockedControlMessage(violation),
-      });
-    const state = this.getEditableStoryState(handle);
-    if (!state) return 0;
-    let resolved = 0;
-    for (const { id } of getTrackedChangesFromDoc(state.doc).toReversed()) {
-      if (held.has(id)) continue;
-      const current = this.getEditableStoryState(handle);
-      if (!current) break;
-      const ids = getTrackedChangeGroupIdsFromDoc(current.doc, id);
-      if (ids.length === 0) continue;
-      const resolveOne =
-        mode === "accept"
-          ? acceptAIEditRevision(ids)
-          : rejectAIEditRevision(ids);
-      if (this.runStoryCommand(resolveOne, handle)) resolved += 1;
-    }
-    return resolved;
-  }
-
-  private acceptOrdinaryChangesWithSuggestions(
-    state: EditorState,
-    story: FolioEditableDocumentStoryHandle,
-  ): {
-    state: EditorState;
-    refresh: (activeSuggestionIds: ReadonlySet<string>) => void;
-  } {
-    const originalSuggestions = getSuggestions(state);
-    const records = this.exportPendingSuggestions().filter(
-      (record) => editableStoryKey(record.story) === editableStoryKey(story),
-    );
-    const recordedIds = new Set(
-      records.map(({ suggestionId }) => suggestionId),
-    );
-    if (
-      originalSuggestions.some(
-        ({ suggestionId }) => !recordedIds.has(suggestionId),
-      )
-    ) {
-      panic(
-        "A pending suggestion has no operation to restage after bulk acceptance",
-      );
-    }
-
-    // The ordinary resolver must see the complete story in one pass: resolving
-    // revision ids separately can change paragraph joins and list ownership.
-    let clean = rejectEverySuggestion(state);
-    const restagedCommentIds = new Set(
-      records.flatMap(({ commentId }) =>
-        commentId === undefined ? [] : [commentId],
-      ),
-    );
-    clean = withoutPendingSuggestionCommentMarks(clean, restagedCommentIds);
-    let resolved = resolveAllChangesInHeadlessState(clean, "accept");
-    const restaged: {
-      snapshot: FolioAIEditSnapshot;
-      operation: FolioAIEditOperation;
-      applied: FolioAIEditAppliedOperation;
-      author: string;
-    }[] = [];
-    for (const record of records) {
-      const snapshot = this.snapshotOf(resolved);
-      const view = {
-        state: resolved,
-        dispatch: (transaction: Transaction) => {
-          view.state = view.state.apply(transaction);
-        },
-      };
-      const result = applyFolioDocumentOperationsInPackage({
-        undefinedReferences: "refuse",
-        restagesSuggestions: true,
-        numberingIdsElsewhere: this.numberingIdsOutside(story),
-        view,
-        snapshot,
-        batch: {
-          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-          mode: "suggested",
-          operations: [record.operation],
-        },
-        story: story.type === "main" ? "main" : story,
-        author: record.author,
-        createCommentId: () => {
-          if (record.commentId === undefined) {
-            panic("A staged comment suggestion has no comment id", {
-              suggestionId: record.suggestionId,
-            });
-          }
-          return record.commentId;
-        },
-      });
-      const applied = result.applied.find(
-        ({ id }) => id === record.operation.id,
-      );
-      if (!applied) {
-        continue;
-      }
-      restaged.push({
-        snapshot,
-        operation: record.operation,
-        applied,
-        author: record.author,
-      });
-      resolved = view.state;
-    }
-    const restagedIds = new Set(
-      getSuggestions(resolved).map(({ suggestionId }) => suggestionId),
-    );
-    if (
-      restaged.some(
-        ({ applied }) => !restagedIds.has(applied.suggestionId ?? applied.id),
-      )
-    ) {
-      panic("Bulk acceptance lost a pending suggestion");
-    }
-    return {
-      state: resolved,
-      refresh: (activeSuggestionIds) =>
-        this.pendingSuggestions.replaceRestagedStory({
-          story,
-          restaged,
-          activeSuggestionIds,
-        }),
-    };
-  }
-
   /** Resolve ordinary revisions on a detached in-memory document. */
   toResolvedDocument(decision: "accept" | "reject"): Document {
     return this.resolvedCopy(
@@ -5093,35 +3309,12 @@ export class FolioDocxReviewer {
    * way, or a legacy reviewer over the model that resolution returns.
    */
   private resolvedCopy(view: FolioResolvedReviewedView): FolioDocxReviewer {
-    if (this.engine.type === "canonical")
-      return this.resolvedSessionCopy(this.engine.session, view);
-    const resolved = resolvedDocumentView(
-      this.toDocument(),
-      view === "final" ? "accept" : "reject",
-    );
-    if (resolved.unresolved.length > 0)
-      throw new FolioResolvedViewRefusedError({
-        message: `The ${view} view cannot be read: the changes of ${resolved.unresolved.length} stories do not resolve.`,
-        view,
-        stories: resolved.unresolved,
-      });
-    // List rendering follows the resolved numbering, as a session renders it
-    // after every commit.
-    const rendered = normalizeListModelRendering(resolved.document, {
-      inverse: "omit",
-    }).document;
-    return FolioDocxReviewer.legacyOver(rendered, {
-      originalBuffer: this.originalBuffer,
-      author: this.author,
-      positionalParaIds: this.storyPositionalParaIds(),
-    });
+    return this.resolvedSessionCopy(this.engine.session, view);
   }
 
   /** The {@link resolvedCopy} a reader takes one story of. */
   private resolvedReader(view: FolioResolvedReviewedView): FolioDocxReviewer {
-    return this.engine.type === "canonical"
-      ? this.resolvedSessionReader(this.engine.session, view)
-      : this.resolvedCopy(view);
+    return this.resolvedSessionReader(this.engine.session, view);
   }
 
   /**
@@ -5139,28 +3332,6 @@ export class FolioDocxReviewer {
     const reviewer = this.resolvedSessionCopy(session, view);
     this.resolvedSessionReaders.set(view, new WeakRef({ document, reviewer }));
     return reviewer;
-  }
-
-  /**
-   * The paragraph ids this reviewer's stories read as positional: ids it
-   * minted where the package named none, which `toDocument` writes as ids.
-   */
-  private storyPositionalParaIds(): Set<string> {
-    const ids = new Set(this.positionalParaIds);
-    const states = [
-      this.state,
-      ...[...this.secondaryStoryStates.values()].map(({ state }) => state),
-    ];
-    for (const { doc } of states)
-      doc.descendants((node) => {
-        const paraId: unknown = node.attrs["paraId"];
-        if (
-          node.attrs["idStability"] === "positional" &&
-          typeof paraId === "string"
-        )
-          ids.add(paraId);
-      });
-    return ids;
   }
 
   /**
@@ -5248,8 +3419,6 @@ export class FolioDocxReviewer {
         );
     }
     const copy = this.fork();
-    if (copy.engine.type !== "canonical")
-      return panic("A canonical fork must retain its engine");
     const { session } = copy.engine;
     const operations: DocumentOp[] = [];
     const unsubscribe = session.onCommitted(({ ops }) =>
@@ -5366,323 +3535,17 @@ export class FolioDocxReviewer {
     // The session's document as it holds it, with pending suggestions
     // rejected as the legacy model has them. The save's own pruning (notes no
     // reference reaches, lists nothing uses) is the save's, not the model's.
-    if (this.engine.type === "canonical") {
-      const model = withoutPendingSuggestions(
-        this.engine.session.captureSaveSnapshot().document,
-      );
-      if (model.isErr()) throw model.error;
-      // The package relationships the save writes for the parts the model
-      // holds, a numbering part a new list started included, as the legacy
-      // model states them. The caller owns the copy: the session's operations
-      // remember the packages they made, so a change to one would reach them.
-      return cloneDocumentWithParagraphPropertySources(
-        reconcileDocumentPartRelationships(model.value),
-      );
-    }
-    const document = this.documentFromStateSnapshot(
-      this.captureReviewerState(),
+    const model = withoutPendingSuggestions(
+      this.engine.session.captureSaveSnapshot().document,
     );
-    applyReplyThreadMarkers(document);
-    visitDocxParagraphs(
-      {
-        documentBody: document.package.document,
-        headers: document.package.headers,
-        footers: document.package.footers,
-        footnotes: document.package.footnotes,
-        endnotes: document.package.endnotes,
-      },
-      (paragraph) => {
-        if (finalizeParagraphFormatting(paragraph.formatting) === undefined) {
-          delete paragraph.formatting;
-        }
-      },
+    if (model.isErr()) throw model.error;
+    // The package relationships the save writes for the parts the model
+    // holds, a numbering part a new list started included, as the legacy
+    // model states them. The caller owns the copy: the session's operations
+    // remember the packages they made, so a change to one would reach them.
+    return cloneDocumentWithParagraphPropertySources(
+      reconcileDocumentPartRelationships(model.value),
     );
-    return document;
-  }
-
-  // canonical-gap: pm-ai-snapshots
-  private captureReviewerState(): FolioReviewerStateSnapshot {
-    const secondaryStoryStates: FolioSecondaryStoryState[] = [];
-    for (const {
-      handle,
-      initialState,
-      state,
-    } of this.secondaryStoryStates.values()) {
-      secondaryStoryStates.push({ handle, initialState, state });
-    }
-    return {
-      mainState: this.state,
-      finalSectionPropertiesOverride: this.finalSectionPropertiesOverride,
-      secondaryStoryStates,
-      sectionReferenceRemovals: [...this.sectionReferenceRemovals],
-      removedHeaderFooterStories: [...this.removedHeaderFooterStories.values()],
-      removedNoteStories: [...this.removedNoteStories.values()],
-      importedStyles: this.importedStyles,
-      importedMedia: new Map(this.importedMedia),
-      importedHeaders: new Map(this.importedHeaders),
-      importedFooters: new Map(this.importedFooters),
-      createdComments: [...this.createdComments],
-      deletedCommentIds: this.deletedCommentIds,
-      resolvedOverrides: new Map(this.resolvedOverrides),
-      resolvedStoryExpectations: [
-        ...this.resolvedStoryExpectations.values(),
-      ].filter(
-        ({ story }) =>
-          story.type === "main" ||
-          this.secondaryStorySource(story) !== undefined,
-      ),
-    };
-  }
-
-  private documentFromStateSnapshot(
-    authored: FolioReviewerStateSnapshot,
-  ): Document {
-    const pendingCommentIds = new Set(
-      this.exportPendingSuggestions().flatMap(({ commentId }) =>
-        commentId === undefined ? [] : [commentId],
-      ),
-    );
-    // Model readers and save share the revision owner's projection. Stripping
-    // markers during conversion alone cannot undo style-inherited run marks.
-    const snapshot = {
-      ...authored,
-      mainState: withoutPendingSuggestionCommentMarks(
-        rejectEverySuggestion(authored.mainState),
-        pendingCommentIds,
-      ),
-      secondaryStoryStates: authored.secondaryStoryStates.map((entry) => ({
-        ...entry,
-        state: withoutPendingSuggestionCommentMarks(
-          rejectEverySuggestion(entry.state),
-          pendingCommentIds,
-        ),
-      })),
-      createdComments: authored.createdComments.filter(
-        ({ id }) => !pendingCommentIds.has(id),
-      ),
-    };
-    const sourceDocument =
-      snapshot.importedStyles === undefined
-        ? this.baseDocument
-        : {
-            ...this.baseDocument,
-            package: {
-              ...this.baseDocument.package,
-              styles: snapshot.importedStyles,
-            },
-          };
-    // canonical-gap: pm-save-projection
-    const document = fromProseDoc(snapshot.mainState.doc, sourceDocument, {
-      stylesheetSource:
-        snapshot.importedStyles === undefined
-          ? { type: "package" }
-          : { type: "supplied", styles: snapshot.importedStyles },
-    });
-    if (snapshot.finalSectionPropertiesOverride !== undefined) {
-      document.package.document.finalSectionProperties =
-        snapshot.finalSectionPropertiesOverride;
-      if (document.package.document.sections !== undefined)
-        document.package.document.sections = buildSections(
-          document.package.document.content,
-          snapshot.finalSectionPropertiesOverride,
-        );
-    }
-    if (snapshot.importedStyles !== undefined)
-      document.package.styles = snapshot.importedStyles;
-    if (snapshot.importedMedia.size > 0)
-      document.package.media = new Map([
-        ...(document.package.media ?? []),
-        ...snapshot.importedMedia,
-      ]);
-    if (snapshot.importedHeaders.size > 0) {
-      document.package.headers = new Map([
-        ...(document.package.headers ?? []),
-        ...snapshot.importedHeaders,
-      ]);
-    }
-    if (snapshot.importedFooters.size > 0) {
-      document.package.footers = new Map([
-        ...(document.package.footers ?? []),
-        ...snapshot.importedFooters,
-      ]);
-    }
-    for (const handle of snapshot.removedHeaderFooterStories) {
-      if (handle.type === "header") {
-        document.package.headers = new Map(document.package.headers);
-        document.package.headers.delete(handle.relationshipId);
-      } else {
-        document.package.footers = new Map(document.package.footers);
-        document.package.footers.delete(handle.relationshipId);
-      }
-    }
-    this.mergeEditedSecondaryStories(document, snapshot.secondaryStoryStates);
-    if (snapshot.removedNoteStories.length > 0) {
-      // A note whose reference some other edit (an undo) put back, or that
-      // another story still refers to, is kept.
-      const candidates = new Set(snapshot.removedNoteStories.map(noteStoryKey));
-      const referenced: ReadonlySet<string> = referencedNotes(
-        document,
-        candidates,
-      );
-      const removed = new Set(
-        [...candidates].filter((key) => !referenced.has(key)),
-      );
-      Object.assign(
-        document.package,
-        noteStoryInventory(document.package, removed),
-      );
-    }
-    const definitions = [
-      ...(document.package.document.comments ?? []),
-      ...snapshot.createdComments,
-    ];
-    const knownDefinitions = [
-      ...(this.baseDocument.package.document.comments ?? []),
-      ...snapshot.createdComments,
-    ];
-    const keptThreadIds = new Set(
-      this.keptCommentThreads(
-        knownDefinitions,
-        snapshot.mainState,
-        snapshot.secondaryStoryStates,
-      ).map(({ id }) => id),
-    );
-    const kept = definitions.filter(
-      ({ id }) => keptThreadIds.has(id) && !snapshot.deletedCommentIds.has(id),
-    );
-    const keptIds = new Set(kept.map(({ id }) => id));
-    const retiredCommentIds = new Set(
-      knownDefinitions.filter(({ id }) => !keptIds.has(id)).map(({ id }) => id),
-    );
-    const modelStories = [
-      document.package.document,
-      ...(document.package.headers?.values() ?? []),
-      ...(document.package.footers?.values() ?? []),
-      ...(document.package.footnotes ?? []),
-      ...(document.package.endnotes ?? []),
-    ];
-    for (const story of modelStories) {
-      for (const id of anchoredCommentIdsInBlocks(story.content)) {
-        if (!keptIds.has(id)) retiredCommentIds.add(id);
-      }
-    }
-    if (retiredCommentIds.size > 0) {
-      document.package.document = {
-        ...document.package.document,
-        content: removeCommentMarkers(
-          document.package.document.content,
-          retiredCommentIds,
-        ),
-      };
-      if (document.package.headers) {
-        const headers = new Map(document.package.headers);
-        for (const [id, header] of headers) {
-          headers.set(id, {
-            ...header,
-            content: removeCommentMarkers(header.content, retiredCommentIds),
-          });
-        }
-        document.package.headers = headers;
-      }
-      if (document.package.footers) {
-        const footers = new Map(document.package.footers);
-        for (const [id, footer] of footers) {
-          footers.set(id, {
-            ...footer,
-            content: removeCommentMarkers(footer.content, retiredCommentIds),
-          });
-        }
-        document.package.footers = footers;
-      }
-      if (document.package.footnotes) {
-        document.package.footnotes = document.package.footnotes.map(
-          (footnote) => ({
-            ...footnote,
-            content: removeCommentMarkers(footnote.content, retiredCommentIds),
-          }),
-        );
-      }
-      if (document.package.endnotes) {
-        document.package.endnotes = document.package.endnotes.map(
-          (endnote) => ({
-            ...endnote,
-            content: removeCommentMarkers(endnote.content, retiredCommentIds),
-          }),
-        );
-      }
-    }
-    if (
-      kept.length !== definitions.length ||
-      snapshot.createdComments.length > 0 ||
-      snapshot.resolvedOverrides.size > 0
-    ) {
-      setDocumentBodyComments(
-        document.package.document,
-        this.withResolvedOverrides(kept, snapshot.resolvedOverrides),
-      );
-    }
-    // A save writes the normalized document and undoes nothing.
-    const normalized = normalizeListModelRendering(
-      reconcileDocumentPartRelationships(document),
-      { inverse: "omit" },
-    ).document;
-    visitDocxParagraphs(
-      {
-        documentBody: normalized.package.document,
-        headers: normalized.package.headers,
-        footers: normalized.package.footers,
-        footnotes: normalized.package.footnotes,
-        endnotes: normalized.package.endnotes,
-      },
-      (paragraph) => {
-        if (finalizeParagraphFormatting(paragraph.formatting) === undefined) {
-          delete paragraph.formatting;
-        }
-      },
-    );
-    return normalized;
-  }
-
-  private captureSaveSnapshot(): FolioSaveSnapshot {
-    const snapshot = this.captureReviewerState();
-    const changedParaIds = new Set(getChangedParagraphIds(snapshot.mainState));
-    let structuralChange =
-      hasStructuralChanges(snapshot.mainState) ||
-      snapshot.finalSectionPropertiesOverride !== undefined ||
-      snapshot.importedStyles !== undefined ||
-      snapshot.importedHeaders.size > 0 ||
-      snapshot.importedFooters.size > 0 ||
-      // A note that went with its reference is a whole element of a notes part.
-      snapshot.removedNoteStories.length > 0;
-    let untrackedChanges = hasUntrackedChanges(snapshot.mainState);
-    const changedNoteParaIds = new Set<string>();
-    for (const entry of snapshot.secondaryStoryStates) {
-      if (entry.handle.type !== "footnote" && entry.handle.type !== "endnote") {
-        continue;
-      }
-      for (const paraId of getChangedParagraphIds(entry.state)) {
-        changedParaIds.add(paraId);
-        changedNoteParaIds.add(paraId);
-      }
-      structuralChange ||= hasStructuralChanges(entry.state);
-      untrackedChanges ||= hasUntrackedChanges(entry.state);
-    }
-    let path: FolioSavePath = { type: "selective-first", changedParaIds };
-    if (structuralChange) {
-      path = { type: "full-repack", reason: "structuralChange" };
-    } else if (untrackedChanges) {
-      path = { type: "full-repack", reason: "untrackedChange" };
-    }
-    return {
-      document: this.documentFromStateSnapshot(snapshot),
-      path,
-      changedNoteParaIds,
-      sectionReferenceRemovals: snapshot.sectionReferenceRemovals,
-      sectionEndpointRemoval: getTrackedSectionEndpointRemoval(
-        snapshot.mainState,
-      ),
-      resolvedStoryExpectations: snapshot.resolvedStoryExpectations,
-    };
   }
 
   /**
@@ -5706,56 +3569,10 @@ export class FolioDocxReviewer {
    * With `repack: "refuse"`, a save the selective patch cannot express
    * returns the reason instead of rewriting every part.
    */
-  async save({
+  save({
     repack: repackPolicy = "allow",
   }: FolioReviewerSaveOptions = {}): Promise<FolioReviewerSaveResult> {
-    if (this.engine.type === "canonical")
-      return this.saveOnSession(this.engine.session, repackPolicy);
-    const save = this.captureSaveSnapshot();
-    const selective =
-      save.path.type === "selective-first"
-        ? await this.trySelectiveSave(save.document, save.path.changedParaIds)
-        : null;
-    if (selective) {
-      await this.assertResolvedStoriesSerialized(
-        selective,
-        save.resolvedStoryExpectations,
-      );
-      return { type: "selective", buffer: selective };
-    }
-    const reason =
-      save.path.type === "full-repack" ? save.path.reason : "selectiveDeclined";
-    if (repackPolicy === "refuse") {
-      return { type: "repackRefused", reason };
-    }
-    const repackDocument = {
-      ...save.document,
-      originalBuffer: this.originalBuffer,
-    };
-    const repack = () =>
-      repackDocx(repackDocument, {
-        changedNoteParaIds: save.changedNoteParaIds,
-      });
-    const repackReferences = () =>
-      save.sectionReferenceRemovals.length > 0
-        ? withSectionReferenceResolution({
-            document: repackDocument,
-            removedReferences: save.sectionReferenceRemovals,
-            repack,
-          })
-        : repack();
-    const buffer = save.sectionEndpointRemoval
-      ? await withTrackedSectionEndpointRemoval({
-          document: repackDocument,
-          resolution: save.sectionEndpointRemoval,
-          repack: repackReferences,
-        })
-      : await repackReferences();
-    await this.assertResolvedStoriesSerialized(
-      buffer,
-      save.resolvedStoryExpectations,
-    );
-    return { type: "full-repack", reason, buffer };
+    return this.saveOnSession(this.engine.session, repackPolicy);
   }
 
   /**
@@ -5787,86 +3604,6 @@ export class FolioDocxReviewer {
     return { type: "full-repack", reason, buffer: saved.buffer };
   }
 
-  private async assertResolvedStoriesSerialized(
-    buffer: ArrayBuffer,
-    expectations: readonly FolioResolvedStoryExpectation[],
-  ): Promise<void> {
-    if (expectations.length === 0) {
-      return;
-    }
-    // The expectations are this engine's reading of its own save, so the
-    // save is read back on the same engine, whatever the default.
-    const reopened = await FolioDocxReviewer.fromBuffer(buffer, {
-      session: "legacy",
-    });
-    for (const { story, text, blocks, minted } of expectations) {
-      const serialized = reopened.readReviewedStory({
-        story,
-        view: "current-markup",
-      });
-      const persisted = serialized
-        ? resolvedStoryProjection(serialized.snapshot, minted)
-        : null;
-      const serializedText = persisted?.text ?? null;
-      const serializedBlocks = persisted?.blocks ?? null;
-      const mismatches: FolioResolvedStorySerializationMismatch[] = [];
-      if (!serialized) {
-        mismatches.push(
-          FOLIO_RESOLVED_STORY_SERIALIZATION_MISMATCHES.storyMissing,
-        );
-      } else {
-        if (serialized.changes.length > 0) {
-          mismatches.push(
-            FOLIO_RESOLVED_STORY_SERIALIZATION_MISMATCHES.revisionMarkupRemains,
-          );
-        }
-        if (serializedText !== text) {
-          mismatches.push(
-            FOLIO_RESOLVED_STORY_SERIALIZATION_MISMATCHES.textProjection,
-          );
-        }
-        if (JSON.stringify(serializedBlocks) !== JSON.stringify(blocks)) {
-          mismatches.push(
-            FOLIO_RESOLVED_STORY_SERIALIZATION_MISMATCHES.blockProjection,
-          );
-        }
-      }
-      if (mismatches.length === 0) {
-        continue;
-      }
-      throw new FolioResolvedStorySerializationError({
-        message:
-          "Resolved document story did not persist to the serialized DOCX.",
-        story,
-        mismatches,
-        expectedBlockCount: blocks.length,
-        actualBlockCount: serializedBlocks?.length ?? null,
-        remainingChangeCount: serialized?.changes.length ?? null,
-      });
-    }
-  }
-
-  /**
-   * Attempt the selective patch, treating a throw the same as a decline. Odd
-   * source XML can make the paragraph diff throw rather than return `null`; a
-   * full repack is the correct lossless fallback in both cases, so the fallback
-   * is the graceful handling — no separate error surface is needed here.
-   */
-  private async trySelectiveSave(
-    document: Document,
-    changedParaIds: Set<string>,
-  ): Promise<ArrayBuffer | null> {
-    try {
-      return await attemptSelectiveSave(document, this.originalBuffer, {
-        changedParaIds,
-        structuralChange: false,
-        hasUntrackedChanges: false,
-      });
-    } catch {
-      return null;
-    }
-  }
-
   private getEditableStoryState(
     story: FolioEditableDocumentStoryHandle,
   ): EditorState | null {
@@ -5876,48 +3613,13 @@ export class FolioDocxReviewer {
     if (!this.secondaryStorySource(story)) return null;
     // Nothing is held for a canonical story: its state is the session's
     // projection at every read.
-    if (this.engine.type === "canonical") {
-      const projected = this.engine.session.projectStory(
-        canonicalOpStory(story),
-      );
-      if (projected.isErr()) throw projected.error;
-      return canonicalStoryState(
-        this.engine.session,
-        projected.value.doc,
-        projected.value,
-      );
-    }
-    const key = secondaryStoryKey(story);
-    const existing = this.secondaryStoryStates.get(key);
-    if (existing) {
-      return existing.state;
-    }
-    const doc = this.secondaryStoryDoc(story);
-    if (!doc) {
-      return null;
-    }
-    const initialState = ensureBaseDirectionInState(
-      EditorState.create({
-        schema,
-        doc,
-        plugins: createHeadlessPlugins(
-          this.importedStyles ?? this.baseDocument.package.styles,
-          this.baseDocument.package.numbering,
-        ),
-      }),
+    const projected = this.engine.session.projectStory(canonicalOpStory(story));
+    if (projected.isErr()) throw projected.error;
+    return canonicalStoryState(
+      this.engine.session,
+      projected.value.doc,
+      projected.value,
     );
-    const transaction = initialState.tr;
-    if (this.deletedCommentIds.size > 0)
-      removeCommentAnchors(transaction, this.deletedCommentIds);
-    const state = transaction.docChanged
-      ? initialState.apply(transaction)
-      : initialState;
-    this.secondaryStoryStates.set(key, {
-      handle: story,
-      initialState,
-      state,
-    });
-    return state;
   }
 
   /**
@@ -5929,11 +3631,7 @@ export class FolioDocxReviewer {
   private readSecondaryStoryDoc(
     story: FolioSecondaryStoryHandle,
   ): PMNode | null {
-    if (!this.secondaryStorySource(story)) return null;
-    return (
-      this.secondaryStoryStates.get(secondaryStoryKey(story))?.state.doc ??
-      this.secondaryStoryDoc(story)
-    );
+    return this.secondaryStoryDoc(story);
   }
 
   private secondaryStorySource(story: FolioSecondaryStoryHandle) {
@@ -5949,85 +3647,16 @@ export class FolioDocxReviewer {
    * session's story projections yet.
    */
   private secondaryStoryDoc(story: FolioSecondaryStoryHandle): PMNode | null {
-    if (this.engine.type === "canonical") {
-      // The story as the session projects it, the document its edits act on.
-      if (!this.secondaryStorySource(story)) return null;
-      const projected = this.engine.session.projectStory(
-        canonicalOpStory(story),
-      );
-      if (projected.isErr()) throw projected.error;
-      return projected.value.doc;
-    }
-    const source = this.secondaryStorySource(story);
-    if (!source) {
-      return null;
-    }
-    const styles = this.importedStyles ?? this.baseDocument.package.styles;
-    const conversionOptions = {
-      ...(this.baseDocument.package.numbering !== undefined && {
-        numbering: this.baseDocument.package.numbering,
-      }),
-      ...(styles !== undefined && { styles }),
-      ...(this.baseDocument.package.theme !== undefined && {
-        theme: this.baseDocument.package.theme,
-      }),
-    };
-    const storyDoc =
-      story.type === "header" || story.type === "footer"
-        ? headerFooterToProseDoc(source.content, conversionOptions)
-        : footnoteToProseDoc(source.content, conversionOptions);
-    return ensureParaIdsInDoc(storyDoc);
-  }
-
-  private requireEditableStoryState(
-    story: FolioEditableDocumentStoryHandle,
-  ): EditorState {
-    const state = this.getEditableStoryState(story);
-    if (state) {
-      return state;
-    }
-    throw new FolioDocumentStoryNotFoundError({
-      message: `Document story ${JSON.stringify(story)} was not found.`,
-      story,
-    });
-  }
-
-  private setEditableStoryState(
-    story: FolioEditableDocumentStoryHandle,
-    projected: EditorState,
-  ): void {
-    this.resolvedStoryExpectations.delete(editableStoryKey(story));
-    // A paragraph an edit left holding only text boxes is the box a reopened
-    // package projects it as. A story this replaces with its own document
-    // (a projection that resolved nothing) was folded when it was stored,
-    // so only a changed document is walked.
-    const folded = (stored: EditorState): EditorState =>
-      stored.doc === projected.doc
-        ? projected
-        : collapseEmptyTextBoxHosts(projected);
-    if (story.type === "main") {
-      this.state = folded(this.state);
-      return;
-    }
-    const entry = this.secondaryStoryStates.get(secondaryStoryKey(story));
-    if (!entry) {
-      throw new FolioDocumentStoryNotFoundError({
-        message: `Document story ${JSON.stringify(story)} was not found.`,
-        story,
-      });
-    }
-    entry.state = folded(entry.state);
+    // The story as the session projects it, the document its edits act on.
+    if (!this.secondaryStorySource(story)) return null;
+    const projected = this.engine.session.projectStory(canonicalOpStory(story));
+    if (projected.isErr()) throw projected.error;
+    return projected.value.doc;
   }
 
   private getHeaderFooterStory(
     story: FolioHeaderFooterStoryHandle,
   ): HeaderFooter | undefined {
-    if (this.removedHeaderFooterStories.has(headerFooterStoryKey(story)))
-      return undefined;
-    const imported =
-      story.type === "header" ? this.importedHeaders : this.importedFooters;
-    const importedStory = imported.get(story.relationshipId);
-    if (importedStory) return importedStory;
     const stories =
       story.type === "header"
         ? this.baseDocument.package.headers
@@ -6081,8 +3710,7 @@ export class FolioDocxReviewer {
       let path = `word/media/folio-import-${suffix}.${extension}`;
       while (
         existingPaths.has(path.toLowerCase()) ||
-        this.baseDocument.package.media?.has(path) ||
-        this.importedMedia.has(path)
+        this.baseDocument.package.media?.has(path)
       ) {
         path = `word/media/folio-import-${++suffix}.${extension}`;
       }
@@ -6099,8 +3727,6 @@ export class FolioDocxReviewer {
       ...(this.baseDocument.package.relationships?.keys() ?? []),
       ...(this.baseDocument.package.headers?.keys() ?? []),
       ...(this.baseDocument.package.footers?.keys() ?? []),
-      ...this.importedHeaders.keys(),
-      ...this.importedFooters.keys(),
     ]);
     let suffix = 1;
     let relationshipId = `rId${suffix}`;
@@ -6112,73 +3738,49 @@ export class FolioDocxReviewer {
       ...importedWatermark,
       content: [{ type: "paragraph", content: [] }],
     };
-    if (this.engine.type === "canonical") {
-      // The part and its media join the package unreferenced, as on the
-      // legacy engine: the section's reference is staged on its own. Its
-      // paragraph takes an identity the session mints.
-      const document = this.baseDocument;
-      const minted = this.engine.session.freshBlockIds([1]);
-      if (minted.isErr()) throw minted.error;
-      const paraId = minted.value.at(0)?.at(0);
-      if (paraId === undefined)
-        return panic("The session minted no paragraph id for a header part");
-      const entries: (readonly [string, HeaderFooter])[] = [
-        ...((story.type === "header"
-          ? document.package.headers
-          : document.package.footers) ?? new Map<string, HeaderFooter>()),
-        [
-          relationshipId,
-          { ...empty, content: [{ type: "paragraph", paraId, content: [] }] },
-        ],
-      ];
-      const parts: StoryParts =
-        story.type === "header" ? { headers: entries } : { footers: entries };
-      const ops: DocumentOp[] = [];
-      if (importedMedia)
-        ops.push(
-          packageResourcesOpOf({
-            before: document,
-            after: {
-              ...document,
-              package: {
-                ...document.package,
-                media: new Map([
-                  ...(document.package.media ?? new Map()),
-                  [importedMedia.path, importedMedia],
-                ]),
-              },
-            },
-          }),
-        );
-      ops.push({
-        type: DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS,
-        expected: captureStoryParts(document, parts),
-        parts,
-      });
-      this.commitOpsOnSession(ops);
-      return handle;
-    }
+    // The part and its media join the package unreferenced, as on the
+    // legacy engine: the section's reference is staged on its own. Its
+    // paragraph takes an identity the session mints.
+    const document = this.baseDocument;
+    const minted = this.engine.session.freshBlockIds([1]);
+    if (minted.isErr()) throw minted.error;
+    const paraId = minted.value.at(0)?.at(0);
+    if (paraId === undefined)
+      return panic("The session minted no paragraph id for a header part");
+    const entries: (readonly [string, HeaderFooter])[] = [
+      ...((story.type === "header"
+        ? document.package.headers
+        : document.package.footers) ?? new Map<string, HeaderFooter>()),
+      [
+        relationshipId,
+        { ...empty, content: [{ type: "paragraph", paraId, content: [] }] },
+      ],
+    ];
+    const parts: StoryParts =
+      story.type === "header" ? { headers: entries } : { footers: entries };
+    const ops: DocumentOp[] = [];
     if (importedMedia)
-      this.importedMedia.set(importedMedia.path, importedMedia);
-    (story.type === "header" ? this.importedHeaders : this.importedFooters).set(
-      relationshipId,
-      empty,
-    );
-    const state = ensureBaseDirectionInState(
-      EditorState.create({
-        schema,
-        doc: ensureParaIdsInDoc(headerFooterToProseDoc(empty.content)),
-        plugins: createHeadlessPlugins(
-          this.baseDocument.package.styles,
-          this.baseDocument.package.numbering,
-        ),
-      }),
-    );
-    this.secondaryStoryStates.set(headerFooterStoryKey(handle), {
-      handle,
-      initialState: state,
-      state,
+      ops.push(
+        packageResourcesOpOf({
+          before: document,
+          after: {
+            ...document,
+            package: {
+              ...document.package,
+              media: new Map([
+                ...(document.package.media ?? new Map()),
+                [importedMedia.path, importedMedia],
+              ]),
+            },
+          },
+        }),
+      );
+    ops.push({
+      type: DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS,
+      expected: captureStoryParts(document, parts),
+      parts,
     });
+    this.commitOpsOnSession(ops);
     return handle;
   }
 
@@ -6200,10 +3802,7 @@ export class FolioDocxReviewer {
   private getNoteStory(
     story: FolioNoteStoryHandle,
   ): Footnote | Endnote | undefined {
-    const notes = noteStoryInventory(
-      this.baseDocument.package,
-      this.removedNoteStories,
-    );
+    const notes = this.baseDocument.package;
     if (story.type === "footnote") {
       return notes.footnotes?.find(
         (note) => note.id === story.noteId && !isSeparatorFootnote(note),
@@ -6225,40 +3824,13 @@ export class FolioDocxReviewer {
    * another after. This is the conversion the save path already performs on the
    * same states, so the text now describes exactly what a save would write.
    */
-  private storyBlocks(
-    state: EditorState | undefined,
-    source: { content: BlockContent[] },
-  ) {
-    return state
-      ? proseDocToBlocks(
-          rejectEverySuggestion(state).doc,
-          source.content,
-          this.baseDocument.package.styles,
-        )
-      : source.content;
+
+  private getHeaderFooterStoryText(source: HeaderFooter): string {
+    return normalizeFolioAIBlockText(getHeaderFooterText(source));
   }
 
-  private getHeaderFooterStoryText(
-    story: FolioHeaderFooterStoryHandle,
-    source: HeaderFooter,
-  ): string {
-    const state = this.secondaryStoryStates.get(
-      headerFooterStoryKey(story),
-    )?.state;
-    return normalizeFolioAIBlockText(
-      getHeaderFooterText({
-        ...source,
-        content: this.storyBlocks(state, source),
-      }),
-    );
-  }
-
-  private getNoteStoryText(
-    story: FolioNoteStoryHandle,
-    source: Footnote | Endnote,
-  ): string {
-    const state = this.secondaryStoryStates.get(noteStoryKey(story))?.state;
-    const content = this.storyBlocks(state, source);
+  private getNoteStoryText(source: Footnote | Endnote): string {
+    const { content } = source;
     return normalizeFolioAIBlockText(
       source.type === "footnote"
         ? getFootnoteText({ ...source, content })
@@ -6275,127 +3847,13 @@ export class FolioDocxReviewer {
       if (!source) {
         return panic("A listed document story no longer exists", { story });
       }
-      return this.getHeaderFooterStoryText(story, source);
+      return this.getHeaderFooterStoryText(source);
     }
     const source = this.getNoteStory(story);
     if (!source) {
       return panic("A listed document story no longer exists", { story });
     }
-    return this.getNoteStoryText(story, source);
-  }
-
-  private mergeEditedSecondaryStories(
-    document: Document,
-    secondaryStoryStates: Iterable<FolioSecondaryStoryState> = this.secondaryStoryStates.values(),
-  ): void {
-    let headers: Map<string, HeaderFooter> | undefined;
-    let footers: Map<string, HeaderFooter> | undefined;
-    let footnotes: Footnote[] | undefined;
-    let endnotes: Endnote[] | undefined;
-    for (const entry of secondaryStoryStates) {
-      if (entry.state === entry.initialState) {
-        continue;
-      }
-      // A list an operation started in this story is defined by its paragraphs.
-      const lists = storyListNumbering(entry.state, document.package.numbering);
-      if (lists.numbering) {
-        document.package.numbering = lists.numbering;
-      }
-      if (entry.handle.type === "header" || entry.handle.type === "footer") {
-        const source =
-          entry.handle.type === "header"
-            ? document.package.headers?.get(entry.handle.relationshipId)
-            : document.package.footers?.get(entry.handle.relationshipId);
-        if (!source) {
-          continue;
-        }
-        const edited = {
-          ...source,
-          content: proseDocToBlocks(
-            lists.doc,
-            source.content,
-            document.package.styles,
-          ),
-        };
-        if (entry.handle.type === "header") {
-          headers ??= new Map(document.package.headers);
-          headers.set(entry.handle.relationshipId, edited);
-          continue;
-        }
-        footers ??= new Map(document.package.footers);
-        footers.set(entry.handle.relationshipId, edited);
-        continue;
-      }
-      if (entry.handle.type === "footnote") {
-        const { noteId } = entry.handle;
-        const source = this.baseDocument.package.footnotes?.find(
-          (note) => note.id === noteId && !isSeparatorFootnote(note),
-        );
-        if (!source) {
-          continue;
-        }
-        const edited = {
-          ...source,
-          content: proseDocToBlocks(
-            lists.doc,
-            source.content,
-            document.package.styles,
-          ),
-        };
-        footnotes ??= [...(document.package.footnotes ?? [])];
-        const index = footnotes.findIndex((note) => note.id === noteId);
-        if (index !== -1) {
-          footnotes[index] = edited;
-        }
-        continue;
-      }
-      const { noteId } = entry.handle;
-      const source = this.baseDocument.package.endnotes?.find(
-        (note) => note.id === noteId && !isSeparatorEndnote(note),
-      );
-      if (!source) {
-        continue;
-      }
-      const edited = {
-        ...source,
-        content: proseDocToBlocks(
-          lists.doc,
-          source.content,
-          document.package.styles,
-        ),
-      };
-      endnotes ??= [...(document.package.endnotes ?? [])];
-      const index = endnotes.findIndex((note) => note.id === noteId);
-      if (index !== -1) {
-        endnotes[index] = edited;
-      }
-    }
-    if (headers) {
-      document.package.headers = headers;
-    }
-    if (footers) {
-      document.package.footers = footers;
-    }
-    if (footnotes) {
-      document.package.footnotes = footnotes;
-    }
-    if (endnotes) {
-      document.package.endnotes = endnotes;
-    }
-  }
-
-  /** Apply any {@link resolveComment} overrides recorded for these comments. */
-  private withResolvedOverrides(
-    comments: readonly Comment[],
-    resolvedOverrides: ReadonlyMap<number, boolean> = this.resolvedOverrides,
-  ): Comment[] {
-    if (resolvedOverrides.size === 0) {
-      return [...comments];
-    }
-    return comments.map((comment) => {
-      const override = resolvedOverrides.get(comment.id);
-      return override === undefined ? comment : { ...comment, done: override };
-    });
+    return this.getNoteStoryText(source);
   }
 
   /**
@@ -6406,49 +3864,17 @@ export class FolioDocxReviewer {
   private keptCommentThreads(
     comments: readonly Comment[],
     mainState: EditorState,
-    secondaryStoryStates: Iterable<FolioSecondaryStoryState>,
   ): Comment[] {
     const anchoredBefore = new Set(this.loadedMainCommentIds);
-    for (const { id } of this.createdComments) {
-      anchoredBefore.add(id);
-    }
     const anchoredNow = anchoredCommentIdsInProseDoc(mainState.doc);
-    const loaded = new Map<string, FolioSecondaryStoryState>();
-    for (const entry of secondaryStoryStates) {
-      loaded.set(secondaryStoryKey(entry.handle), entry);
-    }
     const addAll = (target: Set<number>, ids: Iterable<number>) => {
       for (const id of ids) {
         target.add(id);
       }
     };
     const referenceStates = noteReferenceStates(mainState.doc);
-    // Read every loaded story directly. Its current document still owns anchors
-    // inside pending tracked deletions, even when another projection no longer
-    // lists the story as reachable.
-    for (const entry of loaded.values()) {
-      addAll(
-        anchoredBefore,
-        anchoredCommentIdsInProseDoc(entry.initialState.doc),
-      );
-      if (
-        (entry.handle.type === "footnote" || entry.handle.type === "endnote") &&
-        this.removedNoteStories.has(noteStoryKey(entry.handle)) &&
-        referenceStates.get(noteStoryKey(entry.handle)) !== "deleted"
-      ) {
-        continue;
-      }
-      addAll(
-        anchoredNow,
-        anchoredCommentIdsInProseDoc(entry.state.doc, entry.initialState.doc),
-      );
-    }
     for (const handle of this.listStoryHandlesInternal()) {
       if (handle.type === "main") {
-        continue;
-      }
-      const entry = loaded.get(secondaryStoryKey(handle));
-      if (entry) {
         continue;
       }
       const source =
@@ -6457,40 +3883,12 @@ export class FolioDocxReviewer {
           : this.getNoteStory(handle);
       addAll(anchoredNow, anchoredCommentIdsInBlocks(source?.content ?? []));
     }
-    // A note that went with its reference takes the comments anchored in it.
-    for (const handle of this.removedNoteStories.values()) {
-      const entry = loaded.get(secondaryStoryKey(handle));
-      if (entry) {
-        if (referenceStates.get(noteStoryKey(handle)) === "deleted") {
-          const source = (
-            handle.type === "footnote"
-              ? this.baseDocument.package.footnotes
-              : this.baseDocument.package.endnotes
-          )?.find((note) => note.id === handle.noteId);
-          addAll(
-            anchoredNow,
-            anchoredCommentIdsInBlocks(source?.content ?? []),
-          );
-        }
-        continue;
-      }
-      const removed = anchoredCommentIdsInBlocks(
-        (handle.type === "footnote"
-          ? this.baseDocument.package.footnotes
-          : this.baseDocument.package.endnotes
-        )?.find((note) => note.id === handle.noteId)?.content ?? [],
-      );
-      addAll(anchoredBefore, removed);
-      if (referenceStates.get(noteStoryKey(handle)) === "deleted") {
-        addAll(anchoredNow, removed);
-      }
-    }
     // A note whose reference is pending deletion keeps the comments anchored in
-    // it until the deletion is resolved, also when it is not loaded.
+    // it until the deletion is resolved.
     for (const [key, state] of referenceStates) {
       if (state !== "deleted") continue;
       const handle = noteStoryHandleOf(key);
-      if (!handle || loaded.has(secondaryStoryKey(handle))) continue;
+      if (!handle) continue;
       addAll(
         anchoredNow,
         anchoredCommentIdsInBlocks(this.getNoteStory(handle)?.content ?? []),
@@ -6527,52 +3925,7 @@ export class FolioDocxReviewer {
       }
       add(doc, story);
     }
-    for (const story of this.removedNoteStories.values()) {
-      if (
-        noteReferenceStates(this.state.doc).get(noteStoryKey(story)) !==
-        "deleted"
-      ) {
-        continue;
-      }
-      const entry = this.secondaryStoryStates.get(secondaryStoryKey(story));
-      if (entry) {
-        add(entry.initialState.doc, story);
-      }
-    }
     return anchors;
-  }
-
-  /** Allocate outside every parsed or newly-created comment and reply id. */
-  private nextCommentId(): number {
-    return this.commentIds.next();
-  }
-
-  /**
-   * Drive a ProseMirror command against the reviewer's headless state via the
-   * same `{ state, dispatch }` seam {@link applyOperations} uses, retaining the
-   * resulting state for {@link toBuffer}.
-   */
-  private runCommand(command: Command): boolean {
-    return this.runStoryCommand(command, MAIN_STORY);
-  }
-
-  private runStoryCommand(
-    command: Command,
-    story: FolioEditableDocumentStoryHandle,
-  ): boolean {
-    const state = this.getEditableStoryState(story);
-    if (!state) {
-      return false;
-    }
-    const view = {
-      state,
-      dispatch: (transaction: Transaction) => {
-        view.state = view.state.apply(transaction);
-      },
-    };
-    const handled = command(view.state, view.dispatch);
-    this.setEditableStoryState(story, view.state);
-    return handled;
   }
 }
 

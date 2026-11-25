@@ -30,7 +30,7 @@ const STORIES = {
   FolioDocumentStoryHandle
 >;
 
-const SESSIONS: readonly HeadlessReviewerSession[] = ["canonical", "legacy"];
+const SESSIONS: readonly HeadlessReviewerSession[] = ["canonical"];
 
 const SESSION_STORIES = SESSIONS.flatMap((session) =>
   Object.values(STORIES).map(({ type }) => ({ session, type })),

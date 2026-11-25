@@ -2,7 +2,6 @@ import { panic } from "better-result";
 import { expect, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
 
-import { REVIEW_CARRIERS } from "@stll/docx-core/model";
 import {
   applyDocumentOps,
   compileEditorIntent,
@@ -10,10 +9,8 @@ import {
   DOCUMENT_OP_TYPES,
   type EditorIntent,
   type IdLease,
-  normalizeForOps,
   OP_STORIES,
 } from "@stll/docx-core/ops";
-import { ZipArchive } from "@stll/docx-core/zip";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
@@ -246,72 +243,3 @@ for (const leasing of ["unleased", "leased"] as const)
       expect(readModel(session.document)).toStrictEqual(after);
       unsubscribe();
     });
-
-test("empty tail replacement restores an actual legacy terminal-table review carrier exactly", async () => {
-  const archive = await ZipArchive.read(
-    await createDocx(fromMarkdown("Seed.")),
-  );
-  archive.set(
-    "word/document.xml",
-    `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:body><w:p w14:paraId="10000001"><w:r><w:t>Head</w:t></w:r></w:p><w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="1000"/></w:tblGrid><w:tr><w:tc><w:tcPr/><w:p w14:paraId="10000011"><w:r><w:t>Cell</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:body></w:document>`,
-  );
-  const legacy = await FolioDocxReviewer.fromBuffer(
-    (await archive.generate()).slice().buffer,
-    { session: "legacy" },
-  );
-  const added = legacy.applyDocumentOperations(
-    {
-      version: 1,
-      mode: "tracked-changes",
-      operations: [
-        {
-          id: "carrier",
-          type: "insertAfterBlock",
-          blockId: "10000011",
-          text: "Carrier words.",
-        },
-      ],
-    },
-    { undefinedReferences: "refuse" },
-  );
-  expect(added.applied).toHaveLength(1);
-  expect(added.skipped).toEqual([]);
-  const parsed = normalizeForOps(await parseDocx(await legacy.toBuffer()));
-  const carrier = parsed.package.document.content.at(-1);
-  if (carrier?.type !== "paragraph" || carrier.paraId === undefined)
-    panic("The actual producer needs its terminal paragraph.");
-  expect(carrier.reviewCarrier).toBe(REVIEW_CARRIERS.TERMINAL_TABLE);
-  const before = applyDocumentOps(parsed, [
-    {
-      type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
-      story: OP_STORIES.MAIN,
-      at: { type: "after", blockId: carrier.paraId },
-      blocks: [
-        {
-          type: "paragraph",
-          paraId: "70000001",
-          content: [{ type: "run", content: [{ type: "text", text: "Tail" }] }],
-        },
-      ],
-    },
-  ]).unwrap().document;
-  const tail = before.package.document.content.at(-1);
-  if (tail?.type !== "paragraph")
-    panic("The tail producer needs its paragraph.");
-  const edit = applyDocumentOps(before, [
-    {
-      type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
-      story: OP_STORIES.MAIN,
-      expected: [tail],
-      blocks: [],
-    },
-  ]).unwrap();
-  const restored = applyDocumentOps(
-    edit.document,
-    JSON.parse(JSON.stringify(edit.inverse)),
-  ).unwrap();
-  expect(restored.document).toStrictEqual(before);
-  expect(
-    applyDocumentOps(restored.document, restored.inverse).unwrap().document,
-  ).toStrictEqual(edit.document);
-});

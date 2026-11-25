@@ -43,7 +43,6 @@ setDefaultTimeout(propertyTestTimeout(60_000));
 type Mode = "direct" | "tracked-changes";
 const MODES: readonly Mode[] = ["direct", "tracked-changes"];
 const SESSIONS = [
-  "legacy",
   "canonical",
 ] as const satisfies readonly HeadlessReviewerSession[];
 

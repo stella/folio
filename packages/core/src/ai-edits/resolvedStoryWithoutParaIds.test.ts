@@ -80,7 +80,6 @@ const resolveEveryStoryToFinal = async (
 };
 
 describe.each([
-  "legacy",
   "canonical",
 ] as const satisfies readonly HeadlessReviewerSession[])(
   "a resolved story in a package with no authored paragraph ids (%s)",

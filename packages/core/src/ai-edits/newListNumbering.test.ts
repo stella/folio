@@ -215,10 +215,7 @@ describe("an operation that starts a new list", () => {
   });
 
   // Legacy applies a batch right to left; canonical runs it in batch order.
-  test.each([
-    { session: "legacy", order: "right-to-left" },
-    { session: "canonical", order: "batch" },
-  ] as const)(
+  test.each([{ session: "canonical", order: "batch" }] as const)(
     "allocates a $session batch in the same $order order as one-at-a-time replay",
     async ({ session, order }) => {
       const batch = await reviewerOf("Left.\n\nMiddle.\n\nRight.", session);

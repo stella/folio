@@ -38,7 +38,6 @@ setDefaultTimeout(propertyTestTimeout(30_000));
 const COMMENT_IDS = [0, 1, 2, 3, 4] as const;
 const EDIT_MODES = ["direct", "tracked-changes"] as const;
 const SESSIONS = [
-  "legacy",
   "canonical",
 ] as const satisfies readonly HeadlessReviewerSession[];
 /** Paragraph each comment's range ends in; every range starts in paragraph 0. */

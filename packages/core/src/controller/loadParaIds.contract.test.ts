@@ -57,7 +57,6 @@ const partTexts = async (bytes: ArrayBuffer): Promise<Map<string, string>> => {
 };
 
 const SESSIONS = [
-  "legacy",
   "canonical",
 ] as const satisfies readonly HeadlessReviewerSession[];
 const PAIRS = SESSIONS.flatMap((editor) =>

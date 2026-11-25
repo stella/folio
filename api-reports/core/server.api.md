@@ -1632,7 +1632,7 @@ export type FolioRevisionStamp = {
 // @public
 export class FolioRoomJournalError extends FolioRoomJournalErrorBase<{
     message: string;
-    reason: "legacyEngine" | "revisionGap";
+    reason: "revisionGap";
     expectedRevision: number;
     receivedRevision: number | undefined;
 }> {}

@@ -12,7 +12,7 @@ import { FolioDocxReviewer } from "./headless";
 
 const SOURCE_TEXT = "Source paragraph.";
 const ORIGINAL = [SOURCE_TEXT];
-const SESSIONS: readonly HeadlessReviewerSession[] = ["canonical", "legacy"];
+const SESSIONS: readonly HeadlessReviewerSession[] = ["canonical"];
 
 const open = async (session: HeadlessReviewerSession, bytes?: ArrayBuffer) => {
   if (bytes)

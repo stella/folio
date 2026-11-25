@@ -75,7 +75,7 @@ const FIDELITY_REFUSALS = [
 type FidelityRefusal = (typeof FIDELITY_REFUSALS)[number];
 
 /** The engines a scenario replays on (support/documents.ts `ReviewerEngine`). */
-export const FLOW_ENGINES = ["legacy", "canonical"] as const;
+export const FLOW_ENGINES = ["canonical"] as const;
 export type FlowEngine = (typeof FLOW_ENGINES)[number];
 
 /** A refusal a pinned batch must meet: the issue code and message it reports. */

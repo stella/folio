@@ -1,11 +1,5 @@
 import { expect, test } from "bun:test";
-import type { Node as PMNode } from "prosemirror-model";
 
-import {
-  FolioDocxReviewer,
-  getFolioDocxComparisonAccess,
-} from "../ai-edits/headless";
-import { sourceDocumentOf } from "../ai-edits/snapshot";
 import { createDocx } from "../docx/rezip";
 import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import type { HeaderFooter, Paragraph } from "../types/document";
@@ -16,7 +10,7 @@ const OPTIONS = {
   author: "compare",
   timestamp: "2026-09-11T00:00:00.000Z",
 } as const;
-const SESSIONS: readonly HeadlessReviewerSession[] = ["canonical", "legacy"];
+const SESSIONS: readonly HeadlessReviewerSession[] = ["canonical"];
 const HEADER_RELATIONSHIP_ID = "rId_projection_header";
 const FOOTER_RELATIONSHIP_ID = "rId_projection_footer";
 
@@ -75,68 +69,8 @@ const storyMatrixDocx = (label: string): Promise<ArrayBuffer> => {
   return createDocx(document);
 };
 
-const instrumentStoryTraversals = (
-  reviewer: FolioDocxReviewer,
-): (() => number)[] => {
-  const counters: (() => number)[] = [];
-  for (const { handle } of reviewer.listStories()) {
-    const reviewed = reviewer.readReviewedStory({
-      story: handle,
-      view: "current-markup",
-    });
-    if (!reviewed) {
-      throw new Error(`missing ${handle.type} story`);
-    }
-    const doc = sourceDocumentOf(reviewed.snapshot);
-    const descendants = doc.descendants.bind(doc);
-    let traversals = 0;
-    Object.defineProperty(doc, "descendants", {
-      configurable: true,
-      value: (callback: Parameters<PMNode["descendants"]>[0]) => {
-        traversals += 1;
-        return descendants(callback);
-      },
-    });
-    counters.push(() => traversals);
-  }
-  return counters;
-};
-
 // The counters instrument the reviewed-story documents the legacy projection
 // walks; the canonical session projects its stories from the model instead.
-test("legacy comparison projection avoids a separate nested-revision scan", async () => {
-  const baseReviewer = await FolioDocxReviewer.fromBuffer(
-    await storyMatrixDocx("before"),
-    { session: "legacy" },
-  );
-  const baseTraversals = instrumentStoryTraversals(baseReviewer);
-  const baseProjection = getFolioDocxComparisonAccess(
-    baseReviewer,
-  ).projectStories("with-revision-census");
-
-  expect(baseProjection.stories).toHaveLength(5);
-  expect(
-    baseProjection.stories.every(({ snapshot }) => snapshot !== null),
-  ).toBe(true);
-  expect(baseProjection.revisions).toEqual({ ids: [], present: false });
-  expect(baseTraversals.map((read) => read())).toEqual([2, 2, 2, 2, 2]);
-
-  const targetReviewer = await FolioDocxReviewer.fromBuffer(
-    await storyMatrixDocx("after"),
-    { session: "legacy" },
-  );
-  const targetTraversals = instrumentStoryTraversals(targetReviewer);
-  const targetProjection = getFolioDocxComparisonAccess(
-    targetReviewer,
-  ).projectStories("without-revision-census");
-
-  expect(targetProjection.stories).toHaveLength(5);
-  expect(
-    targetProjection.stories.every(({ snapshot }) => snapshot !== null),
-  ).toBe(true);
-  expect(targetProjection.revisions).toEqual({ ids: [], present: false });
-  expect(targetTraversals.map((read) => read())).toEqual([1, 1, 1, 1, 1]);
-});
 
 test.each(SESSIONS)(
   "%s: comparison consumes the retained story projections through apply verification",

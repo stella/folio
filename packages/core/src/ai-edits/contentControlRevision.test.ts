@@ -177,7 +177,6 @@ test.each(["canonical"] as const)(
 );
 
 describe.each([
-  "legacy",
   "canonical",
 ] as const satisfies readonly HeadlessReviewerSession[])(
   "deleting all of a content control's text (%s)",

@@ -39,10 +39,7 @@ import type {
 import { ensureParaIds } from "@stll/folio-core/docx/ensureParaIds";
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { unzipDocx } from "@stll/folio-core/docx/unzip";
-import {
-  type HeadlessReviewerSession,
-  headlessReviewerUsesCanonicalSession,
-} from "@stll/folio-core/types/canonicalCapabilities";
+import { type HeadlessReviewerSession } from "@stll/folio-core/types/canonicalCapabilities";
 import type { Document } from "@stll/folio-core/types/document";
 
 import {
@@ -387,9 +384,7 @@ export const runEditLocalityInvariant = async (
       try: () =>
         Promise.all([
           parse(editedSave.value),
-          headlessReviewerUsesCanonicalSession(session)
-            ? ensureParaIds(controlSave.value).then(({ docx }) => parse(docx))
-            : parse(controlSave.value),
+          ensureParaIds(controlSave.value).then(({ docx }) => parse(docx)),
           readUnrelatedParts(editedSave.value),
           readUnrelatedParts(controlSave.value),
         ]),

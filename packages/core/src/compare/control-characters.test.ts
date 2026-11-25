@@ -49,7 +49,7 @@ const rawControlElements = async (buffer: ArrayBuffer): Promise<string[]> => {
   );
 };
 
-const SESSIONS: readonly HeadlessReviewerSession[] = ["canonical", "legacy"];
+const SESSIONS: readonly HeadlessReviewerSession[] = ["canonical"];
 
 const firstBlockText = async (
   buffer: ArrayBuffer,

@@ -33,7 +33,6 @@ import { createFolioAITextRangeHandle } from "./snapshot";
 import type { FolioAIInlineFormattingPatch } from "./types";
 
 const SESSIONS = [
-  "legacy",
   "canonical",
 ] as const satisfies readonly HeadlessReviewerSession[];
 
@@ -231,22 +230,5 @@ describe("bold, then bold cleared, over one word in one batch", () => {
     expect(skipped).toEqual([]);
     expect(body).not.toContain("<w:b/>");
     expect(body).not.toContain("w:rPrChange");
-  });
-
-  test("legacy: the clearing is refused over the pending change the batch made", async () => {
-    const { body, skipped } = await run({
-      session: "legacy",
-      mode: "tracked-changes",
-      batches: [
-        [
-          { start: 0, end: 10, formatting: { bold: true } },
-          { start: 0, end: 10, formatting: { bold: null } },
-        ],
-      ],
-    });
-    expect(skipped).toEqual([
-      { id: "format-1", reason: "pendingRunPropertyChange" },
-    ]);
-    expect(body).toContain("<w:b/>");
   });
 });

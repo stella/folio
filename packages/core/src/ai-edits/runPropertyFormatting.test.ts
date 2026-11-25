@@ -629,7 +629,6 @@ const assertSingularRunPropertyChanges = (
 };
 
 const HEADLESS_REVIEWER_SESSIONS = [
-  "legacy",
   "canonical",
 ] as const satisfies readonly HeadlessReviewerSession[];
 
@@ -1421,24 +1420,6 @@ describe("tracked run formatting", () => {
     );
     return { reviewer, before, snapshot, result };
   };
-
-  test("legacy: a pending owner on one inline carrier refuses the whole formatting transaction", async () => {
-    const { reviewer, before, snapshot, result } =
-      await formatCarriersOverPendingTab("legacy");
-
-    expect(result.applied).toEqual([]);
-    expect(result.skipped).toEqual([
-      { id: "format-carriers", reason: "pendingRunPropertyChange" },
-    ]);
-    expect(result.nextRevisionId).toBe(900);
-    expect(reviewer.snapshot()).toEqual(snapshot);
-    expect(await documentXml(await reviewer.toBuffer())).toBe(
-      await documentXml(before),
-    );
-    expect(reviewer.getChanges()).toEqual([
-      expect.objectContaining({ id: 899, type: "formatting", text: "\t" }),
-    ]);
-  });
 
   test("canonical: a pending owner on one inline carrier folds into the formatting transaction", async () => {
     const { reviewer, result } =

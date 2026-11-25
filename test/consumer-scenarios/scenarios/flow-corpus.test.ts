@@ -15,11 +15,7 @@ import { fileURLToPath } from "node:url";
 import { readFlowDir } from "../support/corpus.ts";
 import { reportScenarioFailure } from "../support/failure-fingerprints.ts";
 import { type FlowFile, parseFlowFile } from "../support/flow-file.ts";
-import {
-  flowReplay,
-  flowTestName,
-  relationInputs,
-} from "../support/fuzz-loop.ts";
+import { flowReplay, flowTestName } from "../support/fuzz-loop.ts";
 import {
   type FlowRun,
   runFlowFile,
@@ -27,22 +23,16 @@ import {
   vacuousSteps,
 } from "../support/fuzz.ts";
 import {
-  expectedFailure,
-  FINDING_SYMPTOMS,
   KNOWN_FAILING_CHECKED_IN_FLOWS,
   VACUOUS_CHECKED_IN_FLOWS,
 } from "../support/known-issues.ts";
-import { consumerScenarioReplay } from "../support/replay-inputs.ts";
 
 const FLOWS_DIR = fileURLToPath(new URL("../flows/", import.meta.url));
 
 const requested = process.env["FOLIO_SCENARIO_FLOW"];
 
-// This file replays the checked-in corpus on the legacy engine, which hosts can
-// still select; the canonical-flows files replay it on the default, canonical
-// one. A requested flow runs on the engine its replay line names.
-if (requested === undefined || requested === "")
-  process.env["FOLIO_SCENARIO_ENGINE"] = "legacy";
+// A requested flow replays here; the canonical-flows files replay the
+// checked-in corpus, which this file only checks.
 
 type FlowSource = { type: "requested" } | { type: "checked-in"; file: string };
 type ReplayOptions = { flow: FlowFile; repro: string; source: FlowSource };
@@ -148,17 +138,4 @@ if (requested !== undefined && requested !== "") {
     }
     assert.deepEqual(unstable, {});
   });
-  for (const { file, flow } of corpus) {
-    const name = `checked-in flow ${file}`;
-    const repro = consumerScenarioReplay({
-      inputs: relationInputs(),
-      flags: [`--only '^${name.replaceAll(".", "\\.")}'`],
-      files: ["flow-corpus.test.ts"],
-    });
-    const title = `${name}: ${flow.title ?? flow.origin ?? "regression flow"}`;
-    const body = replay({ flow, repro, source: { type: "checked-in", file } });
-    const finding = KNOWN_FAILING_CHECKED_IN_FLOWS[file];
-    if (finding === undefined) test(title, body);
-    else expectedFailure(finding, title, FINDING_SYMPTOMS[finding], body);
-  }
 }

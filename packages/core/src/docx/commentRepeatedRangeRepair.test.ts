@@ -27,7 +27,6 @@ import { openCanonicalDocx } from "./canonicalSessionInput";
 import { parseDocx } from "./parser";
 
 const SESSIONS = [
-  "legacy",
   "canonical",
 ] as const satisfies readonly HeadlessReviewerSession[];
 

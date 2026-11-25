@@ -31,7 +31,6 @@ import { FolioDocxReviewer } from "./headless";
 type Container = "body" | "cell";
 
 const SESSIONS = [
-  "legacy",
   "canonical",
 ] as const satisfies readonly HeadlessReviewerSession[];
 

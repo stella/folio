@@ -47,7 +47,7 @@ type TermMeasurement = {
   skipped: string | null;
 };
 
-const ENGINES = ["legacy", "canonical"] as const;
+const ENGINES = ["canonical"] as const;
 
 const percentile = (values: readonly number[], rank: number): number | null => {
   const sorted = values.toSorted((left, right) => left - right);

@@ -61,7 +61,7 @@ const CASES: readonly Case[] = [
   },
 ];
 
-const SESSIONS: readonly HeadlessReviewerSession[] = ["canonical", "legacy"];
+const SESSIONS: readonly HeadlessReviewerSession[] = ["canonical"];
 
 const open = async (session: HeadlessReviewerSession, body: Case["body"]) =>
   FolioDocxReviewer.fromBuffer(

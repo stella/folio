@@ -23,7 +23,7 @@ const generatedCase = fc.record({
   italic: fc.boolean(),
   styleNumbered: fc.boolean(),
   mode: fc.constantFrom("direct", "tracked-changes", "suggested"),
-  session: fc.constantFrom("canonical", "legacy"),
+  session: fc.constant("canonical" as const),
   levels: fc.array(fc.integer({ min: 0, max: 8 }), {
     minLength: 1,
     maxLength: 3,

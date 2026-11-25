@@ -335,8 +335,7 @@ describe("resolving tracked edits that build on pending ones", () => {
       .getComments()
       .map((comment) => comment.anchoredText);
     // The removed word stays in its comment's range. The new words go past
-    // its end, except on the legacy engine, which hands them the comment
-    // (LEGACY_REPLACEMENT_TAKES_COMMENT); either way the save keeps it.
+    // its end, and the save keeps it.
     assert.equal(before.length, 1);
     assert.match(before.at(0) ?? "", /^good\b/u);
     const { reopened } = await saveAndReopen(reviewer, "comment anchor");

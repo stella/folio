@@ -9,7 +9,6 @@ import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 
 const SESSIONS = [
   "canonical",
-  "legacy",
 ] as const satisfies readonly HeadlessReviewerSession[];
 
 const REFERENCE =

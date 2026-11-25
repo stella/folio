@@ -6,7 +6,6 @@ import { FolioDocxReviewer } from "../ai-edits/headless";
 import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 
 const SESSIONS = [
-  "legacy",
   "canonical",
 ] as const satisfies readonly HeadlessReviewerSession[];
 

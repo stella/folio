@@ -23,13 +23,13 @@ import {
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 import {
-  legacySessionState,
   openReviewer,
   OperationSession,
   paragraphsDocx,
   reopened,
   reviewComment,
   reviewerPresentation,
+  reviewerSessionState,
   textRun,
 } from "../__tests__/operationBatchDocuments";
 import {
@@ -162,13 +162,6 @@ describe("a replacement across a formatting boundary", () => {
       source: "The [Supplier](https://example.com/party) agrees.",
       expected: "The Provider performs.",
     },
-    {
-      // The legacy engine writes it with the marks of the first word.
-      boundary: "a link",
-      session: "legacy",
-      source: "The [Supplier](https://example.com/party) agrees.",
-      expected: "The [Provider performs](https://example.com/party).",
-    },
     ...(["canonical"] as const).map((session) => ({
       boundary: "bold",
       session,
@@ -198,7 +191,6 @@ describe("a replacement across a formatting boundary", () => {
   );
 
   test.each([
-    { session: "legacy", formatFirst: false },
     { session: "canonical", formatFirst: false },
     { session: "canonical", formatFirst: true },
   ] as const)(
@@ -579,7 +571,7 @@ describe("an edit applied directly and the same edit accepted", () => {
           ]),
         );
         const base = await openReviewer(buffer);
-        const state = await legacySessionState(buffer);
+        const state = await reviewerSessionState(buffer);
         const operations = base.snapshot().blocks.map(({ id }, index) => ({
           id: `insert-${String(index)}`,
           type: "insertAfterBlock" as const,
@@ -741,7 +733,7 @@ describe("an edit applied directly and the same edit accepted", () => {
             placement === "first" ? [content, untouched] : [untouched, content];
           const buffer = await paragraphsDocx(paragraphs, comments);
           const base = await openReviewer(buffer);
-          const state = await legacySessionState(buffer);
+          const state = await reviewerSessionState(buffer);
           const block = base.snapshot().blocks[placement === "first" ? 0 : 1];
           const operation = block && operationFor(edit, block.id, block.text);
           if (!block || !operation) {

@@ -33,7 +33,6 @@ import { FolioDocxReviewer } from "./headless";
 type Mode = "direct" | "tracked-changes";
 
 const SESSIONS = [
-  "legacy",
   "canonical",
 ] as const satisfies readonly HeadlessReviewerSession[];
 
@@ -205,17 +204,6 @@ describe("a merge into a paragraph accepting removes, before a table", () => {
     };
   };
   for (const [name, setup] of Object.entries(mergeCases)) {
-    test(`stays apart from the table, directly as tracked (${name}, legacy)`, async () => {
-      const direct = await replay(setup, "direct", "legacy");
-      expect(direct.skipped).toEqual([]);
-      expect(direct.accepted).toContainEqual({
-        text: "Kept item. ",
-        inTable: false,
-        numbering: "reference",
-      });
-      expect(await replay(setup, "tracked-changes", "legacy")).toEqual(direct);
-    });
-
     // The merged words take the cell paragraph's mark, and its properties.
     test(`runs into the table's first cell, directly as tracked (${name}, canonical)`, async () => {
       const direct = await replay(setup, "direct", "canonical");
@@ -876,45 +864,6 @@ describe("blocks put on either side of blocks accepting removes whole", () => {
       ).toEqual(["pendingParagraphMarkDeletion"]);
       expect(reviewer.snapshot()).toEqual(before);
     });
-
-  test("stop where a pending join reaches a paragraph accepting removes (legacy)", async () => {
-    const session = "legacy";
-    const replayReached = async (mode: Mode) => {
-      const { reviewer, id } = await withPendingDeletions({
-        markdown: ["Kept item.", "Gone item.", TABLE, "End."].join("\n\n"),
-        texts: ["Gone item."],
-        session,
-      });
-      expect(apply(reviewer, mode, [merge(id("Kept item."))]).skipped).toEqual(
-        [],
-      );
-      expect(
-        apply(reviewer, mode, [
-          {
-            id: "table",
-            type: "insertTable",
-            blockId: id("Widget"),
-            position: "before",
-            rows: ROWS,
-          },
-        ]).skipped,
-      ).toEqual([]);
-      return accepted(reviewer, session);
-    };
-    const direct = await replayReached("direct");
-    expect(direct[0]).toEqual({
-      text: "Kept item. ",
-      inTable: false,
-      numbering: "reference",
-    });
-    expect(textsOf(direct).slice(1, 5)).toEqual([
-      "Term",
-      "Value",
-      "Period",
-      "12 months",
-    ]);
-    expect(await replayReached("tracked-changes")).toEqual(direct);
-  });
 });
 
 describe("a paragraph put before a block the batch restyles, past blocks accepting removes whole", () => {

@@ -166,7 +166,6 @@ const project = (reviewer: FolioDocxReviewer): Projected[] =>
   );
 
 const SESSIONS = [
-  "legacy",
   "canonical",
 ] as const satisfies readonly HeadlessReviewerSession[];
 

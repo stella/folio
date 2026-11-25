@@ -14,7 +14,6 @@ import { FolioDocxReviewer } from "./headless";
 import type { FolioAIEditApplyMode } from "./types";
 
 const SESSIONS = [
-  "legacy",
   "canonical",
 ] as const satisfies readonly HeadlessReviewerSession[];
 const MODES = [

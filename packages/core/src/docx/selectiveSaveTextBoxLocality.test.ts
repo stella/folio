@@ -111,7 +111,6 @@ const withoutParagraphIds = (xml: string): string =>
   xml.replaceAll(/ w14:(?:paraId|textId)="[0-9A-F]{8}"/gu, "");
 
 describe.each([
-  "legacy",
   "canonical",
 ] as const satisfies readonly HeadlessReviewerSession[])(
   "a body edit beside a text box with a Fallback (%s)",

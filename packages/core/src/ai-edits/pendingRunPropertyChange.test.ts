@@ -153,22 +153,3 @@ describe("canonical: an edit over a pending run-property change", () => {
     expect(result.rejected).toBe("");
   });
 });
-
-describe("legacy: an edit over a pending run-property change", () => {
-  test("is refused, and the pending change stays as it was", async () => {
-    for (const formatting of [{ italic: true }, { bold: null }] as const) {
-      const result = await edit({
-        session: "legacy",
-        author: "Editor",
-        formatting,
-      });
-      expect(result.skipped).toEqual(["pendingRunPropertyChange"]);
-      expect(result.pending).toEqual([
-        { type: "formatting", author: "Reviewer" },
-      ]);
-      expect(result.saved).toBe(`<w:rPr><w:b/>${CHANGE("Reviewer")}</w:rPr>`);
-      expect(result.accepted).toBe("<w:rPr><w:b/></w:rPr>");
-      expect(result.rejected).toBe("");
-    }
-  });
-});

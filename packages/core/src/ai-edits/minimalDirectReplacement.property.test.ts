@@ -73,7 +73,6 @@ import { diffWordSegments, type WordDiffGranularity } from "./word-diff";
 setDefaultTimeout(propertyTestTimeout(30_000));
 
 const SESSIONS = [
-  "legacy",
   "canonical",
 ] as const satisfies readonly HeadlessReviewerSession[];
 

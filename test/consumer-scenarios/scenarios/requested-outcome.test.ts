@@ -748,21 +748,6 @@ describe("the requested-outcome oracle", () => {
       /outlived/u,
     );
 
-    // The legacy engine hands the comment to the new words instead
-    // (LEGACY_REPLACEMENT_TAKES_COMMENT): neither outcome is predicted there.
-    const legacy = modelOf([row("b", "Signed")]);
-    legacy.engine = "legacy";
-    expectOperation(legacy, {
-      type: "replaceBlock",
-      blockId: "b",
-      text: "Written",
-    });
-    for (const after of [[], [{ ...comment, anchor: "Written" }]])
-      assert.deepEqual(
-        compareComments(legacy, [comment], after, [row("b", "Written")]),
-        [],
-      );
-
     // A replacement sharing a word with the comment may keep it on that word.
     const kept = { id: 2, text: "review", anchor: "Signed copy", blockId: "c" };
     const shared = modelOf([row("c", "Signed copy")]);

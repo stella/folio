@@ -24,12 +24,12 @@ import {
 } from "../../../../test/property-testing";
 import {
   blockTexts,
-  legacySessionState,
   openReviewer,
   OperationSession,
   paragraphsDocx,
   reopened,
   reopenedAccepted,
+  reviewerSessionState,
   textRun,
 } from "../__tests__/operationBatchDocuments";
 import {
@@ -468,7 +468,7 @@ const freshSession = async (): Promise<OperationSession> => {
     Array.from({ length: BLOCK_COUNT }, (_, block) => [
       textRun(blockText(block)),
     ]),
-  ).then(legacySessionState);
+  ).then(reviewerSessionState);
   return new OperationSession(await tokenDocument);
 };
 

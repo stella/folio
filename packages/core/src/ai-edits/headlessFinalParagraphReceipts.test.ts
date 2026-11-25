@@ -12,117 +12,6 @@ import { FolioDocxReviewer } from "./headless";
 const CASES = ["sole", "joined", "before", "after"] as const;
 
 describe("direct final-paragraph identity receipts", () => {
-  for (const tailLength of [1, 2, 3])
-    for (const reversed of [false, true])
-      test(`legacy restores a deleted tail behind a table (${tailLength}, reversed: ${reversed})`, async () => {
-        const buffer = await createDocx({
-          package: {
-            document: {
-              content: Array.from({ length: tailLength + 2 }, (_, index) => ({
-                type: "paragraph",
-                paraId: (index + 1).toString(16).padStart(8, "0"),
-                formatting: { spaceBefore: (index + 1) * 120 },
-                content: [
-                  {
-                    type: "run",
-                    content: [{ type: "text", text: String(index) }],
-                  },
-                ],
-              })),
-            },
-          },
-        });
-        const reviewer = await FolioDocxReviewer.fromBuffer(buffer, {
-          author: "Reviewer",
-          session: "legacy",
-        });
-        const tracked = await FolioDocxReviewer.fromBuffer(buffer, {
-          author: "Reviewer",
-          session: "legacy",
-        });
-        const before = reviewer.snapshot();
-        const predecessor =
-          before.blocks.at(1) ?? panic("The table anchor exists.");
-        const tail = before.blocks.slice(2);
-        const operations: FolioDocumentOperation[] = [
-          ...tail.map(({ id }) => ({
-            id: `delete-${id}`,
-            type: "deleteBlock" as const,
-            blockId: id,
-          })),
-          {
-            id: "table",
-            type: "insertTable",
-            blockId: predecessor.id,
-            rows: [["Cell"]],
-          },
-        ];
-        if (reversed) operations.reverse();
-        const batch = {
-          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-          mode: "direct",
-          operations,
-        } as const;
-        const preview = reviewer.applyDocumentOperations(
-          { ...batch, dryRun: true },
-          { undefinedReferences: "refuse" },
-        );
-        expect(preview.status).toBe("previewed");
-        expect(preview.skipped).toEqual([]);
-        expect(reviewer.snapshot()).toEqual(before);
-        const result = reviewer.applyDocumentOperations(batch, {
-          undefinedReferences: "refuse",
-        });
-        expect(result.skipped).toEqual([]);
-        expect(
-          tracked.applyDocumentOperations(
-            { ...batch, mode: "tracked-changes" },
-            { undefinedReferences: "refuse" },
-          ).skipped,
-        ).toEqual([]);
-        tracked.acceptAll();
-        const original = new Set(before.blocks.map(({ id }) => id));
-        const view = (document: FolioDocxReviewer) =>
-          document.snapshot().blocks.map(({ id, text, kind }) => ({
-            id: original.has(id) ? id : "new",
-            text,
-            kind,
-          }));
-        expect(view(reviewer)).toEqual(view(tracked));
-        const restored = reviewer.toDocument().package.document.content.at(-1);
-        const trackedRestored = tracked
-          .toDocument()
-          .package.document.content.at(-1);
-        expect(restored?.type).toBe("paragraph");
-        if (
-          restored?.type !== "paragraph" ||
-          trackedRestored?.type !== "paragraph"
-        )
-          panic("The table is followed by a restored paragraph.");
-        expect(restored.content).toEqual([]);
-        expect(restored.formatting).toEqual(trackedRestored.formatting);
-        expect(restored.formatting?.spaceBefore).toBe(360);
-        expect(reviewer.snapshot().blocks.at(-1)?.id).toBe(
-          before.blocks.at(-1)?.id,
-        );
-        const remaining = new Set(
-          reviewer.snapshot().blocks.map(({ id }) => id),
-        );
-        expect(remaining.has(predecessor.id)).toBe(true);
-        for (const target of result.receipts.flatMap(
-          ({ affected }) => affected,
-        ))
-          if (target.type === "block")
-            expect(remaining.has(target.blockId)).toBe(
-              target.effect !== "deleted",
-            );
-        expect(
-          getFolioDocumentOperationReceipts(operations, result.applied),
-        ).toEqual(result.receipts);
-        expect(preview.receipts).toEqual(result.receipts);
-        expect(preview.applied).toEqual(result.applied);
-      });
-
   for (const session of ["canonical"] as const)
     for (const placement of CASES)
       for (const reversed of [false, true])
@@ -201,7 +90,10 @@ describe("direct final-paragraph identity receipts", () => {
             expect(identity).toBeUndefined();
             if (predecessor) expect(remaining.has(predecessor.id)).toBe(true);
           } else {
-            expect(identity).toEqual({ type: "retained", blockId: target.id });
+            expect(identity).toEqual({
+              type: "retained",
+              blockId: target.id,
+            });
             if (predecessor) expect(remaining.has(predecessor.id)).toBe(true);
           }
           for (const receipt of applied.receipts)

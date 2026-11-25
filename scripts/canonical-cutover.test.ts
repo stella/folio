@@ -4,8 +4,6 @@ import fc from "fast-check";
 import {
   CANONICAL_CAPABILITIES,
   CANONICAL_GAP,
-  DEFAULT_HEADLESS_REVIEWER_SESSION,
-  headlessReviewerUsesCanonicalSession,
   usesCanonicalSession,
 } from "../packages/core/src/types/canonicalCapabilities";
 import { assertProperty, propertyTestTimeout } from "../test/property-testing";
@@ -43,14 +41,6 @@ describe("canonical cutover guard", () => {
       expect(usesCanonicalSession(undefined, id)).toBe(true);
       expect(usesCanonicalSession("legacy", id)).toBe(false);
     }
-  });
-
-  test("the headless reviewer defaults to the canonical session, as the editors do", () => {
-    expect(DEFAULT_HEADLESS_REVIEWER_SESSION).toBe("canonical");
-    expect(headlessReviewerUsesCanonicalSession()).toBe(true);
-    expect(headlessReviewerUsesCanonicalSession(undefined)).toBe(true);
-    expect(headlessReviewerUsesCanonicalSession("legacy")).toBe(false);
-    expect(headlessReviewerUsesCanonicalSession("canonical")).toBe(true);
   });
 
   test("every removed ledger reference becomes an orphan", () => {
@@ -232,11 +222,6 @@ describe("canonical cutover guard", () => {
         gap: CANONICAL_GAP.paragraphTracker,
         file: "packages/core/src/prosemirror/features/ParagraphChangeTrackerExtension.ts",
         code: "const plugin = {\nappendTransaction: () => null\n};",
-      },
-      {
-        gap: CANONICAL_GAP.aiSnapshots,
-        file: "packages/core/src/ai-edits/headless.ts",
-        code: "class Reviewer {\ncaptureReviewerState() {}\n}",
       },
       {
         gap: CANONICAL_GAP.publicHeadlessSession,

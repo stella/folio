@@ -951,12 +951,7 @@ type ModelRow = {
 };
 
 export type Model = {
-  /**
-   * The engine the result comes from. The legacy engine hands a comment over
-   * the words a replacement takes to the new words (FINDINGS
-   * LEGACY_REPLACEMENT_TAKES_COMMENT), so where that comment goes is
-   * predicted for the canonical session only.
-   */
+  /** The engine the result comes from. */
   engine: ReturnType<typeof scenarioEngine>;
   rows: ModelRow[];
   /** Live source paragraphs whose pending marks run into an accepted row. */

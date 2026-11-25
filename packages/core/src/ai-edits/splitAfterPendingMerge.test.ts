@@ -27,7 +27,6 @@ import type { Document } from "../types/document";
 import { FolioDocxReviewer } from "./headless";
 
 const SESSIONS = [
-  "legacy",
   "canonical",
 ] as const satisfies readonly HeadlessReviewerSession[];
 

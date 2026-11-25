@@ -24,7 +24,6 @@ const HOST = "10000001";
 const SOURCE = "Date: 2014 end";
 
 const SESSIONS = [
-  "legacy",
   "canonical",
 ] as const satisfies readonly HeadlessReviewerSession[];
 

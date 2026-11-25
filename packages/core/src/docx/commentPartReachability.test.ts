@@ -21,7 +21,6 @@ import { parseRelationships } from "./relsParser";
 import { repackDocx } from "./rezip";
 
 const SESSIONS = [
-  "legacy",
   "canonical",
 ] as const satisfies readonly HeadlessReviewerSession[];
 

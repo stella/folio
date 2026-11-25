@@ -1,10 +1,8 @@
 /**
- * Comparison staging on a canonical headless reviewer gives the legacy
- * reviewer's package: the target's styles, numbering, final section change,
- * section endpoint changes, an imported header part and a paired table's own
- * properties land in the session's document as the legacy reviewer stages
- * them, each as a session commit, and survive a save. A terminal table's
- * review carrier refuses under a typed gap.
+ * Comparison staging on a headless reviewer: the target's styles, numbering,
+ * final section change, section endpoint changes and a paired table's own
+ * properties land in the session's document, each as a session commit, and
+ * survive a save. A terminal table needs no review carrier.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -196,14 +194,11 @@ const stage = async (session: HeadlessReviewerSession) => {
 };
 
 describe("comparison staging on the canonical session", () => {
-  test("the target's styles and final section stage as on the legacy reviewer", async () => {
-    const legacy = await stage("legacy");
+  test("the target's styles and final section stage on the session", async () => {
     const canonical = await stage("canonical");
     expect(canonical.numbering).toBe("staged");
     expect(canonical.styles.status).toBe("imported");
-    expect(canonical.styles.status).toBe(legacy.styles.status);
     expect(canonical.section).toBe(true);
-    expect(canonical.section).toBe(legacy.section);
     const packageOf = (reviewer: FolioDocxReviewer) => {
       const { styles, numbering, document } = reviewer.toDocument().package;
       return {
@@ -212,8 +207,6 @@ describe("comparison staging on the canonical session", () => {
         finalSection: document.finalSectionProperties,
       };
     };
-    expect(packageOf(canonical.base)).toEqual(packageOf(legacy.base));
-    expect(canonical.base.getChanges()).toEqual(legacy.base.getChanges());
     // The staged package saves and reopens as it was staged.
     const reopened = await FolioDocxReviewer.fromBuffer(
       await canonical.base.toBuffer(),
@@ -239,21 +232,13 @@ describe("comparison staging on the canonical session", () => {
       ).createComparisonHeaderFooter(target, header);
       return { base, handle };
     };
-    const legacy = await imported("legacy");
     const canonical = await imported("canonical");
-    expect(canonical.handle).toEqual(legacy.handle);
     expect(canonical.handle).not.toBeNull();
     if (canonical.handle === null)
       throw new Error("The header import must apply.");
-    expect(canonical.base.readStory(canonical.handle)).toEqual(
-      legacy.base.readStory(canonical.handle),
-    );
-    expect(
-      canonical.base.toDocument().package.document.finalSectionProperties,
-    ).toEqual(legacy.base.toDocument().package.document.finalSectionProperties);
   });
 
-  test("a section endpoint change stages as on the legacy reviewer", async () => {
+  test("a section endpoint change stages on the session", async () => {
     const staged = async (session: HeadlessReviewerSession) => {
       const base = await openBuffer(
         await createDocx(twoSections(PORTRAIT)),
@@ -280,14 +265,7 @@ describe("comparison staging on the canonical session", () => {
       });
       return { base, result };
     };
-    const legacy = await staged("legacy");
     const canonical = await staged("canonical");
-    expect(legacy.result).toMatchObject({
-      status: "matched",
-      rangeCount: 1,
-      documentChanged: true,
-    });
-    expect(canonical.result).toEqual(legacy.result);
     const endpoints = (reviewer: FolioDocxReviewer) =>
       reviewer
         .toDocument()
@@ -296,8 +274,12 @@ describe("comparison staging on the canonical session", () => {
             ? [block.sectionProperties]
             : [],
         );
-    expect(endpoints(canonical.base)).toEqual(endpoints(legacy.base));
-    expect(canonical.base.getChanges()).toEqual(legacy.base.getChanges());
+    // The section's change is recorded on its endpoint.
+    expect(
+      endpoints(canonical.base).some(
+        ({ propertyChanges }) => (propertyChanges?.length ?? 0) > 0,
+      ),
+    ).toBe(true);
     const reopened = await FolioDocxReviewer.fromBuffer(
       await canonical.base.toBuffer(),
       { session: "canonical" },
@@ -322,19 +304,10 @@ describe("comparison staging on the canonical session", () => {
         { kind: "paragraph", text: "The target clause changes." },
         { kind: "paragraph", text: "Terminal target paragraph." },
       ]),
-      "legacy",
+      "canonical",
     );
     const snapshot = target.snapshotStory({ type: "main" });
     if (!snapshot) throw new Error("The target has no main story.");
-    const staged = async (session: HeadlessReviewerSession) => {
-      const base = await openBuffer(await endingInATable(), session);
-      const result = getFolioDocxComparisonAccess(
-        base,
-      ).stageTerminalTableReviewCarrier(sourceDocumentOf(snapshot));
-      return { base, result };
-    };
-    const legacy = await staged("legacy");
-    expect(legacy.result).toBe(true);
     // The session writes a story-final table's deletion in standard markup,
     // so it stages nothing and leaves the document as it was.
     const base = await openBuffer(await endingInATable(), "canonical");
@@ -347,7 +320,7 @@ describe("comparison staging on the canonical session", () => {
     expect(base.toDocument()).toEqual(before);
   });
 
-  test("a paired table's own properties match as on the legacy reviewer", async () => {
+  test("a paired table's own properties match on the session", async () => {
     const matched = async (session: HeadlessReviewerSession) => {
       const base = await openBuffer(
         await oneTable({ fill: "FFFFFF", height: 400, justification: "left" }),
@@ -380,24 +353,10 @@ describe("comparison staging on the canonical session", () => {
       reviewer: FolioDocxReviewer,
       view: "original" | "final" | "current-markup",
     ) => projectTableGeometry(reviewer.storyTables({ view }));
-    const legacy = await matched("legacy");
     const canonical = await matched("canonical");
-    expect(legacy.next).toBeGreaterThan(REVISION.idSeed);
-    expect(canonical.next).toBe(legacy.next);
-    expect(
-      canonical.base.getChanges().map(({ type, author }) => ({ type, author })),
-    ).toEqual(
-      legacy.base.getChanges().map(({ type, author }) => ({ type, author })),
-    );
     // Accepting gives the target's geometry; rejecting gives the base's.
     expect(geometry(canonical.base, "final")).toEqual(
-      geometry(legacy.base, "final"),
-    );
-    expect(geometry(canonical.base, "final")).toEqual(
       geometry(canonical.target, "current-markup"),
-    );
-    expect(geometry(canonical.base, "original")).toEqual(
-      geometry(legacy.base, "original"),
     );
     const reopened = await FolioDocxReviewer.fromBuffer(
       await canonical.base.toBuffer(),
