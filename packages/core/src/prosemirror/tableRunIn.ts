@@ -237,9 +237,6 @@ export const runParagraphIntoTable = ({
 const markGoes = (paragraph: PMNode, mode: ResolutionMode): boolean => {
   const mark = expectParagraphAttrs(paragraph).pPrMark;
   if (!mark) return false;
-  // An added mark another author deleted goes either way: accepted with its
-  // deletion, rejected with its insertion.
-  if (mark.deletion !== undefined) return true;
   const added = mark.kind === "ins" || mark.kind === "moveTo";
   return added !== (mode === "accept");
 };

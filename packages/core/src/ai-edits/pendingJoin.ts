@@ -18,20 +18,24 @@ import { buildCleanBlockText } from "./clean-text";
 import type { NoteReferenceLabels } from "./note-references";
 import type { FolioAIEditSkippedOperation } from "./types";
 
-/**
- * A paragraph mark that is a pending deletion, or a relocation's source: a
- * deleted mark, or an added one another author deleted after (`deletion`),
- * which goes whichever change is resolved first.
- */
+/** A paragraph mark that is a pending deletion, or a relocation's source. */
 export const isDeletedPPrMark = (value: unknown): boolean =>
   typeof value === "object" &&
   value !== null &&
   "kind" in value &&
-  (value.kind === "del" ||
-    value.kind === "moveFrom" ||
-    ("deletion" in value &&
-      value.deletion !== undefined &&
-      value.deletion !== null));
+  (value.kind === "del" || value.kind === "moveFrom");
+
+/**
+ * A paragraph mark accepting removes: a deleted one, or an added one another
+ * author deleted after (`deletion`), as docx-core's `markGoes` reads it.
+ */
+const markGoesWhenAccepted = (value: unknown): boolean =>
+  isDeletedPPrMark(value) ||
+  (typeof value === "object" &&
+    value !== null &&
+    "deletion" in value &&
+    value.deletion !== undefined &&
+    value.deletion !== null);
 
 /** A table row's or cell's revision record. */
 const hasRevisionMarker = (value: unknown): boolean =>
@@ -66,7 +70,10 @@ export const isPendingDeletion = (
   paragraph: PMNode,
   cleanText: string,
 ): boolean => {
-  if (cleanText.length === 0 && isDeletedPPrMark(paragraph.attrs["pPrMark"])) {
+  if (
+    cleanText.length === 0 &&
+    markGoesWhenAccepted(paragraph.attrs["pPrMark"])
+  ) {
     return true;
   }
   const $block = doc.resolve(blockFrom);
