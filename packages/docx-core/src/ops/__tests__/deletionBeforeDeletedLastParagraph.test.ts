@@ -39,7 +39,8 @@ const paragraph = (
 ): Paragraph => ({
   type: "paragraph",
   paraId,
-  content: [{ type: "run", content: [{ type: "text", text }] }],
+  content:
+    text === "" ? [] : [{ type: "run", content: [{ type: "text", text }] }],
   ...(formatting === undefined ? {} : { formatting }),
 });
 
@@ -106,15 +107,21 @@ type DocumentOptions = {
   before: readonly BlockContent[];
   item: FormattingName;
   closing: FormattingName;
+  closingText?: string;
 };
 
-const documentOf = ({ before, item, closing }: DocumentOptions): Document => ({
+const documentOf = ({
+  before,
+  item,
+  closing,
+  closingText = "Closing.",
+}: DocumentOptions): Document => ({
   package: {
     document: {
       content: [
         ...structuredClone(before),
         paragraph(ITEM, "Item.", FORMATTINGS[item]),
-        paragraph(CLOSING, "Closing.", FORMATTINGS[closing]),
+        paragraph(CLOSING, closingText, FORMATTINGS[closing]),
       ],
     },
   },
@@ -328,4 +335,31 @@ test("deleting before the already deleted final paragraph keeps its unrelated pr
     pPrMark: { kind: "del", info: { id: 110 } },
   });
   expect(undone(deleted)).toEqual(closingDeleted);
+});
+
+test("deleting before an empty final paragraph takes back the linked property change", () => {
+  const document = documentOf({
+    before: BEFORE["a plain paragraph"].blocks,
+    item: "numbered",
+    closing: "centered",
+    closingText: "",
+  });
+  const deletion = (blockIds: string[], id: number): DocumentOp => ({
+    type: DOCUMENT_OP_TYPES.DELETE_BLOCKS,
+    story: OP_STORIES.MAIN,
+    blockIds,
+    revision: { id, ...MODES.tracked },
+    newIds: { revision: [id + 1, id + 2, id + 3, id + 4] },
+  });
+
+  const sequential = applyAll(document, [
+    deletion([CLOSING], 100),
+    deletion([ITEM], 110),
+  ]);
+  const batched = apply(document, deletion([ITEM, CLOSING], 120));
+  expect(renumbered(sequential.document)).toEqual(renumbered(batched.document));
+  expect(resolve(sequential.document, REVISION_DECISIONS.ACCEPT)).toEqual(
+    resolve(batched.document, REVISION_DECISIONS.ACCEPT),
+  );
+  expect(undone(sequential)).toEqual(document);
 });

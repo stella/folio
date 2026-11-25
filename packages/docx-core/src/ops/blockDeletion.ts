@@ -835,7 +835,6 @@ const finalDeletionTakenFrom = ({
     following?.type !== "paragraph" ||
     mark?.kind !== "del" ||
     blockFollower(list, followerIndex).block !== undefined ||
-    !paragraphHoldsContent(following) ||
     paragraphHoldsContentOnceAccepted(following)
   )
     return undefined;
