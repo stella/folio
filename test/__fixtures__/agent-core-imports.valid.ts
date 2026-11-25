@@ -1,4 +1,4 @@
-import type { FolioUndefinedReferencePolicy } from "@stll/folio-core/ai-edits/apply";
+import type { FolioUndefinedReferencePolicy } from "@stll/folio-core/ai-edits/undefinedReferences";
 import type { FolioCommentAnchor } from "@stll/folio-core/ai-edits/read";
 import type { FolioDocumentStory } from "@stll/folio-core/server";
 

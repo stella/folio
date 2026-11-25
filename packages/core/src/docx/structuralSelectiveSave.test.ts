@@ -6,16 +6,16 @@ import { EditorState } from "prosemirror-state";
 
 import { ZipArchive } from "@stll/docx-core/zip";
 
-import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
-import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import {
-  clearTrackedChanges,
   getChangedParagraphIds,
   hasStructuralChanges,
   hasUntrackedChanges,
   ParagraphChangeTrackerExtension,
-} from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
-import { ParaIdAllocatorExtension } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
+} from "../__tests__/reference-editor/ParagraphChangeTrackerExtension";
+import { ParaIdAllocatorExtension } from "../__tests__/reference-editor/ParaIdAllocatorExtension";
+import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import { clearTrackedChanges } from "../prosemirror/paragraphChangeTrackerMeta";
 import type { Document } from "../types/document";
 import { validateFolioDocumentModel } from "./modelValidation";
 import { parseDocx } from "./parser";

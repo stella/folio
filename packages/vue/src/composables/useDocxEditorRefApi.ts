@@ -161,7 +161,7 @@ export type UseDocxEditorRefApiOptions = {
   /**
    * Doc-dirty flag from useDocxEditor: live PM edits not yet committed by a
    * host-facing save. Backs the doc side of `hasPendingChanges` (React's
-   * ParagraphChangeTracker signals).
+   * `hasCanonicalPendingChanges` read).
    */
   isDirty: Readonly<Ref<boolean>>;
   /**
@@ -497,14 +497,11 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
 
   const exposed = {
     getDocument: opts.getDocument,
-    // React derives this live from the ParagraphChangeTracker plugin
-    // (getChangedParagraphIds/hasStructuralChanges/hasUntrackedChanges) OR-ed
-    // with commentsDirtyRef, clearing the tracker on save. Vue keeps the tracker
-    // uncleared across saves (it is the selective-save baseline), so instead of
-    // reading the tracker we track two flags with the same set/clear points as
-    // React: `isDirty` (any doc-changing transaction; cleared on save + load) and
-    // `commentsDirty` (any comment mutation; cleared on save + load). Same net
-    // semantics: pending edits after typing/comment changes, clean after save.
+    // React reads the canonical session's journal (`hasCanonicalPendingChanges`)
+    // OR-ed with commentsDirtyRef. Vue tracks two flags with the same set/clear
+    // points: `isDirty` (any doc-changing transaction; cleared on save + load)
+    // and `commentsDirty` (any comment mutation; cleared on save + load). Same
+    // net semantics: pending edits after typing/comment changes, clean after save.
     hasPendingChanges: () => {
       if (!opts.editorView.value) {
         return false;

@@ -47,6 +47,7 @@ import fc from "fast-check";
 import { assertExactModel } from "../../../../../test/exactModel";
 import { checkCoverageSample } from "../../../../../test/property-coverage";
 import {
+  assertPinnedProperty,
   assertProperty,
   propertyConfig,
   propertyTestTimeout,
@@ -1055,11 +1056,36 @@ const KEPT_BOUNDARY_INTO_INSERTED_PIECE = {
   path: "60:12:10:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:22:26:14:22:22:22:31:26:22:22:22:1:31:31:31:31:31:31:31:31:31:31:31:31:31:31:38:37:39:43:44:45:46:46:46:46:46:48:47:47:50:50:26:20:24:37:36:38:44:46:51:52:52:52:52:61:61:62:62:62:62:63:63:3:60:60:60:67:14:39:50:51:18:49:49:16:25:35:23:32:32:32:32:33:32:35:32:33:32:32:32:33:32:33:33:33:33:32:32:34:32:32:33:34:34:34:34:34:34:34:34:34:34:34:34:34:34:34:34:34:34:34:34:34:37:52:38:34:37:37:37:38:37:37:37:43:19:29:32:29:19:15:23:18:22:18:25:27:36:21:26:26:26:26:26:26:26:26:26:26:26:26:26:26:21:26:25:25:25:25:25:26:26:26:26:26:26:26:26:28:26",
 };
 
+/** Which orders of a run's operations {@link twoBatchesLaw} resolves one at a time. */
+const RESOLUTION_ORDERS = {
+  /** The one order the keys draw. */
+  DRAWN: "drawn",
+  /** Every order, for recorded cases small enough to enumerate. */
+  EVERY: "every",
+} as const;
+
+type ResolutionOrders =
+  (typeof RESOLUTION_ORDERS)[keyof typeof RESOLUTION_ORDERS];
+
+/** Every ordering of `items`. */
+const permutations = <Item>(items: readonly Item[]): Item[][] =>
+  items.length <= 1
+    ? [[...items]]
+    : items.flatMap((item, index) =>
+        permutations(items.filter((_, other) => other !== index)).map((rest) =>
+          [item].concat(rest),
+        ),
+      );
+
 /**
  * Resolving a run's accepted and rejected revisions as two batches, in
- * either order, leaves the document resolving each operation's in turn does.
+ * either order, leaves the document resolving each operation's in turn does,
+ * in the order the keys draw or in every order.
  */
-const twoBatchesLaw = (tally: Tally) =>
+const twoBatchesLaw = (
+  tally: Tally,
+  orders: ResolutionOrders = RESOLUTION_ORDERS.DRAWN,
+) =>
   fc.property(
     reviewDocumentArbitrary,
     fc.array(opSeedArbitrary, { minLength: 2, maxLength: 6 }),
@@ -1106,12 +1132,20 @@ const twoBatchesLaw = (tally: Tally) =>
           (left, right) => left.key - right.key || left.index - right.index,
         )
         .map(({ group }) => group);
-      let oneByOne = current;
-      for (const { ids, decision } of order) {
-        oneByOne = resolved(oneByOne, ids, decision);
-        expectSettled(oneByOne);
-      }
-      const expected = projectedWithCuts(oneByOne);
+      const oneAtATime = (
+        groups: readonly (typeof perOp)[number][],
+      ): unknown => {
+        let oneByOne = current;
+        for (const { ids, decision } of groups) {
+          oneByOne = resolved(oneByOne, ids, decision);
+          expectSettled(oneByOne);
+        }
+        return projectedWithCuts(oneByOne);
+      };
+      const expected = oneAtATime(order);
+      if (orders === RESOLUTION_ORDERS.EVERY)
+        for (const other of permutations(perOp))
+          assertExactModel(oneAtATime(other), expected);
       const acceptedFirst = resolved(
         resolved(current, accepted, REVISION_DECISIONS.ACCEPT),
         rejected,
@@ -1683,6 +1717,14 @@ describe("tracked operations and their resolution", () => {
     });
     expectEveryKindChecked(tally);
     expect((tally.get("mixed") ?? 0) > 0).toBe(true);
+  });
+
+  test("L3: every order of a recorded run's accepted and rejected revisions, one at a time or as two batches, gives one document", () => {
+    // The recorded cases of the order class, every order checked: a case
+    // that still depends on an order the keys did not draw fails here.
+    assertPinnedProperty(twoBatchesLaw(new Map(), RESOLUTION_ORDERS.EVERY), {
+      id: "L3: every order of a recorded run's accepted and rejected revisions, one at a time or as two batches, gives one document",
+    });
   });
 
   test("L3: a kept piece's join left on the piece fails the pinned two-batch seed", () => {

@@ -18,6 +18,8 @@ export {
 } from "./copyOriginAncestors";
 export {
   isKeptCut,
+  isKeptCutPiece,
+  type KeptCutPiece,
   paragraphKeptCutsFromChanges,
   type VersionOneKept,
   type VersionOneKeptMarkers,

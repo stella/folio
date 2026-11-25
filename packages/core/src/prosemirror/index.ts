@@ -22,12 +22,7 @@ export type {
 } from "./schema";
 
 // Conversion
-export {
-  toProseDoc,
-  createEmptyDoc,
-  fromProseDoc,
-  updateDocumentContent,
-} from "./conversion";
+export { toProseDoc, createEmptyDoc, fromProseDoc } from "./conversion";
 export type {
   FromProseDocOptions,
   ProjectionReuse,
@@ -68,7 +63,7 @@ export {
 
 // Re-export TextSelection for restoring selections after toolbar interactions
 export { TextSelection } from "prosemirror-state";
-export { ensureParaIdsInState } from "./extensions/features/ParaIdAllocatorExtension";
+export { ensureParaIdsInState } from "./paraIds";
 
 // Plugins (selection tracker only — keymaps are now in extension system)
 export {

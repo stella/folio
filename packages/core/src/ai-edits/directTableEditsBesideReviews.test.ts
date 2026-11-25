@@ -93,8 +93,15 @@ type Outcome =
       type: "exact";
       /** The record ids that go with the cells the edit removes. */
       removed?: readonly number[];
+      /** How many records the edit adds to keep pending ones on new cells. */
+      added?: number;
       /** The widths rejecting gives, where they are not the commuted ones. */
       rejectedWidths?: readonly number[];
+      /**
+       * The decisions that leave the edit nothing to do, as rejecting takes
+       * away every row a merge joins but one.
+       */
+      undone?: readonly ("accept" | "reject")[];
     }
   | { type: "refused"; message: string };
 const EXACT = { type: "exact" } as const satisfies Outcome;
@@ -172,11 +179,10 @@ const SHAPES = {
     },
     outcome: {
       ...ALL_EXACT,
-      mergeDown: {
-        type: "refused",
-        message:
-          "Resolve the pending row insertions and deletions the merge crosses before merging.",
-      },
+      // The inserted row's words keep its insertion in the merged cell:
+      // rejecting takes them away with the row, which leaves the merge
+      // nothing to join.
+      mergeDown: { type: "exact", added: 2, undone: ["reject"] },
     },
     // A row's own insertion or deletion keeps its mark beside a tracked
     // column.
@@ -221,12 +227,62 @@ const SHAPES = {
     },
     outcome: {
       ...ALL_EXACT,
+      // The new cell takes the pending vertical alignment under a record of
+      // its own.
+      split: { type: "exact", added: 1 },
+      deleteColumn: { type: "exact", removed: [9] },
+    },
+    trackedColumn: { type: "refused", message: COLUMNS_REFUSED },
+  },
+  // A suggested split of the spanning cell: rejected, the cell spans the
+  // column a direct insertion adds beside it.
+  "a pending split of a spanning cell": {
+    table: {
+      type: "table",
+      columnWidths: [2000, 2000, 2000],
+      rows: [
+        ...rows().slice(0, 3),
+        row([
+          cell(3, 0, {
+            formatting: { width: { type: "dxa", value: 2000 } },
+            propertyChanges: [
+              {
+                type: "tableCellPropertyChange",
+                info: { id: 10, ...OTHER },
+                previousFormatting: {
+                  gridSpan: 2,
+                  width: { type: "dxa", value: 4000 },
+                },
+              },
+            ],
+          }),
+          cell(3, 1, {
+            formatting: { width: { type: "dxa", value: 2000 } },
+            structuralChange: {
+              type: "tableCellInsertion",
+              info: { id: 11, ...OTHER },
+            },
+          }),
+          cell(3, 2),
+        ]),
+      ],
+    },
+    outcome: {
+      ...ALL_EXACT,
       split: {
         type: "refused",
-        message:
-          "Resolve the pending property changes of the split cell before splitting its columns.",
+        message: "A one-row, one-column cell has nothing to split.",
       },
-      deleteColumn: { type: "exact", removed: [9] },
+      // The new cell beside the narrowed one is inserted under the split's
+      // author; the narrowed cell's earlier span takes the column.
+      insertColumn: { type: "exact", added: 1 },
+      // Accepted, the first column holds only the narrowed cell, which goes;
+      // rejected, the cell spans the second column too and stays.
+      deleteColumn: {
+        type: "refused",
+        message:
+          "Resolve the pending cell insertions, deletions and span changes that place the column apart before changing its columns.",
+      },
     },
     trackedColumn: { type: "refused", message: COLUMNS_REFUSED },
   },
@@ -358,8 +414,13 @@ describe("a direct table edit", () => {
         expect(result.skipped).toEqual([]);
         expect(result.applied.map(({ id }) => id)).toEqual(["op"]);
         const removed = new Set(expected.removed ?? []);
-        expect(changeIds(reviewer)).toEqual(
+        const known = new Set(before);
+        const after = changeIds(reviewer);
+        expect(after.filter((id) => known.has(id))).toEqual(
           before.filter((id) => !removed.has(id)),
+        );
+        expect(after.filter((id) => !known.has(id))).toHaveLength(
+          expected.added ?? 0,
         );
         const saved = await reviewer.toBuffer();
         for (const decision of ["accept", "reject"] as const) {
@@ -370,8 +431,10 @@ describe("a direct table edit", () => {
           const want = await open(buffer);
           if (decision === "accept") want.acceptAll();
           else want.rejectAll();
-          const commuted = run(want, operation, "direct");
-          expect(commuted.skipped).toEqual([]);
+          if (!expected.undone?.includes(decision)) {
+            const commuted = run(want, operation, "direct");
+            expect(commuted.skipped).toEqual([]);
+          }
           const shape = tableShape(want);
           expect(tableShape(resolved)).toEqual(
             decision === "reject" && expected.rejectedWidths !== undefined

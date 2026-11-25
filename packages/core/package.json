@@ -1,7 +1,7 @@
 {
   "name": "@stll/folio-core",
-  "version": "0.72.0",
-  "description": "Headless, framework-neutral core of folio: the OOXML (.docx) parser, document model, ProseMirror integration, and page-layout engine. No React.",
+  "version": "0.73.0",
+  "description": "Headless DOCX engine: reads .docx into a typed OOXML model, applies every edit as a validated operation, paginates it, and writes .docx back with untouched parts byte for byte.",
   "keywords": [
     "document-model",
     "docx",

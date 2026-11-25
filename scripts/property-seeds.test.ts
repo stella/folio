@@ -696,6 +696,63 @@ describe("pinned regression seeds", () => {
     expect(cases).toBe(0);
   });
 
+  test("a pinned case deeper than one step that passes runs once, not its shrink siblings", async () => {
+    withEnv({});
+    overridePinnedSeedsForTesting({
+      [`${FILE}::a deep pinned case that passes runs once`]: [
+        { ...entry(101), path: "0:0" },
+      ],
+      [`${FILE}::a deep async pinned case that passes runs once`]: [
+        { ...entry(101), path: "0:0" },
+      ],
+    });
+    const arbitrary = fc.integer({ min: 1_000, max: 1_000_000 });
+    let runs = 0;
+    assertProperty(
+      fc.property(arbitrary, () => {
+        runs += 1;
+      }),
+      {
+        seed: 5,
+        numRuns: 1,
+        id: "a deep pinned case that passes runs once",
+      },
+    );
+    // One pinned case and one generated case.
+    expect(runs).toBe(2);
+    let asyncRuns = 0;
+    await assertProperty(
+      fc.asyncProperty(arbitrary, async () => {
+        asyncRuns += 1;
+      }),
+      {
+        seed: 5,
+        numRuns: 1,
+        id: "a deep async pinned case that passes runs once",
+      },
+    );
+    expect(asyncRuns).toBe(2);
+  });
+
+  test("a replay deeper than one step still shrinks the case it finds failing", () => {
+    withEnv({});
+    overridePinnedSeedsForTesting({});
+    expect(() =>
+      assertProperty(
+        // The path's case is the second shrink of the first draw, about half of it.
+        fc.property(fc.integer({ min: 0, max: 1_000_000 }), (value) => {
+          if (value > 100) throw new Error("too large");
+        }),
+        {
+          seed: 101,
+          path: "0:1",
+          numRuns: 1,
+          id: "a replay deeper than one step still shrinks the case it finds failing",
+        },
+      ),
+    ).toThrow(/Counterexample: \[101\]/);
+  });
+
   test("pinned-only assertions never draw a fresh pass or scale its case count", () => {
     withEnv({ PROPERTY_TEST_NUM_RUNS_FACTOR: "3" });
     const pinned = [entry(101), entry(202)];

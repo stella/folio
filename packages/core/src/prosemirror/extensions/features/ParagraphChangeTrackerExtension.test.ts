@@ -12,15 +12,17 @@ import {
 } from "prosemirror-transform";
 
 import {
-  clearTrackedChanges,
   getChangedParagraphIds,
   hasStructuralChanges,
   hasUntrackedChanges,
+  ParagraphChangeTrackerExtension,
+} from "../../../__tests__/reference-editor/ParagraphChangeTrackerExtension";
+import { ParaIdAllocatorExtension } from "../../../__tests__/reference-editor/ParaIdAllocatorExtension";
+import {
+  clearTrackedChanges,
   ignoreTrackedChanges,
   markChangedParagraphRanges,
-  ParagraphChangeTrackerExtension,
-} from "./ParagraphChangeTrackerExtension";
-import { ParaIdAllocatorExtension } from "./ParaIdAllocatorExtension";
+} from "../../paragraphChangeTrackerMeta";
 
 // Minimal schema with paraId support
 const schema = new Schema({

@@ -141,15 +141,18 @@ const placement = (
   // edits inside the joined paragraphs. Into one with no words left, it
   // lands before that one, still as the batch read it: it runs ahead of the
   // edits inside it, which alone would give the join words to run into and
-  // put the block after it. A paragraph with no words of its own joins
-  // nothing into one that keeps words: a block put after it lands right
-  // after it, as one put after any paragraph does.
+  // put the block after it. A paragraph whose words are all pending deletion,
+  // with none running on through it, joins nothing into one that keeps
+  // words: a block put after it lands right after it, as one put after any
+  // paragraph does. An empty one reads as one paragraph with the one its join
+  // leaves, so the block lands after that one.
   const joined = joinsInto.get(blockIdOf(operation));
   const after =
     operation.type === "insertAfterBlock" ||
     (operation.type === "insertTable" && operation["position"] !== "before");
   const joinsWords =
-    joined !== undefined && !(joined.keepsWords && text === "");
+    joined !== undefined &&
+    !(joined.keepsWords && joined.source === PENDING_JOIN_SOURCES.GOES_WHOLE);
   if (after && joined !== undefined && joinsWords) {
     const survivor = preRows.findIndex((row) => row.id === joined.survivor);
     if (survivor >= 0)
@@ -171,6 +174,21 @@ const placement = (
     )
   )
     return [index, 1, AFTER_EVERY_OFFSET];
+  // A block put before a paragraph of a join into one that keeps words goes
+  // before the first paragraph the join takes in (`pendingJoinParagraphs`),
+  // the gap a block put before that one lands in.
+  if (before && (text !== "" || joined?.keepsWords === true)) {
+    let first = index;
+    for (let at = index - 1; at >= 0; at -= 1) {
+      const row = preRows[at];
+      if (row === undefined) break;
+      const source = joinsInto.get(row.id);
+      if (source === undefined || !sameContainerRows(row, preRows[index]))
+        break;
+      if (source.source === PENDING_JOIN_SOURCES.JOINS_IN) first = at;
+    }
+    if (first !== index) return [first, 0, 0];
+  }
   switch (operation.type) {
     case "replaceInBlock":
       return [index, 1, Math.max(0, text.indexOf(String(operation["find"])))];
@@ -193,31 +211,81 @@ const sameContainerRows = (left: Row, right: Row | undefined): right is Row =>
   `${left.table?.tableIndex}:${left.table?.rowIndex}:${left.table?.cellIndex}` ===
     `${right.table?.tableIndex}:${right.table?.rowIndex}:${right.table?.cellIndex}`;
 
-/** The paragraph a pending join runs into, and whether it keeps words. */
-export type PendingJoinTarget = { survivor: string; keepsWords: boolean };
+/**
+ * What accepting does with a paragraph of a pending join, as the engine reads
+ * it (`pendingJoinParagraphs`): its words, or its empty content, run into the
+ * paragraph the join leaves (`joinsIn`); its words are all pending deletion,
+ * but words before it run on through it (`runsOn`); or, its words all pending
+ * deletion with none running on, it goes whole (`goesWhole`).
+ */
+export const PENDING_JOIN_SOURCES = {
+  JOINS_IN: "joinsIn",
+  RUNS_ON: "runsOn",
+  GOES_WHOLE: "goesWhole",
+} as const;
+
+export type PendingJoinSource =
+  (typeof PENDING_JOIN_SOURCES)[keyof typeof PENDING_JOIN_SOURCES];
+
+/**
+ * The paragraph a pending join runs into, whether it keeps words, and what
+ * accepting does with the joining paragraph.
+ */
+export type PendingJoinTarget = {
+  survivor: string;
+  keepsWords: boolean;
+  source: PendingJoinSource;
+};
+
+type PendingJoinTargetsOptions = {
+  rows: readonly Row[];
+  /** The paragraphs whose mark is pending deletion (`markDeletedIds`). */
+  markDeleted: ReadonlySet<string>;
+  /** The paragraphs holding words pending deletion (`wordsDeletedIds`). */
+  wordsDeleted: ReadonlySet<string>;
+};
 
 /**
  * The paragraph each pending join in `rows` runs into: from a paragraph whose
- * mark is pending deletion (`sources`) on past the next ones whose marks go
- * too, to the first one whose mark stays, in the same container. The engine
- * places a block put after any paragraph of the join after that one when it
- * keeps words, and in the gap before it otherwise.
+ * mark is pending deletion (`markDeleted`) on past the next ones whose marks
+ * go too, to the first one whose mark stays, in the same container. The
+ * engine places a block put after any paragraph of the join after that one
+ * when it keeps words, and in the gap before it otherwise. A row with no words
+ * left is empty unless it holds words pending deletion.
  */
-export const pendingJoinTargets = (
-  rows: readonly Row[],
-  sources: ReadonlySet<string>,
-): Map<string, PendingJoinTarget> => {
+export const pendingJoinTargets = ({
+  rows,
+  markDeleted,
+  wordsDeleted,
+}: PendingJoinTargetsOptions): Map<string, PendingJoinTarget> => {
   const targets = new Map<string, PendingJoinTarget>();
+  let wordsRunOn = false;
   for (const [index, row] of rows.entries()) {
-    if (!sources.has(row.id)) continue;
+    if (!markDeleted.has(row.id)) {
+      wordsRunOn = false;
+      continue;
+    }
+    const previous = rows[index - 1];
+    if (previous === undefined || !sameContainerRows(row, previous))
+      wordsRunOn = false;
+    let source: PendingJoinSource = PENDING_JOIN_SOURCES.JOINS_IN;
+    if (row.text === "" && wordsDeleted.has(row.id))
+      source = wordsRunOn
+        ? PENDING_JOIN_SOURCES.RUNS_ON
+        : PENDING_JOIN_SOURCES.GOES_WHOLE;
+    if (row.text !== "") wordsRunOn = true;
     let at = index + 1;
-    while (sources.has(rows[at]?.id ?? "") && sameContainerRows(row, rows[at]))
+    while (
+      markDeleted.has(rows[at]?.id ?? "") &&
+      sameContainerRows(row, rows[at])
+    )
       at += 1;
     const survivor = rows[at];
     if (sameContainerRows(row, survivor))
       targets.set(row.id, {
         survivor: survivor.id,
         keepsWords: survivor.text.length > 0,
+        source,
       });
   }
   return targets;
@@ -239,6 +307,8 @@ type SequentialGroupsOptions = {
   joinsInto?: ReadonlyMap<string, PendingJoinTarget>;
   /** Blank paragraphs of `preRows` accepting removes whole (`blanksGoingWhole`). */
   goWhole?: ReadonlySet<string>;
+  /** Paragraphs whose live marks are pending insertion. */
+  markInserted?: ReadonlySet<string>;
 };
 
 export const sequentialGroups = ({
@@ -248,6 +318,7 @@ export const sequentialGroups = ({
   mode,
   joinsInto = new Map(),
   goWhole = new Set(),
+  markInserted = new Set(),
 }: SequentialGroupsOptions): AnyOperation[][] => {
   /**
    * Where the gap at `at` starts: before the blank paragraphs right before
@@ -284,10 +355,12 @@ export const sequentialGroups = ({
     return gapStart(from) * 1_000_000_000 + offset;
   };
   const indexed = applied.map((operation, index) => ({ operation, index }));
-  const deleted = new Set(
-    applied
-      .filter((operation) => operation.type === "deleteBlock")
-      .map(blockIdOf),
+  const deletionOf = new Map(
+    applied.flatMap((operation) =>
+      operation.type === "deleteBlock"
+        ? [[blockIdOf(operation), operation] as const]
+        : [],
+    ),
   );
   const containers = new Map<string, Row[]>();
   for (const row of preRows) {
@@ -304,15 +377,17 @@ export const sequentialGroups = ({
    * container, up to a table (rows of another container, `preRows` being in
    * document order) or the container's start.
    */
-  const breakCarrierOf = (last: Row): FinalBreakCarrier<Row> => {
+  const breakCandidatesOf = (last: Row): FinalBreakCandidate<Row>[] => {
     const before: FinalBreakCandidate<Row>[] = [];
     for (let at = preRows.indexOf(last) - 1; at >= 0; at -= 1) {
       const row = preRows.at(at);
       if (!sameContainerRows(last, row)) break;
-      before.push({ paragraph: row, deleted: deleted.has(row.id) });
+      before.push({ paragraph: row, deleted: deletionOf.has(row.id) });
     }
-    return finalBreakCarrier(before);
+    return before;
   };
+  const breakCarrierOf = (last: Row): FinalBreakCarrier<Row> =>
+    finalBreakCarrier(breakCandidatesOf(last));
   /**
    * Whether the batch places a block in the gap before a deleted final
    * paragraph's run: the paragraph and the ones before it in its container the
@@ -325,7 +400,7 @@ export const sequentialGroups = ({
     let start = lastAt;
     while (start > 0) {
       const row = preRows.at(start - 1);
-      if (!sameContainerRows(last, row) || !deleted.has(row.id)) break;
+      if (!sameContainerRows(last, row) || !deletionOf.has(row.id)) break;
       start -= 1;
     }
     return applied.some((operation) => {
@@ -344,6 +419,7 @@ export const sequentialGroups = ({
   const retiringFinals = new Set<string>();
   const finalBlocks = new Set<string>();
   const uncarriedFinals = new Set<string>();
+  const suggestedClosingRuns = new Map<string, AnyOperation>();
   /** A late final deletion's block, mapped to its run's first paragraph, deleted after it. */
   const runStartAfter = new Map<string, string>();
   // A suggestion reads the live rows, where a paragraph pending deletion is a
@@ -363,8 +439,9 @@ export const sequentialGroups = ({
         operation.type === "insertAfterBlock" &&
         blockIdOf(operation) === last.id,
     );
-    if (appended || !deleted.has(last.id)) continue;
-    const carrier = breakCarrierOf(last);
+    if (appended || !deletionOf.has(last.id)) continue;
+    const candidates = breakCandidatesOf(last);
+    const carrier = finalBreakCarrier(candidates);
     if (carrier.type !== "kept") uncarriedFinals.add(last.id);
     // A sole paragraph with one inserted before it is deleted first, and the
     // insertion takes its place. A paragraph that ends a deleted run stays until
@@ -383,6 +460,31 @@ export const sequentialGroups = ({
         ? !replaced || endsARun
         : mode === "direct" && carrier.type !== "kept" && replaced && endsARun;
     const placesInRun = placesBeforeRun(last);
+    // With a kept carrier, a closing deletion in a suggested batch runs
+    // after the earlier deletions in its run. Running it first gives the
+    // final paragraph a property change belonging to that suggestion, which
+    // the other suggestions cannot take back.
+    // A pending inserted mark immediately before the closing paragraph
+    // needs the original order: deleting it first leaves a pending mark
+    // that the independent closing suggestion cannot consume.
+    const previous = candidates.at(0)?.paragraph;
+    if (
+      mode === "suggested" &&
+      carrier.type === "kept" &&
+      !placesInRun &&
+      previous !== undefined &&
+      !markInserted.has(previous.id)
+    ) {
+      const carrierAt = candidates.findIndex(
+        ({ paragraph }) => paragraph === carrier.paragraph,
+      );
+      if (carrierAt > 0) {
+        const firstDeleted = candidates.at(carrierAt - 1);
+        const deletion =
+          firstDeleted && deletionOf.get(firstDeleted.paragraph.id);
+        if (deletion !== undefined) suggestedClosingRuns.set(last.id, deletion);
+      }
+    }
     if (!runsLate && !placesInRun) continue;
     retiringFinals.add(last.id);
     // A run the batch deletes back to its container's start or a table
@@ -440,8 +542,12 @@ export const sequentialGroups = ({
           inputIndex: index,
         };
       }
+      const closesRun =
+        operation.type === "deleteBlock"
+          ? suggestedClosingRuns.get(blockIdOf(operation))
+          : undefined;
       const [block, inside, offset] = placement(
-        operation,
+        closesRun ?? operation,
         preRows,
         joinsInto,
         liveRows,
@@ -451,10 +557,11 @@ export const sequentialGroups = ({
         hasDeletedSplit && operation.type === "deleteBlock"
           ? (block + 1) * 1_000_000_000
           : block * 1_000_000_000 + inside * 100_000_000 + offset;
+      const rank = contentRank(operation, { hasDeletedSplit });
       return {
         type: "content",
         position,
-        rank: contentRank(operation, { hasDeletedSplit }),
+        rank: closesRun === undefined ? rank : rank + 1,
         inputIndex: index,
       };
     },
@@ -487,7 +594,7 @@ export const sequentialGroups = ({
     const id = blockIdOf(operation);
     if (operation.type === "insertBeforeBlock") {
       const retires = mode !== "suggested" && uncarriedFinals.has(id);
-      return deleted.has(id) && !retires ? id : undefined;
+      return deletionOf.has(id) && !retires ? id : undefined;
     }
     if (operation.type !== "insertAfterBlock" || mode === "direct") {
       return undefined;
@@ -495,7 +602,7 @@ export const sequentialGroups = ({
     const index = preRows.findIndex((row) => row.id === id);
     const next = preRows.at(index + 1);
     return next !== undefined &&
-      deleted.has(next.id) &&
+      deletionOf.has(next.id) &&
       (finalBlocks.has(next.id) || finalBeforeBlanks.has(next.id)) &&
       sameContainerRows(next, preRows.at(index))
       ? next.id

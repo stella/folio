@@ -188,6 +188,7 @@ const CONFORMANCE_PRODUCTION_IMPORTS = new Map<string, readonly string[]>([
       "HARNESS_AUTHOR",
       "createHarnessState",
       "EDITOR_MODES",
+      "harnessManager",
       "harnessRuntimeManager",
       "HeadlessEditorView",
       "modelMarkdown",

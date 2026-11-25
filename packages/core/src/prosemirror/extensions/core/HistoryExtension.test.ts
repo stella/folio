@@ -14,11 +14,11 @@ import { EditorView } from "prosemirror-view";
 // The schema singleton builds a starter kit of its own. Loading it first
 // settles the import cycle between the two before the kit below is built.
 import "../../schema";
+import { createReferenceEditorKit } from "../../../__tests__/createReferenceEditorKit";
 import { resolveAllChangesInHeadlessState } from "../../commands/comments";
 import { createSuggestionModePlugin } from "../../plugins/suggestionMode";
 import { ExtensionManager } from "../ExtensionManager";
-import { createStarterKit } from "../StarterKit";
-import type { HistoryShortcutOwner } from "./HistoryExtension";
+import type { HistoryShortcutOwner } from "./historyCommands";
 
 // Read before the DOM is registered, as ProseMirror's keymap reads it at import.
 const MAC = /Mac|iP(?:hone|[oa]d)/u.test(globalThis.navigator?.platform ?? "");
@@ -36,7 +36,9 @@ const createEditor = (
   historyShortcuts: HistoryShortcutOwner,
   { mode = "editing", initialText = "" }: EditorOptions = {},
 ) => {
-  const manager = new ExtensionManager(createStarterKit({ historyShortcuts }));
+  const manager = new ExtensionManager(
+    createReferenceEditorKit({ historyShortcuts }),
+  );
   manager.buildSchema();
   manager.initializeRuntime();
   const schema = manager.getSchema();

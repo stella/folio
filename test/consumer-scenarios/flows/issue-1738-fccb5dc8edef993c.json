@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "title": "PINNED #1738, reported seed 1047068313: a paragraph inserted before an emptied list item whose break is pending deletion copies the paragraph the join leaves",
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "trackedChanges",
+  "mode": "direct",
+  "seed": 1047068313,
+  "steps": [
+    { "action": "accept one", "seed": 2246798456 },
+    {
+      "action": "story batch",
+      "seed": 3886540678,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "5E88C024",
+          "text": "Delivery schedule invoice delivery schedule warranty agreement written."
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from collisions flow seed 1047068313"
+}

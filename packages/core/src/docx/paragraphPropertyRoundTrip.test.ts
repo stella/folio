@@ -9,7 +9,7 @@ import { tableFromTemplate } from "../ai-edits/table-template";
 import { expectTableCellAttrs } from "../prosemirror/attrs";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import { ensureParaIdsInDoc } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
+import { ensureParaIdsInDoc } from "../prosemirror/paraIds";
 import type { Document, Paragraph } from "../types/document";
 import { withoutOrphanCommentRanges } from "./commentRangeIntegrity";
 import {

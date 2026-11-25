@@ -36,7 +36,7 @@ import { FolioSelectiveSaveFlags } from '@stll/folio-core/docx/selectiveSaveFlag
 import { getSelectionRuns } from '@stll/folio-core/managers/ClipboardManager';
 import { HeaderFooterPartKind } from '@stll/folio-core/controller/headerFooterEditorManager';
 import { HiddenProseMirrorRemoteSelection } from '@stll/folio-core/controller/hiddenEditorManager';
-import { HistoryShortcutOwner } from '@stll/folio-core/prosemirror/extensions/core/HistoryExtension';
+import { HistoryShortcutOwner } from '@stll/folio-core/prosemirror/extensions/core/historyCommands';
 import { Layout } from '@stll/folio-core/layout-engine/types';
 import { Layout as Layout_2 } from '@stll/folio-core/layout-engine';
 import { LayoutSelectionGate } from '@stll/folio-core/paged-layout/LayoutSelectionGate';

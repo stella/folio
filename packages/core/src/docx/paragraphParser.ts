@@ -120,6 +120,7 @@ import {
 import { type PreviewLedger, standalonePreviewLedger } from "./previewBudget";
 import { FOLIO_REVIEW_HISTORY_NAMESPACE } from "./reviewHistoryNamespace";
 import {
+  legacyKeptCutPiece,
   parseParagraphMarkResolutionJoin,
   parseParagraphPropertyChangeOwner,
   parseResolutionJoins,
@@ -2767,7 +2768,11 @@ export function parseParagraph(
   // Version 1 kept markers take their cuts here, on whichever content the
   // paragraph keeps: the fold below reads the content as parsed.
   const consolidated = (content: ParagraphContent[]): ParagraphContent[] => {
-    const cut = paragraphKeptCutsFromChanges(content, versionOneKeptMarkers);
+    const cut = paragraphKeptCutsFromChanges(
+      content,
+      versionOneKeptMarkers,
+      legacyKeptCutPiece,
+    );
     return options?.runConsolidation === "deferred"
       ? cut
       : consolidateParagraphContent(cut);

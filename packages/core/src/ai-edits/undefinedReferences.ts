@@ -24,6 +24,13 @@ import type { FolioAIEditOperation } from "./types";
  * What an editing request does with a style or numbering reference the
  * document does not define: `refuse` the operation, or `keep` the reference
  * verbatim (source-preserving imports).
+ *
+ * Editing callers explicitly select `refuse`: an undefined reference would
+ * report a formatting edit without changing its appearance. Missing references are skipped with
+ * `missingStyle` or `missingNumbering`.
+ * Comparison and redline use `keep` for unknown source styles; their import
+ * boundary clears destination style collisions with warnings before application.
+ * The parser already normalizes undefined source numbering to none.
  */
 export type FolioUndefinedReferencePolicy = "refuse" | "keep";
 

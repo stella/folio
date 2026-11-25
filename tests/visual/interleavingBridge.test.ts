@@ -3,9 +3,9 @@ import path from "node:path";
 import { EditorState } from "prosemirror-state";
 
 import { shapeArrayBuffer } from "../../packages/core/src/__tests__/documentShapes";
+import { applyFolioDocumentOperations } from "../../packages/core/src/__tests__/reference-editor/document-operations-apply";
 import { getTrackedChangesFromDoc } from "../../packages/core/src/ai-edits/read";
 import { createFolioAIEditSnapshot } from "../../packages/core/src/ai-edits/snapshot";
-import { applyFolioDocumentOperations } from "../../packages/core/src/document-operations";
 import { parseDocx } from "../../packages/core/src/docx/parser";
 import { toProseDoc } from "../../packages/core/src/prosemirror/conversion/toProseDoc";
 import { createInterleavingSuggest } from "./interleavingBridge";

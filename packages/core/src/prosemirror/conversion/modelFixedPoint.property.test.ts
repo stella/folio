@@ -20,6 +20,7 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../../test/property-testing";
+import { projectReferenceDocument } from "../../__tests__/reference-editor/projectReferenceDocument";
 import { parseDocx } from "../../docx/parser";
 import { createDocx } from "../../docx/rezip";
 import { toFlowBlocks } from "../../layout-bridge/convert/toFlowBlocks";
@@ -30,7 +31,6 @@ import type {
   ListLevel,
   Paragraph,
 } from "../../types/document";
-import { updateDocumentContent } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
@@ -95,7 +95,7 @@ const comparableParagraph = (paragraph: Paragraph): Record<string, unknown> =>
   );
 
 const rebuild = (document: Document): Document =>
-  updateDocumentContent(
+  projectReferenceDocument(
     document,
     toProseDoc(document, {
       styles: document.package.styles,

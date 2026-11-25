@@ -7,19 +7,16 @@
 
 import { panic } from "better-result";
 import type { Node as PMNode, NodeSpec, Schema } from "prosemirror-model";
-import { Plugin, PluginKey, Selection, TextSelection } from "prosemirror-state";
+import { Plugin, Selection, TextSelection } from "prosemirror-state";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
 import {
   CellSelection,
-  columnResizing,
   mergeCells as pmMergeCells,
   selectedRect,
   splitCell as pmSplitCell,
-  tableEditing,
   TableMap,
   tableNodeTypes,
 } from "prosemirror-tables";
-import { Decoration, DecorationSet } from "prosemirror-view";
 
 import { statesNoBorder } from "@stll/docx-core/model";
 
@@ -82,7 +79,6 @@ import {
   removeTableColumns,
   removeTableRow,
 } from "../../tableGridMutation";
-import { tablePositionedBookmarksPlugin } from "../../tablePositionedBookmarks";
 import { createExtension, createNodeExtension } from "../create";
 import type {
   AnyExtension,
@@ -3217,62 +3213,15 @@ export const TablePluginExtension: (
       };
     }
 
-    // Active cell highlight plugin — adds a CSS class to the cell containing the cursor
-    const activeCellKey = new PluginKey("activeCell");
-    const activeCellPlugin = new Plugin({
-      key: activeCellKey,
-      props: {
-        decorations(state) {
-          const { selection } = state;
-          // Skip if already a CellSelection (prosemirror-tables handles that)
-          if (selection instanceof CellSelection) {
-            return DecorationSet.empty;
-          }
-
-          const { $from } = selection;
-          for (let d = $from.depth; d > 0; d--) {
-            const node = $from.node(d);
-            if (
-              node.type.name === "tableCell" ||
-              node.type.name === "tableHeader"
-            ) {
-              const pos = $from.before(d);
-              return DecorationSet.create(state.doc, [
-                Decoration.node(pos, pos + node.nodeSize, {
-                  class: "activeCell",
-                }),
-              ]);
-            }
-          }
-          return DecorationSet.empty;
-        },
-      },
-    });
-
-    // Cell paste runs ahead of `tableEditing`, whose own cell paste splits
-    // merges at positions that ignore where the table starts.
-    const tableCellPastePlugin = new Plugin({
-      key: new PluginKey("tableCellPaste"),
-      props: {
-        transformPasted: (slice) => pastedSliceWithNewTableCells(slice),
-        handlePaste: (view, _event, slice) =>
-          pasteTableCells(view.state, slice, view.dispatch),
-      },
-    });
-
     return {
       plugins: [
-        // canonical-gap: pm-table-geometry
-        columnResizing({
-          handleWidth: 5,
-          cellMinWidth: 25,
-          lastColumnResizable: true,
+        new Plugin({
+          props: {
+            transformPasted: pastedSliceWithNewTableCells,
+            handlePaste: (view, _event, slice) =>
+              pasteTableCells(view.state, slice, view.dispatch),
+          },
         }),
-        tableCellPastePlugin,
-        // canonical-gap: pm-table-geometry
-        tableEditing(),
-        tablePositionedBookmarksPlugin(),
-        activeCellPlugin,
       ],
       keyboardShortcuts: {
         Backspace: chainCommands(

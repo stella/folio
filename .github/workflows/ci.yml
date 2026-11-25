@@ -570,6 +570,20 @@ jobs:
           TYPECHECK_BASE: ${{ (github.event_name == 'workflow_dispatch' && '0000000000000000000000000000000000000000') || github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
           TYPECHECK_PUSH: ${{ github.event_name == 'push' }}
 
+      # Package typechecks leave tests out; their errors may only shrink.
+      - name: Test-file type errors only shrink
+        id: test-typecheck
+        run: bun run typecheck:tests
+
+      - name: Upload regenerated test-file baseline after a failure
+        if: failure() && steps.test-typecheck.outcome == 'failure'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-typecheck-baseline
+          path: .cache/test-typecheck/test-typecheck-baseline.json
+          retention-days: 7
+          if-no-files-found: ignore
+
   build-api:
     name: Build reproducibility and API reports
     needs: ci-plan

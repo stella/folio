@@ -128,14 +128,10 @@ import {
   getPageSize,
   twipsToPixels,
 } from "@stll/folio-core/paged-layout/sectionGeometry";
-import type { HistoryShortcutOwner } from "@stll/folio-core/prosemirror/extensions/core/HistoryExtension";
+import type { HistoryShortcutOwner } from "@stll/folio-core/prosemirror/extensions/core/historyCommands";
 import { ExtensionManager } from "@stll/folio-core/prosemirror/extensions/ExtensionManager";
 import { createStarterKit } from "@stll/folio-core/prosemirror/extensions/StarterKit";
 import type { CommandMap } from "@stll/folio-core/prosemirror/extensions/types";
-import {
-  createSuggestionModePlugin,
-  setSuggestionMode,
-} from "@stll/folio-core/prosemirror/plugins/suggestionMode";
 import { createTemplateDirectivesPlugin } from "@stll/folio-core/prosemirror/plugins/templateDirectives";
 import { createTemplatePreviewValuesPlugin } from "@stll/folio-core/prosemirror/plugins/templatePreviewValues";
 import type {
@@ -392,8 +388,8 @@ export type UseDocxEditorOptions = {
   /** Password for Agile-encrypted .docx files (Office 2010+). Reactive. */
   password?: MaybeRefOrGetter<string | undefined>;
   /**
-   * Editor mode. `'suggesting'` activates the mounted suggestion-mode plugin so
-   * typed text becomes tracked changes. Reactive — flip at runtime.
+   * Editor mode. `'suggesting'` sets the canonical session's mode so typed
+   * text becomes tracked changes. Reactive — flip at runtime.
    */
   editorMode?: MaybeRefOrGetter<"editing" | "suggesting" | "viewing">;
   /** Author name attached to tracked changes minted in suggesting mode. */
@@ -639,14 +635,11 @@ export function useDocxEditor(
   const measures = shallowRef<Measure[]>([]);
   const isReady = ref(false);
   const parseError = ref<string | null>(null);
-  // "Live PM state has edits not yet committed by a host-facing save" flag, the
-  // Vue analogue of the signals React derives from the ParagraphChangeTracker
-  // in `hasPendingChanges`. Set on every doc-changing transaction (the same
-  // signal that drives the debounced writeback/`onChange`) and cleared on a
-  // successful `save()` and on document load/swap. Controller serialization
-  // alone leaves it intact. Vue keeps the change tracker uncleared across saves
-  // (it is the selective-save baseline; see the featureFlags parity note), so
-  // this flag — not the tracker — is what surfaces pending edits to the ref API.
+  // "Live PM state has edits not yet committed by a host-facing save" flag,
+  // backing `hasPendingChanges`. Set on every doc-changing transaction (the
+  // same signal that drives the debounced writeback/`onChange`) and cleared on
+  // a successful `save()` and on document load/swap. Controller serialization
+  // alone leaves it intact.
   const isDirty = ref(false);
   // The model is never handed out: a host gets a copy it owns.
   const cloneForHost = (document: ReadonlyDocument) =>
@@ -675,11 +668,6 @@ export function useDocxEditor(
   extensionManager.buildSchema();
   extensionManager.initializeRuntime();
 
-  // Suggestion-mode plugin registered inactive; `setSuggestionMode` toggles it
-  // via plugin meta. Reused across state rebuilds (PM plugins are stateless
-  // definitions). Prepended to the host's external plugins so the hidden-editor
-  // manager installs it on every (re)created state.
-  const suggestionPlugin = createSuggestionModePlugin(false);
   // Template-directive scan + slash-menu trigger. Installed only when
   // `showTemplateDirectives` is on (see `buildExternalPlugins` /
   // `syncTemplatePlugins`). Preview plugin is inert until values are pushed.
@@ -693,13 +681,11 @@ export function useDocxEditor(
   const templatePluginsEnabled = (): boolean =>
     toValue(showTemplateDirectives) === true;
 
-  // Plugin list installed on every (re)created hidden-editor state. Autocomplete
-  // leads so its active-suggestion keymap wins before extension keymaps;
-  // suggestion mode follows, then host/collaboration plugins and inert feature
-  // decorations. The template directive/slash-menu pair remains feature-gated.
+  // Plugin list installed on every (re)created hidden-editor state: host and
+  // collaboration plugins, then inert feature decorations. The template
+  // directive/slash-menu pair remains feature-gated.
   function buildExternalPlugins(): Plugin[] {
     return [
-      suggestionPlugin,
       ...externalPlugins,
       ...(templatePluginsEnabled()
         ? [templateDirectivesPlugin, templateSlashMenu]
@@ -1122,9 +1108,6 @@ export function useDocxEditor(
       runInitialLayout,
     );
 
-    // Apply the current editor mode to the mounted suggestion plugin.
-    syncSuggestionMode(view);
-
     onEditorViewReady?.(view);
 
     // Auto-focus so the user can type immediately (unless read-only). rAF lets
@@ -1161,12 +1144,7 @@ export function useDocxEditor(
     emitter,
   });
 
-  // ---- Suggestion-mode sync -----------------------------------------------
-
-  function syncSuggestionMode(view: EditorView): void {
-    const active = toValue(editorMode) === "suggesting";
-    setSuggestionMode(active, view.state, view.dispatch, getSuggestionAuthor());
-  }
+  // ---- Editing-mode sync ---------------------------------------------------
 
   watch([() => toValue(editorMode), getSuggestionAuthor], () => {
     editor.setCanonicalMode(
@@ -1174,14 +1152,6 @@ export function useDocxEditor(
         ? { type: "suggesting", author: getSuggestionAuthor() }
         : { type: "editing" },
     );
-    const view = editorView.value;
-    if (view) {
-      syncSuggestionMode(view);
-    }
-    for (const story of noteEditorManager.listStories()) {
-      const noteView = noteEditorManager.getView(story);
-      if (noteView) syncSuggestionMode(noteView);
-    }
   });
 
   // Keep the hidden view's editable() ARIA state in sync with readOnly.
@@ -1515,7 +1485,6 @@ export function useDocxEditor(
   function openNoteStory(story: NoteStoryKey): void {
     const view = noteEditorManager.activate(story);
     if (!view) return;
-    syncSuggestionMode(view);
     activeNoteStory.value = story;
     requestAnimationFrame(() => view.focus());
   }

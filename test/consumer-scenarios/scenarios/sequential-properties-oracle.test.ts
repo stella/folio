@@ -78,6 +78,16 @@ test("sequential replay orders every property-edit sibling before terminal break
             } else {
               assert.equal(propertyAt, ordered.length - 1);
             }
+            if (mode === "suggested") {
+              const earlierDeletions = new Set(
+                deletions.slice(0, -1).map(({ id }) => id),
+              );
+              assert.ok(
+                ordered
+                  .slice(retirementAt + 1)
+                  .every(({ id }) => !earlierDeletions.has(id)),
+              );
+            }
           }
         }
       }
@@ -290,22 +300,9 @@ const acceptedView = async (
 // run's first one, while the one-at-a-time replay deleted that paragraph
 // before the final one and kept the final paragraph's own numbering.
 //
-// Tracked on the canonical session, a run of two is the exception: the final
-// paragraph's deletion takes the break and the properties of the paragraph
-// right before it, and that paragraph's own deletion would then leave those
-// properties on a paragraph nothing of it reaches, which the session refuses,
-// batched and one at a time alike. The collapse equals the operations one at
-// a time only in that order (the final paragraph first); the other order
-// keeps the final paragraph's own properties, directly and tracked.
-const refusesRunStart = (options: {
-  session: ReviewerEngine;
-  mode: "direct" | "tracked-changes";
-  length: number;
-}): boolean =>
-  options.session === "canonical" &&
-  options.mode === "tracked-changes" &&
-  options.length === 2;
-
+// The collapse equals the operations one at a time only in that order (the
+// final paragraph first); the other order keeps the final paragraph's own
+// properties, directly and tracked.
 for (const session of ["canonical"] as const)
   test(`a run deleted back to its container's start or a table settles on its first paragraph, batched and one at a time (${session} session)`, async () => {
     for (const [before, prefix] of Object.entries(RUN_BEFORE)) {
@@ -341,39 +338,12 @@ for (const session of ["canonical"] as const)
                 >["applyDocumentOperations"]
               >[0];
               const context = `${before}, ${run.join(" | ")}, ${mode}, ${operations === deletions ? "forward" : "reversed"}`;
-              const refused = refusesRunStart({ session, mode, length });
-              // The deletion of the run's first paragraph, which the session
-              // refuses in that case.
-              const runStart = deletions[0]?.id;
-              const expectedSkips = (ids: readonly string[]) =>
-                refused && runStart !== undefined && ids.includes(runStart)
-                  ? [
-                      {
-                        id: runStart,
-                        reason: "pendingParagraphMarkDeletion",
-                        message:
-                          "Deletion would overwrite a paragraph review record.",
-                      },
-                    ]
-                  : [];
               const batch = await openOn(fixture, session);
               const batched = batch.applyDocumentOperations(request, {
                 undefinedReferences: "refuse",
               });
-              assert.equal(
-                batched.applied.length,
-                refused ? length - 1 : length,
-                context,
-              );
-              assert.deepEqual(
-                batched.skipped.map(({ id, reason, message }) => ({
-                  id,
-                  reason,
-                  message,
-                })),
-                expectedSkips(operations.map(({ id }) => id)),
-                context,
-              );
+              assert.equal(batched.applied.length, length, context);
+              assert.deepEqual(batched.skipped, [], context);
               const sequential = await openOn(fixture, session);
               const paragraphIdentities = createParagraphIdentityRemapping();
               for (const group of sequentialGroups({
@@ -404,15 +374,7 @@ for (const session of ["canonical"] as const)
                   { undefinedReferences: "refuse" },
                 );
                 paragraphIdentities.record({ applied: result.applied, mode });
-                assert.deepEqual(
-                  result.skipped.map(({ id, reason, message }) => ({
-                    id,
-                    reason,
-                    message,
-                  })),
-                  expectedSkips(group.map(({ id }) => id)),
-                  context,
-                );
+                assert.deepEqual(result.skipped, [], context);
               }
               const outcome = await acceptedView(batch, session);
               assert.deepEqual(
@@ -420,7 +382,7 @@ for (const session of ["canonical"] as const)
                 outcome,
                 context,
               );
-              if (!refused) outcomes.set(context, outcome);
+              outcomes.set(context, outcome);
             }
           }
           // Direct and tracked, in either input order, leave one document.

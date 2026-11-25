@@ -807,11 +807,19 @@ export const isThemeColor: (value: string) => value is ThemeColor;
 // @public
 export type KeptCut = WritableRecord & {
     keptFrom: string;
-    piece?: KeptCutPiece;
+    holders?: KeptCutHolders;
 };
 
 // @public
-export type KeptCutPiece = "before" | "after" | "both";
+export type KeptCutHolders = WritableRecord & {
+    scope?: "seam";
+} & ({
+    before: number;
+    after?: number;
+} | {
+    before?: number;
+    after: number;
+});
 
 // @public
 export const knownThemeColor: (value: DeepReadonly<ThemeColorValue>) => ThemeColor | undefined;
@@ -1216,6 +1224,7 @@ export type ParagraphMarkChange = WritableRecord & {
     resolutionJoin?: number | undefined;
     splitDate?: string | undefined;
     survivor?: "first" | undefined;
+    takenOverMark?: number | undefined;
     deletion?: ParagraphMarkDeletion | undefined;
 };
 

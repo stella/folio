@@ -15,12 +15,17 @@ import {
 
 import {
   blanksGoingWhole,
+  PENDING_JOIN_SOURCES,
   pendingJoinTargets,
   sequentialGroups,
 } from "../support/batch-replay-order.ts";
 import { openReviewer, packDocument } from "../support/documents.ts";
 import { restate } from "../support/metamorphic.ts";
-import { markDeletedIds, type Row } from "../support/oracle.ts";
+import {
+  markDeletedIds,
+  type Row,
+  wordsDeletedIds,
+} from "../support/oracle.ts";
 
 const MODES = ["direct", "tracked-changes"] as const;
 const ORDERS = [
@@ -561,7 +566,11 @@ const compareWithReplay = async (
     joinsInto:
       mode === "suggested"
         ? new Map()
-        : pendingJoinTargets(preRows, joinSources),
+        : pendingJoinTargets({
+            rows: preRows,
+            markDeleted: joinSources,
+            wordsDeleted: wordsDeletedIds(batched),
+          }),
     goWhole: blanksGoingWhole(preRows, joinSources),
   })) {
     const replayed = sequential.applyDocumentOperations(
@@ -647,10 +656,24 @@ test("a block after a pending join replays ahead of a split of the paragraph it 
     { undefinedReferences: "refuse" },
   );
   const fixture = new Uint8Array(await source.toBuffer());
-  const rows = (await openReviewer(fixture)).getContent() as Row[];
+  const reopened = await openReviewer(fixture);
+  const rows = reopened.getContent() as Row[];
   assert.deepEqual(
-    pendingJoinTargets(rows, new Set([clause.id])),
-    new Map([[clause.id, { survivor: survivor.id, keepsWords: true }]]),
+    pendingJoinTargets({
+      rows,
+      markDeleted: new Set([clause.id]),
+      wordsDeleted: wordsDeletedIds(reopened),
+    }),
+    new Map([
+      [
+        clause.id,
+        {
+          survivor: survivor.id,
+          keepsWords: true,
+          source: PENDING_JOIN_SOURCES.JOINS_IN,
+        },
+      ],
+    ]),
   );
   const insert: FolioDocumentOperation = {
     id: "insert",
@@ -697,8 +720,21 @@ test("a block after a paragraph joining an emptied final one replays ahead of it
       ),
   );
   assert.deepEqual(
-    pendingJoinTargets(rows, sources),
-    new Map([[buyer.id, { survivor: final.id, keepsWords: false }]]),
+    pendingJoinTargets({
+      rows,
+      markDeleted: sources,
+      wordsDeleted: wordsDeletedIds(reopened),
+    }),
+    new Map([
+      [
+        buyer.id,
+        {
+          survivor: final.id,
+          keepsWords: false,
+          source: PENDING_JOIN_SOURCES.JOINS_IN,
+        },
+      ],
+    ]),
   );
   const insert: FolioDocumentOperation = {
     id: "insert",
@@ -838,8 +874,21 @@ test("a block after a paragraph with no words joining one that keeps them replay
       ),
   );
   assert.deepEqual(
-    pendingJoinTargets(rows, sources),
-    new Map([[gone.id, { survivor: signed.id, keepsWords: true }]]),
+    pendingJoinTargets({
+      rows,
+      markDeleted: sources,
+      wordsDeleted: wordsDeletedIds(reopened),
+    }),
+    new Map([
+      [
+        gone.id,
+        {
+          survivor: signed.id,
+          keepsWords: true,
+          source: PENDING_JOIN_SOURCES.GOES_WHOLE,
+        },
+      ],
+    ]),
   );
   const table: FolioDocumentOperation = {
     id: "table",
@@ -919,4 +968,147 @@ test("blocks put on both sides of a paragraph accepting removes whole replay in 
       await compareWithReplay(fixture, mode, operations);
     }
   }
+});
+
+/** A batch and its operations one at a time, in input order, on copies. */
+const compareWithInputOrder = async (
+  fixture: Uint8Array,
+  operations: readonly FolioDocumentOperation[],
+) => {
+  const batched = await openReviewer(fixture);
+  const sequential = await openReviewer(fixture);
+  const apply = (
+    reviewer: Awaited<ReturnType<typeof openReviewer>>,
+    batch: readonly FolioDocumentOperation[],
+  ) =>
+    reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "tracked-changes",
+        operations: [...batch],
+      },
+      { undefinedReferences: "refuse" },
+    );
+  assert.deepEqual(apply(batched, operations).skipped, [], "batch");
+  for (const operation of operations)
+    assert.deepEqual(apply(sequential, [operation]).skipped, [], operation.id);
+  assert.deepEqual(view(sequential), view(batched), "input order");
+};
+
+type PendingJoinFixtureOptions = {
+  markdown: string;
+  /** What becomes of the middle paragraph's words; its break stays pending. */
+  words: "accepted" | "rejected";
+};
+
+/** `markdown` with its middle paragraph's deletion tracked, words decided. */
+const pendingJoinFixture = async ({
+  markdown,
+  words,
+}: PendingJoinFixtureOptions) => {
+  const source = await openReviewer(await packDocument(fromMarkdown(markdown)));
+  const [, joining, survivor] = source.getContent();
+  assert.ok(joining && survivor);
+  source.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "tracked-changes",
+      operations: [{ id: "delete", type: "deleteBlock", blockId: joining.id }],
+    },
+    { undefinedReferences: "refuse" },
+  );
+  const deletion = source
+    .getChanges()
+    .find(({ type, blockId }) => type === "deletion" && blockId === joining.id);
+  assert.ok(deletion);
+  assert.ok(
+    words === "accepted"
+      ? source.acceptChange(deletion)
+      : source.rejectChange(deletion),
+  );
+  const fixture = new Uint8Array(await source.toBuffer());
+  const reopened = await openReviewer(fixture);
+  assert.deepEqual(
+    pendingJoinTargets({
+      rows: reopened.getContent() as Row[],
+      markDeleted: markDeletedIds(reopened),
+      wordsDeleted: wordsDeletedIds(reopened),
+    }),
+    new Map([
+      [
+        joining.id,
+        {
+          survivor: survivor.id,
+          keepsWords: true,
+          source: PENDING_JOIN_SOURCES.JOINS_IN,
+        },
+      ],
+    ]),
+  );
+  return { fixture, joining, survivor };
+};
+
+/** `operations` in every order. */
+const everyOrder = (
+  operations: readonly FolioDocumentOperation[],
+): FolioDocumentOperation[][] =>
+  ORDERS.map((order) => {
+    const ordered = order.flatMap((index) => operations.at(index) ?? []);
+    assert.equal(ordered.length, operations.length);
+    return ordered;
+  });
+
+test("blocks put before the paragraphs of a pending join replay in one gap, as the batch names them", async () => {
+  const { fixture, joining, survivor } = await pendingJoinFixture({
+    markdown: "Alpha.\n\nJoined words.\n\nSigned.",
+    words: "rejected",
+  });
+  for (const ordered of everyOrder([
+    {
+      id: "beforeJoining",
+      type: "insertBeforeBlock",
+      blockId: joining.id,
+      text: "First.",
+    },
+    {
+      id: "beforeSurvivor",
+      type: "insertBeforeBlock",
+      blockId: survivor.id,
+      text: "Second.",
+    },
+    {
+      id: "afterSurvivor",
+      type: "insertAfterBlock",
+      blockId: survivor.id,
+      text: "Third.",
+    },
+  ])) {
+    await compareWithReplay(fixture, "tracked-changes", ordered);
+    // The paragraphs of the join are one gap, so the batch also leaves what
+    // its operations leave one at a time in the order it names them.
+    await compareWithInputOrder(fixture, ordered);
+  }
+});
+
+test("a block after an empty paragraph joining the next replays ahead of a split of that one", async () => {
+  const { fixture, joining, survivor } = await pendingJoinFixture({
+    markdown: "Alpha.\n\nPayment.\n\nSigned in two copies.",
+    words: "accepted",
+  });
+  for (const ordered of everyOrder([
+    {
+      id: "table",
+      type: "insertTable",
+      blockId: joining.id,
+      rows: [["Term", "Value"]],
+    },
+    { id: "split", type: "splitBlock", blockId: survivor.id, offset: 14 },
+    {
+      id: "after",
+      type: "insertAfterBlock",
+      blockId: joining.id,
+      text: "After.",
+    },
+  ]))
+    await compareWithReplay(fixture, "tracked-changes", ordered);
 });

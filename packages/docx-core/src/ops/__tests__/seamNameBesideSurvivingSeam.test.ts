@@ -29,7 +29,7 @@ const info = (id: number, second: number) => ({
 
 const KEPT = {
   keptFrom: "2026-03-04T05:00:01Z",
-  piece: "both",
+  holders: { before: 2, after: 3, scope: "seam" },
 } as const;
 
 const documentOf = (): Document => ({
@@ -104,6 +104,6 @@ test("a marker between an accepted blocker and one a seam still waits on keeps i
   expect(content).toContainEqual({
     type: "bookmarkEnd",
     id: 1,
-    keptCut: KEPT,
+    keptCut: { keptFrom: KEPT.keptFrom, holders: { after: 3, scope: "seam" } },
   });
 });

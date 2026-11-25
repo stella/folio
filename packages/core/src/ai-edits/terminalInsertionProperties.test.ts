@@ -9,7 +9,7 @@ import {
 import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
 import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
-import type { FolioRevisionStamp } from "./apply";
+import type { FolioRevisionStamp } from "./applyTypes";
 import { FolioDocxReviewer } from "./headless";
 
 const DELETION_STAMP = { date: "2026-01-01T00:00:00Z", idSeed: 100 };

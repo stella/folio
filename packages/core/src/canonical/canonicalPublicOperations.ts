@@ -75,11 +75,7 @@ import {
   TYPED_TEXT_FORMATTING,
 } from "@stll/docx-core/ops";
 
-import {
-  buildSignatureTableNode,
-  buildTableNode,
-  SUGGESTED_SUPPORTED_OPERATION_TYPES,
-} from "../ai-edits/apply";
+import { SUGGESTED_SUPPORTED_OPERATION_TYPES } from "../ai-edits/applyTypes";
 import { BatchClaims } from "../ai-edits/batch-claims";
 import { describeCharacterSplit } from "../ai-edits/character-boundaries";
 import {
@@ -161,6 +157,10 @@ import {
   supportsTableInsertionMode,
   type TableInsertionOperation,
 } from "../ai-edits/tableInsertionModes";
+import {
+  buildSignatureTableNode,
+  buildTableNode,
+} from "../ai-edits/tableNodes";
 import type {
   FolioAIBlockParagraphProperties,
   FolioAIEditNormalization,
@@ -205,8 +205,8 @@ import {
   standaloneTableRowsFromProseMirror,
   tableAttrsToFormatting,
 } from "../prosemirror/conversion/fromProseDoc";
-import { ensureParaIdsInDoc } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import { insertionGap } from "../prosemirror/insertionGaps";
+import { ensureParaIdsInDoc } from "../prosemirror/paraIds";
 import { forEachAnnotationIdInDoc } from "../prosemirror/plugins/revisionIds";
 import {
   preservesReplacementCommentAlignment,
@@ -745,6 +745,17 @@ const rowClosingCellShapes = <
   return refused;
 };
 
+/**
+ * Whether a deletion of a paragraph that a pending join runs words into
+ * takes those words too (`joinedWords`): tracked it does, as the joined
+ * paragraph carries the deleted one's id; a suggestion stays rejectable on
+ * its own and takes only the paragraph's own words. The deletion and the
+ * batch order both read this rule, so an edit of the joined words runs
+ * before the deletion only when the deletion takes them.
+ */
+const deletionTakesJoinedWords = (mode: FolioDocumentOperationMode): boolean =>
+  mode === "tracked-changes";
+
 type CanonicalBatchOrderOptions<T extends PlannedOperation> = {
   items: readonly T[];
   doc: PMNode;
@@ -1005,7 +1016,10 @@ const orderCanonicalBatch = <T extends PlannedOperation>({
     // Tracked, it takes the paragraphs a pending join runs into it too
     // (`joinedWords`): an edit of them runs first, as one at a time.
     const joined: number[] = [];
-    if (mode !== "direct" && !isDeletedPPrMark(paragraph.attrs["pPrMark"]))
+    if (
+      deletionTakesJoinedWords(mode) &&
+      !isDeletedPPrMark(paragraph.attrs["pPrMark"])
+    )
       for (const { paragraph: previous } of before) {
         if (!isDeletedPPrMark(doc.nodeAt(previous)?.attrs["pPrMark"])) break;
         joined.push(previous);
@@ -7797,7 +7811,9 @@ export class CanonicalPublicOperations {
         projectionStory: story,
         doc: state.doc,
         tracked,
-        deletesJoinedWords: tracked && !suggested,
+        deletesJoinedWords: deletionTakesJoinedWords(
+          options.batch.mode ?? "tracked-changes",
+        ),
         gainsFollower,
         keepsTablesApart,
         followsInsertedTable,

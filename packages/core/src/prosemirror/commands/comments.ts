@@ -63,12 +63,6 @@ import {
 import { copyOriginBoundaryAttrsAfterResolution } from "../copyOriginResolution";
 import { resolveEmptyFieldResultRuns } from "../emptyFieldResultRuns";
 import { JOINED_RUNS_RESTYLED_META } from "../extensions/features/JoinedRunStyleExtension";
-import {
-  markChangedParagraphRanges,
-  markStructuralChange,
-  markTrackedSectionEndpointRemoval,
-} from "../extensions/features/ParagraphChangeTrackerExtension";
-import { requestDeterministicParaIds } from "../extensions/features/ParaIdAllocatorExtension";
 import { INLINE_CONTENT_CONTROL_NODE_NAME } from "../extensions/nodes/SdtExtension";
 import { canonicalFieldNode } from "../fieldRepresentation";
 import {
@@ -85,11 +79,17 @@ import {
   lockedControlViolationOfTransform,
 } from "../lockedControls";
 import { resolveStateStory } from "../markupViewProjection";
+import {
+  markChangedParagraphRanges,
+  markStructuralChange,
+  markTrackedSectionEndpointRemoval,
+} from "../paragraphChangeTrackerMeta";
 import { joinAtParagraphMark } from "../paragraphMarkJoin";
 import {
   carryParagraphProperties,
   paragraphLeftAfter,
 } from "../paragraphPropertyCarry";
+import { requestDeterministicParaIds } from "../paraIds";
 import { getDocumentNumbering } from "../plugins/documentNumbering";
 import { getDocumentStyleResolver } from "../plugins/documentStyleState";
 import { resolvedPreservedXmlAttrs } from "../preservedXmlReview";

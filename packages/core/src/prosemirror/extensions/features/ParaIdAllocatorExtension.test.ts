@@ -24,21 +24,21 @@ import {
   propertyTestTimeout,
 } from "../../../../../../test/property-testing";
 import {
+  getChangedParagraphIds,
+  ParagraphChangeTrackerExtension,
+} from "../../../__tests__/reference-editor/ParagraphChangeTrackerExtension";
+import { ParaIdAllocatorExtension } from "../../../__tests__/reference-editor/ParaIdAllocatorExtension";
+import {
   joinProseParagraphsWithRightPropertySource,
   PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
   PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR,
 } from "../../../docx/paragraphPropertySource";
 import { deterministicHexId } from "../../../utils/hexId";
 import {
-  getChangedParagraphIds,
-  ParagraphChangeTrackerExtension,
-} from "./ParagraphChangeTrackerExtension";
-import {
   ensureParaIdsInDoc,
   ensureParaIdsInState,
-  ParaIdAllocatorExtension,
   requestDeterministicParaIds,
-} from "./ParaIdAllocatorExtension";
+} from "../../paraIds";
 
 const schema = new Schema({
   nodes: {

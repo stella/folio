@@ -278,7 +278,7 @@ export type {
   DisplacedByCustomXml,
   MarkupRangeMarker,
   KeptCut,
-  KeptCutPiece,
+  KeptCutHolders,
   BookmarkRangeMarker,
   MoveBookmarkMarker,
   BookmarkStart,

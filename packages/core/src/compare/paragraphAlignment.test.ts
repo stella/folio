@@ -6,14 +6,14 @@ import { finalizeParagraphFormatting } from "@stll/docx-core/model";
 import { ZipArchive } from "@stll/docx-core/zip";
 
 import { expectParagraphBlock } from "../../../../test/paragraphBlock";
-import { applyFolioAIEditOperations } from "../ai-edits/apply";
+import { applyFolioAIEditOperations } from "../__tests__/reference-editor/apply";
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
 import {
   PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
   PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR,
 } from "../docx/paragraphPropertySource";
-import { REVIEW_HISTORY_VERSION } from "../docx/reviewResolutionProvenance";
+import { serializeParagraphMarkResolutionJoin } from "../docx/reviewResolutionProvenance";
 import { createDocx } from "../docx/rezip";
 import { expectParagraphAttrs } from "../prosemirror/attrs";
 import {
@@ -950,7 +950,11 @@ describe("paragraph alignment comparison", () => {
       // inserted mark names which paragraph a rejection keeps (canonical).
       const survivor =
         session === "canonical"
-          ? ` folio:rejectionSurvivor="{&quot;version&quot;:${REVIEW_HISTORY_VERSION},&quot;value&quot;:&quot;first&quot;}"`
+          ? serializeParagraphMarkResolutionJoin({
+              kind: "ins",
+              info: { id: 0, author: OPTIONS.author, date: OPTIONS.timestamp },
+              survivor: "first",
+            })
           : "";
       const carrierParts = trackedParagraphPropertyPartsFromParagraph(
         pendingParagraphs.at(0) ?? "",

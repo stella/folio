@@ -71,8 +71,10 @@ import {
   idKey,
   packageIdentityKeys,
   packageReservedIdentityKeys,
+  slotKey,
 } from "./ids";
 import { deleteBetween, gapAfterInserted } from "./inline";
+import { isKeptCut, remapKeptCutHolders } from "./keptCut";
 import {
   alikeDepth,
   asParagraphContent,
@@ -924,11 +926,15 @@ export const createEditorIntentIdAllocator = ({
             break;
           }
           case DOCUMENT_OP_TYPES.MERGE_CELLS:
-            demand = (op.bottom - op.top + 1) * 2;
+            // The merged cell's last paragraph and the one before it, where
+            // a decision removes the words it ends with.
+            demand = (op.bottom - op.top + 1) * 2 + 2;
             // A row the merge leaves only continuations records its
-            // deletion: the row and each of its paragraphs.
+            // deletion: the row and each of its paragraphs. A direct merge
+            // across rows pending insertion or deletion records it on the
+            // words each such row gives the merged cell, its first one's too.
             for (const row of located.value.table.rows.slice(
-              op.top + 1,
+              op.top,
               op.bottom,
             )) {
               demand += 1;
@@ -2507,7 +2513,9 @@ const identifyClipboardParagraphs = ({
     return id;
   };
   const remintedControls = new WeakSet<object>();
+  const keptMarkers: { keptCut: unknown }[] = [];
   visit(copy, (value) => {
+    if ("keptCut" in value) keptMarkers.push(value);
     if (
       "type" in value &&
       value.type === "inlineSdt" &&
@@ -2550,6 +2558,14 @@ const identifyClipboardParagraphs = ({
         value.id = freshId("bookmark", value.id);
     }
   });
+  for (const marker of keptMarkers) {
+    const cut = marker.keptCut;
+    if (!isKeptCut(cut)) continue;
+    // Only copied revisions can hold the pasted cut.
+    marker.keptCut = remapKeptCutHolders(cut, (id) =>
+      remapped.get(slotKey({ space: IDENTITY_SPACES.REVISION, id })),
+    );
+  }
   if (leaseExhausted)
     return Result.err(
       new DocumentOpRefusal({

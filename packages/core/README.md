@@ -4,11 +4,17 @@
 
 # @stll/folio-core
 
-The headless, framework-neutral core of [folio](https://github.com/stella/folio):
-the OOXML (`.docx`) parser, the document model, the ProseMirror integration, and
-the page-layout engine. It opens a real `.docx`, models it, paginates it, and
-writes a real `.docx` back — preserving tables, headers and footers, tracked
-changes, and footnotes.
+The headless DOCX engine behind [folio](https://github.com/stella/folio). It
+reads a `.docx` into a typed OOXML model, applies every edit as a validated
+operation on that model, paginates it, and writes a valid `.docx` back. Parts
+of the package that no edit touched are written back byte for byte.
+
+Typing in the editor, tracked changes, comments, AI suggestions, collaborative
+edits and server-side review all go through the same operations, so the same
+edit gives the same document wherever it runs. An edit the engine cannot make
+is refused whole, never half-applied. In the browser editors, ProseMirror
+handles keyboard input and selection; the document model is the source of
+truth, and folio lays out and paints the pages itself.
 
 There is **no React** in the import graph, so the core runs on a server or under
 any framework. The React editor lives in
@@ -36,7 +42,7 @@ the same runtime. The command above includes the complete editor peer closure.
 
 | Import                      | What it is                                                                                                                                                         |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `@stll/folio-core`          | the headless public API — document creation, representation-neutral comparison, the document model, AI-suggestion primitives, and ProseMirror plugins              |
+| `@stll/folio-core`          | the headless public API — document creation, representation-neutral comparison, the document model, AI-suggestion primitives, and editor decoration plugins        |
 | `@stll/folio-core/markdown` | DOCX ↔ Markdown conversion                                                                                                                                         |
 | `@stll/folio-core/server`   | DOM-free document review, explicit tracked edits, comparison, creation, and package helpers                                                                        |
 | `@stll/folio-core/redline`  | Compare two `.docx` buffers and generate a native Word redline                                                                                                     |

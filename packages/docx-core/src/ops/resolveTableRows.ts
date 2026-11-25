@@ -746,14 +746,33 @@ const marksInRemovedStructure = (
       change.type === "tableRowDeletion" || change.type === "tableCellDeletion"
     );
   };
+  // A merged cell whose row goes is handed on to the next row its merge
+  // continues in that stays (`rowsWithoutRow`), with its paragraphs.
+  const handedOn = (table: Table): ReadonlySet<TableCell> => {
+    const grid = tableGrid(table, DOCUMENT_OP_TYPES.SET_TABLE_ROWS);
+    if (grid.isErr()) return new Set();
+    const kept = new Set<TableCell>();
+    for (const [rowIndex, slots] of grid.value.rows.entries()) {
+      if (removes(table.rows[rowIndex]?.structuralChange)) continue;
+      for (const slot of slots) {
+        if (slot.ownerRow === rowIndex) continue;
+        const owner = table.rows[slot.ownerRow]?.cells[slot.ownerIndex];
+        if (owner !== undefined) kept.add(owner);
+      }
+    }
+    return kept;
+  };
   // A nested table's paragraphs are in its own rows and in the outer cell
   // holding it: each paragraph is settled once, whichever removal reaches it.
   const settled = new Map<string, DocumentOp>();
-  for (const table of tablesIn(document, op.story))
+  for (const table of tablesIn(document, op.story)) {
+    const kept = handedOn(table);
     for (const row of table.rows)
       for (const cell of row.cells) {
-        if (!removes(row.structuralChange) && !removes(cell.structuralChange))
-          continue;
+        const goes =
+          removes(cell.structuralChange) ||
+          (removes(row.structuralChange) && !kept.has(cell));
+        if (!goes) continue;
         for (const { paragraph } of storyParagraphs({
           content: cell.content,
         })) {
@@ -775,6 +794,7 @@ const marksInRemovedStructure = (
           });
         }
       }
+  }
   return [...settled.values()];
 };
 
@@ -973,3 +993,41 @@ const reachableOnTable = (table: Table): Set<number> =>
       ]),
     ]),
   ]);
+
+/**
+ * The table once every pending record of its grid, its properties, its rows'
+ * properties and its cells is accepted or rejected, as resolving them does;
+ * the rows' own insertions and deletions stay pending. `unsupported` where
+ * resolving them refuses.
+ */
+export const withTableRecordsResolved = (
+  table: Table,
+  reject: boolean,
+): Result<Table, "unsupported"> => {
+  const rowIds = new Set(
+    table.rows.flatMap(({ structuralChange }) =>
+      structuralChange === undefined ? [] : [structuralChange.info.id],
+    ),
+  );
+  const ids = new Set(
+    [...reachableOnTable(table)].filter((id) => !rowIds.has(id)),
+  );
+  if (ids.size === 0) return Result.ok(table);
+  if (removesEveryCell({ table, ids, reject }))
+    return Result.err("unsupported");
+  const cells = resolveCellChanges({
+    table,
+    ids,
+    reject,
+    selectedGridChange:
+      table.formatting?.gridChange !== undefined &&
+      ids.has(table.formatting.gridChange.id),
+  });
+  if (cells.isErr()) return Result.err(cells.error);
+  return propertyTable({
+    table: cells.value.table,
+    keepsGrid: cells.value.holdsRemovedColumns,
+    ids,
+    reject,
+  });
+};

@@ -124,3 +124,48 @@ test("evenAndOddHeaders is inserted at its generated CT_Settings sequence positi
     );
   }
 });
+
+test("header/footer settings place the flag by what a compatibility wrapper stands for", () => {
+  const w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+  const mc = "http://schemas.openxmlformats.org/markup-compatibility/2006";
+  const settings = (inner: string): string =>
+    `<w:settings xmlns:w="${w}" xmlns:mc="${mc}">${inner}</w:settings>`;
+  const wrapped = (inner: string): string =>
+    `<mc:AlternateContent><mc:Choice Requires="x">${inner}</mc:Choice><mc:Fallback>${inner}</mc:Fallback></mc:AlternateContent>`;
+
+  // The wrapper stands for an earlier setting: the flag goes after it.
+  const earlier =
+    updateEvenAndOddHeaders(
+      settings(
+        `${wrapped('<w:defaultTabStop w:val="708"/>')}<w:bookFoldPrinting/>`,
+      ),
+      true,
+    ) ?? panic("Expected settings patch");
+  expect(earlier.indexOf("evenAndOddHeaders")).toBeGreaterThan(
+    earlier.indexOf("</mc:AlternateContent>"),
+  );
+  expect(earlier.indexOf("evenAndOddHeaders")).toBeLessThan(
+    earlier.indexOf("<w:bookFoldPrinting/>"),
+  );
+
+  // The wrapper stands for a later setting: the flag goes before it.
+  const later =
+    updateEvenAndOddHeaders(
+      settings(`<w:zoom w:percent="100"/>${wrapped("<w:bookFoldPrinting/>")}`),
+      true,
+    ) ?? panic("Expected settings patch");
+  expect(later.indexOf("evenAndOddHeaders")).toBeLessThan(
+    later.indexOf("<mc:AlternateContent>"),
+  );
+
+  // Settings on both sides, or the flag itself, leave no place to edit.
+  expect(
+    updateEvenAndOddHeaders(
+      settings(wrapped('<w:defaultTabStop w:val="708"/><w:bookFoldPrinting/>')),
+      true,
+    ),
+  ).toBeNull();
+  expect(
+    updateEvenAndOddHeaders(settings(wrapped("<w:evenAndOddHeaders/>")), true),
+  ).toBeNull();
+});

@@ -55,7 +55,7 @@ export const isCanonicalSaveFallback = (error: CanonicalFuzzError) => {
     CANONICAL_SAVE_DIAGNOSTIC_DISPOSITIONS[error.diagnostic.type];
   return (
     disposition.status === "permitted" &&
-    error.gap === CANONICAL_GAP.save &&
+    error.gap === CANONICAL_GAP.saveSerialization &&
     error.diagnostic.part === disposition.diagnostic.part &&
     (error.phase?.type === "save" || error.phase?.type === "finalSave")
   );

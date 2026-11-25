@@ -22,7 +22,7 @@ import { createDocx, validateDocx } from "@stll/folio-core/docx/rezip";
 import type { SaveDiagnostic } from "@stll/folio-core/docx/saveDiagnostics";
 import { getFolioMessages } from "@stll/folio-core/i18n/messages";
 import { toProseDoc } from "@stll/folio-core/prosemirror/conversion/toProseDoc";
-import { paragraphChangeTrackerKey } from "@stll/folio-core/prosemirror/extensions/features/ParagraphChangeTrackerExtension";
+import { paragraphChangeTrackerKey } from "@stll/folio-core/prosemirror/paragraphChangeTrackerMeta";
 import type { CanonicalCommentResult } from "@stll/folio-core/types/canonicalComments";
 import type { Comment } from "@stll/folio-core/types/content";
 import type { Document } from "@stll/folio-core/types/document";
@@ -181,6 +181,12 @@ test("canonical edits save and reopen the canonical text and paragraph identity"
         await new Promise((resolve) => window.setTimeout(resolve, 300)),
     );
     expect(hostChanges.count).toBeGreaterThan(0);
+    await act(async () => {
+      expect(await editor.current?.getEditor()?.getDocx()).toBeInstanceOf(
+        ArrayBuffer,
+      );
+    });
+    expect(editor.current?.hasPendingChanges()).toBe(true);
     let saved: ArrayBuffer | null | undefined;
     await act(async () => {
       saved = await editor.current?.save();
@@ -763,7 +769,7 @@ test("canonical header edits and new footer and note stories survive adapter sav
       expect(error).toBeInstanceOf(CanonicalSaveDiagnosticError);
       if (!(error instanceof CanonicalSaveDiagnosticError))
         panic("Expected typed save diagnostic");
-      expect(error.gap).toBe("pm-save-projection");
+      expect(error.gap).toBe("save-serialization");
       expect(error.diagnostic).toEqual(CANONICAL_SAVE_FALLBACK_DIAGNOSTIC);
     }
     expect(editor.current?.hasPendingChanges()).toBe(false);
@@ -1449,7 +1455,7 @@ test.each(CANONICAL_SAVE_SEEDS)(
         if (!(error instanceof CanonicalSaveDiagnosticError))
           panic("Expected typed save diagnostic");
         expect(error.diagnostic).toEqual(CANONICAL_SAVE_FALLBACK_DIAGNOSTIC);
-        expect(error.gap).toBe("pm-save-projection");
+        expect(error.gap).toBe("save-serialization");
       }
     } finally {
       await act(async () => root.unmount());

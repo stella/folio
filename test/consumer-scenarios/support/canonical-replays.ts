@@ -40,7 +40,6 @@ export const CANONICAL_REPLAY_GAPS: Readonly<Record<string, ReplayGap>> = {};
 export const CANONICAL_VACUOUS_STEPS: Readonly<
   Record<string, readonly number[]>
 > = {
-  "issue-1356-42bb7d148b3e1e55.json": [2],
   "issue-2222-styled-insert-after-undefined-numbering-level.json": [2],
   "undefined-numbering-level-projection.json": [1],
 };

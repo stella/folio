@@ -46,7 +46,7 @@ import {
   tableCellAttrsToFormatting,
   tableRowAttrsToFormatting,
 } from "../prosemirror/conversion/fromProseDoc";
-import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
+import { markStructuralChange } from "../prosemirror/paragraphChangeTrackerMeta";
 import type { TableCellAttrs } from "../prosemirror/schema/nodes";
 import type {
   TableCellFormatting,

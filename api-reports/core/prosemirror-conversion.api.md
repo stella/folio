@@ -64,9 +64,6 @@ export type ToProseDocOptions = {
     textBoxGroupSalt?: string;
 };
 
-// @public
-export function updateDocumentContent(originalDocument: import__stll_docx_core_model.Document, pmDoc: Node_2): import__stll_docx_core_model.Document;
-
 // @public (undocumented)
 export const validateProseMirrorDocument: (doc: Node_2) => ValidateProseMirrorDocumentResult;
 

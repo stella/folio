@@ -83,7 +83,11 @@ describe("a kept range marker's cut", () => {
     content: [
       { type: "bookmarkStart", id: 1, name: "kept", keptCut: CUT },
       text("a"),
-      { type: "bookmarkEnd", id: 1, keptCut: { ...CUT, piece: "before" } },
+      {
+        type: "bookmarkEnd",
+        id: 1,
+        keptCut: { ...CUT, holders: { before: 20 } },
+      },
       { type: "commentRangeStart", id: 2, keptCut: CUT },
       {
         type: "moveToRangeStart",
@@ -93,8 +97,16 @@ describe("a kept range marker's cut", () => {
         keptCut: CUT,
       },
       text("b"),
-      { type: "moveToRangeEnd", id: 3, keptCut: { ...CUT, piece: "after" } },
-      { type: "commentRangeEnd", id: 2, keptCut: { ...CUT, piece: "both" } },
+      {
+        type: "moveToRangeEnd",
+        id: 3,
+        keptCut: { ...CUT, holders: { after: 6 } },
+      },
+      {
+        type: "commentRangeEnd",
+        id: 2,
+        keptCut: { ...CUT, holders: { before: 20, after: 6 } },
+      },
       link([
         text("c"),
         { type: "bookmarkStart", id: 4, name: "inLink", keptCut: CUT },
@@ -113,10 +125,10 @@ describe("a kept range marker's cut", () => {
     expect(keptCuts(reopened)).toEqual(keptCuts(paragraph));
   });
 
-  const readMarker = (value: unknown): Paragraph["content"] => {
+  const readMarker = (value: unknown, following = ""): Paragraph["content"] => {
     const encoded = escapeXmlAttribute(JSON.stringify({ version: 2, value }));
     const root = parseXmlDocument(
-      `<w:p xmlns:w="${W}" xmlns:folio="${FOLIO_REVIEW_HISTORY_NAMESPACE}"><w:bookmarkEnd w:id="1" folio:keptCut="${encoded}"/></w:p>`,
+      `<w:p xmlns:w="${W}" xmlns:folio="${FOLIO_REVIEW_HISTORY_NAMESPACE}"><w:bookmarkEnd w:id="1" folio:keptCut="${encoded}"/>${following}</w:p>`,
     ) as XmlElement | null;
     if (!root) throw new Error("The paragraph parses.");
     return parseParagraph(root, null, null, null, null, null).content;
@@ -134,13 +146,25 @@ describe("a kept range marker's cut", () => {
     (depth) => {
       const value = { depth, ...CUT, piece: "before" };
       expect(readMarker(value)).toEqual([
-        { type: "bookmarkEnd", id: 1, keptCut: { ...CUT, piece: "before" } },
+        { type: "bookmarkEnd", id: 1, keptCut: CUT },
       ]);
       expect(
         reviewProvenanceIssue("keptCut", JSON.stringify({ version: 2, value })),
       ).toBeUndefined();
     },
   );
+
+  test("a positional cut names the facing revision when reopened", () => {
+    const saved = readMarker(
+      { ...CUT, piece: "after" },
+      '<w:ins w:id="6" w:author="A"><w:r><w:t>x</w:t></w:r></w:ins>',
+    );
+    expect(saved.at(0)).toEqual({
+      type: "bookmarkEnd",
+      id: 1,
+      keptCut: { ...CUT, holders: { after: 6 } },
+    });
+  });
 
   test("a bookmark inside a link is read as one outside it", () => {
     const inLink: Paragraph = {
@@ -204,7 +228,7 @@ const tracked = (): Document =>
     {
       type: "bookmarkEnd",
       id: 1,
-      keptCut: { keptFrom: KEPT_FROM, piece: "after" },
+      keptCut: { keptFrom: KEPT_FROM, holders: { after: 6 } },
     },
     {
       type: "insertion",
@@ -311,10 +335,13 @@ describe("a review saved midway", () => {
     async (session) => {
       const zip = await ZipArchive.read(await createDocx(tracked()));
       const xml = (await zip.entry("word/document.xml")?.text()) ?? "";
-      const cut = { keptFrom: KEPT_FROM, piece: "after" };
+      const cut = { keptFrom: KEPT_FROM, holders: { after: 6 } };
       const encoded = (value: object) =>
         escapeXmlAttribute(JSON.stringify({ version: 2, value }));
-      const older = xml.replace(encoded(cut), encoded({ depth: 2, ...cut }));
+      const older = xml.replace(
+        encoded(cut),
+        encoded({ depth: 2, keptFrom: KEPT_FROM, piece: "after" }),
+      );
       expect(older).not.toBe(xml);
       zip.set("word/document.xml", older);
       const file = (await zip.generate({ compression: "store" })).buffer;
@@ -406,7 +433,7 @@ describe("a version 1 change naming its kept markers", () => {
     expect(numbered.content.at(-2)).toEqual({
       type: "bookmarkEnd",
       id: 1,
-      keptCut: { keptFrom: KEPT_FROM, piece: "after" },
+      keptCut: { keptFrom: KEPT_FROM, holders: { after: 3 } },
     });
   });
 
@@ -414,7 +441,7 @@ describe("a version 1 change naming its kept markers", () => {
     expect(read(1).content.at(0)).toEqual({
       type: "bookmarkEnd",
       id: 1,
-      keptCut: { keptFrom: KEPT_FROM, piece: "after" },
+      keptCut: { keptFrom: KEPT_FROM, holders: { after: 3 } },
     });
     // The model holds the joins without what version 1 said of the markers.
     expect(read(1).content.at(1)).toMatchObject({

@@ -27,6 +27,9 @@ import { TextFormatting } from '@stll/docx-core/model';
 import { XmlResourceLimits } from '@stll/docx-core/xml/limits';
 
 // @public
+export const analyzeDocxBlocks: (docx: Uint8Array) => Promise<Result<DocxBlockManifest, TemplatePlanError>>;
+
+// @public
 export const applyDocxXmlPatchProposal: (input: ApplyDocxXmlPatchProposalArgs) => Promise<FolioDocxXmlPatchApplication>;
 
 // @public (undocumented)
@@ -57,6 +60,28 @@ export type ApplyFolioAIEditsToBufferResult = FolioAIEditApplyResult & {
 
 // @public
 export const applyFolioVersionDiffPrivacy: (diff: FolioVersionDiff, options: FolioVersionDiffPrivacyOptions) => FolioVersionDiff;
+
+// @public
+export const applyTemplatePlan: (input: ApplyTemplatePlanArgs) => Promise<Result<ApplyTemplatePlanResult, TemplatePlanError>>;
+
+// @public (undocumented)
+export type ApplyTemplatePlanArgs = {
+    source: Uint8Array;
+    template: Uint8Array;
+    plan: TemplatePlan;
+    options?: ApplyTemplatePlanOptions;
+};
+
+// @public (undocumented)
+export type ApplyTemplatePlanOptions = {
+    fillerStrings?: readonly string[];
+};
+
+// @public (undocumented)
+export type ApplyTemplatePlanResult = {
+    docx: Uint8Array;
+    report: TemplatePlanReport;
+};
 
 // @public (undocumented)
 export const assertSupportedFolioDocumentOperationVersion: (value: unknown) => typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
@@ -259,7 +284,57 @@ export type DocxArchiveOptions = {
 };
 
 // @public
+export type DocxBlock = {
+    id: string;
+    index: number;
+    kind: "paragraph" | "table";
+    text: string;
+    label: string | null;
+    numbering: DocxBlockNumbering | null;
+    styleId: string | null;
+    styleName: string | null;
+    outlineLevel: number | null;
+    sectionIndex: number;
+    hash: string;
+    paraId?: string;
+    inlineObjects: number;
+    cells?: DocxTableCell[];
+    nested?: DocxBlock[];
+};
+
+// @public (undocumented)
+export type DocxBlockManifest = {
+    sha256: string;
+    blocks: DocxBlock[];
+    footnotes: DocxNote[];
+    endnotes: DocxNote[];
+    comments: number;
+    trackedChanges: number;
+    warnings: string[];
+};
+
+// @public (undocumented)
+export type DocxBlockNumbering = {
+    numId: number;
+    ilvl: number;
+    abstractNumId: number;
+};
+
+// @public (undocumented)
+export type DocxNote = {
+    id: string;
+    text: string;
+};
+
+// @public
 export type DocxParagraphSource = "header" | "body" | "footer";
+
+// @public (undocumented)
+export type DocxTableCell = {
+    row: number;
+    col: number;
+    blockIds: string[];
+};
 
 // @public
 export type DocxTableRowKind = "cells" | "syntheticHeader" | "delimiter";
@@ -272,6 +347,102 @@ export type DocxTableRowPosition = {
 } | {
     table: number;
     kind: "syntheticHeader" | "delimiter";
+};
+
+// @public (undocumented)
+export type DocxTemplateBookmark = {
+    name: string;
+    id: string;
+    part: string;
+};
+
+// @public (undocumented)
+export type DocxTemplateField = {
+    part: string;
+    instruction: string;
+    kind: string;
+    result: string;
+    blockId?: string;
+    endBlockId?: string;
+};
+
+// @public (undocumented)
+export type DocxTemplateInspection = DocxBlockManifest & {
+    styles: DocxTemplateStyle[];
+    numbering: DocxTemplateNumbering;
+    fields: DocxTemplateField[];
+    sections: DocxTemplateSection[];
+    bookmarks: DocxTemplateBookmark[];
+};
+
+// @public (undocumented)
+export type DocxTemplateNumbering = {
+    abstractNums: {
+        abstractNumId: number;
+        levels: DocxTemplateNumberingLevel[];
+    }[];
+    nums: {
+        numId: number;
+        abstractNumId: number;
+        overrides: {
+            ilvl: number;
+            startOverride: number | null;
+        }[];
+    }[];
+};
+
+// @public (undocumented)
+export type DocxTemplateNumberingLevel = {
+    ilvl: number;
+    numFmt: string;
+    lvlText: string;
+    start: number;
+    suff: "tab" | "space" | "nothing";
+    pStyle: string | null;
+    indent: {
+        left: number | null;
+        hanging: number | null;
+        firstLine: number | null;
+    };
+};
+
+// @public (undocumented)
+export type DocxTemplateSection = {
+    index: number;
+    orientation: "portrait" | "landscape";
+    size: {
+        width: number | null;
+        height: number | null;
+    };
+    margins: {
+        top: number | null;
+        right: number | null;
+        bottom: number | null;
+        left: number | null;
+    };
+    headers: {
+        type: string;
+        part: string | null;
+    }[];
+    footers: {
+        type: string;
+        part: string | null;
+    }[];
+};
+
+// @public (undocumented)
+export type DocxTemplateStyle = {
+    styleId: string;
+    name: string | null;
+    type: "paragraph" | "character" | "numbering" | "table";
+    basedOn: string | null;
+    numPr: {
+        numId: number;
+        ilvl: number;
+    } | null;
+    outlineLvl: number | null;
+    alignment: string | null;
+    isDefault: boolean;
 };
 
 // @public
@@ -1784,6 +1955,9 @@ export type InspectDocxPackageOptions = {
     readonly limits?: FolioDocxPackageInspectionLimits;
 };
 
+// @public
+export const inspectDocxTemplate: (docx: Uint8Array) => Promise<Result<DocxTemplateInspection, TemplatePlanError>>;
+
 // @public (undocumented)
 export class InvalidBilingualDocumentOptionsError extends InvalidBilingualDocumentOptionsErrorBase<{
     message: string;
@@ -1934,6 +2108,238 @@ export type TableCellSpec = string | {
     vMerge?: "restart" | "continue";
 };
 
+// @public
+export const TEMPLATE_PLAN_ERROR_CODES: readonly ["archive-unreadable", "part-missing", "xml-unreadable", "plan-invalid", "sha-mismatch", "unknown-block", "hash-mismatch", "block-unplaced", "block-placed-twice", "strip-label-mismatch", "merge-invalid", "reference-span-invalid", "reference-target-unplaced", "highlight-span-invalid", "numbering-unknown", "style-unknown", "tracked-changes", "unsupported-content", "verification-failed"];
+
+// @public
+export type TemplatePlan = {
+    version: 1;
+    sourceSha256: string;
+    templateSha256: string;
+    body: TemplatePlanItem[];
+    omit: {
+        blockId: string;
+        reason: TemplatePlanOmitReason;
+    }[];
+    numberingPatches?: TemplatePlanNumberingPatch[];
+    references?: TemplatePlanReference[];
+    highlights?: TemplatePlanHighlight[];
+    fields?: {
+        freezeKinds?: string[];
+        updateOnOpen?: boolean;
+    };
+};
+
+// @public (undocumented)
+export type TemplatePlanBlockResult = {
+    blockId: string;
+    outputBlockId: string | null;
+    disposition: "placed" | "merged" | "slot" | "nested" | "omitted";
+    text: "identical" | "mismatch" | "omitted";
+    emphasis: "identical" | "mismatch" | "omitted";
+    strippedPrefix?: string;
+    sourceLabel: string | null;
+    outputLabel: string | null;
+    omitReason?: TemplatePlanOmitReason;
+};
+
+// @public
+export class TemplatePlanError extends TemplatePlanErrorBase<{
+    message: string;
+    code: TemplatePlanErrorCode;
+    blockId?: string;
+    part?: string;
+    report?: TemplatePlanReport;
+    cause?: unknown;
+}> {}
+
+// @public (undocumented)
+export type TemplatePlanErrorCode = (typeof TEMPLATE_PLAN_ERROR_CODES)[number];
+
+// @public (undocumented)
+export type TemplatePlanFieldLeftover = {
+    part: string;
+    kind: string;
+    count: number;
+};
+
+// @public (undocumented)
+export type TemplatePlanHighlight = {
+    blockId: string;
+    start: number;
+    end: number;
+    color: string;
+    note?: string;
+};
+
+// @public (undocumented)
+export type TemplatePlanIssue = {
+    code: "text-mismatch" | "emphasis-mismatch" | "note-mismatch" | "block-missing" | "reference-broken" | "bookmark-dangling" | "field-unbalanced" | "relationship-dangling" | "note-dangling" | "numbering-dangling" | "style-dangling" | "style-mismatch" | "numbering-mismatch" | "template-mismatch" | "prompting-field-left" | "field-not-frozen" | "update-fields-mismatch" | "conformance";
+    message: string;
+    blockId?: string;
+    part?: string;
+};
+
+// @public (undocumented)
+export type TemplatePlanItem = {
+    kind: "template";
+    templateBlockIds: string[];
+} | TemplatePlanSourceItem | {
+    kind: "slot";
+    templateBlockId: string;
+    sourceBlockIds: string[];
+};
+
+// @public (undocumented)
+export type TemplatePlanMerge = "lineBreak" | "space" | "none";
+
+// @public (undocumented)
+export type TemplatePlanNestedParagraph = {
+    blockId: string;
+    styleId?: string;
+    numbering?: TemplatePlanNumbering | null;
+    stripLabel?: string;
+};
+
+// @public (undocumented)
+export type TemplatePlanNoteCounts = {
+    source: number;
+    expected: number;
+    output: number;
+    identical: number;
+    mismatch: number;
+};
+
+// @public
+export type TemplatePlanNumbering = {
+    numId: number | "new";
+    ilvl: number;
+    restartFrom?: number;
+    baseNumId?: number;
+    group?: string;
+};
+
+// @public (undocumented)
+export type TemplatePlanNumberingPatch = {
+    abstractNumId: number;
+    ilvl: number;
+    numFmt?: string;
+    lvlText?: string;
+    start?: number;
+    suff?: "tab" | "space" | "nothing";
+    indent?: {
+        left?: number;
+        hanging?: number;
+        firstLine?: number;
+    };
+};
+
+// @public (undocumented)
+export type TemplatePlanOmitReason = "empty" | "sourceToc" | "pageArtifact" | "duplicateLabel";
+
+// @public (undocumented)
+export type TemplatePlanReference = {
+    blockId: string;
+    start: number;
+    end: number;
+    targetBlockId: string;
+    instruction: string;
+    expectedText: string;
+};
+
+// @public (undocumented)
+export type TemplatePlanReferenceResult = {
+    blockId: string;
+    targetBlockId: string;
+    bookmark: string;
+    instruction: string;
+    expectedText: string;
+    cachedText: string | null;
+    replacedText: string;
+    predictedText: string | null;
+    status: "ok" | "missing-field" | "missing-bookmark" | "cache-mismatch";
+};
+
+// @public (undocumented)
+export type TemplatePlanReport = {
+    version: 1;
+    ok: boolean;
+    sourceSha256: string;
+    templateSha256: string;
+    outputSha256: string;
+    blocks: TemplatePlanBlockResult[];
+    counts: {
+        sourceBlocks: number;
+        placed: number;
+        merged: number;
+        omitted: number;
+        templateBlocksKept: number;
+        textIdentical: number;
+        textMismatch: number;
+        emphasisMismatch: number;
+        labelChanged: number;
+        labelLost: number;
+    };
+    footnotes: TemplatePlanNoteCounts;
+    endnotes: TemplatePlanNoteCounts;
+    emphasisSpans: TemplatePlanSpanCounts;
+    highlightSpans: TemplatePlanSpanCounts;
+    references: {
+        planned: number;
+        ok: number;
+        textChanging: number;
+        predictionMismatch: number;
+        results: TemplatePlanReferenceResult[];
+    };
+    leftovers: {
+        fields: TemplatePlanFieldLeftover[];
+        frozenFields: TemplatePlanFieldLeftover[];
+        filler: {
+            text: string;
+            part: string;
+            count: number;
+        }[];
+        templateBlockIds: string[];
+    };
+    dropped: {
+        comments: number;
+        sourceFields: {
+            kind: string;
+            count: number;
+        }[];
+        internalHyperlinks: number;
+        sectionBreaks: number;
+    };
+    updateFields: "set" | "cleared" | "unchanged";
+    conformance: {
+        status: "conformant" | "invalid" | "indeterminate";
+        templateStatus: "conformant" | "invalid" | "indeterminate";
+        issues: FolioDocxConformanceIssue[];
+    };
+    issues: TemplatePlanIssue[];
+    warnings: string[];
+};
+
+// @public (undocumented)
+export type TemplatePlanSourceItem = {
+    kind: "source";
+    blockId: string;
+    hash: string;
+    styleId?: string;
+    numbering?: TemplatePlanNumbering | null;
+    stripLabel?: string;
+    mergeNext?: TemplatePlanMerge;
+    cellStyleId?: string;
+    nested?: TemplatePlanNestedParagraph[];
+};
+
+// @public (undocumented)
+export type TemplatePlanSpanCounts = {
+    source: number;
+    expected: number;
+    output: number;
+};
+
 // @public (undocumented)
 export class UnsupportedFolioDocumentOperationVersionError extends UnsupportedFolioDocumentOperationVersionErrorBase<{
     message: string;
@@ -1958,6 +2364,18 @@ export const validateDocxConformance: (bytes: ArrayBuffer | Uint8Array, options?
 // @public (undocumented)
 export type ValidateDocxConformanceOptions = {
     readonly archive?: DocxArchiveOptions;
+};
+
+// @public
+export const verifyTemplatePlanOutput: (input: VerifyTemplatePlanOutputArgs) => Promise<Result<TemplatePlanReport, TemplatePlanError>>;
+
+// @public (undocumented)
+export type VerifyTemplatePlanOutputArgs = {
+    source: Uint8Array;
+    template: Uint8Array;
+    output: Uint8Array;
+    plan: TemplatePlan;
+    options?: ApplyTemplatePlanOptions;
 };
 
 // (No @packageDocumentation comment for this package)

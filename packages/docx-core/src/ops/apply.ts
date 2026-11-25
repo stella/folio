@@ -98,6 +98,7 @@ import {
   type DocumentEditEffects,
 } from "./edits";
 import { equalForStaleness, structurallyEqual } from "./equality";
+import { firstSurvivorFields, takenOverMarkReleases } from "./firstSurvivor";
 import { resolveGap, type ZeroWidthDefault } from "./gaps";
 import { freshenIdentities, rebindRetainedIdentities } from "./identity";
 import {
@@ -1954,7 +1955,7 @@ const trackSplit = ({
     resolutionJoin,
     // A first half that keeps the paragraph's identity is the paragraph a
     // rejection gives back.
-    ...(madeSecond ? { survivor: "first" as const } : {}),
+    ...(madeSecond ? firstSurvivorFields(paragraph.pPrMark) : {}),
   };
   if (!sameParagraphProperties(made.formatting, paragraph.formatting)) {
     const conflict = madeSecond
@@ -3623,7 +3624,7 @@ const applyAddressedOp = ({
   if (applied.isErr()) {
     return Result.err(applied.error);
   }
-  const edit = applied.value;
+  let edit = applied.value;
   const beforeSections = document.package.document.sections;
   const afterSections = edit.document.package.document.sections;
   const structural =
@@ -3724,6 +3725,26 @@ const applyAddressedOp = ({
           },
         ],
       };
+  }
+  const releases =
+    op.type === DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW ||
+    op.type === DOCUMENT_OP_TYPES.RESOLVE_REVISION ||
+    edit.touched.removed.length === 0
+      ? []
+      : takenOverMarkReleases({
+          before: document,
+          after: edit.document,
+          touched: edit.touched,
+          story: addressedStory(op),
+        });
+  if (releases.length > 0) {
+    const released = applyDocumentOpsForPurpose({
+      document: edit.document,
+      ops: releases,
+      purpose,
+    });
+    if (released.isErr()) return released;
+    edit = combineEditEffects(released.value.document, [edit, released.value]);
   }
   return Result.ok({
     ...edit,

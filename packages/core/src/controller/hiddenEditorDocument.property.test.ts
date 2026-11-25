@@ -1,12 +1,7 @@
 /**
- * The hidden editor's `getDocument` builds the legacy session's document
- * from the editor state over the model: the parts no edit reaches (section
- * properties, styles, theme, fonts, the original package) are the model's
- * own, so the document is handed out read-only and a writer copies it first.
- * Each test deep-freezes a model, edits the body, takes the document, and
- * checks that taking it wrote nothing, that it reads as the document of the
- * same model unfrozen, and that the copy a writer takes of it shares no
- * object with the model.
+ * Before the canonical session exists, the view only paints the loaded model.
+ * The API returns that model even if the view holds different text. Writers
+ * copy the model before changing it.
  */
 
 import { panic } from "better-result";
@@ -66,7 +61,7 @@ const typed = (state: EditorState, index: number, text: string) => {
 const apiOver = (model: ReadonlyDocument, state: EditorState) => {
   const view = { state };
   return createHiddenEditorApi({
-    // SAFETY: getDocument reads only the view's state.
+    // SAFETY: This fixture supplies only the view state to distinguish it from the loaded model.
     // eslint-disable-next-line typescript/no-unsafe-type-assertion
     getView: () => view as EditorView,
     getDocumentContext: () => model,
@@ -76,8 +71,8 @@ const apiOver = (model: ReadonlyDocument, state: EditorState) => {
   });
 };
 
-/** The document `getDocument` builds over `model` after the edit. */
-const documentAfterEdit = (
+/** Read the loaded model with a view that may hold different text. */
+const readLoadedDocument = (
   model: ReadonlyDocument,
   edit: { index: number; text: string } | null,
 ): ReadonlyDocument => {
@@ -98,13 +93,9 @@ const expectDocumentContract = (
   edit: { index: number; text: string } | null,
 ): void => {
   const model = deepFreeze(cloneDocumentWithParagraphPropertySources(source));
-  const frozen = documentAfterEdit(model, edit);
-  const plain = documentAfterEdit(
-    cloneDocumentWithParagraphPropertySources(source),
-    edit,
-  );
-  expect(frozen).toEqual(plain);
-  const owned = cloneDocumentWithParagraphPropertySources(frozen);
+  const loaded = readLoadedDocument(model, edit);
+  expect(loaded).toBe(model);
+  const owned = cloneDocumentWithParagraphPropertySources(loaded);
   expect(sharedObjects(model, owned)).toEqual([]);
   expect(() => {
     owned.package.document.content.length = 0;
@@ -116,25 +107,8 @@ const expectDocumentContract = (
   }).not.toThrow();
 };
 
-describe("the hidden editor's document in the legacy session", () => {
-  test("is built over the model: it holds the model's own section properties", () => {
-    const model = deepFreeze(
-      cloneDocumentWithParagraphPropertySources(
-        createEmptyDocument({ initialText: "Body" }),
-      ),
-    );
-    const handed = documentAfterEdit(model, { index: 0, text: "edited " });
-    const sections =
-      model.package.document.finalSectionProperties ??
-      panic("Expected section properties");
-    // What no edit touched is the model's own: read it, never write it.
-    expect(handed.package.document.finalSectionProperties).toBe(sections);
-    expect(JSON.stringify(handed.package.document.content)).toContain(
-      "edited ",
-    );
-  });
-
-  test("over every document shape, edited or not, reads a frozen model and a writer's copy of it shares nothing with the model", async () => {
+describe("the hidden editor's document before a canonical session", () => {
+  test("returns the loaded model across document shapes and view edits", async () => {
     const shapes = await loadShapes();
     await assertProperty(
       fc.property(
@@ -150,7 +124,7 @@ describe("the hidden editor's document in the legacy session", () => {
         },
       ),
       {
-        id: "the hidden editor's document never writes the model",
+        id: "the hidden editor returns the loaded model before activation",
         numRuns: 40,
       },
     );
@@ -170,7 +144,7 @@ describe("the hidden editor's document in a canonical session", () => {
       manager: singletonManager,
     });
     const api = createHiddenEditorApi({
-      // SAFETY: getDocument reads only the view's state.
+      // SAFETY: This fixture supplies only the view state to distinguish it from the loaded model.
       // eslint-disable-next-line typescript/no-unsafe-type-assertion
       getView: () => ({ state }) as EditorView,
       getDocumentContext: () => session,

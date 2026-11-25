@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { EditorState, type Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
 
-import { applyFolioAIEditOperations } from "../../ai-edits/apply";
+import { applyFolioAIEditOperations } from "../../__tests__/reference-editor/apply";
 import { createFolioAIEditSnapshot } from "../../ai-edits/snapshot";
 import { schema } from "../schema";
 import { rejectAIEditRevision } from "./comments";

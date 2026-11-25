@@ -496,6 +496,7 @@ test("the paragraph a rejected mark keeps has its own private attribute", () => 
     info: { id: 3, author: "Reviewer" },
     resolutionJoin: 0,
     survivor: "first",
+    takenOverMark: 7,
   } as const;
   const written = serializeParagraphMarkResolutionJoin(mark);
   // Its own attribute beside the join depth, never a field inside it.
@@ -507,10 +508,18 @@ test("the paragraph a rejected mark keeps has its own private attribute", () => 
   expect(parseParagraphMarkResolutionJoin(node)).toEqual({
     resolutionJoin: 0,
     survivor: "first",
+    takenOverMark: 7,
+  });
+  const legacy = element(
+    `<r xmlns:history="${FOLIO_REVIEW_HISTORY_NAMESPACE}" history:rejectionSurvivor="{&quot;version&quot;:1,&quot;value&quot;:&quot;first&quot;}"/>`,
+  );
+  expect(parseParagraphMarkResolutionJoin(legacy)).toEqual({
+    survivor: "first",
   });
   // An unreadable value drops only the marker, and says so.
   for (const encoded of [
     JSON.stringify({ version: 1, value: "second" }),
+    JSON.stringify({ version: 1, value: { takenOverMark: -1 } }),
     JSON.stringify({ version: 3, value: "first" }),
     "first",
   ]) {

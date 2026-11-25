@@ -13,7 +13,6 @@ import { FolioDocxReviewer } from "../ai-edits/headless";
 import { createFolioAIEditSnapshotWithStyleResolver } from "../ai-edits/snapshot";
 import type { FolioAIEditSnapshot } from "../ai-edits/types";
 import {
-  applyFolioDocumentOperations,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperation,
   type FolioDocumentOperationResult,
@@ -25,7 +24,7 @@ import { resolveAllChangesInHeadlessState } from "../prosemirror/commands/commen
 import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { ensureBaseDirectionInState } from "../prosemirror/extensions/features/AutoBidiDetectionExtension";
-import { ensureParaIdsInDoc } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
+import { ensureParaIdsInDoc } from "../prosemirror/paraIds";
 import { createDocumentNumberingPlugin } from "../prosemirror/plugins/documentNumbering";
 import { createDocumentStylesPlugin } from "../prosemirror/plugins/documentStyles";
 import { getDocumentStyleResolver } from "../prosemirror/plugins/documentStyleState";
@@ -37,6 +36,8 @@ import type {
   ParagraphContent,
   TextFormatting,
 } from "../types/document";
+import { createReferenceEditorRuntime } from "./createReferenceEditorKit";
+import { applyFolioDocumentOperations } from "./reference-editor/document-operations-apply";
 
 export const textRun = (
   text: string,
@@ -240,7 +241,9 @@ export const reviewerSessionState = async (
       doc: ensureParaIdsInDoc(toProseDoc(document)),
       plugins: [
         createDocumentNumberingPlugin(document.package.numbering),
-        ...pluginsForHeadlessRevisionResolution(singletonManager.getPlugins()),
+        ...pluginsForHeadlessRevisionResolution(
+          createReferenceEditorRuntime(singletonManager.getSchema()).plugins,
+        ),
         createDocumentStylesPlugin(document.package.styles),
       ],
     }),

@@ -21,11 +21,11 @@ import {
   type Transaction,
 } from "prosemirror-state";
 
-import type { SectionProperties } from "../types/document";
 import {
   getTrackedSectionEndpointRemoval,
   ParagraphChangeTrackerExtension,
-} from "./extensions/features/ParagraphChangeTrackerExtension";
+} from "../__tests__/reference-editor/ParagraphChangeTrackerExtension";
+import type { SectionProperties } from "../types/document";
 import { sectionPropertiesOf } from "./sectionCarrier";
 import { sectionMarkEditsOf } from "./sectionMarkEdits";
 

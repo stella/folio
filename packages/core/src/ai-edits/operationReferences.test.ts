@@ -12,8 +12,8 @@
 import { describe, expect, test } from "bun:test";
 import { EditorState, type Transaction } from "prosemirror-state";
 
+import { applyFolioDocumentOperations } from "../__tests__/reference-editor/document-operations-apply";
 import {
-  applyFolioDocumentOperations,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   FOLIO_DOCUMENT_OPERATION_MODES,
   type FolioDocumentOperation,

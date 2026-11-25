@@ -1,0 +1,2952 @@
+{
+  "packages/agents/src/bridges/editor-ref.test.ts": {
+    "TS2322": 1
+  },
+  "packages/agents/src/execute.test.ts": {
+    "TS2322": 1,
+    "TS2339": 2,
+    "TS2353": 1,
+    "TS2375": 1,
+    "TS2379": 2,
+    "TS2741": 1,
+    "TS2769": 2
+  },
+  "packages/agents/src/operation-conformance.test.ts": {
+    "TS2345": 1,
+    "TS2353": 1,
+    "TS2769": 8
+  },
+  "packages/agents/src/operation-references.test.ts": {
+    "TS2740": 1
+  },
+  "packages/agents/src/operation-style-references.test.ts": {
+    "TS2740": 1
+  },
+  "packages/agents/src/parse.test.ts": {
+    "TS2769": 2
+  },
+  "packages/agents/src/providers.test.ts": {
+    "TS2769": 6
+  },
+  "packages/agents/src/reader-consistency.test.ts": {
+    "TS2322": 3,
+    "TS2379": 1
+  },
+  "packages/agents/tsdown.config.ts": {
+    "TS2769": 2,
+    "TS5097": 1
+  },
+  "packages/cli/src/execute-write.test.ts": {
+    "TS2769": 1
+  },
+  "packages/cli/src/journal.test.ts": {
+    "TS2322": 2
+  },
+  "packages/cli/src/mcp.test.ts": {
+    "TS2769": 2
+  },
+  "packages/cli/src/package-parts.test.ts": {
+    "TS2345": 1
+  },
+  "packages/cli/src/package-validity.test.ts": {
+    "TS2769": 2
+  },
+  "packages/cli/src/zipEntryNames.property.test.ts": {
+    "TS2740": 3
+  },
+  "packages/cli/tsdown.config.ts": {
+    "TS2769": 2,
+    "TS5097": 2
+  },
+  "packages/core/scripts/benchmark-resolve-all.ts": {
+    "TS18048": 2,
+    "TS4111": 2
+  },
+  "packages/core/scripts/differential/projection.ts": {
+    "TS2322": 1
+  },
+  "packages/core/scripts/gen-fixture-header-vml-emf.mjs": {
+    "TS2532": 1,
+    "TS7006": 6,
+    "TS7031": 3
+  },
+  "packages/core/scripts/paint-equivalence.ts": {
+    "TS18047": 1,
+    "TS2322": 1
+  },
+  "packages/core/scripts/profile-editor.ts": {
+    "TS18046": 1
+  },
+  "packages/core/src/__tests__/automaticTextSpacing.test.ts": {
+    "TS2741": 3,
+    "TS2769": 1
+  },
+  "packages/core/src/__tests__/canonicalCellSelectionCommands.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/__tests__/canonicalEditorHarness.test.ts": {
+    "TS2339": 1,
+    "TS2412": 2,
+    "TS2740": 1,
+    "TS2769": 1
+  },
+  "packages/core/src/__tests__/editorCommandConformance.ts": {
+    "TS2556": 8
+  },
+  "packages/core/src/__tests__/findReplaceThroughEditor.test.ts": {
+    "TS2375": 3
+  },
+  "packages/core/src/__tests__/footnoteOverflow.integration.test.ts": {
+    "TS2741": 1
+  },
+  "packages/core/src/__tests__/headerFooterList.integration.test.ts": {
+    "TS2379": 2,
+    "TS2769": 1
+  },
+  "packages/core/src/__tests__/layout-pipeline.integration.test.ts": {
+    "TS18048": 17,
+    "TS2322": 4,
+    "TS2339": 4,
+    "TS2345": 6,
+    "TS2375": 2,
+    "TS2532": 95
+  },
+  "packages/core/src/__tests__/noteReferenceReview.test.ts": {
+    "TS2375": 1
+  },
+  "packages/core/src/__tests__/operationBatchDocuments.ts": {
+    "TS2341": 1
+  },
+  "packages/core/src/__tests__/suggestedClosedPasteBreak.test.ts": {
+    "TS6133": 1
+  },
+  "packages/core/src/__tests__/suggestedInputOverPendingRevisions.test.ts": {
+    "TS2339": 1
+  },
+  "packages/core/src/__tests__/tableCellPlacementGeometry.integration.test.ts": {
+    "TS2741": 1
+  },
+  "packages/core/src/__tests__/typingOverComment.property.test.ts": {
+    "TS2769": 2
+  },
+  "packages/core/src/ai-edits/acceptedBlockNeighbours.test.ts": {
+    "TS2339": 1,
+    "TS2740": 2
+  },
+  "packages/core/src/ai-edits/addedBreakDeletion.property.test.ts": {
+    "TS2322": 2
+  },
+  "packages/core/src/ai-edits/aiEdits.test.ts": {
+    "TS18048": 13,
+    "TS2322": 1,
+    "TS2345": 1,
+    "TS2532": 3,
+    "TS2769": 4,
+    "TS4111": 1
+  },
+  "packages/core/src/ai-edits/batchOverlap.test.ts": {
+    "TS5097": 1
+  },
+  "packages/core/src/ai-edits/bodySectionRevisions.test.ts": {
+    "TS2353": 1
+  },
+  "packages/core/src/ai-edits/canonicalBatchClaims.test.ts": {
+    "TS2341": 1,
+    "TS2345": 1
+  },
+  "packages/core/src/ai-edits/canonicalDeletionRunToStart.test.ts": {
+    "TS2339": 3
+  },
+  "packages/core/src/ai-edits/canonicalInsertionGapOrder.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/ai-edits/characterBoundaries.test.ts": {
+    "TS2341": 1
+  },
+  "packages/core/src/ai-edits/comment-lifecycle.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/ai-edits/commentedBlockDeletion.test.ts": {
+    "TS2339": 1,
+    "TS2740": 1
+  },
+  "packages/core/src/ai-edits/commentIdsPerDocument.test.ts": {
+    "TS2741": 1
+  },
+  "packages/core/src/ai-edits/commentRangeLifecycle.test.ts": {
+    "TS2322": 3,
+    "TS2353": 1
+  },
+  "packages/core/src/ai-edits/commentReferenceInsideRange.test.ts": {
+    "TS2322": 1,
+    "TS2345": 1,
+    "TS2375": 2,
+    "TS2554": 1
+  },
+  "packages/core/src/ai-edits/comparison-header-footer.test.ts": {
+    "TS2322": 1,
+    "TS2375": 2,
+    "TS2412": 1
+  },
+  "packages/core/src/ai-edits/contentControlLockResolution.property.test.ts": {
+    "TS2740": 3
+  },
+  "packages/core/src/ai-edits/deleteBlockPendingJoins.test.ts": {
+    "TS2375": 1
+  },
+  "packages/core/src/ai-edits/deletedParagraphBetweenTables.property.test.ts": {
+    "TS2740": 1
+  },
+  "packages/core/src/ai-edits/directTableEditsBesideReviews.test.ts": {
+    "TS2339": 5
+  },
+  "packages/core/src/ai-edits/directTrackedEquivalence.property.test.ts": {
+    "TS2339": 2,
+    "TS2341": 2,
+    "TS2375": 2,
+    "TS2769": 1
+  },
+  "packages/core/src/ai-edits/editKeepsCommentRanges.test.ts": {
+    "TS2367": 3
+  },
+  "packages/core/src/ai-edits/finalBreakRetractionAfterSave.test.ts": {
+    "TS2345": 1
+  },
+  "packages/core/src/ai-edits/finalDeletionGap.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/ai-edits/foreignInsertedParagraphDeletion.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/ai-edits/formattingRevisionStretches.property.test.ts": {
+    "TS2345": 1
+  },
+  "packages/core/src/ai-edits/headless.test.ts": {
+    "TS18048": 1,
+    "TS2740": 5,
+    "TS2769": 2,
+    "TS4104": 69
+  },
+  "packages/core/src/ai-edits/headlessCanonicalComparisonStaging.test.ts": {
+    "TS2339": 1
+  },
+  "packages/core/src/ai-edits/headlessCanonicalListRendering.property.test.ts": {
+    "TS2322": 4
+  },
+  "packages/core/src/ai-edits/headlessCanonicalSave.property.test.ts": {
+    "TS2769": 2
+  },
+  "packages/core/src/ai-edits/headlessCanonicalStories.property.test.ts": {
+    "TS4104": 1
+  },
+  "packages/core/src/ai-edits/headlessCanonicalStoryLocks.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/ai-edits/headlessCanonicalSuggestions.property.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/ai-edits/headlessDirectJoinSurvivor.property.test.ts": {
+    "TS2538": 1,
+    "TS4104": 1
+  },
+  "packages/core/src/ai-edits/headlessFork.test.ts": {
+    "TS2379": 1
+  },
+  "packages/core/src/ai-edits/headlessReview.property.test.ts": {
+    "TS4104": 5
+  },
+  "packages/core/src/ai-edits/inlineObjectCarriers.test.ts": {
+    "TS2345": 2
+  },
+  "packages/core/src/ai-edits/insertAfterRemovedFollowers.test.ts": {
+    "TS2339": 1,
+    "TS2345": 1,
+    "TS2741": 1
+  },
+  "packages/core/src/ai-edits/insertBeforePendingJoinEveryMode.test.ts": {
+    "TS2339": 1
+  },
+  "packages/core/src/ai-edits/insertBeforeTrailingControl.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/ai-edits/insertBesideFinalRunCarrier.test.ts": {
+    "TS2339": 1,
+    "TS2345": 1,
+    "TS2741": 1
+  },
+  "packages/core/src/ai-edits/insertBesidePendingJoin.test.ts": {
+    "TS2322": 1,
+    "TS2339": 3,
+    "TS2344": 1,
+    "TS2345": 1,
+    "TS2353": 1,
+    "TS2375": 1,
+    "TS2379": 1,
+    "TS2740": 1,
+    "TS2741": 27
+  },
+  "packages/core/src/ai-edits/insertedMarkBeforeOpaque.test.ts": {
+    "TS2322": 6,
+    "TS2345": 3
+  },
+  "packages/core/src/ai-edits/insertFormattingScope.test.ts": {
+    "TS2322": 6,
+    "TS2740": 1
+  },
+  "packages/core/src/ai-edits/insertionAfterSectionBreak.test.ts": {
+    "TS2345": 1,
+    "TS2769": 2
+  },
+  "packages/core/src/ai-edits/insertionBetweenCoveredParagraphs.test.ts": {
+    "TS2345": 1
+  },
+  "packages/core/src/ai-edits/insertionGapOrder.property.test.ts": {
+    "TS2339": 1,
+    "TS2740": 1,
+    "TS2741": 2
+  },
+  "packages/core/src/ai-edits/insertionsBesideDeletedParagraph.test.ts": {
+    "TS2740": 1,
+    "TS2741": 2
+  },
+  "packages/core/src/ai-edits/lastParagraphFormatAndDelete.test.ts": {
+    "TS2339": 1
+  },
+  "packages/core/src/ai-edits/listIndentationProvenance.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/ai-edits/listSnapshotPaths.property.test.ts": {
+    "TS2314": 1
+  },
+  "packages/core/src/ai-edits/liveBlockFields.test.ts": {
+    "TS2341": 2,
+    "TS2740": 1
+  },
+  "packages/core/src/ai-edits/liveListLabels.test.ts": {
+    "TS2322": 2,
+    "TS2740": 1
+  },
+  "packages/core/src/ai-edits/markdownInsertion.test.ts": {
+    "TS2339": 2
+  },
+  "packages/core/src/ai-edits/mergeSeparatorAcrossDeletions.property.test.ts": {
+    "TS2740": 1
+  },
+  "packages/core/src/ai-edits/minimalDirectReplacement.property.test.ts": {
+    "TS2341": 4,
+    "TS6133": 1
+  },
+  "packages/core/src/ai-edits/missingHeadingStyles.test.ts": {
+    "TS2740": 3
+  },
+  "packages/core/src/ai-edits/multiFormatFieldResult.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/ai-edits/newListNumbering.test.ts": {
+    "TS2740": 2,
+    "TS2741": 8
+  },
+  "packages/core/src/ai-edits/newListPlacement.test.ts": {
+    "TS2339": 2,
+    "TS2345": 1,
+    "TS2769": 1
+  },
+  "packages/core/src/ai-edits/note-reference-text.test.ts": {
+    "TS2339": 1,
+    "TS2769": 1
+  },
+  "packages/core/src/ai-edits/numberedHeadingFormatting.property.test.ts": {
+    "TS2322": 3
+  },
+  "packages/core/src/ai-edits/operationHeadingStyleLookup.test.ts": {
+    "TS2740": 1
+  },
+  "packages/core/src/ai-edits/operationReferences.test.ts": {
+    "TS2322": 6,
+    "TS2740": 2
+  },
+  "packages/core/src/ai-edits/operationSaveability.property.test.ts": {
+    "TS2322": 5,
+    "TS2740": 3
+  },
+  "packages/core/src/ai-edits/operationStyleReferences.test.ts": {
+    "TS2740": 5
+  },
+  "packages/core/src/ai-edits/paragraph-mark.test.ts": {
+    "TS2353": 1
+  },
+  "packages/core/src/ai-edits/partialTableReview.property.test.ts": {
+    "TS2694": 1
+  },
+  "packages/core/src/ai-edits/pending-suggestions.property.test.ts": {
+    "TS18047": 3,
+    "TS2322": 6
+  },
+  "packages/core/src/ai-edits/pendingRunPropertyChange.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/ai-edits/pendingTableChangeReason.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/ai-edits/pendingTrackedBlockEdits.test.ts": {
+    "TS2339": 2,
+    "TS2367": 2
+  },
+  "packages/core/src/ai-edits/preservedBlockMerge.test.ts": {
+    "TS2741": 2
+  },
+  "packages/core/src/ai-edits/read.test.ts": {
+    "TS2345": 2
+  },
+  "packages/core/src/ai-edits/rejectAllAfterAcceptOne.test.ts": {
+    "TS2345": 1,
+    "TS2769": 2
+  },
+  "packages/core/src/ai-edits/rejectedParagraphPropertyIndentation.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/ai-edits/rejectListNumbering.test.ts": {
+    "TS2322": 1,
+    "TS2740": 1
+  },
+  "packages/core/src/ai-edits/removeStyleNumbering.test.ts": {
+    "TS2740": 2
+  },
+  "packages/core/src/ai-edits/resolvedStoryWithoutParaIds.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/ai-edits/retired-comment-receipts.test.ts": {
+    "TS2769": 2
+  },
+  "packages/core/src/ai-edits/retractedInsertionKeepsRestyle.test.ts": {
+    "TS2339": 1,
+    "TS2740": 1
+  },
+  "packages/core/src/ai-edits/revisionEnumeration.test.ts": {
+    "TS2769": 3
+  },
+  "packages/core/src/ai-edits/revisionIdAllocation.test.ts": {
+    "TS2322": 3,
+    "TS2345": 1,
+    "TS2769": 1
+  },
+  "packages/core/src/ai-edits/runPropertyFoldReceipts.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/ai-edits/runPropertyFormatting.test.ts": {
+    "TS18048": 1,
+    "TS2322": 2,
+    "TS2339": 2,
+    "TS2379": 2,
+    "TS2769": 1
+  },
+  "packages/core/src/ai-edits/scoped-reading.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/ai-edits/sectionBreakBeforeBlockDeletion.test.ts": {
+    "TS2769": 2
+  },
+  "packages/core/src/ai-edits/selectiveSectionPropertyRemovalSave.test.ts": {
+    "TS2353": 1
+  },
+  "packages/core/src/ai-edits/snapshot.test.ts": {
+    "TS2322": 1,
+    "TS2344": 1,
+    "TS2741": 3,
+    "TS2769": 7
+  },
+  "packages/core/src/ai-edits/splitAfterPendingMerge.test.ts": {
+    "TS2339": 2,
+    "TS2740": 1,
+    "TS2741": 1
+  },
+  "packages/core/src/ai-edits/splitInsertionReopen.test.ts": {
+    "TS2345": 3
+  },
+  "packages/core/src/ai-edits/storyParagraphRevisionCapacity.property.test.ts": {
+    "TS2339": 1,
+    "TS2769": 1
+  },
+  "packages/core/src/ai-edits/suggestedResolveAll.test.ts": {
+    "TS2740": 1
+  },
+  "packages/core/src/ai-edits/table-row-revision-content.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/ai-edits/table-targets.test.ts": {
+    "TS7030": 1
+  },
+  "packages/core/src/ai-edits/tableOmittedPositions.test.ts": {
+    "TS2769": 2
+  },
+  "packages/core/src/ai-edits/trackedDeletionOfInsertion.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/ai-edits/trackedMergeReferences.test.ts": {
+    "TS2341": 9,
+    "TS2694": 1,
+    "TS2740": 1
+  },
+  "packages/core/src/ai-edits/trackedParagraphRoundTrip.test.ts": {
+    "TS2341": 1
+  },
+  "packages/core/src/ai-edits/trackedResolution.property.test.ts": {
+    "TS2375": 1
+  },
+  "packages/core/src/ai-edits/trackedResolution.test.ts": {
+    "TS2322": 1,
+    "TS2379": 2,
+    "TS2769": 1
+  },
+  "packages/core/src/ai-edits/undefinedReferences.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/canonical/canonicalBatchReviewPropertySources.test.ts": {
+    "TS4104": 2
+  },
+  "packages/core/src/canonical/canonicalBatchWork.test.ts": {
+    "TS2741": 1
+  },
+  "packages/core/src/canonical/canonicalCellSection.test.ts": {
+    "TS2379": 1
+  },
+  "packages/core/src/canonical/canonicalDeletionAfterTable.test.ts": {
+    "TS2345": 1
+  },
+  "packages/core/src/canonical/canonicalDirectDeletionBeforeTable.test.ts": {
+    "TS2740": 1
+  },
+  "packages/core/src/canonical/canonicalInsertedCommentRange.test.ts": {
+    "TS2769": 2
+  },
+  "packages/core/src/canonical/canonicalInsertionAfterSectionEnd.test.ts": {
+    "TS2322": 1,
+    "TS2345": 2
+  },
+  "packages/core/src/canonical/canonicalInsertionCopiesAsItRuns.test.ts": {
+    "TS2339": 11
+  },
+  "packages/core/src/canonical/canonicalInsertionReplayIds.test.ts": {
+    "TS2339": 6
+  },
+  "packages/core/src/canonical/canonicalMergeSeparator.test.ts": {
+    "TS2741": 2
+  },
+  "packages/core/src/canonical/canonicalRevisionLocks.test.ts": {
+    "TS2322": 2,
+    "TS2769": 1
+  },
+  "packages/core/src/canonical/canonicalRevisionSeed.test.ts": {
+    "TS2352": 1,
+    "TS2412": 1
+  },
+  "packages/core/src/canonical/canonicalTableSourceOwnership.test.ts": {
+    "TS2741": 1
+  },
+  "packages/core/src/canonical/canonicalWholeTextFidelity.test.ts": {
+    "TS2339": 2,
+    "TS2741": 1,
+    "TS2769": 1
+  },
+  "packages/core/src/canonical/commentAnchorParagraph.test.ts": {
+    "TS2740": 1
+  },
+  "packages/core/src/canonical/tableBatchModes.test.ts": {
+    "TS2769": 2
+  },
+  "packages/core/src/compare/content-alignment-exact-anchors.property.test.ts": {
+    "TS2339": 1
+  },
+  "packages/core/src/compare/content-alignment-id-hint.property.test.ts": {
+    "TS2322": 2,
+    "TS2345": 11
+  },
+  "packages/core/src/compare/content-alignment-ownership.property.test.ts": {
+    "TS2322": 7,
+    "TS2345": 1,
+    "TS2375": 1,
+    "TS2769": 1
+  },
+  "packages/core/src/compare/content-alignment-sequence.test.ts": {
+    "TS2375": 1,
+    "TS2379": 3,
+    "TS2769": 1
+  },
+  "packages/core/src/compare/content-alignment.test.ts": {
+    "TS2322": 2,
+    "TS2379": 1,
+    "TS2769": 8
+  },
+  "packages/core/src/compare/content.test.ts": {
+    "TS2339": 13,
+    "TS2532": 5,
+    "TS2769": 6
+  },
+  "packages/core/src/compare/formatting.test.ts": {
+    "TS2375": 1
+  },
+  "packages/core/src/compare/inline-atom-resources.test.ts": {
+    "TS2339": 1,
+    "TS2769": 2,
+    "TS4111": 7
+  },
+  "packages/core/src/compare/inline-atoms-model.property.test.ts": {
+    "TS2375": 1
+  },
+  "packages/core/src/compare/inline-atoms.test.ts": {
+    "TS2322": 1,
+    "TS2353": 1
+  },
+  "packages/core/src/compare/inserted-resource-snapshot.test.ts": {
+    "TS2769": 3
+  },
+  "packages/core/src/compare/introducedNumbering.test.ts": {
+    "TS2322": 13,
+    "TS2769": 7
+  },
+  "packages/core/src/compare/noteReferences.test.ts": {
+    "TS2339": 1
+  },
+  "packages/core/src/compare/numbering-space.property.test.ts": {
+    "TS2678": 1
+  },
+  "packages/core/src/compare/paragraphAlignment.test.ts": {
+    "TS2375": 2,
+    "TS2379": 12,
+    "TS2769": 7
+  },
+  "packages/core/src/compare/paragraphRestyle.test.ts": {
+    "TS2339": 1,
+    "TS2769": 1
+  },
+  "packages/core/src/compare/paragraphSpacing.test.ts": {
+    "TS2339": 1,
+    "TS2375": 8,
+    "TS2769": 1
+  },
+  "packages/core/src/compare/paragraphSplitMergeFormatting.test.ts": {
+    "TS2322": 1,
+    "TS2769": 4
+  },
+  "packages/core/src/compare/pictureRoundTrip.test.ts": {
+    "TS2375": 1
+  },
+  "packages/core/src/compare/plan.test.ts": {
+    "TS2322": 3,
+    "TS2375": 1,
+    "TS2769": 1
+  },
+  "packages/core/src/compare/probes.test.ts": {
+    "TS2339": 5,
+    "TS2375": 1,
+    "TS2769": 2
+  },
+  "packages/core/src/compare/resolveAllGeneratedCorpus.test.ts": {
+    "TS2339": 4
+  },
+  "packages/core/src/compare/scenario.test.ts": {
+    "TS2322": 2
+  },
+  "packages/core/src/compare/sectionBoundary.test.ts": {
+    "TS2379": 2
+  },
+  "packages/core/src/compare/style-resources.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/compare/verificationReads.test.ts": {
+    "TS2339": 1,
+    "TS2741": 1
+  },
+  "packages/core/src/content-controls/checkboxDisplay.test.ts": {
+    "TS2769": 4
+  },
+  "packages/core/src/content-controls/contentControls.test.ts": {
+    "TS2339": 1,
+    "TS2559": 1,
+    "TS2769": 1
+  },
+  "packages/core/src/controller/__tests__/canonicalEditRuns.ts": {
+    "TS2314": 2,
+    "TS2322": 3,
+    "TS2379": 1,
+    "TS7006": 1
+  },
+  "packages/core/src/controller/__tests__/canonicalPeerEdits.ts": {
+    "TS2379": 6,
+    "TS2769": 1
+  },
+  "packages/core/src/controller/__tests__/canonicalRoomPeers.ts": {
+    "TS2379": 3
+  },
+  "packages/core/src/controller/__tests__/scriptedFontSet.ts": {
+    "TS1294": 5
+  },
+  "packages/core/src/controller/__tests__/tableEngineParity.ts": {
+    "TS2741": 2
+  },
+  "packages/core/src/controller/autocompleteManager.test.ts": {
+    "TS6133": 1
+  },
+  "packages/core/src/controller/autocompleteTypingNormalization.property.test.ts": {
+    "TS2322": 3,
+    "TS2345": 3
+  },
+  "packages/core/src/controller/canonicalBlockContentControls.test.ts": {
+    "TS2322": 1,
+    "TS2345": 1,
+    "TS2375": 1,
+    "TS2379": 7,
+    "TS2769": 1
+  },
+  "packages/core/src/controller/canonicalBlockMarkers.test.ts": {
+    "TS2379": 2
+  },
+  "packages/core/src/controller/canonicalBlockOperations.test.ts": {
+    "TS2769": 2
+  },
+  "packages/core/src/controller/canonicalCellSelectionInput.test.ts": {
+    "TS2379": 3
+  },
+  "packages/core/src/controller/canonicalClipboard.test.ts": {
+    "TS2304": 3,
+    "TS2322": 8,
+    "TS2345": 1,
+    "TS2375": 6,
+    "TS2379": 60,
+    "TS2532": 9
+  },
+  "packages/core/src/controller/canonicalClipboardResources.test.ts": {
+    "TS2532": 1
+  },
+  "packages/core/src/controller/canonicalCollaboration.property.test.ts": {
+    "TS2375": 1,
+    "TS2379": 4,
+    "TS2769": 1
+  },
+  "packages/core/src/controller/canonicalCollapsedReplies.property.test.ts": {
+    "TS2379": 5,
+    "TS2769": 4
+  },
+  "packages/core/src/controller/canonicalCommentGeometry.property.test.ts": {
+    "TS2379": 3,
+    "TS4111": 1
+  },
+  "packages/core/src/controller/canonicalCommentLifecycle.property.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/controller/canonicalComments.test.ts": {
+    "TS2322": 4,
+    "TS2339": 1,
+    "TS2345": 5,
+    "TS2375": 8,
+    "TS2379": 16,
+    "TS2769": 2
+  },
+  "packages/core/src/controller/canonicalComposition.property.test.ts": {
+    "TS4111": 5
+  },
+  "packages/core/src/controller/canonicalContentControlValue.test.ts": {
+    "TS2304": 3,
+    "TS2379": 10,
+    "TS7006": 2
+  },
+  "packages/core/src/controller/canonicalCopiedImageSave.test.ts": {
+    "TS2339": 1,
+    "TS2379": 1,
+    "TS2412": 1,
+    "TS2769": 1
+  },
+  "packages/core/src/controller/canonicalCutPieceIdentity.test.ts": {
+    "TS2379": 1
+  },
+  "packages/core/src/controller/canonicalDocumentMarkerOwnership.property.test.ts": {
+    "TS2379": 2
+  },
+  "packages/core/src/controller/canonicalDocumentVersions.property.test.ts": {
+    "TS2339": 1
+  },
+  "packages/core/src/controller/canonicalFieldFormatting.test.ts": {
+    "TS2379": 12,
+    "TS2540": 1
+  },
+  "packages/core/src/controller/canonicalHyperlink.property.test.ts": {
+    "TS2375": 2,
+    "TS2379": 4,
+    "TS2741": 1
+  },
+  "packages/core/src/controller/canonicalInlineContentControls.test.ts": {
+    "TS2345": 2
+  },
+  "packages/core/src/controller/canonicalInlineProjection.test.ts": {
+    "TS2345": 1,
+    "TS2367": 2,
+    "TS2375": 1,
+    "TS2379": 2
+  },
+  "packages/core/src/controller/canonicalInlineShapes.test.ts": {
+    "TS2322": 2,
+    "TS2345": 2,
+    "TS2769": 1
+  },
+  "packages/core/src/controller/canonicalInput.test.ts": {
+    "TS2554": 2,
+    "TS2741": 2,
+    "TS2769": 2
+  },
+  "packages/core/src/controller/canonicalInsertBesidePendingJoin.test.ts": {
+    "TS2740": 2,
+    "TS2741": 7
+  },
+  "packages/core/src/controller/canonicalInsertionLease.property.test.ts": {
+    "TS2379": 1
+  },
+  "packages/core/src/controller/canonicalListConformance.test.ts": {
+    "TS2769": 1,
+    "TS4111": 5
+  },
+  "packages/core/src/controller/canonicalListRemoval.property.test.ts": {
+    "TS2322": 1,
+    "TS2379": 6
+  },
+  "packages/core/src/controller/canonicalListSave.test.ts": {
+    "TS1360": 1,
+    "TS2322": 16,
+    "TS2345": 3,
+    "TS2379": 5,
+    "TS2769": 7
+  },
+  "packages/core/src/controller/canonicalOperations.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/controller/canonicalPendingParagraphMark.test.ts": {
+    "TS2741": 2
+  },
+  "packages/core/src/controller/canonicalPointCommentLifecycle.property.test.ts": {
+    "TS2314": 1,
+    "TS2322": 1
+  },
+  "packages/core/src/controller/canonicalPresence.test.ts": {
+    "TS2379": 1
+  },
+  "packages/core/src/controller/canonicalProjectionKept.property.test.ts": {
+    "TS2375": 1
+  },
+  "packages/core/src/controller/canonicalPublicOperations.test.ts": {
+    "TS2322": 2,
+    "TS2379": 7,
+    "TS2740": 1,
+    "TS2741": 4,
+    "TS2769": 1
+  },
+  "packages/core/src/controller/canonicalRangeAnchorDeletion.test.ts": {
+    "TS2379": 5
+  },
+  "packages/core/src/controller/canonicalRemoteApply.property.test.ts": {
+    "TS2379": 4,
+    "TS2769": 1
+  },
+  "packages/core/src/controller/canonicalReplaceBlockStyle.test.ts": {
+    "TS2741": 2
+  },
+  "packages/core/src/controller/canonicalResourceReplacement.property.test.ts": {
+    "TS2375": 1,
+    "TS2379": 2
+  },
+  "packages/core/src/controller/canonicalRoomEditor.test.ts": {
+    "TS2349": 1,
+    "TS7031": 1
+  },
+  "packages/core/src/controller/canonicalSave.test.ts": {
+    "TS2322": 2,
+    "TS2375": 2,
+    "TS2769": 2
+  },
+  "packages/core/src/controller/canonicalSaveBaseline.property.test.ts": {
+    "TS2345": 1
+  },
+  "packages/core/src/controller/canonicalSeamGaps.test.ts": {
+    "TS2379": 2
+  },
+  "packages/core/src/controller/canonicalSectionRemovalSave.property.test.ts": {
+    "TS2353": 2,
+    "TS2375": 1
+  },
+  "packages/core/src/controller/canonicalSections.test.ts": {
+    "TS2322": 2,
+    "TS2379": 2,
+    "TS2769": 2
+  },
+  "packages/core/src/controller/canonicalSeedContent.property.test.ts": {
+    "TS2322": 1,
+    "TS2375": 2,
+    "TS2379": 1
+  },
+  "packages/core/src/controller/canonicalSession.stories.property.test.ts": {
+    "TS2379": 10
+  },
+  "packages/core/src/controller/canonicalSession.test.ts": {
+    "TS2322": 2,
+    "TS2345": 3,
+    "TS2375": 2,
+    "TS2379": 19,
+    "TS2769": 4,
+    "TS4111": 7
+  },
+  "packages/core/src/controller/canonicalSourceLeaves.property.test.ts": {
+    "TS2345": 1
+  },
+  "packages/core/src/controller/canonicalSourceOwners.property.test.ts": {
+    "TS2379": 4
+  },
+  "packages/core/src/controller/canonicalStoryListIndentation.property.test.ts": {
+    "TS2322": 2
+  },
+  "packages/core/src/controller/canonicalStorySave.property.test.ts": {
+    "TS2741": 1
+  },
+  "packages/core/src/controller/canonicalStorySelections.property.test.ts": {
+    "TS2379": 7
+  },
+  "packages/core/src/controller/canonicalStructure.test.ts": {
+    "TS2322": 4,
+    "TS2339": 1,
+    "TS2345": 5,
+    "TS2375": 7,
+    "TS2379": 10,
+    "TS2540": 1,
+    "TS2769": 3
+  },
+  "packages/core/src/controller/canonicalSuggestedComments.test.ts": {
+    "TS2379": 2
+  },
+  "packages/core/src/controller/canonicalSuggestions.test.ts": {
+    "TS2379": 5
+  },
+  "packages/core/src/controller/canonicalTableCommands.test.ts": {
+    "TS2379": 7
+  },
+  "packages/core/src/controller/canonicalTableInsertion.test.ts": {
+    "TS2379": 6
+  },
+  "packages/core/src/controller/canonicalTableRowWithoutCells.test.ts": {
+    "TS2741": 1
+  },
+  "packages/core/src/controller/canonicalTableSession.test.ts": {
+    "TS2345": 1
+  },
+  "packages/core/src/controller/canonicalTableStructure.test.ts": {
+    "TS2379": 2
+  },
+  "packages/core/src/controller/canonicalTabRoom.property.test.ts": {
+    "TS2769": 3
+  },
+  "packages/core/src/controller/canonicalTerminalFormatting.property.test.ts": {
+    "TS2379": 1
+  },
+  "packages/core/src/controller/canonicalToc.property.test.ts": {
+    "TS2379": 10
+  },
+  "packages/core/src/controller/canonicalTocSelection.property.test.ts": {
+    "TS2322": 3,
+    "TS2345": 2
+  },
+  "packages/core/src/controller/canonicalTrackedPairs.test.ts": {
+    "TS2379": 7
+  },
+  "packages/core/src/controller/canonicalTrackedReplacementOrder.test.ts": {
+    "TS2769": 2
+  },
+  "packages/core/src/controller/canonicalTypingCommentRanges.property.test.ts": {
+    "TS2379": 1
+  },
+  "packages/core/src/controller/canonicalUndoGrouping.test.ts": {
+    "TS2375": 3
+  },
+  "packages/core/src/controller/canonicalYjsRoom.property.test.ts": {
+    "TS2379": 1,
+    "TS2769": 1
+  },
+  "packages/core/src/controller/commentOverMarkersRetirement.test.ts": {
+    "TS2339": 1
+  },
+  "packages/core/src/controller/contentControlWidgetController.test.ts": {
+    "TS2352": 1
+  },
+  "packages/core/src/controller/documentNumberingOrder.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/controller/folioEditor.test.ts": {
+    "TS2739": 1
+  },
+  "packages/core/src/controller/fontLoadLayout.property.test.ts": {
+    "TS2741": 1
+  },
+  "packages/core/src/controller/hiddenEditorApi.test.ts": {
+    "TS2739": 1
+  },
+  "packages/core/src/controller/hiddenEditorManager.test.ts": {
+    "TS2322": 1,
+    "TS2353": 1,
+    "TS2367": 1,
+    "TS2532": 35,
+    "TS2769": 1
+  },
+  "packages/core/src/controller/layoutPipeline.test.ts": {
+    "TS2322": 3
+  },
+  "packages/core/src/controller/listNormalizationCache.property.test.ts": {
+    "TS1360": 1,
+    "TS2314": 3,
+    "TS2322": 6,
+    "TS2375": 1,
+    "TS2379": 2
+  },
+  "packages/core/src/controller/listReaderParity.property.test.ts": {
+    "TS2322": 3,
+    "TS2339": 1,
+    "TS2345": 1,
+    "TS2379": 1,
+    "TS2769": 1
+  },
+  "packages/core/src/controller/markupViewLayout.property.test.ts": {
+    "TS18048": 2,
+    "TS4111": 2
+  },
+  "packages/core/src/controller/nestedDeletionBoundarySave.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/controller/paragraphMarkRunProperties.property.test.ts": {
+    "TS2314": 1,
+    "TS2379": 3
+  },
+  "packages/core/src/controller/projectionBlockCache.property.test.ts": {
+    "TS2375": 2,
+    "TS2379": 3,
+    "TS2741": 1
+  },
+  "packages/core/src/controller/propertySourcePreservation.property.test.ts": {
+    "TS2345": 3,
+    "TS2375": 2,
+    "TS2379": 2
+  },
+  "packages/core/src/controller/readModel.property.test.ts": {
+    "TS2339": 1
+  },
+  "packages/core/src/controller/serializationPath.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/controller/storyConversionKeeping.property.test.ts": {
+    "TS2314": 1,
+    "TS2322": 1
+  },
+  "packages/core/src/controller/storyEditorManagers.lifecycle.property.test.ts": {
+    "TS2322": 1,
+    "TS2554": 3,
+    "TS2739": 1
+  },
+  "packages/core/src/controller/styleResults.readonly.property.test.ts": {
+    "TS2379": 1
+  },
+  "packages/core/src/controller/styleResultWriters.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/controller/trackedLinkSuggestions.property.test.ts": {
+    "TS2375": 2
+  },
+  "packages/core/src/display-list/build/buildDisplayList.test.ts": {
+    "TS18048": 1,
+    "TS2339": 2,
+    "TS7031": 1
+  },
+  "packages/core/src/display-list/build/previewPrimitives.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/display-list/build/tableBorderCompound.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/display-list/build/tableBorderDotDash.test.ts": {
+    "TS2339": 1
+  },
+  "packages/core/src/display-list/build/tableBorderHatch.test.ts": {
+    "TS2339": 2,
+    "TS2769": 1
+  },
+  "packages/core/src/display-list/clippedTableRegions.test.ts": {
+    "TS4111": 7
+  },
+  "packages/core/src/display-list/dom/renderDisplayListToDom.test.ts": {
+    "TS2769": 1,
+    "TS4111": 80
+  },
+  "packages/core/src/display-list/nestedTableRows.property.test.ts": {
+    "TS18048": 1
+  },
+  "packages/core/src/display-list/pageContentParity.test.ts": {
+    "TS1360": 1
+  },
+  "packages/core/src/document-operations.test.ts": {
+    "TS2769": 2
+  },
+  "packages/core/src/docx/__tests__/color-roundtrip.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/docx/__tests__/corpusEditRoundtrip.test.ts": {
+    "TS18048": 1,
+    "TS2322": 2,
+    "TS2345": 2,
+    "TS2379": 1,
+    "TS2532": 4,
+    "TS4111": 1
+  },
+  "packages/core/src/docx/__tests__/corpusRoundtrip.test.ts": {
+    "TS2367": 1
+  },
+  "packages/core/src/docx/__tests__/differential.test.ts": {
+    "TS4111": 1
+  },
+  "packages/core/src/docx/__tests__/fontHintRoundtrip.test.ts": {
+    "TS18048": 1
+  },
+  "packages/core/src/docx/__tests__/horizontalScaleRoundtrip.test.ts": {
+    "TS18048": 1
+  },
+  "packages/core/src/docx/__tests__/image-crop-roundtrip.test.ts": {
+    "TS2322": 3
+  },
+  "packages/core/src/docx/__tests__/image-effect-extent-opacity-overlap.test.ts": {
+    "TS2322": 13
+  },
+  "packages/core/src/docx/__tests__/nil-borders-roundtrip.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/docx/__tests__/parserXmlMutations.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/docx/__tests__/partNamespaceDeclarations.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/docx/__tests__/repack-image-count.test.ts": {
+    "TS2339": 1
+  },
+  "packages/core/src/docx/__tests__/roundtrip.property.test.ts": {
+    "TS18048": 28,
+    "TS4111": 46
+  },
+  "packages/core/src/docx/__tests__/runFormatting-cs.test.ts": {
+    "TS18048": 1
+  },
+  "packages/core/src/docx/__tests__/runFormatting-rtl-effect.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/docx/__tests__/tracked-change-records-roundtrip.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/docx/acceptedPlainText.property.test.ts": {
+    "TS2322": 2,
+    "TS2345": 4
+  },
+  "packages/core/src/docx/anchorBehindDoc.property.test.ts": {
+    "TS2554": 1
+  },
+  "packages/core/src/docx/attributeRemainderSurvival.test.ts": {
+    "TS18048": 3
+  },
+  "packages/core/src/docx/borderStyle.property.test.ts": {
+    "TS2769": 2
+  },
+  "packages/core/src/docx/canonicalSuggestionSaveFixedPoint.test.ts": {
+    "TS4104": 1
+  },
+  "packages/core/src/docx/chartPreview.test.ts": {
+    "TS2339": 3,
+    "TS2375": 1,
+    "TS7031": 6
+  },
+  "packages/core/src/docx/commentAnchorIndex.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/docx/commentIdentityRoundTrip.property.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/docx/commentIds.property.test.ts": {
+    "TS2345": 3
+  },
+  "packages/core/src/docx/commentParser.test.ts": {
+    "TS2532": 32
+  },
+  "packages/core/src/docx/commentRangeAtTableLevel.test.ts": {
+    "TS2341": 1
+  },
+  "packages/core/src/docx/commentRangeOverEmptyRuns.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/docx/commentReferenceNormalization.test.ts": {
+    "TS2339": 1,
+    "TS7006": 1
+  },
+  "packages/core/src/docx/commentReplyThreads.test.ts": {
+    "TS2339": 1
+  },
+  "packages/core/src/docx/commentThreadSaveFixedPoint.property.test.ts": {
+    "TS2412": 1,
+    "TS2769": 1
+  },
+  "packages/core/src/docx/compatibility.test.ts": {
+    "TS2322": 3,
+    "TS2345": 1,
+    "TS2375": 1
+  },
+  "packages/core/src/docx/containerChildren.property.test.ts": {
+    "TS2322": 3
+  },
+  "packages/core/src/docx/createDocxStyleSet.test.ts": {
+    "TS2339": 1,
+    "TS2412": 1,
+    "TS4111": 1
+  },
+  "packages/core/src/docx/documentBlockReplay.property.test.ts": {
+    "TS2412": 1
+  },
+  "packages/core/src/docx/drawingAnchorRebuild.property.test.ts": {
+    "TS2345": 1
+  },
+  "packages/core/src/docx/drawingIdNormalization.test.ts": {
+    "TS2322": 2
+  },
+  "packages/core/src/docx/drawingNumericIds.property.test.ts": {
+    "TS1360": 2,
+    "TS2375": 2
+  },
+  "packages/core/src/docx/drawingObjectNames.property.test.ts": {
+    "TS2322": 1,
+    "TS2379": 1
+  },
+  "packages/core/src/docx/drawingPrefixIndependence.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/docx/drawingWrapPath.property.test.ts": {
+    "TS2345": 4,
+    "TS2375": 1,
+    "TS2379": 1,
+    "TS2769": 1
+  },
+  "packages/core/src/docx/editLocalityWithoutParaIds.property.test.ts": {
+    "TS6133": 1
+  },
+  "packages/core/src/docx/emptyRunSaveFixedPoint.property.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/docx/emptySourceStructuralReplay.test.ts": {
+    "TS2571": 1
+  },
+  "packages/core/src/docx/encryption/compoundFile.test.ts": {
+    "TS2304": 4,
+    "TS2593": 5
+  },
+  "packages/core/src/docx/encryption/decryptDocx.integration.test.ts": {
+    "TS2304": 11,
+    "TS2593": 5
+  },
+  "packages/core/src/docx/encryption/encryptionInfo.test.ts": {
+    "TS2304": 5,
+    "TS2593": 4,
+    "TS7006": 2
+  },
+  "packages/core/src/docx/ensureParaIds.test.ts": {
+    "TS2345": 3
+  },
+  "packages/core/src/docx/explicitOff.property.test.ts": {
+    "TS2322": 2,
+    "TS2339": 1,
+    "TS2379": 1,
+    "TS2769": 1
+  },
+  "packages/core/src/docx/fieldInstructionPreservation.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/docx/foldedListNumberFields.property.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/docx/headerFooterMaterialize.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/docx/headerFooterVerbatim.test.ts": {
+    "TS2769": 2
+  },
+  "packages/core/src/docx/hyperlinkCommentRangeBoundaries.test.ts": {
+    "TS18048": 12,
+    "TS2769": 2
+  },
+  "packages/core/src/docx/hyperlinkMoveRangeOwnership.test.ts": {
+    "TS2769": 6
+  },
+  "packages/core/src/docx/hyperlinkTargetFrame.property.test.ts": {
+    "TS2353": 1
+  },
+  "packages/core/src/docx/imageTrackedChangeSave.test.ts": {
+    "TS2412": 1
+  },
+  "packages/core/src/docx/imageTransformAuthoredValue.property.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/docx/importedIdCollisions.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/docx/inlineSdtCommentRangeBoundaries.test.ts": {
+    "TS18048": 1,
+    "TS4111": 1
+  },
+  "packages/core/src/docx/linkedComplexField.test.ts": {
+    "TS2379": 2
+  },
+  "packages/core/src/docx/linkedRevisionWrapper.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/docx/listModelNormalization.property.test.ts": {
+    "TS2322": 3,
+    "TS2375": 1
+  },
+  "packages/core/src/docx/metafileSvg.test.ts": {
+    "TS2769": 2
+  },
+  "packages/core/src/docx/mixedMoveRangeNormalization.test.ts": {
+    "TS2322": 19,
+    "TS2345": 2,
+    "TS2769": 4
+  },
+  "packages/core/src/docx/modelValidation.test.ts": {
+    "TS2322": 6,
+    "TS2353": 1,
+    "TS2740": 1
+  },
+  "packages/core/src/docx/nestedFieldCodeVisibility.property.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/docx/newPartWithoutDocumentRelationships.test.ts": {
+    "TS2724": 1
+  },
+  "packages/core/src/docx/noteDirtyHintSave.property.test.ts": {
+    "TS2412": 1,
+    "TS2769": 2,
+    "TS4104": 1
+  },
+  "packages/core/src/docx/notePartCommentRangeBalance.property.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/docx/notePictureMedia.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/docx/numberFormatEnumeration.test.ts": {
+    "TS2769": 2
+  },
+  "packages/core/src/docx/numbering-shared-abstract.test.ts": {
+    "TS2339": 5,
+    "TS2345": 1,
+    "TS2554": 3
+  },
+  "packages/core/src/docx/numberingReferenceNormalization.test.ts": {
+    "TS18048": 1,
+    "TS2322": 10,
+    "TS2339": 10,
+    "TS2769": 2
+  },
+  "packages/core/src/docx/numberingRoundTrip.property.test.ts": {
+    "TS2322": 5,
+    "TS2345": 1,
+    "TS2769": 2
+  },
+  "packages/core/src/docx/numericIdAllocator.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/docx/numericIdNormalization.property.test.ts": {
+    "TS2345": 3
+  },
+  "packages/core/src/docx/onOffAttributes.property.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/docx/orphanFieldCharSurvival.property.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/docx/outlineDash.property.test.ts": {
+    "TS2769": 6
+  },
+  "packages/core/src/docx/paragraphFactSeal.property.test.ts": {
+    "TS1360": 1,
+    "TS2314": 1,
+    "TS2532": 1
+  },
+  "packages/core/src/docx/paragraphFormattingEmissionRoundTrip.test.ts": {
+    "TS2322": 6,
+    "TS2339": 1,
+    "TS2345": 1,
+    "TS2769": 2
+  },
+  "packages/core/src/docx/paragraphMarkToggleSave.property.test.ts": {
+    "TS2314": 1,
+    "TS2769": 1
+  },
+  "packages/core/src/docx/paragraphParser-numbering-indent.test.ts": {
+    "TS2769": 2
+  },
+  "packages/core/src/docx/paragraphParser.test.ts": {
+    "TS18048": 22,
+    "TS2339": 11,
+    "TS7031": 1
+  },
+  "packages/core/src/docx/paragraphPropertyRoundTrip.test.ts": {
+    "TS2345": 20,
+    "TS2353": 1,
+    "TS2559": 2
+  },
+  "packages/core/src/docx/paragraphPropertySource.test.ts": {
+    "TS2339": 2,
+    "TS2769": 1
+  },
+  "packages/core/src/docx/paraIdAttribute.test.ts": {
+    "TS2345": 1
+  },
+  "packages/core/src/docx/pictureWatermarkRebind.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/docx/propertyElementAttributeSurvival.property.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/docx/rasterMime.test.ts": {
+    "TS7022": 1
+  },
+  "packages/core/src/docx/relationshipReferences.property.test.ts": {
+    "TS18048": 1
+  },
+  "packages/core/src/docx/renderedPageBreakNormalization.test.ts": {
+    "TS2769": 2
+  },
+  "packages/core/src/docx/reviewResolutionProvenance.test.ts": {
+    "TS2345": 1
+  },
+  "packages/core/src/docx/rezip.test.ts": {
+    "TS2322": 3
+  },
+  "packages/core/src/docx/runConsolidator.test.ts": {
+    "TS2769": 1,
+    "TS4104": 1
+  },
+  "packages/core/src/docx/runPropertySet.property.test.ts": {
+    "TS18048": 1,
+    "TS2379": 1
+  },
+  "packages/core/src/docx/savedTextFidelity.property.test.ts": {
+    "TS2339": 1
+  },
+  "packages/core/src/docx/sdtEndProperties.test.ts": {
+    "TS2412": 1
+  },
+  "packages/core/src/docx/sdtRoundtrip.property.test.ts": {
+    "TS2367": 3
+  },
+  "packages/core/src/docx/sectionPropertyChangeSnapshot.property.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/docx/selectiveSave.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/docx/selectiveSaveDecline.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/docx/selectiveSaveGuards.test.ts": {
+    "TS2353": 1
+  },
+  "packages/core/src/docx/selectiveSaveNumericIds.property.test.ts": {
+    "TS2345": 2
+  },
+  "packages/core/src/docx/selectiveXmlPatch.test.ts": {
+    "TS2769": 2
+  },
+  "packages/core/src/docx/serializer/fontTableSerializer.test.ts": {
+    "TS2375": 1
+  },
+  "packages/core/src/docx/serializer/imageTrackedChangeSerializer.test.ts": {
+    "TS2322": 3
+  },
+  "packages/core/src/docx/serializer/paragraphSerializer-indentRoundtrip.test.ts": {
+    "TS2339": 2
+  },
+  "packages/core/src/docx/serializer/partNamespaces.test.ts": {
+    "TS4111": 2
+  },
+  "packages/core/src/docx/serializer/runSerializer.test.ts": {
+    "TS2322": 5
+  },
+  "packages/core/src/docx/serializer/sdt-content-roundtrip.test.ts": {
+    "TS2532": 6
+  },
+  "packages/core/src/docx/serializer/styleNumPrRoundtrip.test.ts": {
+    "TS2322": 7
+  },
+  "packages/core/src/docx/server/bilingualBodyBlocks.property.test.ts": {
+    "TS2322": 2
+  },
+  "packages/core/src/docx/server/build.test.ts": {
+    "TS18048": 3,
+    "TS4111": 1
+  },
+  "packages/core/src/docx/server/createBilingualDocument.test.ts": {
+    "TS2322": 1,
+    "TS2345": 4,
+    "TS2412": 1,
+    "TS2769": 1
+  },
+  "packages/core/src/docx/server/evaluateDocxXmlPatchProposal.test.ts": {
+    "TS2740": 1,
+    "TS2769": 1
+  },
+  "packages/core/src/docx/server/inspectDocxPackage.test.ts": {
+    "TS18046": 1,
+    "TS2322": 2
+  },
+  "packages/core/src/docx/shapeParser.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/docx/simpleFieldTrackedChildren.property.test.ts": {
+    "TS7005": 1,
+    "TS7034": 1
+  },
+  "packages/core/src/docx/splitRevisionProvenance.test.ts": {
+    "TS2375": 1
+  },
+  "packages/core/src/docx/storyBlockReplay.test.ts": {
+    "TS2322": 1,
+    "TS2769": 1
+  },
+  "packages/core/src/docx/strikeUnderStyleSave.property.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/docx/structuralBarrierWork.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/docx/structuralSelectiveSave.test.ts": {
+    "TS2322": 1,
+    "TS2769": 2
+  },
+  "packages/core/src/docx/styledParagraphMarkSave.property.test.ts": {
+    "TS2314": 1,
+    "TS2379": 1
+  },
+  "packages/core/src/docx/styleNumberingReferences.property.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/docx/styleReferenceResolution.property.test.ts": {
+    "TS2339": 2
+  },
+  "packages/core/src/docx/stylesPartFixedPoint.property.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/docx/tableLook.test.ts": {
+    "TS2322": 1,
+    "TS2379": 1
+  },
+  "packages/core/src/docx/tableRowChildSurvival.test.ts": {
+    "TS2345": 1
+  },
+  "packages/core/src/docx/tableRowPropertySet.property.test.ts": {
+    "TS2375": 1
+  },
+  "packages/core/src/docx/textDirectionEnumeration.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/docx/themeColor.property.test.ts": {
+    "TS2769": 3
+  },
+  "packages/core/src/docx/trackedMoveRangeNormalization.test.ts": {
+    "TS2322": 4
+  },
+  "packages/core/src/docx/unzip.test.ts": {
+    "TS2345": 1
+  },
+  "packages/core/src/docx/vmlImageParser.test.ts": {
+    "TS2345": 4,
+    "TS2769": 18
+  },
+  "packages/core/src/docx/wmfSvg.test.ts": {
+    "TS2769": 4
+  },
+  "packages/core/src/docx/xmlParser.test.ts": {
+    "TS4111": 1
+  },
+  "packages/core/src/docx/xmlSerialize.property.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/fields/sectionPageCounts.test.ts": {
+    "TS2741": 1
+  },
+  "packages/core/src/fonts/bundledSubsetCoverage.test.ts": {
+    "TS1360": 1
+  },
+  "packages/core/src/fonts/FontFaceLifecycle.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/headless-layout.test.ts": {
+    "TS2322": 1,
+    "TS2375": 1,
+    "TS2769": 1
+  },
+  "packages/core/src/internal/compare/inline-presentation.test.ts": {
+    "TS2322": 1,
+    "TS2769": 1
+  },
+  "packages/core/src/internal/paragraphFormattingSerialization.test.ts": {
+    "TS2322": 2,
+    "TS2345": 7,
+    "TS4104": 1
+  },
+  "packages/core/src/internal/rejectedRangeBoundaries.test.ts": {
+    "TS7027": 1
+  },
+  "packages/core/src/internal/revisionResolutionStep.integration.test.ts": {
+    "TS18048": 6,
+    "TS2339": 12,
+    "TS4111": 8,
+    "TS7006": 5
+  },
+  "packages/core/src/internal/revisionResolutionStep.test.ts": {
+    "TS2345": 1
+  },
+  "packages/core/src/internal/subtreeHolds.property.test.ts": {
+    "TS2322": 4
+  },
+  "packages/core/src/internal/wholeStoryRevisionResolution.sharing.test.ts": {
+    "TS2741": 2
+  },
+  "packages/core/src/internal/wholeStoryRevisionResolution.table-map.test.ts": {
+    "TS18048": 2,
+    "TS4111": 2
+  },
+  "packages/core/src/layout-bridge/convert/complex-script-formatting-pipeline.test.ts": {
+    "TS18048": 1
+  },
+  "packages/core/src/layout-bridge/convert/footnoteLayout-table.test.ts": {
+    "TS2322": 1,
+    "TS2339": 4
+  },
+  "packages/core/src/layout-bridge/convert/list-marker-complex-script.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/layout-bridge/convert/list-marker-paragraph-mark.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/layout-bridge/convert/list-number-tab-stops.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/layout-bridge/convert/paragraphBlockCache.property.test.ts": {
+    "TS2314": 1,
+    "TS2322": 1,
+    "TS2375": 1
+  },
+  "packages/core/src/layout-bridge/convert/tableMeasureReuse.property.test.ts": {
+    "TS2314": 1,
+    "TS2322": 1,
+    "TS2379": 1
+  },
+  "packages/core/src/layout-bridge/convert/toFlowBlocks-image-borders.test.ts": {
+    "TS18048": 1,
+    "TS4111": 1
+  },
+  "packages/core/src/layout-bridge/convert/toFlowBlocks-run-marks.test.ts": {
+    "TS2345": 1
+  },
+  "packages/core/src/layout-bridge/convert/toFlowBlocks-sdt.test.ts": {
+    "TS18048": 1,
+    "TS4111": 1
+  },
+  "packages/core/src/layout-bridge/convert/toFlowBlocks-style-cascade.test.ts": {
+    "TS2322": 1,
+    "TS2339": 1
+  },
+  "packages/core/src/layout-bridge/convert/toFlowBlocks.list-counters.test.ts": {
+    "TS2322": 12,
+    "TS2345": 6
+  },
+  "packages/core/src/layout-bridge/convert/toFlowBlocks.test.ts": {
+    "TS18048": 11,
+    "TS2339": 94,
+    "TS2345": 3,
+    "TS2379": 1,
+    "TS2769": 4,
+    "TS4111": 13
+  },
+  "packages/core/src/layout-bridge/dom/clickToPositionDom-caret-height.test.ts": {
+    "TS2322": 1,
+    "TS2352": 1
+  },
+  "packages/core/src/layout-bridge/dom/clickToPositionDom-selection.test.ts": {
+    "TS1294": 3
+  },
+  "packages/core/src/layout-bridge/dom/findBodyPmSpans.test.ts": {
+    "TS2531": 1
+  },
+  "packages/core/src/layout-bridge/dom/findHfPmSpans.test.ts": {
+    "TS2769": 2
+  },
+  "packages/core/src/layout-bridge/engine/paragraphInlineLayoutGeometry.test.ts": {
+    "TS2741": 3
+  },
+  "packages/core/src/layout-bridge/engine/selectionRects.test.ts": {
+    "TS2353": 3,
+    "TS2741": 9
+  },
+  "packages/core/src/layout-engine/automaticListSpacing.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/layout-engine/continuousSectionGeometry.test.ts": {
+    "TS18048": 2,
+    "TS2345": 3
+  },
+  "packages/core/src/layout-engine/footnoteColumnReflow.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/layout-engine/headerFooterRefs.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/layout-engine/measure/hyphenationDictionaries.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/layout-engine/measure/listMarkerWidth.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/layout-engine/measure/measureBlocks.test.ts": {
+    "TS2322": 2,
+    "TS2561": 1,
+    "TS2741": 1,
+    "TS2769": 1
+  },
+  "packages/core/src/layout-engine/measure/measureParagraph-right-tab.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/layout-engine/measure/measureParagraph.test.ts": {
+    "TS2375": 2
+  },
+  "packages/core/src/layout-engine/measure/punctuationAlignment.test.ts": {
+    "TS2345": 2,
+    "TS2375": 2
+  },
+  "packages/core/src/layout-engine/measure/raisedTableWrap.test.ts": {
+    "TS2741": 1
+  },
+  "packages/core/src/layout-engine/measure/tableCellFloating.test.ts": {
+    "TS2379": 1
+  },
+  "packages/core/src/layout-engine/measure/tableCellFlow.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/layout-engine/measure/tableFragmentBorderGeometry.property.test.ts": {
+    "TS2322": 2
+  },
+  "packages/core/src/layout-engine/measure/tableInlinePlacement.test.ts": {
+    "TS2353": 1
+  },
+  "packages/core/src/layout-engine/measure/tableWidthAuto.property.test.ts": {
+    "TS2459": 1
+  },
+  "packages/core/src/layout-engine/nextColumnSectionBreak.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/layout-engine/paragraphInlineLayout.test.ts": {
+    "TS2379": 1
+  },
+  "packages/core/src/layout-engine/paragraphSpacing.test.ts": {
+    "TS2322": 3,
+    "TS2339": 3
+  },
+  "packages/core/src/layout-engine/performance.test.ts": {
+    "TS18048": 3,
+    "TS2322": 5,
+    "TS2339": 1,
+    "TS2532": 1
+  },
+  "packages/core/src/layout-engine/renderedBreakReconciliation.test.ts": {
+    "TS2322": 2,
+    "TS2741": 1
+  },
+  "packages/core/src/layout-engine/tableRowBreak.test.ts": {
+    "TS2339": 1,
+    "TS2532": 6
+  },
+  "packages/core/src/layout-painter/__tests__/fakeDom.ts": {
+    "TS2345": 1,
+    "TS4111": 4
+  },
+  "packages/core/src/layout-painter/floatingImageClassification.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/layout-painter/registry/registry.test.ts": {
+    "TS2741": 1
+  },
+  "packages/core/src/layout-painter/renderMath.test.ts": {
+    "TS4111": 9
+  },
+  "packages/core/src/layout-painter/renderPage-pageBorders.test.ts": {
+    "TS2375": 1
+  },
+  "packages/core/src/layout-painter/renderPage-watermark-incremental.test.ts": {
+    "TS2322": 2,
+    "TS2741": 1
+  },
+  "packages/core/src/layout-painter/renderPage.test.ts": {
+    "TS2345": 4,
+    "TS2769": 2,
+    "TS4111": 40
+  },
+  "packages/core/src/layout-painter/renderParagraph-horizontal-scale.test.ts": {
+    "TS2739": 1
+  },
+  "packages/core/src/layout-painter/renderParagraph-hyperlink-target.test.ts": {
+    "TS2352": 1
+  },
+  "packages/core/src/layout-painter/renderParagraph-inline-image.test.ts": {
+    "TS2339": 2,
+    "TS2741": 1,
+    "TS4111": 23
+  },
+  "packages/core/src/layout-painter/renderParagraph-justify-first-line-indent.test.ts": {
+    "TS4111": 22
+  },
+  "packages/core/src/layout-painter/renderParagraph-list-hanging-indent.test.ts": {
+    "TS2339": 1,
+    "TS2375": 1
+  },
+  "packages/core/src/layout-painter/renderParagraph-right-tab.test.ts": {
+    "TS2739": 1
+  },
+  "packages/core/src/layout-painter/renderParagraph-rtl-base-direction.test.ts": {
+    "TS2375": 1,
+    "TS4111": 1
+  },
+  "packages/core/src/layout-painter/renderParagraph-small-caps.test.ts": {
+    "TS2739": 1
+  },
+  "packages/core/src/layout-painter/renderTable-bidi.test.ts": {
+    "TS2322": 2
+  },
+  "packages/core/src/layout-painter/renderTableFragment.test.ts": {
+    "TS2322": 7
+  },
+  "packages/core/src/layout-painter/renderWatermark.test.ts": {
+    "TS2741": 1
+  },
+  "packages/core/src/managers/DocumentLoaderManager.test.ts": {
+    "TS2339": 6,
+    "TS2769": 2
+  },
+  "packages/core/src/markdown/blockBoundaries.test.ts": {
+    "TS2322": 1,
+    "TS2375": 1
+  },
+  "packages/core/src/markdown/emptyListItems.property.test.ts": {
+    "TS2694": 1
+  },
+  "packages/core/src/markdown/fromMarkdown.docx.test.ts": {
+    "TS2339": 2
+  },
+  "packages/core/src/markdown/inlineWrapperText.test.ts": {
+    "TS2322": 2
+  },
+  "packages/core/src/markdown/listContext.property.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/markdown/markdown.test.ts": {
+    "TS2322": 1,
+    "TS2375": 9
+  },
+  "packages/core/src/paged-layout/blockGeometry.test.ts": {
+    "TS1294": 1,
+    "TS2322": 2
+  },
+  "packages/core/src/paged-layout/incrementalMeasure.property.test.ts": {
+    "TS2322": 2
+  },
+  "packages/core/src/paged-layout/incrementalMeasure.test.ts": {
+    "TS18048": 1,
+    "TS2375": 2
+  },
+  "packages/core/src/paged-layout/pageText.test.ts": {
+    "TS2322": 4,
+    "TS2741": 8
+  },
+  "packages/core/src/paged-layout/scrollNavigation.test.ts": {
+    "TS2741": 7
+  },
+  "packages/core/src/pdf/glyphCoverage.test.ts": {
+    "TS2339": 2
+  },
+  "packages/core/src/pdf/images.test.ts": {
+    "TS2379": 2
+  },
+  "packages/core/src/pdf/writePdf.test.ts": {
+    "TS2353": 1
+  },
+  "packages/core/src/prosemirror/addTrackedDeletionMark.property.test.ts": {
+    "TS2345": 2,
+    "TS7005": 2,
+    "TS7034": 2
+  },
+  "packages/core/src/prosemirror/attrs/index.test.ts": {
+    "TS18048": 65,
+    "TS2339": 1,
+    "TS2769": 2,
+    "TS4111": 65
+  },
+  "packages/core/src/prosemirror/canonicalSelectionRange.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/prosemirror/commands/comments.bulk.test.ts": {
+    "TS18048": 12,
+    "TS2339": 3,
+    "TS2345": 1,
+    "TS2532": 1,
+    "TS4111": 12
+  },
+  "packages/core/src/prosemirror/commands/comments.resolve-all.test.ts": {
+    "TS18048": 6,
+    "TS4111": 6
+  },
+  "packages/core/src/prosemirror/commands/paragraphBookmarkJoin.test.ts": {
+    "TS2339": 2
+  },
+  "packages/core/src/prosemirror/commands/paragraphPropertySnapshot.property.test.ts": {
+    "TS2379": 1
+  },
+  "packages/core/src/prosemirror/commands/pPrMark-accept-reject.test.ts": {
+    "TS2769": 2
+  },
+  "packages/core/src/prosemirror/commands/propertyChangeResolve.test.ts": {
+    "TS2353": 1,
+    "TS2769": 1
+  },
+  "packages/core/src/prosemirror/commands/resolveAllTableChanges.test.ts": {
+    "TS2532": 4,
+    "TS2769": 1
+  },
+  "packages/core/src/prosemirror/commands/restoredNumberingIndentation.property.test.ts": {
+    "TS2322": 6,
+    "TS2769": 5
+  },
+  "packages/core/src/prosemirror/commands/sectionBreak.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/prosemirror/commands/suggestionFinalParagraph.test.ts": {
+    "TS2740": 2,
+    "TS2769": 2
+  },
+  "packages/core/src/prosemirror/commands/trackedStyleNumbering.property.test.ts": {
+    "TS2322": 2,
+    "TS2740": 1,
+    "TS2769": 6,
+    "TS4111": 5
+  },
+  "packages/core/src/prosemirror/conversion/characterStyleRoundtrip.test.ts": {
+    "TS2322": 1,
+    "TS2339": 10,
+    "TS2379": 1,
+    "TS7006": 1
+  },
+  "packages/core/src/prosemirror/conversion/complexScriptProvenance.test.ts": {
+    "TS2379": 2
+  },
+  "packages/core/src/prosemirror/conversion/copyOriginAncestorsRoundtrip.test.ts": {
+    "TS2532": 3,
+    "TS7006": 1
+  },
+  "packages/core/src/prosemirror/conversion/drawingTransform.property.test.ts": {
+    "TS2322": 1,
+    "TS2375": 1
+  },
+  "packages/core/src/prosemirror/conversion/emptyParagraphCaretFormatting.property.test.ts": {
+    "TS2379": 1
+  },
+  "packages/core/src/prosemirror/conversion/emptyRangeAnchor.property.test.ts": {
+    "TS2353": 4,
+    "TS2769": 1
+  },
+  "packages/core/src/prosemirror/conversion/fieldCodeMetadata.test.ts": {
+    "TS18048": 2,
+    "TS2322": 1,
+    "TS4111": 2
+  },
+  "packages/core/src/prosemirror/conversion/fieldResultRunMetadataRoundtrip.test.ts": {
+    "TS2769": 6,
+    "TS4111": 6
+  },
+  "packages/core/src/prosemirror/conversion/fontFamilyMerge.test.ts": {
+    "TS2375": 1
+  },
+  "packages/core/src/prosemirror/conversion/fromProseDoc-inline-wrapper-edit.test.ts": {
+    "TS2339": 2
+  },
+  "packages/core/src/prosemirror/conversion/fromProseDoc-inline-wrapper.property.test.ts": {
+    "TS2322": 9,
+    "TS2339": 2,
+    "TS2345": 1,
+    "TS2375": 1
+  },
+  "packages/core/src/prosemirror/conversion/fromProseDoc.test.ts": {
+    "TS2322": 14,
+    "TS2339": 1,
+    "TS2345": 5,
+    "TS2379": 8,
+    "TS2532": 2,
+    "TS2769": 6,
+    "TS4111": 7
+  },
+  "packages/core/src/prosemirror/conversion/image-wrap-distance-zero.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/prosemirror/conversion/imageTrackedChanges.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/prosemirror/conversion/inlineSdtRevisionHoist.test.ts": {
+    "TS2345": 5
+  },
+  "packages/core/src/prosemirror/conversion/issue-712-run-shading-roundtrip.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/prosemirror/conversion/listLevelStartsRoundtrip.test.ts": {
+    "TS2322": 1,
+    "TS2345": 3,
+    "TS2375": 1,
+    "TS2379": 2
+  },
+  "packages/core/src/prosemirror/conversion/modelFixedPoint.property.test.ts": {
+    "TS1360": 1,
+    "TS2322": 2,
+    "TS2379": 1
+  },
+  "packages/core/src/prosemirror/conversion/noteReferenceOccurrences.property.test.ts": {
+    "TS2554": 1,
+    "TS4111": 10
+  },
+  "packages/core/src/prosemirror/conversion/pageBreakProjectionTotality.property.test.ts": {
+    "TS2339": 1
+  },
+  "packages/core/src/prosemirror/conversion/pageBreakRunOwnership.test.ts": {
+    "TS2322": 2,
+    "TS2339": 1,
+    "TS2769": 3
+  },
+  "packages/core/src/prosemirror/conversion/paragraphIndentationSave.test.ts": {
+    "TS2339": 3,
+    "TS2740": 1
+  },
+  "packages/core/src/prosemirror/conversion/paragraphMarkFontInheritance.test.ts": {
+    "TS2379": 3
+  },
+  "packages/core/src/prosemirror/conversion/realDocxFixtures.test.ts": {
+    "TS2379": 1
+  },
+  "packages/core/src/prosemirror/conversion/renderedPageBreakRoundtrip.test.ts": {
+    "TS2322": 1,
+    "TS2345": 1
+  },
+  "packages/core/src/prosemirror/conversion/rtlEffectRoundtrip.test.ts": {
+    "TS2345": 2
+  },
+  "packages/core/src/prosemirror/conversion/semanticRoundtrip.test.ts": {
+    "TS2353": 1
+  },
+  "packages/core/src/prosemirror/conversion/shapeGeometry.property.test.ts": {
+    "TS2322": 1,
+    "TS2353": 1,
+    "TS2379": 4
+  },
+  "packages/core/src/prosemirror/conversion/splitRunDefaults.property.test.ts": {
+    "TS4111": 3
+  },
+  "packages/core/src/prosemirror/conversion/styleResolvedFormatting.property.test.ts": {
+    "TS2322": 1,
+    "TS2375": 1,
+    "TS2379": 3,
+    "TS2739": 1
+  },
+  "packages/core/src/prosemirror/conversion/table-bidi-style-cascade.test.ts": {
+    "TS2322": 1,
+    "TS2379": 2,
+    "TS4111": 4
+  },
+  "packages/core/src/prosemirror/conversion/tableBordersRoundtrip.test.ts": {
+    "TS2322": 11,
+    "TS2412": 1,
+    "TS2769": 2
+  },
+  "packages/core/src/prosemirror/conversion/textBoxContentState.property.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/prosemirror/conversion/toProseDoc-inline-wrapper.property.test.ts": {
+    "TS2322": 3,
+    "TS2345": 1,
+    "TS2375": 1
+  },
+  "packages/core/src/prosemirror/conversion/toProseDoc-pagebreak.test.ts": {
+    "TS2345": 1,
+    "TS2353": 2
+  },
+  "packages/core/src/prosemirror/conversion/toProseDoc-revision-wrapper.test.ts": {
+    "TS2322": 7
+  },
+  "packages/core/src/prosemirror/conversion/toProseDoc.test.ts": {
+    "TS2322": 16,
+    "TS2339": 2,
+    "TS2379": 18,
+    "TS2532": 1,
+    "TS4111": 64
+  },
+  "packages/core/src/prosemirror/conversion/trackedRunInlineAtoms.test.ts": {
+    "TS2339": 1,
+    "TS2532": 2
+  },
+  "packages/core/src/prosemirror/extensions/core/ParagraphExtension.test.ts": {
+    "TS18048": 2,
+    "TS2339": 3,
+    "TS4111": 2
+  },
+  "packages/core/src/prosemirror/extensions/features/documentStructureCounts.property.test.ts": {
+    "TS2314": 1,
+    "TS2322": 1
+  },
+  "packages/core/src/prosemirror/extensions/features/EmptyParagraphFormatExtension.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/prosemirror/extensions/features/listCommands.matrix.test.ts": {
+    "TS2322": 1,
+    "TS2375": 2,
+    "TS2379": 3,
+    "TS2412": 1,
+    "TS2769": 4
+  },
+  "packages/core/src/prosemirror/extensions/features/ListExtension-autoformat.test.ts": {
+    "TS2554": 1
+  },
+  "packages/core/src/prosemirror/extensions/features/ListExtension-enter.test.ts": {
+    "TS2322": 7,
+    "TS2353": 1,
+    "TS2379": 2,
+    "TS2769": 1,
+    "TS4111": 2
+  },
+  "packages/core/src/prosemirror/extensions/features/ListExtension-suggestion.test.ts": {
+    "TS4111": 21
+  },
+  "packages/core/src/prosemirror/extensions/features/ParagraphChangeTrackerExtension.test.ts": {
+    "TS2322": 1,
+    "TS2375": 1,
+    "TS4111": 13
+  },
+  "packages/core/src/prosemirror/extensions/features/pastedHtmlLists.test.ts": {
+    "TS2379": 1
+  },
+  "packages/core/src/prosemirror/extensions/markRegistry.test.ts": {
+    "TS2345": 1,
+    "TS2769": 1
+  },
+  "packages/core/src/prosemirror/extensions/marks/CharacterSpacingExtension.test.ts": {
+    "TS2345": 1,
+    "TS2352": 1
+  },
+  "packages/core/src/prosemirror/extensions/marks/emptyParagraphFormatting.property.test.ts": {
+    "TS4111": 3
+  },
+  "packages/core/src/prosemirror/extensions/marks/FootnoteRefExtension.test.ts": {
+    "TS2345": 3
+  },
+  "packages/core/src/prosemirror/extensions/marks/hyperlinkAnchorTarget.property.test.ts": {
+    "TS2345": 1
+  },
+  "packages/core/src/prosemirror/extensions/marks/HyperlinkExtension.test.ts": {
+    "TS2345": 1,
+    "TS2352": 2
+  },
+  "packages/core/src/prosemirror/extensions/marks/markUtils.test.ts": {
+    "TS18048": 1,
+    "TS2554": 1,
+    "TS4111": 13
+  },
+  "packages/core/src/prosemirror/extensions/marks/RunIdentityExtension.test.ts": {
+    "TS18048": 7,
+    "TS2345": 1,
+    "TS4111": 7
+  },
+  "packages/core/src/prosemirror/extensions/marks/underlineMarkDom.property.test.ts": {
+    "TS2339": 1,
+    "TS2769": 1
+  },
+  "packages/core/src/prosemirror/extensions/marks/underlineNoneMark.property.test.ts": {
+    "TS2339": 3
+  },
+  "packages/core/src/prosemirror/extensions/nodes/BookmarkBoundaryExtension.test.ts": {
+    "TS1294": 1,
+    "TS18048": 1,
+    "TS4111": 1
+  },
+  "packages/core/src/prosemirror/extensions/nodes/CommentReferenceExtension.test.ts": {
+    "TS2345": 2,
+    "TS4111": 2
+  },
+  "packages/core/src/prosemirror/extensions/nodes/FieldExtension.test.ts": {
+    "TS18048": 5,
+    "TS2345": 2,
+    "TS4111": 6,
+    "TS7006": 1
+  },
+  "packages/core/src/prosemirror/extensions/nodes/ImageExtension.test.ts": {
+    "TS18048": 3,
+    "TS4111": 3
+  },
+  "packages/core/src/prosemirror/extensions/nodes/RangeAnchorExtension.test.ts": {
+    "TS1294": 1,
+    "TS18048": 1,
+    "TS4111": 1
+  },
+  "packages/core/src/prosemirror/extensions/nodes/ShapeExtension-line.test.ts": {
+    "TS2339": 9
+  },
+  "packages/core/src/prosemirror/extensions/nodes/SymbolExtension.test.ts": {
+    "TS18048": 4,
+    "TS4111": 4
+  },
+  "packages/core/src/prosemirror/extensions/nodes/TableExtension.test.ts": {
+    "TS2345": 1
+  },
+  "packages/core/src/prosemirror/extensions/pluginStepMapping.property.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/prosemirror/listState.test.ts": {
+    "TS2345": 6
+  },
+  "packages/core/src/prosemirror/numberedRefFields.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/prosemirror/numberingAttr.test.ts": {
+    "TS2345": 3,
+    "TS2769": 6
+  },
+  "packages/core/src/prosemirror/paragraphList.property.test.ts": {
+    "TS2339": 3,
+    "TS2412": 2
+  },
+  "packages/core/src/prosemirror/paraText.test.ts": {
+    "TS2345": 2
+  },
+  "packages/core/src/prosemirror/pluginKeyOwner.test.ts": {
+    "TS2345": 1,
+    "TS2769": 1
+  },
+  "packages/core/src/prosemirror/plugins/aiSuggestionDecorations.test.ts": {
+    "TS2345": 1
+  },
+  "packages/core/src/prosemirror/plugins/contentControlWidgets.test.ts": {
+    "TS2339": 4
+  },
+  "packages/core/src/prosemirror/plugins/documentStyles.test.ts": {
+    "TS2345": 1
+  },
+  "packages/core/src/prosemirror/plugins/imeComposition.test.ts": {
+    "TS2722": 28,
+    "TS4111": 28
+  },
+  "packages/core/src/prosemirror/plugins/selectionTracker.test.ts": {
+    "TS2769": 1,
+    "TS4111": 3
+  },
+  "packages/core/src/prosemirror/plugins/suggestedCompositionOverEverything.test.ts": {
+    "TS2740": 2
+  },
+  "packages/core/src/prosemirror/plugins/suggestionMode.test.ts": {
+    "TS18048": 6,
+    "TS2339": 1,
+    "TS2345": 1,
+    "TS2532": 1,
+    "TS4111": 3
+  },
+  "packages/core/src/prosemirror/plugins/suggestionReplacementResolution.test.ts": {
+    "TS2740": 4
+  },
+  "packages/core/src/prosemirror/plugins/templateDirectives.test.ts": {
+    "TS2345": 1
+  },
+  "packages/core/src/prosemirror/plugins/templatePreviewValues.test.ts": {
+    "TS2345": 1
+  },
+  "packages/core/src/prosemirror/protectedCarrierDeletion.property.test.ts": {
+    "TS7005": 2,
+    "TS7034": 2
+  },
+  "packages/core/src/prosemirror/replacedAnnotations.test.ts": {
+    "TS18048": 2,
+    "TS4111": 2
+  },
+  "packages/core/src/prosemirror/runIdentity.property.test.ts": {
+    "TS2345": 2
+  },
+  "packages/core/src/prosemirror/runStyleFormatting.test.ts": {
+    "TS2741": 1
+  },
+  "packages/core/src/prosemirror/selectionState.test.ts": {
+    "TS4111": 1
+  },
+  "packages/core/src/prosemirror/styles/resolvedStyleAttrs-list.test.ts": {
+    "TS2322": 5,
+    "TS2345": 5,
+    "TS2379": 15,
+    "TS2769": 4
+  },
+  "packages/core/src/prosemirror/styles/styleResolver.test.ts": {
+    "TS2532": 4,
+    "TS2554": 2
+  },
+  "packages/core/src/prosemirror/textInput.test.ts": {
+    "TS2379": 1
+  },
+  "packages/core/src/prosemirror/utils/tabCalculator.test.ts": {
+    "TS2532": 8
+  },
+  "packages/core/src/prosemirror/validation.test.ts": {
+    "TS18048": 1,
+    "TS2345": 4,
+    "TS4111": 1
+  },
+  "packages/core/src/redline.test.ts": {
+    "TS2322": 2,
+    "TS2769": 4,
+    "TS6133": 1
+  },
+  "packages/core/src/render-dom/commentAnchorAttributes.test.ts": {
+    "TS2769": 4
+  },
+  "packages/core/src/style-sets/initialParagraphStyle.property.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/style-sets/styleSetNormalization.property.test.ts": {
+    "TS2322": 1,
+    "TS2769": 1
+  },
+  "packages/core/src/style-sets/styleSets.test.ts": {
+    "TS2339": 1
+  },
+  "packages/core/src/types/block-id.test.ts": {
+    "TS2769": 2
+  },
+  "packages/core/src/utils/__tests__/clipboard.test.ts": {
+    "TS2339": 1
+  },
+  "packages/core/src/utils/__tests__/colorResolver.test.ts": {
+    "TS18048": 6,
+    "TS2532": 49
+  },
+  "packages/core/src/utils/borderCss.property.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/utils/findMatchView.test.ts": {
+    "TS2345": 1
+  },
+  "packages/core/src/utils/findReplace.test.ts": {
+    "TS2322": 3,
+    "TS2769": 4,
+    "TS7053": 1
+  },
+  "packages/core/src/utils/findSearchKey.test.ts": {
+    "TS2322": 6,
+    "TS2345": 2
+  },
+  "packages/core/src/utils/fontResolver.test.ts": {
+    "TS2379": 1
+  },
+  "packages/core/src/utils/headerFooter.test.ts": {
+    "TS2322": 3
+  },
+  "packages/core/src/utils/mergeDocumentContent.test.ts": {
+    "TS2322": 1
+  },
+  "packages/core/src/utils/paragraphFormattingMerge.test.ts": {
+    "TS2769": 2
+  },
+  "packages/core/src/utils/tableOperations.test.ts": {
+    "TS2769": 1
+  },
+  "packages/core/src/utils/unicodeSerialization.property.test.ts": {
+    "TS2769": 2
+  },
+  "packages/core/src/version-comparison.test.ts": {
+    "TS2339": 2,
+    "TS2769": 4,
+    "TS7031": 2
+  },
+  "packages/core/tsdown.config.ts": {
+    "TS2769": 2,
+    "TS5097": 2
+  },
+  "packages/docx-core/src/legal-source/legal-source.test.ts": {
+    "TS2769": 2,
+    "TS7006": 1
+  },
+  "packages/docx-core/src/model/paragraphNumbering.property.test.ts": {
+    "TS2322": 10
+  },
+  "packages/docx-core/src/model/propertyRevisions.test.ts": {
+    "TS2769": 1
+  },
+  "packages/docx-core/src/ops/__tests__/acceptedBreakSplitCut.test.ts": {
+    "TS2769": 8
+  },
+  "packages/docx-core/src/ops/__tests__/acceptedInsertionContainerHandoff.test.ts": {
+    "TS2322": 1,
+    "TS2345": 1
+  },
+  "packages/docx-core/src/ops/__tests__/apply.property.test.ts": {
+    "TS1360": 1,
+    "TS2322": 14,
+    "TS2345": 4,
+    "TS2375": 1,
+    "TS2532": 1,
+    "TS2769": 3,
+    "TS4104": 1,
+    "TS7053": 2
+  },
+  "packages/docx-core/src/ops/__tests__/apply.test.ts": {
+    "TS2322": 1,
+    "TS2353": 1,
+    "TS2769": 2
+  },
+  "packages/docx-core/src/ops/__tests__/applyInverse.property.test.ts": {
+    "TS2345": 1,
+    "TS2769": 2,
+    "TS7053": 1
+  },
+  "packages/docx-core/src/ops/__tests__/applyPropertySupport.ts": {
+    "TS2740": 1
+  },
+  "packages/docx-core/src/ops/__tests__/authoredBoundaryAtSeam.test.ts": {
+    "TS2375": 1
+  },
+  "packages/docx-core/src/ops/__tests__/blockDeletion.property.test.ts": {
+    "TS2322": 1,
+    "TS2345": 3
+  },
+  "packages/docx-core/src/ops/__tests__/blockDeletion.test.ts": {
+    "TS2769": 8,
+    "TS4104": 1
+  },
+  "packages/docx-core/src/ops/__tests__/blockDeletionAcceptance.property.test.ts": {
+    "TS2345": 1
+  },
+  "packages/docx-core/src/ops/__tests__/blockDeletionBeforeStandingBoundary.test.ts": {
+    "TS2345": 1
+  },
+  "packages/docx-core/src/ops/__tests__/blockDeletionBeforeTableUnderReview.test.ts": {
+    "TS2769": 2
+  },
+  "packages/docx-core/src/ops/__tests__/blockDeletionOwnInsertion.test.ts": {
+    "TS2305": 1
+  },
+  "packages/docx-core/src/ops/__tests__/blockInsertion.property.test.ts": {
+    "TS2322": 1,
+    "TS2345": 2,
+    "TS2741": 2
+  },
+  "packages/docx-core/src/ops/__tests__/blockInsertion.test.ts": {
+    "TS2322": 8,
+    "TS2345": 6,
+    "TS2769": 3
+  },
+  "packages/docx-core/src/ops/__tests__/blockInsertionCompilation.test.ts": {
+    "TS2769": 1
+  },
+  "packages/docx-core/src/ops/__tests__/blockInsertionPreparation.test.ts": {
+    "TS2769": 2
+  },
+  "packages/docx-core/src/ops/__tests__/closedEdgeResolutionOrder.test.ts": {
+    "TS2322": 1
+  },
+  "packages/docx-core/src/ops/__tests__/columnRowReviewResolution.property.test.ts": {
+    "TS2353": 1
+  },
+  "packages/docx-core/src/ops/__tests__/commentAnchorFacts.property.test.ts": {
+    "TS2314": 1,
+    "TS2322": 3,
+    "TS2769": 1
+  },
+  "packages/docx-core/src/ops/__tests__/commentBoundaries.property.test.ts": {
+    "TS2375": 1
+  },
+  "packages/docx-core/src/ops/__tests__/commentBoundaryConvergence.test.ts": {
+    "TS2322": 1
+  },
+  "packages/docx-core/src/ops/__tests__/commentDocumentIssue.property.test.ts": {
+    "TS2314": 1
+  },
+  "packages/docx-core/src/ops/__tests__/commentReferenceParagraphRetention.test.ts": {
+    "TS2322": 3,
+    "TS2769": 4
+  },
+  "packages/docx-core/src/ops/__tests__/comments.property.test.ts": {
+    "TS2322": 3,
+    "TS2339": 1,
+    "TS2345": 1,
+    "TS2769": 3,
+    "TS4104": 2
+  },
+  "packages/docx-core/src/ops/__tests__/containerStartInsertion.test.ts": {
+    "TS2339": 1,
+    "TS2345": 2
+  },
+  "packages/docx-core/src/ops/__tests__/controlEndMarkJoin.test.ts": {
+    "TS2345": 1
+  },
+  "packages/docx-core/src/ops/__tests__/copyOriginAncestors.test.ts": {
+    "TS2322": 1,
+    "TS2769": 1
+  },
+  "packages/docx-core/src/ops/__tests__/deleteRangeKeepsRangesWellFormed.test.ts": {
+    "TS2741": 1
+  },
+  "packages/docx-core/src/ops/__tests__/deletionBoundarySelection.test.ts": {
+    "TS2741": 1
+  },
+  "packages/docx-core/src/ops/__tests__/directEditCommentRetirement.test.ts": {
+    "TS2322": 1
+  },
+  "packages/docx-core/src/ops/__tests__/directTableEditsBesideReviews.test.ts": {
+    "TS2339": 4,
+    "TS2345": 2,
+    "TS2353": 7,
+    "TS2769": 1
+  },
+  "packages/docx-core/src/ops/__tests__/editorIntentApplied.property.test.ts": {
+    "TS2769": 1
+  },
+  "packages/docx-core/src/ops/__tests__/editorIntentIds.property.test.ts": {
+    "TS2322": 2,
+    "TS2345": 1,
+    "TS2741": 1
+  },
+  "packages/docx-core/src/ops/__tests__/emptyMarkBeforeFinalTable.test.ts": {
+    "TS2322": 1
+  },
+  "packages/docx-core/src/ops/__tests__/hyperlinkIntent.property.test.ts": {
+    "TS2322": 1,
+    "TS2379": 1,
+    "TS2769": 1
+  },
+  "packages/docx-core/src/ops/__tests__/hyperlinkTextReplacement.test.ts": {
+    "TS2345": 3,
+    "TS2375": 10
+  },
+  "packages/docx-core/src/ops/__tests__/insertContentRangeOrder.test.ts": {
+    "TS2322": 1,
+    "TS2741": 3
+  },
+  "packages/docx-core/src/ops/__tests__/insertedMarkBeforeOpaque.test.ts": {
+    "TS2322": 9,
+    "TS2345": 2,
+    "TS2769": 4
+  },
+  "packages/docx-core/src/ops/__tests__/insertionBoundaryInverse.test.ts": {
+    "TS1360": 1,
+    "TS2322": 4,
+    "TS2345": 8,
+    "TS2741": 1
+  },
+  "packages/docx-core/src/ops/__tests__/insertionTakesOverMarkRecords.test.ts": {
+    "TS2345": 1
+  },
+  "packages/docx-core/src/ops/__tests__/keptBoundaryInsideRemovedRecord.test.ts": {
+    "TS2322": 1,
+    "TS2345": 1
+  },
+  "packages/docx-core/src/ops/__tests__/keptCut.test.ts": {
+    "TS2375": 1
+  },
+  "packages/docx-core/src/ops/__tests__/keptCutMarkNeighbour.test.ts": {
+    "TS2375": 1
+  },
+  "packages/docx-core/src/ops/__tests__/keptJoinOlderPiece.test.ts": {
+    "TS2322": 1,
+    "TS2345": 1
+  },
+  "packages/docx-core/src/ops/__tests__/keptMarkerRules.test.ts": {
+    "TS2322": 24,
+    "TS2769": 2
+  },
+  "packages/docx-core/src/ops/__tests__/laterInsertionBesideCut.test.ts": {
+    "TS2322": 1
+  },
+  "packages/docx-core/src/ops/__tests__/listSplice.test.ts": {
+    "TS2375": 1,
+    "TS2769": 1
+  },
+  "packages/docx-core/src/ops/__tests__/markJoinPastBoundaryIntoControl.test.ts": {
+    "TS2322": 5
+  },
+  "packages/docx-core/src/ops/__tests__/moveRangeAnchorTransfer.property.test.ts": {
+    "TS2322": 1
+  },
+  "packages/docx-core/src/ops/__tests__/noteCleanupComposition.property.test.ts": {
+    "TS2769": 1
+  },
+  "packages/docx-core/src/ops/__tests__/numberingSections.property.test.ts": {
+    "TS2322": 4,
+    "TS2345": 1
+  },
+  "packages/docx-core/src/ops/__tests__/packageResources.test.ts": {
+    "TS2322": 1
+  },
+  "packages/docx-core/src/ops/__tests__/paragraphBoundaryRemovalEffects.test.ts": {
+    "TS2322": 4,
+    "TS2345": 1,
+    "TS2769": 1
+  },
+  "packages/docx-core/src/ops/__tests__/paragraphMarkCarrier.test.ts": {
+    "TS2322": 24,
+    "TS2769": 24
+  },
+  "packages/docx-core/src/ops/__tests__/paragraphMarkChainOrder.test.ts": {
+    "TS2345": 1
+  },
+  "packages/docx-core/src/ops/__tests__/paragraphPropertySnapshot.test.ts": {
+    "TS2554": 5
+  },
+  "packages/docx-core/src/ops/__tests__/paragraphRenderings.property.test.ts": {
+    "TS2314": 1,
+    "TS2322": 1
+  },
+  "packages/docx-core/src/ops/__tests__/paragraphSnapshotTransfers.property.test.ts": {
+    "TS2769": 2
+  },
+  "packages/docx-core/src/ops/__tests__/pasteBesidePendingRemoval.test.ts": {
+    "TS2322": 1
+  },
+  "packages/docx-core/src/ops/__tests__/pastedCommentRanges.test.ts": {
+    "TS2322": 1,
+    "TS2352": 2
+  },
+  "packages/docx-core/src/ops/__tests__/pastedMoveRanges.test.ts": {
+    "TS2322": 2,
+    "TS2375": 2
+  },
+  "packages/docx-core/src/ops/__tests__/pendingPropertyChangeDirectEdit.test.ts": {
+    "TS2741": 1
+  },
+  "packages/docx-core/src/ops/__tests__/plainRevisionResolution.test.ts": {
+    "TS2339": 5
+  },
+  "packages/docx-core/src/ops/__tests__/rangeAnchorPlanning.property.test.ts": {
+    "TS2322": 1
+  },
+  "packages/docx-core/src/ops/__tests__/rangeBoundarySourceOwnership.test.ts": {
+    "TS2769": 1
+  },
+  "packages/docx-core/src/ops/__tests__/rangePlanning.test.ts": {
+    "TS1360": 1
+  },
+  "packages/docx-core/src/ops/__tests__/rangePlanningLookup.test.ts": {
+    "TS2322": 1,
+    "TS2769": 1
+  },
+  "packages/docx-core/src/ops/__tests__/recordsBeyondRemovedPieces.test.ts": {
+    "TS2322": 1
+  },
+  "packages/docx-core/src/ops/__tests__/referenceShapes.test.ts": {
+    "TS2345": 1
+  },
+  "packages/docx-core/src/ops/__tests__/rejectedInsertionNestedRemovalSeam.test.ts": {
+    "TS2322": 1
+  },
+  "packages/docx-core/src/ops/__tests__/rejectRangeBoundaries.test.ts": {
+    "TS2322": 3,
+    "TS2769": 9
+  },
+  "packages/docx-core/src/ops/__tests__/replacementCommentBoundaries.test.ts": {
+    "TS2322": 1
+  },
+  "packages/docx-core/src/ops/__tests__/replyInsideContainers.test.ts": {
+    "TS2322": 2
+  },
+  "packages/docx-core/src/ops/__tests__/resolutionCutSuffix.test.ts": {
+    "TS2345": 1,
+    "TS2741": 1
+  },
+  "packages/docx-core/src/ops/__tests__/resolutionMaterializationFallback.test.ts": {
+    "TS2322": 1
+  },
+  "packages/docx-core/src/ops/__tests__/resolutionProvenance.property.test.ts": {
+    "TS2322": 2,
+    "TS2694": 1,
+    "TS2741": 1,
+    "TS4104": 25
+  },
+  "packages/docx-core/src/ops/__tests__/review.property.test.ts": {
+    "TS2322": 1,
+    "TS2353": 1,
+    "TS2769": 9
+  },
+  "packages/docx-core/src/ops/__tests__/review.test.ts": {
+    "TS2322": 6,
+    "TS2339": 2,
+    "TS2353": 1,
+    "TS2375": 2,
+    "TS2552": 1,
+    "TS2769": 4
+  },
+  "packages/docx-core/src/ops/__tests__/runPropertyFoldBaseline.test.ts": {
+    "TS2769": 1
+  },
+  "packages/docx-core/src/ops/__tests__/seamNameBesideSurvivingSeam.test.ts": {
+    "TS2375": 1
+  },
+  "packages/docx-core/src/ops/__tests__/splitCutSideJoin.test.ts": {
+    "TS2322": 1,
+    "TS2769": 2
+  },
+  "packages/docx-core/src/ops/__tests__/splitCutUnwrappedLevels.test.ts": {
+    "TS2322": 1
+  },
+  "packages/docx-core/src/ops/__tests__/splitParagraphFormatting.test.ts": {
+    "TS2322": 1,
+    "TS2353": 3
+  },
+  "packages/docx-core/src/ops/__tests__/stories.property.test.ts": {
+    "TS2345": 2
+  },
+  "packages/docx-core/src/ops/__tests__/storyPartsSnapshots.property.test.ts": {
+    "TS2375": 1
+  },
+  "packages/docx-core/src/ops/__tests__/suggestionPropertyChangeFold.test.ts": {
+    "TS2322": 1
+  },
+  "packages/docx-core/src/ops/__tests__/tableBoundaryInsertion.property.test.ts": {
+    "TS1360": 1,
+    "TS2305": 1,
+    "TS2375": 2
+  },
+  "packages/docx-core/src/ops/__tests__/tableBoundarySelectiveReview.property.test.ts": {
+    "TS2305": 1
+  },
+  "packages/docx-core/src/ops/__tests__/tableEdits.property.test.ts": {
+    "TS2769": 2
+  },
+  "packages/docx-core/src/ops/__tests__/tableEditsForward.test.ts": {
+    "TS2769": 4
+  },
+  "packages/docx-core/src/ops/__tests__/tableEditsReview.test.ts": {
+    "TS2769": 2
+  },
+  "packages/docx-core/src/ops/__tests__/tableEditsTracking.test.ts": {
+    "TS2322": 3,
+    "TS2339": 1,
+    "TS2353": 2,
+    "TS2412": 1,
+    "TS2769": 2
+  },
+  "packages/docx-core/src/ops/__tests__/tableRows.property.test.ts": {
+    "TS2339": 5
+  },
+  "packages/docx-core/src/ops/__tests__/tableRows.test.ts": {
+    "TS2769": 3
+  },
+  "packages/docx-core/src/ops/__tests__/tables.test.ts": {
+    "TS2379": 1,
+    "TS2741": 1,
+    "TS2769": 1
+  },
+  "packages/docx-core/src/ops/__tests__/terminalReviewFieldInverse.test.ts": {
+    "TS2322": 7,
+    "TS2345": 1,
+    "TS2769": 4
+  },
+  "packages/docx-core/src/ops/__tests__/trackedDeletionPreflight.test.ts": {
+    "TS2322": 1
+  },
+  "packages/docx-core/src/ops/__tests__/trackedInsertionAfterSectionEnd.test.ts": {
+    "TS2345": 1
+  },
+  "packages/docx-core/src/ops/__tests__/trackedInsertionGroup.test.ts": {
+    "TS2322": 1
+  },
+  "packages/docx-core/src/ops/__tests__/trackedOwnMarkJoinProperties.test.ts": {
+    "TS2322": 1,
+    "TS2412": 2
+  },
+  "packages/docx-core/src/ops/__tests__/trackedParagraphBeforePendingTable.property.test.ts": {
+    "TS2305": 1,
+    "TS2322": 1
+  },
+  "packages/docx-core/src/ops/__tests__/trackedPlanAllocation.property.test.ts": {
+    "TS2322": 1
+  },
+  "packages/docx-core/src/ops/__tests__/trackedRowMergeHandOn.test.ts": {
+    "TS2769": 3
+  },
+  "packages/docx-core/src/ops/__tests__/trackedTables.property.test.ts": {
+    "TS2322": 1,
+    "TS2345": 1,
+    "TS2694": 1,
+    "TS2769": 1
+  },
+  "packages/docx-core/src/ops/__tests__/trackedTables.test.ts": {
+    "TS2375": 4,
+    "TS2769": 1
+  },
+  "packages/docx-core/src/ops/__tests__/unchangedCommentAnchors.test.ts": {
+    "TS2322": 1,
+    "TS2339": 2,
+    "TS2379": 1
+  },
+  "packages/docx-core/src/ops/__tests__/wholeParagraphReplacement.test.ts": {
+    "TS2322": 3
+  },
+  "packages/docx-core/src/ops/__tests__/wireFixtures.ts": {
+    "TS2322": 1,
+    "TS2345": 3,
+    "TS2353": 1,
+    "TS2375": 2,
+    "TS2379": 1
+  },
+  "packages/docx-core/src/ops/__tests__/wireFormat.test.ts": {
+    "TS2339": 1,
+    "TS2741": 1,
+    "TS2769": 1
+  },
+  "packages/docx-core/src/ops/__tests__/wirePresence.test.ts": {
+    "TS2345": 2,
+    "TS2540": 6,
+    "TS2741": 1,
+    "TS4104": 2
+  },
+  "packages/docx-core/src/ops/commentRelationshipProjection.test.ts": {
+    "TS2322": 2,
+    "TS2345": 4,
+    "TS2769": 1
+  },
+  "packages/docx-core/src/ops/sequencing/__tests__/canonicalConvergence.property.test.ts": {
+    "TS2339": 2,
+    "TS2740": 1,
+    "TS2769": 5
+  },
+  "packages/docx-core/src/ops/sequencing/__tests__/fragmentReviewTargets.property.test.ts": {
+    "TS2694": 1
+  },
+  "packages/docx-core/src/ops/sequencing/__tests__/runtime.property.test.ts": {
+    "TS2379": 2,
+    "TS2769": 1
+  },
+  "packages/docx-core/src/ops/sequencing/commentTransform.test.ts": {
+    "TS2353": 1,
+    "TS2375": 1,
+    "TS2769": 1
+  },
+  "packages/docx-core/src/ops/sequencing/envelope.test.ts": {
+    "TS2353": 1,
+    "TS2769": 3,
+    "TS4111": 1
+  },
+  "packages/docx-core/src/ops/sequencing/scope.test.ts": {
+    "TS2339": 1
+  },
+  "packages/docx-core/src/ops/sequencing/transform.test.ts": {
+    "TS2769": 1
+  },
+  "packages/docx-core/src/paragraph-fragment.test.ts": {
+    "TS2769": 4
+  },
+  "packages/docx-core/src/projection.test.ts": {
+    "TS2769": 3
+  },
+  "packages/docx-core/src/serialize/docx.test.ts": {
+    "TS2322": 1,
+    "TS2345": 2
+  },
+  "packages/docx-core/src/validate/docx.test.ts": {
+    "TS2322": 2
+  },
+  "packages/editor-web/tests/webview.spec.ts": {
+    "TS2790": 1
+  },
+  "packages/react/src/components/dialogs/dialogLifecycle.test.tsx": {
+    "TS2322": 1
+  },
+  "packages/react/src/components/dialogs/findReplaceInteraction.test.ts": {
+    "TS2322": 1
+  },
+  "packages/react/src/components/dialogs/findReplaceUtils.test.ts": {
+    "TS18048": 2,
+    "TS2322": 3,
+    "TS2345": 2
+  },
+  "packages/react/src/components/DocxEditor.canonicalCommentsComposition.test.tsx": {
+    "TS2345": 2,
+    "TS2769": 1,
+    "TS7006": 2,
+    "TS7019": 1
+  },
+  "packages/react/src/components/DocxEditor.canonicalModel.test.tsx": {
+    "TS2769": 1
+  },
+  "packages/react/src/components/DocxEditor.canonicalSave.test.tsx": {
+    "TS18047": 1,
+    "TS2339": 15,
+    "TS2375": 2,
+    "TS2769": 1
+  },
+  "packages/react/src/components/DocxEditor.reviewDisplayMode.test.tsx": {
+    "TS2769": 1
+  },
+  "packages/react/src/components/hooks/committedEditorRefs.test.tsx": {
+    "TS2322": 1
+  },
+  "packages/react/src/components/hooks/scrollContainerReplacement.test.tsx": {
+    "TS1294": 1
+  },
+  "packages/react/src/components/ui/Ruler.accessibility.test.tsx": {
+    "TS2375": 1
+  },
+  "packages/react/src/components/useFolioComments.test.tsx": {
+    "TS2379": 4
+  },
+  "packages/react/src/hooks/keepEqual.test.ts": {
+    "TS1294": 1
+  },
+  "packages/react/src/paged-editor/committedInputs.test.tsx": {
+    "TS2322": 3,
+    "TS2345": 1,
+    "TS2353": 1,
+    "TS2741": 1
+  },
+  "packages/react/src/paged-editor/deferredEditorKeyDown.test.ts": {
+    "TS2769": 1
+  },
+  "packages/react/tsdown.config.ts": {
+    "TS2307": 1,
+    "TS2769": 2,
+    "TS7006": 2
+  },
+  "packages/utf8-boundaries/test/fixtures/no-chunked-text-codec.ts": {
+    "TS2304": 3,
+    "TS2552": 3,
+    "TS7006": 1
+  },
+  "packages/vue/src/composables/useDocxEditor.canonicalSave.test.ts": {
+    "TS2322": 1,
+    "TS2375": 1,
+    "TS2769": 1
+  },
+  "packages/vue/src/composables/useDocxEditorRefApi.test.ts": {
+    "TS18048": 1,
+    "TS4111": 1
+  },
+  "packages/vue/src/composables/useFontLifecycle.test.ts": {
+    "TS2769": 3
+  },
+  "packages/vue/src/composables/useTableResize.test.ts": {
+    "TS18048": 5,
+    "TS4111": 5
+  },
+  "packages/vue/src/styles/bundledFonts.test.ts": {
+    "TS4111": 1
+  }
+}

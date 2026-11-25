@@ -1,216 +1,55 @@
-/**
- * StarterKit — bundles all extensions into a ready-to-use set
- *
- * Usage:
- *   const extensions = createStarterKit();
- *   const manager = new ExtensionManager(extensions);
- *   manager.buildSchema();
- *   manager.initializeRuntime();
- */
+import { Plugin } from "prosemirror-state";
 
-import type { SelectionChangeCallback } from "../plugins/selectionTracker";
-// Core
-import { DocExtension } from "./core/DocExtension";
-import { HistoryExtension } from "./core/HistoryExtension";
-import type { HistoryShortcutOwner } from "./core/HistoryExtension";
-import { ParagraphExtension } from "./core/ParagraphExtension";
-import { TextExtension } from "./core/TextExtension";
-import { AutoBidiDetectionExtension } from "./features/AutoBidiDetectionExtension";
-import { BaseKeymapExtension } from "./features/BaseKeymapExtension";
-// oxlint-disable-next-line import/no-cycle -- BidiShortcutExtension reaches the singleton schema for runtime command lookup
-import { BidiShortcutExtension } from "./features/BidiShortcutExtension";
-import { ContentControlWidgetsExtension } from "./features/ContentControlWidgetsExtension";
-import { DropCursorExtension } from "./features/DropCursorExtension";
-import { EmptyParagraphFormatExtension } from "./features/EmptyParagraphFormatExtension";
-import { GapCursorExtension } from "./features/GapCursorExtension";
-import { ImageDragExtension } from "./features/ImageDragExtension";
-import { ImagePasteExtension } from "./features/ImagePasteExtension";
-import { JoinedRunStyleExtension } from "./features/JoinedRunStyleExtension";
-// Features
-import { ListExtension } from "./features/ListExtension";
-import { ParagraphChangeTrackerExtension } from "./features/ParagraphChangeTrackerExtension";
-import { ParaIdAllocatorExtension } from "./features/ParaIdAllocatorExtension";
-import { PasteCleanupExtension } from "./features/PasteCleanupExtension";
-import { PasteStyleInlinerExtension } from "./features/PasteStyleInlinerExtension";
-import { SelectionTrackerExtension } from "./features/SelectionTrackerExtension";
-// Marks
-import { MARK_EXTENSIONS, MARK_NESTING_ORDER } from "./markRegistry";
-import { BlockBookmarkBoundaryExtension } from "./nodes/BlockBookmarkBoundaryExtension";
-import { BlockCommentRangeBoundaryExtension } from "./nodes/BlockCommentRangeBoundaryExtension";
-import { BlockCustomXmlExtension } from "./nodes/BlockCustomXmlExtension";
-import { BlockMoveRangeBoundaryExtension } from "./nodes/BlockMoveRangeBoundaryExtension";
-import { BlockSdtExtension } from "./nodes/BlockSdtExtension";
-import { BookmarkBoundaryExtension } from "./nodes/BookmarkBoundaryExtension";
-import { CommentRangeBoundaryExtension } from "./nodes/CommentRangeBoundaryExtension";
-import { CommentReferenceExtension } from "./nodes/CommentReferenceExtension";
+import { clipboardTransformPlugin } from "../../internal/clipboardTransformPlugin";
 import {
-  FieldExtension,
-  StructuredFieldExtension,
-} from "./nodes/FieldExtension";
-// Nodes
-import { HardBreakExtension } from "./nodes/HardBreakExtension";
-import { HorizontalRuleExtension } from "./nodes/HorizontalRuleExtension";
-import { ImageExtension } from "./nodes/ImageExtension";
-import { MathExtension } from "./nodes/MathExtension";
-import { MoveRangeBoundaryExtension } from "./nodes/MoveRangeBoundaryExtension";
-import { NoteMarkerExtension } from "./nodes/NoteMarkerExtension";
-import { PageBreakExtension } from "./nodes/PageBreakExtension";
-import { PageBreakRunExtension } from "./nodes/PageBreakRunExtension";
-import { PreservedBlockExtension } from "./nodes/PreservedBlockExtension";
-import { PreservedXmlExtension } from "./nodes/PreservedXmlExtension";
-import { RangeAnchorExtension } from "./nodes/RangeAnchorExtension";
-import { RenderedPageBreakExtension } from "./nodes/RenderedPageBreakExtension";
-import { SdtExtension } from "./nodes/SdtExtension";
-import { ShapeExtension } from "./nodes/ShapeExtension";
-import { SymbolExtension } from "./nodes/SymbolExtension";
-import { TabExtension } from "./nodes/TabExtension";
-import { createTableExtensions } from "./nodes/TableExtension";
-import { TextBoxAnchorExtension } from "./nodes/TextBoxAnchorExtension";
-import { TextBoxExtension } from "./nodes/TextBoxExtension";
+  createStarterKitExtensions,
+  type StarterKitOptions,
+} from "../../internal/starterKitExtensions";
 import type { AnyExtension } from "./types";
 
-export type StarterKitOptions = {
-  /** Extensions to disable by name */
-  disable?: string[];
-  /** History depth (default: 100) */
-  historyDepth?: number;
-  /** History new group delay (default: 500) */
-  historyNewGroupDelay?: number;
-  /** Who answers the undo and redo keys (default: `"editor"`). */
-  historyShortcuts?: HistoryShortcutOwner;
-  /** Selection change callback */
-  onSelectionChange?: SelectionChangeCallback;
+export type { StarterKitOptions } from "../../internal/starterKitExtensions";
+
+const starterKitClipboardPlugins = (props: Plugin["props"]) => {
+  const plugins = clipboardTransformPlugin(props);
+  const { handlePaste, handleDOMEvents } = props;
+  const paste = handleDOMEvents?.paste;
+  if (handlePaste !== undefined || paste !== undefined)
+    plugins.push(
+      new Plugin({
+        props: {
+          ...(handlePaste === undefined ? {} : { handlePaste }),
+          ...(paste === undefined ? {} : { handleDOMEvents: { paste } }),
+        },
+      }),
+    );
+  return plugins;
 };
 
-/**
- * Create the full set of extensions for the DOCX editor
- */
+/** Create the schema, commands, keymaps and clipboard rules for the DOCX editor. */
 export function createStarterKit(
   options: StarterKitOptions = {},
 ): AnyExtension[] {
-  const disabled = options.disable
-    ? new Set(options.disable)
-    : new Set<string>();
+  const extensions = createStarterKitExtensions(options);
+  for (const extension of extensions) {
+    const { onSchemaReady } = extension;
+    extension.onSchemaReady = (ctx) => {
+      const { plugins, ...runtime } = onSchemaReady(ctx);
+      if (plugins === undefined) return runtime;
 
-  const extensions: AnyExtension[] = [];
-  let internalClipboardToken: string | undefined;
-  const getInternalClipboardToken = (): string => {
-    internalClipboardToken ??= globalThis.crypto.randomUUID();
-    return internalClipboardToken;
-  };
+      // Hosts that explicitly request a selection observer receive its view events.
+      if (
+        extension.config.name === "selectionTracker" &&
+        options.onSelectionChange
+      )
+        return { ...runtime, plugins };
 
-  function add(name: string, ext: AnyExtension): void {
-    if (!disabled.has(name)) {
-      extensions.push(ext);
-    }
+      return {
+        ...runtime,
+        plugins: plugins.flatMap(({ props }) =>
+          starterKitClipboardPlugins(props),
+        ),
+      };
+    };
   }
-
-  // Core (always included unless explicitly disabled)
-  add("doc", DocExtension());
-  add("text", TextExtension());
-  add("paragraph", ParagraphExtension());
-  add(
-    "history",
-    HistoryExtension({
-      ...(options.historyDepth !== undefined
-        ? { depth: options.historyDepth }
-        : {}),
-      ...(options.historyNewGroupDelay !== undefined
-        ? { newGroupDelay: options.historyNewGroupDelay }
-        : {}),
-      ...(options.historyShortcuts !== undefined
-        ? { shortcuts: options.historyShortcuts }
-        : {}),
-    }),
-  );
-
-  // Marks. Registration order is DOM nesting order, outermost first, and
-  // `MARK_NESTING_ORDER` is where that order is decided.
-  for (const name of MARK_NESTING_ORDER) {
-    add(name, MARK_EXTENSIONS[name]({ getInternalClipboardToken }));
-  }
-
-  // Nodes
-  add(
-    "bookmarkBoundary",
-    BookmarkBoundaryExtension({ getInternalClipboardToken }),
-  );
-  add(
-    "blockBookmarkBoundary",
-    BlockBookmarkBoundaryExtension({ getInternalClipboardToken }),
-  );
-  add(
-    "blockMoveRangeBoundary",
-    BlockMoveRangeBoundaryExtension({ getInternalClipboardToken }),
-  );
-  add("blockCommentRangeBoundary", BlockCommentRangeBoundaryExtension());
-  add(
-    "commentReference",
-    CommentReferenceExtension({ getInternalClipboardToken }),
-  );
-  add(
-    "commentRangeBoundary",
-    CommentRangeBoundaryExtension({ getInternalClipboardToken }),
-  );
-  add(
-    "moveRangeBoundary",
-    MoveRangeBoundaryExtension({ getInternalClipboardToken }),
-  );
-  add("rangeAnchor", RangeAnchorExtension({ getInternalClipboardToken }));
-  add("hardBreak", HardBreakExtension());
-  add("tab", TabExtension());
-  add("symbol", SymbolExtension());
-  add("preservedXml", PreservedXmlExtension());
-  add("noteMarker", NoteMarkerExtension());
-  add("image", ImageExtension());
-  add("textBox", TextBoxExtension());
-  add("textBoxAnchor", TextBoxAnchorExtension({ getInternalClipboardToken }));
-  add("shape", ShapeExtension());
-  add("imageDrag", ImageDragExtension());
-  add("imagePaste", ImagePasteExtension());
-  add("dropCursor", DropCursorExtension());
-  add("gapCursor", GapCursorExtension());
-  add("horizontalRule", HorizontalRuleExtension());
-  add("pageBreak", PageBreakExtension());
-  add("pageBreakRun", PageBreakRunExtension());
-  add("renderedPageBreak", RenderedPageBreakExtension());
-  add("field", FieldExtension({ getInternalClipboardToken }));
-  add("field", StructuredFieldExtension({ getInternalClipboardToken }));
-  add("sdt", SdtExtension());
-  add("blockSdt", BlockSdtExtension());
-  add("blockCustomXml", BlockCustomXmlExtension());
-  add("preservedBlock", PreservedBlockExtension());
-  add("math", MathExtension());
-
-  // Table (5 extensions grouped)
-  if (!disabled.has("table")) {
-    extensions.push(...createTableExtensions());
-  }
-
-  // Features
-  add("pasteCleanup", PasteCleanupExtension({ getInternalClipboardToken }));
-  add("pasteStyleInliner", PasteStyleInlinerExtension());
-  add("list", ListExtension());
-  add("baseKeymap", BaseKeymapExtension());
-  add("emptyParagraphFormat", EmptyParagraphFormatExtension());
-  add("joinedRunStyle", JoinedRunStyleExtension());
-  add(
-    "selectionTracker",
-    options.onSelectionChange === undefined
-      ? SelectionTrackerExtension()
-      : SelectionTrackerExtension({
-          onSelectionChange: options.onSelectionChange,
-        }),
-  );
-  // Register the paraId allocator BEFORE the change tracker so any
-  // freshly-allocated id is already on the paragraph when the tracker
-  // records it as changed. The plugin sets `addToHistory: false` so
-  // undo/redo doesn't trip on the allocation.
-  add("paraIdAllocator", ParaIdAllocatorExtension());
-  add("paragraphChangeTracker", ParagraphChangeTrackerExtension());
-  add("bidiShortcut", BidiShortcutExtension());
-  add("autoBidiDetection", AutoBidiDetectionExtension());
-  add("contentControlWidgets", ContentControlWidgetsExtension());
-
   return extensions;
 }

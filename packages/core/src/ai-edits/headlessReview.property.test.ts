@@ -42,12 +42,13 @@ import {
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import { createReferenceEditorRuntime } from "../__tests__/createReferenceEditorKit";
+import { projectReferenceDocument } from "../__tests__/reference-editor/projectReferenceDocument";
 import { parseDocx } from "../docx/parser";
 import { repackDocx } from "../docx/rezip";
 import { attemptSelectiveSave } from "../docx/selectiveSave";
-import { updateDocumentContent } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import { ensureParaIdsInState } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
+import { ensureParaIdsInState } from "../prosemirror/paraIds";
 import { schema, singletonManager } from "../prosemirror/schema";
 import { FolioDocxReviewer } from "./headless";
 import type { FolioAIBlock, FolioAIEditOperation } from "./types";
@@ -123,11 +124,12 @@ const makeParaIdBaseline = async (
     EditorState.create({
       schema,
       doc: toProseDoc(document),
-      plugins: singletonManager.getPlugins(),
+      plugins: createReferenceEditorRuntime(singletonManager.getSchema())
+        .plugins,
     }),
   );
   return repackDocx({
-    ...updateDocumentContent(document, state.doc),
+    ...projectReferenceDocument(document, state.doc),
     originalBuffer: source,
   });
 };

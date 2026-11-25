@@ -64,6 +64,7 @@ import {
   fieldInsertionParagraph,
 } from "../canonical/derivedFields";
 import { parseDocx } from "../docx/parser";
+import { clipboardTransformPlugin } from "../internal/clipboardTransformPlugin";
 import {
   type EditingFontContext,
   editingFontContextOf,
@@ -90,10 +91,9 @@ import {
 } from "../prosemirror/commentRecords";
 import { createEmptyDoc, toProseDoc } from "../prosemirror/conversion";
 import { registerEditorCommandOwner } from "../prosemirror/executeEditorCommand";
-import type { HistoryShortcutOwner } from "../prosemirror/extensions/core/HistoryExtension";
+import type { HistoryShortcutOwner } from "../prosemirror/extensions/core/historyCommands";
 import type { ExtensionManager } from "../prosemirror/extensions/ExtensionManager";
 import { ensureBaseDirectionInState } from "../prosemirror/extensions/features/AutoBidiDetectionExtension";
-import { ensureParaIdsInDoc } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import {
   toggleMarkForAllScripts,
   toggleUnderlineMark,
@@ -107,6 +107,7 @@ import {
   isCompositionKeyDown,
 } from "../prosemirror/nativeSelection";
 import { noteReferenceTransactionIssue } from "../prosemirror/noteReferenceOccurrences";
+import { ensureParaIdsInDoc } from "../prosemirror/paraIds";
 import { createDocumentNumberingPlugin } from "../prosemirror/plugins/documentNumbering";
 import {
   createDocumentStyleContextPlugin,
@@ -611,34 +612,7 @@ export const createHiddenEditorManager = (
         ...[
           ...(deps.getExtensionManager()?.getPlugins() ?? []),
           ...deps.getExternalPlugins(),
-        ].flatMap(({ props }) =>
-          props.transformPastedHTML === undefined &&
-          props.transformPasted === undefined &&
-          props.transformCopied === undefined &&
-          props.clipboardTextSerializer === undefined
-            ? []
-            : [
-                new PMPlugin({
-                  props: {
-                    ...(props.transformCopied === undefined
-                      ? {}
-                      : { transformCopied: props.transformCopied }),
-                    ...(props.clipboardTextSerializer === undefined
-                      ? {}
-                      : {
-                          clipboardTextSerializer:
-                            props.clipboardTextSerializer,
-                        }),
-                    ...(props.transformPastedHTML === undefined
-                      ? {}
-                      : { transformPastedHTML: props.transformPastedHTML }),
-                    ...(props.transformPasted === undefined
-                      ? {}
-                      : { transformPasted: props.transformPasted }),
-                  },
-                }),
-              ],
-        ),
+        ].flatMap(({ props }) => clipboardTransformPlugin(props)),
         // A host plugin's view observes the document the session shows; only
         // the session writes it.
         ...deps

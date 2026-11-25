@@ -38,6 +38,8 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../../../test/property-testing";
+import { createReferenceEditorKit } from "../../../__tests__/createReferenceEditorKit";
+import { getChangeTrackerState } from "../../../__tests__/reference-editor/ParagraphChangeTrackerExtension";
 import { FolioDocxReviewer } from "../../../ai-edits/headless";
 import { ensureParaIds } from "../../../docx/ensureParaIds";
 import { paragraphNumberingReferenceId } from "../../../docx/numberingReference";
@@ -66,9 +68,7 @@ import { createDocumentStylesPlugin } from "../../plugins/documentStyles";
 import { createSuggestionModePlugin } from "../../plugins/suggestionMode";
 import { dispatchEditorTextInput } from "../../textInput";
 import { ExtensionManager } from "../ExtensionManager";
-import { createStarterKit } from "../StarterKit";
 import { toggleBulletList, toggleNumberedList } from "./ListExtension";
-import { getChangeTrackerState } from "./ParagraphChangeTrackerExtension";
 
 setDefaultTimeout(60_000);
 
@@ -264,7 +264,7 @@ type Editor = {
  * styles and numbering (see `createHiddenEditorState`).
  */
 const editorFor = (document: Document, mode: EditingMode): Editor => {
-  const manager = new ExtensionManager(createStarterKit());
+  const manager = new ExtensionManager(createReferenceEditorKit());
   manager.buildSchema();
   manager.initializeRuntime();
   const { styles, numbering, theme } = document.package;

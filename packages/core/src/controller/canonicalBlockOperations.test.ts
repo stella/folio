@@ -12,7 +12,7 @@ import { paragraphNumberingReference } from "@stll/docx-core/model";
 import { ZipArchive } from "@stll/docx-core/zip";
 
 import type { FolioDocumentOperation } from "../ai-edits";
-import { SUGGESTED_SUPPORTED_OPERATION_TYPES } from "../ai-edits/apply";
+import { SUGGESTED_SUPPORTED_OPERATION_TYPES } from "../ai-edits/applyTypes";
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
 import { CanonicalPublicOperations } from "../canonical/canonicalPublicOperations";

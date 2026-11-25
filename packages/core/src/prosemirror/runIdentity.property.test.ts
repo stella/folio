@@ -29,11 +29,11 @@ import {
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import { createReferenceEditorKit } from "../__tests__/createReferenceEditorKit";
 import type { Paragraph, Run } from "../types/document";
 import { proseDocToBlocks } from "./conversion/fromProseDoc";
 import { toProseDoc } from "./conversion/toProseDoc";
 import { ExtensionManager } from "./extensions/ExtensionManager";
-import { createStarterKit } from "./extensions/StarterKit";
 import { RUN_IDENTITY_ATTRIBUTE, runIdentityAttrs } from "./runIdentity";
 import { schema } from "./schema";
 
@@ -68,7 +68,7 @@ const documentWithOneAuthoredRun = () => ({
  * helper written for the test.
  */
 const editorStateOf = (doc: ReturnType<typeof toProseDoc>): EditorState => {
-  const manager = new ExtensionManager(createStarterKit());
+  const manager = new ExtensionManager(createReferenceEditorKit());
   manager.buildSchema();
   manager.initializeRuntime();
   return EditorState.create({ doc, plugins: manager.getPlugins() });

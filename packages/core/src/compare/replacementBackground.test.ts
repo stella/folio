@@ -16,7 +16,7 @@ import { EditorState, type Transaction } from "prosemirror-state";
 
 import { ZipArchive } from "@stll/docx-core/zip";
 
-import { applyFolioAIEditOperations } from "../ai-edits/apply";
+import { applyFolioAIEditOperations } from "../__tests__/reference-editor/apply";
 import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
 import { createDocx } from "../docx/rezip";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";

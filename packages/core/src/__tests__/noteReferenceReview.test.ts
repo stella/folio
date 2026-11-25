@@ -29,14 +29,16 @@ import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { footnoteToProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { markupViewNotes } from "../prosemirror/markupViewNotes";
 import {
-  createNoteReferenceFollower,
   heldUnreferencedNotes,
-  noteReferencesRestored,
-  restoreNotes,
   withoutUnreferencedNotes,
 } from "../prosemirror/noteReferenceReview";
 import type { Document } from "../types/document";
 import { createHarnessState, parseShapeDocument } from "./editorHarness";
+import {
+  createNoteReferenceFollower,
+  noteReferencesRestored,
+  restoreNotes,
+} from "./reference-editor/restoreNotes";
 
 type Fixture = { body: string; footnotes?: string; header?: string };
 const SESSIONS = ["canonical"] as const;

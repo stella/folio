@@ -1,7 +1,7 @@
 {
   "name": "@stll/folio-react",
-  "version": "0.37.0",
-  "description": "React editor for folio: a Word-document (.docx) editor for the browser, built on @stll/folio-core and ProseMirror.",
+  "version": "0.38.0",
+  "description": "React editor for .docx documents: paginated editing, tracked changes, comments and collaboration in the browser, on the @stll/folio-core engine.",
   "keywords": [
     "document-editor",
     "docx",

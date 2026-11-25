@@ -863,6 +863,7 @@ describe("table geometry round trip", () => {
       await fc.assert(roundTripProperty, propertyConfig({ seed: -2012280836 }));
       await fc.assert(roundTripProperty, propertyConfig());
     },
-    propertyTestTimeout(30_000),
+    // Both the fixed-seed and generated passes round-trip a DOCX per case.
+    propertyTestTimeout(90_000),
   );
 });

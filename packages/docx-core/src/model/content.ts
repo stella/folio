@@ -400,21 +400,24 @@ export type MarkupRangeMarker = WritableRecord & {
 
 /**
  * The cut a kept range marker stands in: the date of the revision it was kept
- * from, and, where only one side of it is a piece of that cut (`piece`), that
- * side: its record, or the pending change beside the marker once resolved,
- * takes the marker with no alike record across from it.
+ * from, and the pending changes beside the marker that took its seam and hold
+ * a piece of that cut (`holders`): resolved, such a change takes the marker
+ * with no alike record across from it.
  */
 export type KeptCut = WritableRecord & {
   keptFrom: string;
-  piece?: KeptCutPiece;
+  holders?: KeptCutHolders;
 };
 
 /**
- * The side of a kept marker whose record, or the pending change that took
- * its seam, is a piece of its cut; `both` where pending changes either side
- * took it.
+ * The revision ids of the pending changes either side of a kept marker that
+ * hold a piece of its cut: the one before it, the one after it, or both. A
+ * holder no longer standing beside the marker holds nothing. A seam-scoped
+ * marker waits on the whole cut, even where it has a holder on one side.
  */
-export type KeptCutPiece = "before" | "after" | "both";
+export type KeptCutHolders = WritableRecord & { scope?: "seam" } & (
+    { before: number; after?: number } | { before?: number; after: number }
+  );
 
 /** Added-revision ancestors that own a copied bookmark or move boundary. */
 type CopyOriginAncestorOrdinals = readonly [number, ...number[]];
@@ -2530,6 +2533,20 @@ export type ParagraphMarkChange = WritableRecord & {
    * reader that does not know it joins as any rejected mark does.
    */
   survivor?: "first" | undefined;
+  /**
+   * With `survivor: "first"`: the revision id of the tracked mark the
+   * paragraph after took over (at the end of a chain of such marks), which
+   * that paragraph holds. When the paragraph holding it goes (rejected, joined
+   * on or deleted), the mark keeps the paragraph after on rejection, the one
+   * that was there before both; when the mark is accepted, the paragraph
+   * stays and the id goes. Absent when the taken-over mark was no tracked
+   * change. Saved as folio's own ignorable review provenance.
+   *
+   * Compatibility: a file saved before folio recorded it carries
+   * `survivor: "first"` alone, read as that same positional flag. Remove that
+   * reading when no supported document can still carry the flag alone.
+   */
+  takenOverMark?: number | undefined;
   /**
    * A later pending deletion of this added mark, `w:del` written beside its
    * `w:ins` or `w:moveTo`: another author deleted the break an insertion

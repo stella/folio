@@ -1,4 +1,3 @@
-import type { Node as PMNode } from "prosemirror-model";
 /**
  * Image clipboard + replace helpers. Pure DOM/PM operations — every
  * function takes the view as a parameter so they're testable and don't
@@ -10,44 +9,12 @@ import type { Node as PMNode } from "prosemirror-model";
  * an image blob first, then an HTML payload carrying our custom data
  * attributes, then plain text.
  *
- * Vue port of the upstream docx-editor util. `makeRevisionInfo` resolves
- * to our fork's suggestion-mode plugin module (the plugins barrel does not
- * re-export it).
+ * Vue port of the upstream docx-editor util. The body view dispatches to the
+ * canonical session, which applies its editing mode to the paste.
  */
-import type { Transaction } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
-import { makeRevisionInfo } from "@stll/folio-core/prosemirror/plugins/suggestionMode";
 import { encodeUtf8, readBlobText } from "@stll/folio-core/utils/textEncoding";
-
-/**
- * Apply the `insertion` mark to the just-replaced image when suggesting
- * mode is active, so clipboard-pasted images round-trip as tracked
- * additions. Run after replaceSelectionWith on the SAME tr.
- */
-function tagPastedImageAsInsertion(
-  view: EditorView,
-  tr: Transaction,
-  imageNode: PMNode,
-): void {
-  const info = makeRevisionInfo(view.state);
-  const insertionType = view.state.schema.marks["insertion"];
-  if (!info || !insertionType) return;
-  // After replaceSelectionWith, the image lives at the prior selection's
-  // start position (mapped). The cursor sits just after it.
-  const to = tr.selection.from;
-  const from = to - imageNode.nodeSize;
-  if (from < 0) return;
-  tr.addMark(
-    from,
-    to,
-    insertionType.create({
-      revisionId: info.id,
-      author: info.author,
-      date: info.date,
-    }),
-  );
-}
 
 export function copyImageToClipboard(view: EditorView, pmPos: number): void {
   const node = view.state.doc.nodeAt(pmPos);
@@ -120,7 +87,6 @@ function insertPastedImage(
     displayMode: "inline",
   });
   const tr = view.state.tr.replaceSelectionWith(imageNode);
-  tagPastedImageAsInsertion(view, tr, imageNode);
   view.dispatch(tr);
 }
 

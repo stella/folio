@@ -9,7 +9,6 @@ import { assertProperty, propertyTestTimeout } from "../test/property-testing";
 import {
   canonicalCutoverDocs,
   inspectCanonicalSources,
-  PUBLIC_OPERATION_SOURCE_GAPS,
 } from "./lib/canonical-cutover";
 
 setDefaultTimeout(propertyTestTimeout(10_000));
@@ -86,37 +85,54 @@ describe("canonical cutover guard", () => {
     );
   });
 
+  test("retired engine plugins belong in test support", () => {
+    const fixtures = [
+      [
+        'import { history as pmHistory } from "prosemirror-history";',
+        "history",
+      ],
+      [
+        'import { columnResizing } from "prosemirror-tables";',
+        "columnResizing",
+      ],
+      [
+        'import { tableEditing as repair } from "prosemirror-tables";',
+        "tableEditing",
+      ],
+    ] as const;
+    for (const [code, primitive] of fixtures)
+      expect(failuresOf(code)).toContain(
+        `packages/react/src/fixture.tsx: ${primitive} belongs in the reference editor`,
+      );
+    expect(
+      failuresOf(
+        'import * as tables from "prosemirror-tables"; tables["tableEditing"]();',
+      ),
+    ).toContain(
+      "packages/react/src/fixture.tsx: tableEditing belongs in the reference editor",
+    );
+    expect(
+      failuresOf(
+        'import * as tables from "prosemirror-tables"; tables.TableMap;',
+      ).filter((failure) =>
+        failure.includes("belongs in the reference editor"),
+      ),
+    ).toEqual([]);
+    expect(
+      failuresOf(
+        'import { ParaIdAllocatorExtension } from "../__tests__/reference-editor/ParaIdAllocatorExtension";',
+      ),
+    ).toContain(
+      "packages/react/src/fixture.tsx: reference engine plugins belong in test support",
+    );
+  });
+
   test("mutation primitives require their actual capability markers", () => {
     const fixtures = [
-      {
-        gap: CANONICAL_GAP.history,
-        file: "packages/core/src/prosemirror/history.ts",
-        code: 'import { history as pmHistory } from "prosemirror-history";\npmHistory();',
-      },
-      {
-        gap: CANONICAL_GAP.tableGeometry,
-        file: "packages/core/src/prosemirror/table.ts",
-        code: "columnResizing();",
-      },
-      {
-        gap: CANONICAL_GAP.tableGeometry,
-        file: "packages/core/src/prosemirror/table.ts",
-        code: "tableEditing();",
-      },
       {
         gap: CANONICAL_GAP.suggestionPlugin,
         file: "packages/core/src/prosemirror/plugins/suggestionMode.ts",
         code: "const plugin = {\nappendTransaction() {}\n};",
-      },
-      {
-        gap: CANONICAL_GAP.paragraphIdentity,
-        file: "packages/core/src/prosemirror/features/ParaIdAllocatorExtension.ts",
-        code: "const plugin = {\nappendTransaction() {}\n};",
-      },
-      {
-        gap: CANONICAL_GAP.paragraphTracker,
-        file: "packages/core/src/prosemirror/features/ParagraphChangeTrackerExtension.ts",
-        code: "const plugin = {\nappendTransaction: () => null\n};",
       },
       {
         gap: CANONICAL_GAP.publicHeadlessSession,
@@ -136,66 +152,28 @@ describe("canonical cutover guard", () => {
     const mutationFixtures = fixtures.filter(
       ({ gap }) => CANONICAL_CAPABILITIES[gap].kind === "mutation-source",
     );
-    const publicGaps = mutationSources
-      .filter(
-        ([id, capability]) =>
-          capability.owner === "document-operations" &&
-          !mutationFixtures.some(({ gap }) => gap === id),
-      )
-      .map(([id]) => id);
-    expect(
-      [
-        ...new Set([...mutationFixtures.map(({ gap }) => gap), ...publicGaps]),
-      ].sort(),
-    ).toEqual(mutationSources.map(([id]) => id).sort());
-    const sourceGaps = [
-      ...new Set([...publicGaps, ...PUBLIC_OPERATION_SOURCE_GAPS]),
-    ];
-    const markers = sourceGaps
-      .map((gap) => `// canonical-gap: ${gap}`)
-      .join("\n");
-    for (const applier of [
-      "applyFolioAIEditOperations",
-      "applyFolioAIEditOperationsInPackage",
-    ]) {
-      const call = `\n${applier}({ undefinedReferences: "refuse" });`;
-      for (const removed of sourceGaps) {
-        const fixture =
-          markers
-            .split("\n")
-            .filter((line) => line !== `// canonical-gap: ${removed}`)
-            .join("\n") + call;
-        expect(
-          failuresOf(fixture, "packages/core/src/document-operations.ts").some(
-            (failure) =>
-              failure.includes(`${removed} source needs its ledger marker`),
-          ),
-        ).toBe(true);
-      }
-      expect(
-        failuresOf(
-          `${markers}${call}`,
-          "packages/core/src/document-operations.ts",
-        ),
-      ).toEqual([]);
-    }
+    expect(mutationSources.map(([id]) => id).sort()).toEqual(
+      mutationFixtures.map(({ gap }) => gap).sort(),
+    );
   });
 
-  test("save conversions require the routing capability marker", () => {
+  test("production callers cannot reconstruct a document from PM", () => {
     const file = "packages/core/src/controller/fixture.ts";
-    const code = "fromProseDoc(state.doc, original);";
-    expect(failuresOf(code, file)).toContain(
-      `${file}:1: ${CANONICAL_GAP.save} source needs its ledger marker`,
+    const failure = "the reference editor owns PM document reconstruction";
+    expect(failuresOf("fromProseDoc(state.doc, original);", file)).toContain(
+      `${file}:1: ${failure}`,
     );
-    expect(
-      failuresOf(`// canonical-gap: ${CANONICAL_GAP.save}\n${code}`, file),
-    ).toEqual([]);
+    for (const fixture of [
+      'import { fromProseDoc as project } from "../prosemirror/conversion";\nproject(state.doc, original);',
+      'import * as conversion from "../prosemirror/conversion";\nconversion["fromProseDoc"](state.doc, original);',
+    ])
+      expect(failuresOf(fixture, file)).toContain(`${file}:2: ${failure}`);
   });
 
   test("cannot keep a dead source alive with an orphan comment", () => {
     expect(
       failuresOf(
-        "// canonical-gap: pm-save-projection\nconst unrelated = true;",
+        `// canonical-gap: ${CANONICAL_GAP.dispatch}\nconst unrelated = true;`,
       ).some((failure) => failure.includes("orphan canonical gap marker")),
     ).toBe(true);
   });

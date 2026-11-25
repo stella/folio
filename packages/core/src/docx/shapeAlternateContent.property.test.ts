@@ -22,10 +22,10 @@ import {
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import { createReferenceEditorKit } from "../__tests__/createReferenceEditorKit";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { ExtensionManager } from "../prosemirror/extensions/ExtensionManager";
-import { createStarterKit } from "../prosemirror/extensions/StarterKit";
 import type { Document, Paragraph, ShapeContent } from "../types/document";
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
@@ -209,7 +209,7 @@ const editTextBoxInModel = (document: Document, text: string): void => {
 
 /** An editor state carrying the plugins the real editor runs. */
 const editorStateOf = (document: Document): EditorState => {
-  const manager = new ExtensionManager(createStarterKit());
+  const manager = new ExtensionManager(createReferenceEditorKit());
   manager.buildSchema();
   manager.initializeRuntime();
   return EditorState.create({

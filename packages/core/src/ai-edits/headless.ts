@@ -85,11 +85,8 @@ import {
  * reviewed `.docx` back out — the server-side counterpart to the React
  * editor's live apply flow.
  *
- * The operation applier is shared, not forked: {@link applyFolioAIEditOperations}
- * only needs a {@link FolioAIEditView} seam (`{ state, dispatch }`), which a
- * headless `EditorState` satisfies via `state.apply(tr)`. The React editor and
- * this reviewer therefore run byte-for-byte the same anchor resolution,
- * word-diff redlines, and tracked-change bookkeeping.
+ * The editor and reviewer share the canonical operation compiler and document
+ * session for anchor resolution, tracked changes, and save snapshots.
  *
  * Save mirrors the editor's own path: a selective patch of only the changed
  * paragraphs in `document.xml` (leaving every untouched part byte-exact), with
@@ -125,13 +122,13 @@ import {
   seedCommentAllocator,
 } from "../prosemirror/commentIdAllocator";
 import { commentThreadIds } from "../prosemirror/commentRecords";
-import { ensureParaIdsInDoc } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import { paragraphListReferences } from "../prosemirror/listInstanceReferences";
 import { MAX_LIST_LEVEL } from "../prosemirror/listMarker";
 import {
   type NoteKey,
   noteReferenceStates,
 } from "../prosemirror/noteReferenceReview";
+import { ensureParaIdsInDoc } from "../prosemirror/paraIds";
 import {
   createDocumentNumberingPlugin,
   getDocumentNumbering,
@@ -165,9 +162,8 @@ import { canonicalJson } from "../utils/canonicalJson";
 import type {
   FolioReplacementBackground,
   FolioRevisionStamp,
-  FolioUndefinedReferencePolicy,
   FolioWordDiffOptions,
-} from "./apply";
+} from "./applyTypes";
 import { buildAnnotatedBlockTextWithNoteReferences } from "./clean-text";
 import {
   anchoredCommentIdsInBlocks,
@@ -220,6 +216,7 @@ import type {
   FolioAIEditOperation,
   FolioAIEditSnapshot,
 } from "./types";
+import type { FolioUndefinedReferencePolicy } from "./undefinedReferences";
 
 /**
  * How many document-operation batches a reviewer can step back through.

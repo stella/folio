@@ -57,6 +57,7 @@ const watchdog = setTimeout(() => {
   process.exit(1);
 }, TIMEOUT_MS);
 
+let exitCode = 1;
 try {
   await runTests({
     version: process.env["FOLIO_SMOKE_VSCODE_VERSION"] ?? "stable",
@@ -82,8 +83,10 @@ try {
         : []),
     ],
   });
+  exitCode = 0;
+} catch (error) {
+  console.error(error);
 } finally {
-  clearTimeout(watchdog);
   if (process.env["FOLIO_SMOKE_KEEP"] === "1") {
     // The profile's logs/ holds the extension host's and the webviews' logs.
     console.log(`Kept ${workspace} and ${userData}`);
@@ -92,3 +95,7 @@ try {
     await rm(userData, { recursive: true, force: true });
   }
 }
+clearTimeout(watchdog);
+// VS Code helper processes and the esbuild service can outlive the run and
+// keep the event loop open; the result is known, so leave with it.
+process.exit(exitCode);

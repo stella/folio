@@ -9229,8 +9229,7 @@
                 "formatting": {
                   "verticalAlign": "center",
                   "noWrap": true,
-                  "gridSpan": 2,
-                  "vMerge": "restart"
+                  "gridSpan": 2
                 },
                 "content": [
                   {
@@ -9364,10 +9363,6 @@
       "blockId": "00000100",
       "expected": {
         "type": "table",
-        "columnWidths": [
-          1600,
-          2200
-        ],
         "formatting": {
           "justification": "center",
           "layout": "fixed",
@@ -9448,6 +9443,10 @@
               }
             ]
           }
+        ],
+        "columnWidths": [
+          1600,
+          2200
         ]
       },
       "table": {
@@ -10706,10 +10705,6 @@
       "blockId": "00000100",
       "expected": {
         "type": "table",
-        "columnWidths": [
-          1300,
-          1900
-        ],
         "formatting": {
           "justification": "center",
           "layout": "fixed",
@@ -10797,6 +10792,10 @@
               }
             ]
           }
+        ],
+        "columnWidths": [
+          1300,
+          1900
         ],
         "propertyChanges": [
           {

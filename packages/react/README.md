@@ -53,9 +53,9 @@ import.
 
 ## Editing engine
 
-The editor edits through the canonical session: each edit is a typed operation
-on the document model, and an edit the session cannot make yet is refused with
-a notice instead of being applied partly.
+Every edit is a typed operation on the OOXML document model, the same one the
+headless engine and the agent tools apply. An edit the engine cannot make yet is
+refused with a notice instead of being applied partly.
 
 ## Read-only review views
 

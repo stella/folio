@@ -9,7 +9,7 @@ import type { Command, EditorState, Transaction } from "prosemirror-state";
 import { TextSelection } from "prosemirror-state";
 
 import type { SectionProperties } from "../../types/document";
-import { markSectionBreakRemoval } from "../extensions/features/ParagraphChangeTrackerExtension";
+import { markSectionBreakRemoval } from "../paragraphChangeTrackerMeta";
 import {
   mintSectionProperties,
   type SectionBreakType,
