@@ -185,22 +185,17 @@ describe.each(SESSIONS)(
 );
 
 /**
- * Replacing a block whose comments each cover their own words. Legacy widens
- * every range over the direct replacement and refuses the tracked one, whose
- * rejection would widen them. Canonical deletes the comments a direct
- * replacement covers whole, as the tracked one does once accepted; rejecting
- * it restores every range as authored.
+ * Replacing a block whose comments each cover their own words deletes the
+ * comments a direct replacement covers whole, as the tracked one does once
+ * accepted; rejecting it restores every range as authored.
  */
-const DISJOINT_REPLACEMENT_OUTCOMES = {
-  legacy: { direct: "widened", tracked: "refused" },
-  canonical: { direct: "deleted", tracked: "applied" },
-} as const satisfies Record<
-  HeadlessReviewerSession,
-  { direct: "widened" | "deleted"; tracked: "refused" | "applied" }
->;
+const DISJOINT_REPLACEMENT_OUTCOME = {
+  direct: "deleted",
+  tracked: "applied",
+} as const;
 
 describe.each(SESSIONS)("%s", (session) => {
-  const outcome = DISJOINT_REPLACEMENT_OUTCOMES[session];
+  const outcome = DISJOINT_REPLACEMENT_OUTCOME;
   test("tracked replacement never widens disjoint comment ranges on rejection", async () => {
     await fc.assert(
       fc.asyncProperty(

@@ -168,18 +168,13 @@ const commentIdsByText = (reviewer: FolioDocxReviewer) => {
   );
 };
 
-// The legacy allocator starts at 1; the canonical one is one past every
-// annotation id, so a package without any starts at 0. Both wrap to the
-// lowest free id once the highest is taken.
-const FIRST_ID = { legacy: 1, canonical: 0 } as const satisfies Record<
-  Session,
-  number
->;
+// The allocator is one past every annotation id, so a package without any
+// starts at 0. It wraps to the lowest free id once the highest is taken.
+const FIRST_ID = { canonical: 0 } as const satisfies Record<Session, number>;
 
-// Range starts at one position carry no order: the legacy session writes
-// them by id, the canonical session puts the newer comment's first.
-const startsOf = (session: Session, byId: readonly string[]) =>
-  session === "legacy" ? byId : ["Inner", "Outer"];
+// Range starts at one position carry no order: the newer comment's comes
+// first.
+const RANGE_STARTS = ["Inner", "Outer"];
 
 const ID_ORDERS = [
   {
@@ -187,21 +182,19 @@ const ID_ORDERS = [
     reservedId: undefined,
     outerId: (session: Session) => FIRST_ID[session],
     innerId: (session: Session) => FIRST_ID[session] + 1,
-    starts: ["Outer", "Inner"],
   },
   {
     name: "wrapped IDs",
     reservedId: MAX_REVISION_ID - 1,
     outerId: () => MAX_REVISION_ID,
     innerId: (session: Session) => FIRST_ID[session],
-    starts: ["Inner", "Outer"],
   },
 ] as const;
 
 describe("a comment reference put inside another comment's range", () => {
   for (const session of SESSIONS)
     for (const mode of MODES) {
-      for (const { name, reservedId, outerId, innerId, starts } of ID_ORDERS) {
+      for (const { name, reservedId, outerId, innerId } of ID_ORDERS) {
         test(`stays inside it after removing the tail (${session}, ${mode}, ${name})`, async () => {
           const { reviewer, blockId } = await nested(session, reservedId);
           const commentIds =
@@ -218,9 +211,7 @@ describe("a comment reference put inside another comment's range", () => {
           expect(markers(reviewer.toDocument())).toEqual(liveBeforeSave);
           expect(commentIdsByText(reopened)).toEqual(commentIds);
           const expected = [
-            ...startsOf(session, starts).map(
-              (comment) => `commentRangeStart ${comment}`,
-            ),
+            ...RANGE_STARTS.map((comment) => `commentRangeStart ${comment}`),
             "Clause",
             "commentRangeEnd Inner",
             "commentReference Inner",

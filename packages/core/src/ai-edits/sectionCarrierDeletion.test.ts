@@ -184,8 +184,8 @@ describe("deleting the paragraph that ends a section", () => {
         SECTIONS_FIXTURE_PARTS.rIdHeaderOneDefault,
         SECTIONS_FIXTURE_PARTS.rIdFooterOneDefault,
       ]) {
-        expect(savedZip.has(`word/${file}`)).toBe(session === "legacy");
-        expect(notes.includes(text)).toBe(session === "legacy");
+        expect(savedZip.has(`word/${file}`)).toBe(false);
+        expect(notes.includes(text)).toBe(false);
       }
       // This header is still referenced by the final section.
       expect(notes).toContain("Header one first.");

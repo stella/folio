@@ -1,9 +1,8 @@
 /**
  * The live editor and the headless reviewer open the same `.docx` with the
- * same block ids, including for paragraphs the package gives no `w14:paraId`,
- * whichever engine each side runs. A host reads ids from the editor and
- * applies edits headlessly, so an id the editor shows has to resolve on the
- * reviewer on the first try.
+ * same block ids, including for paragraphs the package gives no `w14:paraId`.
+ * A host reads ids from the editor and applies edits headlessly, so an id the
+ * editor shows has to resolve on the reviewer on the first try.
  */
 import { describe, expect, test } from "bun:test";
 
@@ -16,7 +15,6 @@ import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
-import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import { createHiddenEditorState } from "./hiddenEditorManager";
 
 const DOCUMENTS = {
@@ -56,29 +54,17 @@ const partTexts = async (bytes: ArrayBuffer): Promise<Map<string, string>> => {
   return texts;
 };
 
-const SESSIONS = [
-  "canonical",
-] as const satisfies readonly HeadlessReviewerSession[];
-const PAIRS = SESSIONS.flatMap((editor) =>
-  SESSIONS.map((reviewer) => ({ editor, reviewer })),
-);
-
-/** The editor's model: a canonical editor opens the package it prepares. */
+/** The editor's model: the editor opens the package it prepares. */
 const editorInput = async (
   bytes: ArrayBuffer,
-  session: HeadlessReviewerSession,
 ): Promise<ArrayBuffer | Uint8Array> => {
-  if (session === "legacy") return bytes;
   const prepared = await prepareCanonicalDocxInput(bytes);
   if (prepared.isErr()) throw prepared.error;
   return prepared.value;
 };
 
-const liveSnapshot = async (
-  bytes: ArrayBuffer,
-  session: HeadlessReviewerSession = "legacy",
-) => {
-  const document = await parseDocx(await editorInput(bytes, session), {
+const liveSnapshot = async (bytes: ArrayBuffer) => {
+  const document = await parseDocx(await editorInput(bytes), {
     preloadFonts: false,
   });
   const state = createHiddenEditorState({
@@ -89,13 +75,8 @@ const liveSnapshot = async (
   return createFolioAIEditSnapshot(state.doc);
 };
 
-const headlessSnapshot = async (
-  bytes: ArrayBuffer,
-  session: HeadlessReviewerSession,
-) =>
-  (
-    await FolioDocxReviewer.fromBuffer(bytes, { author: "Test", session })
-  ).snapshot();
+const headlessSnapshot = async (bytes: ArrayBuffer) =>
+  (await FolioDocxReviewer.fromBuffer(bytes, { author: "Test" })).snapshot();
 
 const identities = (blocks: readonly { id: string; idStability?: string }[]) =>
   blocks.map(({ id, idStability }) => ({ id, idStability }));
@@ -103,18 +84,14 @@ const identities = (blocks: readonly { id: string; idStability?: string }[]) =>
 const ids = (blocks: readonly { id: string }[]) => blocks.map(({ id }) => id);
 
 describe("load-time paragraph ids", () => {
-  test.each(
-    Object.keys(DOCUMENTS).flatMap((name) =>
-      PAIRS.map(({ editor, reviewer }) => ({ name, editor, reviewer })),
-    ),
-  )(
-    "the editor and the headless reviewer derive the same block ids ($name, $editor editor, $reviewer reviewer)",
-    async ({ name, editor, reviewer }) => {
+  test.each(Object.keys(DOCUMENTS))(
+    "the editor and the headless reviewer derive the same block ids (%s)",
+    async (name) => {
       const bytes = await docxWithoutParaIds(
         DOCUMENTS[name as keyof typeof DOCUMENTS],
       );
-      const live = await liveSnapshot(bytes, editor);
-      const headless = await headlessSnapshot(bytes, reviewer);
+      const live = await liveSnapshot(bytes);
+      const headless = await headlessSnapshot(bytes);
 
       expect(live.blocks.length).toBeGreaterThan(0);
       expect(ids(live.blocks)).toEqual(ids(headless.blocks));
@@ -123,11 +100,6 @@ describe("load-time paragraph ids", () => {
       }
       for (const block of headless.blocks) {
         expect(block.idStability).toBe("positional");
-      }
-      // A legacy editor reads the package as it is, so it knows which ids it
-      // minted; a canonical editor opens the package its session prepared.
-      if (editor === "legacy") {
-        expect(identities(live.blocks)).toEqual(identities(headless.blocks));
       }
     },
   );
@@ -139,15 +111,11 @@ describe("load-time paragraph ids", () => {
     );
   });
 
-  test.each(
-    (["tracked-changes", "direct"] as const).flatMap((mode) =>
-      PAIRS.map(({ editor, reviewer }) => ({ mode, editor, reviewer })),
-    ),
-  )(
-    "an edit addressed by an editor block id applies headlessly on the first try ($mode, $editor editor, $reviewer reviewer)",
-    async ({ mode, editor, reviewer }) => {
+  test.each(["tracked-changes", "direct"] as const)(
+    "an edit addressed by an editor block id applies headlessly on the first try (%s)",
+    async (mode) => {
       const bytes = await docxWithoutParaIds(DOCUMENTS.clauses);
-      const live = await liveSnapshot(bytes, editor);
+      const live = await liveSnapshot(bytes);
       const target = live.blocks.find(({ text }) =>
         text.includes("3 months' notice"),
       );
@@ -156,7 +124,6 @@ describe("load-time paragraph ids", () => {
 
       const review = await FolioDocxReviewer.fromBuffer(bytes, {
         author: "Test",
-        session: reviewer,
       });
       const result = review.applyDocumentOperations(
         {
@@ -188,10 +155,7 @@ describe("load-time paragraph ids", () => {
       ]);
       const saved = await FolioDocxReviewer.fromBuffer(
         await review.toBuffer(),
-        {
-          author: "Test",
-          session: reviewer,
-        },
+        { author: "Test" },
       );
       const texts = saved.getContent().map(({ text }) => text);
       if (mode === "direct") {
@@ -206,43 +170,38 @@ describe("load-time paragraph ids", () => {
   // The ids are minted the same way on every open, so a save need not write
   // them for a reopen to find them: it writes them only into a part it
   // rewrites anyway, and leaves every other part as the package held it.
-  test.each(SESSIONS)(
-    "a save writes minted ids only into a part it rewrites (%s)",
-    async (session) => {
-      const bytes = await docxWithoutParaIds(DOCUMENTS.table);
-      const source = await partTexts(bytes);
+  test("a save writes minted ids only into a part it rewrites", async () => {
+    const bytes = await docxWithoutParaIds(DOCUMENTS.table);
+    const source = await partTexts(bytes);
 
-      const unedited = await FolioDocxReviewer.fromBuffer(bytes, {
-        author: "Test",
-        session,
-      });
-      expect(await partTexts(await unedited.toBuffer())).toEqual(source);
+    const unedited = await FolioDocxReviewer.fromBuffer(bytes, {
+      author: "Test",
+    });
+    expect(await partTexts(await unedited.toBuffer())).toEqual(source);
 
-      const edited = await FolioDocxReviewer.fromBuffer(bytes, {
-        author: "Test",
-        session,
-      });
-      const target = edited.snapshot().blocks.at(0);
-      expect(target).toBeDefined();
-      const result = edited.applyOperations(
-        [
-          {
-            id: "edit",
-            type: "replaceInBlock",
-            blockId: target?.id ?? "",
-            find: "follow",
-            replace: "apply",
-          },
-        ],
-        { undefinedReferences: "refuse", mode: "direct" },
-      );
-      expect(result.applied).toHaveLength(1);
-      const saved = await partTexts(await edited.toBuffer());
-      expect(saved.get("word/document.xml")).toContain("apply");
-      expect(saved.get("word/document.xml")).not.toContain("follow");
-      saved.delete("word/document.xml");
-      source.delete("word/document.xml");
-      expect(saved).toEqual(source);
-    },
-  );
+    const edited = await FolioDocxReviewer.fromBuffer(bytes, {
+      author: "Test",
+    });
+    const target = edited.snapshot().blocks.at(0);
+    expect(target).toBeDefined();
+    const result = edited.applyOperations(
+      [
+        {
+          id: "edit",
+          type: "replaceInBlock",
+          blockId: target?.id ?? "",
+          find: "follow",
+          replace: "apply",
+        },
+      ],
+      { undefinedReferences: "refuse", mode: "direct" },
+    );
+    expect(result.applied).toHaveLength(1);
+    const saved = await partTexts(await edited.toBuffer());
+    expect(saved.get("word/document.xml")).toContain("apply");
+    expect(saved.get("word/document.xml")).not.toContain("follow");
+    saved.delete("word/document.xml");
+    source.delete("word/document.xml");
+    expect(saved).toEqual(source);
+  });
 });

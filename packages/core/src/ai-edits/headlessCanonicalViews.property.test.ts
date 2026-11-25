@@ -11,8 +11,8 @@
  * Each view is expected to read as the document `resolveRevision` leaves
  * when it rejects (original) or accepts (final) every revision of every
  * story, notes before the body: those are the stated review rules, which the
- * docx-core review laws hold it to. That document is packaged and read by
- * the legacy reviewer, which then resolves nothing: no review code of either
+ * docx-core review laws hold it to. That document is packaged and read by a
+ * second reviewer, which then resolves nothing: no review code of either
  * reviewer decides what a view expects.
  *
  * A note is part of a resolved view exactly when a reference to it survives
@@ -292,7 +292,7 @@ const viewLaws = async (
     const { originalBuffer: _source, ...model } = result.value.document;
     const resolved = await packaged(model);
     if (resolved === null) panic(`The ${view} view packages.`);
-    return open(resolved, "legacy");
+    return open(resolved, "canonical");
   };
   const readers = {
     original: await readerOf("original"),

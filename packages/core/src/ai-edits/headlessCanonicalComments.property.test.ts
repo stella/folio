@@ -1,13 +1,11 @@
 /**
  * A canonical headless reviewer replies to and resolves comments through the
- * session's semantic comment operations, with the legacy reviewer's
- * outcome.
+ * session's semantic comment operations.
  *
  * For every comment thread of a document, a reply is added and the thread
- * is resolved, then reopened, on both engines. The threads each engine reads
- * afterwards (author, text, anchored text, resolution and the replies'
- * authors and texts; ids are each engine's own) are the same, live and
- * after a save and a reopen.
+ * is resolved, then reopened. The threads read afterwards (author, text,
+ * anchored text, resolution and the replies' authors and texts) are the
+ * same, live and after a save and a reopen.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -64,7 +62,7 @@ const open = (buffer: ArrayBuffer, session: HeadlessReviewerSession) =>
     session,
   });
 
-/** The threads as a reader sees them, without the ids each engine mints. */
+/** The threads as a reader sees them, without the ids the session mints. */
 const threads = (reviewer: FolioDocxReviewer) =>
   reviewer.getComments().map((thread) => ({
     author: thread.author,
@@ -104,7 +102,7 @@ type CommentOutcome =
 
 /**
  * The session's typed comment refusal: a thread without a source anchor is
- * preserved read-only on the canonical engine.
+ * preserved read-only.
  */
 const isCommentRefusal = (error: unknown): boolean =>
   CanonicalCommentError.is(error) && error.gap === CANONICAL_GAP.comments;
@@ -117,7 +115,6 @@ const commentLaws = async (buffer: ArrayBuffer): Promise<CommentOutcome> => {
     if (CanonicalSessionError.is(error)) return "sessionRefused";
     throw error;
   }
-  const legacy = await open(buffer, "legacy");
   let reviewed: number;
   try {
     reviewed = review(canonical);
@@ -126,8 +123,6 @@ const commentLaws = async (buffer: ArrayBuffer): Promise<CommentOutcome> => {
     throw error;
   }
   if (reviewed === 0) return "noThreads";
-  review(legacy);
-  expect(threads(canonical)).toEqual(threads(legacy));
   const reopened = await open(await canonical.toBuffer(), "canonical");
   expect(threads(reopened)).toEqual(threads(canonical));
   // An unknown comment is neither replied to nor resolved.
@@ -165,7 +160,7 @@ describe("a canonical reviewer replies to and resolves comments", () => {
   });
 
   test.each(COMMENTED_FIXTURES)(
-    "%s: replies and resolution read as on the legacy reviewer",
+    "%s: replies and resolution read the same after a save and a reopen",
     async (filename) => {
       expect(await commentLaws(await ingested(readFixture(filename)))).not.toBe(
         "sessionRefused",
@@ -175,10 +170,10 @@ describe("a canonical reviewer replies to and resolves comments", () => {
   );
 
   test(
-    "generated threads read as on the legacy reviewer",
+    "generated threads read the same after a save and a reopen",
     async () => {
       await assertProperty(generatedComments(new Map()), {
-        id: "generated threads read as on the legacy reviewer",
+        id: "generated threads read the same after a save and a reopen",
         numRuns: GENERATED_RUNS,
       });
     },

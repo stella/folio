@@ -1,8 +1,8 @@
 /**
  * Comment packages both engines open by repairing them: range markers that
  * name no comment or miss a boundary, and comment paragraphs repeating an id.
- * Each opens on the legacy and the canonical session, reports its repair,
- * keeps every comment's text and is stable across a save and a reopen.
+ * Each opens on the reviewer, reports its repair, keeps every comment's text
+ * and is stable across a save and a reopen.
  */
 import { describe, expect, test } from "bun:test";
 
@@ -14,7 +14,6 @@ import { ZipArchive } from "@stll/docx-core/zip";
 
 import { commentDocument } from "../../../../test/consumer-scenarios/support/documents";
 import { FolioDocxReviewer } from "../ai-edits/headless";
-import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import type { Document } from "../types/document";
 import { openCanonicalDocx } from "./canonicalSessionInput";
 import { parseDocx } from "./parser";
@@ -22,9 +21,6 @@ import { repackDocx } from "./rezip";
 
 const DOCUMENT_PART = "word/document.xml";
 const COMMENTS_PART = "word/comments.xml";
-const SESSIONS = [
-  "canonical",
-] as const satisfies readonly HeadlessReviewerSession[];
 
 /** The fixture's comment `w:id`s and paragraph ids, as `commentDocument` writes them. */
 const RESOLVED_COMMENT_ID = "1";
@@ -257,17 +253,14 @@ const warningCodes = (warnings: readonly { code: ParseWarningCode }[] = []) =>
   new Set(warnings.map(({ code }) => code));
 
 describe("comment packages repaired on open", () => {
-  test("the fixture opens on both sessions as it is", async () => {
+  test("the fixture opens as it is", async () => {
     const bytes = (await fixture).slice().buffer;
-    for (const session of SESSIONS) {
-      // oxlint-disable-next-line no-await-in-loop -- sessions are compared in order
-      const reviewer = await FolioDocxReviewer.fromBuffer(bytes, { session });
-      expect(commentTexts(reviewer).sort()).toEqual([
-        "Define good order.",
-        "Good order means undamaged.",
-        "Thirty days is long.",
-      ]);
-    }
+    const reviewer = await FolioDocxReviewer.fromBuffer(bytes);
+    expect(commentTexts(reviewer).sort()).toEqual([
+      "Define good order.",
+      "Good order means undamaged.",
+      "Thirty days is long.",
+    ]);
   });
 
   for (const shape of SHAPES) {
@@ -296,29 +289,26 @@ describe("comment packages repaired on open", () => {
       expect(new Set(paraIds()).size).toBe(paraIds().length);
     });
 
-    for (const session of SESSIONS) {
-      test(`${shape.name}: opens on ${session}, keeps comment text and reopens stable`, async () => {
-        const bytes = await rewritten(shape);
-        const reviewer = await FolioDocxReviewer.fromBuffer(bytes, { session });
-        const texts = commentTexts(reviewer);
-        for (const text of [
-          "Define good order.",
-          "Good order means undamaged.",
-          "Thirty days is long.",
-        ])
-          expect(texts.some((held) => held.includes(text))).toBe(true);
-        const before = commentRead(reviewer);
+    test(`${shape.name}: opens, keeps comment text and reopens stable`, async () => {
+      const bytes = await rewritten(shape);
+      const reviewer = await FolioDocxReviewer.fromBuffer(bytes);
+      const texts = commentTexts(reviewer);
+      for (const text of [
+        "Define good order.",
+        "Good order means undamaged.",
+        "Thirty days is long.",
+      ])
+        expect(texts.some((held) => held.includes(text))).toBe(true);
+      const before = commentRead(reviewer);
 
-        const saved = await reviewer.toBuffer();
-        const reopened = await FolioDocxReviewer.fromBuffer(saved, { session });
-        expect(commentRead(reopened)).toEqual(before);
-        const again = await FolioDocxReviewer.fromBuffer(
-          await reopened.toBuffer(),
-          { session },
-        );
-        expect(commentRead(again)).toEqual(before);
-      });
-    }
+      const saved = await reviewer.toBuffer();
+      const reopened = await FolioDocxReviewer.fromBuffer(saved);
+      expect(commentRead(reopened)).toEqual(before);
+      const again = await FolioDocxReviewer.fromBuffer(
+        await reopened.toBuffer(),
+      );
+      expect(commentRead(again)).toEqual(before);
+    });
   }
 });
 
@@ -327,37 +317,34 @@ describe("comment repairs that keep as much of the anchor as the format allows",
     reviewer.getComments().find(({ text }) => text === RESOLVED_COMMENT_TEXT)
       ?.anchoredText;
 
-  for (const session of SESSIONS) {
-    test(`${session}: a lone start before a full range does not widen the range`, async () => {
-      const reviewer = await FolioDocxReviewer.fromBuffer(
-        await rewritten(LONE_START_BEFORE_RANGE),
-        { session },
-      );
-      expect(resolvedAnchor(reviewer)).toBe(RESOLVED_COMMENT_WORDS);
-    });
+  test("a lone start before a full range does not widen the range", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await rewritten(LONE_START_BEFORE_RANGE),
+    );
+    expect(resolvedAnchor(reviewer)).toBe(RESOLVED_COMMENT_WORDS);
+  });
 
-    test(`${session}: a second full range is dropped and its text reported`, async () => {
-      const bytes = await rewritten(SECOND_FULL_RANGE);
-      const reviewer = await FolioDocxReviewer.fromBuffer(bytes, { session });
-      expect(resolvedAnchor(reviewer)).toBe(RESOLVED_COMMENT_WORDS);
-      const parsed = await parseDocx(bytes, {
-        preloadFonts: false,
-        detectVariables: false,
-      });
-      expect(
-        parsed.parseWarnings?.filter(
-          ({ code }) => code === PARSE_WARNING_CODES.droppedCommentRange,
-        ),
-      ).toEqual([
-        expect.objectContaining({
-          value: LATER_WORDS,
-          location: expect.objectContaining({
-            at: `comment w:id ${RESOLVED_COMMENT_ID}`,
-          }),
-        }),
-      ]);
+  test("a second full range is dropped and its text reported", async () => {
+    const bytes = await rewritten(SECOND_FULL_RANGE);
+    const reviewer = await FolioDocxReviewer.fromBuffer(bytes);
+    expect(resolvedAnchor(reviewer)).toBe(RESOLVED_COMMENT_WORDS);
+    const parsed = await parseDocx(bytes, {
+      preloadFonts: false,
+      detectVariables: false,
     });
-  }
+    expect(
+      parsed.parseWarnings?.filter(
+        ({ code }) => code === PARSE_WARNING_CODES.droppedCommentRange,
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        value: LATER_WORDS,
+        location: expect.objectContaining({
+          at: `comment w:id ${RESOLVED_COMMENT_ID}`,
+        }),
+      }),
+    ]);
+  });
 });
 
 test("a dropped range between blocks leaves the saved package", async () => {

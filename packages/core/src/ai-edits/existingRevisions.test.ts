@@ -165,9 +165,6 @@ for (const session of ["canonical"] as const) {
       POLICY,
     );
     expect(result.applied).toEqual([]);
-    if (session === "legacy") {
-      expect(result.skipped.at(0)?.reason).toBe("existingRevisionConflict");
-    }
     expect(reviewer.getContent().map(({ text }) => text)).toEqual([
       "First",
       "Final",

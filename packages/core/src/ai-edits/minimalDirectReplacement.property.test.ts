@@ -354,7 +354,6 @@ const inlineControlIds = (paragraph: PMNode): number[] => {
 };
 
 type ExpectedInlineControlOptions = {
-  session: HeadlessReviewerSession;
   paragraph: PMNode;
   characters: readonly CleanCharacter[];
   changes: readonly TextChange[];
@@ -363,14 +362,12 @@ type ExpectedInlineControlOptions = {
 
 /** A canonical deletion spanning both outer edges takes the whole control. */
 const expectedInlineControlIds = ({
-  session,
   paragraph,
   characters,
   changes,
   offset,
 }: ExpectedInlineControlOptions): number[] => {
   const ids = inlineControlIds(paragraph);
-  if (session === "legacy") return ids;
   return ids.filter((id) => {
     const first = characters.findIndex(({ control }) => control === id);
     const last = characters.findLastIndex(({ control }) => control === id);
@@ -465,18 +462,16 @@ const comparableMarks = (
   session: HeadlessReviewerSession,
   marks: readonly Mark[],
 ): readonly Mark[] =>
-  session === "legacy"
-    ? marks
-    : marks.map((mark) => {
-        if (mark.type.name === "runIdentity")
-          return mark.type.create({ ...mark.attrs, id: 0 });
-        if (
-          mark.type.name === "hyperlink" &&
-          typeof mark.attrs["_docxHyperlinkIndex"] === "number"
-        )
-          return mark.type.create({ ...mark.attrs, _docxHyperlinkIndex: 0 });
-        return mark;
-      });
+  marks.map((mark) => {
+    if (mark.type.name === "runIdentity")
+      return mark.type.create({ ...mark.attrs, id: 0 });
+    if (
+      mark.type.name === "hyperlink" &&
+      typeof mark.attrs["_docxHyperlinkIndex"] === "number"
+    )
+      return mark.type.create({ ...mark.attrs, _docxHyperlinkIndex: 0 });
+    return mark;
+  });
 
 /** Whether two characters carry the same marks (see `comparableMarks`). */
 const sameMarks = (
@@ -487,18 +482,15 @@ const sameMarks = (
   Mark.sameSet(comparableMarks(session, was), comparableMarks(session, now));
 
 /**
- * Whether two paragraphs hold the same inline content: node for node, or, on
- * the canonical session, character for character with comparable marks,
- * since a run identity's number there follows the projection.
+ * Whether two paragraphs hold the same inline content: character for
+ * character with comparable marks, since a run identity's number follows the
+ * projection.
  */
 const sameContent = (
   session: HeadlessReviewerSession,
   was: PMNode,
   now: PMNode,
 ): boolean => {
-  if (session === "legacy") {
-    return now.content.eq(was.content);
-  }
   const characters = (paragraph: PMNode): string[] => {
     const listed: string[] = [];
     paragraph.descendants((node) => {
@@ -727,7 +719,6 @@ describe.each(SESSIONS)(
             }
 
             const directControls = expectedInlineControlIds({
-              session,
               paragraph: before.node,
               characters: beforeCharacters,
               changes,
@@ -1211,7 +1202,6 @@ describe.each(SESSIONS)(
               // Accepted or rejected, every reference is where it was.
               expect(noteReferenceIds(accepted.node)).toEqual(beforeReferences);
               const acceptedControls = expectedInlineControlIds({
-                session,
                 paragraph: before.node,
                 characters: beforeCharacters,
                 changes,
@@ -1317,8 +1307,7 @@ describe.each(SESSIONS)(
 /**
  * What the canonical session adds to a paragraph start tag by rule: the
  * paragraph ids it mints, which a save writes into a part it rewrites, and
- * the review-history namespace its revision records declare. The legacy
- * session writes neither, so its paragraphs are compared as written.
+ * the review-history namespace its revision records declare.
  */
 const CANONICAL_PARAGRAPH_ADDITIONS = new RegExp(
   ` w14:(?:paraId|textId)="[0-9A-F]{8}"| mc:Ignorable="folio" xmlns:folio="${FOLIO_REVIEW_HISTORY_NAMESPACE}"`,
@@ -1558,7 +1547,7 @@ describe.each(SESSIONS)("direct replacement examples (%s)", (session) => {
       itemXml({ kind: "tab" }, 0) +
       controlOf("on ", 1) +
       runXml("Seller ", PLAIN);
-    const expectedControls = session === "canonical" ? [] : [101];
+    const expectedControls: number[] = [];
     for (const mode of ["direct", "tracked-changes"] as const) {
       const { reviewer } = await replaceFirst(paragraph, {
         session,

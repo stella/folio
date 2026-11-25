@@ -184,10 +184,9 @@ describe("resolving every suggestion headlessly", () => {
     expect(await savedTexts(reviewer)).toEqual(["Signed in two copies."]);
   });
 
-  // The legacy engine refuses a suggested deletion over an ordinary tracked
-  // record; the canonical session records the deletion as the suggestion's
-  // own, beside the record it leaves alone (a pending record is taken back
-  // only by its own author and suggestion).
+  // The canonical session records a suggested deletion over an ordinary
+  // tracked record as the suggestion's own, beside the record it leaves alone
+  // (a pending record is taken back only by its own author and suggestion).
   test.each(SESSIONS)(
     "a suggested deletion leaves an ordinary tracked split pending (%s session)",
     async (session) => {
@@ -224,15 +223,8 @@ describe("resolving every suggestion headlessly", () => {
         },
         { undefinedReferences: "refuse" },
       );
-      if (session === "legacy") {
-        expect(deletion.applied).toEqual([]);
-        expect(deletion.skipped).toEqual([
-          { id: "delete", reason: "unsupportedMode" },
-        ]);
-      } else {
-        expect(deletion.applied.map(({ id }) => id)).toEqual(["delete"]);
-        expect(deletion.skipped).toEqual([]);
-      }
+      expect(deletion.applied.map(({ id }) => id)).toEqual(["delete"]);
+      expect(deletion.skipped).toEqual([]);
       expect(await savedTexts(reviewer)).toEqual([
         "First clause.",
         "Signed in ",
@@ -401,18 +393,8 @@ describe("resolving every suggestion headlessly", () => {
         },
         { undefinedReferences: "refuse" },
       );
-      if (session === "legacy") {
-        expect(result.applied.map(({ id }) => id)).toEqual(["pending"]);
-        expect(result.skipped).toEqual([
-          { id: "delete", reason: "unsupportedMode" },
-        ]);
-      } else {
-        expect(result.applied.map(({ id }) => id)).toEqual([
-          "pending",
-          "delete",
-        ]);
-        expect(result.skipped).toEqual([]);
-      }
+      expect(result.applied.map(({ id }) => id)).toEqual(["pending", "delete"]);
+      expect(result.skipped).toEqual([]);
       reviewer.acceptAll();
       expect(await savedTexts(reviewer)).toEqual([
         "Delivery Terms",
@@ -420,9 +402,6 @@ describe("resolving every suggestion headlessly", () => {
       ]);
     },
   );
-
-  // Legacy bulk acceptance rejects every proposal, resolves, then restages
-  // each from its record; the session never restages.
 
   for (const resolution of ["acceptAll", "rejectAll"] as const)
     test(`canonical ${resolution} panics on a suggestion the registry does not record`, async () => {
@@ -543,9 +522,6 @@ describe("resolving every suggestion headlessly", () => {
     ]);
     expect(reopened.acceptAll().resolved).toBe(0);
   });
-
-  // Legacy bulk acceptance restages proposals on the paragraphs they were made
-  // on, so one whose paragraph was absorbed is lost (a legacy gap).
 
   // Accepting the merge removes the first paragraph's mark; the paragraph
   // whose mark stays survives and holds the proposal, so its record names
@@ -698,15 +674,8 @@ describe("resolving every suggestion headlessly", () => {
         },
         { undefinedReferences: "refuse" },
       );
-      if (session === "legacy") {
-        expect(deletion.applied).toEqual([]);
-        expect(deletion.skipped).toEqual([
-          { id: "delete", reason: "unsupportedMode" },
-        ]);
-      } else {
-        expect(deletion.applied.map(({ id }) => id)).toEqual(["delete"]);
-        expect(deletion.skipped).toEqual([]);
-      }
+      expect(deletion.applied.map(({ id }) => id)).toEqual(["delete"]);
+      expect(deletion.skipped).toEqual([]);
       reviewer.acceptAll();
       expect(await savedTexts(reviewer)).toEqual([
         "First clause.",
@@ -716,10 +685,9 @@ describe("resolving every suggestion headlessly", () => {
     },
   );
 
-  // Beside a paragraph a tracked deletion takes whole, the legacy engine
-  // refuses a suggested block; the canonical session puts it there, as the
-  // `pendingDeletion` refusal's recovery says ("insert a new block next to
-  // it").
+  // Beside a paragraph a tracked deletion takes whole, the canonical session
+  // puts a suggested block there, as the `pendingDeletion` refusal's recovery
+  // says ("insert a new block next to it").
   test.each(["canonical"] as const)(
     "a suggestion anchored to a tracked deletion (%s session)",
     async (session) => {
@@ -1002,8 +970,7 @@ describe("resolving every suggestion headlessly", () => {
 
 // Reject All rejects proposals in the commit that takes a pending inserted
 // paragraph out again: a proposal on that paragraph ends with it and has no
-// survivor to follow. The registry follows survivors on the canonical session
-// only; the legacy one restages proposals instead.
+// survivor to follow.
 describe("rejecting all with a proposal on a pending inserted paragraph", () => {
   const proposals = (blockId: string): FolioDocumentOperation[] => [
     {

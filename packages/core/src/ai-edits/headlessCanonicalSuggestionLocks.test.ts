@@ -9,7 +9,6 @@ import {
 } from "bun:test";
 import { EditorState } from "prosemirror-state";
 
-import type { ContentControlLock } from "@stll/docx-core/model";
 import {
   applyDocumentOp,
   applyDocumentOps,
@@ -78,10 +77,7 @@ const STORIES = [
   free: string;
 }[];
 
-const content = (
-  { held, free }: (typeof STORIES)[number],
-  lock?: ContentControlLock,
-): Paragraph[] => [
+const content = ({ held, free }: (typeof STORIES)[number]): Paragraph[] => [
   {
     type: "paragraph",
     paraId: held,
@@ -89,11 +85,7 @@ const content = (
       { type: "run", content: [{ type: "text", text: CONTROL_PREFIX }] },
       {
         type: "inlineSdt",
-        properties: {
-          id: 9,
-          sdtType: "richText",
-          ...(lock === undefined ? {} : { lock }),
-        },
+        properties: { id: 9, sdtType: "richText" },
         content: [{ type: "run", content: [{ type: "text", text: "CTRL" }] }],
       },
       { type: "run", content: [{ type: "text", text: " after." }] },
@@ -106,10 +98,10 @@ const content = (
   },
 ];
 
-const fixture = async (lock?: ContentControlLock) => {
+const fixture = async () => {
   const document = fromMarkdown("Body.");
   document.package.document.content = [
-    ...content(STORIES[0], lock),
+    ...content(STORIES[0]),
     {
       type: "paragraph",
       paraId: "60000001",
@@ -134,7 +126,7 @@ const fixture = async (lock?: ContentControlLock) => {
       {
         type: "header",
         hdrFtrType: "default",
-        content: content(STORIES[1], lock),
+        content: content(STORIES[1]),
       },
     ],
   ]);
@@ -144,15 +136,15 @@ const fixture = async (lock?: ContentControlLock) => {
       {
         type: "footer",
         hdrFtrType: "default",
-        content: content(STORIES[2], lock),
+        content: content(STORIES[2]),
       },
     ],
   ]);
   document.package.footnotes = [
-    { type: "footnote", id: 7, content: content(STORIES[3], lock) },
+    { type: "footnote", id: 7, content: content(STORIES[3]) },
   ];
   document.package.endnotes = [
-    { type: "endnote", id: 8, content: content(STORIES[4], lock) },
+    { type: "endnote", id: 8, content: content(STORIES[4]) },
   ];
   return (await prepareCanonicalDocxInput(await createDocx(document)))
     .unwrap()
@@ -467,21 +459,6 @@ const publicStoryBlocks = (reviewer: FolioDocxReviewer) =>
       .snapshotStory(handle)
       ?.blocks.map(({ id: _id, ...block }) => block),
   );
-const commentState = (
-  reviewer: FolioDocxReviewer,
-  comment: ReturnType<FolioDocxReviewer["getComments"]>[number],
-) => {
-  const story =
-    comment.story ??
-    panic("The fixture comment must remain anchored to its story.");
-  const paragraph = reviewer
-    .snapshotStory(story)
-    ?.blocks.findIndex(({ id }) => id === comment.blockId);
-  expect(paragraph).toBeDefined();
-  expect(paragraph).toBeGreaterThanOrEqual(0);
-  const { id: _id, blockId: _blockId, ...properties } = comment;
-  return { ...properties, paragraph };
-};
 const publicStoryText = (reviewer: FolioDocxReviewer) =>
   STORIES.map(({ handle }) => reviewer.readStory(handle)?.text);
 
@@ -490,10 +467,9 @@ for (const engine of ["canonical"] as const)
     for (const placement of ["same", "other"] as const)
       test(`${engine} ${entry.handle.type} ${placement} story: a held public proposal survives bulk rejection and save/restage across stories`, async () => {
         // A canonical lock refuses staging the held edit; it arrives below.
-        let reviewer = await FolioDocxReviewer.fromBuffer(
-          await fixture(engine === "canonical" ? undefined : "contentLocked"),
-          { session: engine },
-        );
+        let reviewer = await FolioDocxReviewer.fromBuffer(await fixture(), {
+          session: engine,
+        });
         const free =
           STORIES.at(
             placement === "same" ? index : (index + 1) % STORIES.length,
@@ -528,18 +504,7 @@ for (const engine of ["canonical"] as const)
         });
         const ordinaryComments = reviewer.getComments();
         expect(ordinaryComments).toHaveLength(1);
-        apply(
-          entry,
-          "suggested",
-          engine === "canonical"
-            ? heldInsertion(entry)
-            : {
-                id: "held-delete",
-                suggestionId: PROPOSAL,
-                type: "deleteBlock",
-                blockId: entry.held,
-              },
-        );
+        apply(entry, "suggested", heldInsertion(entry));
         apply(free, "suggested", {
           id: "free-proposal",
           suggestionId: PROPOSAL,
@@ -550,7 +515,7 @@ for (const engine of ["canonical"] as const)
         });
         const records = reviewer.exportPendingSuggestions();
         expect(records).toHaveLength(2);
-        if (engine === "canonical") reviewer = await relocked(reviewer);
+        reviewer = await relocked(reviewer);
         const changesByStory = () =>
           STORIES.map(
             ({ handle }) =>
@@ -567,26 +532,14 @@ for (const engine of ["canonical"] as const)
           ...new Set(changes.map(({ id }) => id)),
         ]);
         const logicalIds = storyIds.flat();
-        // Separate legacy inline deletion pieces can list the same revision.
-        // Distinct stories in this actual producer must never reuse that id.
+        // Distinct stories in this actual producer must never reuse an id.
         expect(new Set(logicalIds).size).toBe(logicalIds.length);
-        if (engine === "canonical")
-          expect(new Set(physicalIds).size).toBe(physicalIds.length);
-        const proposedIds = (
-          engine === "canonical" ? physicalIds : logicalIds
-        ).toSorted((left, right) => left - right);
+        expect(new Set(physicalIds).size).toBe(physicalIds.length);
+        const proposedIds = physicalIds.toSorted((left, right) => left - right);
         expect(proposedIds.length).toBeGreaterThan(1);
         const before = publicStoryText(reviewer);
         const beforeBlocks = publicStoryBlocks(reviewer);
         const comments = reviewer.getComments();
-        const commentSnapshots = comments.map((comment) => ({
-          id: comment.id,
-          properties: commentState(reviewer, comment),
-        }));
-        const ordinarySnapshots = ordinaryComments.map((comment) => ({
-          id: comment.id,
-          properties: commentState(reviewer, comment),
-        }));
         apply(ordinary, "tracked-changes", {
           id: "ordinary-free",
           type: "insertAfterBlock",
@@ -609,21 +562,11 @@ for (const engine of ["canonical"] as const)
         ).toBe(true);
         expect(changesByStory()).toEqual(proposedByStory);
         expect(publicStoryText(reviewer)).toEqual(before);
-        if (engine === "canonical")
-          expect(reviewer.getComments()).toEqual(comments);
-        else
-          expect(
-            reviewer.getComments().map((comment) => ({
-              id: comment.id,
-              properties: commentState(reviewer, comment),
-            })),
-          ).toEqual(commentSnapshots);
+        expect(reviewer.getComments()).toEqual(comments);
         expect(publicStoryBlocks(reviewer)).toEqual(beforeBlocks);
         expect(reviewer.exportPendingSuggestions()).toEqual(records);
         const reopened = await FolioDocxReviewer.fromBuffer(
-          engine === "canonical"
-            ? await savedLocked(reviewer)
-            : await reviewer.toBuffer(),
+          await savedLocked(reviewer),
           { session: engine },
         );
         const loaded = reopened.loadPendingSuggestions(records);
@@ -632,62 +575,15 @@ for (const engine of ["canonical"] as const)
         );
         expect(publicStoryBlocks(reopened)).toEqual(beforeBlocks);
         const replayedRecords = reopened.exportPendingSuggestions();
-        if (engine === "canonical") {
-          expect(publicStoryText(reopened)).toEqual(before);
-          expect(replayedRecords).toEqual(records);
-        } else {
-          // Legacy restaging mints inserted paragraph and proposed-comment ids.
-          const operations = (entries: typeof records) =>
-            entries.map(({ commentId: _commentId, ...record }) => record);
-          expect(operations(replayedRecords)).toEqual(operations(records));
-          const commentIds = new Map<number, number>();
-          for (const record of records) {
-            const replayed =
-              replayedRecords.find(
-                ({ operation }) => operation.id === record.operation.id,
-              ) ?? panic("A restaged operation must keep its record.");
-            if (record.commentId === undefined) {
-              expect(replayed.commentId).toBeUndefined();
-              continue;
-            }
-            const replayedId =
-              replayed.commentId ??
-              panic("A restaged commented operation must name its comment.");
-            commentIds.set(record.commentId, replayedId);
-            const originalComment =
-              comments.find(({ id }) => id === record.commentId) ??
-              panic("An exported proposed comment must exist.");
-            const replayedComment =
-              reopened.getComments().find(({ id }) => id === replayedId) ??
-              panic("A restaged comment id must name the actual comment.");
-            expect(commentState(reopened, replayedComment)).toEqual(
-              commentSnapshots.find(({ id }) => id === originalComment.id)
-                ?.properties ??
-                panic(
-                  "An exported comment must keep its original anchor observation.",
-                ),
-            );
-          }
-          expect(commentIds.size).toBe(
-            records.filter(({ commentId }) => commentId !== undefined).length,
-          );
-          expect(new Set(commentIds.values()).size).toBe(commentIds.size);
-        }
+        expect(publicStoryText(reopened)).toEqual(before);
+        expect(replayedRecords).toEqual(records);
         const ordinaryCommentIds = new Set(
           ordinaryComments.map(({ id }) => id),
         );
         const ordinaryAfter = reopened
           .getComments()
           .filter(({ id }) => ordinaryCommentIds.has(id));
-        if (engine === "canonical")
-          expect(ordinaryAfter).toEqual(ordinaryComments);
-        else
-          expect(
-            ordinaryAfter.map((comment) => ({
-              id: comment.id,
-              properties: commentState(reopened, comment),
-            })),
-          ).toEqual(ordinarySnapshots);
+        expect(ordinaryAfter).toEqual(ordinaryComments);
         expect(reopened.getComments()).toHaveLength(comments.length);
         expect(
           reopened
@@ -863,10 +759,9 @@ for (const engine of ["canonical"] as const)
   test(`${engine}: bulk rejection keeps an ordinary insertion that holds a fragment of a held proposal`, async () => {
     const entry = STORIES[0];
     // A canonical lock refuses staging the held edit; it arrives below.
-    let reviewer = await FolioDocxReviewer.fromBuffer(
-      await fixture(engine === "canonical" ? undefined : "contentLocked"),
-      { session: engine },
-    );
+    let reviewer = await FolioDocxReviewer.fromBuffer(await fixture(), {
+      session: engine,
+    });
     const apply = (
       mode: "suggested" | "tracked-changes",
       operation: Parameters<
@@ -905,19 +800,9 @@ for (const engine of ["canonical"] as const)
       find: "words",
       replace: "terms",
     });
-    apply(
-      "suggested",
-      engine === "canonical"
-        ? heldInsertion(entry)
-        : {
-            id: "held-delete",
-            suggestionId: PROPOSAL,
-            type: "deleteBlock",
-            blockId: entry.held,
-          },
-    );
+    apply("suggested", heldInsertion(entry));
     const records = reviewer.exportPendingSuggestions();
-    if (engine === "canonical") reviewer = await relocked(reviewer);
+    reviewer = await relocked(reviewer);
     // The ordinary paragraph's inserted mark holds the proposal's fragment.
     const enclosing = publicChanges(reviewer)
       .filter(

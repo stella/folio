@@ -43,9 +43,7 @@ const expectSavedThreads = async (
 };
 
 // Accepting a replacement of every word a comment covers retires the comment
-// on the canonical session (its anchor is the deleted words only, as a direct
-// replacement retires it); the legacy session keeps it on the inserted words
-// until rejecting the insertion empties the anchor.
+// (its anchor is the deleted words only, as a direct replacement retires it).
 for (const session of SESSIONS) {
   test(`${session}: retiring a replaced comment anchor also retires its newly created reply`, async () => {
     const openSession = (buffer: ArrayBuffer) =>
@@ -82,31 +80,11 @@ for (const session of SESSIONS) {
     await expectSavedThreads(reviewer, openSession);
     const change = reviewer.getChanges().at(0);
     if (!change) panic("Expected a tracked replacement change");
-    if (session === "canonical") {
-      const thread = reviewer.getComments().at(0);
-      if (!thread) panic("Expected the comment thread");
-      reviewer.replyTo(thread, { text: "Session reply." });
-      await expectSavedThreads(reviewer, openSession);
-      expect(reviewer.acceptChange(change)).toBe(true);
-      await expectSavedThreads(reviewer, openSession);
-      const reopened = await openSession(await reviewer.toBuffer());
-      expect(reviewer.getComments()).toEqual([]);
-      expect(reopened.getComments()).toEqual([]);
-      return;
-    }
+    const thread = reviewer.getComments().at(0);
+    if (!thread) panic("Expected the comment thread");
+    reviewer.replyTo(thread, { text: "Session reply." });
+    await expectSavedThreads(reviewer, openSession);
     expect(reviewer.acceptChange(change)).toBe(true);
-    await expectSavedThreads(reviewer, openSession);
-    const comment = reviewer.getComments().at(0);
-    if (!comment) panic("Expected the surviving comment thread");
-    reviewer.replyTo(comment, { text: "Session reply." });
-    await expectSavedThreads(reviewer, openSession);
-    expect(
-      reviewer
-        .getComments()
-        .at(0)
-        ?.replies.map(({ text }) => text),
-    ).toEqual(["Session reply."]);
-    expect(reviewer.rejectAll().resolved).toBeGreaterThan(0);
     await expectSavedThreads(reviewer, openSession);
     const reopened = await openSession(await reviewer.toBuffer());
     expect(reviewer.getComments()).toEqual([]);
@@ -176,17 +154,10 @@ for (const session of SESSIONS) {
     await expectSavedThreads(reviewer, openSession);
     const change = reviewer.getChanges().at(0);
     if (!change) panic("Expected a tracked story change");
-    if (session === "canonical") {
-      expect(reviewer.replyTo(0, { text: "Session reply." })).not.toBeNull();
-      await expectSavedThreads(reviewer, openSession);
-    }
+    expect(reviewer.replyTo(0, { text: "Session reply." })).not.toBeNull();
+    await expectSavedThreads(reviewer, openSession);
     expect(reviewer.acceptChange(change)).toBe(true);
     await expectSavedThreads(reviewer, openSession);
-    if (session === "legacy") {
-      expect(reviewer.replyTo(0, { text: "Session reply." })).not.toBeNull();
-      await expectSavedThreads(reviewer, openSession);
-      expect(reviewer.rejectAll().resolved).toBeGreaterThan(0);
-    }
     const comments = await expectSavedThreads(reviewer, openSession);
     expect(
       comments.map(({ id }) => id).sort((left, right) => left - right),

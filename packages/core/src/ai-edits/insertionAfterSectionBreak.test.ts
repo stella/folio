@@ -94,10 +94,8 @@ const cases = [
   },
 ] as const;
 
-const open = (
-  bytes: Uint8Array | ArrayBuffer,
-  session: "legacy" | "canonical",
-) => FolioDocxReviewer.fromBuffer(bytes, { session, author: "Reviewer" });
+const open = (bytes: Uint8Array | ArrayBuffer, session: "canonical") =>
+  FolioDocxReviewer.fromBuffer(bytes, { session, author: "Reviewer" });
 
 for (const session of ["canonical"] as const)
   for (const { name, operations, direct } of cases) {

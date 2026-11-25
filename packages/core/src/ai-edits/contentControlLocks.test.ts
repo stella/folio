@@ -119,9 +119,8 @@ type Case = {
   name: string;
   reach: Reach;
   /**
-   * What the operation does to the control on the canonical session, where
-   * it differs: a range spanning the whole control, its boundaries
-   * included, removes it there; the legacy engine keeps it emptied.
+   * What the operation does to the control, where it differs: a range
+   * spanning the whole control, its boundaries included, removes it.
    */
   canonicalReach?: Reach;
   /**
@@ -208,8 +207,7 @@ const PLACEMENTS: readonly Placement[] = [
         }),
       },
       {
-        // The replacement spans the whole control: the legacy engine keeps it
-        // emptied, the canonical session removes it.
+        // The replacement spans the whole control: it removes it.
         name: "replacing text across all of it",
         reach: "content",
         canonicalReach: "removal",

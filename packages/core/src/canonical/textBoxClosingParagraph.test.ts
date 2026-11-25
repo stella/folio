@@ -8,7 +8,6 @@ import { describe, expect, test } from "bun:test";
 import { ZipArchive } from "@stll/docx-core/zip";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
-import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 
 const XML_DECLARATION =
   '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
@@ -57,47 +56,29 @@ const documentPart = async (bytes: ArrayBuffer): Promise<string> =>
 const boxContent = (xml: string): string =>
   /<w:txbxContent>([\s\S]*?)<\/w:txbxContent>/u.exec(xml)?.[1] ?? "";
 
-describe.each([
-  "canonical",
-] as const satisfies readonly HeadlessReviewerSession[])(
-  "a text box whose content ends in a table (%s)",
-  (session) => {
-    test("saves unedited as read", async () => {
-      const reviewer = await FolioDocxReviewer.fromBuffer(
-        await buildPackage(),
-        {
-          session,
-        },
-      );
-      expect(await documentPart(await reviewer.toBuffer())).toBe(DOCUMENT);
-    });
+describe("a text box whose content ends in a table", () => {
+  test("saves unedited as read", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(await buildPackage());
+    expect(await documentPart(await reviewer.toBuffer())).toBe(DOCUMENT);
+  });
 
-    test("ends with a paragraph once the box is edited", async () => {
-      const reviewer = await FolioDocxReviewer.fromBuffer(
-        await buildPackage(),
+  test("ends with a paragraph once the box is edited", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(await buildPackage());
+    const result = reviewer.applyOperations(
+      [
         {
-          session,
+          id: "edit",
+          type: "replaceInBlock",
+          blockId: "20000002",
+          find: "opens",
+          replace: "starts",
         },
-      );
-      const result = reviewer.applyOperations(
-        [
-          {
-            id: "edit",
-            type: "replaceInBlock",
-            blockId: "20000002",
-            find: "opens",
-            replace: "starts",
-          },
-        ],
-        { undefinedReferences: "refuse", mode: "direct" },
-      );
-      expect(result.skipped).toEqual([]);
-      const content = boxContent(await documentPart(await reviewer.toBuffer()));
-      expect(content).toContain("Box starts");
-      // The legacy session writes a box as its editor read it, with no
-      // paragraph the package does not hold; it retires with the flip.
-      if (session === "legacy") expect(content).toEndWith("</w:tbl>");
-      else expect(content).toMatch(/<\/w:tbl><w:p\b[^>]*\/?>(?:<\/w:p>)?$/u);
-    });
-  },
-);
+      ],
+      { undefinedReferences: "refuse", mode: "direct" },
+    );
+    expect(result.skipped).toEqual([]);
+    const content = boxContent(await documentPart(await reviewer.toBuffer()));
+    expect(content).toContain("Box starts");
+    expect(content).toMatch(/<\/w:tbl><w:p\b[^>]*\/?>(?:<\/w:p>)?$/u);
+  });
+});

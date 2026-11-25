@@ -10,8 +10,7 @@
  * header or of a note, then saves and reopens: every paragraph's numbering
  * and list rendering read the same in the live model and in the reopened one,
  * and so does the indentation a numbering level adds to the paragraph's
- * formatting; the default engine reads the saved file's list renderings the
- * same way.
+ * formatting.
  */
 
 import { describe, expect, mock, test } from "bun:test";
@@ -255,15 +254,6 @@ const paragraphsOf = (document: Document) => {
   return read;
 };
 
-/** The list rendering of each paragraph a read holds, by its place. */
-const renderingsOf = (read: ReturnType<typeof paragraphsOf>) =>
-  Object.fromEntries(
-    Object.entries(read).map(([place, paragraph]) => [
-      place,
-      paragraph.listRendering,
-    ]),
-  );
-
 const operationOf = (draw: Draw, blockId: string): FolioDocumentOperation => ({
   id: "number",
   type: "setBlockParagraphProperties",
@@ -297,11 +287,9 @@ const liveAndReopened = async (buffer: ArrayBuffer, draw: Draw) => {
   if (!applied) return null;
   const saved = await live.toBuffer();
   const reopened = await open(saved);
-  const defaultEngine = await open(saved, "legacy");
   return {
     live: paragraphsOf(live.toDocument()),
     reopened: paragraphsOf(reopened.toDocument()),
-    defaultEngine: renderingsOf(paragraphsOf(defaultEngine.toDocument())),
   };
 };
 
@@ -311,7 +299,6 @@ const law = (buffer: ArrayBuffer, tally: { applied: number }) =>
     if (read === null) return;
     tally.applied += 1;
     expect(read.live).toEqual(read.reopened);
-    expect(renderingsOf(read.reopened)).toEqual(read.defaultEngine);
   });
 
 const RUNS = 40;
@@ -402,7 +389,6 @@ describe("numbering an operation sets", () => {
       expect(read).not.toBeNull();
       if (read === null) continue;
       expect(read.live).toEqual(read.reopened);
-      expect(renderingsOf(read.reopened)).toEqual(read.defaultEngine);
     }
   });
 

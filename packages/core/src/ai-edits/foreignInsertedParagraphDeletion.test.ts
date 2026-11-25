@@ -1,6 +1,6 @@
 /**
  * Deleting a paragraph another author inserted records the deletion on its
- * mark beside their insertion, on both sessions: the saved mark holds
+ * mark beside their insertion: the saved mark holds
  * `w:ins` and `w:del`, accepting or rejecting everything removes the
  * paragraph, and each record resolves on its own.
  */
@@ -44,7 +44,7 @@ const texts = (document: Document): string[] =>
   );
 
 const deleted = async (
-  session: "legacy" | "canonical",
+  session: "canonical",
   beforeTable: boolean,
 ): Promise<ArrayBuffer> => {
   const docx = await createDocx({

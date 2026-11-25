@@ -219,11 +219,6 @@ const checkCapacity = async ({
   }
   const targetIndex = pendingAt === "first" ? 0 : length - 1;
   for (let index = 0; index < attempts; index++) {
-    const before = reviewer.snapshotStory(story);
-    const changes = reviewer.readReviewedStory({
-      story,
-      view: "current-markup",
-    })?.changes;
     const result = apply({
       reviewer,
       story,
@@ -234,19 +229,9 @@ const checkCapacity = async ({
         properties: { alignment: index % 2 === 0 ? "center" : "right" },
       },
     });
-    // Canonical folds a later change by the same author into the pending
-    // one, which keeps the original properties; legacy refuses it.
-    if (index === 0 || session === "canonical") {
-      expect(result.status).toBe("committed");
-    } else {
-      expect(result.skipped).toEqual([
-        { id: `property-${index}`, reason: "pendingParagraphPropertyChange" },
-      ]);
-      expect(reviewer.snapshotStory(story)).toEqual(before);
-      expect(
-        reviewer.readReviewedStory({ story, view: "current-markup" })?.changes,
-      ).toEqual(changes);
-    }
+    // A later change by the same author folds into the pending one, which
+    // keeps the original properties.
+    expect(result.status).toBe("committed");
     await capacity({ reviewer, kind });
   }
   if (attempts > 0) {
@@ -257,11 +242,6 @@ const checkCapacity = async ({
       occupiedParaId: block({ reviewer, story, index: targetIndex }).id,
     });
   }
-  const before = reviewer.snapshotStory(story);
-  const changes = reviewer.readReviewedStory({
-    story,
-    view: "current-markup",
-  })?.changes;
   const result = apply({
     reviewer,
     story,
@@ -275,20 +255,7 @@ const checkCapacity = async ({
         : {}),
     },
   });
-  const refused = session === "legacy" && attempts > 0 && merge === "explicit";
-  if (refused) {
-    expect(result.status).toBe("rejected");
-    expect(result.applied).toEqual([]);
-    expect(result.skipped).toEqual([
-      { id: "formatting-merge", reason: "pendingParagraphPropertyChange" },
-    ]);
-    expect(reviewer.snapshotStory(story)).toEqual(before);
-    expect(
-      reviewer.readReviewedStory({ story, view: "current-markup" })?.changes,
-    ).toEqual(changes);
-  } else {
-    expect(result.status).toBe("committed");
-  }
+  expect(result.status).toBe("committed");
   await capacity({ reviewer, kind });
   const saved = await reviewer.toBuffer();
   const rejecting = await open(session, saved);
@@ -321,15 +288,12 @@ const checkCapacity = async ({
   const aligned = reopenedAccepted
     .snapshotStory(story)
     ?.blocks.find(({ text }) => text.includes(`Clause ${targetIndex}.`));
-  // The last property change that applied: legacy applies only the first.
-  const pendingAlignment =
-    session === "legacy" || (attempts - 1) % 2 === 0 ? "center" : "right";
+  // The last property change that applied.
+  const pendingAlignment = (attempts - 1) % 2 === 0 ? "center" : "right";
   let mergedAlignment = "left";
   if (attempts > 0 && pendingAt === "first") mergedAlignment = pendingAlignment;
   if (merge === "explicit") mergedAlignment = "both";
-  expect(expectParagraphBlock(aligned).directAlignment).toBe(
-    refused ? "center" : mergedAlignment,
-  );
+  expect(expectParagraphBlock(aligned).directAlignment).toBe(mergedAlignment);
 };
 
 // The old merge guard inspected only the first paragraph; its formatting writer
@@ -610,22 +574,14 @@ test.each(SESSION_STORIES)(
       kind: type,
       occupiedParaId: sequential.survivor.id,
     });
-    const before = sequential.reviewer.snapshotStory(story);
-    // Canonical folds the merge's properties into the carried pending
-    // change; legacy refuses it.
-    const refusal =
-      session === "legacy"
-        ? [{ id: "explicit-merge", reason: "pendingParagraphPropertyChange" }]
-        : [];
+    // The merge's properties fold into the carried pending change.
     expect(
       apply({
         reviewer: sequential.reviewer,
         story,
         operation: sequentialOperations[1],
       }).skipped,
-    ).toEqual(refusal);
-    if (session === "legacy")
-      expect(sequential.reviewer.snapshotStory(story)).toEqual(before);
+    ).toEqual([]);
     const result = batch.reviewer.applyDocumentOperationsToStory({
       undefinedReferences: "refuse",
       story,
@@ -635,7 +591,7 @@ test.each(SESSION_STORIES)(
         operations: operations(batch),
       },
     });
-    expect(result.skipped).toEqual(refusal);
+    expect(result.skipped).toEqual([]);
     await capacity({ reviewer: batch.reviewer, kind: type });
     batch.reviewer.acceptAll();
     sequential.reviewer.acceptAll();

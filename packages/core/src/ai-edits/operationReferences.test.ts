@@ -304,8 +304,7 @@ describe.each(SESSIONS)(
   "a batch result the save validator refuses is not committed (%s)",
   (session) => {
     // A whitespace-only author makes every tracked change the batch writes one
-    // no save accepts: the legacy session finds it in the result, the
-    // canonical one before it records the author.
+    // no save accepts: the session finds it before it records the author.
     const openWithBlankAuthor = async () => {
       const reviewer = await FolioDocxReviewer.fromBuffer(
         await build(UNUSED_901),

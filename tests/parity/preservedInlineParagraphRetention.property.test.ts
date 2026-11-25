@@ -260,7 +260,7 @@ test(
 
 for (const ancestry of ANCESTRY)
   for (const mark of MARKS)
-    test(`${ancestry}/${mark} opaque source agrees in both reviewers and saved resolutions`, async () => {
+    test(`${ancestry}/${mark} opaque source resolves and saves with its payloads`, async () => {
       const document = source({
         level: "inline",
         display: "empty",
@@ -274,33 +274,21 @@ for (const ancestry of ANCESTRY)
         .unwrap()
         .slice().buffer;
       for (const decision of ["accept", "reject"] as const) {
-        const legacy = await FolioDocxReviewer.fromBuffer(bytes.slice(0), {
-          session: "legacy",
-        });
-        const canonical = await FolioDocxReviewer.fromBuffer(bytes.slice(0), {
-          session: "canonical",
-        });
-        const legacyOutcome =
-          decision === "accept" ? legacy.acceptAll() : legacy.rejectAll();
-        const canonicalOutcome =
-          decision === "accept" ? canonical.acceptAll() : canonical.rejectAll();
-        expect(legacyOutcome.skipped).toEqual([]);
-        expect(canonicalOutcome.skipped).toEqual([]);
-        expect(legacyOutcome.resolved).toBeGreaterThan(0);
-        expect(canonicalOutcome.resolved).toBeGreaterThan(0);
-        expect(canonical.getContent()).toEqual(legacy.getContent());
+        const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice(0));
+        const outcome =
+          decision === "accept" ? reviewer.acceptAll() : reviewer.rejectAll();
+        expect(outcome.skipped).toEqual([]);
+        expect(outcome.resolved).toBeGreaterThan(0);
         const expected = removesContent(ancestry, decision) ? 0 : 1;
-        for (const reviewer of [legacy, canonical]) {
-          expect(payloads(reviewer.toDocument())).toEqual(
-            expected === 0 ? [] : payloads(document),
-          );
-          const saved = await parseDocx(await reviewer.toBuffer(), {
-            detectVariables: false,
-            preloadFonts: false,
-          });
-          expect(payloads(saved)).toEqual(
-            expected === 0 ? [] : payloads(document),
-          );
-        }
+        expect(payloads(reviewer.toDocument())).toEqual(
+          expected === 0 ? [] : payloads(document),
+        );
+        const saved = await parseDocx(await reviewer.toBuffer(), {
+          detectVariables: false,
+          preloadFonts: false,
+        });
+        expect(payloads(saved)).toEqual(
+          expected === 0 ? [] : payloads(document),
+        );
       }
     });

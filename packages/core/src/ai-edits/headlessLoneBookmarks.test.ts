@@ -3,16 +3,14 @@
  * `_GoBack` start between blocks, a start whose end a template dropped, an end
  * whose start is gone. Each placement (between body blocks, in a paragraph, in
  * a hyperlink, in a table cell, in a header, in a footnote) and each kind (a
- * lone start, a lone end) is opened by both reviewer engines, and the
- * canonical one keeps the boundary exactly where the source has it:
+ * lone start, a lone end) is opened by the reviewer, which keeps the boundary
+ * exactly where the source has it:
  *
- * - it opens wherever the legacy engine opens;
  * - saving, with no edit, with an edit elsewhere (direct, or tracked and then
  *   pending, accepted or rejected), and saving again after reopening, writes
  *   the boundaries of the source part, no more and no fewer;
- * - the text it saves is the legacy engine's for the same edits;
- * - an edit beside the boundary, or over the text around it, keeps it wherever
- *   the legacy engine keeps it, and as the source has it.
+ * - an edit beside the boundary, or over the text around it, keeps it as the
+ *   source has it.
  */
 
 import { describe, expect, mock, test } from "bun:test";
@@ -300,16 +298,11 @@ describe("a bookmark boundary without a partner", () => {
         const buffer = await packageWith(placement, kind);
         const source = await partOf(buffer, placement.part);
         expect(source.markers).toEqual([loneMarker(kind)]);
-        // Both engines open it: the canonical one wherever the legacy one does.
-        await open(buffer, "legacy");
         await open(buffer, "canonical");
 
         for (const flow of [null, ...FLOWS_ELSEWHERE]) {
-          const legacy = await runFlow(buffer, "legacy", placement, flow);
           const canonical = await runFlow(buffer, "canonical", placement, flow);
-          expect(canonical.applied).toBe(legacy.applied);
           expect(canonical.part.markers).toEqual(source.markers);
-          expect(canonical.part.text).toBe(legacy.part.text);
           // Reopened and saved again, the part is a fixed point.
           const reopened = await runFlow(
             canonical.saved,
@@ -322,17 +315,11 @@ describe("a bookmark boundary without a partner", () => {
       }, 60_000);
 
       if (!placement.editsBeside) continue;
-      test(`an edit beside a lone ${kind} ${placement.name} keeps it wherever the legacy engine keeps it`, async () => {
+      test(`an edit beside a lone ${kind} ${placement.name} keeps it as the source has it`, async () => {
         const buffer = await packageWith(placement, kind);
         for (const flow of FLOWS_BESIDE) {
-          const legacy = await runFlow(buffer, "legacy", placement, flow);
           const canonical = await runFlow(buffer, "canonical", placement, flow);
-          expect(canonical.applied).toBe(legacy.applied);
-          expect(canonical.part.text).toBe(legacy.part.text);
-          // Every boundary the legacy engine keeps, the canonical one keeps.
-          if (legacy.part.markers.includes(loneMarker(kind)))
-            expect(canonical.part.markers).toContain(loneMarker(kind));
-          // What the canonical engine keeps, it keeps as the source has it.
+          // What the reviewer keeps, it keeps as the source has it.
           expect(
             canonical.part.markers.every(
               (marker) => marker === loneMarker(kind),

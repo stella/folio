@@ -64,7 +64,7 @@ const tableDocument = async (): Promise<ArrayBuffer> => {
   );
 };
 
-type Session = "legacy" | "canonical";
+type Session = "canonical";
 
 const open = (buffer: ArrayBuffer, session?: Session) =>
   FolioDocxReviewer.fromBuffer(buffer, {
@@ -299,10 +299,9 @@ describe("suggested insertion admission uses the live anchor for every gap run",
     expect(xml).not.toContain("<w:moveTo ");
   });
 
-  // Beside a block a tracked deletion takes whole, the legacy engine refuses
-  // a suggested block; the canonical session puts it there, as the
-  // `pendingDeletion` refusal's recovery says ("insert a new block next to
-  // it").
+  // Beside a block a tracked deletion takes whole, the canonical session
+  // puts a suggested block there, as the `pendingDeletion` refusal's recovery
+  // says ("insert a new block next to it").
   for (const session of ["canonical"] as const)
     for (const deletion of ["deleteBlock", "deleteTableRow"] as const) {
       for (const count of [1, 2, 3]) {

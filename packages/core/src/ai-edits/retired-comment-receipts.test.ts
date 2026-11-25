@@ -19,7 +19,7 @@ const anchor = (id: number, text: string): ParagraphContent[] => [
   { type: "commentReference", id },
 ];
 
-const open = (session: "legacy" | "canonical") =>
+const open = (session: "canonical") =>
   paragraphsDocx(
     [
       [textRun("First "), ...anchor(3, "clause"), textRun(".")],
@@ -77,7 +77,7 @@ for (const session of ["canonical"] as const) {
         {
           version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
           mode: "tracked-changes",
-          operations: session === "canonical" ? inlineEdits : edits,
+          operations: inlineEdits,
           dryRun,
         },
         { undefinedReferences: "refuse" },
@@ -247,7 +247,7 @@ for (const session of ["canonical"] as const) {
         {
           version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
           mode,
-          operations: [session === "canonical" ? inlineEdits[0] : edits[0]],
+          operations: [inlineEdits[0]],
         },
         { undefinedReferences: "refuse" },
       );

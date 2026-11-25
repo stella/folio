@@ -2,7 +2,7 @@
  * A tracked operation that would record over a paragraph mark under review
  * is refused by what the mark has pending: `pendingParagraphMarkInsertion`
  * for an inserted mark, `pendingParagraphMarkDeletion` for a deleted one, so
- * the two are never reported alike. Legacy applies these shapes.
+ * the two are never reported alike.
  */
 import { describe, expect, test } from "bun:test";
 
@@ -135,8 +135,6 @@ const source = async (content: BlockContent[]) => {
 
 const outcome = (session: HeadlessReviewerSession, kind: MarkKind) => {
   switch (session) {
-    case "legacy":
-      return { applied: ["op"], skipped: [] };
     case "canonical":
       return {
         applied: [],

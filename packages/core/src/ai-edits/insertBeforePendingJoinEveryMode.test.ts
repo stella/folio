@@ -3,8 +3,7 @@
  * the paragraph whose words it runs, lands in the same gap in every mode
  * (`insertionGap`): suggested where the tracked insertion goes, before the
  * join, with the joined paragraph's properties, so accepting either leaves
- * what the direct insertion does. The canonical session; the legacy engine,
- * being retired, still reads a suggestion as the document stands.
+ * what the direct insertion does.
  */
 
 import { describe, expect, test } from "bun:test";

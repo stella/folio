@@ -113,12 +113,10 @@ const SHAPES = {
     },
     operation: { id: "op", type: "deleteTableRow", blockId: "00000012" },
     outcome: {
-      legacy: refusedAs(STRUCTURAL_REVISION),
       canonical: refusedAs(STRUCTURAL_REVISION),
     },
   },
-  // Canonical removes its author's own pending row outright; legacy refuses
-  // any row already under review.
+  // The author's own pending row is removed outright.
   "a row deletion over the author's own pending row insertion": {
     table: {
       type: "table",
@@ -128,7 +126,7 @@ const SHAPES = {
       ],
     },
     operation: { id: "op", type: "deleteTableRow", blockId: "00000012" },
-    outcome: { legacy: refusedAs(STRUCTURAL_REVISION), canonical: APPLIED },
+    outcome: { canonical: APPLIED },
   },
   "a table deletion over a table holding a pending row insertion": {
     table: {
@@ -140,7 +138,6 @@ const SHAPES = {
     },
     operation: { id: "op", type: "deleteTable", blockId: "00000010" },
     outcome: {
-      legacy: refusedAs(STRUCTURAL_REVISION),
       canonical: refusedAs(STRUCTURAL_REVISION),
     },
   },
@@ -154,16 +151,12 @@ const SHAPES = {
     },
     operation: { id: "op", type: "deleteTableColumn", blockId: "00000010" },
     outcome: {
-      legacy: refusedAs(
-        "A cell of the column already carries a structural revision.",
-      ),
       canonical: refusedAs(
         "The column's cells are already suggested for deletion.",
       ),
     },
   },
-  // Legacy records the column and the merge beside a pending table property
-  // change; canonical keeps the table's one pending change per element.
+  // The table keeps one pending change per element.
   "a column insertion in a table with a pending property change": {
     table: {
       type: "table",
@@ -184,7 +177,6 @@ const SHAPES = {
       cellTexts: ["New"],
     },
     outcome: {
-      legacy: APPLIED,
       canonical: refusedAs(
         "Resolve table reviews before changing its columns.",
       ),
@@ -209,7 +201,6 @@ const SHAPES = {
       rowCount: 2,
     },
     outcome: {
-      legacy: APPLIED,
       canonical: refusedAs("Resolve table reviews before changing cells."),
     },
   },

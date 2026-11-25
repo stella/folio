@@ -177,7 +177,7 @@ test(
   propertyTestTimeout(15_000),
 );
 
-test("an unadapted duplicate-reference source opens with one reference on both sessions", async () => {
+test("an unadapted duplicate-reference source opens with one reference", async () => {
   const raw = rawDuplicate();
   expect(commentDocumentIssue(raw, "all")).toBe(
     "Comment anchors are unbalanced or duplicated.",
@@ -194,9 +194,7 @@ test("an unadapted duplicate-reference source opens with one reference on both s
   expect(parsed.parseWarnings?.map(({ code }) => code)).toContain(
     "duplicate-comment-reference",
   );
-  for (const session of ["legacy", "canonical"] as const)
-    // oxlint-disable-next-line no-await-in-loop -- one session after the other
-    await FolioDocxReviewer.fromBuffer(bytes.slice(0), { session });
+  await FolioDocxReviewer.fromBuffer(bytes.slice(0));
 });
 
 const cases = {
@@ -281,7 +279,7 @@ const cases = {
 };
 
 for (const [name, fixture] of Object.entries(cases))
-  test(`${name} becomes coherent source held by both actual reviewers`, async () => {
+  test(`${name} becomes coherent source held by the reviewer`, async () => {
     const original = fixture();
     const adapted = withCoherentSyntheticReviewComments(original);
     expectPreserved(original, adapted);
@@ -289,16 +287,7 @@ for (const [name, fixture] of Object.entries(cases))
     const bytes = (await prepareCanonicalDocxInput(await createDocx(adapted)))
       .unwrap()
       .slice().buffer;
-    const legacy = await FolioDocxReviewer.fromBuffer(bytes.slice(0), {
-      session: "legacy",
-    });
-    const canonical = await FolioDocxReviewer.fromBuffer(bytes.slice(0), {
-      session: "canonical",
-    });
-    const content = (reviewer: FolioDocxReviewer) =>
-      reviewer.getContent().map(({ id, text }) => ({ id, text }));
-    expect(content(canonical)).toEqual(content(legacy));
-    expect(canonical.getComments()).toEqual(legacy.getComments());
+    const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice(0));
     const expectedIds = adapted.package.document.comments
       ?.map(({ id }) => id)
       .toSorted((a, b) => a - b);
@@ -321,19 +310,17 @@ for (const [name, fixture] of Object.entries(cases))
       preloadFonts: false,
     });
     expect(ranges(opened)).toEqual(ranges(adapted));
-    for (const reviewer of [legacy, canonical]) {
-      const saved = await parseDocx(await reviewer.toBuffer(), {
-        detectVariables: false,
-        preloadFonts: false,
-      });
-      expect(commentDocumentIssue(saved, "all")).toBeUndefined();
-      expect(anchors(saved)).toEqual(anchors(opened));
-      expect(
-        saved.package.document.comments
-          ?.map(({ id }) => id)
-          .toSorted((a, b) => a - b),
-      ).toEqual(expectedIds);
-    }
+    const saved = await parseDocx(await reviewer.toBuffer(), {
+      detectVariables: false,
+      preloadFonts: false,
+    });
+    expect(commentDocumentIssue(saved, "all")).toBeUndefined();
+    expect(anchors(saved)).toEqual(anchors(opened));
+    expect(
+      saved.package.document.comments
+        ?.map(({ id }) => id)
+        .toSorted((a, b) => a - b),
+    ).toEqual(expectedIds);
   });
 
 test("blank-root construction derives its identity and author from the raw fixture", () => {

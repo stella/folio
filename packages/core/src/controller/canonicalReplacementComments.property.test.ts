@@ -29,7 +29,6 @@ import {
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
-import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import type { Document, InlineSdt, Run } from "../types/document";
 import { readModel } from "../types/documentModel";
 
@@ -379,11 +378,8 @@ const COMMENT_CASES = {
   overlapping: ["on time", "time and"],
 } as const;
 
-const open = (buffer: ArrayBuffer, session: HeadlessReviewerSession) =>
-  FolioDocxReviewer.fromBuffer(buffer.slice(0), {
-    session,
-    author: "Reviewer",
-  });
+const open = (buffer: ArrayBuffer) =>
+  FolioDocxReviewer.fromBuffer(buffer.slice(0), { author: "Reviewer" });
 
 const apply = (
   reviewer: FolioDocxReviewer,
@@ -445,10 +441,7 @@ describe("canonical replacement comments from the public producer", () => {
       if (prepared.isErr()) throw prepared.error;
       for (const text of [REPLACEMENT, ""]) {
         for (const mode of ["direct", "tracked-changes"] as const) {
-          const reviewer = await open(
-            prepared.value.slice().buffer,
-            "canonical",
-          );
+          const reviewer = await open(prepared.value.slice().buffer);
           const original = comments(reviewer);
           expect(original).toHaveLength(1);
           const before = reviewer.toDocument();
@@ -485,11 +478,11 @@ describe("canonical replacement comments from the public producer", () => {
           const pending = await reviewer.toBuffer();
           expect(reviewer.acceptAll().skipped).toEqual([]);
           expect(comments(reviewer)).toEqual(original);
-          expect(
-            comments(await open(await reviewer.toBuffer(), "canonical")),
-          ).toEqual(original);
+          expect(comments(await open(await reviewer.toBuffer()))).toEqual(
+            original,
+          );
           if (mode === "tracked-changes") {
-            const rejected = await open(pending, "canonical");
+            const rejected = await open(pending);
             expect(rejected.rejectAll().skipped).toEqual([]);
             expect(comments(rejected)).toEqual(original);
           }
@@ -505,9 +498,9 @@ describe("canonical replacement comments from the public producer", () => {
         await createDocx(fromMarkdown(SOURCE)),
       );
       if (prepared.isErr()) throw prepared.error;
-      // The legacy public producer creates source threads, including replies;
+      // The public producer creates source threads, including replies;
       // every editor opens the same source package and existing comment IDs.
-      const producer = await open(prepared.value.slice().buffer, "legacy");
+      const producer = await open(prepared.value.slice().buffer);
       const block = producer.getContent().at(0);
       if (!block) throw new Error("Source paragraph is missing");
       for (const [index, quote] of quotes.entries()) {
@@ -536,8 +529,8 @@ describe("canonical replacement comments from the public producer", () => {
         blockId: block.id,
         text: "REVISED!",
       } as const;
-      const direct = await open(bytes, "canonical");
-      const tracked = await open(bytes, "canonical");
+      const direct = await open(bytes);
+      const tracked = await open(bytes);
       const original = comments(tracked);
       expect(original).toHaveLength(quotes.length);
       apply(direct, operation, "direct");
@@ -551,15 +544,15 @@ describe("canonical replacement comments from the public producer", () => {
       expect(comments(direct)).toEqual(replaced);
       expect(comments(tracked)).toEqual(replaced);
       for (const reviewer of [direct, tracked])
-        expect(
-          comments(await open(await reviewer.toBuffer(), "canonical")),
-        ).toEqual(replaced);
-      const rejected = await open(pending, "canonical");
+        expect(comments(await open(await reviewer.toBuffer()))).toEqual(
+          replaced,
+        );
+      const rejected = await open(pending);
       expect(rejected.rejectAll().skipped).toEqual([]);
       expect(comments(rejected)).toEqual(original);
       for (const decision of ["accept", "reject"] as const) {
         for (const order of ["forward", "reverse"] as const) {
-          const individually = await open(pending, "canonical");
+          const individually = await open(pending);
           const changes = individually.getChanges();
           for (const change of order === "forward"
             ? changes
@@ -571,12 +564,12 @@ describe("canonical replacement comments from the public producer", () => {
             ).toBe(true);
           const expected = decision === "accept" ? replaced : original;
           expect(comments(individually)).toEqual(expected);
-          expect(
-            comments(await open(await individually.toBuffer(), "canonical")),
-          ).toEqual(expected);
+          expect(comments(await open(await individually.toBuffer()))).toEqual(
+            expected,
+          );
         }
       }
-      const undone = await open(bytes, "canonical");
+      const undone = await open(bytes);
       const undoResult = apply(undone, operation, "tracked-changes");
       if (undoResult.undoHandle === null || result.undoHandle === null)
         throw new Error("Replacement must have an undo handle");

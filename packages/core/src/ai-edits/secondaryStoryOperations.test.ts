@@ -15,7 +15,6 @@
  * operation's outcome survives, and in tracked mode accepting everything gives
  * the direct outcome. Comments are checked the same way through
  * `getComments()`, whose anchors must come from the story that holds them.
- * Every case runs on both reviewer sessions.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -304,10 +303,9 @@ const ORIGINAL: StoryShape = {
 /**
  * The paragraphs a story reads after a table is inserted after its last
  * paragraph. The canonical session ends every container with a paragraph, so
- * an empty one follows the table; the legacy one leaves the table last.
+ * an empty one follows the table.
  */
 const PARAGRAPHS_AFTER_TABLE_AT_STORY_END = {
-  legacy: ORIGINAL.paragraphs,
   canonical: [...ORIGINAL.paragraphs, ""],
 } as const satisfies Record<HeadlessReviewerSession, readonly string[]>;
 

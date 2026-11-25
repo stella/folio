@@ -1,17 +1,15 @@
 /**
  * A direct cell merge, cell split or column edit on a table with pending
- * review records applies on both engines. On the canonical session it keeps
- * every record it does not remove with its cell, under its id: saved,
- * reopened and resolved, it gives the direct edit applied to the accepted or
- * rejected table, and undo restores the model. Where the default engine's
- * result differs, it is stated per engine. A tracked column insertion beside
- * the same records keeps the canonical refusal.
+ * review records keeps every record it does not remove with its cell, under
+ * its id: saved, reopened and resolved, it gives the direct edit applied to
+ * the accepted or rejected table, and undo restores the model. Where the
+ * edit is refused, the refusal is stated. A tracked column insertion beside
+ * the same records keeps its outcome.
  */
 import { describe, expect, test } from "bun:test";
 
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { createDocx } from "../docx/rezip";
-import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import type {
   Document,
   Paragraph,
@@ -22,10 +20,6 @@ import type {
 import { createEmptyDocument } from "../utils/createDocument";
 import { FolioDocxReviewer } from "./headless";
 import type { FolioAIEditOperation } from "./types";
-
-const SESSIONS = [
-  "canonical",
-] as const satisfies readonly HeadlessReviewerSession[];
 
 const AUTHOR = "Reviewer";
 const OTHER = { author: "Other", date: "2026-01-01T00:00:00Z" };
@@ -102,33 +96,17 @@ type Outcome =
       /** The widths rejecting gives, where they are not the commuted ones. */
       rejectedWidths?: readonly number[];
     }
-  /** Applied; how the result departs from an exact one is stated beside it. */
-  | { type: "applied" }
   | { type: "refused"; message: string };
 const EXACT = { type: "exact" } as const satisfies Outcome;
-const APPLIED = { type: "applied" } as const satisfies Outcome;
 
-type PerEngine = Record<
-  OperationName,
-  Record<HeadlessReviewerSession, Outcome>
->;
-const everywhere = (outcome: Outcome) =>
-  ({ legacy: outcome, canonical: outcome }) as const;
+type Outcomes = Record<OperationName, Outcome>;
 const ALL_EXACT = {
-  mergeAcross: everywhere(EXACT),
-  mergeDown: everywhere(EXACT),
-  split: everywhere(EXACT),
-  insertColumn: everywhere(EXACT),
-  deleteColumn: everywhere(EXACT),
-} as const satisfies PerEngine;
-/** The default engine keeps a grid change pending through every decision. */
-const LEGACY_KEEPS_GRID_CHANGE = {
-  mergeAcross: { legacy: APPLIED, canonical: EXACT },
-  mergeDown: { legacy: APPLIED, canonical: EXACT },
-  split: { legacy: APPLIED, canonical: EXACT },
-  insertColumn: { legacy: APPLIED, canonical: EXACT },
-  deleteColumn: { legacy: APPLIED, canonical: EXACT },
-} as const satisfies PerEngine;
+  mergeAcross: EXACT,
+  mergeDown: EXACT,
+  split: EXACT,
+  insertColumn: EXACT,
+  deleteColumn: EXACT,
+} as const satisfies Outcomes;
 
 const COLUMNS_REFUSED = "Resolve table reviews before changing its columns.";
 const GRID_CHANGE_PENDING =
@@ -136,8 +114,8 @@ const GRID_CHANGE_PENDING =
 
 type Shape = {
   table: Table;
-  outcome: PerEngine;
-  /** A tracked column insertion beside the records, on the canonical session. */
+  outcome: Outcomes;
+  /** A tracked column insertion beside the records. */
   trackedColumn: { type: "applied" } | { type: "refused"; message: string };
 };
 
@@ -174,13 +152,10 @@ const SHAPES = {
       rows: rows(),
     },
     outcome: {
-      ...LEGACY_KEEPS_GRID_CHANGE,
+      ...ALL_EXACT,
       // The new column keeps the width it was inserted with, its
       // neighbour's, when the earlier grid comes back.
-      insertColumn: {
-        legacy: APPLIED,
-        canonical: { type: "exact", rejectedWidths: [3000, 2000, 3000, 3000] },
-      },
+      insertColumn: { type: "exact", rejectedWidths: [3000, 2000, 3000, 3000] },
     },
     trackedColumn: { type: "refused", message: GRID_CHANGE_PENDING },
   },
@@ -197,15 +172,10 @@ const SHAPES = {
     },
     outcome: {
       ...ALL_EXACT,
-      // The default engine moves the inserted row's words into the row
-      // above, where rejecting the row keeps them.
       mergeDown: {
-        legacy: APPLIED,
-        canonical: {
-          type: "refused",
-          message:
-            "Resolve the pending row insertions and deletions the merge crosses before merging.",
-        },
+        type: "refused",
+        message:
+          "Resolve the pending row insertions and deletions the merge crosses before merging.",
       },
     },
     // A row's own insertion or deletion keeps its mark beside a tracked
@@ -251,17 +221,12 @@ const SHAPES = {
     },
     outcome: {
       ...ALL_EXACT,
-      // The default engine gives the new cell a copy of the split cell's
-      // record under the same id.
       split: {
-        legacy: APPLIED,
-        canonical: {
-          type: "refused",
-          message:
-            "Resolve the pending property changes of the split cell before splitting its columns.",
-        },
+        type: "refused",
+        message:
+          "Resolve the pending property changes of the split cell before splitting its columns.",
       },
-      deleteColumn: everywhere({ type: "exact", removed: [9] }),
+      deleteColumn: { type: "exact", removed: [9] },
     },
     trackedColumn: { type: "refused", message: COLUMNS_REFUSED },
   },
@@ -299,7 +264,7 @@ const SHAPES = {
           : {},
       ),
     },
-    outcome: LEGACY_KEEPS_GRID_CHANGE,
+    outcome: ALL_EXACT,
     trackedColumn: { type: "refused", message: GRID_CHANGE_PENDING },
   },
 } as const satisfies Record<string, Shape>;
@@ -314,8 +279,8 @@ const source = async (table: Table) => {
   return await createDocx(document);
 };
 
-const open = (buffer: ArrayBuffer, session: HeadlessReviewerSession) =>
-  FolioDocxReviewer.fromBuffer(buffer.slice(0), { author: AUTHOR, session });
+const open = (buffer: ArrayBuffer) =>
+  FolioDocxReviewer.fromBuffer(buffer.slice(0), { author: AUTHOR });
 
 const run = (
   reviewer: FolioDocxReviewer,
@@ -371,15 +336,15 @@ const changeIds = (reviewer: FolioDocxReviewer) =>
     .map(({ id }) => id)
     .toSorted((left, right) => left - right);
 
-describe.each(SESSIONS)("%s: a direct table edit", (session) => {
+describe("a direct table edit", () => {
   describe.each(Object.entries(SHAPES))(
     "beside %s",
     (_, { table, outcome }) => {
       test.each(OPERATION_NAMES)("%s", async (name) => {
         const operation = OPERATIONS[name];
-        const expected = outcome[name][session];
+        const expected = outcome[name];
         const buffer = await source(table);
-        const reviewer = await open(buffer, session);
+        const reviewer = await open(buffer);
         const before = changeIds(reviewer);
         const model = reviewer.toDocument();
         const result = run(reviewer, operation, "direct");
@@ -392,18 +357,17 @@ describe.each(SESSIONS)("%s: a direct table edit", (session) => {
         }
         expect(result.skipped).toEqual([]);
         expect(result.applied.map(({ id }) => id)).toEqual(["op"]);
-        if (expected.type === "applied") return;
         const removed = new Set(expected.removed ?? []);
         expect(changeIds(reviewer)).toEqual(
           before.filter((id) => !removed.has(id)),
         );
         const saved = await reviewer.toBuffer();
         for (const decision of ["accept", "reject"] as const) {
-          const resolved = await open(saved, session);
+          const resolved = await open(saved);
           if (decision === "accept") resolved.acceptAll();
           else resolved.rejectAll();
           expect(resolved.getChanges()).toEqual([]);
-          const want = await open(buffer, session);
+          const want = await open(buffer);
           if (decision === "accept") want.acceptAll();
           else want.rejectAll();
           const commuted = run(want, operation, "direct");
@@ -427,11 +391,11 @@ describe.each(SESSIONS)("%s: a direct table edit", (session) => {
   );
 });
 
-describe("canonical: a tracked column insertion", () => {
+describe("a tracked column insertion", () => {
   test.each(Object.entries(SHAPES))(
     "beside %s keeps its outcome",
     async (_, { table, trackedColumn }) => {
-      const reviewer = await open(await source(table), "canonical");
+      const reviewer = await open(await source(table));
       // After the last column: a suggested column crossing a span refuses
       // before any record is read.
       const result = run(

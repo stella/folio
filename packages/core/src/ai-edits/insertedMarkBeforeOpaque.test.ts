@@ -170,7 +170,7 @@ for (const session of ["canonical"] as const)
                   },
                 },
               }),
-              { session: "legacy" },
+              { session },
             )
           ).toDocument().package.document;
           if (route === "all") reviewer.rejectAll();
