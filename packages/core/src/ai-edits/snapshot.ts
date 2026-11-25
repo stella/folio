@@ -1180,6 +1180,18 @@ const getBlockKind = (
 };
 
 /** Rebind cached style numbering to the current style before the owner reads it. */
+/**
+ * The attrs without the cached list rendering keys. The list counter reads
+ * those keys with `!= null`, so an absent key clears like the null that
+ * {@link CLEARED_LIST_RENDERING_ATTRS} writes into editor state.
+ */
+const withoutListRenderingAttrs = <T extends object>(attrs: T): T =>
+  Object.fromEntries(
+    Object.entries(attrs).filter(
+      ([key]) => !Object.hasOwn(CLEARED_LIST_RENDERING_ATTRS, key),
+    ),
+  ) as T;
+
 const snapshotListAttrs = (
   attrs: Readonly<ReturnType<typeof expectParagraphAttrs>>,
   styleResolver: RunStyleResolver | null,
@@ -1214,7 +1226,7 @@ const snapshotListAttrs = (
   // Drop the cached marker while leaving authored numbering and the
   // original review stream available to the list counter.
   const currentAttrs = dropsCachedStyleNumbering
-    ? { ...attrs, ...CLEARED_LIST_RENDERING_ATTRS }
+    ? withoutListRenderingAttrs({ ...attrs })
     : { ...attrs };
   delete currentAttrs.numPrFromStyle;
   return {
