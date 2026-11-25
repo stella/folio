@@ -192,6 +192,71 @@ describe("shrinking", () => {
     expect(await fails(shrunk.flow)).toBe(true);
   });
 
+  test("shrinking drops expectations that earlier, removed steps made true", async () => {
+    const original = flow([
+      { action: "core batch", seed: 1, operations: [{ type: "deleteBlock" }] },
+      { action: "accept all", seed: 2 },
+      {
+        action: "core batch",
+        seed: 3,
+        operations: [{ type: "insertTable" }],
+        expectedRefusals: {
+          canonical: { code: "pendingParagraphMarkDeletion", message: "m" },
+        },
+      },
+      {
+        action: "story batch",
+        seed: 4,
+        operations: [{ type: "deleteBlock" }],
+        expectedFidelityRefusal: "rejectOriginal",
+      },
+    ]);
+    const seeds = (candidate: FlowFile) =>
+      candidate.steps.map((step) => step.seed);
+    const seen: FlowFile[] = [];
+    const shrunk = await shrinkFlow(original, {
+      holds: (candidate) => {
+        seen.push(candidate);
+        return Promise.resolve(
+          [3, 4].every((seed) => seeds(candidate).includes(seed)),
+        );
+      },
+      materialize: (candidate) => Promise.resolve(candidate),
+      budget: budget(),
+    });
+    expect(seeds(shrunk.flow)).toEqual([3, 4]);
+    // No replayed candidate, and not the result, carries an expectation past
+    // a removed step.
+    for (const candidate of [...seen, shrunk.flow]) {
+      const first = candidate.steps.findIndex(
+        (step, index) => step !== original.steps[index],
+      );
+      for (const step of first === -1 ? [] : candidate.steps.slice(first)) {
+        expect(step.expectedRefusals).toBeUndefined();
+        expect(step.expectedFidelityRefusal).toBeUndefined();
+      }
+    }
+  });
+
+  test("shrinking keeps expectations on the parent's own history", async () => {
+    const original = flow([
+      {
+        action: "core batch",
+        seed: 1,
+        operations: [{ type: "deleteBlock" }],
+        expectedFidelityRefusal: "rejectOriginal",
+      },
+      { action: "accept all", seed: 2 },
+    ]);
+    const shrunk = await shrinkFlow(original, {
+      holds: (candidate) =>
+        Promise.resolve(candidate.steps.some((step) => step.seed === 1)),
+      materialize: (candidate) => Promise.resolve(candidate),
+      budget: budget(),
+    });
+    expect(shrunk.flow.steps).toEqual([original.steps[0]]);
+  });
+
   test("shrinking rebinds the expected applied count to retained operations", async () => {
     const original = flow([
       {
@@ -323,6 +388,34 @@ describe("mutation", () => {
     expect([...observed].sort()).toEqual(
       [...OPERATIONS_CHANGING_MUTATIONS].sort(),
     );
+  });
+
+  test("a mutant keeps a refusal expectation only on the history it was pinned on", () => {
+    const pinned = flow([
+      { action: "accept all", seed: 1 },
+      {
+        action: "core batch",
+        seed: 2,
+        operations: [{ type: "deleteBlock" }],
+        expectedFidelityRefusal: "rejectOriginal",
+      },
+      {
+        action: "core batch",
+        seed: 3,
+        operations: [{ type: "insertTable" }],
+        expectedRefusals: { canonical: { code: "c", message: "m" } },
+      },
+    ]);
+    for (let seed = 0; seed < 200; seed += 1) {
+      const { flow: mutant } = mutateFlow(pinned, createRandom(seed));
+      const first = mutant.steps.findIndex(
+        (step, index) => step.seed !== pinned.steps[index]?.seed,
+      );
+      for (const step of first === -1 ? [] : mutant.steps.slice(first)) {
+        expect(step.expectedFidelityRefusal).toBeUndefined();
+        expect(step.expectedRefusals).toBeUndefined();
+      }
+    }
   });
 
   test("a mutant keeps an expected applied count only on the history it was pinned on", () => {

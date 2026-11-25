@@ -128,6 +128,31 @@ export const rebindStepOperations = (
   };
 };
 
+/**
+ * `steps` with outcome expectations (an applied count, a fidelity refusal, a
+ * per-engine refusal) only where they replay `parent`'s own history: the step
+ * and every step before it are the parent's. An expectation states what
+ * happens after exactly that history; once an earlier step moves, goes or
+ * changes, it may be false. From the first changed step on, steps keep their
+ * pinned operations but not the expectations.
+ */
+export const keepExpectationsOnParentHistory = (
+  parent: readonly FlowStep[],
+  steps: readonly FlowStep[],
+): FlowStep[] => {
+  const shared = steps.findIndex((step, index) => step !== parent[index]);
+  return steps.map((step, index) => {
+    if (shared === -1 || index < shared) return step;
+    const {
+      expectedApplied: _expectedApplied,
+      expectedFidelityRefusal: _expectedFidelityRefusal,
+      expectedRefusals: _expectedRefusals,
+      ...rest
+    } = step;
+    return rest;
+  });
+};
+
 export type FlowFile = {
   version: 1;
   kind: FlowKind;

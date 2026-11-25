@@ -11,6 +11,7 @@ import {
   BATCH_ACTIONS,
   type FlowFile,
   type FlowStep,
+  keepExpectationsOnParentHistory,
   rebindStepOperations,
 } from "./flow-file.ts";
 
@@ -109,13 +110,25 @@ export const shrinkFlow = async (
   },
 ): Promise<ShrinkResult> => {
   const tracker: Tracker = { attempts: 0, budget };
+  // A candidate replays only a prefix of the parent's history, so the steps
+  // after its first removal lose their expectations (see
+  // `keepExpectationsOnParentHistory`) in the candidate and in the result.
   const shrinkSteps = async (current: FlowFile): Promise<FlowFile> =>
     withSteps(
       current,
-      await shrinkSequence(
+      keepExpectationsOnParentHistory(
         current.steps,
-        (steps) => holds(withSteps(current, steps)),
-        tracker,
+        await shrinkSequence(
+          current.steps,
+          (steps) =>
+            holds(
+              withSteps(
+                current,
+                keepExpectationsOnParentHistory(current.steps, steps),
+              ),
+            ),
+          tracker,
+        ),
       ),
     );
 
