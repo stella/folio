@@ -30,14 +30,22 @@ const catalogs = new Map<
   FolioMessages | Promise<FolioMessages>
 >();
 
-/** English and previously loaded catalogs are available synchronously. */
-export const loadFolioMessages = (
+/** Read English or a catalog that has already loaded. */
+export const getLoadedFolioMessages = (
   locale: string,
-): FolioMessages | Promise<FolioMessages> => {
+): FolioMessages | undefined => {
   const resolved = resolveFolioLocale(locale);
   if (resolved === "en") return english;
   const cached = catalogs.get(resolved);
-  if (cached !== undefined) return cached;
+  return cached instanceof Promise ? undefined : cached;
+};
+
+/** Load just the catalog for the requested locale. */
+export const loadFolioMessages = (locale: string): Promise<FolioMessages> => {
+  const resolved = resolveFolioLocale(locale);
+  if (resolved === "en") return Promise.resolve(english);
+  const cached = catalogs.get(resolved);
+  if (cached !== undefined) return Promise.resolve(cached);
 
   const pending = loaders[resolved]().then(
     ({ messages }) => {

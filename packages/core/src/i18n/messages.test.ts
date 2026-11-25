@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
-import { loadFolioMessages } from "./loadMessages";
-import { FOLIO_LOCALES, getFolioMessages, isFolioLocale } from "./messages";
+import { getLoadedFolioMessages } from "./loadMessages";
+import {
+  FOLIO_LOCALES,
+  getFolioMessages,
+  isFolioLocale,
+  loadFolioMessages,
+} from "./messages";
 
 // Toolbar labels folio added after the initial translated catalogs were
 // captured. They are now translated in every non-English locale; the
@@ -163,12 +168,13 @@ describe("getFolioMessages", () => {
 });
 
 describe("loadFolioMessages", () => {
-  test("resolves English and unshipped locales synchronously", () => {
-    const english = loadFolioMessages("en");
+  test("uses the inline English catalog for English and unshipped locales", async () => {
+    const english = await loadFolioMessages("en");
     expect(english).toEqual(getFolioMessages("en"));
-    expect(loadFolioMessages("en-US")).toBe(english);
-    expect(loadFolioMessages("pt-PT")).toBe(english);
-    expect(loadFolioMessages("!!invalid")).toBe(english);
+    for (const tag of ["en-US", "pt-PT", "!!invalid"]) {
+      expect(getLoadedFolioMessages(tag)).toBe(english);
+      expect(await loadFolioMessages(tag)).toBe(english);
+    }
   });
 
   test("loads each translated catalog once, including regional aliases", async () => {
@@ -176,7 +182,7 @@ describe("loadFolioMessages", () => {
     expect(turkish).toBeInstanceOf(Promise);
     expect(loadFolioMessages("tr")).toBe(turkish);
     const resolved = await turkish;
-    expect(loadFolioMessages("tr")).toBe(resolved);
+    expect(getLoadedFolioMessages("tr")).toBe(resolved);
     for (const locale of FOLIO_LOCALES) {
       expect(await loadFolioMessages(locale)).toEqual(getFolioMessages(locale));
     }

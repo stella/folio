@@ -4,10 +4,16 @@ import {
   type JSX,
   type ReactNode,
   type RefAttributes,
+  Suspense,
+  use,
 } from "react";
 
 import { IntlProvider, useTranslations } from "use-intl";
 
+import {
+  getLoadedFolioMessages,
+  loadFolioMessages,
+} from "@stll/folio-core/i18n/loadMessages";
 import { DEFAULT_KEYBOARD_SHORTCUT_SCOPE } from "@stll/folio-core/managers/editorShortcuts";
 import {
   createDocumentWithText,
@@ -20,7 +26,7 @@ import type {
   DocxEditorProps,
   DocxEditorRef,
 } from "../components/DocxEditor.props";
-import { getFolioMessages } from "../i18n/messages";
+import { EditorLoadingIndicator } from "../components/DocxEditorHelpers";
 
 export {
   renderAsync,
@@ -122,21 +128,35 @@ export const locales: Record<LocaleCode, LegacyTranslations> = {
   "zh-CN": zhCN,
 };
 
-export const LocaleProvider = ({
+const LoadedLocaleProvider = ({
   children,
-  i18n,
   locale,
-}: LocaleProviderProps): JSX.Element => {
-  const resolvedLocale = resolveLocale(locale, i18n);
+}: {
+  children: ReactNode;
+  locale: string;
+}): JSX.Element => {
+  const messages =
+    getLoadedFolioMessages(locale) ?? use(loadFolioMessages(locale));
   return (
-    <IntlProvider
-      locale={resolvedLocale}
-      messages={getFolioMessages(resolvedLocale)}
-    >
+    <IntlProvider locale={locale} messages={messages}>
       {children}
     </IntlProvider>
   );
 };
+
+const localeLoading = <EditorLoadingIndicator />;
+
+export const LocaleProvider = ({
+  children,
+  i18n,
+  locale,
+}: LocaleProviderProps): JSX.Element => (
+  <Suspense fallback={localeLoading}>
+    <LoadedLocaleProvider locale={resolveLocale(locale, i18n)}>
+      {children}
+    </LoadedLocaleProvider>
+  </Suspense>
+);
 
 export const useTranslation = (): { t: TFunction } => {
   const t = useTranslations("folio");

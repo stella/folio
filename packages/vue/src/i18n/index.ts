@@ -24,7 +24,10 @@ import {
   watch,
 } from "vue";
 
-import { loadFolioMessages } from "@stll/folio-core/i18n/loadMessages";
+import {
+  getLoadedFolioMessages,
+  loadFolioMessages,
+} from "@stll/folio-core/i18n/loadMessages";
 import type { FolioMessages } from "@stll/folio-core/i18n/messages";
 import { messages as english } from "@stll/folio-core/i18n/messages/en";
 
@@ -78,13 +81,15 @@ export const provideLocale = (
 
 const useLocaleTranslator = (locale: MaybeRefOrGetter<string>) => {
   const translator = shallowRef(fallbackTranslator.value);
+  const ready = shallowRef(false);
   let pending: Promise<void> | undefined;
   watch(
     () => toValue(locale),
     (tag, _previous, onCleanup) => {
-      const messages = loadFolioMessages(tag);
-      if (!(messages instanceof Promise)) {
+      const messages = getLoadedFolioMessages(tag);
+      if (messages) {
         translator.value = createFolioTranslator(tag, messages);
+        ready.value = true;
         pending = undefined;
         return;
       }
@@ -93,8 +98,11 @@ const useLocaleTranslator = (locale: MaybeRefOrGetter<string>) => {
       onCleanup(() => {
         active = false;
       });
-      pending = messages.then((loaded) => {
-        if (active) translator.value = createFolioTranslator(tag, loaded);
+      pending = loadFolioMessages(tag).then((loaded) => {
+        if (active) {
+          translator.value = createFolioTranslator(tag, loaded);
+          ready.value = true;
+        }
         return undefined;
       });
       return pending;
@@ -103,17 +111,18 @@ const useLocaleTranslator = (locale: MaybeRefOrGetter<string>) => {
     { immediate: true, flush: "sync" },
   );
   onServerPrefetch(() => pending);
-  return translator;
+  return { translator, ready };
 };
 
-/**
- * Access folio's translator. Returns `{ t }` where `t("key")` looks up the
- * `folio` namespace of the active locale's catalog.
- */
-export const useTranslation = (): { t: TranslateFn } => {
+const englishTranslation = {
+  translator: fallbackTranslator,
+  ready: shallowRef(true),
+};
+
+export const useEditorTranslation = () => {
   const locale = inject(LOCALE_KEY, defaultLocale);
-  const translator =
-    locale === defaultLocale ? fallbackTranslator : useLocaleTranslator(locale);
+  const { translator, ready } =
+    locale === defaultLocale ? englishTranslation : useLocaleTranslator(locale);
 
   // Expose a stable callable so components always read the active translator.
   const t: TranslateFn = (key, values) =>
@@ -123,6 +132,15 @@ export const useTranslation = (): { t: TranslateFn } => {
       key,
       values,
     );
+  return { t, ready };
+};
+
+/**
+ * Access folio's translator. Returns `{ t }` where `t("key")` looks up the
+ * `folio` namespace of the active locale's catalog.
+ */
+export const useTranslation = (): { t: TranslateFn } => {
+  const { t } = useEditorTranslation();
   return { t };
 };
 
