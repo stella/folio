@@ -1224,6 +1224,7 @@ export type ParagraphMarkChange = WritableRecord & {
     resolutionJoin?: number | undefined;
     splitDate?: string | undefined;
     survivor?: "first" | undefined;
+    takenOverMark?: number | undefined;
     deletion?: ParagraphMarkDeletion | undefined;
 };
 
