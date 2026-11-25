@@ -27,7 +27,6 @@ export type CanonicalSource = { file: string; source: string };
 
 const gapNames = new Map(Object.entries(CANONICAL_GAP));
 const gapIds = new Set(Object.keys(CANONICAL_CAPABILITIES));
-const sessionName = /experimentalSession|ExperimentalSession|sessionRef/;
 
 type ScriptPart = { code: string; directive: boolean };
 
@@ -77,14 +76,6 @@ const isRefusal = (name: string) =>
 /** Optional chains are plain member and call nodes in the shapes compared here. */
 const unwrapChain = (node: Node): Node =>
   node.type === "ChainExpression" ? node.expression : node;
-
-const isStaticMember = (node: Node) =>
-  node.type === "MemberExpression" && !node.computed;
-
-const isPrefixUnary = (node: Node) =>
-  (node.type === "UnaryExpression" &&
-    ["!", "-", "+", "~"].includes(node.operator)) ||
-  (node.type === "UpdateExpression" && node.prefix);
 
 /** An object literal member written as `name: value`, a shorthand or a method. */
 const isObjectLiteralMember = (node: Node, parent: Node | undefined) =>
@@ -166,7 +157,6 @@ export const inspectCanonicalSources = (
 ) => {
   const failures: string[] = [];
   const sites = new Map<string, Set<string>>();
-  const branches: Record<string, number> = {};
   const record = (gap: string, file: string) => {
     if (!gapIds.has(gap)) {
       failures.push(`${file}: unknown canonical gap ${gap}`);
@@ -179,7 +169,6 @@ export const inspectCanonicalSources = (
   for (const source of sources) {
     const { file } = source;
     if (file.endsWith("/canonicalCapabilities.ts")) continue;
-    const counts = { branches: 0 };
     for (const scriptPart of scriptParts(source)) {
       const parsed = parsePart(file, scriptPart);
       if (parsed === undefined) continue;
@@ -205,7 +194,6 @@ export const inspectCanonicalSources = (
           imports.set(binding.local.name, `${moduleName}:${imported}`);
           if (
             [
-              "usesCanonicalSession",
               "CANONICAL_GAP",
               "CanonicalSessionError",
               "CanonicalSessionRefusalError",
@@ -330,32 +318,17 @@ export const inspectCanonicalSources = (
           : undefined;
       };
       const lines = part.split("\n");
-      const aliases = new Set<string>();
-      const safeSelectors = new Set<string>();
       const gapRelays = new Set<string>();
-      const selectorsIn = (node: Node): boolean => {
-        if (sessionName.test(text(node))) return true;
-        let found = false;
-        walkAst(node, (child) => {
-          if (
-            (child.type === "Identifier" || child.type === "JSXIdentifier") &&
-            aliases.has(child.name)
-          )
-            found = true;
-        });
-        return found;
-      };
       walkAst(program, (node) => {
         if (
           node.type !== "VariableDeclarator" ||
           node.id.type !== "Identifier" ||
-          !node.init
+          node.init?.type !== "ArrowFunctionExpression"
         )
           return;
-        const initial = node.init;
+        const { name } = node.id;
         if (
-          initial.type === "ArrowFunctionExpression" &&
-          initial.params.some((parameter) => {
+          node.init.params.some((parameter) => {
             const binding =
               parameter.type === "AssignmentPattern"
                 ? parameter.left
@@ -374,28 +347,7 @@ export const inspectCanonicalSources = (
             );
           })
         )
-          gapRelays.add(node.id.name);
-        const value = unwrapChain(initial);
-        if (
-          (value.type === "Identifier" ||
-            isStaticMember(value) ||
-            (value.type === "CallExpression" &&
-              /toValue|[gG]etExperimentalSession/.test(text(value.callee)))) &&
-          selectorsIn(initial)
-        )
-          aliases.add(node.id.name);
-        if (
-          initial.type === "ArrowFunctionExpression" &&
-          initial.expression &&
-          unwrapChain(initial.body).type === "CallExpression"
-        ) {
-          const body = unwrapChain(initial.body);
-          if (
-            body.type === "CallExpression" &&
-            primitiveName(body.callee) === "usesCanonicalSession"
-          )
-            safeSelectors.add(node.id.name);
-        }
+          gapRelays.add(name);
       });
       const markers = [...part.matchAll(/\/\/ canonical-gap: ([\w.-]+)/g)];
       const usedMarkers = new Set<number>();
@@ -420,40 +372,6 @@ export const inspectCanonicalSources = (
         }
       };
       walkAst(program, (node, ancestors) => {
-        if (
-          node.type === "BinaryExpression" &&
-          ["===", "!==", "==", "!="].includes(node.operator) &&
-          (selectorsIn(node) ||
-            (!file.startsWith("packages/core/") &&
-              [node.left, node.right].some(
-                (operand) =>
-                  text(operand) === '"canonical"' ||
-                  text(operand) === "'canonical'",
-              )))
-        ) {
-          // The operands themselves identify a selector, rather than nested helper calls.
-          const operands = [node.left, node.right];
-          if (
-            operands.some((operand) => {
-              const call = unwrapChain(operand);
-              return (
-                call.type !== "CallExpression" ||
-                primitiveName(call.callee) !== "usesCanonicalSession"
-              );
-            }) &&
-            operands.some(
-              (operand) =>
-                text(operand) === '"canonical"' ||
-                text(operand) === "'canonical'" ||
-                text(operand) === "undefined",
-            )
-          ) {
-            counts.branches++;
-            failures.push(
-              `${file}: raw session comparison must use usesCanonicalSession with a ledger id`,
-            );
-          }
-        }
         const key = gapKey(node);
         if (key !== undefined) {
           const gap = gapNames.get(key);
@@ -461,26 +379,6 @@ export const inspectCanonicalSources = (
             failures.push(`${file}: unknown canonical gap key ${key}`);
           else record(gap, file);
         }
-        const conditionOf = () => {
-          if (node.type === "IfStatement") return node.test;
-          if (node.type === "ConditionalExpression") return node.test;
-          return undefined;
-        };
-        const condition = conditionOf();
-        const conditionValue = condition && unwrapChain(condition);
-        if (
-          condition &&
-          conditionValue &&
-          (conditionValue.type === "Identifier" ||
-            isStaticMember(conditionValue) ||
-            isPrefixUnary(conditionValue)) &&
-          selectorsIn(condition) &&
-          !text(condition).includes("usesCanonicalSession") &&
-          ![...safeSelectors].some((selector) =>
-            text(condition).includes(selector),
-          )
-        )
-          failures.push(`${file}: bare session gate must name a ledger id`);
         if (
           node.type === "CallExpression" &&
           text(node.callee) === "refuseCanonicalModelEdit"
@@ -488,19 +386,6 @@ export const inspectCanonicalSources = (
           const gap = node.arguments.at(0);
           if (gapKey(gap && unwrapChain(gap)) === undefined)
             failures.push(`${file}: model refusal must name a ledger id`);
-        }
-        if (
-          node.type === "CallExpression" &&
-          primitiveName(node.callee) === "usesCanonicalSession"
-        ) {
-          counts.branches++;
-          if (node.arguments.length !== 2)
-            failures.push(`${file}: session branch needs a ledger id`);
-          const gap = node.arguments.at(1);
-          if (gapKey(gap && unwrapChain(gap)) === undefined)
-            failures.push(
-              `${file}: session branch must name a constant ledger id`,
-            );
         }
         if (
           node.type === "CallExpression" &&
@@ -573,7 +458,6 @@ export const inspectCanonicalSources = (
         if (!usedMarkers.has(marker.index))
           failures.push(`${file}: orphan canonical gap marker ${marker[1]}`);
     }
-    if (counts.branches > 0) branches[file] = counts.branches;
   }
   for (const gap of gapIds)
     if (!sites.has(gap))
@@ -592,30 +476,7 @@ export const inspectCanonicalSources = (
       ),
     );
   }
-  return { failures, sites, branches, remainingCommands };
-};
-
-export const checkCanonicalBaseline = (
-  current: Record<string, number>,
-  baseline: Record<string, number>,
-) => {
-  const failures: string[] = [];
-  for (const file of new Set([
-    ...Object.keys(current),
-    ...Object.keys(baseline),
-  ])) {
-    const actual = current[file] ?? 0;
-    const allowed = baseline[file] ?? 0;
-    if (actual > allowed)
-      failures.push(
-        `${file}: session branches increased from ${allowed} to ${actual}`,
-      );
-    if (actual < allowed)
-      failures.push(
-        `${file}: record the session branch decrease from ${allowed} to ${actual}`,
-      );
-  }
-  return failures;
+  return { failures, sites, remainingCommands };
 };
 
 type CanonicalCutoverDocsOptions = {
@@ -663,8 +524,6 @@ export const canonicalCutoverDocs = ({
     "Generated by `bun scripts/check-canonical-cutover.ts --write` from the core capability ledger and source sites. Do not edit by hand.",
     "",
     "Routing entries include supported canonical behavior with a remaining legacy branch. Refusal entries identify gated capabilities; mutation-source entries identify PM producers still to retire. Ledger entries identify remaining work and are deleted when their sites are retired; an entry does not imply that every operation in its area is unsupported.",
-    "",
-    "Session branch counts are held per file in `scripts/canonical-cutover-baseline.json`. Removing a branch requires recording the decrease; CI rejects increases against both the committed baseline and its merge-base version.",
     "",
     tableRow(headers),
     tableRow(widths.map((width) => "-".repeat(width))),
