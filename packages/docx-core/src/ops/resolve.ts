@@ -8354,39 +8354,47 @@ const planSingleRecordResolution = (
     }
   }
 
-  const materialized = tryMaterializeResolution({
-    document,
-    story: op.story,
-    locations: paragraphs,
-    inline,
-    join:
-      joins.length === 0
-        ? { type: "noJoins" }
-        : {
-            type: "plan",
-            prepare: (view) => {
-              const ends = new Map(emptiedEnds);
-              return planContiguousResolutionJoins({
-                document,
-                story: op.story,
-                ...view,
-                joins,
-                // On a proven section-free main-list pair, joinOps only
-                // needs these adjacent paragraphs. Its receiver is still
-                // the real working follower, with its actual review fields.
-                planPair: ({ join, first, second }) =>
-                  joinOps(
-                    { package: { document: { content: [first, second] } } },
-                    join,
-                    ends,
-                  ),
-              });
-            },
-          },
-    noteReferences,
-    receiverEffects,
-  });
-  if (materialized.type === "materialized") {
+  // One splice settles no kept cut, emptied holder or rejoined revision: a
+  // resolution needing any of them takes the sequential steps below.
+  const settlesAfterJoins =
+    holders.size > 0 ||
+    resolution.rejoined.size > 0 ||
+    [...resolvedContents.values()].some(holdsKeptCut);
+  const materialized = settlesAfterJoins
+    ? undefined
+    : tryMaterializeResolution({
+        document,
+        story: op.story,
+        locations: paragraphs,
+        inline,
+        join:
+          joins.length === 0
+            ? { type: "noJoins" }
+            : {
+                type: "plan",
+                prepare: (view) => {
+                  const ends = new Map(emptiedEnds);
+                  return planContiguousResolutionJoins({
+                    document,
+                    story: op.story,
+                    ...view,
+                    joins,
+                    // On a proven section-free main-list pair, joinOps only
+                    // needs these adjacent paragraphs. Its receiver is still
+                    // the real working follower, with its actual review fields.
+                    planPair: ({ join, first, second }) =>
+                      joinOps(
+                        { package: { document: { content: [first, second] } } },
+                        join,
+                        ends,
+                      ),
+                  });
+                },
+              },
+        noteReferences,
+        receiverEffects,
+      });
+  if (materialized?.type === "materialized") {
     return Result.ok({
       edit: materialized.edit,
       receiverEffects: materialized.receiverEffects,
