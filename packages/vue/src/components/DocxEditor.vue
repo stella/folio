@@ -1294,8 +1294,6 @@ const commentLifecycle = useCommentLifecycle({
   pagesViewport: pagesViewportRef,
   pagesContainer: pagesRef,
   readOnly,
-  createComment: commentManagement.createComment,
-  sessionKind: () => "canonical",
   createCanonicalComment: (text, range) => {
     const result = editor.applyCanonicalComment({
       type: "create",

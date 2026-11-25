@@ -30,12 +30,6 @@ import { afterCanonicalCompositionSettles } from "@stll/folio-core/controller/ca
 import { resolveCanonicalReviewRange } from "@stll/folio-core/controller/canonicalReview";
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 import {
-  acceptAIEditRevision,
-  acceptChange,
-  rejectAIEditRevision,
-  rejectChange,
-} from "@stll/folio-core/prosemirror/commands/comments";
-import {
   createCommentIdAllocator,
   seedCommentAllocator,
 } from "@stll/folio-core/prosemirror/commentIdAllocator";
@@ -43,8 +37,6 @@ import { createComment as coreCreateComment } from "@stll/folio-core/prosemirror
 import {
   type CommentRecords,
   commentRecordsOf,
-  commentThreadIds,
-  deleteCommentThread,
   editCommentRecords,
   subscribeCommentRecords,
   syncCommentRecords,
@@ -342,13 +334,6 @@ export function useCommentManagement(
     setComments(loaded);
   }
 
-  /** The legacy session has no read-only gate of its own for comment state. */
-  function refuseReadOnly(): boolean {
-    if (!options.readOnly()) return false;
-    options.onReadOnlyEditAttempt();
-    return true;
-  }
-
   function handleReply(parentId: number, text: string): void {
     const result = options.editor?.applyCanonicalComment({
       type: "create",
@@ -357,8 +342,8 @@ export function useCommentManagement(
       anchor: { kind: "reply", parentId },
     });
     if (result !== null && result !== undefined) return;
-    if (refuseReadOnly()) return;
-    pushComment(createComment(text, parentId));
+    // Without a canonical session the document is not editable.
+    options.onReadOnlyEditAttempt();
   }
 
   function handleResolve(commentId: number): void {
@@ -368,13 +353,8 @@ export function useCommentManagement(
       status: "resolved",
     });
     if (result !== null && result !== undefined) return;
-    if (refuseReadOnly()) return;
-    markCommentsDirty();
-    setComments(
-      comments.value.map((c) =>
-        c.id === commentId ? { ...c, done: true } : c,
-      ),
-    );
+    // Without a canonical session the document is not editable.
+    options.onReadOnlyEditAttempt();
   }
 
   function handleUnresolve(commentId: number): void {
@@ -384,13 +364,8 @@ export function useCommentManagement(
       status: "open",
     });
     if (result !== null && result !== undefined) return;
-    if (refuseReadOnly()) return;
-    markCommentsDirty();
-    setComments(
-      comments.value.map((c) =>
-        c.id === commentId ? { ...c, done: false } : c,
-      ),
-    );
+    // Without a canonical session the document is not editable.
+    options.onReadOnlyEditAttempt();
   }
 
   function handleDelete(commentId: number): void {
@@ -399,18 +374,8 @@ export function useCommentManagement(
       id: commentId,
     });
     if (result !== null && result !== undefined) return;
-    if (refuseReadOnly()) return;
-    // The thread's record, every reply under it and its anchors go in one
-    // edit (as React's onCommentDelete).
-    const view = options.editorView.value;
-    if (view && commentRecordsOf(view.state) !== null) {
-      const deleted = deleteCommentThread(view.state, commentId);
-      if (deleted) view.dispatch(deleted);
-      return;
-    }
-    markCommentsDirty();
-    const thread = commentThreadIds(comments.value, commentId);
-    setComments(comments.value.filter(({ id }) => !thread.has(id)));
+    // Without a canonical session the document is not editable.
+    options.onReadOnlyEditAttempt();
   }
 
   function handleTrackedChangeReply(revisionId: number, text: string): void {
@@ -421,8 +386,8 @@ export function useCommentManagement(
       anchor: { kind: "revision", story: "main", revisionId },
     });
     if (result !== null && result !== undefined) return;
-    if (refuseReadOnly()) return;
-    pushComment(createComment(text, revisionId));
+    // Without a canonical session the document is not editable.
+    options.onReadOnlyEditAttempt();
   }
 
   function resolveChangeById(revisionId: number, accept: boolean): void {
@@ -435,15 +400,6 @@ export function useCommentManagement(
       );
       return;
     }
-    // Revision-scoped: acceptAIEditRevision/rejectAIEditRevision both locate
-    // the range for this specific revisionId AND thread it through as the
-    // match set, so only marks/structural changes carrying this id resolve.
-    // A plain range-based acceptChange(from, to)/rejectChange(from, to) here
-    // would treat the missing revisionId as "match everything in range,"
-    // which can also resolve an unrelated collaborator's tracked change
-    // sharing the same paragraph/row span.
-    const command = accept ? acceptAIEditRevision : rejectAIEditRevision;
-    command(revisionId)(view.state, view.dispatch);
   }
 
   function handleAcceptChangeById(revisionId: number): void {
@@ -457,31 +413,23 @@ export function useCommentManagement(
   function handleAcceptChange(from: number, to: number): void {
     const view = options.editorView.value;
     if (!view) return;
-    if (
-      resolveCanonicalReviewRange({
-        editor: options.editor,
-        from,
-        to,
-        resolution: "accept",
-      }) === null
-    ) {
-      acceptChange(from, to)(view.state, view.dispatch);
-    }
+    resolveCanonicalReviewRange({
+      editor: options.editor,
+      from,
+      to,
+      resolution: "accept",
+    });
   }
 
   function handleRejectChange(from: number, to: number): void {
     const view = options.editorView.value;
     if (!view) return;
-    if (
-      resolveCanonicalReviewRange({
-        editor: options.editor,
-        from,
-        to,
-        resolution: "reject",
-      }) === null
-    ) {
-      rejectChange(from, to)(view.state, view.dispatch);
-    }
+    resolveCanonicalReviewRange({
+      editor: options.editor,
+      from,
+      to,
+      resolution: "reject",
+    });
   }
 
   return {

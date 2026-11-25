@@ -1,22 +1,15 @@
 /**
  * useCommentLifecycle — the interactive "add comment" flow for the Vue adapter:
- * the floating add-comment button that tracks a non-empty selection, the pending
- * comment highlight while the input is open, and submit / cancel. Mirrors the
- * React adapter's floatingCommentBtn + onAddComment / onCancelAddComment, built
- * on core's comment records (the highlight and the thread commit) and its id
- * allocator (via the injected `createComment`).
+ * the floating add-comment button that tracks a non-empty selection, the range
+ * held while the input is open, and submit / cancel through the canonical
+ * session. Mirrors the React adapter's floatingCommentBtn + onAddComment /
+ * onCancelAddComment.
  */
 
 import type { EditorView } from "prosemirror-view";
 import { type Ref, ref } from "vue";
 
-import {
-  clearPendingComment,
-  commitCommentThread,
-  markPendingComment,
-} from "@stll/folio-core/prosemirror/commentRecords";
 import { selectionBounds } from "@stll/folio-core/prosemirror/selectionBounds";
-import type { Comment } from "@stll/folio-core/types/content";
 
 import {
   type CommentMarkRange,
@@ -41,11 +34,7 @@ export type UseCommentLifecycleOptions = {
   /** The painted `.paged-editor__pages` container (anchor coordinate space). */
   pagesContainer: Ref<HTMLElement | null>;
   readOnly: Ref<boolean>;
-  /** Build a comment with a freshly-allocated id (from useCommentManagement). */
-  createComment: (text: string, parentId?: number) => Comment;
-  /** The session kind controls whether draft highlights belong in ProseMirror. */
-  sessionKind: () => "canonical" | "prosemirror";
-  /** Null selects the legacy comment-mark route; false means canonical refusal. */
+  /** The new comment's id; false when the session refuses, null without one. */
   createCanonicalComment: (
     text: string,
     range: CommentMarkRange,
@@ -144,14 +133,6 @@ export function useCommentLifecycle(
       floatingCommentButton.value = null;
       return;
     }
-    if (
-      options.sessionKind() === "prosemirror" &&
-      !markPendingComment(view, safeRange, { selectEnd: true })
-    ) {
-      floatingCommentButton.value = null;
-      commentSelectionRange.value = null;
-      return;
-    }
     commentSelectionRange.value = safeRange;
     addCommentYPosition.value =
       anchorYInPages(safeRange.from) ?? button?.top ?? null;
@@ -171,35 +152,15 @@ export function useCommentLifecycle(
     const range = commentSelectionRange.value;
     if (!view || !range) return false;
 
-    const canonicalResult = options.createCanonicalComment(text, range);
-    if (canonicalResult !== null) {
-      if (canonicalResult === false) return false;
-      options.reLayout();
-      options.setActiveSidebarItem(`comment-${canonicalResult}`);
-      resetAddCommentState();
-      return true;
-    }
-
-    if (options.readOnly.value) return false;
-    const comment = options.createComment(text);
-    // The highlight gives way to the thread's mark, and the thread joins the
-    // editor's records, as one undoable edit.
-    if (!commitCommentThread(view, range, comment)) return false;
+    const created = options.createCanonicalComment(text, range);
+    if (created === null || created === false) return false;
     options.reLayout();
-    options.setActiveSidebarItem(`comment-${comment.id}`);
+    options.setActiveSidebarItem(`comment-${created}`);
     resetAddCommentState();
     return true;
   }
 
   function handleCancelAddComment(): void {
-    const view = options.editorView.value;
-    if (
-      view &&
-      commentSelectionRange.value &&
-      options.sessionKind() === "prosemirror"
-    ) {
-      clearPendingComment(view, commentSelectionRange.value);
-    }
     resetAddCommentState();
   }
 
