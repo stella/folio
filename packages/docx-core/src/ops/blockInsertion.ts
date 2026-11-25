@@ -842,9 +842,19 @@ export const insertBlocks = ({
   // resolution may carry content across, or before any other block, such as
   // a content control, there is no mark after the new paragraph's for it to
   // resolve against, so the anchor's mark is the inserted one.
+  // Directly after a paragraph that ends a section, with a block after it,
+  // the new paragraphs open the section that block is in: the break stays on
+  // its paragraph, with what it ended. Tracked, the new paragraphs hold their
+  // own inserted marks and the anchor keeps its own, so its break never goes
+  // with a mark this insertion adds.
+  const opensNextSection =
+    !before &&
+    following !== undefined &&
+    location.paragraph.sectionProperties !== undefined;
   const takesOverMark =
     op.revision !== undefined &&
     !before &&
+    !opensNextSection &&
     (following?.type !== "table" ||
       !insertedMarkResolvesBeforeTable({
         blocks: list,
@@ -882,21 +892,15 @@ export const insertBlocks = ({
       "Insertion after a pending paragraph mark needs its former formatting snapshot and revision ids.",
     );
   }
+  const sectionBoundaries = opensNextSection
+    ? { sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE }
+    : {};
   // A draft ordinary insertion has no other work when its main-body splice
   // has no section or note repair and cannot add inline stories or review
   // records. The tracked replacement below still runs full validation.
-  // Directly after a paragraph that ends a section, with a block after it,
-  // the new paragraphs open the section that block is in: the break stays on
-  // its paragraph, with what it ended. A tracked insertion would take that
-  // paragraph's mark over, break and all, and is refused.
   const draft: ReplaceBlocksOp = {
     ...replacement(canonicalBlocks),
-    ...(op.revision === undefined &&
-    !before &&
-    following !== undefined &&
-    anchor.sectionProperties !== undefined
-      ? { sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE }
-      : {}),
+    ...sectionBoundaries,
   };
   const direct =
     op.revision !== undefined &&
@@ -974,7 +978,9 @@ export const insertBlocks = ({
     usedElsewhere: () => packageIdentityKeyIndex(document.package),
   });
   if (prepared.isErr()) return prepared;
-  const tracked = applyOps(document, [prepared.value]);
+  const tracked = applyOps(document, [
+    { ...prepared.value, ...sectionBoundaries },
+  ]);
   return tracked.isErr()
     ? Result.err(
         new DocumentOpRefusal({
