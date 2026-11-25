@@ -23,6 +23,60 @@
       "path": "1:2:1:1:1:1:3:3:3:4:4:0",
       "note": "A heading suggested before the next paragraph, ahead of a removed table, and a plain paragraph suggested there after it: each holds its own inserted mark.",
       "date": "2026-11-22"
+    },
+    {
+      "seed": 1807342709,
+      "path": "55:2:2:2:3:3:4:5",
+      "note": "Applied directly, a paragraph then a table put before a deleted paragraph that a table follows land in the requested order.",
+      "date": "2026-11-25"
+    },
+    {
+      "seed": 1236585877,
+      "path": "120:6:4:4:4:7:6:6:9:9:7:7:8:1:1",
+      "note": "Applied directly, a paragraph, a table and a paragraph put before a deleted paragraph that an inserted table follows keep the requested order.",
+      "date": "2026-11-25"
+    },
+    {
+      "seed": 1811591555,
+      "path": "94:5:4:5:5:8:8:4:7:7:8:9:1:1",
+      "note": "Applied directly, a paragraph then a table put before a deleted paragraph that an inserted table follows stay ahead of the paragraph put after it.",
+      "date": "2026-11-25"
+    },
+    {
+      "seed": 1123930730,
+      "path": "47:5:2:3:3:3:3:3:5:7:7:7:7:9:8:10:10:10:11:1:1",
+      "note": "Applied directly, a paragraph, a table and a paragraph put before a deleted story-final paragraph that an inserted table follows keep the requested order.",
+      "date": "2026-11-25"
+    },
+    {
+      "seed": 1334909042,
+      "path": "215:4:2:1:4:4:5:5:6:6:6:7:8:8:9:9:10",
+      "note": "Applied directly, a paragraph then a table put before a deleted paragraph that an inserted table follows stay ahead of the paragraph put after it.",
+      "date": "2026-11-25"
+    },
+    {
+      "seed": 1720891142,
+      "path": "354:3:5:6:6:7:8:8:9:10:1",
+      "note": "Applied directly, a paragraph then a table put before a deleted paragraph stay ahead of the paragraph requested after it first.",
+      "date": "2026-11-25"
+    },
+    {
+      "seed": 2073552155,
+      "path": "232:4:4:5:7:9:9:8:8",
+      "note": "Applied directly, a paragraph, a table and a paragraph put before a deleted paragraph that inserted blocks follow keep the requested order.",
+      "date": "2026-11-25"
+    },
+    {
+      "seed": -849578583,
+      "path": "271:2:2:1:4:4:5:7:6:7:8:8:8:9:1",
+      "note": "Applied directly, a paragraph, a table and a paragraph put before a deleted paragraph that an inserted table follows keep the requested order.",
+      "date": "2026-11-25"
+    },
+    {
+      "seed": -1903218820,
+      "path": "482:35:1:1",
+      "note": "Applied directly, lists, paragraphs and a table put on both sides of a deleted paragraph keep the requested order.",
+      "date": "2026-11-25"
     }
   ]
 }

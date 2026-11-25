@@ -2894,6 +2894,18 @@ const pushBesideBlocks = (
   const nearTable = bordering.pre?.table !== undefined;
   for (const row of rows) if (nearTable) row.besideTable = true;
   gap.push(...rows);
+  // After a text box's last paragraph, a block put in the box and one put in
+  // the body after the paragraph the box is drawn in share a gap, but not a
+  // place: a reader lists the box's paragraphs before the body's next block,
+  // so the box's blocks come first, whatever the batch order.
+  const boxed = gap.filter((row) => row.inTextBoxOf !== undefined);
+  if (boxed.length === 0 || boxed.length === gap.length) return;
+  gap.splice(
+    0,
+    gap.length,
+    ...boxed,
+    ...gap.filter((row) => row.inTextBoxOf === undefined),
+  );
 };
 
 const rangeOf = (
