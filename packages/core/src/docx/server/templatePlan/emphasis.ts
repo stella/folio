@@ -4,8 +4,8 @@
  * and colours are the template's to decide.
  */
 import type { Style } from "../../../types/document";
-import { parseOnOffChild, type XmlElement } from "../../xmlParser";
-import { wChild, wChildVal } from "./xml";
+import type { XmlElement } from "../../xmlParser";
+import { wAttr, wChild, wChildren, wChildVal } from "./xml";
 
 const TOGGLES = [
   "b",
@@ -44,11 +44,22 @@ export const NO_EMPHASIS: Emphasis = Object.freeze({
   highlight: null,
 });
 
-const styleToggle = (
-  style: Style | undefined,
+type RunFormatting = Style["rPr"];
+
+/** Toggle properties: stated on at two style tiers, they cancel (ECMA-376 §17.7.3). */
+const XOR_TOGGLES: ReadonlySet<Toggle> = new Set([
+  "b",
+  "i",
+  "caps",
+  "smallCaps",
+  "strike",
+  "vanish",
+]);
+
+const formattingToggle = (
+  rPr: RunFormatting,
   toggle: Toggle,
 ): boolean | undefined => {
-  const rPr = style?.rPr;
   switch (toggle) {
     case "b":
       return rPr?.bold;
@@ -80,47 +91,55 @@ const vertAlignOf = (
 const highlightOf = (value: string | null | undefined): string | null =>
   value === undefined || value === null || value === "none" ? null : value;
 
-/** The emphasis a paragraph style gives every run of its paragraphs. */
-export const paragraphBaseline = (style: Style | undefined): Emphasis => {
-  const baseline: Emphasis = { ...NO_EMPHASIS };
-  for (const toggle of TOGGLES) {
-    baseline[toggle] = styleToggle(style, toggle) === true;
-  }
-  baseline.u = underlineOf(style?.rPr?.underline?.style);
-  baseline.vertAlign = vertAlignOf(style?.rPr?.vertAlign);
-  baseline.highlight = highlightOf(style?.rPr?.highlight);
-  return baseline;
-};
-
-/**
- * `base` under a character style. A toggle the style turns on inverts the
- * paragraph style's value (ECMA-376 §17.7.3); other properties replace it.
- */
-export const withCharacterStyle = (
-  base: Emphasis,
-  style: Style | undefined,
-): Emphasis => {
-  if (style === undefined) {
+/** `base` under one more style tier's resolved run formatting. */
+const withStyleTier = (base: Emphasis, rPr: RunFormatting): Emphasis => {
+  if (rPr === undefined) {
     return base;
   }
   const next: Emphasis = { ...base };
   for (const toggle of TOGGLES) {
-    if (styleToggle(style, toggle) === true) {
-      next[toggle] = !base[toggle];
+    const stated = formattingToggle(rPr, toggle);
+    if (XOR_TOGGLES.has(toggle)) {
+      if (stated === true) {
+        next[toggle] = !base[toggle];
+      }
+    } else if (stated !== undefined) {
+      // Double strike inherits like any other property: the last tier wins.
+      next[toggle] = stated;
     }
   }
-  const rPr = style.rPr;
-  if (rPr?.underline !== undefined) {
+  if (rPr.underline !== undefined) {
     next.u = underlineOf(rPr.underline.style);
   }
-  if (rPr?.vertAlign !== undefined) {
+  if (rPr.vertAlign !== undefined) {
     next.vertAlign = vertAlignOf(rPr.vertAlign);
   }
-  if (rPr?.highlight !== undefined) {
+  if (rPr.highlight !== undefined) {
     next.highlight = highlightOf(rPr.highlight);
   }
   return next;
 };
+
+/** The emphasis the document defaults give every run. */
+export const defaultsBaseline = (rPr: RunFormatting): Emphasis =>
+  withStyleTier(NO_EMPHASIS, rPr);
+
+/**
+ * The emphasis every run of a paragraph starts from: the document defaults
+ * under the paragraph's style.
+ */
+export const paragraphBaseline = (
+  style: Style | undefined,
+  defaults: Emphasis,
+): Emphasis => withStyleTier(defaults, style?.rPr);
+
+/** `base` under a character style. */
+export const withCharacterStyle = (
+  base: Emphasis,
+  style: Style | undefined,
+): Emphasis => withStyleTier(base, style?.rPr);
+
+const OFF_VALUES: ReadonlySet<string> = new Set(["0", "false", "off"]);
 
 /** What a `w:rPr` states directly. */
 export const readDirectEmphasis = (
@@ -131,9 +150,9 @@ export const readDirectEmphasis = (
     return override;
   }
   for (const toggle of TOGGLES) {
-    const stated = parseOnOffChild(rPr, "w", toggle);
+    const stated = wChildren(rPr, toggle).at(-1);
     if (stated !== undefined) {
-      override[toggle] = stated;
+      override[toggle] = !OFF_VALUES.has(wAttr(stated, "val") ?? "");
     }
   }
   if (wChild(rPr, "u") !== null) {

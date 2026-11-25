@@ -127,10 +127,16 @@ export const wrapParagraphContentInBookmark = ({
     properties === null ? null : (rangeOf(properties)?.end ?? null);
   const startAt = (propertiesEnd ?? inner.start) - offset;
   const endAt = inner.end - offset;
-  return spliceXml(paragraphXml, [
-    { start: startAt, end: startAt, newXml: start },
-    { start: endAt, end: endAt, newXml: end },
-  ]);
+  // Two insertions at one offset would come out in either order.
+  return spliceXml(
+    paragraphXml,
+    startAt === endAt
+      ? [{ start: startAt, end: startAt, newXml: `${start}${end}` }]
+      : [
+          { start: startAt, end: startAt, newXml: start },
+          { start: endAt, end: endAt, newXml: end },
+        ],
+  );
 };
 
 type ComplexFieldOptions = {
@@ -155,7 +161,8 @@ export const complexFieldXml = ({
   return `${char("begin")}<${prefix}:r>${runPropertiesXml}<${prefix}:instrText xml:space="preserve">${escapeXmlText(instruction)}</${prefix}:instrText></${prefix}:r>${char("separate")}${resultRunsXml}${char("end")}`;
 };
 
-const REF_SWITCH = /^\\[A-Za-z*#@!]$/u;
+/** The REF switches that take no argument. */
+const REF_SWITCH = /^\\[fhnprtw]$/u;
 
 /**
  * The field code of a REF to `bookmark` with `switches` (`\n \t \h`). Null
@@ -308,6 +315,10 @@ export const freezeFields = (
       return;
     }
     if (type === "separate") {
+      if (top.phase === "result") {
+        // A second separator of one field: malformed, and already decided.
+        return;
+      }
       const owner = codeOwner(open.slice(0, -1));
       top.phase = "result";
       if (owner !== undefined) {

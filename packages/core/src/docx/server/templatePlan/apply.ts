@@ -7,14 +7,9 @@ import { Result } from "better-result";
 
 import { ZipArchive } from "@stll/docx-core/zip";
 
-import type { RelationshipMap } from "../../../types/document";
 import { registerContentTypeParts } from "../../contentTypeRegistry";
-import {
-  parseRelationships,
-  RELATIONSHIP_TYPES,
-  resolveRelativePath,
-} from "../../relsParser";
-import type { XmlElement } from "../../xmlParser";
+import { RELATIONSHIP_TYPES } from "../../relsParser";
+import { getLocalName, NAMESPACES, type XmlElement } from "../../xmlParser";
 import { appendToXmlRoot } from "../../xmlRootInsertion";
 import {
   type AnalyzedDocument,
@@ -38,11 +33,11 @@ import {
   type RelationshipsEditor,
   type SourceMedia,
   tableXml,
-  type TemplateCharacterStyles,
+  templateCharacterStyles,
 } from "./emit";
 import { headerFooterPaths } from "./inspect";
 import { styleNumbering } from "./labels";
-import { readPartText, relationshipsPathFor } from "./package";
+import { guarded, readPartText, relationshipsPathFor } from "./package";
 import {
   type ExpectedSegment,
   type PieceOrigin,
@@ -50,6 +45,7 @@ import {
   type ResolvedPlan,
   resolvePlan,
 } from "./plan";
+import { readStoryResources } from "./resources";
 import type {
   ApplyTemplatePlanArgs,
   ApplyTemplatePlanResult,
@@ -59,6 +55,7 @@ import type {
 import { TemplatePlanError } from "./types";
 import { reportTemplatePlanOutput } from "./verify";
 import {
+  elementChildren,
   escapeXmlAttribute,
   innerRangeOf,
   integerOrNull,
@@ -75,6 +72,7 @@ import {
   wAttr,
   wChild,
   wChildren,
+  wName,
   type XmlSplice,
 } from "./xml";
 
@@ -131,26 +129,6 @@ const directoryOf = (path: string): string => {
   const slash = path.lastIndexOf("/");
   return slash === -1 ? "" : path.slice(0, slash + 1);
 };
-
-const styleNamed = (
-  { styles }: AnalyzedDocument,
-  type: "paragraph" | "character",
-  name: string,
-): string | null =>
-  [...styles.values()].find(
-    (style) => style.type === type && style.name?.toLowerCase() === name,
-  )?.styleId ?? null;
-
-/** The template styles conventional marks and note text are written with. */
-export const templateCharacterStyles = (
-  template: AnalyzedDocument,
-): TemplateCharacterStyles => ({
-  hyperlink: styleNamed(template, "character", "hyperlink"),
-  footnoteReference: styleNamed(template, "character", "footnote reference"),
-  endnoteReference: styleNamed(template, "character", "endnote reference"),
-  footnoteText: styleNamed(template, "paragraph", "footnote text"),
-  endnoteText: styleNamed(template, "paragraph", "endnote text"),
-});
 
 const RANGE_MARKERS = [
   ["bookmarkStart", "bookmarkEnd"],
@@ -275,6 +253,16 @@ const editNumbering = (
         }),
       );
     }
+    // A level that wraps a child in a compatibility alternative has two
+    // spellings of it; patching one would leave them disagreeing.
+    if (elementChildren(level).some((child) => wName(child) === null)) {
+      return Result.err(
+        new TemplatePlanError({
+          code: "unsupported-content",
+          message: `Level ${patch.ilvl} of list definition ${patch.abstractNumId} holds markup a patch cannot change.`,
+        }),
+      );
+    }
     const values: Partial<Record<(typeof LEVEL_CHILD_ORDER)[number], string>> =
       {
         ...(patch.start === undefined ? {} : { start: String(patch.start) }),
@@ -323,13 +311,39 @@ const editNumbering = (
     }
   }
   if (mints.length > 0) {
+    const nums = wChildren(part.root, "num");
     const markup = mints
-      .map(
-        ({ numId, abstractNumId, ilvl, start }) =>
-          `<${w}:num ${w}:numId="${numId}"><${w}:abstractNumId ${w}:val="${abstractNumId}"/><${w}:lvlOverride ${w}:ilvl="${ilvl}"><${w}:startOverride ${w}:val="${start}"/></${w}:lvlOverride></${w}:num>`,
-      )
+      .map(({ numId, baseNumId, abstractNumId, starts }) => {
+        // The new instance keeps what its base list overrides, level by level.
+        const base = nums.find(
+          (element) => integerOrNull(wAttr(element, "numId")) === baseNumId,
+        );
+        const inherited = new Map<number, XmlElement>();
+        for (const override of wChildren(base, "lvlOverride")) {
+          const level = integerOrNull(wAttr(override, "ilvl"));
+          if (level !== null) {
+            inherited.set(level, override);
+          }
+        }
+        const raw = (element: XmlElement | null | undefined): string => {
+          const range =
+            element === null || element === undefined ? null : rangeOf(element);
+          return range === null ? "" : part.xml.slice(range.start, range.end);
+        };
+        const overrides = [...new Set([...inherited.keys(), ...starts.keys()])]
+          .toSorted((left, right) => left - right)
+          .map((level) => {
+            const start = starts.get(level);
+            const kept = inherited.get(level);
+            return start === undefined
+              ? raw(kept)
+              : `<${w}:lvlOverride ${w}:ilvl="${level}"><${w}:startOverride ${w}:val="${start}"/>${raw(wChild(kept, "lvl"))}</${w}:lvlOverride>`;
+          })
+          .join("");
+        return `<${w}:num ${w}:numId="${numId}"><${w}:abstractNumId ${w}:val="${abstractNumId}"/>${overrides}</${w}:num>`;
+      })
       .join("");
-    const lastNum = wChildren(part.root, "num").at(-1);
+    const lastNum = nums.at(-1);
     const cleanup = wChild(part.root, "numIdMacAtCleanup");
     const inner = innerRangeOf(part.xml, part.root);
     const at =
@@ -400,68 +414,17 @@ const writeOutput = async ({
   ): Promise<Result<string | null, TemplatePlanError>> =>
     await readPartText(pkg, path);
 
-  const sourcePartPath: Record<PieceOrigin, string | null> = {
-    document: source.pkg.documentPath,
-    footnotes: source.footnotes.path,
-    endnotes: source.endnotes.path,
-  };
-  const sourceRelationships: Record<PieceOrigin, RelationshipMap> = {
-    document: source.pkg.documentRelationships,
-    footnotes: new Map(),
-    endnotes: new Map(),
-  };
-  for (const origin of ["footnotes", "endnotes"] as const) {
-    const path = sourcePartPath[origin];
-    if (path === null) {
-      continue;
-    }
-    // oxlint-disable-next-line no-await-in-loop -- serialized reads keep the archive budget exact
-    const xml = await readPartText(source.pkg, relationshipsPathFor(path));
-    if (Result.isError(xml)) {
-      return xml;
-    }
-    sourceRelationships[origin] = parseRelationships(xml.value ?? "");
+  const sourceResources = await readStoryResources(source);
+  if (Result.isError(sourceResources)) {
+    return sourceResources;
   }
-  const resolveSourceTarget = (origin: PieceOrigin, target: string): string =>
-    resolveRelativePath(
-      relationshipsPathFor(sourcePartPath[origin] ?? source.pkg.documentPath),
-      target,
-    );
   const sourceMedia = new Map<string, SourceMedia>();
-  for (const origin of ["document", "footnotes", "endnotes"] as const) {
-    for (const relationship of sourceRelationships[origin].values()) {
-      if (
-        relationship.type !== RELATIONSHIP_TYPES.image ||
-        relationship.targetMode === "External"
-      ) {
-        continue;
-      }
-      const path = resolveSourceTarget(origin, relationship.target);
-      if (sourceMedia.has(path) || !source.pkg.paths.has(path)) {
-        continue;
-      }
-      // oxlint-disable-next-line no-await-in-loop -- serialized reads keep the archive budget exact
-      const bytes = await Result.tryPromise({
-        try: async () => await source.pkg.readBytes(path),
-        catch: (cause) =>
-          new TemplatePlanError({
-            code: "archive-unreadable",
-            message: `The source part ${path} could not be read.`,
-            part: path,
-            cause,
-          }),
-      });
-      if (Result.isError(bytes)) {
-        return bytes;
-      }
-      if (bytes.value !== null) {
-        const dot = path.lastIndexOf(".");
-        sourceMedia.set(path, {
-          bytes: bytes.value,
-          extension: dot === -1 ? "" : path.slice(dot + 1).toLowerCase(),
-        });
-      }
-    }
+  for (const [path, bytes] of sourceResources.value.media) {
+    const dot = path.lastIndexOf(".");
+    sourceMedia.set(path, {
+      bytes,
+      extension: dot === -1 ? "" : path.slice(dot + 1).toLowerCase(),
+    });
   }
 
   const documentRelationshipsXml = await readTemplateText(
@@ -474,6 +437,14 @@ const writeOutput = async ({
     pkg.documentRelationshipsPath,
     documentRelationshipsXml.value,
   );
+  if (documentRelationships === null) {
+    return Result.err(
+      unreadable(
+        pkg.documentRelationshipsPath,
+        "The template's relationships part is not a relationships part.",
+      ),
+    );
+  }
 
   const notePartState = async (
     kind: NoteKind,
@@ -498,15 +469,24 @@ const writeOutput = async ({
     if (Result.isError(relationshipsXml)) {
       return relationshipsXml;
     }
+    const relationships = createRelationshipsEditor(
+      relationshipsPath,
+      relationshipsXml.value,
+    );
+    if (relationships === null) {
+      return Result.err(
+        unreadable(
+          relationshipsPath,
+          "A notes relationships part is not a relationships part.",
+        ),
+      );
+    }
     return Result.ok({
       kind,
       path,
       existing,
       prefixes,
-      relationships: createRelationshipsEditor(
-        relationshipsPath,
-        relationshipsXml.value,
-      ),
+      relationships,
       nextId: maxOf(existing.usedIds, 0) + 1,
       allocated: new Map(),
     });
@@ -525,21 +505,46 @@ const writeOutput = async ({
   };
 
   const media = new Map<string, { path: string; media: SourceMedia }>();
+  const mediaPaths = new Set<string>();
   let unsupportedMedia: string | null = null;
+  // Drawing ids are unique over the whole document, its notes and its
+  // headers and footers; new ones start above every one in use.
   let drawingId = 0;
-  walkElements(template.document.root, (element) => {
-    if ((element.name ?? "").endsWith("docPr")) {
+  const noteDrawingIds = (root: XmlElement): void => {
+    walkElements(root, (element) => {
+      if (getLocalName(element.name) !== "docPr") {
+        return;
+      }
       const id = integerOrNull(String(element.attributes?.["id"] ?? ""));
       if (id !== null && id > drawingId) {
         drawingId = id;
       }
+    });
+  };
+  noteDrawingIds(template.document.root);
+  for (const notes of [template.footnotes, template.endnotes]) {
+    if (notes.part !== null) {
+      noteDrawingIds(notes.part.root);
     }
-  });
+  }
+  const headerFooterParts: RawPart[] = [];
+  for (const path of headerFooterPaths(template)) {
+    // oxlint-disable-next-line no-await-in-loop -- serialized reads keep the archive budget exact
+    const xml = await readTemplateText(path);
+    if (Result.isError(xml)) {
+      return xml;
+    }
+    const part = xml.value === null ? null : readRawPart(path, xml.value);
+    if (part !== null) {
+      headerFooterParts.push(part);
+      noteDrawingIds(part.root);
+    }
+  }
   const shared: EmitShared = {
     styles: templateCharacterStyles(template),
-    sourceRelationships,
+    sourceRelationships: sourceResources.value.relationships,
     sourceMedia,
-    resolveSourceTarget,
+    resolveSourceTarget: sourceResources.value.resolveTarget,
     noteId: (kind, sourceId) => {
       const state = noteParts[kind];
       const known = state.allocated.get(sourceId);
@@ -557,12 +562,14 @@ const writeOutput = async ({
         if (MEDIA_CONTENT_TYPES[sourceItem.extension] === undefined) {
           unsupportedMedia ??= sourcePath;
         }
+        // A name neither the template nor an earlier picture of this run holds.
         let index = media.size + 1;
         let path = `${documentDirectory}media/placed${index}.${sourceItem.extension}`;
-        while (pkg.paths.has(path)) {
+        while (pkg.paths.has(path) || mediaPaths.has(path)) {
           index += 1;
           path = `${documentDirectory}media/placed${index}.${sourceItem.extension}`;
         }
+        mediaPaths.add(path);
         entry = { path, media: sourceItem };
         media.set(sourcePath, entry);
       }
@@ -834,6 +841,19 @@ const writeOutput = async ({
         }),
       );
     }
+    const typesRoot = readRawPart(CONTENT_TYPES_PATH, contentTypes.value)?.root;
+    if (
+      typesRoot === undefined ||
+      getLocalName(typesRoot.name) !== "Types" ||
+      typesRoot.namespaceUri !== NAMESPACES.ct
+    ) {
+      return Result.err(
+        unreadable(
+          CONTENT_TYPES_PATH,
+          "The template's content-type registry is not one.",
+        ),
+      );
+    }
     parts.set(
       CONTENT_TYPES_PATH,
       registerContentTypeParts(contentTypes.value, newContentTypes),
@@ -865,16 +885,7 @@ const writeOutput = async ({
   }
 
   if (resolved.freezeKinds.size > 0) {
-    for (const path of headerFooterPaths(template)) {
-      // oxlint-disable-next-line no-await-in-loop -- serialized reads keep the archive budget exact
-      const xml = await readTemplateText(path);
-      if (Result.isError(xml)) {
-        return xml;
-      }
-      const part = xml.value === null ? null : readRawPart(path, xml.value);
-      if (part === null) {
-        continue;
-      }
+    for (const part of headerFooterParts) {
       const { splices } = freezeFields(part, resolved.freezeKinds);
       if (splices.length === 0) {
         continue;
@@ -882,10 +893,10 @@ const writeOutput = async ({
       const frozen = spliceXml(part.xml, splices);
       if (frozen === null) {
         return Result.err(
-          unreadable(path, "A header or footer could not be rewritten."),
+          unreadable(part.path, "A header or footer could not be rewritten."),
         );
       }
-      parts.set(path, frozen);
+      parts.set(part.path, frozen);
     }
   }
 
@@ -941,14 +952,7 @@ const writeOutput = async ({
   });
 };
 
-/**
- * Apply `source` onto `template` as `plan` says and verify the result.
- *
- * The plan names blocks by id and pins them by hash; the text itself always
- * comes from the source. The output is refused, with the report attached,
- * unless every placed block reads back identical.
- */
-export const applyTemplatePlan = async ({
+const applyUnguarded = async ({
   source,
   template,
   plan,
@@ -1006,3 +1010,15 @@ export const applyTemplatePlan = async ({
   }
   return Result.ok({ docx: written.value, report: report.value });
 };
+
+/**
+ * Apply `source` onto `template` as `plan` says and verify the result.
+ *
+ * The plan names blocks by id and pins them by hash; the text itself always
+ * comes from the source. The output is refused, with the report attached,
+ * unless every placed block reads back identical.
+ */
+export const applyTemplatePlan = async (
+  args: ApplyTemplatePlanArgs,
+): Promise<Result<ApplyTemplatePlanResult, TemplatePlanError>> =>
+  await guarded(async () => await applyUnguarded(args));

@@ -131,6 +131,10 @@ describe("wrapParagraphContentInBookmark", () => {
     expect(wrap("<w:p/>")).toBe(
       '<w:p><w:bookmarkStart w:id="7" w:name="_Ref000000007"/><w:bookmarkEnd w:id="7"/></w:p>',
     );
+    // Properties and nothing after them: the start still comes first.
+    expect(wrap(p("", style("HouseClause")))).toBe(
+      '<w:p><w:pPr><w:pStyle w:val="HouseClause"/></w:pPr><w:bookmarkStart w:id="7" w:name="_Ref000000007"/><w:bookmarkEnd w:id="7"/></w:p>',
+    );
   });
 
   test("refuses markup that is not one paragraph", () => {
@@ -210,6 +214,14 @@ describe("setUpdateFieldsOnOpen", () => {
     expect(setUpdateFieldsOnOpen(settings, false)).toBe(settings);
   });
 
+  test("goes before a child of another namespace that the schema orders later", () => {
+    const sparse = `${XML}<w:settings ${NS} xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"><w:zoom w:percent="100"/><m:mathPr><m:mathFont m:val="Cambria Math"/></m:mathPr></w:settings>`;
+    const set = setUpdateFieldsOnOpen(sparse, true) ?? "";
+
+    expect(set.indexOf("updateFields")).toBeGreaterThan(set.indexOf("w:zoom"));
+    expect(set.indexOf("updateFields")).toBeLessThan(set.indexOf("m:mathPr"));
+  });
+
   test("refuses a part that is not a settings part", () => {
     expect(setUpdateFieldsOnOpen(`<w:document ${NS}/>`, true)).toBeNull();
   });
@@ -271,6 +283,18 @@ describe("freezeFields", () => {
     const inner = frozen(body, ["PAGE"]);
     expect(inner.fields.map(({ kind }) => kind)).toEqual(["IF", "PAGE"]);
     expect(inner.counts).toEqual([]);
+  });
+
+  test("counts a field with two separators once", () => {
+    const result = frozen(
+      p(
+        `<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText> DATE </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>${r("1.1.")}<w:r><w:fldChar w:fldCharType="separate"/></w:r>${r("2020")}<w:r><w:fldChar w:fldCharType="end"/></w:r>`,
+      ),
+      ["DATE"],
+    );
+
+    expect(result.counts).toEqual([{ kind: "DATE", count: 1 }]);
+    expect(result.texts).toEqual(["1.1.2020"]);
   });
 
   test("freezes a field that never produced a result to nothing", () => {

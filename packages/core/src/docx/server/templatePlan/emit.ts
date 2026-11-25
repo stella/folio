@@ -20,7 +20,7 @@ import {
   type XmlElement,
 } from "../../xmlParser";
 import { appendToXmlRoot } from "../../xmlRootInsertion";
-import type { AnalyzedNote } from "./blocks";
+import type { AnalyzedDocument, AnalyzedNote } from "./blocks";
 import {
   bookmarkEndXml,
   bookmarkStartXml,
@@ -47,6 +47,7 @@ import {
   type PartPrefixes,
   wAttr,
   wChild,
+  wChildren,
   wName,
 } from "./xml";
 
@@ -64,11 +65,14 @@ export type RelationshipsEditor = {
   xml: () => string | null;
 };
 
-/** An editor over a relationships part that may not exist yet. */
+/**
+ * An editor over a relationships part that may not exist yet. Null when the
+ * part exists and its root is not a relationships root.
+ */
 export const createRelationshipsEditor = (
   path: string,
   existing: string | null,
-): RelationshipsEditor => {
+): RelationshipsEditor | null => {
   const source =
     existing ??
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="${PACKAGE_RELATIONSHIPS_NAMESPACE}"></Relationships>`;
@@ -83,7 +87,14 @@ export const createRelationshipsEditor = (
   const added = new Map<string, string>();
   const markup: string[] = [];
   const root = parseXmlDocument(source);
-  const rootName = root?.name ?? "Relationships";
+  if (
+    root?.name === undefined ||
+    getLocalName(root.name) !== "Relationships" ||
+    root.namespaceUri !== PACKAGE_RELATIONSHIPS_NAMESPACE
+  ) {
+    return null;
+  }
+  const rootName = root.name;
   const colon = rootName.indexOf(":");
   const elementName =
     colon === -1 ? "Relationship" : `${rootName.slice(0, colon)}:Relationship`;
@@ -122,6 +133,26 @@ export type TemplateCharacterStyles = {
   endnoteText: string | null;
 };
 
+const styleNamed = (
+  { styles }: Pick<AnalyzedDocument, "styles">,
+  type: "paragraph" | "character",
+  name: string,
+): string | null =>
+  [...styles.values()].find(
+    (style) => style.type === type && style.name?.toLowerCase() === name,
+  )?.styleId ?? null;
+
+/** The template styles conventional marks and note text are written with. */
+export const templateCharacterStyles = (
+  template: Pick<AnalyzedDocument, "styles">,
+): TemplateCharacterStyles => ({
+  hyperlink: styleNamed(template, "character", "hyperlink"),
+  footnoteReference: styleNamed(template, "character", "footnote reference"),
+  endnoteReference: styleNamed(template, "character", "endnote reference"),
+  footnoteText: styleNamed(template, "paragraph", "footnote text"),
+  endnoteText: styleNamed(template, "paragraph", "endnote text"),
+});
+
 export type NoteKind = "footnote" | "endnote";
 
 /** A media part of the source, read ahead so the emit stays synchronous. */
@@ -146,41 +177,30 @@ export type EmitContext = EmitShared & {
   relationships: RelationshipsEditor;
 };
 
-type LinkTarget = { relationshipId: string } | null;
+export type LinkAddress = { url: string; anchor: string | null };
 
-const linkTargetOf = (
-  { link, origin }: ExpectedPiece,
-  context: EmitContext,
-): LinkTarget => {
+/**
+ * The external address a link leads to, or null for a link the output cannot
+ * carry: one to a bookmark of the source, or one whose relationship is
+ * missing or does not name an external address.
+ */
+export const linkAddress = (
+  link: AtomLink | null,
+  relationships: RelationshipMap,
+): LinkAddress | null => {
   if (link === null) {
     return null;
   }
   switch (link.kind) {
     case "url":
-      return {
-        relationshipId: context.relationships.add({
-          type: RELATIONSHIP_TYPES.hyperlink,
-          target: link.url,
-          external: true,
-        }),
-      };
+      return { url: link.url, anchor: link.anchor };
     case "relationship": {
-      const relationship = context.sourceRelationships[origin].get(
-        link.relationshipId,
-      );
-      if (
-        relationship === undefined ||
-        relationship.type !== RELATIONSHIP_TYPES.hyperlink
-      ) {
-        return null;
-      }
-      return {
-        relationshipId: context.relationships.add({
-          type: RELATIONSHIP_TYPES.hyperlink,
-          target: relationship.target,
-          external: relationship.targetMode === "External",
-        }),
-      };
+      const relationship = relationships.get(link.relationshipId);
+      return relationship === undefined ||
+        relationship.type !== RELATIONSHIP_TYPES.hyperlink ||
+        relationship.targetMode !== "External"
+        ? null
+        : { url: relationship.target, anchor: link.anchor };
     }
     case "anchor":
       // The bookmark it points at stays in the source.
@@ -190,15 +210,43 @@ const linkTargetOf = (
   }
 };
 
+/** One string per address, for comparing what a link leads to. */
+export const linkAddressKey = (address: LinkAddress | null): string =>
+  address === null
+    ? ""
+    : `${address.url}${address.anchor === null ? "" : `#${address.anchor}`}`;
+
+type LinkTarget = { relationshipId: string; anchor: string | null } | null;
+
+const linkTargetOf = (
+  { link, origin }: ExpectedPiece,
+  context: EmitContext,
+): LinkTarget => {
+  const address = linkAddress(link, context.sourceRelationships[origin]);
+  return address === null
+    ? null
+    : {
+        relationshipId: context.relationships.add({
+          type: RELATIONSHIP_TYPES.hyperlink,
+          target: address.url,
+          external: true,
+        }),
+        anchor: address.anchor,
+      };
+};
+
 const sameLink = (left: AtomLink | null, right: AtomLink | null): boolean => {
   if (left === null || right === null) {
     return left === right;
   }
   if (left.kind === "relationship" && right.kind === "relationship") {
-    return left.relationshipId === right.relationshipId;
+    return (
+      left.relationshipId === right.relationshipId &&
+      left.anchor === right.anchor
+    );
   }
   if (left.kind === "url" && right.kind === "url") {
-    return left.url === right.url;
+    return left.url === right.url && left.anchor === right.anchor;
   }
   return (
     left.kind === "anchor" &&
@@ -229,7 +277,15 @@ const transferObject = (
       return id;
     }
     const external = relationship.targetMode === "External";
-    if (relationship.type === RELATIONSHIP_TYPES.hyperlink || external) {
+    if (relationship.type === RELATIONSHIP_TYPES.hyperlink && !external) {
+      // A link to a part of the source would lead nowhere in the output.
+      refusal ??= new TemplatePlanError({
+        code: "unsupported-content",
+        message: "An object links to a part of the source package.",
+      });
+      return id;
+    }
+    if (external) {
       return context.relationships.add({
         type: relationship.type,
         target: relationship.target,
@@ -433,14 +489,18 @@ const piecesRunsXml = (
 ): RunsResult => {
   const { w, r } = context.prefixes;
   const out: string[] = [];
-  let group: { relationshipId: string; link: AtomLink; runs: string[] } | null =
-    null;
+  let group: {
+    relationshipId: string;
+    anchor: string | null;
+    link: AtomLink;
+    runs: string[];
+  } | null = null;
   const flush = (): void => {
     if (group === null) {
       return;
     }
     out.push(
-      `<${w}:hyperlink${context.prefixes.rDeclaration} ${r}:id="${escapeXmlAttribute(group.relationshipId)}" ${w}:history="1">${group.runs.join("")}</${w}:hyperlink>`,
+      `<${w}:hyperlink${context.prefixes.rDeclaration} ${r}:id="${escapeXmlAttribute(group.relationshipId)}"${group.anchor === null ? "" : ` ${w}:anchor="${escapeXmlAttribute(group.anchor)}"`} ${w}:history="1">${group.runs.join("")}</${w}:hyperlink>`,
     );
     group = null;
   };
@@ -729,13 +789,18 @@ export const tableXml = (
       ? ""
       : `<${w}:tblStyle ${w}:val="${escapeXmlAttribute(styleId)}"/>`;
   const properties = `${style}${keptChildrenXml(tableProperties, ["tblW"], w)}${styleId === null ? keptChildrenXml(tableProperties, ["tblBorders"], w) : ""}${keptChildrenXml(tableProperties, TABLE_LAYOUT_PROPERTIES, w)}`;
-  const grid = wChild(table, "tblGrid");
+  // Columns only: a grid may also carry the record of a tracked change.
+  const columns = wChildren(wChild(table, "tblGrid"), "gridCol")
+    .map((column) => wSubtreeXml(column, w))
+    .join("");
+  const gridXml =
+    columns === "" ? "" : `<${w}:tblGrid>${columns}</${w}:tblGrid>`;
   const rows = rowsXml(table);
   if (Result.isError(rows)) {
     return rows;
   }
   return Result.ok(
-    `<${w}:tbl><${w}:tblPr>${properties}</${w}:tblPr>${grid === null ? "" : wSubtreeXml(grid, w)}${rows.value}</${w}:tbl>`,
+    `<${w}:tbl><${w}:tblPr>${properties}</${w}:tblPr>${gridXml}${rows.value}</${w}:tbl>`,
   );
 };
 

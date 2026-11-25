@@ -6,10 +6,9 @@
  */
 import { Result } from "better-result";
 
-import { HIGHLIGHT_COLOR_VALUES } from "../../../types/documentEnumValues";
 import { parseFieldInstruction } from "../../fieldParser";
 import { computeListRendering } from "../../numberingParser";
-import type { XmlElement } from "../../xmlParser";
+import { NAMESPACES, type XmlElement } from "../../xmlParser";
 import type { AnalyzedBlock, AnalyzedDocument } from "./blocks";
 import {
   bookmarkIdsOf,
@@ -27,6 +26,8 @@ import {
   withSignatureHighlight,
 } from "./emphasis";
 import { styleNumbering } from "./labels";
+import { PLAN_HIGHLIGHT_COLORS, planShapeIssue } from "./planShape";
+import type { StoryOrigin } from "./resources";
 import type {
   AtomKind,
   AtomLink,
@@ -59,7 +60,7 @@ export type ExpectedPiece = {
   origin: PieceOrigin;
 };
 
-export type PieceOrigin = "document" | "footnotes" | "endnotes";
+export type PieceOrigin = StoryOrigin;
 
 export type ExpectedSegment =
   | { kind: "piece"; piece: ExpectedPiece }
@@ -73,9 +74,11 @@ export type ExpectedSegment =
 export type NumberingMint = {
   key: string;
   numId: number;
+  /** The template list the instance copies its level overrides from. */
+  baseNumId: number;
   abstractNumId: number;
-  ilvl: number;
-  start: number;
+  /** The number each restarted level begins with. */
+  starts: Map<number, number>;
 };
 
 export type ResolvedNumbering =
@@ -156,29 +159,63 @@ const refuse = ({ code, message, blockId }: Refusal): TemplatePlanError =>
     ...(blockId === undefined ? {} : { blockId }),
   });
 
-const OMIT_REASONS: ReadonlySet<string> = new Set([
-  "empty",
-  "sourceToc",
-  "pageArtifact",
-  "duplicateLabel",
-]);
-const MERGES: ReadonlySet<string> = new Set(["lineBreak", "space", "none"]);
-const SUFFIXES: ReadonlySet<string> = new Set(["tab", "space", "nothing"]);
-/** The highlight a plan may add; clearing one is not a mark. */
-const CLEARED_HIGHLIGHT = "none";
-const HIGHLIGHT_COLORS: ReadonlySet<string> = new Set(
-  HIGHLIGHT_COLOR_VALUES.filter((color) => color !== CLEARED_HIGHLIGHT),
-);
+/** Where a label may end: at white space or a line break. */
+const LABEL_END = /^[ \t\u00A0\n]$/u;
+const MAX_LABEL_LENGTH = 40;
+const ROMAN_NUMERAL =
+  /^(?=.)M{0,3}(?:CM|CD|D?C{0,3})(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3})$/iu;
+const LABEL_WORD = /^(?:\p{L}[\p{L}\p{M}]*\.?|§{1,2}|№|#)$/u;
+const LABEL_DESIGNATOR =
+  /^[([]?(?<core>\d+(?:[.\-\u2013]\d+)*[a-z]?|\p{L}+)[)\]]?[.:)]*$/u;
+const LABEL_BULLET = /^[-\u2013\u2014\u2022\u00B7\u25AA\u25E6*]$/u;
+const MAX_LABEL_WORDS = 3;
+
+/**
+ * Whether `label` reads as a manual list label: up to three leading words
+ * ("Article", "§", "Annex No.") and one designator, a number, a roman numeral
+ * or a letter with its brackets and punctuation; or a single bullet. This is
+ * the only text a plan may have removed.
+ */
+export const isManualLabel = (label: string): boolean => {
+  if (label === "" || label.length > MAX_LABEL_LENGTH) {
+    return false;
+  }
+  if (LABEL_BULLET.test(label)) {
+    return true;
+  }
+  const tokens = label.split(/[ \u00A0]/u);
+  const designator = tokens.at(-1) ?? "";
+  const words = tokens.slice(0, -1);
+  const core = LABEL_DESIGNATOR.exec(designator)?.groups?.["core"];
+  return (
+    core !== undefined &&
+    words.length <= MAX_LABEL_WORDS &&
+    words.every((word) => LABEL_WORD.test(word)) &&
+    (/^\d/u.test(core) || core.length === 1 || ROMAN_NUMERAL.test(core))
+  );
+};
+
+const NOTES_OF_REFERENCE: Partial<Record<AtomKind, "footnotes" | "endnotes">> =
+  {
+    footnoteReference: "footnotes",
+    endnoteReference: "endnotes",
+  };
+
 const LABEL_SPACE = /^[ \t ]+/u;
 const LEADING_SPACE = /^[ \t ]*/u;
 
-/** Whether a block carries nothing a reader would miss. */
-export const isEmptyBlock = ({ block }: AnalyzedBlock): boolean =>
+/** Whether a block holds no text and no object. */
+export const isBlankBlock = ({ block }: AnalyzedBlock): boolean =>
   block.text.trim() === "" && block.inlineObjects === 0;
+
+/** Whether a block, or a paragraph inside it, renders a list label. */
+const showsLabel = ({ block }: AnalyzedBlock): boolean =>
+  block.label !== null ||
+  (block.nested ?? []).some(({ label }) => label !== null);
 
 export type SignatureContext = Pick<
   AnalyzedDocument,
-  "styles" | "defaultStyleId"
+  "styles" | "defaultStyleId" | "defaultEmphasis"
 >;
 
 export type ParagraphPiecesOptions = {
@@ -191,61 +228,78 @@ export type ParagraphPiecesOptions = {
 };
 
 const HYPERLINK_FIELD = "HYPERLINK";
+const LOCATION_SWITCH = "l";
 
-/** The external address a HYPERLINK field names, when it names one. */
-const hyperlinkFieldUrl = ({
+/** The link a HYPERLINK field makes: its address and the place in it, if any. */
+export const hyperlinkFieldLink = ({
   instruction,
   kind,
-}: StoryField): string | null => {
+}: StoryField): AtomLink | null => {
   if (kind !== HYPERLINK_FIELD) {
     return null;
   }
   const { argument, switches } = parseFieldInstruction(instruction);
-  return argument === undefined ||
-    argument === "" ||
-    switches.some(({ switch: name }) => name === "l")
-    ? null
-    : argument;
+  // Without an address the field points into its own document.
+  if (argument === undefined || argument === "") {
+    return null;
+  }
+  const location = switches.find(
+    ({ switch: name }) => name.toLowerCase() === LOCATION_SWITCH,
+  )?.value;
+  return { kind: "url", url: argument, anchor: location ?? null };
 };
 
 const NOTE_REFERENCE_KINDS: ReadonlySet<AtomKind> = new Set([
   "footnoteReference",
   "endnoteReference",
 ]);
+/** What a stripped label may consist of. */
+const STRIPPABLE_KINDS: ReadonlySet<AtomKind> = new Set(["text", "tab"]);
+/**
+ * Character styles that only give a link its look. The template supplies
+ * that look; any other character style inside a link is emphasis.
+ */
+const LINK_STYLE_NAMES: ReadonlySet<string> = new Set([
+  "hyperlink",
+  "followedhyperlink",
+  "internet link",
+  "visited internet link",
+]);
 
 /** The pieces of one source paragraph, each with the emphasis it states. */
 export const paragraphPieces = ({
   read,
-  context: { styles, defaultStyleId },
+  context: { styles, defaultStyleId, defaultEmphasis },
   origin,
   fields,
 }: ParagraphPiecesOptions): ExpectedPiece[] => {
   const baseline = paragraphBaseline(
     styles.get(read.styleId ?? defaultStyleId ?? ""),
+    defaultEmphasis,
   );
   return read.atoms.map((atom) => {
     // A HYPERLINK field is a link like any other once its result is kept.
-    const fieldUrl = atom.fields
+    const fieldLink = atom.fields
       .map((index) => fields[index])
-      .map((field) => (field === undefined ? null : hyperlinkFieldUrl(field)))
-      .find((url) => url !== null);
-    const link: AtomLink | null =
-      atom.link ??
-      (fieldUrl === undefined || fieldUrl === null
-        ? null
-        : { kind: "url", url: fieldUrl });
+      .map((field) => (field === undefined ? null : hyperlinkFieldLink(field)))
+      .find((link) => link !== null);
+    const link: AtomLink | null = atom.link ?? fieldLink ?? null;
     let signature = "";
     if (!NOTE_REFERENCE_KINDS.has(atom.kind)) {
-      const characterStyleId = wChildVal(atom.runProperties, "rStyle");
-      // Inside a link the character style is the link's look, which the
-      // template supplies; what the run states itself still counts.
-      const styled =
-        link === null && characterStyleId !== null
-          ? withCharacterStyle(baseline, styles.get(characterStyleId))
-          : baseline;
+      const characterStyle = styles.get(
+        wChildVal(atom.runProperties, "rStyle") ?? "",
+      );
+      const isLinkLook =
+        link !== null &&
+        LINK_STYLE_NAMES.has(characterStyle?.name?.toLowerCase() ?? "");
       signature = emphasisSignature(
         emphasisDeviation(
-          withOverride(styled, readDirectEmphasis(atom.runProperties)),
+          withOverride(
+            isLinkLook
+              ? baseline
+              : withCharacterStyle(baseline, characterStyle),
+            readDirectEmphasis(atom.runProperties),
+          ),
           baseline,
         ),
       );
@@ -263,7 +317,23 @@ export const paragraphPieces = ({
 
 type PositionedPiece = { piece: ExpectedPiece; start: number; end: number };
 
-/** Split text pieces so every offset in `cuts` falls on a piece boundary. */
+const isHighSurrogate = (unit: number): boolean =>
+  unit >= 0xd800 && unit <= 0xdbff;
+const isLowSurrogate = (unit: number): boolean =>
+  unit >= 0xdc00 && unit <= 0xdfff;
+
+/** Whether `offset` falls between the two units of one character. */
+const splitsCharacter = (text: string, offset: number): boolean =>
+  offset > 0 &&
+  offset < text.length &&
+  isHighSurrogate(text.charCodeAt(offset - 1)) &&
+  isLowSurrogate(text.charCodeAt(offset));
+
+/**
+ * Split text pieces at the offsets in `cuts`. A cut inside a character, or
+ * inside a piece that is not text, is not made; the caller finds it missing
+ * among the boundaries.
+ */
 const splitPieces = (
   pieces: readonly ExpectedPiece[],
   cuts: readonly number[],
@@ -276,7 +346,12 @@ const splitPieces = (
     offset = end;
     const inside =
       piece.kind === "text"
-        ? cuts.filter((cut) => cut > start && cut < end)
+        ? cuts.filter(
+            (cut) =>
+              cut > start &&
+              cut < end &&
+              !splitsCharacter(piece.text, cut - start),
+          )
         : [];
     if (inside.length === 0) {
       out.push({ piece, start, end });
@@ -303,6 +378,27 @@ const splitPieces = (
   return out;
 };
 
+type Span = { start: number; end: number };
+
+const isSpanWithin = (
+  { start, end }: Span,
+  from: number,
+  length: number,
+): boolean =>
+  Number.isInteger(start) &&
+  Number.isInteger(end) &&
+  start >= from &&
+  start < end &&
+  end <= length;
+
+const spansOverlap = (spans: readonly Span[]): boolean => {
+  const ordered = spans.toSorted((a, b) => a.start - b.start);
+  return ordered.some((span, index) => {
+    const previous = ordered[index - 1];
+    return previous !== undefined && span.start < previous.end;
+  });
+};
+
 type PartSegmentsOptions = {
   block: AnalyzedBlock;
   pieces: ExpectedPiece[];
@@ -320,75 +416,91 @@ const partSegments = ({
 }: PartSegmentsOptions): Result<ExpectedSegment[], TemplatePlanError> => {
   const blockId = block.block.id;
   const length = block.block.text.length;
-  for (const { start, end } of references) {
-    if (
-      !Number.isInteger(start) ||
-      !Number.isInteger(end) ||
-      start < strippedLength ||
-      start >= end ||
-      end > length
-    ) {
-      return Result.err(
-        refuse({
-          code: "reference-span-invalid",
-          message: `Reference span ${start}-${end} lies outside block ${blockId}.`,
-          blockId,
-        }),
+  const badReference = (message: string): Result<never, TemplatePlanError> =>
+    Result.err(refuse({ code: "reference-span-invalid", message, blockId }));
+  const badHighlight = (message: string): Result<never, TemplatePlanError> =>
+    Result.err(refuse({ code: "highlight-span-invalid", message, blockId }));
+  for (const reference of references) {
+    if (!isSpanWithin(reference, strippedLength, length)) {
+      return badReference(
+        `Reference span ${reference.start}-${reference.end} lies outside block ${blockId}.`,
       );
     }
   }
-  for (const { start, end, color } of highlights) {
+  for (const highlight of highlights) {
     if (
-      !Number.isInteger(start) ||
-      !Number.isInteger(end) ||
-      start < strippedLength ||
-      start >= end ||
-      end > length ||
-      !HIGHLIGHT_COLORS.has(color)
+      !isSpanWithin(highlight, strippedLength, length) ||
+      !PLAN_HIGHLIGHT_COLORS.has(highlight.color)
     ) {
-      return Result.err(
-        refuse({
-          code: "highlight-span-invalid",
-          message: `Highlight ${start}-${end} (${color}) does not fit block ${blockId}.`,
-          blockId,
-        }),
+      return badHighlight(
+        `Highlight ${highlight.start}-${highlight.end} (${highlight.color}) does not fit block ${blockId}.`,
       );
     }
+  }
+  if (spansOverlap(references)) {
+    return badReference(`Reference spans overlap in block ${blockId}.`);
+  }
+  if (spansOverlap(highlights)) {
+    return badHighlight(`Highlight spans overlap in block ${blockId}.`);
   }
   const ordered = references.toSorted((a, b) => a.start - b.start);
-  for (let index = 1; index < ordered.length; index += 1) {
-    const previous = ordered[index - 1];
-    const current = ordered[index];
-    if (
-      previous !== undefined &&
-      current !== undefined &&
-      current.start < previous.end
-    ) {
-      return Result.err(
-        refuse({
-          code: "reference-span-invalid",
-          message: `Reference spans overlap in block ${blockId}.`,
-          blockId,
-        }),
+
+  const split = splitPieces(pieces, [
+    strippedLength,
+    ...references.flatMap(({ start, end }) => [start, end]),
+    ...highlights.flatMap(({ start, end }) => [start, end]),
+  ]);
+  // Every offset the plan names must fall between two pieces: not inside a
+  // character, a symbol or a mark that cannot be cut.
+  const boundaries = new Set([0, ...split.map(({ end }) => end)]);
+  if (!boundaries.has(strippedLength)) {
+    return Result.err(
+      refuse({
+        code: "strip-label-mismatch",
+        message: `The label to strip from block ${blockId} ends inside a character or mark.`,
+        blockId,
+      }),
+    );
+  }
+  for (const { start, end } of references) {
+    if (!boundaries.has(start) || !boundaries.has(end)) {
+      return badReference(
+        `Reference span ${start}-${end} in block ${blockId} cuts a character or mark.`,
+      );
+    }
+  }
+  for (const { start, end } of highlights) {
+    if (!boundaries.has(start) || !boundaries.has(end)) {
+      return badHighlight(
+        `Highlight ${start}-${end} in block ${blockId} cuts a character or mark.`,
       );
     }
   }
 
   const positioned: PositionedPiece[] = [];
-  for (const entry of splitPieces(pieces, [
-    strippedLength,
-    ...references.flatMap(({ start, end }) => [start, end]),
-    ...highlights.flatMap(({ start, end }) => [start, end]),
-  ])) {
-    // What the label strip removes; a piece without text stays where it was.
-    if (entry.end <= strippedLength && entry.start !== entry.end) {
+  for (const entry of split) {
+    const empty = entry.start === entry.end;
+    if (entry.end <= strippedLength && !empty) {
+      // A label is text and the space after it; anything else stays put.
+      if (!STRIPPABLE_KINDS.has(entry.piece.kind)) {
+        return Result.err(
+          refuse({
+            code: "strip-label-mismatch",
+            message: `The label to strip from block ${blockId} covers more than text.`,
+            blockId,
+          }),
+        );
+      }
       continue;
     }
     const highlight = highlights.find(
-      ({ start, end }) =>
-        entry.start >= start && entry.end <= end && entry.end > entry.start,
+      ({ start, end }) => entry.start >= start && entry.end <= end && !empty,
     );
-    if (highlight !== undefined) {
+    // A note reference mark carries no emphasis of its own.
+    if (
+      highlight !== undefined &&
+      !NOTE_REFERENCE_KINDS.has(entry.piece.kind)
+    ) {
       entry.piece = {
         ...entry.piece,
         signature: withSignatureHighlight(
@@ -403,32 +515,46 @@ const partSegments = ({
   const segments: ExpectedSegment[] = [];
   let open:
     { reference: TemplatePlanReference; pieces: ExpectedPiece[] } | undefined;
-  const close = (): void => {
+  const close = (): Result<undefined, TemplatePlanError> => {
     if (open === undefined) {
-      return;
+      return Result.ok(undefined);
     }
     const replacedText = open.pieces.map(({ text }) => text).join("");
     const first = open.pieces.at(0);
     const { reference } = open;
-    segments.push({
-      kind: "reference",
-      reference,
-      replacedText,
-      pieces:
-        replacedText === reference.expectedText || first === undefined
-          ? open.pieces.map((piece) => ({ ...piece, link: null }))
-          : [
-              {
-                kind: "text",
-                text: reference.expectedText,
-                signature: first.signature,
-                link: null,
-                atom: null,
-                origin: first.origin,
-              },
-            ],
-    });
+    if (first === undefined || replacedText === reference.expectedText) {
+      segments.push({
+        kind: "reference",
+        reference,
+        replacedText,
+        pieces: open.pieces.map((piece) => ({ ...piece, link: null })),
+      });
+    } else if (
+      open.pieces.some(({ signature }) => signature !== first.signature)
+    ) {
+      // New text has no positions to carry mixed emphasis over to.
+      return badReference(
+        `Reference span ${reference.start}-${reference.end} in block ${blockId} changes text that is emphasised in part.`,
+      );
+    } else {
+      segments.push({
+        kind: "reference",
+        reference,
+        replacedText,
+        pieces: [
+          {
+            kind: "text",
+            text: reference.expectedText,
+            signature: first.signature,
+            link: null,
+            atom: null,
+            origin: first.origin,
+          },
+        ],
+      });
+    }
     open = undefined;
+    return Result.ok(undefined);
   };
   for (const { piece, start, end } of positioned) {
     const empty = start === end;
@@ -438,30 +564,32 @@ const partSegments = ({
         : start >= candidate.start && end <= candidate.end,
     );
     if (reference === undefined) {
-      close();
+      const closed = close();
+      if (Result.isError(closed)) {
+        return closed;
+      }
       segments.push({ kind: "piece", piece });
       continue;
     }
     if (piece.kind !== "text") {
-      return Result.err(
-        refuse({
-          code: "reference-span-invalid",
-          message: `Reference span ${reference.start}-${reference.end} in block ${blockId} covers more than text.`,
-          blockId,
-        }),
+      return badReference(
+        `Reference span ${reference.start}-${reference.end} in block ${blockId} covers more than text.`,
       );
     }
     if (empty) {
       continue;
     }
     if (open !== undefined && open.reference !== reference) {
-      close();
+      const closed = close();
+      if (Result.isError(closed)) {
+        return closed;
+      }
     }
     open ??= { reference, pieces: [] };
     open.pieces.push(piece);
   }
-  close();
-  return Result.ok(segments);
+  const closed = close();
+  return Result.isError(closed) ? closed : Result.ok(segments);
 };
 
 const SEPARATOR_PIECES = {
@@ -523,6 +651,7 @@ type ParagraphRequest = {
 };
 
 const SHA256 = /^[0-9a-f]{64}$/u;
+const TRANSITIONAL_WORDPROCESSINGML: string = NAMESPACES.w;
 
 const groupByBlock = <Entry extends { blockId: string }>(
   entries: readonly Entry[],
@@ -550,19 +679,20 @@ export const resolvePlan = (
 ): Result<ResolvedPlan, TemplatePlanError> => {
   const invalid = (message: string): Result<never, TemplatePlanError> =>
     Result.err(refuse({ code: "plan-invalid", message }));
-  // A plan arrives as parsed JSON; its shape is checked where a wrong one
-  // would otherwise fail somewhere unrelated.
-  const raw: Partial<TemplatePlan> | null | undefined = plan;
-  if (
-    raw === null ||
-    raw === undefined ||
-    raw.version !== 1 ||
-    !Array.isArray(raw.body) ||
-    !Array.isArray(raw.omit) ||
-    typeof raw.sourceSha256 !== "string" ||
-    typeof raw.templateSha256 !== "string"
-  ) {
-    return invalid("The plan is not a version 1 template plan.");
+  const unsupported = (
+    message: string,
+    blockId?: string,
+  ): Result<never, TemplatePlanError> =>
+    Result.err(
+      refuse({
+        code: "unsupported-content",
+        message,
+        ...(blockId === undefined ? {} : { blockId }),
+      }),
+    );
+  const shapeIssue = planShapeIssue(plan);
+  if (shapeIssue !== null) {
+    return invalid(shapeIssue);
   }
   if (
     !SHA256.test(plan.sourceSha256) ||
@@ -583,6 +713,18 @@ export const resolvePlan = (
       }),
     );
   }
+  // Markup is written in the Transitional spelling the template declares;
+  // a Strict package on either side would end up mixed.
+  for (const [name, analyzed] of [
+    ["source", source],
+    ["template", template],
+  ] as const) {
+    if (analyzed.document.root.namespaceUri !== TRANSITIONAL_WORDPROCESSINGML) {
+      return unsupported(
+        `The ${name} is not a Transitional WordprocessingML package.`,
+      );
+    }
+  }
   if (source.manifest.trackedChanges > 0) {
     return Result.err(
       refuse({
@@ -591,20 +733,30 @@ export const resolvePlan = (
       }),
     );
   }
+  // Text after a field that never closes reads as field code, so nothing
+  // read from such a story can be trusted.
+  for (const state of [
+    source.story.state,
+    source.footnotes.state,
+    source.endnotes.state,
+  ]) {
+    if (state.open.length > 0 || state.strayFieldEnds > 0) {
+      return unsupported(
+        "The source holds complex field marks that do not pair up.",
+      );
+    }
+  }
+  const unreadBlock = source.story.unreadBlocks.at(0);
+  if (unreadBlock !== undefined) {
+    return unsupported(
+      `The source holds block-level ${unreadBlock} content that cannot be moved onto a template.`,
+    );
+  }
 
   const references = plan.references ?? [];
   const highlights = plan.highlights ?? [];
   const freezeKinds = plan.fields?.freezeKinds ?? [];
-  if (
-    !Array.isArray(references) ||
-    !Array.isArray(highlights) ||
-    !Array.isArray(freezeKinds) ||
-    freezeKinds.some((kind) => !/^[A-Z][A-Z0-9]*$/u.test(kind))
-  ) {
-    return invalid(
-      "The plan's references, highlights or field kinds are malformed.",
-    );
-  }
+  const patches = plan.numberingPatches ?? [];
 
   const templateNumbering = template.numbering;
   const usedNumIds = (templateNumbering?.definitions.nums ?? []).map(
@@ -652,13 +804,6 @@ export const resolvePlan = (
     const unknown = (message: string): Result<never, TemplatePlanError> =>
       Result.err(refuse({ code: "numbering-unknown", message, blockId }));
     const { numId, ilvl, restartFrom, baseNumId, group } = numbering;
-    if (
-      !Number.isInteger(ilvl) ||
-      ilvl < 0 ||
-      (restartFrom !== undefined && !Number.isInteger(restartFrom))
-    ) {
-      return invalid(`Block ${blockId} names a malformed list level.`);
-    }
     if (templateNumbering === null) {
       return unknown("The template has no numbering definitions.");
     }
@@ -690,20 +835,41 @@ export const resolvePlan = (
         `Block ${blockId} starts a list the template does not define.`,
       );
     }
-    const key = group ?? `#${ordinal}`;
+    // A group's key and an ungrouped item's key never meet.
+    const key = group === undefined ? `item:${ordinal}` : `group:${group}`;
     let mint = mints.get(key);
     if (mint === undefined) {
+      // A patched start is the start the new instance restarts from.
+      const patchedStart = patches.find(
+        (patch) => patch.abstractNumId === abstractNumId && patch.ilvl === ilvl,
+      )?.start;
       mint = {
         key,
         numId: nextNumId,
+        baseNumId: base,
         abstractNumId,
-        ilvl,
-        start: restartFrom ?? baseLevel.levelStarts?.at(ilvl) ?? 1,
+        starts: new Map([
+          [
+            ilvl,
+            restartFrom ?? patchedStart ?? baseLevel.levelStarts?.at(ilvl) ?? 1,
+          ],
+        ]),
       };
       nextNumId += 1;
       mints.set(key, mint);
-    } else if (mint.abstractNumId !== abstractNumId) {
-      return invalid(`List group ${key} spans two list definitions.`);
+      return Result.ok({ kind: "direct", numId: mint.numId, ilvl });
+    }
+    if (mint.baseNumId !== base) {
+      return invalid(`List group ${key} spans two lists.`);
+    }
+    if (restartFrom !== undefined) {
+      const known = mint.starts.get(ilvl);
+      if (known !== undefined && known !== restartFrom) {
+        return invalid(
+          `List group ${key} restarts level ${ilvl} from two different numbers.`,
+        );
+      }
+      mint.starts.set(ilvl, restartFrom);
     }
     return Result.ok({ kind: "direct", numId: mint.numId, ilvl });
   };
@@ -769,10 +935,24 @@ export const resolvePlan = (
       if (Result.isError(placedOnce)) {
         return placedOnce;
       }
+      const unread = block.read.unsupported.at(0);
+      if (unread !== undefined) {
+        return unsupported(
+          `Block ${id} holds ${unread} content that cannot be moved onto a template.`,
+          id,
+        );
+      }
       let strippedPrefix = "";
       if (stripLabel !== undefined) {
         const lead = LEADING_SPACE.exec(text)?.[0] ?? "";
-        if (stripLabel === "" || !text.startsWith(stripLabel, lead.length)) {
+        const labelEnd = lead.length + stripLabel.length;
+        // Only a label goes: a short designator the engine recognises, that
+        // the block starts with and that ends where a word would.
+        if (
+          !isManualLabel(stripLabel) ||
+          !text.startsWith(stripLabel, lead.length) ||
+          !(labelEnd === text.length || LABEL_END.test(text.charAt(labelEnd)))
+        ) {
           return Result.err(
             refuse({
               code: "strip-label-mismatch",
@@ -781,7 +961,6 @@ export const resolvePlan = (
             }),
           );
         }
-        const labelEnd = lead.length + stripLabel.length;
         strippedPrefix = text.slice(
           0,
           labelEnd + (LABEL_SPACE.exec(text.slice(labelEnd))?.[0].length ?? 0),
@@ -812,6 +991,29 @@ export const resolvePlan = (
       resolvedParts.push({ block, strippedPrefix });
     }
     const pieces = segmentPieces(segments);
+    for (const piece of pieces) {
+      const notes = NOTES_OF_REFERENCE[piece.kind];
+      if (notes === undefined) {
+        continue;
+      }
+      const noteId = wAttr(piece.atom?.element, "id") ?? "";
+      const note = source[notes].byId.get(noteId);
+      if (note === undefined) {
+        return unsupported(
+          `Block ${firstId} refers to note ${noteId}, which the source does not hold.`,
+          firstId,
+        );
+      }
+      const unread =
+        note.paragraphs.flatMap((read) => read.unsupported).at(0) ??
+        (note.hasOtherBlocks ? "table" : undefined);
+      if (unread !== undefined) {
+        return unsupported(
+          `Note ${noteId} holds ${unread} content that cannot be moved onto a template.`,
+          firstId,
+        );
+      }
+    }
     const paragraph: ResolvedParagraph = {
       parts: resolvedParts,
       styleId: style.value,
@@ -934,14 +1136,11 @@ export const resolvePlan = (
   for (let index = 0; index < plan.body.length; index += 1) {
     const item = plan.body[index];
     ordinal += 1;
-    if (item === undefined || typeof item !== "object") {
-      return invalid(`Body item ${index} is malformed.`);
+    if (item === undefined) {
+      continue;
     }
     switch (item.kind) {
       case "template": {
-        if (!Array.isArray(item.templateBlockIds)) {
-          return invalid(`Body item ${index} names no template blocks.`);
-        }
         for (const id of item.templateBlockIds) {
           const block = template.story.byId.get(id);
           if (block === undefined || block.parentId !== null) {
@@ -996,9 +1195,6 @@ export const resolvePlan = (
         const separators: TemplatePlanMerge[] = [];
         let merge = item.mergeNext;
         while (merge !== undefined) {
-          if (!MERGES.has(merge)) {
-            return invalid(`Body item ${index} names an unknown merge.`);
-          }
           const next = plan.body[index + 1];
           const nextBlock =
             next?.kind === "source" ? sourceTopLevel(next.blockId) : undefined;
@@ -1021,6 +1217,21 @@ export const resolvePlan = (
               refuse({
                 code: "hash-mismatch",
                 message: `Block ${next.blockId} does not have the hash the plan pins.`,
+                blockId: next.blockId,
+              }),
+            );
+          }
+          // The joined paragraph has one style and one list: the first item's.
+          if (
+            next.styleId !== undefined ||
+            next.numbering !== undefined ||
+            next.cellStyleId !== undefined ||
+            next.nested !== undefined
+          ) {
+            return Result.err(
+              refuse({
+                code: "merge-invalid",
+                message: `Block ${next.blockId} joins the paragraph before it and cannot carry a style or list of its own.`,
                 blockId: next.blockId,
               }),
             );
@@ -1117,16 +1328,78 @@ export const resolvePlan = (
     nestedSlots.push(slot);
   }
 
+  // A template field that runs over several blocks is kept whole, in place
+  // and with nothing in between, or not at all: anything placed inside it
+  // would become part of the field's result.
+  const keptPosition = new Map<string, number>();
+  for (const [position, item] of items.entries()) {
+    if (item.kind === "template") {
+      keptPosition.set(item.block.block.id, position);
+    }
+  }
+  const templateOrder = template.story.topLevel.map(({ block }) => block.id);
+  const slots = [
+    ...nestedSlots,
+    ...items.flatMap((item) => (item.kind === "slot" ? [item] : [])),
+  ];
+  for (const field of template.story.state.fields) {
+    const lastOrdinal = field.closed
+      ? field.endParagraphOrdinal
+      : Number.POSITIVE_INFINITY;
+    if (lastOrdinal === field.paragraphOrdinal) {
+      continue;
+    }
+    const slotted = slots.find(({ templateBlock }) => {
+      const slotOrdinal = templateBlock.read?.ordinal ?? -1;
+      return (
+        slotOrdinal >= field.paragraphOrdinal && slotOrdinal <= lastOrdinal
+      );
+    });
+    if (slotted !== undefined) {
+      return Result.err(
+        refuse({
+          code: "plan-invalid",
+          message: `Slot ${slotted.templateBlock.block.id} lies inside a ${field.kind} field that runs over several paragraphs.`,
+          blockId: slotted.templateBlock.block.id,
+        }),
+      );
+    }
+    const from = templateOrder.indexOf(
+      template.story.paragraphs[field.paragraphOrdinal]?.topLevelId ?? "",
+    );
+    const to = field.closed
+      ? templateOrder.indexOf(
+          template.story.paragraphs[field.endParagraphOrdinal]?.topLevelId ??
+            "",
+        )
+      : templateOrder.length - 1;
+    if (from === -1 || to <= from) {
+      continue;
+    }
+    const span = templateOrder.slice(from, to + 1);
+    if (!span.some((id) => keptPosition.has(id))) {
+      continue;
+    }
+    const first = keptPosition.get(span.at(0) ?? "");
+    if (
+      first === undefined ||
+      span.some((id, offset) => keptPosition.get(id) !== first + offset)
+    ) {
+      return Result.err(
+        refuse({
+          code: "plan-invalid",
+          message: `Template blocks ${span.at(0) ?? ""} to ${span.at(-1) ?? ""} hold one ${field.kind} field; keep all of them together and in order, or none.`,
+          blockId: span.at(0) ?? "",
+        }),
+      );
+    }
+  }
+
   const omitted = new Map<string, TemplatePlanOmitReason>();
   for (const entry of plan.omit) {
     const block = sourceTopLevel(entry.blockId);
     if (Result.isError(block)) {
       return block;
-    }
-    if (!OMIT_REASONS.has(entry.reason)) {
-      return invalid(
-        `Block ${entry.blockId} is omitted for an unknown reason.`,
-      );
     }
     if (placed.has(entry.blockId) || omitted.has(entry.blockId)) {
       return Result.err(
@@ -1137,7 +1410,7 @@ export const resolvePlan = (
         }),
       );
     }
-    if (entry.reason === "empty" && !isEmptyBlock(block.value)) {
+    if (entry.reason === "empty" && !isBlankBlock(block.value)) {
       return invalid(`Block ${entry.blockId} is omitted as empty and is not.`);
     }
     omitted.set(entry.blockId, entry.reason);
@@ -1147,7 +1420,8 @@ export const resolvePlan = (
     if (placed.has(id) || omitted.has(id)) {
       continue;
     }
-    if (!isEmptyBlock(block)) {
+    // Only a block that shows nothing at all may go unmentioned.
+    if (!isBlankBlock(block) || showsLabel(block)) {
       return Result.err(
         refuse({
           code: "block-unplaced",
@@ -1198,12 +1472,15 @@ export const resolvePlan = (
         }),
       );
     }
-    if (
-      typeof reference.expectedText !== "string" ||
-      reference.expectedText === "" ||
-      typeof reference.instruction !== "string"
-    ) {
-      return invalid(`A reference in ${reference.blockId} has no cached text.`);
+    if (paragraph === target) {
+      // A field inside its own bookmark refers to itself.
+      return Result.err(
+        refuse({
+          code: "reference-span-invalid",
+          message: `A reference in ${reference.blockId} targets the paragraph it sits in.`,
+          blockId: reference.blockId,
+        }),
+      );
     }
     let bookmark = bookmarks.get(target);
     if (bookmark === undefined) {
@@ -1239,7 +1516,7 @@ export const resolvePlan = (
     });
   }
 
-  for (const patch of plan.numberingPatches ?? []) {
+  for (const patch of patches) {
     const abstract = templateNumbering?.getAbstract(patch.abstractNumId);
     if (
       abstract === null ||
@@ -1252,14 +1529,6 @@ export const resolvePlan = (
           message: `The template has no level ${patch.ilvl} in list definition ${patch.abstractNumId}.`,
         }),
       );
-    }
-    if (
-      (patch.numFmt !== undefined && !/^[A-Za-z]+$/u.test(patch.numFmt)) ||
-      (patch.suff !== undefined && !SUFFIXES.has(patch.suff)) ||
-      (patch.start !== undefined && !Number.isInteger(patch.start)) ||
-      (patch.lvlText !== undefined && typeof patch.lvlText !== "string")
-    ) {
-      return invalid("A numbering patch carries a malformed value.");
     }
   }
 

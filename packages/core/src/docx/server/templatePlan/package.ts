@@ -150,3 +150,25 @@ export const readPartText = async (
       }),
   });
 };
+
+/**
+ * Run one public entry of the module. Whatever a hostile or malformed
+ * package makes a shared helper throw comes back as a typed refusal, so no
+ * caller has to guard the call.
+ */
+export const guarded = async <Value>(
+  run: () => Promise<Result<Value, TemplatePlanError>>,
+): Promise<Result<Value, TemplatePlanError>> =>
+  Result.flatten(
+    await Result.tryPromise({
+      try: run,
+      catch: (cause) =>
+        cause instanceof TemplatePlanError
+          ? cause
+          : new TemplatePlanError({
+              message: "The package could not be processed.",
+              code: "xml-unreadable",
+              cause,
+            }),
+    }),
+  );

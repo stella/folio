@@ -584,6 +584,25 @@ describe("applyTemplatePlan slots", () => {
     expect(report.ok).toBe(true);
   });
 
+  test("refuses a slot inside a field that runs over several paragraphs", async () => {
+    const plan = fullPlan();
+    plan.body = [
+      ...plan.body.filter(
+        (item) =>
+          (item.kind !== "source" || item.blockId !== SOURCE_IDS.mixed) &&
+          (item.kind !== "template" ||
+            !item.templateBlockIds.includes(TEMPLATE_IDS.tocFirst)),
+      ),
+      {
+        kind: "slot",
+        templateBlockId: TEMPLATE_IDS.tocLast,
+        sourceBlockIds: [SOURCE_IDS.mixed],
+      },
+    ];
+
+    expect(await refusal(plan)).toBe("plan-invalid");
+  });
+
   test("refuses a slot in a template table the plan does not keep", async () => {
     const plan = fullPlan();
     plan.body = [
@@ -884,33 +903,67 @@ describe("applyTemplatePlan refusals", () => {
     ).toBe("tracked-changes");
   });
 
-  test("refuses a template field kept in part", async () => {
-    const result = await applyTemplatePlan({
-      source: fixture.source,
-      template: fixture.template,
-      plan: withBody((body) =>
-        body.map((item) =>
+  test("refuses a template field kept in part or with blocks placed inside it", async () => {
+    const withToc = (
+      ids: (toc: string[]) => TemplatePlanItem[],
+    ): TemplatePlan =>
+      withBody((body) =>
+        body.flatMap((item) =>
           item.kind === "template" &&
           item.templateBlockIds.includes(TEMPLATE_IDS.tocFirst)
-            ? {
-                ...item,
-                templateBlockIds: item.templateBlockIds.filter(
-                  (id) => id !== TEMPLATE_IDS.tocLast,
-                ),
-              }
-            : item,
+            ? ids(item.templateBlockIds)
+            : [item],
         ),
-      ),
-    });
-
-    expect(Result.isError(result)).toBe(true);
-    if (Result.isError(result)) {
-      expect(result.error.code).toBe("verification-failed");
-      expect(result.error.report?.ok).toBe(false);
-      expect(result.error.report?.issues.map(({ code }) => code)).toContain(
-        "field-unbalanced",
       );
-    }
+
+    // Only the first of the field's two paragraphs.
+    expect(
+      await refusal(
+        withToc((toc) => [
+          {
+            kind: "template",
+            templateBlockIds: toc.filter((id) => id !== TEMPLATE_IDS.tocLast),
+          },
+        ]),
+      ),
+    ).toBe("plan-invalid");
+    // Both, with the rest of the plan's blocks between them: everything in
+    // between would become the field's result and go when it updates.
+    const split = fullPlan();
+    const tocItem = split.body.findIndex(
+      (item) =>
+        item.kind === "template" &&
+        item.templateBlockIds.includes(TEMPLATE_IDS.tocFirst),
+    );
+    split.body = [
+      ...split.body.slice(0, tocItem),
+      {
+        kind: "template",
+        templateBlockIds: [TEMPLATE_IDS.tocHeading, TEMPLATE_IDS.tocFirst],
+      },
+      ...split.body.slice(tocItem + 1),
+      {
+        kind: "template",
+        templateBlockIds: [TEMPLATE_IDS.tocLast, TEMPLATE_IDS.fillIn],
+      },
+    ];
+    expect(await refusal(split)).toBe("plan-invalid");
+    // Both, in the wrong order.
+    expect(
+      await refusal(
+        withToc(() => [
+          {
+            kind: "template",
+            templateBlockIds: [
+              TEMPLATE_IDS.tocHeading,
+              TEMPLATE_IDS.tocLast,
+              TEMPLATE_IDS.tocFirst,
+              TEMPLATE_IDS.fillIn,
+            ],
+          },
+        ]),
+      ),
+    ).toBe("plan-invalid");
   });
 
   test("refuses a prompting field left under update on open", async () => {
@@ -1068,10 +1121,8 @@ describe("applyTemplatePlan with objects, fields and endnotes", () => {
       /<w:hyperlink r:id="rId\d+" w:history="1"><w:r><w:rPr><w:rStyle w:val="Hyperlink"\/><\/w:rPr><w:t xml:space="preserve">the site<\/w:t><\/w:r><\/w:hyperlink>/u,
     );
     expect(report.dropped).toMatchObject({
-      sourceFields: [
-        { kind: "HYPERLINK", count: 1 },
-        { kind: "REF", count: 1 },
-      ],
+      // The HYPERLINK field is carried over as a link, so it is not dropped.
+      sourceFields: [{ kind: "REF", count: 1 }],
       internalHyperlinks: 1,
     });
   });

@@ -1,10 +1,7 @@
-import { Result } from "better-result";
 import { describe, expect, test } from "bun:test";
 
 import { applyTemplatePlan } from "../apply";
 import { analyzeDocxBlocks } from "../blocks";
-import { inspectDocxTemplate } from "../inspect";
-import type { TemplatePlan, TemplatePlanItem } from "../types";
 import { innerRangeOf, readRawPart } from "../xml";
 import {
   buildMinimalDocx,
@@ -15,41 +12,7 @@ import {
   replacePart,
   TEMPLATE_IDS,
 } from "./fixtures";
-
-const unwrap = <T>(result: Result<T, unknown>): T => {
-  if (Result.isError(result)) {
-    throw result.error;
-  }
-  return result.value;
-};
-
-type PlanOptions = {
-  source: Uint8Array;
-  template: Uint8Array;
-  items?: (ids: { id: string; hash: string }[]) => TemplatePlanItem[];
-  extra?: Partial<TemplatePlan>;
-};
-
-const planFor = async ({
-  source,
-  template,
-  items,
-  extra = {},
-}: PlanOptions): Promise<TemplatePlan> => {
-  const manifest = unwrap(await analyzeDocxBlocks(source));
-  const inspection = unwrap(await inspectDocxTemplate(template));
-  const ids = manifest.blocks.map(({ id, hash }) => ({ id, hash }));
-  return {
-    version: 1,
-    sourceSha256: manifest.sha256,
-    templateSha256: inspection.sha256,
-    body:
-      items?.(ids) ??
-      ids.map(({ id, hash }) => ({ kind: "source", blockId: id, hash })),
-    omit: [],
-    ...extra,
-  };
-};
+import { planFor, unwrap } from "./planning";
 
 describe("innerRangeOf", () => {
   test("finds the content after an opening tag whose attribute holds '>'", () => {

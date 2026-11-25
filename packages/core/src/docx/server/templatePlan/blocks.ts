@@ -3,14 +3,16 @@ import { Result } from "better-result";
 
 import type { Style } from "../../../types/document";
 import { type NumberingMap, parseNumbering } from "../../numberingParser";
-import { parseStyles, type StyleMap } from "../../styleParser";
+import { parseStylesPackage, type StyleMap } from "../../styleParser";
 import type { XmlElement } from "../../xmlParser";
+import { defaultsBaseline, type Emphasis } from "./emphasis";
 import {
   createLabelCounter,
   type LabelCounter,
   type ParagraphLabel,
 } from "./labels";
 import {
+  guarded,
   type LoadedPackage,
   loadPackage,
   readPartText,
@@ -66,6 +68,8 @@ export type AnalyzedStory = {
   state: StoryState;
   /** `w:sectPr` elements in document order, the body's own last. */
   sections: XmlElement[];
+  /** Names of block-level elements the walk has no reading for. */
+  unreadBlocks: string[];
   warnings: string[];
 };
 
@@ -111,6 +115,7 @@ export const analyzeStory = ({
     paragraphs: [],
     state,
     sections: [],
+    unreadBlocks: [],
     warnings: [],
   };
   const tables: OpenTable[] = [];
@@ -253,6 +258,9 @@ export const analyzeStory = ({
       const name = element.name ?? "";
       unread.set(name, (unread.get(name) ?? 0) + 1);
     },
+    tracked: () => {
+      state.trackedChanges += 1;
+    },
   });
 
   const bodySection = wChild(container, "sectPr");
@@ -260,13 +268,14 @@ export const analyzeStory = ({
     story.sections.push(bodySection);
   }
   for (const [name, count] of unread) {
+    story.unreadBlocks.push(name);
     story.warnings.push(
       `${count} block-level ${name} element(s) are not read as blocks.`,
     );
   }
-  if (state.open.length > 0) {
+  if (state.open.length > 0 || state.strayFieldEnds > 0) {
     story.warnings.push(
-      `${state.open.length} complex field(s) are never closed.`,
+      "The story holds complex field marks that do not pair up; text after an unclosed field reads as field code.",
     );
   }
   return story;
@@ -277,6 +286,8 @@ export type AnalyzedNote = {
   element: XmlElement;
   text: string;
   paragraphs: ParagraphRead[];
+  /** Whether the note holds a table or another block that is not a paragraph. */
+  hasOtherBlocks: boolean;
 };
 
 export type AnalyzedNotes = {
@@ -312,7 +323,12 @@ const analyzeNotes = (
   }
   const part = readRawPart(path, xml);
   if (part === null) {
-    return notes;
+    // A notes part that cannot be read would lose every note it holds.
+    throw new TemplatePlanError({
+      message: `The notes part ${path} could not be read.`,
+      code: "xml-unreadable",
+      part: path,
+    });
   }
   notes.part = part;
   for (const element of elementChildren(part.root)) {
@@ -332,20 +348,29 @@ const analyzeNotes = (
       continue;
     }
     const paragraphs: ParagraphRead[] = [];
+    let hasOtherBlocks = false;
     walkBlocks(element, {
       paragraph: (paragraph) => {
         paragraphs.push(readParagraph(paragraph, notes.state));
       },
-      tableStart: () => {},
+      tableStart: () => {
+        hasOtherBlocks = true;
+      },
       cellStart: () => {},
       tableEnd: () => {},
-      unread: () => {},
+      unread: () => {
+        hasOtherBlocks = true;
+      },
+      tracked: () => {
+        notes.state.trackedChanges += 1;
+      },
     });
     const note: AnalyzedNote = {
       id,
       element,
       text: paragraphs.map(({ text }) => text).join("\n"),
       paragraphs,
+      hasOtherBlocks,
     };
     notes.notes.push(note);
     notes.byId.set(id, note);
@@ -359,6 +384,8 @@ export type AnalyzedDocument = {
   body: XmlElement;
   story: AnalyzedStory;
   styles: StyleMap;
+  /** The emphasis the document defaults give every run. */
+  defaultEmphasis: Emphasis;
   stylesPath: string | null;
   stylesXml: string | null;
   defaultStyleId: string | null;
@@ -435,8 +462,12 @@ export const analyzeDocument = async (
 
   const read = Result.try({
     try: () => {
-      const styles: StyleMap =
-        stylesXml === null ? new Map() : parseStyles(stylesXml, null);
+      const stylesPackage =
+        stylesXml === null ? null : parseStylesPackage(stylesXml, null);
+      const styles: StyleMap = stylesPackage?.styles ?? new Map();
+      const defaultEmphasis = defaultsBaseline(
+        stylesPackage?.styleDefinitions.docDefaults?.rPr,
+      );
       const defaultStyleId =
         [...styles.values()].find(
           (style) => style.type === "paragraph" && style.default === true,
@@ -449,20 +480,37 @@ export const analyzeDocument = async (
       });
       const footnotes = analyzeNotes("footnotes", footnotesPath, footnotesXml);
       const endnotes = analyzeNotes("endnotes", endnotesPath, endnotesXml);
-      return { styles, defaultStyleId, numbering, story, footnotes, endnotes };
+      return {
+        styles,
+        defaultEmphasis,
+        defaultStyleId,
+        numbering,
+        story,
+        footnotes,
+        endnotes,
+      };
     },
     catch: (cause) =>
-      new TemplatePlanError({
-        message: "The DOCX parts could not be analysed.",
-        code: "xml-unreadable",
-        cause,
-      }),
+      cause instanceof TemplatePlanError
+        ? cause
+        : new TemplatePlanError({
+            message: "The DOCX parts could not be analysed.",
+            code: "xml-unreadable",
+            cause,
+          }),
   });
   if (Result.isError(read)) {
     return read;
   }
-  const { styles, defaultStyleId, numbering, story, footnotes, endnotes } =
-    read.value;
+  const {
+    styles,
+    defaultEmphasis,
+    defaultStyleId,
+    numbering,
+    story,
+    footnotes,
+    endnotes,
+  } = read.value;
 
   const warnings = [...story.warnings];
   const formattingRevisions =
@@ -492,6 +540,7 @@ export const analyzeDocument = async (
     body,
     story,
     styles,
+    defaultEmphasis,
     stylesPath,
     stylesXml,
     defaultStyleId,
@@ -510,9 +559,10 @@ export const analyzeDocument = async (
  */
 export const analyzeDocxBlocks = async (
   docx: Uint8Array,
-): Promise<Result<DocxBlockManifest, TemplatePlanError>> => {
-  const analyzed = await analyzeDocument(docx);
-  return Result.isError(analyzed)
-    ? analyzed
-    : Result.ok(analyzed.value.manifest);
-};
+): Promise<Result<DocxBlockManifest, TemplatePlanError>> =>
+  await guarded(async () => {
+    const analyzed = await analyzeDocument(docx);
+    return Result.isError(analyzed)
+      ? analyzed
+      : Result.ok(analyzed.value.manifest);
+  });

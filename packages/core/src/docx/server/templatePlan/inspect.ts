@@ -9,7 +9,7 @@ import {
   styleOutlineLevel,
 } from "./blocks";
 import { styleNumbering } from "./labels";
-import { readPartText } from "./package";
+import { guarded, readPartText } from "./package";
 import {
   createStoryState,
   readParagraph,
@@ -135,6 +135,7 @@ export const partFields = (part: RawPart): StoryField[] => {
       cellStart: () => {},
       tableEnd: () => {},
       unread: () => {},
+      tracked: () => {},
     });
   };
   if (isW(part.root, "footnotes") || isW(part.root, "endnotes")) {
@@ -230,9 +231,10 @@ export const inspectAnalyzedTemplate = async (
  */
 export const inspectDocxTemplate = async (
   docx: Uint8Array,
-): Promise<Result<DocxTemplateInspection, TemplatePlanError>> => {
-  const analyzed = await analyzeDocument(docx);
-  return Result.isError(analyzed)
-    ? analyzed
-    : await inspectAnalyzedTemplate(analyzed.value);
-};
+): Promise<Result<DocxTemplateInspection, TemplatePlanError>> =>
+  await guarded(async () => {
+    const analyzed = await analyzeDocument(docx);
+    return Result.isError(analyzed)
+      ? analyzed
+      : await inspectAnalyzedTemplate(analyzed.value);
+  });

@@ -11,7 +11,6 @@ import { paraIdAttribute } from "../../paraIdAttribute";
 import { getLocalName, type XmlElement } from "../../xmlParser";
 import {
   elementChildren,
-  isW,
   MARKUP_COMPATIBILITY_NAMESPACE,
   MATH_NAMESPACE,
   relationshipAttr,
@@ -37,8 +36,10 @@ export type AtomKind =
   | "object";
 
 export type AtomLink =
-  | { kind: "relationship"; relationshipId: string }
-  | { kind: "url"; url: string }
+  /** A link through a relationship; `anchor` is the fragment its element adds. */
+  | { kind: "relationship"; relationshipId: string; anchor: string | null }
+  | { kind: "url"; url: string; anchor: string | null }
+  /** A link to a bookmark of the same document. */
   | { kind: "anchor"; anchor: string };
 
 /** A piece of inline content with the text it contributes to its block. */
@@ -68,6 +69,8 @@ export type StoryField = {
   endParagraphOrdinal: number;
   /** Whether both ends were seen. */
   closed: boolean;
+  /** Whether the field sits in the code of another field. */
+  nestedInCode: boolean;
 };
 
 type OpenField = {
@@ -83,7 +86,7 @@ export type StoryState = {
   comments: number;
   trackedChanges: number;
   formattingRevisions: number;
-  /** Complex field ends met with no field open. */
+  /** Field separators and ends met with no field open to take them. */
   strayFieldEnds: number;
 };
 
@@ -110,9 +113,13 @@ export type ParagraphRead = {
   text: string;
   /** Indices into `StoryState.fields` of the fields beginning here. */
   fieldIndices: number[];
+  /** Fields of earlier paragraphs still open where this one starts. */
+  openFieldsAtStart: number;
   bookmarks: ParagraphBookmark[];
   bookmarkEndIds: string[];
   inlineObjects: number;
+  /** Names of content the reader has no text for and the transfer cannot carry. */
+  unsupported: string[];
   hasSectionBreak: boolean;
   /** Whether the paragraph mark is a tracked insertion or deletion. */
   hasTrackedMark: boolean;
@@ -131,12 +138,77 @@ const PROPERTY_REVISIONS = new Set([
   "numberingChange",
 ]);
 const OBJECT_RUN_CHILDREN = new Set(["drawing", "pict", "object"]);
+/** Run children that carry no content of their own, or are read elsewhere. */
+const IGNORED_RUN_CHILDREN = new Set([
+  "rPr",
+  "lastRenderedPageBreak",
+  "footnoteRef",
+  "endnoteRef",
+  "annotationRef",
+  "separator",
+  "continuationSeparator",
+  "delText",
+  "delInstrText",
+]);
+/** Paragraph-level children that mark ranges or carry properties only. */
+const IGNORED_INLINE_CHILDREN = new Set([
+  "pPr",
+  "rPr",
+  "sdtPr",
+  "sdtEndPr",
+  "smartTagPr",
+  "customXmlPr",
+  "commentRangeStart",
+  "commentRangeEnd",
+  "proofErr",
+  "permStart",
+  "permEnd",
+  "moveFromRangeStart",
+  "moveFromRangeEnd",
+  "moveToRangeStart",
+  "moveToRangeEnd",
+  "customXmlInsRangeStart",
+  "customXmlInsRangeEnd",
+  "customXmlDelRangeStart",
+  "customXmlDelRangeEnd",
+  "customXmlMoveFromRangeStart",
+  "customXmlMoveFromRangeEnd",
+  "customXmlMoveToRangeStart",
+  "customXmlMoveToRangeEnd",
+]);
+const CONTENT_REVISIONS = new Set(["ins", "del", "moveFrom", "moveTo"]);
 
+const REPLACEMENT_CHARACTER = "\uFFFD";
+const FIRST_SURROGATE = 0xd800;
+const LAST_SURROGATE = 0xdfff;
+const FIRST_PRINTABLE = 0x20;
+
+/** The character a `w:sym` shows; one a string cannot hold whole reads as U+FFFD. */
 const symbolText = (element: XmlElement): string => {
   const code = Number.parseInt(wAttr(element, "char") ?? "", 16);
-  return Number.isInteger(code) && code > 0 && code <= 0x10ffff
+  return Number.isInteger(code) &&
+    code >= FIRST_PRINTABLE &&
+    code <= 0x10ffff &&
+    (code < FIRST_SURROGATE || code > LAST_SURROGATE)
     ? String.fromCodePoint(code)
-    : "�";
+    : REPLACEMENT_CHARACTER;
+};
+
+/** Tracked insertions, deletions and moves anywhere under `element`. */
+const countContentRevisions = (element: XmlElement): number => {
+  let count = 0;
+  const stack: XmlElement[] = [element];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (node === undefined) {
+      continue;
+    }
+    if (CONTENT_REVISIONS.has(wName(node) ?? "")) {
+      count += 1;
+    }
+    stack.push(...elementChildren(node));
+  }
+  return count;
 };
 
 const textOf = (element: XmlElement): string =>
@@ -204,6 +276,7 @@ const beginField = (walk: ParagraphWalk, instruction: string): StoryField => {
     paragraphOrdinal: read.ordinal,
     endParagraphOrdinal: read.ordinal,
     closed: false,
+    nestedInCode: inCode(state),
   };
   state.fields.push(field);
   read.fieldIndices.push(field.index);
@@ -229,16 +302,25 @@ const readRun = (
   ): void => {
     pushAtom(walk, { kind, text, runProperties, link, element });
   };
+  // An object travels whole, so what it holds inside is checked here.
+  const object = (element: XmlElement): void => {
+    if (inCode(state)) {
+      return;
+    }
+    read.inlineObjects += 1;
+    state.trackedChanges += countContentRevisions(element);
+    atom("object", "", element);
+  };
   for (const child of elementChildren(run)) {
     const name = wName(child);
     if (name === null) {
       if (
         child.namespaceUri === MARKUP_COMPATIBILITY_NAMESPACE &&
-        getLocalName(child.name) === "AlternateContent" &&
-        !inCode(state)
+        getLocalName(child.name) === "AlternateContent"
       ) {
-        read.inlineObjects += 1;
-        atom("object", "", child);
+        object(child);
+      } else if (!inCode(state)) {
+        read.unsupported.push(child.name ?? "");
       }
       continue;
     }
@@ -286,7 +368,9 @@ const readRun = (
           state.open.push({ field: beginField(walk, ""), phase: "code" });
         } else if (type === "separate") {
           const top = state.open.at(-1);
-          if (top !== undefined) {
+          if (top === undefined || top.phase === "result") {
+            state.strayFieldEnds += 1;
+          } else {
             top.phase = "result";
             top.field.kind = fieldKindOf(top.field.instruction);
             top.field.resultStart =
@@ -312,9 +396,11 @@ const readRun = (
         break;
       }
       default:
-        if (OBJECT_RUN_CHILDREN.has(name) && !inCode(state)) {
-          read.inlineObjects += 1;
-          atom("object", "", child);
+        if (OBJECT_RUN_CHILDREN.has(name)) {
+          object(child);
+        } else if (!IGNORED_RUN_CHILDREN.has(name) && !inCode(state)) {
+          // Ruby text, legacy date and page marks: content with no reader.
+          read.unsupported.push(name);
         }
         break;
     }
@@ -344,6 +430,8 @@ const readInline = (
           link: context.link,
           element: child,
         });
+      } else if (!inCode(state)) {
+        read.unsupported.push(child.name ?? "");
       }
       continue;
     }
@@ -354,7 +442,7 @@ const readInline = (
       const anchor = wAttr(child, "anchor");
       let link: AtomLink | null = context.link;
       if (relationshipId !== null) {
-        link = { kind: "relationship", relationshipId };
+        link = { kind: "relationship", relationshipId, anchor };
       } else if (anchor !== null) {
         link = { kind: "anchor", anchor };
       }
@@ -385,6 +473,8 @@ const readInline = (
       });
     } else if (name === "bookmarkEnd") {
       read.bookmarkEndIds.push(wAttr(child, "id") ?? "");
+    } else if (!IGNORED_INLINE_CHILDREN.has(name) && !inCode(state)) {
+      read.unsupported.push(name);
     }
   }
 };
@@ -420,9 +510,11 @@ export const readParagraph = (
     atoms: [],
     text: "",
     fieldIndices: [],
+    openFieldsAtStart: state.open.length,
     bookmarks: [],
     bookmarkEndIds: [],
     inlineObjects: 0,
+    unsupported: [],
     hasSectionBreak: wChild(properties, "sectPr") !== null,
     hasTrackedMark,
   };
@@ -447,9 +539,18 @@ export type StoryBlockVisitor = {
   tableEnd: (element: XmlElement) => void;
   /** A block-level element the walk does not read. */
   unread: (element: XmlElement) => void;
+  /** A tracked insertion, deletion or move of a block, row or cell. */
+  tracked: (element: XmlElement) => void;
 };
 
-const BLOCK_WRAPPERS = new Set(["customXml", "ins", "moveTo"]);
+const BLOCK_WRAPPERS = new Set(["customXml"]);
+const ROW_REVISIONS = ["ins", "del"] as const;
+const CELL_REVISIONS = ["cellIns", "cellDel", "cellMerge"] as const;
+
+const hasRevisionChild = (
+  properties: XmlElement | null,
+  names: readonly string[],
+): boolean => names.some((name) => wChild(properties, name) !== null);
 const IGNORED_BLOCK_CHILDREN = new Set([
   "sectPr",
   "bookmarkStart",
@@ -482,6 +583,9 @@ const walkRows = (
   for (const child of elementChildren(container)) {
     const name = wName(child);
     if (name === "tr") {
+      if (hasRevisionChild(wChild(child, "trPr"), ROW_REVISIONS)) {
+        visitor.tracked(child);
+      }
       const row = rowCounter.row;
       rowCounter.row += 1;
       let col = 0;
@@ -489,6 +593,9 @@ const walkRows = (
         for (const cell of elementChildren(rowContainer)) {
           const cellName = wName(cell);
           if (cellName === "tc") {
+            if (hasRevisionChild(wChild(cell, "tcPr"), CELL_REVISIONS)) {
+              visitor.tracked(cell);
+            }
             visitor.cellStart(row, col);
             col += 1;
             walkBlocks(cell, visitor, depth + 1);
@@ -499,6 +606,8 @@ const walkRows = (
             }
           } else if (cellName !== null && BLOCK_WRAPPERS.has(cellName)) {
             walkCells(cell);
+          } else if (cellName !== null && CONTENT_REVISIONS.has(cellName)) {
+            visitor.tracked(cell);
           }
         }
       };
@@ -510,6 +619,8 @@ const walkRows = (
       }
     } else if (name !== null && BLOCK_WRAPPERS.has(name)) {
       walkRows(child, visitor, depth, rowCounter);
+    } else if (name !== null && CONTENT_REVISIONS.has(name)) {
+      visitor.tracked(child);
     }
   }
 };
@@ -538,12 +649,10 @@ export const walkBlocks = (
       }
     } else if (name !== null && BLOCK_WRAPPERS.has(name)) {
       walkBlocks(child, visitor, depth);
+    } else if (name !== null && CONTENT_REVISIONS.has(name)) {
+      visitor.tracked(child);
     } else if (name === null || !IGNORED_BLOCK_CHILDREN.has(name)) {
       visitor.unread(child);
     }
   }
 };
-
-/** Whether `element` is the `w:p` or `w:tbl` a block id names. */
-export const isBlockElement = (element: XmlElement): boolean =>
-  isW(element, "p") || isW(element, "tbl");

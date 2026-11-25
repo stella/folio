@@ -88,11 +88,14 @@ export const updateSettingsOnOffChild = (
     if (stack.length === 1) {
       const child = children[childIndex];
       if (child?.name !== name) return null;
+      // A child of another namespace (the math properties, the schema
+      // library, later extensions) sits after every on/off child in the
+      // schema's order, so the flag goes before it too.
       if (
         firstFollowingChildStart < 0 &&
-        WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(child) ?? "") &&
-        (SETTINGS_CHILD_ORDINALS.get(getLocalName(child.name)) ?? -1) >
-          childOrder
+        (!WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(child) ?? "") ||
+          (SETTINGS_CHILD_ORDINALS.get(getLocalName(child.name)) ?? -1) >
+            childOrder)
       ) {
         firstFollowingChildStart = token.index;
       }
