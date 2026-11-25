@@ -1077,6 +1077,46 @@ export function assertPinnedProperty<Ts>(
   return runConfiguredProperty(property, replays);
 }
 
+/**
+ * `property` replayed along `config`'s path, running no more than its planned
+ * cases. fast-check ignores `numRuns` once a path is deeper than its first
+ * step: after the case the path names, it runs every remaining shrink sibling
+ * of the last step, so a pinned case that now passes would replay dozens of
+ * neighbours it never recorded. The walk ends once the planned cases ran; a
+ * case that fails still shrinks as fast-check would.
+ */
+const plannedCasesOnly = <Ts>(
+  property: fc.IRawProperty<Ts>,
+  config: fc.Parameters<Ts>,
+): fc.IRawProperty<Ts> => {
+  if (config.path === undefined || !config.path.includes(":")) return property;
+  const planned = config.numRuns ?? FAST_CHECK_DEFAULT_NUM_RUNS;
+  let ran = 0;
+  let failed = false;
+  const counted = (
+    outcome: fc.PreconditionFailure | fc.PropertyFailure | null,
+  ) => {
+    if (outcome instanceof fc.PreconditionFailure) return outcome;
+    ran += 1;
+    if (outcome !== null) failed = true;
+    return outcome;
+  };
+  return {
+    isAsync: () => property.isAsync(),
+    generate: (mrng, runId) => property.generate(mrng, runId),
+    shrink: (value) =>
+      property.shrink(value).takeWhile(() => failed || ran < planned),
+    runBeforeEach: () => property.runBeforeEach(),
+    runAfterEach: () => property.runAfterEach(),
+    run: (value) => {
+      const outcome = property.run(value);
+      return outcome instanceof Promise
+        ? outcome.then(counted)
+        : counted(outcome);
+    },
+  };
+};
+
 const withoutTimeLimit = <Ts>(config: fc.Parameters<Ts>): fc.Parameters<Ts> => {
   const copy = { ...config };
   Reflect.deleteProperty(copy, "interruptAfterTimeLimit");
@@ -1093,11 +1133,12 @@ const runConfiguredProperty = <Ts>(
   ): [fc.IRawProperty<Ts>, fc.Parameters<Ts>] => {
     reportFuzzHealth({ status: "started", completed: 0 });
     const budget = configBudgets.get(config);
+    const planned = plannedCasesOnly(property, config);
     // fast-check's own limit reads a clock fake timers may move; the wrapper
     // keeps the budget on the real one.
     return budget === undefined
-      ? [property, config]
-      : [shrinkBounded(property, budget), withoutTimeLimit(config)];
+      ? [planned, config]
+      : [shrinkBounded(planned, budget), withoutTimeLimit(config)];
   };
   if (property.isAsync()) {
     return (async () => {
