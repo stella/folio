@@ -352,10 +352,12 @@ export const sequentialGroups = ({
     return gapStart(from) * 1_000_000_000 + offset;
   };
   const indexed = applied.map((operation, index) => ({ operation, index }));
-  const deleted = new Set(
-    applied
-      .filter((operation) => operation.type === "deleteBlock")
-      .map(blockIdOf),
+  const deletionOf = new Map(
+    applied.flatMap((operation) =>
+      operation.type === "deleteBlock"
+        ? [[blockIdOf(operation), operation] as const]
+        : [],
+    ),
   );
   const containers = new Map<string, Row[]>();
   for (const row of preRows) {
@@ -372,15 +374,17 @@ export const sequentialGroups = ({
    * container, up to a table (rows of another container, `preRows` being in
    * document order) or the container's start.
    */
-  const breakCarrierOf = (last: Row): FinalBreakCarrier<Row> => {
+  const breakCandidatesOf = (last: Row): FinalBreakCandidate<Row>[] => {
     const before: FinalBreakCandidate<Row>[] = [];
     for (let at = preRows.indexOf(last) - 1; at >= 0; at -= 1) {
       const row = preRows.at(at);
       if (!sameContainerRows(last, row)) break;
-      before.push({ paragraph: row, deleted: deleted.has(row.id) });
+      before.push({ paragraph: row, deleted: deletionOf.has(row.id) });
     }
-    return finalBreakCarrier(before);
+    return before;
   };
+  const breakCarrierOf = (last: Row): FinalBreakCarrier<Row> =>
+    finalBreakCarrier(breakCandidatesOf(last));
   /**
    * Whether the batch places a block in the gap before a deleted final
    * paragraph's run: the paragraph and the ones before it in its container the
@@ -393,7 +397,7 @@ export const sequentialGroups = ({
     let start = lastAt;
     while (start > 0) {
       const row = preRows.at(start - 1);
-      if (!sameContainerRows(last, row) || !deleted.has(row.id)) break;
+      if (!sameContainerRows(last, row) || !deletionOf.has(row.id)) break;
       start -= 1;
     }
     return applied.some((operation) => {
@@ -412,6 +416,7 @@ export const sequentialGroups = ({
   const retiringFinals = new Set<string>();
   const finalBlocks = new Set<string>();
   const uncarriedFinals = new Set<string>();
+  const suggestedClosingRuns = new Map<string, AnyOperation>();
   /** A late final deletion's block, mapped to its run's first paragraph, deleted after it. */
   const runStartAfter = new Map<string, string>();
   // A suggestion reads the live rows, where a paragraph pending deletion is a
@@ -431,8 +436,9 @@ export const sequentialGroups = ({
         operation.type === "insertAfterBlock" &&
         blockIdOf(operation) === last.id,
     );
-    if (appended || !deleted.has(last.id)) continue;
-    const carrier = breakCarrierOf(last);
+    if (appended || !deletionOf.has(last.id)) continue;
+    const candidates = breakCandidatesOf(last);
+    const carrier = finalBreakCarrier(candidates);
     if (carrier.type !== "kept") uncarriedFinals.add(last.id);
     // A sole paragraph with one inserted before it is deleted first, and the
     // insertion takes its place. A paragraph that ends a deleted run stays until
@@ -451,6 +457,21 @@ export const sequentialGroups = ({
         ? !replaced || endsARun
         : mode === "direct" && carrier.type !== "kept" && replaced && endsARun;
     const placesInRun = placesBeforeRun(last);
+    // With a kept carrier, a closing deletion in a suggested batch runs
+    // after the earlier deletions in its run. Running it first gives the
+    // final paragraph a property change belonging to that suggestion, which
+    // the other suggestions cannot take back.
+    if (mode === "suggested" && carrier.type === "kept" && !placesInRun) {
+      const carrierAt = candidates.findIndex(
+        ({ paragraph }) => paragraph === carrier.paragraph,
+      );
+      if (carrierAt > 0) {
+        const firstDeleted = candidates.at(carrierAt - 1);
+        const deletion =
+          firstDeleted && deletionOf.get(firstDeleted.paragraph.id);
+        if (deletion !== undefined) suggestedClosingRuns.set(last.id, deletion);
+      }
+    }
     if (!runsLate && !placesInRun) continue;
     retiringFinals.add(last.id);
     // A run the batch deletes back to its container's start or a table
@@ -508,8 +529,12 @@ export const sequentialGroups = ({
           inputIndex: index,
         };
       }
+      const closesRun =
+        operation.type === "deleteBlock"
+          ? suggestedClosingRuns.get(blockIdOf(operation))
+          : undefined;
       const [block, inside, offset] = placement(
-        operation,
+        closesRun ?? operation,
         preRows,
         joinsInto,
         liveRows,
@@ -519,10 +544,11 @@ export const sequentialGroups = ({
         hasDeletedSplit && operation.type === "deleteBlock"
           ? (block + 1) * 1_000_000_000
           : block * 1_000_000_000 + inside * 100_000_000 + offset;
+      const rank = contentRank(operation, { hasDeletedSplit });
       return {
         type: "content",
         position,
-        rank: contentRank(operation, { hasDeletedSplit }),
+        rank: closesRun === undefined ? rank : rank + 1,
         inputIndex: index,
       };
     },
@@ -555,7 +581,7 @@ export const sequentialGroups = ({
     const id = blockIdOf(operation);
     if (operation.type === "insertBeforeBlock") {
       const retires = mode !== "suggested" && uncarriedFinals.has(id);
-      return deleted.has(id) && !retires ? id : undefined;
+      return deletionOf.has(id) && !retires ? id : undefined;
     }
     if (operation.type !== "insertAfterBlock" || mode === "direct") {
       return undefined;
@@ -563,7 +589,7 @@ export const sequentialGroups = ({
     const index = preRows.findIndex((row) => row.id === id);
     const next = preRows.at(index + 1);
     return next !== undefined &&
-      deleted.has(next.id) &&
+      deletionOf.has(next.id) &&
       (finalBlocks.has(next.id) || finalBeforeBlanks.has(next.id)) &&
       sameContainerRows(next, preRows.at(index))
       ? next.id
