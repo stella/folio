@@ -218,7 +218,7 @@ import {
   insertedColumnWidth,
   omittedSlotTakingColumn,
 } from "../prosemirror/tableGridMutation";
-import { paragraphGoes } from "../prosemirror/tableRunIn";
+import { paragraphGoes, tableGoes } from "../prosemirror/tableRunIn";
 import {
   CANONICAL_GAP,
   type CanonicalGap,
@@ -604,6 +604,7 @@ type PlannedOperation = {
   collapsesRunStart?: true;
   retiresRunBreak?: RunCarrier;
   followsTableInsertion?: true;
+  removesParagraphBeforeBlock?: true;
 };
 
 /** What precedes a run of paragraphs a batch deletes (`finalBreakCarrier`). */
@@ -799,13 +800,32 @@ const orderCanonicalBatch = <T extends PlannedOperation>({
   doc,
   mode,
 }: CanonicalBatchOrderOptions<T>): T[] => {
-  const deletionOf = new Map(
-    items.flatMap((item) =>
-      item.operation.type === "deleteBlock"
-        ? [[item.plan.block, item] as const]
-        : [],
-    ),
-  );
+  const deletionOf = new Map<number, T>();
+  const directTableDeletionOf = new Map<number, T>();
+  for (const item of items) {
+    const { claim, block } = item.plan;
+    if (claim.type === "deleteBlock") deletionOf.set(block, item);
+    if (
+      mode === "direct" &&
+      claim.type === "tableRemoval" &&
+      claim.axis === "table"
+    )
+      directTableDeletionOf.set(claim.table, item);
+  }
+  const precedingTableDeletionOf = new Map<T, T>();
+  if (directTableDeletionOf.size > 0) {
+    for (const item of deletionOf.values()) {
+      if (!item.removesParagraphBeforeBlock) continue;
+      const at = doc.resolve(item.plan.block);
+      let position = at.pos;
+      for (let index = at.index() - 1; index >= 0; index--) {
+        position -= at.parent.child(index).nodeSize;
+        const tableDeletion = directTableDeletionOf.get(position);
+        if (tableDeletion === undefined) break;
+        precedingTableDeletionOf.set(item, tableDeletion);
+      }
+    }
+  }
   const deleted = new Set(deletionOf.keys());
   const joinedAway = new Set(
     items.flatMap(({ plan }) =>
@@ -878,6 +898,11 @@ const orderCanonicalBatch = <T extends PlannedOperation>({
         ? { ...planned, position: before.position, rank: before.rank + steps }
         : planned;
     };
+    // The paragraph between tables can go whole only after the batch has
+    // removed the tables before it. Tables after it already run first.
+    const precedingTableDeletion = precedingTableDeletionOf.get(item);
+    if (precedingTableDeletion !== undefined)
+      return following(precedingTableDeletion, 1);
     // A direct merge into a paragraph the batch deletes runs after that
     // deletion, and after a deletion of the container's last paragraph that
     // joins across it, so it joins what then follows.
@@ -1430,16 +1455,12 @@ const lastPutAfterIsTable = (
 type DeletedParagraphPlacementOptions = {
   /** The batch's insertions beside the paragraph, in input order. */
   beside: readonly (BlockInsertion | TableInsertion)[];
-  /**
-   * Whether a table stands right before the paragraph when the batch puts
-   * nothing before it: one standing there, or one the batch puts last after
-   * the paragraph before.
-   */
+  /** Whether a table precedes the paragraph if nothing is put right before it. */
   tableBefore: boolean;
-  /** The block after the paragraph as the batch reads it. */
+  /** Whether a table follows the paragraph if nothing is put right after it. */
+  tableAfter: boolean;
+  /** The physical block after the paragraph before the batch runs. */
   after: PMNode | null;
-  /** Whether the batch deletes the table after it. */
-  afterDeleted: boolean;
 };
 
 /**
@@ -1470,8 +1491,8 @@ type DeletedParagraphPlacement =
 const deletedParagraphPlacement = ({
   beside,
   tableBefore,
+  tableAfter,
   after,
-  afterDeleted,
 }: DeletedParagraphPlacementOptions): DeletedParagraphPlacement => {
   const before = beside.filter(
     (operation) => placementSide(operation) === "before",
@@ -1482,9 +1503,7 @@ const deletedParagraphPlacement = ({
   );
   const precededByTable = last === undefined ? tableBefore : placesTable(last);
   const followedByTable =
-    firstAfter === undefined
-      ? after?.type.name === "table" && !afterDeleted
-      : placesTable(firstAfter);
+    firstAfter === undefined ? tableAfter : placesTable(firstAfter);
   if (precededByTable && followedByTable) return { type: "keepsTablesApart" };
   if (after === null || after.type.name === "paragraph")
     return { type: "inPlace" };
@@ -4098,10 +4117,9 @@ type ResolveBlockDeletionOptions = {
    */
   precedesInsertedTable: boolean;
   /**
-   * Whether the batch deletes the table standing right after this
-   * paragraph: with it gone, the paragraph no longer keeps two tables apart.
+   * Whether either physical neighbour is a table the batch removes.
    */
-  precedesDeletedTable: boolean;
+  bordersRemovedTable: boolean;
   /**
    * Whether the batch inserts a paragraph after the paragraph before this
    * one, which then stands between them when this deletion runs.
@@ -6603,20 +6621,22 @@ export class CanonicalPublicOperations {
       };
     }
     // The batch's deletions and merges were resolved beside the blocks it
-    // puts there (`besideDeletions`). A placement declined as it ran does
-    // not land: the batch applies again without it, so they are planned
-    // against what does, and it is reported as declined.
-    const unplaced = new Set(
+    // places or removes there. Replan beside the blocks that actually land
+    // or stay, and preserve the original refusal for each excluded operation.
+    const declinedLayoutChanges = new Set(
       batch.atomic
         ? []
         : batch.operations.flatMap((operation) =>
-            placesBlock(operation) && declinedAsRun.has(operation.id)
+            (placesBlock(operation) && declinedAsRun.has(operation.id)) ||
+            (operation.type === "deleteTable" &&
+              !appliedById.has(operation.id) &&
+              besideDeletions.deleted.size > 0)
               ? [operation.id]
               : [],
           ),
     );
     if (
-      unplaced.size > 0 &&
+      declinedLayoutChanges.size > 0 &&
       batch.operations.some(
         ({ type }) => type === "deleteBlock" || type === "mergeBlockWithNext",
       )
@@ -6625,11 +6645,13 @@ export class CanonicalPublicOperations {
         ...options,
         batch: {
           ...batch,
-          operations: batch.operations.filter(({ id }) => !unplaced.has(id)),
+          operations: batch.operations.filter(
+            ({ id }) => !declinedLayoutChanges.has(id),
+          ),
         },
       });
       const declinedSkips = skipped.flatMap((failure) => {
-        if (!unplaced.has(failure.id)) return [];
+        if (!declinedLayoutChanges.has(failure.id)) return [];
         const canonicalRefusal = refusals.get(failure.id);
         return [canonicalRefusal ? { ...failure, canonicalRefusal } : failure];
       });
@@ -6874,7 +6896,7 @@ export class CanonicalPublicOperations {
     keepsTablesApart,
     followsInsertedTable,
     precedesInsertedTable,
-    precedesDeletedTable,
+    bordersRemovedTable,
     previousGainsFollower,
     tableBeforeGainsFollower,
     endsOnceAccepted,
@@ -7092,13 +7114,13 @@ export class CanonicalPublicOperations {
       // paragraph, it goes whole, as accepting its tracked deletion removes
       // it: the paragraph before it keeps its own mark, and with it any
       // section break. A section break of its own is resolved by the join
-      // below. So does one between two tables when the batch deletes the
-      // table after it.
+      // below. This also applies beside a removed table when the paragraph
+      // no longer keeps surviving tables apart.
       if (
         after !== null &&
         !followsInsertedTable &&
         (before === null ||
-          ((before.type.name === "paragraph" || precedesDeletedTable) &&
+          ((before.type.name === "paragraph" || bordersRemovedTable) &&
             paragraph.node.attrs["_sectionProperties"] == null))
       )
         return tracking({
@@ -7572,22 +7594,54 @@ export class CanonicalPublicOperations {
       blockBefore?.type.name === "paragraph"
         ? blockBefore.attrs["paraId"]
         : undefined;
-    // Deleted by the batch, the blocks put beside it land as
-    // `deletedParagraphPlacement` says, and it stays between two tables.
+    // Find the tables that will actually border the deleted paragraph.
+    // A run of removed tables can expose another table behind it.
+    const batchRemovesTable = (block: PMNode): boolean =>
+      besideDeletions.tables.deleted.size > 0 &&
+      tableParagraphIds(block).some((id) =>
+        besideDeletions.tables.deleted.has(id),
+      );
+    const tableWillBeRemoved = (block: PMNode): boolean =>
+      block.type.name === "table" &&
+      ((tracked && tableGoes(block, "accept")) || batchRemovesTable(block));
+    const resolveDeletedPlacement = () => {
+      let beforePos = paragraph.start - 1;
+      let afterPos = beforePos + paragraph.node.nodeSize;
+      let before = blockBefore;
+      let after = blockAfter;
+      while (before !== null && tableWillBeRemoved(before)) {
+        beforePos -= before.nodeSize;
+        before = state.doc.resolve(beforePos).nodeBefore;
+      }
+      while (after !== null && tableWillBeRemoved(after)) {
+        const beyond = state.doc.resolve(afterPos + after.nodeSize).nodeAfter;
+        // Past a table only a pending deletion takes, a paragraph the batch
+        // deletes too leaves this one closing what remains: it still stands
+        // between the tables as the batch runs.
+        if (
+          !batchRemovesTable(after) &&
+          beyond?.type.name === "paragraph" &&
+          typeof beyond.attrs["paraId"] === "string" &&
+          besideDeletions.deleted.has(beyond.attrs["paraId"])
+        )
+          break;
+        afterPos += after.nodeSize;
+        after = beyond;
+      }
+      const precedingId: unknown =
+        before?.type.name === "paragraph" ? before.attrs["paraId"] : undefined;
+      return deletedParagraphPlacement({
+        beside: besideDeletions.placedBeside(blockId),
+        tableBefore:
+          before?.type.name === "table" ||
+          (typeof precedingId === "string" &&
+            lastPutAfterIsTable(besideDeletions.placedBeside(precedingId))),
+        tableAfter: after?.type.name === "table",
+        after: blockAfter,
+      });
+    };
     const besideDeleted = besideDeletions.deleted.has(blockId)
-      ? deletedParagraphPlacement({
-          beside: besideDeletions.placedBeside(blockId),
-          tableBefore:
-            blockBefore?.type.name === "table" ||
-            (typeof previousId === "string" &&
-              lastPutAfterIsTable(besideDeletions.placedBeside(previousId))),
-          after: blockAfter,
-          afterDeleted:
-            blockAfter?.type.name === "table" &&
-            tableParagraphIds(blockAfter).some((id) =>
-              besideDeletions.tables.deleted.has(id),
-            ),
-        })
+      ? resolveDeletedPlacement()
       : undefined;
     const keepsTablesApart = besideDeleted?.type === "keepsTablesApart";
     if (isTableStructureOperation(operation))
@@ -7780,11 +7834,9 @@ export class CanonicalPublicOperations {
         precedesInsertedTable:
           besideDeletions.tables.after.has(blockId) &&
           !besideDeletions.paragraphsAfter.has(blockId),
-        precedesDeletedTable:
-          after?.type.name === "table" &&
-          tableParagraphIds(after).some((id) =>
-            besideDeletions.tables.deleted.has(id),
-          ),
+        bordersRemovedTable:
+          (before !== null && tableWillBeRemoved(before)) ||
+          (after !== null && tableWillBeRemoved(after)),
         // The paragraph before it is another when the deletion runs: the
         // batch puts one after it, or deletes it first.
         previousGainsFollower:
