@@ -1076,18 +1076,27 @@ export const deleteBlocks = ({
     });
   }
   // The container's last paragraph whose pending deletion took this one's
-  // mark, deleted its words and gave it this paragraph's properties: deleting
-  // this paragraph too takes that property change back and deletes both
-  // together, as deleting this paragraph first and the last one after does.
-  // The break the two retire is then the one before this paragraph, and the
-  // last paragraph takes that paragraph's properties.
+  // mark, deleted its words and gave it this paragraph's properties: with a
+  // paragraph before them whose break the two retire, deleting this one too
+  // takes that property change back and deletes both together, as deleting
+  // this paragraph first and the last one after does, and the last paragraph
+  // takes that paragraph's properties. Back to the container's start or a
+  // block, no break is retired: the run settles on its first paragraph, whose
+  // properties the last one keeps, as it does deleted directly.
   const takenFinal = finalDeletionTakenFrom({
     list,
     following,
     followerIndex,
     last: last.paragraph,
   });
-  if (op.revision !== undefined && op.move !== true && takenFinal !== undefined)
+  const retiresBreakBefore =
+    list[breakRetiredBefore(list, first.index)]?.type === "paragraph";
+  if (
+    op.revision !== undefined &&
+    op.move !== true &&
+    takenFinal !== undefined &&
+    retiresBreakBefore
+  )
     return withFinalDeletionTakenBack({
       document,
       op,

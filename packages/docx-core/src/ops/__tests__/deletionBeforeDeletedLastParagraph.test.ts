@@ -1,14 +1,17 @@
 /**
  * Tracked deletions of a container's last paragraph and of the paragraph
- * before it, whose properties the last one's deletion gives it: one at a
- * time or batched, in either order, they record the same document. Deleting
- * the earlier paragraph second takes back the property change the first
- * deletion recorded. Accepting all equals deleting both directly; rejecting
- * all gives the document back; every inverse is exact.
+ * before it, whose properties the last one's deletion gives it. Each order,
+ * one at a time or batched, accepts to the same deletions made directly in
+ * that order, rejects to the document, and undoes exactly. With a paragraph
+ * before them, whose break the two retire, every order records the same
+ * document: deleting the earlier paragraph second takes back the property
+ * change the first deletion recorded. Back to the container's start or a
+ * table, the run settles on its first paragraph when the last one goes first,
+ * as it does directly.
  */
 import { expect, test } from "bun:test";
 
-import type { Document, Paragraph } from "../../model/document";
+import type { BlockContent, Document, Paragraph } from "../../model/document";
 import {
   type AppliedDocumentOp,
   applyDocumentOp,
@@ -49,8 +52,44 @@ const FORMATTINGS = {
 
 type FormattingName = keyof typeof FORMATTINGS;
 
-/** The paragraph before the item, if any, and its properties. */
-const BEFORE = ["nothing", "none", "right-aligned", "centered"] as const;
+/** What stands before the item, and whether it is a paragraph whose break goes. */
+const BEFORE = {
+  nothing: { blocks: [], retiresBreak: false },
+  "a table": {
+    blocks: [
+      {
+        type: "table",
+        rows: [
+          {
+            type: "tableRow",
+            cells: [
+              {
+                type: "tableCell",
+                content: [paragraph("00000009", "Cell.", undefined)],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    retiresBreak: false,
+  },
+  "a plain paragraph": {
+    blocks: [paragraph(KEPT, "Kept.", undefined)],
+    retiresBreak: true,
+  },
+  "a right-aligned paragraph": {
+    blocks: [paragraph(KEPT, "Kept.", FORMATTINGS["right-aligned"])],
+    retiresBreak: true,
+  },
+  "a centered paragraph": {
+    blocks: [paragraph(KEPT, "Kept.", FORMATTINGS.centered)],
+    retiresBreak: true,
+  },
+} as const satisfies Record<
+  string,
+  { blocks: readonly BlockContent[]; retiresBreak: boolean }
+>;
 
 const ITEMS = ["numbered", "right-aligned"] as const;
 
@@ -64,7 +103,7 @@ const MODES = {
 } as const satisfies Record<string, Omit<RevisionStamp, "id">>;
 
 type DocumentOptions = {
-  before: (typeof BEFORE)[number];
+  before: readonly BlockContent[];
   item: FormattingName;
   closing: FormattingName;
 };
@@ -73,9 +112,7 @@ const documentOf = ({ before, item, closing }: DocumentOptions): Document => ({
   package: {
     document: {
       content: [
-        ...(before === "nothing"
-          ? []
-          : [paragraph(KEPT, "Kept.", FORMATTINGS[before])]),
+        ...structuredClone(before),
         paragraph(ITEM, "Item.", FORMATTINGS[item]),
         paragraph(CLOSING, "Closing.", FORMATTINGS[closing]),
       ],
@@ -136,11 +173,12 @@ const renumbered = (document: Document): unknown => {
   return walk(document);
 };
 
-const CASES = BEFORE.flatMap((before) =>
+const CASES = Object.entries(BEFORE).flatMap(([before, place]) =>
   ITEMS.flatMap((item) =>
     CLOSINGS.flatMap((closing) =>
       Object.entries(MODES).map(([mode, stamp]) => ({
         before,
+        place,
         item,
         closing,
         mode,
@@ -150,10 +188,19 @@ const CASES = BEFORE.flatMap((before) =>
   ),
 );
 
+/** The deletion orders, by the ids each step names once the earlier ran directly. */
+const ORDERS = {
+  "the last paragraph first": {
+    tracked: [CLOSING, ITEM],
+    direct: [CLOSING, CLOSING],
+  },
+  "the item first": { tracked: [ITEM, CLOSING], direct: [ITEM, CLOSING] },
+} as const;
+
 test.each(CASES)(
-  "$mode: deleting a $item paragraph after $before and its $closing last paragraph reads alike in every order",
-  ({ before, item, closing, stamp }) => {
-    const document = documentOf({ before, item, closing });
+  "$mode: deleting a $item paragraph after $before and its $closing last paragraph resolves as directly, in either order",
+  ({ place, item, closing, stamp }) => {
+    const document = documentOf({ before: place.blocks, item, closing });
     let next = 100;
     const deletion = (blockIds: readonly string[]): DocumentOp => {
       const id = next;
@@ -168,43 +215,39 @@ test.each(CASES)(
         },
       };
     };
-    /** One at a time, each step undoing exactly. */
-    const oneAtATime = (order: readonly string[]) => {
-      let current = document;
-      for (const blockId of order) {
-        const step = apply(current, deletion([blockId]));
-        expect(undone(step)).toEqual(current);
-        current = step.document;
+    const recorded: unknown[] = [];
+    for (const order of Object.values(ORDERS)) {
+      // One at a time, each step undoing exactly.
+      let tracked = document;
+      for (const blockId of order.tracked) {
+        const step = apply(tracked, deletion([blockId]));
+        expect(undone(step)).toEqual(tracked);
+        tracked = step.document;
       }
-      return current;
-    };
-    const batched = (order: readonly string[]) => {
       const batch = applyAll(
         document,
-        order.map((blockId) => deletion([blockId])),
+        order.tracked.map((blockId) => deletion([blockId])),
       );
       expect(undone(batch)).toEqual(document);
-      return batch.document;
-    };
+      expect(renumbered(batch.document)).toEqual(renumbered(tracked));
+      let direct = document;
+      for (const blockId of order.direct)
+        direct = apply(direct, {
+          type: DOCUMENT_OP_TYPES.DELETE_BLOCKS,
+          story: OP_STORIES.MAIN,
+          blockIds: [blockId],
+        }).document;
+      expect(resolve(tracked, REVISION_DECISIONS.ACCEPT)).toEqual(direct);
+      expect(resolve(tracked, REVISION_DECISIONS.REJECT)).toEqual(document);
+      recorded.push(renumbered(tracked));
+    }
+    // With a break before them to retire, the order does not matter, and
+    // both deletions at once record the same.
+    if (!place.retiresBreak) return;
     const together = apply(document, deletion([ITEM, CLOSING]));
     expect(undone(together)).toEqual(document);
-    const results = [
-      oneAtATime([CLOSING, ITEM]),
-      oneAtATime([ITEM, CLOSING]),
-      batched([CLOSING, ITEM]),
-      batched([ITEM, CLOSING]),
-    ];
-    for (const result of results)
-      expect(renumbered(result)).toEqual(renumbered(together.document));
-    const direct = apply(document, {
-      type: DOCUMENT_OP_TYPES.DELETE_BLOCKS,
-      story: OP_STORIES.MAIN,
-      blockIds: [ITEM, CLOSING],
-    }).document;
-    for (const result of results) {
-      expect(resolve(result, REVISION_DECISIONS.ACCEPT)).toEqual(direct);
-      expect(resolve(result, REVISION_DECISIONS.REJECT)).toEqual(document);
-    }
+    for (const result of recorded)
+      expect(result).toEqual(renumbered(together.document));
   },
 );
 
@@ -215,7 +258,11 @@ test.each([
   "a suggestion takes back no property change $first recorded",
   ({ firstStamp }) => {
     const closingDeleted = apply(
-      documentOf({ before: "none", item: "numbered", closing: "centered" }),
+      documentOf({
+        before: BEFORE["a plain paragraph"].blocks,
+        item: "numbered",
+        closing: "centered",
+      }),
       {
         type: DOCUMENT_OP_TYPES.DELETE_BLOCKS,
         story: OP_STORIES.MAIN,
