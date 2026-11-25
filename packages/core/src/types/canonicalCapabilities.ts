@@ -224,7 +224,7 @@ export const CANONICAL_CAPABILITIES: {
     readonly legacySessionMutation: "pm-headless-reviewer";
     readonly kind: "mutation-source";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Hosts can still pin the legacy reviewer engine, which runs on ProseMirror; a canonical reviewer refuses only a suggestion resolved in one of several stories it reaches.";
+    readonly summary: "Hosts can still pin the legacy reviewer engine, which runs on ProseMirror; a canonical reviewer refuses to resolve one story of a suggestion that reaches several, which resolves only whole.";
   };
   readonly "pm-ai-snapshots": {
     readonly owner: "ai-edits";
@@ -363,7 +363,7 @@ export const CANONICAL_CAPABILITIES: {
     kind: "mutation-source",
     adapters: ["react", "vue"],
     summary:
-      "Hosts can still pin the legacy reviewer engine, which runs on ProseMirror; a canonical reviewer refuses only a suggestion resolved in one of several stories it reaches.",
+      "Hosts can still pin the legacy reviewer engine, which runs on ProseMirror; a canonical reviewer refuses to resolve one story of a suggestion that reaches several, which resolves only whole.",
   },
   [CANONICAL_GAP.aiSnapshots]: {
     owner: "ai-edits",
