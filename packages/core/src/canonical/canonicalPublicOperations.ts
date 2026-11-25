@@ -6112,6 +6112,8 @@ export class CanonicalPublicOperations {
       };
     };
     type OperationAttempt = ReturnType<typeof prepareOperation>;
+    /** The operations that resolved but were declined as they ran. */
+    const declinedAsRun = new Set<string>();
     const commitOperation = (
       resolvedOperation: AdmittedOperation,
       prepared: OperationAttempt,
@@ -6121,6 +6123,7 @@ export class CanonicalPublicOperations {
         if (prepared.refusal !== undefined)
           refusals.set(operation.id, prepared.refusal);
         skip(operation.id, prepared.reason, prepared.message);
+        declinedAsRun.add(operation.id);
         return;
       }
       const survivorMaps =
@@ -6583,6 +6586,52 @@ export class CanonicalPublicOperations {
               : [];
           }),
         ],
+      };
+    }
+    // The batch's deletions and merges were resolved beside the blocks it
+    // puts there (`besideDeletions`). A placement declined as it ran does
+    // not land: the batch applies again without it, so they are planned
+    // against what does, and it is reported as declined.
+    const unplaced = new Set(
+      batch.atomic
+        ? []
+        : batch.operations.flatMap((operation) =>
+            placesBlock(operation) && declinedAsRun.has(operation.id)
+              ? [operation.id]
+              : [],
+          ),
+    );
+    if (
+      unplaced.size > 0 &&
+      batch.operations.some(
+        ({ type }) => type === "deleteBlock" || type === "mergeBlockWithNext",
+      )
+    ) {
+      const rest = this.apply({
+        ...options,
+        batch: {
+          ...batch,
+          operations: batch.operations.filter(({ id }) => !unplaced.has(id)),
+        },
+      });
+      const declinedSkips = skipped.flatMap((failure) => {
+        if (!unplaced.has(failure.id)) return [];
+        const canonicalRefusal = refusals.get(failure.id);
+        return [canonicalRefusal ? { ...failure, canonicalRefusal } : failure];
+      });
+      const allSkipped = [...rest.skipped, ...declinedSkips].toSorted(
+        (left, right) =>
+          (inputOrder.get(left.id) ?? 0) - (inputOrder.get(right.id) ?? 0),
+      );
+      return {
+        ...rest,
+        skipped: allSkipped,
+        issues: getFolioDocumentOperationIssues(batch.operations, allSkipped),
+        receipts: getFolioDocumentOperationReceiptsForStory({
+          operations: batch.operations,
+          applied: rest.applied,
+          story: publicStory,
+        }),
       };
     }
     if (batch.atomic && skipped.length > 0) {
