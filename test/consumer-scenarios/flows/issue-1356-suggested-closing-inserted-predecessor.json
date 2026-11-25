@@ -1,0 +1,76 @@
+{
+  "version": 1,
+  "title": "A suggested closing deletion precedes the deletion of an already inserted paragraph",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "plain",
+  "mode": "suggested",
+  "seed": 31345,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 4159539947,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "483CD5EB",
+          "text": "Payment warranty party written goods term clause."
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 2640103819,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "5E88C024",
+          "text": "Agreement warranty agreement supplier.",
+          "alignment": "right"
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 1816444558,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "@5",
+          "text": "Agreement supplier term buyer schedule period schedule."
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 424890824,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "@6",
+          "text": "Period clause goods."
+        }
+      ],
+      "atomic": false
+    },
+    {
+      "action": "story batch",
+      "seed": 3392245583,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "483CD5EB"
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "@7"
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from random flow seed 31345"
+}

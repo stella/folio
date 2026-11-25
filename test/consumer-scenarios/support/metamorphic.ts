@@ -74,6 +74,7 @@ import type { Mode } from "./operations.ts";
 import {
   intentResolutionScope,
   markDeletedIds,
+  markInsertedIds,
   resolvedState,
   type Row,
   wordsDeletedIds,
@@ -1394,6 +1395,9 @@ export const startRelations = async ({
               wordsDeleted: wordsDeletedIds(pre),
             }),
       goWhole: blanksGoingWhole(preRows, joinSources),
+      ...(batchMode === "suggested" && {
+        markInserted: markInsertedIds(pre, story),
+      }),
     })) {
       const snapshot =
         story.type === "main"

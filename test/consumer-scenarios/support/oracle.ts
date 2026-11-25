@@ -4869,7 +4869,10 @@ export const markDeletedIds = (reviewer: Reviewer): Set<string> =>
   );
 
 /** The inserted marks in this story, including those of staged suggestions. */
-const markInsertedIds = (reviewer: Reviewer, story: Story): Set<string> => {
+export const markInsertedIds = (
+  reviewer: Reviewer,
+  story: Story,
+): Set<string> => {
   const ids = new Set<string>();
   const snapshot = reviewer.snapshotStory(story);
   if (snapshot === null) return ids;
