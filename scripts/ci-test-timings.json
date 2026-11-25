@@ -412,7 +412,6 @@
   "packages/core/src/controller/canonicalPreservedBlocks.test.ts": 26,
   "packages/core/src/controller/canonicalProjectionKept.property.test.ts": 5921,
   "packages/core/src/controller/canonicalPublicOperations.test.ts": 1473,
-  "packages/core/src/controller/canonicalPublicTableOperations.test.ts": 17005,
   "packages/core/src/controller/canonicalRangeAnchorDeletion.test.ts": 650,
   "packages/core/src/controller/canonicalRefusalOracle.test.ts": 1129,
   "packages/core/src/controller/canonicalRemoteApply.property.test.ts": 4081,

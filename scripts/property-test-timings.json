@@ -78,7 +78,6 @@
   "packages/core/src/controller/canonicalOperations.test.ts": 37,
   "packages/core/src/controller/canonicalProjectionKept.property.test.ts": 4747,
   "packages/core/src/controller/canonicalPublicOperations.test.ts": 552,
-  "packages/core/src/controller/canonicalPublicTableOperations.test.ts": 6487,
   "packages/core/src/controller/canonicalRangeAnchorDeletion.test.ts": 494,
   "packages/core/src/controller/canonicalRemoteApply.property.test.ts": 1809,
   "packages/core/src/controller/canonicalResourceReplacement.property.test.ts": 562,
