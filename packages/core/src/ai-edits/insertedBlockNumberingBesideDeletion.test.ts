@@ -160,3 +160,85 @@ describe.each(["canonical"] as const)("on the %s session", (session) => {
     ).toBe(7);
   });
 });
+
+// A paragraph put before a pending join reads as the joined paragraph, which
+// has the properties of the paragraph the join leaves: before an emptied list
+// item whose break is pending deletion, it is no list item (#1738). Applied
+// directly, tracked or suggested, accepting gives the same paragraphs.
+describe("a paragraph inserted before an emptied list item pending deletion", () => {
+  const MODES = ["direct", "tracked-changes", "suggested"] as const;
+
+  const insertBefore = async (mode: (typeof MODES)[number]) => {
+    const earlier = await FolioDocxReviewer.fromBuffer(
+      await numberedDocument(),
+      { session: "canonical", author: "Earlier Reviewer" },
+    );
+    expect(
+      earlier.applyDocumentOperations(
+        {
+          version: 1,
+          mode: "tracked-changes",
+          operations: [
+            {
+              id: "delete",
+              type: "deleteBlock",
+              blockId: idOf(earlier, "Numbered clause one"),
+            },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      ).skipped,
+    ).toEqual([]);
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await earlier.toBuffer(),
+      { session: "canonical", author: "Editor" },
+    );
+    // A reader lists the deleted clause as a blank block after the heading.
+    const clause = reviewer.getContent().at(1);
+    expect(clause?.text).toBe("");
+    if (clause === undefined) throw new Error("Missing fixture");
+    // Its words go; its emptied paragraph's break stays pending deletion.
+    const words = reviewer.getChanges().find(({ type }) => type === "deletion");
+    expect(words && reviewer.acceptChange(words)).toBe(true);
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode,
+        operations: [
+          {
+            id: "insert",
+            type: "insertBeforeBlock",
+            blockId: clause.id,
+            text: "Inserted clause.",
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
+    expect(result.skipped).toEqual([]);
+    const pending = reviewer
+      .getContent()
+      .find(({ text }) => text === "Inserted clause.");
+    for (const { suggestionId } of result.applied)
+      if (suggestionId !== undefined) reviewer.acceptSuggestion(suggestionId);
+    reviewer.acceptAll();
+    return {
+      pending,
+      accepted: reviewer.getContent().map(({ text, kind }) => ({ text, kind })),
+    };
+  };
+
+  test.each(MODES)(
+    "copies the paragraph the join leaves (%s)",
+    async (mode) => {
+      const { pending, accepted } = await insertBefore(mode);
+      expect(pending?.kind).toBe("paragraph");
+      expect(accepted).toEqual([
+        { text: "Terms", kind: "heading" },
+        { text: "Inserted clause.", kind: "paragraph" },
+        { text: "Unnumbered body text.", kind: "paragraph" },
+        { text: "Numbered clause two", kind: "listItem" },
+      ]);
+    },
+  );
+});

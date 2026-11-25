@@ -2663,6 +2663,38 @@ const pastWordlessJoin = (model: Model, row: ModelRow): ModelRow => {
 };
 
 /**
+ * The paragraph a paragraph inserted before `row` copies: the one the
+ * pending join from `row` leaves, when `row` holds nothing at all and its
+ * break is pending deletion. Put before that emptied paragraph, it reads as
+ * the joined paragraph, which has that paragraph's properties (the engine's
+ * `besidePendingJoin`, canonicalInsertBesidePendingJoin.test.ts), so it
+ * takes no numbering from the emptied list item. Before a paragraph still
+ * holding its deleted words, it copies that paragraph; `row` itself.
+ */
+const pastEmptiedJoinBefore = (model: Model, row: ModelRow): ModelRow => {
+  if (row.emptyJoinSource !== true) return row;
+  return nextInContainer(model, row) ?? row;
+};
+
+/**
+ * The paragraph a paragraph inserted `position` of `named` copies: put
+ * after the paragraph a join leaves, that paragraph; put before an emptied
+ * paragraph a pending join runs on, the paragraph the join leaves. A
+ * suggestion is read against the live
+ * rows, which hold no join.
+ */
+const copiedParagraph = (
+  model: Model,
+  named: ModelRow,
+  position: "before" | "after",
+): ModelRow => {
+  if (model.mode === "suggested") return named;
+  return position === "after"
+    ? pastWordlessJoin(model, named)
+    : pastEmptiedJoinBefore(model, named);
+};
+
+/**
  * Where a block inserted next to `row` goes: next to the row itself, or, for
  * a row inside a table, next to the outermost table (the documented rule:
  * an insertion anchored in a cell lands beside the table, not in the cell).
@@ -2801,11 +2833,7 @@ const insertBlock =
         `a suggestion after block ${String(operation["blockId"])} lands where its pending join puts it`,
       );
     const anchor = insertionAnchor(model, named, position, "paragraph");
-    // Put after the paragraph a join leaves, it copies that paragraph.
-    const copied =
-      position === "after" && model.mode !== "suggested"
-        ? pastWordlessJoin(model, named)
-        : named;
+    const copied = copiedParagraph(model, named, position);
     const inherited =
       operation["inheritFormatting"] === false
         ? undefined
