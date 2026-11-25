@@ -68,6 +68,7 @@ import {
   readRawPart,
   sliceWithSplices,
   spliceXml,
+  twipsOrNull,
   walkElements,
   wAttr,
   wChild,
@@ -211,6 +212,94 @@ const LEVEL_CHILD_ORDER = [
   "rPr",
 ] as const;
 
+/** Children of `w:pPr` that follow `w:ind` in the schema's order. */
+const AFTER_INDENT = [
+  "contextualSpacing",
+  "mirrorIndents",
+  "suppressOverlap",
+  "jc",
+  "textDirection",
+  "textAlignment",
+  "textboxTightWrap",
+  "outlineLvl",
+  "divId",
+  "cnfStyle",
+  "rPr",
+  "sectPr",
+  "pPrChange",
+] as const;
+
+type LevelPropertiesOptions = {
+  part: RawPart;
+  level: XmlElement;
+  w: string;
+  indent: NonNullable<TemplatePlanNumberingPatch["indent"]>;
+};
+
+/**
+ * The `w:pPr` of a level with the planned indent. What the level states and
+ * the patch leaves out is kept; a hanging and a first-line indent exclude
+ * each other, and an indent counted in characters would override the planned
+ * one, so those are not carried over.
+ */
+const levelPropertiesXml = ({
+  part,
+  level,
+  w,
+  indent,
+}: LevelPropertiesOptions): string | null => {
+  const properties = wChild(level, "pPr");
+  const existing = wChild(properties, "ind");
+  const stated = (name: string): number | null =>
+    twipsOrNull(wAttr(existing, name));
+  const hanging =
+    indent.hanging ??
+    (indent.firstLine === undefined ? stated("hanging") : null);
+  const firstLine =
+    indent.firstLine ??
+    (indent.hanging === undefined ? stated("firstLine") : null);
+  // The right indent is not the patch's to change: it is kept as written,
+  // whatever unit it is written in.
+  const values: [string, number | string | null][] = [
+    ["left", indent.left ?? stated("left") ?? stated("start")],
+    ["right", wAttr(existing, "right") ?? wAttr(existing, "end")],
+    ["hanging", hanging],
+    ["firstLine", firstLine],
+  ];
+  const attributes = values
+    .flatMap(([name, value]) =>
+      value === null
+        ? []
+        : [` ${w}:${name}="${escapeXmlAttribute(String(value))}"`],
+    )
+    .join("");
+  const indentXml = `<${w}:ind${attributes}/>`;
+  const range = properties === null ? null : rangeOf(properties);
+  if (properties === null || range === null) {
+    return `<${w}:pPr>${indentXml}</${w}:pPr>`;
+  }
+  const existingRange = existing === null ? null : rangeOf(existing);
+  if (existingRange !== null) {
+    return sliceWithSplices(part.xml, range, [
+      { ...existingRange, newXml: indentXml },
+    ]);
+  }
+  const inner = innerRangeOf(part.xml, properties);
+  if (inner === null) {
+    // Written self-closed: the start tag is kept as it is, with whatever
+    // attributes and namespace declarations it states.
+    const name = properties.name ?? `${w}:pPr`;
+    return `${part.xml.slice(range.start, range.end - 2).trimEnd()}>${indentXml}</${name}>`;
+  }
+  const later = AFTER_INDENT.map((name) => wChild(properties, name)).find(
+    (element) => element !== null,
+  );
+  const laterRange =
+    later === undefined || later === null ? null : rangeOf(later);
+  const at = laterRange?.start ?? inner.end;
+  return `${part.xml.slice(range.start, at)}${indentXml}${part.xml.slice(at, range.end)}`;
+};
+
 type NumberingEdit = {
   patches: readonly TemplatePlanNumberingPatch[];
   mints: ResolvedPlan["mints"];
@@ -263,20 +352,40 @@ const editNumbering = (
         }),
       );
     }
-    const values: Partial<Record<(typeof LEVEL_CHILD_ORDER)[number], string>> =
+    const valued = (name: string, value: string): string =>
+      `<${w}:${name} ${w}:val="${escapeXmlAttribute(value)}"/>`;
+    const properties =
+      patch.indent === undefined
+        ? undefined
+        : levelPropertiesXml({ part, level, w, indent: patch.indent });
+    if (properties === null) {
+      return Result.err(
+        unreadable(part.path, "The numbering part could not be patched."),
+      );
+    }
+    // Each planned child as the markup that states it.
+    const planned: Partial<Record<(typeof LEVEL_CHILD_ORDER)[number], string>> =
       {
-        ...(patch.start === undefined ? {} : { start: String(patch.start) }),
-        ...(patch.numFmt === undefined ? {} : { numFmt: patch.numFmt }),
-        ...(patch.suff === undefined ? {} : { suff: patch.suff }),
-        ...(patch.lvlText === undefined ? {} : { lvlText: patch.lvlText }),
+        ...(patch.start === undefined
+          ? {}
+          : { start: valued("start", String(patch.start)) }),
+        ...(patch.numFmt === undefined
+          ? {}
+          : { numFmt: valued("numFmt", patch.numFmt) }),
+        ...(patch.suff === undefined
+          ? {}
+          : { suff: valued("suff", patch.suff) }),
+        ...(patch.lvlText === undefined
+          ? {}
+          : { lvlText: valued("lvlText", patch.lvlText) }),
+        ...(properties === undefined ? {} : { pPr: properties }),
       };
     const inner = innerRangeOf(part.xml, level);
     for (const [index, name] of LEVEL_CHILD_ORDER.entries()) {
-      const value = values[name];
-      if (value === undefined) {
+      const xml = planned[name];
+      if (xml === undefined) {
         continue;
       }
-      const xml = `<${w}:${name} ${w}:val="${escapeXmlAttribute(value)}"/>`;
       const existing = wChild(level, name);
       const existingRange = existing === null ? null : rangeOf(existing);
       if (existingRange !== null) {
@@ -297,10 +406,8 @@ const editNumbering = (
     }
     if (inner === null) {
       const children = LEVEL_CHILD_ORDER.flatMap((name) => {
-        const value = values[name];
-        return value === undefined
-          ? []
-          : [`<${w}:${name} ${w}:val="${escapeXmlAttribute(value)}"/>`];
+        const xml = planned[name];
+        return xml === undefined ? [] : [xml];
       }).join("");
       insertions.delete(levelRange.end - 2);
       splices.push({

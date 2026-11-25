@@ -11,6 +11,8 @@ import {
   numPr,
   p,
   r,
+  readPart,
+  replacePart,
   SOURCE_IDS,
   SOURCE_TEXT,
   TEMPLATE_IDS,
@@ -181,8 +183,10 @@ describe("inspectDocxTemplate", () => {
       basedOn: "Normal",
       numPr: { numId: 1, ilvl: 0 },
       outlineLvl: 0,
+      alignment: null,
       isDefault: false,
     });
+    expect(style("HouseTitle")?.alignment).toBe("center");
     expect(style("HouseClause")?.numPr).toEqual({ numId: 1, ilvl: 1 });
     // The style names the list only; the level that names the style back decides.
     expect(style("HouseSubClause")?.numPr).toEqual({ numId: 1, ilvl: 2 });
@@ -219,6 +223,34 @@ describe("inspectDocxTemplate", () => {
       [3, "lowerLetter", "%4)", 1, "tab", "HouseLetter"],
       [4, "lowerRoman", "(%5)", 1, "tab", null],
     ]);
+    expect(
+      numbering.abstractNums.at(0)?.levels.map(({ indent }) => indent),
+    ).toEqual(
+      [567, 1134, 1701, 2268, 2835].map((left) => ({
+        left,
+        hanging: 567,
+        firstLine: null,
+      })),
+    );
+  });
+
+  test("resolves a style's alignment through the styles it is based on", async () => {
+    const base = await buildTemplate();
+    const styles = (await readPart(base, "word/styles.xml")) ?? "";
+    const template = await replacePart(
+      base,
+      "word/styles.xml",
+      styles.replace(
+        '<w:name w:val="House Article"/><w:basedOn w:val="Normal"/>',
+        '<w:name w:val="House Article"/><w:basedOn w:val="HouseTitle"/>',
+      ),
+    );
+    const inspection = unwrap(await inspectDocxTemplate(template));
+    const alignmentOf = (id: string) =>
+      inspection.styles.find(({ styleId }) => styleId === id)?.alignment;
+
+    expect(alignmentOf("HouseArticle")).toBe("center");
+    expect(alignmentOf("HouseClause")).toBeNull();
   });
 
   test("renders the template's own labels", async () => {

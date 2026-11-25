@@ -492,6 +492,38 @@ describe("malformed plans", () => {
       }),
     ],
     [
+      "an indent that states nothing",
+      (plan) => ({
+        ...plan,
+        numberingPatches: [{ abstractNumId: 0, ilvl: 0, indent: {} }],
+      }),
+    ],
+    [
+      "an indent in something other than whole twentieths of a point",
+      (plan) => ({
+        ...plan,
+        numberingPatches: [
+          { abstractNumId: 0, ilvl: 0, indent: { left: "1cm" } },
+        ],
+      }),
+    ],
+    [
+      "an indent with an unknown side",
+      (plan) => ({
+        ...plan,
+        numberingPatches: [{ abstractNumId: 0, ilvl: 0, indent: { top: 0 } }],
+      }),
+    ],
+    [
+      "a hanging and a first-line indent at once",
+      (plan) => ({
+        ...plan,
+        numberingPatches: [
+          { abstractNumId: 0, ilvl: 0, indent: { hanging: 0, firstLine: 0 } },
+        ],
+      }),
+    ],
+    [
       "cached text with a line end",
       (plan) => ({
         ...plan,

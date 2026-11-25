@@ -22,19 +22,101 @@ import {
   type DocxTemplateField,
   type DocxTemplateInspection,
   type DocxTemplateNumbering,
+  type DocxTemplateNumberingLevel,
   type DocxTemplateSection,
   type DocxTemplateStyle,
   TemplatePlanError,
 } from "./types";
-import { isW, type RawPart, readRawPart, walkElements, wAttr } from "./xml";
+import {
+  integerOrNull,
+  isW,
+  type RawPart,
+  readRawPart,
+  twipsOrNull,
+  walkElements,
+  wAttr,
+  wChild,
+  wChildren,
+  wChildVal,
+} from "./xml";
 
 const DEFAULT_LEVEL_START = 1;
 
-const inspectStyles = ({
-  styles,
-  numbering,
-}: AnalyzedDocument): DocxTemplateStyle[] =>
-  [...styles.values()].map((style) => {
+/** The `w:jc` each style of the styles part states itself, by style id. */
+const statedAlignments = ({
+  stylesPath,
+  stylesXml,
+}: AnalyzedDocument): Map<string, string> => {
+  const alignments = new Map<string, string>();
+  const part =
+    stylesPath === null || stylesXml === null
+      ? null
+      : readRawPart(stylesPath, stylesXml);
+  for (const style of wChildren(part?.root, "style")) {
+    const styleId = wAttr(style, "styleId");
+    const alignment = wChildVal(wChild(style, "pPr"), "jc");
+    if (styleId !== null && alignment !== null) {
+      alignments.set(styleId, alignment);
+    }
+  }
+  return alignments;
+};
+
+type LevelIndent = DocxTemplateNumberingLevel["indent"];
+
+/** The indent each level of the numbering part states, by definition and level. */
+const statedIndents = ({
+  numberingPath,
+  numberingXml,
+}: AnalyzedDocument): Map<string, LevelIndent> => {
+  const indents = new Map<string, LevelIndent>();
+  const part =
+    numberingPath === null || numberingXml === null
+      ? null
+      : readRawPart(numberingPath, numberingXml);
+  for (const definition of wChildren(part?.root, "abstractNum")) {
+    for (const level of wChildren(definition, "lvl")) {
+      const indent = wChild(wChild(level, "pPr"), "ind");
+      const stated = (name: string): number | null =>
+        twipsOrNull(wAttr(indent, name));
+      indents.set(
+        // The same numbers the lookup is made with: `00` is definition 0.
+        `${String(integerOrNull(wAttr(definition, "abstractNumId")))}:${String(integerOrNull(wAttr(level, "ilvl")))}`,
+        {
+          left: stated("left") ?? stated("start"),
+          hanging: stated("hanging"),
+          firstLine: stated("firstLine"),
+        },
+      );
+    }
+  }
+  return indents;
+};
+
+const NO_INDENT: LevelIndent = {
+  left: null,
+  hanging: null,
+  firstLine: null,
+};
+
+const inspectStyles = (analyzed: AnalyzedDocument): DocxTemplateStyle[] => {
+  const { styles, numbering } = analyzed;
+  const stated = statedAlignments(analyzed);
+  /** The alignment of the nearest style in the `basedOn` chain that states one. */
+  const alignmentOf = (styleId: string): string | null => {
+    const seen = new Set<string>();
+    let cursor: string | undefined = styleId;
+    while (cursor !== undefined && !seen.has(cursor)) {
+      seen.add(cursor);
+      const alignment = stated.get(cursor);
+      if (alignment !== undefined) {
+        return alignment;
+      }
+      cursor = styles.get(cursor)?.basedOn;
+    }
+    return null;
+  };
+  return [...styles.values()].map((style) => {
     const bound = styleNumbering(style.styleId, styles, numbering);
     return {
       styleId: style.styleId,
@@ -46,37 +128,46 @@ const inspectStyles = ({
           ? { numId: bound.numId, ilvl: bound.ilvl ?? 0 }
           : null,
       outlineLvl: styleOutlineLevel(style),
+      alignment: alignmentOf(style.styleId),
       isDefault: style.default === true,
     };
   });
+};
 
-const inspectNumbering = ({
-  numbering,
-}: AnalyzedDocument): DocxTemplateNumbering => ({
-  abstractNums: (numbering?.definitions.abstractNums ?? []).map(
-    ({ abstractNumId, levels }) => ({
-      abstractNumId,
-      levels: levels.map((level) => ({
-        ilvl: level.ilvl,
-        numFmt: level.numFmt,
-        lvlText: level.lvlText,
-        start: level.start ?? DEFAULT_LEVEL_START,
-        suff: level.suffix ?? "tab",
-        pStyle: level.pStyle ?? null,
-      })),
-    }),
-  ),
-  nums: (numbering?.definitions.nums ?? []).map(
-    ({ numId, abstractNumId, levelOverrides }) => ({
-      numId,
-      abstractNumId,
-      overrides: (levelOverrides ?? []).map(({ ilvl, startOverride }) => ({
-        ilvl,
-        startOverride: startOverride ?? null,
-      })),
-    }),
-  ),
-});
+const inspectNumbering = (
+  analyzed: AnalyzedDocument,
+): DocxTemplateNumbering => {
+  const { numbering } = analyzed;
+  const indents = statedIndents(analyzed);
+  return {
+    abstractNums: (numbering?.definitions.abstractNums ?? []).map(
+      ({ abstractNumId, levels }) => ({
+        abstractNumId,
+        levels: levels.map((level) => ({
+          ilvl: level.ilvl,
+          numFmt: level.numFmt,
+          lvlText: level.lvlText,
+          start: level.start ?? DEFAULT_LEVEL_START,
+          suff: level.suffix ?? "tab",
+          pStyle: level.pStyle ?? null,
+          indent:
+            indents.get(`${String(abstractNumId)}:${String(level.ilvl)}`) ??
+            NO_INDENT,
+        })),
+      }),
+    ),
+    nums: (numbering?.definitions.nums ?? []).map(
+      ({ numId, abstractNumId, levelOverrides }) => ({
+        numId,
+        abstractNumId,
+        overrides: (levelOverrides ?? []).map(({ ilvl, startOverride }) => ({
+          ilvl,
+          startOverride: startOverride ?? null,
+        })),
+      }),
+    ),
+  };
+};
 
 const inspectSections = ({
   story,
