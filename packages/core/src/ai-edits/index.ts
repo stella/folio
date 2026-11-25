@@ -3,8 +3,8 @@ export {
   type FolioAIEditView,
   type FolioWordDiffOptions,
   type FolioRevisionStamp,
-  type FolioUndefinedReferencePolicy,
-} from "./apply";
+} from "./applyTypes";
+export { type FolioUndefinedReferencePolicy } from "./undefinedReferences";
 export type { FolioContentParagraphKind } from "../compare/content-types";
 export {
   clampRangeToDocSize,

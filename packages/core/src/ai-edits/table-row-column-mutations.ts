@@ -9,7 +9,7 @@ import {
 } from "prosemirror-tables";
 
 import { addTrackedDeletionMark } from "../prosemirror/addTrackedDeletionMark";
-import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
+import { markStructuralChange } from "../prosemirror/paragraphChangeTrackerMeta";
 import {
   markRowsEmptiedInBatch,
   omittedSlotTakingColumn,

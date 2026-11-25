@@ -128,7 +128,7 @@ import {
   getPageSize,
   twipsToPixels,
 } from "@stll/folio-core/paged-layout/sectionGeometry";
-import type { HistoryShortcutOwner } from "@stll/folio-core/prosemirror/extensions/core/HistoryExtension";
+import type { HistoryShortcutOwner } from "@stll/folio-core/prosemirror/extensions/core/historyCommands";
 import { ExtensionManager } from "@stll/folio-core/prosemirror/extensions/ExtensionManager";
 import { createStarterKit } from "@stll/folio-core/prosemirror/extensions/StarterKit";
 import type { CommandMap } from "@stll/folio-core/prosemirror/extensions/types";

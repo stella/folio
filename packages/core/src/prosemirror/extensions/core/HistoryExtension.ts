@@ -6,24 +6,18 @@ import {
   closeHistory,
   history,
   isHistoryTransaction,
-  redo,
-  undo,
 } from "prosemirror-history";
 import { Plugin } from "prosemirror-state";
-import type { Command } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
-import { withCanonicalHistory } from "../../canonicalCommands";
 import { createExtension } from "../create";
 import type { Extension, ExtensionContext, ExtensionRuntime } from "../types";
-
-/**
- * Who answers the undo and redo keys (Mod-z, Mod-y, Mod-Shift-z).
- *  - `"editor"`: the extension binds them. Default.
- *  - `"host"`: nothing binds them. The host keeps its own undo stack and runs
- *    the `undo` / `redo` commands itself, so one press never undoes twice.
- */
-export type HistoryShortcutOwner = "editor" | "host";
+import {
+  historyKeyboardShortcuts,
+  type HistoryShortcutOwner,
+  redoCommand,
+  undoCommand,
+} from "./historyCommands";
 
 type HistoryOptions = {
   depth: number;
@@ -167,16 +161,6 @@ const inputBoundaryPlugin = (newGroupDelay: number): Plugin => {
   });
 };
 
-// An unavailable editor command must still consume its shortcut. Otherwise a
-// shifted redo chord can reach native DOM history, whose IME edits bypass the
-// editor's transaction and suggestion history.
-const consumeHistoryShortcut =
-  (command: Command): Command =>
-  (state, dispatch, view) => {
-    command(state, dispatch, view);
-    return true;
-  };
-
 const defaultHistoryOptions: HistoryOptions = {
   depth: 100,
   newGroupDelay: 500,
@@ -202,15 +186,11 @@ export const HistoryExtension: (
         inputBoundaryPlugin(options.newGroupDelay),
       ],
       commands: {
-        undo: () => withCanonicalHistory(undo, "undo"),
-        redo: () => withCanonicalHistory(redo, "redo"),
+        undo: undoCommand,
+        redo: redoCommand,
       },
       ...(options.shortcuts === "editor" && {
-        keyboardShortcuts: {
-          "Mod-z": consumeHistoryShortcut(undo),
-          "Mod-y": consumeHistoryShortcut(redo),
-          "Mod-Shift-z": consumeHistoryShortcut(redo),
-        },
+        keyboardShortcuts: historyKeyboardShortcuts,
       }),
     };
   },

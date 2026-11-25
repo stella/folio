@@ -1,9 +1,11 @@
-import type { Mark, Node as PMNode } from "prosemirror-model";
+import { panic } from "better-result";
+import type { Mark, Node as PMNode, Schema } from "prosemirror-model";
 
 import { expectPageBreakRunAttrs } from "../prosemirror/attrs";
 import {
   runFormattingInlineAtomCleanText,
   runFormattingInlineControlCharacter,
+  runFormattingInlineControlNodeName,
 } from "../prosemirror/runFormattingInlineCarriers";
 import type { PageBreakRunAttrs } from "../prosemirror/schema/nodes";
 import {
@@ -455,4 +457,50 @@ const renderAnnotatedSegment = ({
     inner = `<comment id="${annotation.commentId}">${inner}</comment>`;
   }
   return inner;
+};
+
+const CLEAN_TEXT_CONTROL_PATTERN = /[\t\n]/gu;
+
+type CleanTextInlineNodesOptions = {
+  schema: Schema;
+  text: string;
+  marks?: readonly Mark[] | undefined;
+};
+
+export const cleanTextInlineNodes = ({
+  schema,
+  text,
+  marks = [],
+}: CleanTextInlineNodesOptions): PMNode[] => {
+  const nodes: PMNode[] = [];
+  let offset = 0;
+  for (const match of text.matchAll(CLEAN_TEXT_CONTROL_PATTERN)) {
+    const index = match.index;
+    const preceding = text.slice(offset, index);
+    if (preceding.length > 0) {
+      nodes.push(schema.text(preceding, marks));
+    }
+    const control = match[0];
+    const nodeName = runFormattingInlineControlNodeName(control);
+    if (nodeName === null) {
+      panic(
+        "A clean-text control pattern matched an unrepresentable character",
+        { control },
+      );
+    }
+    const type = schema.nodes[nodeName];
+    if (!type) {
+      panic(
+        "The editor schema cannot represent a clean-text control character",
+        { control },
+      );
+    }
+    nodes.push(type.create(null, null, marks));
+    offset = index + control.length;
+  }
+  const trailing = text.slice(offset);
+  if (trailing.length > 0) {
+    nodes.push(schema.text(trailing, marks));
+  }
+  return nodes;
 };

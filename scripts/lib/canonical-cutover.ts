@@ -125,7 +125,7 @@ const mutationGap = (
     if (
       (name === "applyFolioAIEditOperations" ||
         name === "applyFolioAIEditOperationsInPackage") &&
-      file.endsWith("/document-operations.ts")
+      file.endsWith("/document-operations-apply.ts")
     )
       return CANONICAL_GAP.documentOperations;
   }

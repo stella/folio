@@ -75,11 +75,7 @@ import {
   TYPED_TEXT_FORMATTING,
 } from "@stll/docx-core/ops";
 
-import {
-  buildSignatureTableNode,
-  buildTableNode,
-  SUGGESTED_SUPPORTED_OPERATION_TYPES,
-} from "../ai-edits/apply";
+import { SUGGESTED_SUPPORTED_OPERATION_TYPES } from "../ai-edits/applyTypes";
 import { BatchClaims } from "../ai-edits/batch-claims";
 import { describeCharacterSplit } from "../ai-edits/character-boundaries";
 import {
@@ -161,6 +157,10 @@ import {
   supportsTableInsertionMode,
   type TableInsertionOperation,
 } from "../ai-edits/tableInsertionModes";
+import {
+  buildSignatureTableNode,
+  buildTableNode,
+} from "../ai-edits/tableNodes";
 import type {
   FolioAIBlockParagraphProperties,
   FolioAIEditNormalization,
@@ -205,8 +205,8 @@ import {
   standaloneTableRowsFromProseMirror,
   tableAttrsToFormatting,
 } from "../prosemirror/conversion/fromProseDoc";
-import { ensureParaIdsInDoc } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import { insertionGap } from "../prosemirror/insertionGaps";
+import { ensureParaIdsInDoc } from "../prosemirror/paraIds";
 import { forEachAnnotationIdInDoc } from "../prosemirror/plugins/revisionIds";
 import {
   preservesReplacementCommentAlignment,

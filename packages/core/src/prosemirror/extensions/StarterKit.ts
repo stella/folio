@@ -11,8 +11,8 @@
 import type { SelectionChangeCallback } from "../plugins/selectionTracker";
 // Core
 import { DocExtension } from "./core/DocExtension";
+import type { HistoryShortcutOwner } from "./core/historyCommands";
 import { HistoryExtension } from "./core/HistoryExtension";
-import type { HistoryShortcutOwner } from "./core/HistoryExtension";
 import { ParagraphExtension } from "./core/ParagraphExtension";
 import { TextExtension } from "./core/TextExtension";
 import { AutoBidiDetectionExtension } from "./features/AutoBidiDetectionExtension";

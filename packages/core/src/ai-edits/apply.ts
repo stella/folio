@@ -7,7 +7,7 @@ import {
   type ResolvedPos,
   type Schema,
 } from "prosemirror-model";
-import type { EditorState, Transaction } from "prosemirror-state";
+import type { Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
 import { canSplit, type Mapping } from "prosemirror-transform";
 
@@ -79,8 +79,6 @@ import {
 } from "../prosemirror/containerFinalParagraph";
 import { encloseWholeControls } from "../prosemirror/contentControlRevisions";
 import { JOINED_RUNS_RESTYLED_META } from "../prosemirror/extensions/features/JoinedRunStyleExtension";
-import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
-import { requestDeterministicParaIds } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import { TEXT_BOX_ANCHOR_NODE_NAME } from "../prosemirror/extensions/nodes/TextBoxAnchorExtension";
 import {
   insertionGap,
@@ -104,6 +102,7 @@ import {
   removedNumberingAttr,
 } from "../prosemirror/numberingAttr";
 import { directParagraphAlignment } from "../prosemirror/paragraphAlignment";
+import { markStructuralChange } from "../prosemirror/paragraphChangeTrackerMeta";
 import { styleResolvedParagraphFormatting } from "../prosemirror/paragraphFormattingProvenance";
 import {
   directParagraphIndentation,
@@ -126,6 +125,7 @@ import {
   paragraphSpacingFromFormatting,
   withDirectParagraphSpacing,
 } from "../prosemirror/paragraphSpacing";
+import { requestDeterministicParaIds } from "../prosemirror/paraIds";
 import {
   getDocumentNumbering,
   getDocumentNumberingInstanceIds,
@@ -158,7 +158,6 @@ import {
 } from "../prosemirror/replacedAnnotations";
 import {
   applyMarksToRunFormattingRepresentation,
-  runFormattingInlineControlNodeName,
   type SelectedRunFormattingCarrierRepresentation,
   selectRunFormattingCarrierRepresentations,
 } from "../prosemirror/runFormattingInlineCarriers";
@@ -199,6 +198,14 @@ import type {
 } from "../types/document";
 import type { DeepReadonly } from "../types/documentModel";
 import { canonicalJson } from "../utils/canonicalJson";
+import {
+  type FolioAIEditApplyOutcome,
+  type FolioAIEditView,
+  type FolioReplacementBackground,
+  type FolioRevisionStamp,
+  type FolioWordDiffOptions,
+  SUGGESTED_SUPPORTED_OPERATION_TYPES,
+} from "./applyTypes";
 import { type BatchClaim, BatchClaims } from "./batch-claims";
 import { stripBlockIdentityAttrs } from "./block-identity";
 import {
@@ -208,6 +215,7 @@ import {
 import {
   buildCleanBlockText,
   type CleanBlockText,
+  cleanTextInlineNodes,
   resolveCleanTextRange,
 } from "./clean-text";
 import { directJoinSurvivor, directJoinTakes } from "./directJoin";
@@ -300,7 +308,6 @@ import {
   findTableRowInsertion,
   getTableColumnCoordinateKey,
   markTableRowContent,
-  splitCellParagraphTexts,
   type TableColumnDeletion,
   type TableColumnInsertion,
   type TableRowDeletion,
@@ -318,11 +325,11 @@ import {
   type TableStructureRevision,
 } from "./table-template";
 import { supportsTableInsertionMode } from "./tableInsertionModes";
+import { buildSignatureTableNode, buildTableNode } from "./tableNodes";
 import type {
   FolioAIBlockParagraphProperties as RequestParagraphProperties,
   FolioAIEditAppliedOperation,
   FolioAIEditApplyMode,
-  FolioAIEditApplyResult,
   FolioAIEditNormalization,
   FolioAIEditOperation as RequestedEditOperation,
   FolioAIEditParagraphIdentity,
@@ -331,50 +338,16 @@ import type {
   FolioAIEditSnapshot,
   FolioAIInlineFormattingPatch,
   FolioAIResolvedEditOperation as FolioAIEditOperation,
-  FolioAISignatureParty,
 } from "./types";
 import {
   findUndefinedOperationReference,
   type FolioUndefinedReferencePolicy,
 } from "./undefinedReferences";
-import {
-  createWordDiffSession,
-  type WordDiffGranularity,
-  wordDiffSessionFromOptions,
-} from "./word-diff";
+import { createWordDiffSession, wordDiffSessionFromOptions } from "./word-diff";
 
 type FolioAIBlockParagraphProperties =
   RequestParagraphProperties<FolioContentStatedNumbering>;
 type StagedOperation = FolioAIStagedEditOperation;
-
-/**
- * The only editor surface the apply logic touches: a current `state`
- * and a `dispatch` that swaps in the next one. A live `EditorView`
- * satisfies this structurally, and so does a headless seam
- * (`{ state, dispatch: (tr) => { state = state.apply(tr); } }`) — the
- * apply path never reaches for anything DOM-bound on the view, which is
- * what lets the same operation applier drive both the React editor and
- * the server-side reviewer in `./headless`.
- */
-export type FolioAIEditView = {
-  state: EditorState;
-  dispatch: (transaction: Transaction) => void;
-};
-
-/**
- * Fixed revision provenance, for callers whose output must be reproducible.
- * Both halves of the stamp travel together because either one left to the
- * ambient clock (`new Date()` for the date, the shared bounded allocator for
- * the ids) makes the produced package differ between two runs over the same
- * inputs. `idSeed` starts a contiguous range the batch allocates from, so it
- * must sit above every revision id the target document already carries.
- */
-export type FolioRevisionStamp = {
-  /** ISO-8601 date stamped on every `w:ins` / `w:del` this batch produces. */
-  date: string;
-  /** First revision id the batch may allocate. */
-  idSeed: number;
-};
 
 type ApplyFolioAIEditOperationsOptions = {
   view: FolioAIEditView;
@@ -506,87 +479,6 @@ const commitProvisionalComment = ({
   }
   return tr;
 };
-
-/**
- * How an apply batch cuts the redline for a replacement. Word-level by
- * default; character granularity marks the changed letters inside a token,
- * which reads well for a reference or a date. Normalization is deliberately
- * absent: a batch that leaves a difference unmarked does not accept back to
- * the text the caller asked for.
- */
-export type FolioWordDiffOptions = { granularity?: WordDiffGranularity };
-
-/**
- * What a replacement does with a highlight or `w:shd` the text it replaces
- * carries.
- *
- * `clear` is the authoring default: text typed over a highlighted placeholder
- * is new text, and keeping the marker that said "fill this in" would carry it
- * into the finished document. `keep` is for a caller that states the
- * replacement's own run properties rather than letting it inherit them — a
- * comparison reproducing a revised document holds the properties that document
- * has, and clearing them first records a run-property change it takes straight
- * back, which reaches the reader as a revision whose before and after are the
- * same.
- */
-export type FolioReplacementBackground = "clear" | "keep";
-
-/**
- * How operations handle style and numbering references the document does not define.
- *
- * Editing callers explicitly select `refuse`: an undefined reference would
- * report a formatting edit without changing its appearance. Missing references are skipped with
- * `missingStyle` or `missingNumbering`.
- * Comparison and redline use `keep` for unknown source styles; their import
- * boundary clears destination style collisions with warnings before application.
- * The parser already normalizes undefined source numbering to none.
- */
-export type { FolioUndefinedReferencePolicy };
-
-/**
- * An apply result plus where the batch left the revision-id counter.
- *
- * A caller writing several batches into one package — a comparison walking
- * the main story, then each header, footer and note — has to give every batch
- * a seed above the last id the previous one used, or two stories claim the
- * same `w:id` and a consumer resolving one revision resolves the other with
- * it. The batch is the only thing that knows how many ids it took, so it says
- * so rather than making the caller guess a stride.
- */
-export type FolioAIEditApplyOutcome = FolioAIEditApplyResult & {
-  /** The held transaction was refused when its final geometry exposed a protected break. */
-  heldRevisionConflict?: true;
-  /**
-   * First revision id a following batch may allocate: one past the last id
-   * this batch used, or the seed it started from when it allocated none.
-   */
-  nextRevisionId: number;
-};
-
-/**
- * Operation types applied in `"suggested"` mode. Every produced revision — an
- * inline mark, a whole-node `_suggestedInsert` marker, or a suggested
- * `trIns`/`trDel`/`cellMarker` — is stripped from serialized DOCX until
- * accepted. Cell merge/split (not row/column ops) and comment ops stay
- * `unsupportedMode`.
- */
-export const SUGGESTED_SUPPORTED_OPERATION_TYPES: ReadonlySet<
-  FolioAIEditOperation["type"]
-> = new Set([
-  "replaceInBlock",
-  "replaceRange",
-  "formatRange",
-  "setBlockParagraphProperties",
-  "replaceBlock",
-  "deleteBlock",
-  "insertAfterBlock",
-  "insertBeforeBlock",
-  "insertSignatureTable",
-  "insertTableRow",
-  "deleteTableRow",
-  "insertTableColumn",
-  "deleteTableColumn",
-]);
 
 /** Operations that only add marks: they move no position of the document. */
 const ANNOTATION_KIND_OF: ReadonlyMap<
@@ -2440,164 +2332,6 @@ const ordinalAmongSameHash = (
     }
   }
   return -1;
-};
-
-/**
- * Length of the underscore signature rule. Mirrors the constant
- * in `docx-core/legal-source/compile.ts` so the on-screen signature
- * line matches what `create-document` produces.
- */
-const SIGNATURE_LINE = "_".repeat(28);
-
-type BuildTableNodeOptions = {
-  schema: Schema;
-  rows: readonly (readonly string[])[];
-  /** Present in tracked mode: every row is stamped as an insertion. */
-  revision?: TableStructureRevision;
-};
-
-/**
- * A plain table from a grid of cell texts, `null` when the schema has no
- * tables. In tracked mode every row carries `trIns` and every run inside it
- * carries `w:ins`, which is how the format says "this table is new": there is
- * no whole-table insertion element, only rows that were inserted, and a
- * consumer that reads only run-level revisions keeps the text of a rejected
- * insertion when the row marker stands alone.
- */
-export const buildTableNode = ({
-  schema,
-  rows,
-  revision,
-}: BuildTableNodeOptions): PMNode | null => {
-  const paragraphType = schema.nodes["paragraph"];
-  const cellType = schema.nodes["tableCell"];
-  const rowType = schema.nodes["tableRow"];
-  const tableType = schema.nodes["table"];
-  if (
-    !paragraphType ||
-    !cellType ||
-    !rowType ||
-    !tableType ||
-    rows.length === 0
-  ) {
-    return null;
-  }
-  const insertionType = schema.marks["insertion"];
-  const marks =
-    revision && insertionType
-      ? [
-          insertionType.create({
-            revisionId: revision.revisionId,
-            author: revision.author,
-            date: revision.date,
-            ...(revision.initials != null && { initials: revision.initials }),
-            ...(revision.provenance != null && {
-              provenance: revision.provenance,
-            }),
-            ...(revision.suggestionId != null && {
-              suggestionId: revision.suggestionId,
-            }),
-          }),
-        ]
-      : undefined;
-  const rowNodes = rows.map((cells) =>
-    rowType.create(
-      revision ? { trIns: revision } : null,
-      cells.map((text) =>
-        cellType.create(
-          null,
-          splitCellParagraphTexts(text).map((line) =>
-            paragraphType.create(
-              null,
-              line.length > 0
-                ? cleanTextInlineNodes({ schema, text: line, marks })
-                : null,
-            ),
-          ),
-        ),
-      ),
-    ),
-  );
-  return tableType.create(null, rowNodes);
-};
-
-type BuildSignatureTableNodeOptions = {
-  schema: Schema;
-  parties: readonly FolioAISignatureParty[];
-};
-
-/**
- * Build a borderless PM table mirroring docx-core's
- * `signatureTable` helper: one row, one cell per party, each cell
- * containing party name (bold), two spacer paragraphs, a signature
- * rule, then optional signatory and italic title lines.
- *
- * Returns `null` when the editor schema is missing one of the
- * required node types — callers should surface the op as a skip
- * rather than crashing.
- */
-export const buildSignatureTableNode = ({
-  schema,
-  parties,
-}: BuildSignatureTableNodeOptions): PMNode | null => {
-  const paragraphType = schema.nodes["paragraph"];
-  const cellType = schema.nodes["tableCell"];
-  const rowType = schema.nodes["tableRow"];
-  const tableType = schema.nodes["table"];
-  if (!paragraphType || !cellType || !rowType || !tableType) {
-    return null;
-  }
-  const boldType = schema.marks["bold"];
-  const italicType = schema.marks["italic"];
-
-  const buildParagraph = (
-    text: string,
-    options: {
-      styleId: string;
-      bold?: boolean;
-      italic?: boolean;
-    },
-  ): PMNode => {
-    const marks: Mark[] = [];
-    if (options.bold && boldType) {
-      marks.push(boldType.create());
-    }
-    if (options.italic && italicType) {
-      marks.push(italicType.create());
-    }
-    const content = text.length > 0 ? schema.text(text, marks) : null;
-    return paragraphType.create({ styleId: options.styleId }, content);
-  };
-
-  const buildCell = (party: FolioAISignatureParty): PMNode => {
-    const cellContent: PMNode[] = [
-      buildParagraph(party.name, { styleId: "SignatureParty", bold: true }),
-      buildParagraph("", { styleId: "SignatureSpacer" }),
-      buildParagraph("", { styleId: "SignatureSpacer" }),
-      buildParagraph(SIGNATURE_LINE, { styleId: "SignatureRule" }),
-    ];
-    if (party.signatory && party.signatory.length > 0) {
-      cellContent.push(
-        buildParagraph(party.signatory, { styleId: "SignatureField" }),
-      );
-    }
-    if (party.title && party.title.length > 0) {
-      cellContent.push(
-        buildParagraph(party.title, {
-          styleId: "SignatureField",
-          italic: true,
-        }),
-      );
-    }
-    // Cell attrs left to schema defaults — column widths and
-    // borders are decided by the table renderer; we just need the
-    // structural shape.
-    return cellType.create({}, cellContent);
-  };
-
-  const cells = parties.map(buildCell);
-  const row = rowType.create({}, cells);
-  return tableType.create({}, row);
 };
 
 const LINE_BREAK_PATTERN = /\r\n|\r|\n/;
@@ -8986,54 +8720,8 @@ type TextReplacementOptions = {
   initials?: string | undefined;
 };
 
-const CLEAN_TEXT_CONTROL_PATTERN = /[\t\n]/gu;
-
 const hasCleanTextControls = (text: string): boolean =>
   text.includes("\t") || text.includes("\n");
-
-type CleanTextInlineNodesOptions = {
-  schema: Schema;
-  text: string;
-  marks?: readonly Mark[] | undefined;
-};
-
-const cleanTextInlineNodes = ({
-  schema,
-  text,
-  marks = [],
-}: CleanTextInlineNodesOptions): PMNode[] => {
-  const nodes: PMNode[] = [];
-  let offset = 0;
-  for (const match of text.matchAll(CLEAN_TEXT_CONTROL_PATTERN)) {
-    const index = match.index;
-    const preceding = text.slice(offset, index);
-    if (preceding.length > 0) {
-      nodes.push(schema.text(preceding, marks));
-    }
-    const control = match[0];
-    const nodeName = runFormattingInlineControlNodeName(control);
-    if (nodeName === null) {
-      panic(
-        "A clean-text control pattern matched an unrepresentable character",
-        { control },
-      );
-    }
-    const type = schema.nodes[nodeName];
-    if (!type) {
-      panic(
-        "The editor schema cannot represent a clean-text control character",
-        { control },
-      );
-    }
-    nodes.push(type.create(null, null, marks));
-    offset = index + control.length;
-  }
-  const trailing = text.slice(offset);
-  if (trailing.length > 0) {
-    nodes.push(schema.text(trailing, marks));
-  }
-  return nodes;
-};
 
 type InsertCleanTextOptions = {
   tr: Transaction;

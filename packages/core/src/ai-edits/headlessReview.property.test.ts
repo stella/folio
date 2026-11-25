@@ -47,7 +47,7 @@ import { repackDocx } from "../docx/rezip";
 import { attemptSelectiveSave } from "../docx/selectiveSave";
 import { updateDocumentContent } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import { ensureParaIdsInState } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
+import { ensureParaIdsInState } from "../prosemirror/paraIds";
 import { schema, singletonManager } from "../prosemirror/schema";
 import { FolioDocxReviewer } from "./headless";
 import type { FolioAIBlock, FolioAIEditOperation } from "./types";

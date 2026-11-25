@@ -13,13 +13,13 @@ import { describe, expect, test } from "bun:test";
 import { EditorState, type Transaction } from "prosemirror-state";
 
 import {
-  applyFolioDocumentOperations,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   FOLIO_DOCUMENT_OPERATION_MODES,
   type FolioDocumentOperation,
   type FolioDocumentOperationMode,
   isFolioDocumentOperationModeSupported,
 } from "../document-operations";
+import { applyFolioDocumentOperations } from "../document-operations-apply";
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";

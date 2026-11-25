@@ -18,7 +18,7 @@ import { resolveAllChangesInHeadlessState } from "../../commands/comments";
 import { createSuggestionModePlugin } from "../../plugins/suggestionMode";
 import { ExtensionManager } from "../ExtensionManager";
 import { createStarterKit } from "../StarterKit";
-import type { HistoryShortcutOwner } from "./HistoryExtension";
+import type { HistoryShortcutOwner } from "./historyCommands";
 
 // Read before the DOM is registered, as ProseMirror's keymap reads it at import.
 const MAC = /Mac|iP(?:hone|[oa]d)/u.test(globalThis.navigator?.platform ?? "");

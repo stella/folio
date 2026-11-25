@@ -1,7 +1,7 @@
 import type { Node as PMNode } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
 
-import type { FolioRevisionStamp } from "../ai-edits/apply";
+import type { FolioRevisionStamp } from "../ai-edits/applyTypes";
 import {
   buildCleanBlockText,
   type BuildCleanBlockTextOptions,

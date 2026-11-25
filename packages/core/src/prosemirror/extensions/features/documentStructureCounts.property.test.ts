@@ -21,8 +21,8 @@ import {
 } from "../../../__tests__/editorHarness";
 import type { SectionProperties } from "../../../types/document";
 import { canonicalJson } from "../../../utils/canonicalJson";
+import { countDocumentStructure } from "../../documentStructureCounts";
 import { sectionPropertiesOf } from "../../sectionCarrier";
-import { countDocumentStructure } from "./ParagraphChangeTrackerExtension";
 
 setDefaultTimeout(propertyTestTimeout(120_000));
 

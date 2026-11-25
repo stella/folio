@@ -22,7 +22,7 @@ import { createDocx, validateDocx } from "@stll/folio-core/docx/rezip";
 import type { SaveDiagnostic } from "@stll/folio-core/docx/saveDiagnostics";
 import { getFolioMessages } from "@stll/folio-core/i18n/messages";
 import { toProseDoc } from "@stll/folio-core/prosemirror/conversion/toProseDoc";
-import { paragraphChangeTrackerKey } from "@stll/folio-core/prosemirror/extensions/features/ParagraphChangeTrackerExtension";
+import { paragraphChangeTrackerKey } from "@stll/folio-core/prosemirror/paragraphChangeTrackerMeta";
 import type { CanonicalCommentResult } from "@stll/folio-core/types/canonicalComments";
 import type { Comment } from "@stll/folio-core/types/content";
 import type { Document } from "@stll/folio-core/types/document";

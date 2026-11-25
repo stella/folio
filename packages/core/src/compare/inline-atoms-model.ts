@@ -29,7 +29,7 @@ import {
   type TextPosition,
 } from "@stll/docx-core/ops";
 
-import type { FolioRevisionStamp } from "../ai-edits/apply";
+import type { FolioRevisionStamp } from "../ai-edits/applyTypes";
 import type {
   NoteReferenceIdentity,
   NoteReferenceLabels,

@@ -24,7 +24,7 @@ import {
   PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
   PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR,
 } from "../../docx/paragraphPropertySource";
-import { markChangedParagraphRanges } from "../extensions/features/ParagraphChangeTrackerExtension";
+import { markChangedParagraphRanges } from "../paragraphChangeTrackerMeta";
 import { RUN_IDENTITY_MARK_NAME } from "../runIdentity";
 
 export const randomSchema = new Schema({

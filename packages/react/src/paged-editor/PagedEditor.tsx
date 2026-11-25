@@ -193,7 +193,7 @@ import { resizeColumnPair } from "@stll/folio-core/paged-layout/tableColumnResiz
 import { tableInsertButtonOffset } from "@stll/folio-core/paged-layout/tableInsertButtonGeometry";
 import { expectImageAttrs } from "@stll/folio-core/prosemirror/attrs";
 import { executeEditorCommand } from "@stll/folio-core/prosemirror/executeEditorCommand";
-import type { HistoryShortcutOwner } from "@stll/folio-core/prosemirror/extensions/core/HistoryExtension";
+import type { HistoryShortcutOwner } from "@stll/folio-core/prosemirror/extensions/core/historyCommands";
 import type { ExtensionManager } from "@stll/folio-core/prosemirror/extensions/ExtensionManager";
 import {
   commitImageFloatMove,

@@ -9,7 +9,7 @@ import { createEmptyDocx } from "../src/docx/rezip";
 import { serializeDocument } from "../src/docx/serializer/documentSerializer";
 import { fromProseDoc } from "../src/prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../src/prosemirror/conversion/toProseDoc";
-import { ensureParaIdsInState } from "../src/prosemirror/extensions/features/ParaIdAllocatorExtension";
+import { ensureParaIdsInState } from "../src/prosemirror/paraIds";
 import { censusParagraphOrdinals } from "./selective-save-census-identity";
 
 const wrap = (body: string) =>

@@ -7,6 +7,7 @@ import { setProseParagraphMarkupWithPropertySource } from "../../../docx/paragra
 import type { DirtyRange } from "../../../paged-layout/incrementalMeasure";
 import { getTransactionDirtyRange } from "../../../paged-layout/transactionDirtyRange";
 import { detectBaseDirection } from "../../../utils/baseDirection";
+import { ignoreTrackedChanges } from "../../paragraphChangeTrackerMeta";
 import { directionIsAutoManaged } from "../../paragraphDirection";
 import type { ParagraphDirection } from "../../paragraphDirection";
 /**
@@ -48,7 +49,6 @@ import { createPluginKeyOwner } from "../../pluginKeyOwner";
 import { afterNativeCompositionFlush } from "../../textInput";
 import { createExtension } from "../create";
 import type { Extension, ExtensionRuntime } from "../types";
-import { ignoreTrackedChanges } from "./ParagraphChangeTrackerExtension";
 
 export const autoBidiDetectionKey: Readonly<{
   key: string;

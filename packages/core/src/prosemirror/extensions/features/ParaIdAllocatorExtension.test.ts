@@ -30,15 +30,15 @@ import {
 } from "../../../docx/paragraphPropertySource";
 import { deterministicHexId } from "../../../utils/hexId";
 import {
+  ensureParaIdsInDoc,
+  ensureParaIdsInState,
+  requestDeterministicParaIds,
+} from "../../paraIds";
+import {
   getChangedParagraphIds,
   ParagraphChangeTrackerExtension,
 } from "./ParagraphChangeTrackerExtension";
-import {
-  ensureParaIdsInDoc,
-  ensureParaIdsInState,
-  ParaIdAllocatorExtension,
-  requestDeterministicParaIds,
-} from "./ParaIdAllocatorExtension";
+import { ParaIdAllocatorExtension } from "./ParaIdAllocatorExtension";
 
 const schema = new Schema({
   nodes: {

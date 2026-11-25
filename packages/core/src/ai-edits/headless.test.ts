@@ -27,7 +27,7 @@ import { parseDocx } from "../docx/parser";
 import { createDocx, createEmptyDocx, repackDocx } from "../docx/rezip";
 import { updateDocumentContent } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import { ensureParaIdsInState } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
+import { ensureParaIdsInState } from "../prosemirror/paraIds";
 import { schema, singletonManager } from "../prosemirror/schema";
 import type {
   HeaderFooter,

@@ -24,7 +24,7 @@ import {
   type TextPosition,
 } from "@stll/docx-core/ops";
 
-import type { FolioRevisionStamp } from "../ai-edits/apply";
+import type { FolioRevisionStamp } from "../ai-edits/applyTypes";
 import type { Hyperlink, Run, TextFormatting } from "../types/document";
 import { readModel, type ReadonlyDocument } from "../types/documentModel";
 import { canonicalJson } from "../utils/canonicalJson";
