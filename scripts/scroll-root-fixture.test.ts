@@ -3,7 +3,7 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 
-import { applyFolioAIEditOperations } from "../packages/core/src/ai-edits/apply";
+import { applyFolioAIEditOperations } from "../packages/core/src/__tests__/reference-editor/apply";
 import {
   resolveFolioAIBlockRange,
   resolvePassageRange,

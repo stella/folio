@@ -35,169 +35,6 @@ import {
   SPLIT_HALVES,
 } from "@stll/docx-core/ops";
 
-import type { FolioContentStatedNumbering } from "../compare/content-types";
-import {
-  NO_NUMBERING_IDS_IN_USE,
-  type NumberingIdsInUse,
-} from "../docx/numberingIds";
-import type { NumberingMap } from "../docx/numberingParser";
-import { proseParagraphAttrsWithoutPropertySource } from "../docx/paragraphPropertySource";
-import { formattingEquals } from "../docx/runConsolidator";
-import { isStyleSourcedParagraphNumbering } from "../internal/paragraphFormattingSerialization";
-import {
-  joinEndsBeforeTable,
-  paragraphMergeLeaves,
-  type PendingJoinEnd,
-  pendingJoinEnd,
-} from "../prosemirror/acceptedBlockNeighbours";
-import { addTrackedDeletionMark } from "../prosemirror/addTrackedDeletionMark";
-import {
-  deleteTextBoxesAnchoredAt,
-  droppedTextBoxAnchorIds,
-  endOfParagraphWithItsTextBoxes,
-  gatherTextBoxesAfterParagraph,
-  textBoxAnchorIdOf,
-  textBoxAnchorIdsBetween,
-} from "../prosemirror/anchoredTextBoxes";
-import {
-  expectParagraphAttrs,
-  expectRunPropertyChangeMarkAttrs,
-  expectTableRowAttrs,
-  mergeParagraphAttrs,
-} from "../prosemirror/attrs";
-import { paragraphJoinAfter } from "../prosemirror/commands/paragraphBookmarkJoin";
-import {
-  hasSerializableParagraphPropertyChange,
-  paragraphPropertiesSnapshot,
-} from "../prosemirror/commands/propertyChangeScope";
-import { resolveParagraphChangeAttrs } from "../prosemirror/commands/resolveParagraphProperties";
-import {
-  addedBreakCarrierBefore,
-  containerEndsAt,
-  finalParagraphsOf,
-  paragraphEndsItsContainer,
-} from "../prosemirror/containerFinalParagraph";
-import { encloseWholeControls } from "../prosemirror/contentControlRevisions";
-import { JOINED_RUNS_RESTYLED_META } from "../prosemirror/extensions/features/JoinedRunStyleExtension";
-import { TEXT_BOX_ANCHOR_NODE_NAME } from "../prosemirror/extensions/nodes/TextBoxAnchorExtension";
-import {
-  insertionGap,
-  insertionGapEnd,
-  InsertionGapOrder,
-} from "../prosemirror/insertionGaps";
-import {
-  blockBoundariesOf,
-  carriesCommentAnchor,
-  inlineBoundariesOf,
-  isBlockBoundaryNode,
-  removeResolvedSubtree,
-} from "../prosemirror/keptRangeBoundaries";
-import { CLEARED_LIST_RENDERING_ATTRS } from "../prosemirror/listMarker";
-import { lockedControlSpans } from "../prosemirror/lockedControls";
-import {
-  effectiveParagraphNumbering,
-  paragraphNumberingAttr,
-  paragraphNumberingSourcesFromBoundary,
-  readParagraphNumberingAttr,
-  removedNumberingAttr,
-} from "../prosemirror/numberingAttr";
-import { directParagraphAlignment } from "../prosemirror/paragraphAlignment";
-import { markStructuralChange } from "../prosemirror/paragraphChangeTrackerMeta";
-import { styleResolvedParagraphFormatting } from "../prosemirror/paragraphFormattingProvenance";
-import {
-  directParagraphIndentation,
-  paragraphIndentationAttrPatch,
-  paragraphIndentationEqual,
-  paragraphIndentationFromFormatting,
-  withDirectParagraphIndentation,
-} from "../prosemirror/paragraphIndentation";
-import { joinAtParagraphMark } from "../prosemirror/paragraphMarkJoin";
-import {
-  carryParagraphProperties,
-  paragraphLeftAfter,
-  paragraphPropertySnapshotsDiffer,
-  recordReplacedParagraphProperties,
-} from "../prosemirror/paragraphPropertyCarry";
-import {
-  directParagraphSpacing,
-  paragraphSpacingAttrPatch,
-  paragraphSpacingEqual,
-  paragraphSpacingFromFormatting,
-  withDirectParagraphSpacing,
-} from "../prosemirror/paragraphSpacing";
-import { requestDeterministicParaIds } from "../prosemirror/paraIds";
-import {
-  getDocumentNumbering,
-  getDocumentNumberingInstanceIds,
-} from "../prosemirror/plugins/documentNumbering";
-import {
-  getDocumentStyleDefinitions,
-  getDocumentStyleResolver,
-} from "../prosemirror/plugins/documentStyleState";
-import {
-  claimRevisionIds,
-  nextRevisionId as peekRevisionId,
-  nextRevisionIdRange,
-  reserveRevisionIds,
-  seedRevisionIdsFromDoc,
-} from "../prosemirror/plugins/revisionIds";
-import { rebaseParagraphRuns } from "../prosemirror/rebaseParagraphRuns";
-import {
-  addCarriedMarks,
-  annotatedReplacement,
-  commentsAcrossBlockBoundary,
-  commentsForTrackedInsertion,
-  commentsSpanningInsertion,
-  hasReplacedAnnotations,
-  inheritedReplacementMarks,
-  joinCommentStretches,
-  NON_INCLUSIVE_MARK_DISPOSITION,
-  placeTrackedInsertion,
-  surveyAcceptedReplacedAnnotations,
-  surveyReplacedAnnotations,
-} from "../prosemirror/replacedAnnotations";
-import {
-  applyMarksToRunFormattingRepresentation,
-  type SelectedRunFormattingCarrierRepresentation,
-  selectRunFormattingCarrierRepresentations,
-} from "../prosemirror/runFormattingInlineCarriers";
-import { RUN_FORMATTING_MARK_NAMES } from "../prosemirror/runFormattingMarkNames";
-import {
-  readAuthoredRunFormatting,
-  readAuthoredRunPropertySnapshot,
-  reconcileRunFormattingMarks,
-} from "../prosemirror/runFormattingReconciliation";
-import {
-  type ParagraphRunStyleContext,
-  paragraphRunStyleContext,
-  paragraphRunStyleContextAt,
-  resolveParagraphBodyRunFormatting,
-} from "../prosemirror/runStyleFormatting";
-import type {
-  ParagraphAttrs,
-  ParagraphAttrsPatch,
-  ParagraphPropertyChangeAttrs,
-} from "../prosemirror/schema/nodes";
-import { sectionPropertiesOf } from "../prosemirror/sectionCarrier";
-import {
-  listAttrsFromNumbering,
-  listLevelAttrPatch,
-  listLevelIndentRemovalPatch,
-} from "../prosemirror/styles/resolvedStyleAttrs";
-import {
-  removeRowsWithoutCellsAfterBatch,
-  type RowsEmptiedInBatch,
-} from "../prosemirror/tableGridMutation";
-import { paragraphGoes, tableGoes } from "../prosemirror/tableRunIn";
-import { isZeroWidthAnchor } from "../prosemirror/zeroWidthAnchors";
-import { getFolioParaIdFromBlockId } from "../types/block-id";
-import type {
-  ParagraphFormatting,
-  RunPropertyChange,
-  TextFormatting,
-} from "../types/document";
-import type { DeepReadonly } from "../types/documentModel";
-import { canonicalJson } from "../utils/canonicalJson";
 import {
   type FolioAIEditApplyOutcome,
   type FolioAIEditView,
@@ -205,34 +42,34 @@ import {
   type FolioRevisionStamp,
   type FolioWordDiffOptions,
   SUGGESTED_SUPPORTED_OPERATION_TYPES,
-} from "./applyTypes";
-import { type BatchClaim, BatchClaims } from "./batch-claims";
-import { stripBlockIdentityAttrs } from "./block-identity";
+} from "../../ai-edits/applyTypes";
+import { type BatchClaim, BatchClaims } from "../../ai-edits/batch-claims";
+import { stripBlockIdentityAttrs } from "../../ai-edits/block-identity";
 import {
   type CharacterBoundaryStrictness,
   describeCharacterSplit,
-} from "./character-boundaries";
+} from "../../ai-edits/character-boundaries";
 import {
   buildCleanBlockText,
   type CleanBlockText,
   cleanTextInlineNodes,
   resolveCleanTextRange,
-} from "./clean-text";
-import { directJoinSurvivor, directJoinTakes } from "./directJoin";
+} from "../../ai-edits/clean-text";
+import { directJoinSurvivor, directJoinTakes } from "../../ai-edits/directJoin";
 import {
   createExistingRevisionGuard,
   EXISTING_REVISION_CONFLICT_MESSAGE,
-} from "./existingRevisions";
+} from "../../ai-edits/existingRevisions";
 import {
   hasInlineEmphasis,
   parseInlineEmphasisRuns,
   stripInlineEmphasisMarkers,
-} from "./inline-emphasis";
+} from "../../ai-edits/inline-emphasis";
 import {
   compileMarkdownInsertion,
   type MarkdownParagraph,
   markdownRunText,
-} from "./markdownInsertion";
+} from "../../ai-edits/markdownInsertion";
 import {
   BACKGROUND_MARK_NAMES,
   changesFromSegments,
@@ -240,14 +77,14 @@ import {
   planTextChanges,
   type TextChange,
   touchedBackgroundStretches,
-} from "./minimal-replacement";
+} from "../../ai-edits/minimal-replacement";
 import {
   assertNewListsAllocated,
   deferInsertedList,
   type FolioAIStagedEditOperation,
   resolveNewListOperations,
   stageNewListOperations,
-} from "./newListNumbering";
+} from "../../ai-edits/newListNumbering";
 import {
   comparisonApplying,
   cutsIntoNoteReference,
@@ -256,7 +93,7 @@ import {
   noteReferenceOf,
   noteReferenceSpansWithin,
   segmentsAroundNoteReferences,
-} from "./note-references";
+} from "../../ai-edits/note-references";
 import {
   holdsOnlyDeletedContent,
   isDeletedPPrMark,
@@ -265,39 +102,38 @@ import {
   PENDING_JOIN_INSERTION_REFUSAL,
   PENDING_PARAGRAPH_MARK_PROPERTY_REFUSAL,
   pendingJoinBounds,
-} from "./pendingJoin";
+} from "../../ai-edits/pendingJoin";
 import {
   getFolioDocumentOperationRemovedBlockIds,
   getTrackedFolioDocumentOperationCarrierBlockId,
   getTrackedFolioDocumentOperationRemovedBlockIds,
-} from "./removed-blocks";
-import { addRetiredCommentReceipts } from "./retired-comment-receipts";
-import { separateRevisionStretches } from "./revisionStretches";
+} from "../../ai-edits/removed-blocks";
+import { addRetiredCommentReceipts } from "../../ai-edits/retired-comment-receipts";
 import {
   collectNoteReferenceLabels,
   hashFolioAIBlockContent,
   hashFolioAIBlockStructuralBoundaries,
   hashFolioAIBlockText,
   isHiddenTableRow,
-} from "./snapshot";
+} from "../../ai-edits/snapshot";
 import {
   followedOnlyByDeletedParagraphs,
   isInsertedPPrMark,
   isPlainDeletedPPrMark,
   snapshotBatchClaim,
   type SnapshotBatchOperation,
-} from "./snapshotBatchFacts";
+} from "../../ai-edits/snapshotBatchFacts";
 import {
   mergeTableRectangle,
   mergeTrackedVerticalTableCells,
   splitTableRectangle,
   splitTrackedVerticalTableCell,
-} from "./table-cell-mutations";
+} from "../../ai-edits/table-cell-mutations";
 import {
   planTableMutations,
   type TableMutationPlanTarget,
   type TableRectangle,
-} from "./table-mutation-plan";
+} from "../../ai-edits/table-mutation-plan";
 import {
   applyTableColumnDeletion,
   applyTableColumnInsertions,
@@ -312,20 +148,23 @@ import {
   type TableColumnInsertion,
   type TableRowDeletion,
   type TableRowInsertion,
-} from "./table-row-column-mutations";
+} from "../../ai-edits/table-row-column-mutations";
 import {
   findEnclosingTableCell,
   findEnclosingTableRow,
   findOutermostTableBoundary,
   tableRectangleCutsMergedCell,
-} from "./table-targets";
+} from "../../ai-edits/table-targets";
 import {
   type FolioTableTemplates,
   tableFromTemplate,
   type TableStructureRevision,
-} from "./table-template";
-import { supportsTableInsertionMode } from "./tableInsertionModes";
-import { buildSignatureTableNode, buildTableNode } from "./tableNodes";
+} from "../../ai-edits/table-template";
+import { supportsTableInsertionMode } from "../../ai-edits/tableInsertionModes";
+import {
+  buildSignatureTableNode,
+  buildTableNode,
+} from "../../ai-edits/tableNodes";
 import type {
   FolioAIBlockParagraphProperties as RequestParagraphProperties,
   FolioAIEditAppliedOperation,
@@ -338,12 +177,179 @@ import type {
   FolioAIEditSnapshot,
   FolioAIInlineFormattingPatch,
   FolioAIResolvedEditOperation as FolioAIEditOperation,
-} from "./types";
+} from "../../ai-edits/types";
 import {
   findUndefinedOperationReference,
   type FolioUndefinedReferencePolicy,
-} from "./undefinedReferences";
-import { createWordDiffSession, wordDiffSessionFromOptions } from "./word-diff";
+} from "../../ai-edits/undefinedReferences";
+import {
+  createWordDiffSession,
+  wordDiffSessionFromOptions,
+} from "../../ai-edits/word-diff";
+import type { FolioContentStatedNumbering } from "../../compare/content-types";
+import {
+  NO_NUMBERING_IDS_IN_USE,
+  type NumberingIdsInUse,
+} from "../../docx/numberingIds";
+import type { NumberingMap } from "../../docx/numberingParser";
+import { proseParagraphAttrsWithoutPropertySource } from "../../docx/paragraphPropertySource";
+import { formattingEquals } from "../../docx/runConsolidator";
+import { isStyleSourcedParagraphNumbering } from "../../internal/paragraphFormattingSerialization";
+import {
+  joinEndsBeforeTable,
+  paragraphMergeLeaves,
+  type PendingJoinEnd,
+  pendingJoinEnd,
+} from "../../prosemirror/acceptedBlockNeighbours";
+import { addTrackedDeletionMark } from "../../prosemirror/addTrackedDeletionMark";
+import {
+  deleteTextBoxesAnchoredAt,
+  droppedTextBoxAnchorIds,
+  endOfParagraphWithItsTextBoxes,
+  gatherTextBoxesAfterParagraph,
+  textBoxAnchorIdOf,
+  textBoxAnchorIdsBetween,
+} from "../../prosemirror/anchoredTextBoxes";
+import {
+  expectParagraphAttrs,
+  expectRunPropertyChangeMarkAttrs,
+  expectTableRowAttrs,
+  mergeParagraphAttrs,
+} from "../../prosemirror/attrs";
+import { paragraphJoinAfter } from "../../prosemirror/commands/paragraphBookmarkJoin";
+import {
+  hasSerializableParagraphPropertyChange,
+  paragraphPropertiesSnapshot,
+} from "../../prosemirror/commands/propertyChangeScope";
+import { resolveParagraphChangeAttrs } from "../../prosemirror/commands/resolveParagraphProperties";
+import {
+  addedBreakCarrierBefore,
+  containerEndsAt,
+  finalParagraphsOf,
+  paragraphEndsItsContainer,
+} from "../../prosemirror/containerFinalParagraph";
+import { encloseWholeControls } from "../../prosemirror/contentControlRevisions";
+import { JOINED_RUNS_RESTYLED_META } from "../../prosemirror/extensions/features/JoinedRunStyleExtension";
+import { TEXT_BOX_ANCHOR_NODE_NAME } from "../../prosemirror/extensions/nodes/TextBoxAnchorExtension";
+import {
+  insertionGap,
+  insertionGapEnd,
+  InsertionGapOrder,
+} from "../../prosemirror/insertionGaps";
+import {
+  blockBoundariesOf,
+  carriesCommentAnchor,
+  inlineBoundariesOf,
+  isBlockBoundaryNode,
+  removeResolvedSubtree,
+} from "../../prosemirror/keptRangeBoundaries";
+import { CLEARED_LIST_RENDERING_ATTRS } from "../../prosemirror/listMarker";
+import { lockedControlSpans } from "../../prosemirror/lockedControls";
+import {
+  effectiveParagraphNumbering,
+  paragraphNumberingAttr,
+  paragraphNumberingSourcesFromBoundary,
+  readParagraphNumberingAttr,
+  removedNumberingAttr,
+} from "../../prosemirror/numberingAttr";
+import { directParagraphAlignment } from "../../prosemirror/paragraphAlignment";
+import { markStructuralChange } from "../../prosemirror/paragraphChangeTrackerMeta";
+import { styleResolvedParagraphFormatting } from "../../prosemirror/paragraphFormattingProvenance";
+import {
+  directParagraphIndentation,
+  paragraphIndentationAttrPatch,
+  paragraphIndentationEqual,
+  paragraphIndentationFromFormatting,
+  withDirectParagraphIndentation,
+} from "../../prosemirror/paragraphIndentation";
+import { joinAtParagraphMark } from "../../prosemirror/paragraphMarkJoin";
+import {
+  carryParagraphProperties,
+  paragraphLeftAfter,
+  paragraphPropertySnapshotsDiffer,
+  recordReplacedParagraphProperties,
+} from "../../prosemirror/paragraphPropertyCarry";
+import {
+  directParagraphSpacing,
+  paragraphSpacingAttrPatch,
+  paragraphSpacingEqual,
+  paragraphSpacingFromFormatting,
+  withDirectParagraphSpacing,
+} from "../../prosemirror/paragraphSpacing";
+import { requestDeterministicParaIds } from "../../prosemirror/paraIds";
+import {
+  getDocumentNumbering,
+  getDocumentNumberingInstanceIds,
+} from "../../prosemirror/plugins/documentNumbering";
+import {
+  getDocumentStyleDefinitions,
+  getDocumentStyleResolver,
+} from "../../prosemirror/plugins/documentStyleState";
+import {
+  claimRevisionIds,
+  nextRevisionId as peekRevisionId,
+  nextRevisionIdRange,
+  reserveRevisionIds,
+  seedRevisionIdsFromDoc,
+} from "../../prosemirror/plugins/revisionIds";
+import { rebaseParagraphRuns } from "../../prosemirror/rebaseParagraphRuns";
+import {
+  addCarriedMarks,
+  annotatedReplacement,
+  commentsAcrossBlockBoundary,
+  commentsForTrackedInsertion,
+  commentsSpanningInsertion,
+  hasReplacedAnnotations,
+  inheritedReplacementMarks,
+  joinCommentStretches,
+  NON_INCLUSIVE_MARK_DISPOSITION,
+  placeTrackedInsertion,
+  surveyAcceptedReplacedAnnotations,
+  surveyReplacedAnnotations,
+} from "../../prosemirror/replacedAnnotations";
+import {
+  applyMarksToRunFormattingRepresentation,
+  type SelectedRunFormattingCarrierRepresentation,
+  selectRunFormattingCarrierRepresentations,
+} from "../../prosemirror/runFormattingInlineCarriers";
+import { RUN_FORMATTING_MARK_NAMES } from "../../prosemirror/runFormattingMarkNames";
+import {
+  readAuthoredRunFormatting,
+  readAuthoredRunPropertySnapshot,
+  reconcileRunFormattingMarks,
+} from "../../prosemirror/runFormattingReconciliation";
+import {
+  type ParagraphRunStyleContext,
+  paragraphRunStyleContext,
+  paragraphRunStyleContextAt,
+  resolveParagraphBodyRunFormatting,
+} from "../../prosemirror/runStyleFormatting";
+import type {
+  ParagraphAttrs,
+  ParagraphAttrsPatch,
+  ParagraphPropertyChangeAttrs,
+} from "../../prosemirror/schema/nodes";
+import { sectionPropertiesOf } from "../../prosemirror/sectionCarrier";
+import {
+  listAttrsFromNumbering,
+  listLevelAttrPatch,
+  listLevelIndentRemovalPatch,
+} from "../../prosemirror/styles/resolvedStyleAttrs";
+import {
+  removeRowsWithoutCellsAfterBatch,
+  type RowsEmptiedInBatch,
+} from "../../prosemirror/tableGridMutation";
+import { paragraphGoes, tableGoes } from "../../prosemirror/tableRunIn";
+import { isZeroWidthAnchor } from "../../prosemirror/zeroWidthAnchors";
+import { getFolioParaIdFromBlockId } from "../../types/block-id";
+import type {
+  ParagraphFormatting,
+  RunPropertyChange,
+  TextFormatting,
+} from "../../types/document";
+import type { DeepReadonly } from "../../types/documentModel";
+import { canonicalJson } from "../../utils/canonicalJson";
+import { separateRevisionStretches } from "./revisionStretches";
 
 type FolioAIBlockParagraphProperties =
   RequestParagraphProperties<FolioContentStatedNumbering>;

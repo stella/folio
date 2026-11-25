@@ -26,6 +26,7 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../../test/property-testing";
+import { projectReferenceDocument } from "../../__tests__/reference-editor/projectReferenceDocument";
 import { listRenderingDefinitionsMatch } from "../../docx/listRendering";
 import {
   computeListRendering,
@@ -42,7 +43,6 @@ import type {
 } from "../../types/document";
 import { CLEARED_LIST_RENDERING_ATTRS } from "../listMarker";
 import { listRenderingAttrPatch } from "../listRenderingAttrs";
-import { updateDocumentContent } from "./fromProseDoc";
 import {
   footnoteToProseDoc,
   headerFooterToProseDoc,
@@ -186,7 +186,7 @@ describe("listRendering.levelStarts round-trip", () => {
     )) {
       expect(projection.child(0).attrs[key]).toEqual(value);
     }
-    const rebuilt = updateDocumentContent(initial, projection);
+    const rebuilt = projectReferenceDocument(initial, projection);
     const rebuiltFirst = rebuilt.package.document.content.at(0);
     expect(
       rebuiltFirst?.type === "paragraph"
@@ -619,7 +619,7 @@ describe("listRendering.levelStarts round-trip", () => {
       const initial = await numberedFixture(options);
       expect(markers(initial)).toEqual(expected);
 
-      const rebuilt = updateDocumentContent(initial, toProseDoc(initial));
+      const rebuilt = projectReferenceDocument(initial, toProseDoc(initial));
 
       expect(levelStartsOf(rebuilt)).toEqual(levelStartsOf(initial));
       expect(rebuilt.package.numbering).toEqual(initial.package.numbering);

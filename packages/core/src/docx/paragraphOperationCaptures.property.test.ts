@@ -17,7 +17,7 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
-import { updateDocumentContent } from "../prosemirror/conversion/fromProseDoc";
+import { projectReferenceDocument } from "../__tests__/reference-editor/projectReferenceDocument";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { createEmptyDocument } from "../utils/createDocument";
 import {
@@ -159,8 +159,14 @@ test(
               document: { ...source.package.document, content },
             },
           };
-          const rebuilt = updateDocumentContent(document, toProseDoc(document));
-          const repeated = updateDocumentContent(rebuilt, toProseDoc(rebuilt));
+          const rebuilt = projectReferenceDocument(
+            document,
+            toProseDoc(document),
+          );
+          const repeated = projectReferenceDocument(
+            rebuilt,
+            toProseDoc(rebuilt),
+          );
           expect(
             structuredClone(repeated.package.document.content),
           ).toStrictEqual(structuredClone(rebuilt.package.document.content));
@@ -177,7 +183,7 @@ test(
               },
             };
             expect(() =>
-              updateDocumentContent(invalid, toProseDoc(source)),
+              projectReferenceDocument(invalid, toProseDoc(source)),
             ).toThrow(
               "A source-bound paragraph is missing its paragraph-property token.",
             );
@@ -205,7 +211,7 @@ test(
               },
             };
             expect(() =>
-              updateDocumentContent(invalid, toProseDoc(invalid)),
+              projectReferenceDocument(invalid, toProseDoc(invalid)),
             ).toThrow("The source paragraph identity is invalid.");
           }
         },

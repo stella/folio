@@ -205,10 +205,6 @@ import {
   projectMarkupView,
   visibleCaretPosition,
 } from "@stll/folio-core/prosemirror/markupViewProjection";
-import {
-  createNoteReferenceFollower,
-  type NoteReferenceFollower,
-} from "@stll/folio-core/prosemirror/noteReferenceReview";
 import { aiSuggestionDecorationsKey } from "@stll/folio-core/prosemirror/plugins/aiSuggestionDecorations";
 import { templateDirectivesKey } from "@stll/folio-core/prosemirror/plugins/templateDirectives";
 import type { DirectiveRange } from "@stll/folio-core/prosemirror/plugins/templateDirectives";
@@ -2529,26 +2525,15 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       noteChangeNotifyTimerRef.current = null;
     }, []);
     const compositionNotificationRetryRef = useRef<(() => void) | null>(null);
-    // A note follows its reference: a reference whose deletion the reported
-    // edits rejected gives its note back its text, and deleting it again (as
-    // undoing that reject does) takes the text with it.
-    const [noteFollower] = useState<NoteReferenceFollower>(
-      createNoteReferenceFollower,
-    );
-    const noteFollowerDocumentRef = useRef(documentIdentity);
+    const noteNotificationDocumentRef = useRef(documentIdentity);
     useEffect(() => {
-      if (noteFollowerDocumentRef.current === documentIdentity) return;
-      noteFollowerDocumentRef.current = documentIdentity;
-      noteFollower.reset();
+      if (noteNotificationDocumentRef.current === documentIdentity) return;
+      noteNotificationDocumentRef.current = documentIdentity;
       // A note edit's pending notice belongs to the document it was made in.
       cancelNoteChangeNotification();
-    }, [documentIdentity, noteFollower, cancelNoteChangeNotification]);
+    }, [documentIdentity, cancelNoteChangeNotification]);
 
-    /**
-     * The settled document: in a canonical session the session's own document,
-     * otherwise one document built from the editor state; either way the
-     * model, with one copy for the host.
-     */
+    /** Read the settled model held by the canonical session. */
     const settledDocumentChange =
       useCallback((): SettledDocumentChange | null => {
         const model = hiddenPMRef.current?.readCanonicalDocument() ?? null;
@@ -3363,16 +3348,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
      * Handle PM transaction - re-layout on content/selection change.
      */
     const handleTransaction = useCallback(
-      ({
-        newState,
-        docChanged,
-        transactions,
-      }: HiddenEditorTransactionUpdate) => {
-        const before = transactions[0]?.before;
-        if (docChanged && before) {
-          noteFollower.noteBase(before);
-        }
-
+      ({ newState, docChanged }: HiddenEditorTransactionUpdate) => {
         const nextDirectives =
           templateDirectivesKey.getState(newState)?.ranges ?? [];
         if (nextDirectives !== directivesRef.current) {
@@ -3487,7 +3463,6 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         updateAISuggestionsOverlay,
         passageHighlightOverlayRequestGate,
         syncCoordinator,
-        noteFollower,
       ],
       // NOTE: onDocumentChange removed from dependencies - accessed via ref to prevent infinite loops
     );

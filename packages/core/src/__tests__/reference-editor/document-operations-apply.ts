@@ -8,17 +8,13 @@ import type { Transaction } from "prosemirror-state";
 
 import type { ValidateDocumentModelIssue } from "@stll/docx-core";
 
-import {
-  applyFolioAIEditOperationsInPackage,
-  previewFolioAIEditOperationsWithResult,
-} from "./ai-edits/apply";
-import type { FolioAIEditApplyOutcome } from "./ai-edits/applyTypes";
+import type { FolioAIEditApplyOutcome } from "../../ai-edits/applyTypes";
 import {
   describeModelError,
   findIntroducedModelErrors,
-} from "./ai-edits/result-validation";
-import { trackedBatchFidelityError } from "./ai-edits/tracked-batch-fidelity";
-import type { FolioAIEditSkippedOperation } from "./ai-edits/types";
+} from "../../ai-edits/result-validation";
+import { trackedBatchFidelityError } from "../../ai-edits/tracked-batch-fidelity";
+import type { FolioAIEditSkippedOperation } from "../../ai-edits/types";
 import {
   type ApplyFolioDocumentOperationsOptions,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -28,14 +24,18 @@ import {
   getFolioDocumentOperationReceiptsForStory,
   parseFolioDocumentOperationBatch,
   withDistinctSuggestionIds,
-} from "./document-operations";
+} from "../../document-operations";
 import {
   NO_NUMBERING_IDS_IN_USE,
   type NumberingIdsInUse,
-} from "./docx/numberingIds";
-import { getSuggestions } from "./prosemirror/commands/comments";
-import { completeNumberingForDoc } from "./prosemirror/listInstanceReferences";
-import { getStatedDocumentNumbering } from "./prosemirror/plugins/documentNumbering";
+} from "../../docx/numberingIds";
+import { getSuggestions } from "../../prosemirror/commands/comments";
+import { completeNumberingForDoc } from "../../prosemirror/listInstanceReferences";
+import { getStatedDocumentNumbering } from "../../prosemirror/plugins/documentNumbering";
+import {
+  applyFolioAIEditOperationsInPackage,
+  previewFolioAIEditOperationsWithResult,
+} from "./apply";
 
 /** One run of the applier whose result has not reached the caller's view yet. */
 type BatchAttempt = {
@@ -163,9 +163,6 @@ export const applyFolioDocumentOperationsInPackage = ({
     // checked first, and a refused result must never reach a live editor.
     const held: { transaction?: Transaction } = {};
     const commentIds: number[] = [];
-    // canonical-gap: publicOps.comments
-    // canonical-gap: publicOps.unsupportedInline
-    // canonical-gap: pm-document-operations
     const outcome = applyFolioAIEditOperationsInPackage({
       ...common,
       view: {

@@ -15,10 +15,10 @@ import {
 import type { PackageDifferences } from "../../../../../scripts/lib/corpus-invariants/model-equality";
 import { reviewDifferences } from "../../../../../test/reviewDifferences";
 import { storyRevisionIds } from "../../../../../test/reviewProjection";
+import { projectReferenceDocument } from "../../__tests__/reference-editor/projectReferenceDocument";
 import { parseDocx } from "../../docx/parser";
 import { repackDocx } from "../../docx/rezip";
 import { resolveAllChangesInHeadlessState } from "../../prosemirror/commands/comments";
-import { updateDocumentContent } from "../../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import { createDocumentNumberingPlugin } from "../../prosemirror/plugins/documentNumbering";
 import { createDocumentStylesPlugin } from "../../prosemirror/plugins/documentStyles";
@@ -27,7 +27,7 @@ export { storyRevisionIds, reviewDifferences };
 
 export const editorProjectionRoundTrip = (document: Document): Document => {
   const projected = toProseDoc(document);
-  return updateDocumentContent(document, projected);
+  return projectReferenceDocument(document, projected);
 };
 
 export const editorRoundTrip = async (
@@ -56,7 +56,7 @@ export const resolveInEditor = (
     ],
   });
   const resolved = resolveAllChangesInHeadlessState(state, decision);
-  return updateDocumentContent(document, resolved.doc);
+  return projectReferenceDocument(document, resolved.doc);
 };
 
 export type ReviewOracleOutcome =

@@ -1,6 +1,6 @@
-import type { applyFolioAIEditOperations } from "../../src/ai-edits/apply";
-import type { FolioApplyOperationsOptions } from "../../src/ai-edits/headless";
-import type { ApplyFolioDocumentOperationsOptions } from "../../src/document-operations";
+import type { FolioApplyOperationsOptions } from "../../ai-edits/headless";
+import type { ApplyFolioDocumentOperationsOptions } from "../../document-operations";
+import type { applyFolioAIEditOperations } from "./apply";
 
 const editing = {
   undefinedReferences: "refuse",

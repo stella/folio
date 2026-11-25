@@ -17,6 +17,7 @@ import type { Mark } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 
+import { applyFolioAIEditOperations } from "../__tests__/reference-editor/apply";
 import { serializeParagraph } from "../docx/serializer/paragraphSerializer";
 import {
   acceptAllChanges,
@@ -28,7 +29,6 @@ import {
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { schema } from "../prosemirror/schema";
 import type { Document, Paragraph } from "../types/document";
-import { applyFolioAIEditOperations } from "./apply";
 import {
   createFolioAIEditSnapshot,
   createFolioAITextRangeHandle,

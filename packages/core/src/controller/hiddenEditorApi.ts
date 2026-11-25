@@ -28,7 +28,6 @@ import type {
   FolioDocumentOperationUndoResult,
 } from "../document-operations";
 import { cloneDocumentWithParagraphPropertySources } from "../docx/documentClone";
-import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import type {
   FolioAutocompleteApi,
   FolioAutocompleteState,
@@ -41,7 +40,7 @@ import type { CanonicalSaveSnapshot } from "../types/canonicalSave";
 import type { CanonicalSectionPropertiesResult } from "../types/canonicalSections";
 import type { Comment } from "../types/content";
 import type { Document, SectionProperties } from "../types/document";
-import { readModel, type ReadonlyDocument } from "../types/documentModel";
+import type { ReadonlyDocument } from "../types/documentModel";
 import type { FolioDocxSerializationPath } from "../types/docxSerialization";
 import type { FolioFieldInsertion } from "../types/fields";
 import {
@@ -291,25 +290,6 @@ export type HiddenEditorApiDeps = {
   isViewRequested: () => boolean;
 };
 
-/**
- * Convert PM state to Document
- */
-const stateToDocument = (
-  state: EditorState,
-  originalDoc: ReadonlyDocument | null,
-): ReadonlyDocument | null => {
-  if (!originalDoc) {
-    return null;
-  }
-
-  // fromProseDoc reads the base document and keeps its package structure, so
-  // the result shares the parts no edit reached with the model.
-  // canonical-gap: pm-save-projection
-  return fromProseDoc(state.doc, readModel(originalDoc), {
-    stylesheetSource: { type: "package" },
-  });
-};
-
 export const createHiddenEditorApi = (
   deps: HiddenEditorApiDeps,
 ): HiddenEditorApi => {
@@ -397,15 +377,8 @@ export const createHiddenEditorApi = (
 
     autocomplete: deps.autocomplete ?? NO_AUTOCOMPLETE,
 
-    getDocument: () => {
-      const canonical = deps.getCanonicalDocument?.();
-      if (canonical) return canonical;
-      const view = deps.getView();
-      if (!view) {
-        return null;
-      }
-      return stateToDocument(view.state, deps.getDocumentContext());
-    },
+    getDocument: () =>
+      deps.getCanonicalDocument?.() ?? deps.getDocumentContext(),
 
     updateCanonicalInputLifecycle: (action) =>
       deps.canonicalOperations?.updateCanonicalInputLifecycle(action) ?? false,

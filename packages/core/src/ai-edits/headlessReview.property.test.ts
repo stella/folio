@@ -43,10 +43,10 @@ import {
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 import { createReferenceEditorRuntime } from "../__tests__/createReferenceEditorKit";
+import { projectReferenceDocument } from "../__tests__/reference-editor/projectReferenceDocument";
 import { parseDocx } from "../docx/parser";
 import { repackDocx } from "../docx/rezip";
 import { attemptSelectiveSave } from "../docx/selectiveSave";
-import { updateDocumentContent } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { ensureParaIdsInState } from "../prosemirror/paraIds";
 import { schema, singletonManager } from "../prosemirror/schema";
@@ -129,7 +129,7 @@ const makeParaIdBaseline = async (
     }),
   );
   return repackDocx({
-    ...updateDocumentContent(document, state.doc),
+    ...projectReferenceDocument(document, state.doc),
     originalBuffer: source,
   });
 };

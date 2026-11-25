@@ -34,7 +34,7 @@ import {
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
-import { updateDocumentContent } from "../prosemirror/conversion/fromProseDoc";
+import { projectReferenceDocument } from "../__tests__/reference-editor/projectReferenceDocument";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document } from "../types/document";
 import { parseDocx } from "./parser";
@@ -220,7 +220,7 @@ const editorRoundTrip = async (source: ArrayBuffer): Promise<ArrayBuffer> => {
     preloadFonts: false,
     detectVariables: false,
   });
-  return createDocx(updateDocumentContent(parsed, toProseDoc(parsed)));
+  return createDocx(projectReferenceDocument(parsed, toProseDoc(parsed)));
 };
 
 const commentFacts = (document: Document): Record<number, unknown> =>

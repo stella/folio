@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { EditorState, TextSelection } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 
-import { applyFolioAIEditOperations } from "../../../ai-edits/apply";
+import { applyFolioAIEditOperations } from "../../../__tests__/reference-editor/apply";
 import { createFolioAIEditSnapshot } from "../../../ai-edits/snapshot";
 import {
   computeListRendering,

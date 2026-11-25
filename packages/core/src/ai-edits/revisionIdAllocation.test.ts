@@ -5,6 +5,7 @@ import { EditorState, type Transaction } from "prosemirror-state";
 
 import { paragraphNumberingReferenceId } from "@stll/docx-core/model";
 
+import { applyFolioAIEditOperations } from "../__tests__/reference-editor/apply";
 import { createDocx } from "../docx/rezip";
 import { expectParagraphAttrs } from "../prosemirror/attrs";
 import {
@@ -19,7 +20,6 @@ import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document, ParagraphFormatting } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
-import { applyFolioAIEditOperations } from "./apply";
 import { FolioDocxReviewer } from "./headless";
 import { getTrackedChangesFromDoc } from "./read";
 import {
