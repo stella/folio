@@ -317,6 +317,7 @@ describe("manifest-derived packed dependency scope", () => {
       "package.json",
       "bun.lock",
       "bunfig.toml",
+      "packages/editor-web/scripts/check-eager-bundle.ts",
     ])
       expect(
         packagedConsumerRequiredForPaths({

@@ -1274,6 +1274,9 @@ jobs:
       - name: Dependency smoke over every published tarball
         run: bun scripts/packaged-consumer-dependencies.ts --pack-dir test-results/package-tarballs
 
+      - name: Eager editor bundle budget
+        run: bun run check:eager-bundle
+
       - name: Upload packed dependency artifacts
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

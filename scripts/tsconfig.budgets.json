@@ -7,6 +7,7 @@
   },
   "include": [
     "../test/typecheck/*.typecheck.ts",
+    "../packages/editor-web/scripts/check-eager-bundle.ts",
     "api-surface-budget.ts",
     "check-canonical-cutover.ts",
     "canonical-cutover.test.ts",

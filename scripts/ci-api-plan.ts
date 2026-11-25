@@ -175,7 +175,8 @@ export const packagedConsumerRequiredForPaths = ({
     if (
       file === "bun.lock" ||
       file === "bunfig.toml" ||
-      file === "package.json"
+      file === "package.json" ||
+      file === "packages/editor-web/scripts/check-eager-bundle.ts"
     )
       return true;
     // Membership changes, deletions and a private package becoming public all need a proof.
