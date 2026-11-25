@@ -6,7 +6,6 @@ import {
 } from "prosemirror-tables";
 import { Decoration, DecorationSet } from "prosemirror-view";
 
-import { pasteTableCells } from "../../prosemirror/tableCellPaste";
 import { tablePositionedBookmarksPlugin } from "./tablePositionedBookmarks";
 
 export const createReferenceTablePlugins = (): Plugin[] => {
@@ -42,23 +41,13 @@ export const createReferenceTablePlugins = (): Plugin[] => {
     },
   });
 
-  // Cell paste runs ahead of `tableEditing`, whose own cell paste splits
-  // merges at positions that ignore where the table starts.
-  const tableCellPastePlugin = new Plugin({
-    key: new PluginKey("tableCellPaste"),
-    props: {
-      handlePaste: (view, _event, slice) =>
-        pasteTableCells(view.state, slice, view.dispatch),
-    },
-  });
-
+  // The kit registers this after the table extension's cell paste handler.
   return [
     columnResizing({
       handleWidth: 5,
       cellMinWidth: 25,
       lastColumnResizable: true,
     }),
-    tableCellPastePlugin,
     tableEditing(),
     tablePositionedBookmarksPlugin(),
     activeCellPlugin,

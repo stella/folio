@@ -1,3 +1,5 @@
+import { Plugin } from "prosemirror-state";
+
 import { clipboardTransformPlugin } from "../../internal/clipboardTransformPlugin";
 import {
   createStarterKitExtensions,
@@ -6,6 +8,22 @@ import {
 import type { AnyExtension } from "./types";
 
 export type { StarterKitOptions } from "../../internal/starterKitExtensions";
+
+const starterKitClipboardPlugins = (props: Plugin["props"]) => {
+  const plugins = clipboardTransformPlugin(props);
+  const { handlePaste, handleDOMEvents } = props;
+  const paste = handleDOMEvents?.paste;
+  if (handlePaste !== undefined || paste !== undefined)
+    plugins.push(
+      new Plugin({
+        props: {
+          ...(handlePaste === undefined ? {} : { handlePaste }),
+          ...(paste === undefined ? {} : { handleDOMEvents: { paste } }),
+        },
+      }),
+    );
+  return plugins;
+};
 
 /** Create the schema, commands, keymaps and clipboard rules for the DOCX editor. */
 export function createStarterKit(
@@ -28,7 +46,7 @@ export function createStarterKit(
       return {
         ...runtime,
         plugins: plugins.flatMap(({ props }) =>
-          clipboardTransformPlugin(props),
+          starterKitClipboardPlugins(props),
         ),
       };
     };

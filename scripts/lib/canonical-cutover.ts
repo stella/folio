@@ -28,6 +28,11 @@ export type CanonicalSource = { file: string; source: string };
 const gapNames = new Map(Object.entries(CANONICAL_GAP));
 const gapIds = new Set(Object.keys(CANONICAL_CAPABILITIES));
 
+const referenceEnginePlugins = new Map([
+  ["prosemirror-history", new Set(["history"])],
+  ["prosemirror-tables", new Set(["columnResizing", "tableEditing"])],
+]);
+
 type ScriptPart = { code: string; directive: boolean };
 
 const scriptParts = ({ file, source }: CanonicalSource): ScriptPart[] => {
@@ -164,6 +169,7 @@ export const inspectCanonicalSources = (
       const lineOf = createLineIndex(part);
       const imports = new Map<string, string>();
       const namespaces = new Set<string>();
+      const engineNamespaces = new Map<string, ReadonlySet<string>>();
       for (const statement of program.body) {
         if (statement.type !== "ImportDeclaration") continue;
         const moduleName = statement.source.value;
@@ -175,22 +181,21 @@ export const inspectCanonicalSources = (
           failures.push(
             `${file}: reference engine plugins belong in test support`,
           );
+        const enginePlugins = referenceEnginePlugins.get(moduleName);
         for (const binding of statement.specifiers) {
           if (
             binding.type === "ImportNamespaceSpecifier" &&
             /(?:^|\/)canonicalCapabilities(?:\.ts)?$/.test(moduleName)
           )
             namespaces.add(binding.local.name);
+          if (binding.type === "ImportNamespaceSpecifier" && enginePlugins)
+            engineNamespaces.set(binding.local.name, enginePlugins);
           if (binding.type !== "ImportSpecifier") continue;
           const imported =
             binding.imported.type === "Identifier"
               ? binding.imported.name
               : binding.imported.value;
-          if (
-            (moduleName === "prosemirror-history" && imported === "history") ||
-            (moduleName === "prosemirror-tables" &&
-              (imported === "columnResizing" || imported === "tableEditing"))
-          )
+          if (enginePlugins?.has(imported))
             failures.push(
               `${file}: ${imported} belongs in the reference editor`,
             );
@@ -304,6 +309,20 @@ export const inspectCanonicalSources = (
           return node.property.value;
         return undefined;
       };
+      if (engineNamespaces.size > 0)
+        walkAst(program, (node) => {
+          if (
+            node.type !== "MemberExpression" ||
+            node.object.type !== "Identifier"
+          )
+            return;
+          const member = memberKey(node);
+          if (
+            member !== undefined &&
+            engineNamespaces.get(node.object.name)?.has(member)
+          )
+            failures.push(`${file}: ${member} belongs in the reference editor`);
+        });
       const primitiveName = (node: Node): string | undefined => {
         if (node.type === "Identifier") return node.name;
         if (

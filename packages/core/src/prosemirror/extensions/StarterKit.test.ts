@@ -29,8 +29,23 @@ test("StarterKit keeps commands, keymaps and clipboard transforms", () => {
     for (const plugin of runtime.plugins ?? []) {
       expect(Object.keys(plugin.spec)).toEqual(["props"]);
       for (const prop of Object.keys(plugin.props))
-        expect(clipboardProps.has(prop)).toBe(true);
+        expect(
+          clipboardProps.has(prop) ||
+            prop === "handlePaste" ||
+            prop === "handleDOMEvents",
+        ).toBe(true);
+      if (plugin.props.handleDOMEvents !== undefined)
+        expect(Object.keys(plugin.props.handleDOMEvents)).toEqual(["paste"]);
     }
+  const clipboardPlugins = viewRuntimes.flatMap(({ plugins }) => plugins ?? []);
+  expect(
+    clipboardPlugins.some(({ props }) => props.handlePaste !== undefined),
+  ).toBe(true);
+  expect(
+    clipboardPlugins.some(
+      ({ props }) => props.handleDOMEvents?.paste !== undefined,
+    ),
+  ).toBe(true);
   expect(clipboardHooks(viewRuntimes)).toContain("transformPasted");
   expect(clipboardHooks(viewRuntimes)).toContain("transformPastedHTML");
   expect(clipboardHooks(viewRuntimes)).toEqual(

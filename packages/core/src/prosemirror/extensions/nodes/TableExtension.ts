@@ -70,7 +70,10 @@ import {
 import { mintRevisionId } from "../../plugins/revisionIds";
 import { makeRevisionInfo } from "../../plugins/suggestionMode";
 import type { TableAttrs, TableCellAttrs } from "../../schema/nodes";
-import { pastedSliceWithNewTableCells } from "../../tableCellPaste";
+import {
+  pastedSliceWithNewTableCells,
+  pasteTableCells,
+} from "../../tableCellPaste";
 import {
   insertTableColumn,
   removeTableColumns,
@@ -3213,7 +3216,11 @@ export const TablePluginExtension: (
     return {
       plugins: [
         new Plugin({
-          props: { transformPasted: pastedSliceWithNewTableCells },
+          props: {
+            transformPasted: pastedSliceWithNewTableCells,
+            handlePaste: (view, _event, slice) =>
+              pasteTableCells(view.state, slice, view.dispatch),
+          },
         }),
       ],
       keyboardShortcuts: {

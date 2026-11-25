@@ -107,6 +107,20 @@ describe("canonical cutover guard", () => {
       );
     expect(
       failuresOf(
+        'import * as tables from "prosemirror-tables"; tables["tableEditing"]();',
+      ),
+    ).toContain(
+      "packages/react/src/fixture.tsx: tableEditing belongs in the reference editor",
+    );
+    expect(
+      failuresOf(
+        'import * as tables from "prosemirror-tables"; tables.TableMap;',
+      ).filter((failure) =>
+        failure.includes("belongs in the reference editor"),
+      ),
+    ).toEqual([]);
+    expect(
+      failuresOf(
         'import { ParaIdAllocatorExtension } from "../__tests__/reference-editor/ParaIdAllocatorExtension";',
       ),
     ).toContain(
