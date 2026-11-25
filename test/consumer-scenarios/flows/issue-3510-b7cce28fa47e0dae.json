@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "title": "PINNED #3510, reported seed 1047068128: a comment the batch adds over words its replacement shares letters with keeps a range over them",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "notes",
+  "mode": "direct",
+  "seed": 1047068128,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 279773764,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "replaceRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "04D9A0FF",
+            "startOffset": 3,
+            "endOffset": 10,
+            "selectedTextHash": "h2dcbi0"
+          },
+          "replace": "updated"
+        },
+        {
+          "type": "commentOnBlock",
+          "blockId": "04D9A0FF",
+          "quote": "defined",
+          "comment": {
+            "text": "Agreement buyer period schedule term schedule warranty."
+          }
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from random flow seed 1047068128"
+}
