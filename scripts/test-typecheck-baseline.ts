@@ -10,9 +10,9 @@
  * the errors they report against a committed baseline that may only go down:
  * a new error fails, and a fixed one must leave the baseline.
  *
- * An error is identified by file, code and message, never by line, so moving
- * code around does not churn the baseline. Repeats of the same error in one
- * file are counted.
+ * An entry is a file and a TS error code with a count. Lines move with any
+ * edit and messages spell out types from the sources under test, so neither
+ * is part of the key: an unrelated change elsewhere cannot move the baseline.
  *
  * Modes:
  *   bun scripts/test-typecheck-baseline.ts                  report per file
@@ -84,10 +84,11 @@ export const TEST_PROJECTS: readonly TestProject[] = [
   },
 ];
 
-/** file -> "TSnnnn: message" -> count */
+/** file -> "TSnnnn" -> count */
 export type ErrorCounts = Record<string, Record<string, number>>;
 
-type Diagnostic = { file: string; line: number; fingerprint: string };
+/** The message is only shown to whoever fixes the error; it is never keyed. */
+type Diagnostic = { file: string; line: number; code: string; message: string };
 
 const DIAGNOSTIC_LINE = /^(.+?)\((\d+),\d+\): error (TS\d+): (.*)$/u;
 
@@ -96,17 +97,13 @@ const toRepoPath = (file: string, cwd: string, root: string): string =>
 
 /**
  * Parse `--pretty false` output: one `file(line,col): error TSnnnn: message`
- * line per diagnostic. The indented lines a chained message adds below it
- * spell out types from elsewhere and change with them, so the fingerprint
- * keeps the headline only. Absolute checkout paths are made repo-relative so
- * the fingerprint is the same on every machine.
+ * line per diagnostic; the indented lines of a chained message are skipped.
  */
 export const parseDiagnostics = (
   output: string,
   { cwd = REPO_ROOT, root = REPO_ROOT } = {},
-): Diagnostic[] => {
-  const rootPrefix = `${root.replaceAll("\\", "/")}/`;
-  return output.split("\n").flatMap((raw) => {
+): Diagnostic[] =>
+  output.split("\n").flatMap((raw) => {
     const match = DIAGNOSTIC_LINE.exec(raw.replace(/\r$/u, ""));
     if (match === null) return [];
     const [, file = "", lineNumber = "0", code = "", message = ""] = match;
@@ -114,19 +111,19 @@ export const parseDiagnostics = (
       {
         file: toRepoPath(file, cwd, root),
         line: Number(lineNumber),
-        fingerprint: `${code}: ${message.replaceAll(rootPrefix, "")}`,
+        code,
+        message,
       },
     ];
   });
-};
 
 export const countDiagnostics = (
   diagnostics: readonly Diagnostic[],
 ): ErrorCounts => {
   const counts = new Map<string, Map<string, number>>();
-  for (const { file, fingerprint } of diagnostics) {
+  for (const { file, code } of diagnostics) {
     const perFile = counts.get(file) ?? new Map<string, number>();
-    perFile.set(fingerprint, (perFile.get(fingerprint) ?? 0) + 1);
+    perFile.set(code, (perFile.get(code) ?? 0) + 1);
     counts.set(file, perFile);
   }
   return Object.fromEntries(
@@ -141,30 +138,26 @@ export const countDiagnostics = (
   );
 };
 
-export type Comparison = {
-  added: { file: string; fingerprint: string; from: number; to: number }[];
-  fixed: { file: string; fingerprint: string; from: number; to: number }[];
-};
+type Change = { file: string; code: string; from: number; to: number };
+
+export type Comparison = { added: Change[]; fixed: Change[] };
 
 export const compareCounts = (
   baseline: ErrorCounts,
   current: ErrorCounts,
 ): Comparison => {
-  const added: Comparison["added"] = [];
-  const fixed: Comparison["fixed"] = [];
+  const added: Change[] = [];
+  const fixed: Change[] = [];
   const files = new Set([...Object.keys(baseline), ...Object.keys(current)]);
   for (const file of [...files].toSorted()) {
     const before = baseline[file] ?? {};
     const after = current[file] ?? {};
-    const fingerprints = new Set([
-      ...Object.keys(before),
-      ...Object.keys(after),
-    ]);
-    for (const fingerprint of [...fingerprints].toSorted()) {
-      const from = before[fingerprint] ?? 0;
-      const to = after[fingerprint] ?? 0;
-      if (to > from) added.push({ file, fingerprint, from, to });
-      if (to < from) fixed.push({ file, fingerprint, from, to });
+    const codes = new Set([...Object.keys(before), ...Object.keys(after)]);
+    for (const code of [...codes].toSorted()) {
+      const from = before[code] ?? 0;
+      const to = after[code] ?? 0;
+      if (to > from) added.push({ file, code, from, to });
+      if (to < from) fixed.push({ file, code, from, to });
     }
   }
   return { added, fixed };
@@ -300,8 +293,8 @@ const main = () => {
   }
 
   if (mode === "report") {
-    for (const { file, line, fingerprint } of diagnostics) {
-      console.log(`${file}:${line} ${fingerprint.split("\n")[0]}`);
+    for (const { file, line, code, message } of diagnostics) {
+      console.log(`${file}:${line} ${code}: ${message}`);
     }
     console.log(
       `\n${total(current)} test-file type errors across ${Object.keys(current).length} files`,
@@ -318,15 +311,13 @@ const main = () => {
   }
   if (added.length > 0) {
     console.error("New type errors in test files:");
-    for (const { file, fingerprint, from, to } of added) {
-      const lines = diagnostics
-        .filter(
-          (entry) => entry.file === file && entry.fingerprint === fingerprint,
-        )
-        .map((entry) => entry.line);
-      console.error(
-        `  ${file}:${lines.join(",")} (${from} -> ${to}) ${fingerprint}`,
-      );
+    for (const { file, code, from, to } of added) {
+      console.error(`  ${file} ${code} (${from} -> ${to}), one of:`);
+      for (const entry of diagnostics) {
+        if (entry.file === file && entry.code === code) {
+          console.error(`    ${file}:${entry.line} ${code}: ${entry.message}`);
+        }
+      }
     }
     console.error(
       "\nFix the new errors. The baseline only records errors that predate this guard.",
@@ -336,10 +327,8 @@ const main = () => {
     console.error(
       "Type errors fixed in test files (remove them from the baseline):",
     );
-    for (const { file, fingerprint, from, to } of fixed) {
-      console.error(
-        `  ${file} (${from} -> ${to}) ${fingerprint.split("\n")[0]}`,
-      );
+    for (const { file, code, from, to } of fixed) {
+      console.error(`  ${file} ${code} (${from} -> ${to})`);
     }
     console.error(
       `\nLock the win in with \`${WRITE_COMMAND}\`, or copy the ` +
