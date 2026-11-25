@@ -224,7 +224,7 @@ export const CANONICAL_CAPABILITIES: {
     readonly legacySessionMutation: "pm-headless-reviewer";
     readonly kind: "mutation-source";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "A canonical reviewer stages comparison resources, sections, table properties and inline atoms; secondary-story suggestion resolution, story-view resolution beside staged suggestions and comparison inline-provenance matching refuse.";
+    readonly summary: "Hosts can still pin the legacy reviewer engine, which runs on ProseMirror; a canonical reviewer refuses only a suggestion resolved in one of several stories it reaches.";
   };
   readonly "pm-ai-snapshots": {
     readonly owner: "ai-edits";

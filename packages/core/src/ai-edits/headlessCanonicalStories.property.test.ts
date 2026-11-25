@@ -341,7 +341,7 @@ for (const story of REVIEW_STORIES)
       if (view === "original") expect(text).toBe(textBefore);
       else expect(text).toContain("Proposed words.");
       expect(reviewer.readStory(other)?.text).toBe(otherBefore);
-      const reopened = await open(new Uint8Array(await reviewer.toBuffer()));
+      const reopened = await open(await reviewer.toBuffer());
       expect(reopened.readStory(story)?.text).toBe(text);
     });
 
