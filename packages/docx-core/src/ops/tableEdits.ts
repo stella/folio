@@ -2,8 +2,12 @@
 import { panic, Result } from "better-result";
 
 import {
+  type BlockContent,
   type Document,
+  finalizeParagraphFormatting,
   MAX_REVISION_ID,
+  type Paragraph,
+  type ParagraphContent,
   type Table,
   type TableCell,
   type TableCellFormatting,
@@ -11,7 +15,10 @@ import {
   type TableMeasurement,
   type TableRow,
   type TableRowFormatting,
+  type TableStructuralChangeInfo,
+  type TrackedChangeInfo,
 } from "../model/document";
+import { maxOf } from "../model/extremes";
 import {
   storyBody,
   storyParagraphs,
@@ -21,11 +28,30 @@ import {
 import { validateOpsDocument } from "./contract";
 import type { DocumentEdit } from "./edits";
 import { equalForStaleness, structurallyEqual } from "./equality";
-import { idKey, isParaId, packageParagraphIds, paragraphIdsIn } from "./ids";
+import { freshenIdentities, identityKeysOf } from "./identity";
+import {
+  IDENTITY_SPACES,
+  idKey,
+  isParaId,
+  packageIdentityKeyIndex,
+  packageParagraphIds,
+  paragraphIdsIn,
+  slotKey,
+} from "./ids";
+import { paragraphLength } from "./offsets";
 import { applyFormattingPatch } from "./patch";
 import { relocatePositionedMarkers } from "./positionedMarkers";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
-import { stampInfo, WRAP_KINDS } from "./review";
+import { withTableRecordsResolved } from "./resolveTableRows";
+import {
+  foldedParagraphPropertyChange,
+  reviewFieldsOf,
+  stampInfo,
+  withReviewFields,
+  WRAP_KINDS,
+  type WrapKind,
+  wrapTracked,
+} from "./review";
 import { replaceStoryBody } from "./stories";
 import {
   reachesPastRemovedCell,
@@ -42,6 +68,7 @@ import {
   tableRowAnchor,
   type TableRowLocation,
 } from "./tableLocation";
+import { rowsWithoutRow } from "./tableRowRemoval";
 import { applyTableOp } from "./tables";
 import { trackTableRows } from "./tableTracking";
 import {
@@ -405,7 +432,10 @@ const withSpan = (cell: TableCell, span: number): TableCell => {
   const formatting = authored({ ...cell.formatting });
   if (span === 1) delete formatting.gridSpan;
   else formatting.gridSpan = span;
-  return { ...cell, formatting };
+  // A cell narrowed to one column states no properties it did not have.
+  if (Object.keys(formatting).length > 0) return { ...cell, formatting };
+  const { formatting: _formatting, ...plain } = cell;
+  return plain;
 };
 const dividedWidth = (
   width: TableMeasurement | undefined,
@@ -690,6 +720,83 @@ const restatedCell = (
   );
 };
 
+type CopiedPropertyChangesOptions = {
+  /** The cell whose pending property changes a new cell takes. */
+  source: TableCell;
+  /** The new cell, with the properties it takes from `source`. */
+  cell: TableCell;
+  /** The ids of the new records, drawn one for each change. */
+  ids: Iterator<number>;
+};
+/**
+ * A new cell a direct edit makes from `source`, taking its properties, with
+ * `source`'s pending property changes restated over them as records of its
+ * own: rejecting them takes the other properties off the new cell as it
+ * does off `source`.
+ */
+const copiedPropertyChanges = ({
+  source,
+  cell,
+  ids,
+}: CopiedPropertyChangesOptions): Result<TableCell, "earlierGrid"> => {
+  const restated = restatedCell(source, cell, CELL_GRID_FIELDS);
+  if (restated.isErr() || restated.value.propertyChanges === undefined)
+    return restated;
+  const propertyChanges: NonNullable<TableCell["propertyChanges"]> = [];
+  for (const change of restated.value.propertyChanges) {
+    const next = ids.next();
+    if (next.done === true)
+      panic("A copied property change has no revision id.");
+    propertyChanges.push({
+      ...change,
+      info: { ...change.info, id: next.value },
+    });
+  }
+  return Result.ok(Object.assign({}, restated.value, { propertyChanges }));
+};
+
+type DirectRevisionIdsOptions = {
+  document: Document;
+  op: TableEditOp;
+  count: number;
+};
+/**
+ * The revision ids a direct edit gives the records it adds beside pending
+ * ones, such as a new cell's copy of its source's property change: the first
+ * `count` ids of `newIds.revision` no record in the package holds.
+ */
+const directRevisionIds = ({
+  document,
+  op,
+  count,
+}: DirectRevisionIdsOptions): Result<number[], DocumentOpRefusal> => {
+  if (count === 0) return Result.ok([]);
+  const held = packageIdentityKeyIndex(document.package);
+  const ids: number[] = [];
+  for (const id of op.newIds?.revision ?? []) {
+    if (ids.length === count) break;
+    if (!Number.isInteger(id) || id < 0 || id > MAX_REVISION_ID)
+      return refuse({
+        op,
+        reason: DOCUMENT_OP_REFUSAL_REASONS.INVALID_NEW_ID,
+        message: "Revision ids must be nonnegative 31-bit integers.",
+      });
+    if (
+      ids.includes(id) ||
+      held.has(slotKey({ space: IDENTITY_SPACES.REVISION, id }))
+    )
+      continue;
+    ids.push(id);
+  }
+  if (ids.length < count)
+    return refuse({
+      op,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
+      message: `This table change keeps pending records under ${count} new revision ids.`,
+    });
+  return Result.ok(ids);
+};
+
 /** `after`, the direct edit of `before`, with `before`'s pending property changes restated. */
 const restatedRow = (
   before: TableRow,
@@ -790,8 +897,6 @@ type ColumnReviewsOptions = {
   op: Extract<TableEditOp, { type: "insertColumn" | "deleteColumn" }>;
   table: Table;
   grid: TableGrid;
-  /** Whether the edit leaves the row as it is. */
-  leavesRow: (row: number) => boolean;
 };
 /**
  * Whether a direct column edit keeps the table's pending records, and the
@@ -804,7 +909,6 @@ const columnReviews = ({
   op,
   table,
   grid,
-  leavesRow,
 }: ColumnReviewsOptions): Result<
   TableFormatting["gridChange"],
   DocumentOpRefusal
@@ -815,31 +919,11 @@ const columnReviews = ({
       reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
       message,
     });
-  const columns = reviewColumns(grid);
-  if (columns === undefined)
-    return conflict(
-      "Resolve the pending cell insertions and deletions that take part of a column before changing its columns.",
-    );
-  // A row whose pending changes record other spans or omissions stands on
-  // another grid when they are rejected.
-  if (
-    table.rows.some(
-      (row, rowIndex) =>
-        !leavesRow(rowIndex) &&
-        (!statesOwnGrid(row.propertyChanges, row.formatting, ROW_GRID_FIELDS) ||
-          row.cells.some(
-            (cell) =>
-              !statesOwnGrid(
-                cell.propertyChanges,
-                cell.formatting,
-                CELL_SPAN_FIELDS,
-              ),
-          )),
-    )
-  )
-    return conflict(
-      "Resolve the pending span changes of the rows the column crosses before changing its columns.",
-    );
+  // Records taking part of a column, or recording other spans or
+  // omissions, take `columnEditAcrossRecords`.
+  const columns =
+    reviewColumns(grid) ??
+    panic("A column edit across partial records reads both decisions.");
   const gridChange = table.formatting?.gridChange;
   if (gridChange === undefined) return Result.ok(undefined);
   if (gridChange.columnWidths.length !== grid.width - columns.inserted.size)
@@ -864,9 +948,522 @@ const columnReviews = ({
   return Result.ok({ ...gridChange, columnWidths });
 };
 
+type ColumnOp = Extract<TableEditOp, { type: "insertColumn" | "deleteColumn" }>;
+
+/**
+ * Whether a pending record places a column differently once it is accepted
+ * than once it is rejected: a cell insertion or deletion that takes only part
+ * of a column, or a row or cell property change recording other spans or
+ * omissions.
+ */
+const recordsPlaceColumnsApart = (table: Table, grid: TableGrid) =>
+  reviewColumns(grid) === undefined ||
+  table.rows.some(
+    (row) =>
+      !statesOwnGrid(row.propertyChanges, row.formatting, ROW_GRID_FIELDS) ||
+      row.cells.some(
+        (cell) =>
+          !statesOwnGrid(
+            cell.propertyChanges,
+            cell.formatting,
+            CELL_SPAN_FIELDS,
+          ),
+      ),
+  );
+
+/** A cell's first paragraph id, which names it in every decision's table. */
+const cellKey = (cell: TableCell): string | undefined =>
+  storyParagraphs({ content: cell.content }).at(0)?.paragraph.paraId;
+
+/** A row's cells in one decision's table, by key, and the columns it omits. */
+type DecidedRow = {
+  before: number;
+  end: number;
+  after: number;
+  cells: readonly { key: string; start: number; end: number }[];
+};
+
+/** The rows of the table every cell and property record of which is decided. */
+const decidedRows = (
+  table: Table,
+  reject: boolean,
+  op: ColumnOp,
+): DecidedRow[] | undefined => {
+  const decided = withTableRecordsResolved(table, reject);
+  if (decided.isErr() || decided.value.rows.length !== table.rows.length)
+    return undefined;
+  const grid = tableGrid(decided.value, op.type);
+  if (grid.isErr()) return undefined;
+  const rows: DecidedRow[] = [];
+  for (const [index, row] of decided.value.rows.entries()) {
+    const { before, end } = rowExtent(decided.value, grid.value, index);
+    const cells = [];
+    for (const { cell, start, end: cellEnd } of grid.value.rows[index] ?? []) {
+      const key = cellKey(cell);
+      if (key === undefined) return undefined;
+      cells.push({ key, start, end: cellEnd });
+    }
+    rows.push({ before, end, after: row.formatting?.gridAfter ?? 0, cells });
+  }
+  return rows;
+};
+
+/** Where a column edit lands in one row of one decision's table. */
+type ColumnPlace =
+  | { type: "leaves" }
+  | { type: "before" }
+  | { type: "after" }
+  /** An insertion between two cells, after the keyed one, or first. */
+  | { type: "between"; after: string | undefined }
+  /** The keyed cell spans the column: an insertion widens it, a deletion narrows or removes it. */
+  | { type: "within"; cell: string; span: number };
+
+const columnPlace = (row: DecidedRow, op: ColumnOp): ColumnPlace => {
+  const insert = op.type === DOCUMENT_OP_TYPES.INSERT_COLUMN;
+  const column = op.column;
+  if (column < row.before) return { type: "before" };
+  if (insert ? column > row.end + row.after : column >= row.end + row.after)
+    return { type: "leaves" };
+  if (insert ? column > row.end : column >= row.end) return { type: "after" };
+  const spanning = row.cells.find(({ start, end }) =>
+    insert ? start < column && column < end : start <= column && column < end,
+  );
+  if (spanning !== undefined)
+    return {
+      type: "within",
+      cell: spanning.key,
+      span: spanning.end - spanning.start,
+    };
+  return {
+    type: "between",
+    after: row.cells.find(({ end }) => end === column)?.key,
+  };
+};
+
+/** How one row's cells change, read against both decisions. */
+type RowColumnPlan =
+  | { type: "unchanged" }
+  | { type: "omission"; side: "gridBefore" | "gridAfter" }
+  | {
+      type: "cells";
+      /** Where new cells go, and which decision keeps them. */
+      added: { at: number; kept: "both" | "accept" | "reject" } | undefined;
+      /** The span each cell gains or loses, in the current and the earlier properties. */
+      spans: ReadonlyMap<number, { current: number; earlier: number }>;
+      /** The cells the edit removes. */
+      removed: ReadonlySet<number>;
+    };
+
+type RowColumnPlanOptions = {
+  entries: readonly GridCell[];
+  accepted: DecidedRow;
+  rejected: DecidedRow;
+  op: ColumnOp;
+};
+/**
+ * One row's part of a direct column edit, so that accepting every record
+ * gives the edit of the accepted row, and rejecting them that of the
+ * rejected row. `undefined` where no one change of the row does both.
+ */
+const rowColumnPlan = ({
+  entries,
+  accepted,
+  rejected,
+  op,
+}: RowColumnPlanOptions): RowColumnPlan | undefined => {
+  const inAccepted = accepted.cells.map(({ key }) => key);
+  const inRejected = rejected.cells.map(({ key }) => key);
+  const placeA = columnPlace(accepted, op);
+  const placeR = columnPlace(rejected, op);
+  if (placeA.type === "leaves" && placeR.type === "leaves")
+    return { type: "unchanged" };
+  if (placeA.type === "before" || placeA.type === "after") {
+    if (placeR.type !== placeA.type) return undefined;
+    return {
+      type: "omission",
+      side: placeA.type === "before" ? "gridBefore" : "gridAfter",
+    };
+  }
+  // A row one decision leaves as it is takes the edit in the other only.
+  if (placeR.type === "before" || placeR.type === "after") return undefined;
+  const keys = entries.map(({ cell }) => cellKey(cell));
+  const insert = op.type === DOCUMENT_OP_TYPES.INSERT_COLUMN;
+  const count =
+    op.type === DOCUMENT_OP_TYPES.INSERT_COLUMN ? (op.count ?? 1) : 1;
+  const spans = new Map<number, { current: number; earlier: number }>();
+  const removed = new Set<number>();
+  // The cell standing in the deleted column as the row stands now.
+  const occupant = insert
+    ? undefined
+    : entries.findIndex(
+        ({ start, end }) => start <= op.column && op.column < end,
+      );
+  for (const [index, key] of keys.entries()) {
+    if (key === undefined) return undefined;
+    const presentA = inAccepted.includes(key);
+    const presentR = inRejected.includes(key);
+    const hitA = placeA.type === "within" && placeA.cell === key;
+    const hitR = placeR.type === "within" && placeR.cell === key;
+    if (!insert) {
+      // A cell goes where every decision keeping it removes it.
+      const goesA = hitA && placeA.span === 1;
+      const goesR = hitR && placeR.span === 1;
+      if (presentA && presentR && goesA !== goesR) return undefined;
+      if (goesA || goesR) {
+        removed.add(index);
+        continue;
+      }
+    }
+    const delta = insert ? count : -1;
+    // A new cell only rejecting keeps is a pending deletion beside the cell
+    // accepting widens: accepted, it hands that cell its columns. A column
+    // accepting narrows a cell over that is a deleted cell's, as accepted it
+    // was handed, goes with that cell.
+    const current =
+      hitA &&
+      (insert
+        ? placeR.type !== "between"
+        : occupant === undefined || occupant === index)
+        ? delta
+        : 0;
+    const earlier = hitR ? delta : 0;
+    if (current === 0 && earlier === 0) continue;
+    const cell = entries[index]?.cell;
+    const recorded = (cell?.propertyChanges?.length ?? 0) > 0;
+    // Without a record, both decisions read the cell's one span.
+    if (!recorded && presentA && presentR && current !== earlier)
+      return undefined;
+    spans.set(
+      index,
+      recorded
+        ? { current, earlier }
+        : { current: presentA ? current : earlier, earlier: 0 },
+    );
+  }
+  if (!insert) return { type: "cells", added: undefined, spans, removed };
+  const range = (place: ColumnPlace, present: readonly string[]) => {
+    if (place.type !== "between") return undefined;
+    const lower = place.after === undefined ? 0 : keys.indexOf(place.after) + 1;
+    const next = keys.findIndex(
+      (key, index) =>
+        index >= lower && key !== undefined && present.includes(key),
+    );
+    return { lower, upper: next === -1 ? keys.length : next };
+  };
+  const rangeA = range(placeA, inAccepted);
+  const rangeR = range(placeR, inRejected);
+  const ranges = [rangeA, rangeR].filter((each) => each !== undefined);
+  if (ranges.length === 0)
+    return { type: "cells", added: undefined, spans, removed };
+  const at = maxOf(
+    ranges.map(({ lower }) => lower),
+    0,
+  );
+  if (ranges.some(({ lower, upper }) => lower < 0 || at > upper))
+    return undefined;
+  let kept: "both" | "accept" | "reject" = "both";
+  if (rangeA === undefined) kept = "reject";
+  else if (rangeR === undefined) kept = "accept";
+  return { type: "cells", added: { at, kept }, spans, removed };
+};
+
+type ColumnPlanOptions = { table: Table; grid: TableGrid; op: ColumnOp };
+/** Every row's part of a direct column edit across records that place it apart. */
+const columnPlanAcrossRecords = ({
+  table,
+  grid,
+  op,
+}: ColumnPlanOptions): RowColumnPlan[] | undefined => {
+  if (table.formatting?.gridChange !== undefined) return undefined;
+  const accepted = decidedRows(table, false, op);
+  const rejected = decidedRows(table, true, op);
+  if (accepted === undefined || rejected === undefined) return undefined;
+  const plans: RowColumnPlan[] = [];
+  for (const index of table.rows.keys()) {
+    const acceptedRow = accepted[index];
+    const rejectedRow = rejected[index];
+    const entries = grid.rows[index];
+    if (
+      acceptedRow === undefined ||
+      rejectedRow === undefined ||
+      entries === undefined
+    )
+      return undefined;
+    const plan = rowColumnPlan({
+      entries,
+      accepted: acceptedRow,
+      rejected: rejectedRow,
+      op,
+    });
+    if (plan === undefined) return undefined;
+    plans.push(plan);
+  }
+  return plans;
+};
+
+/** The span field of cell formatting, moved by `delta` columns. */
+const respanned = (
+  formatting: TableCellFormatting | undefined,
+  delta: number,
+): TableCellFormatting | undefined => {
+  if (delta === 0) return formatting;
+  const next = authored({ ...formatting });
+  const span = (formatting?.gridSpan ?? 1) + delta;
+  if (span === 1) delete next.gridSpan;
+  else next.gridSpan = span;
+  return next;
+};
+
+/** The omission field of row formatting, moved by `delta` columns. */
+const reomitted = (
+  formatting: TableRowFormatting | undefined,
+  side: "gridBefore" | "gridAfter",
+  delta: number,
+): TableRowFormatting => {
+  const next = authored({ ...formatting });
+  const value = (formatting?.[side] ?? 0) + delta;
+  if (side === "gridBefore") {
+    if (value === 0) delete next.gridBefore;
+    else next.gridBefore = value;
+  } else if (value === 0) delete next.gridAfter;
+  else next.gridAfter = value;
+  return next;
+};
+
+type ColumnEditAcrossRecordsOptions = {
+  document: Document;
+  op: ColumnOp;
+  table: Table;
+  grid: TableGrid;
+  conflict: (message: string) => Result<never, DocumentOpRefusal>;
+};
+/**
+ * A direct column edit beside records that place the column apart once
+ * accepted and once rejected. Each row takes the edit as both decisions read
+ * it: a new cell only one of them keeps is recorded as that decision's cell
+ * insertion or deletion, under the author of the row's record, and a span
+ * only one of them changes is changed in the properties that decision gives
+ * the cell. Accepting every record gives the edit of the accepted table, and
+ * rejecting them that of the rejected one; where no table does both, the
+ * edit refuses.
+ */
+const columnEditAcrossRecords = ({
+  document,
+  op,
+  table,
+  grid,
+  conflict,
+}: ColumnEditAcrossRecordsOptions): Result<Table, DocumentOpRefusal> => {
+  const refused = () =>
+    conflict(
+      "Resolve the pending cell insertions, deletions and span changes that place the column apart before changing its columns.",
+    );
+  const plans = columnPlanAcrossRecords({ table, grid, op });
+  if (plans === undefined) return refused();
+  const count =
+    op.type === DOCUMENT_OP_TYPES.INSERT_COLUMN ? (op.count ?? 1) : 1;
+  const addedRows = plans.filter(
+    (plan) => plan.type === "cells" && plan.added !== undefined,
+  );
+  const fresh =
+    op.type === DOCUMENT_OP_TYPES.INSERT_COLUMN
+      ? freshCells({
+          document,
+          op,
+          ids: op.newBlockIds,
+          count: addedRows.length * count,
+        })
+      : Result.ok([]);
+  if (fresh.isErr()) return Result.err(fresh.error);
+  const recorded = addedRows.filter(
+    (plan) => plan.type === "cells" && plan.added?.kept !== "both",
+  ).length;
+  const ids = directRevisionIds({ document, op, count: recorded * count });
+  if (ids.isErr()) return Result.err(ids.error);
+  const freshIds = ids.value.values();
+  const freshCellsLeft = fresh.value.values();
+  const removedCells: TableCell[] = [];
+  const rows: TableRow[] = [];
+  for (const [rowIndex, row] of table.rows.entries()) {
+    const plan = plans[rowIndex] ?? panic("A row has no plan.");
+    const entries = grid.rows[rowIndex] ?? panic("A row has no grid.");
+    const delta = op.type === DOCUMENT_OP_TYPES.INSERT_COLUMN ? count : -1;
+    switch (plan.type) {
+      case "unchanged":
+        rows.push(row);
+        continue;
+      case "omission": {
+        const next = {
+          ...row,
+          formatting: reomitted(row.formatting, plan.side, delta),
+        };
+        if (row.propertyChanges !== undefined)
+          next.propertyChanges = row.propertyChanges.map((change) => ({
+            ...change,
+            previousFormatting: reomitted(
+              change.previousFormatting,
+              plan.side,
+              delta,
+            ),
+          }));
+        rows.push(next);
+        continue;
+      }
+      case "cells":
+        break;
+      default: {
+        const unreachable: never = plan;
+        return unreachable;
+      }
+    }
+    // The record a new cell only one decision keeps is made under: the
+    // row's first record, which places the column apart.
+    const source =
+      row.cells.find((cell) => cell.structuralChange !== undefined)
+        ?.structuralChange?.info ??
+      row.cells
+        .find((cell) => cell.propertyChanges !== undefined)
+        ?.propertyChanges?.at(0)?.info ??
+      row.propertyChanges?.at(0)?.info;
+    const recordInfo = (id: number): TrackedChangeInfo => {
+      if (source === undefined) return panic("A new cell has no record.");
+      const { author, date, initials, suggestionId } = source;
+      return {
+        id,
+        author,
+        ...(date === undefined ? {} : { date }),
+        ...(initials === undefined ? {} : { initials }),
+        ...(suggestionId === undefined ? {} : { suggestionId }),
+      };
+    };
+    const cells: TableCell[] = [];
+    const added = (): TableCell[] => {
+      const out: TableCell[] = [];
+      for (let column = 0; column < count; column += 1) {
+        const next = freshCellsLeft.next();
+        if (next.done === true) panic("A new cell has no paragraph id.");
+        const kept = plan.added?.kept;
+        if (kept === undefined || kept === "both") {
+          out.push(next.value);
+          continue;
+        }
+        const id = freshIds.next();
+        if (id.done === true) panic("A new cell has no revision id.");
+        out.push({
+          ...next.value,
+          structuralChange: {
+            type:
+              kept === "accept" ? "tableCellInsertion" : "tableCellDeletion",
+            info: recordInfo(id.value),
+          },
+        });
+      }
+      return out;
+    };
+    for (const [index, { cell }] of entries.entries()) {
+      if (plan.added?.at === index) cells.push(...added());
+      if (plan.removed.has(index)) {
+        removedCells.push(cell);
+        continue;
+      }
+      const span = plan.spans.get(index);
+      if (span === undefined) {
+        cells.push(cell);
+        continue;
+      }
+      const next: TableCell = { ...cell };
+      const formatting = respanned(cell.formatting, span.current);
+      if (formatting === undefined) delete next.formatting;
+      else next.formatting = formatting;
+      const [first, ...rest] = cell.propertyChanges ?? [];
+      if (first !== undefined && span.earlier !== 0)
+        next.propertyChanges = [
+          {
+            ...first,
+            previousFormatting: respanned(
+              first.previousFormatting ?? {},
+              span.earlier,
+            ),
+          },
+          ...rest,
+        ];
+      cells.push(next);
+    }
+    if (plan.added !== undefined && plan.added.at >= entries.length)
+      cells.push(...added());
+    if (editRemovesRow({ before: row.cells, after: cells })) continue;
+    rows.push({ ...row, cells });
+  }
+  if (
+    removedCells.some(reachesPastRemovedCell) ||
+    strandsABookmark(removedCells)
+  )
+    return refuse({
+      op,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.DEPENDENT_RECORDS,
+      message:
+        "Resolve comments, moves and bookmarks reaching past the column before removing it.",
+    });
+  const columnWidths =
+    table.columnWidths === undefined ? undefined : [...table.columnWidths];
+  if (columnWidths !== undefined) {
+    if (op.type === DOCUMENT_OP_TYPES.INSERT_COLUMN)
+      columnWidths.splice(
+        op.column,
+        0,
+        ...Array.from({ length: count }, () => op.width),
+      );
+    else columnWidths.splice(op.column, 1);
+  }
+  const edited: Table = { ...table, rows };
+  if (columnWidths !== undefined) edited.columnWidths = columnWidths;
+  // Each decision of the edited table is the edit of that decision's table.
+  const newIds =
+    op.type === DOCUMENT_OP_TYPES.INSERT_COLUMN ? op.newBlockIds : [];
+  const unnamed = (value: Table): unknown => {
+    let text = JSON.stringify(value);
+    for (const id of newIds) text = text.replaceAll(`"${id}"`, `"new"`);
+    const parsed: unknown = JSON.parse(text);
+    return parsed;
+  };
+  for (const reject of [false, true]) {
+    const decided = withTableRecordsResolved(table, reject);
+    const editedDecided = withTableRecordsResolved(edited, reject);
+    if (decided.isErr() || editedDecided.isErr()) return refused();
+    const decidedGrid = statedGrid(decided.value, op);
+    if (decidedGrid.isErr()) return refused();
+    const want = columnEdit({
+      document,
+      op:
+        op.type === DOCUMENT_OP_TYPES.INSERT_COLUMN
+          ? {
+              ...op,
+              newBlockIds: newIds.slice(
+                0,
+                plans.filter(
+                  (plan) =>
+                    plan.type === "cells" &&
+                    plan.added !== undefined &&
+                    plan.added.kept !== (reject ? "accept" : "reject"),
+                ).length * count,
+              ),
+            }
+          : op,
+      table: decided.value,
+      grid: decidedGrid.value,
+    });
+    if (
+      want.isErr() ||
+      !structurallyEqual(unnamed(editedDecided.value), unnamed(want.value))
+    )
+      return refused();
+  }
+  return Result.ok(edited);
+};
+
 type ColumnOptions = {
   document: Document;
-  op: Extract<TableEditOp, { type: "insertColumn" | "deleteColumn" }>;
+  op: ColumnOp;
   table: Table;
   grid: TableGrid;
 };
@@ -927,6 +1524,21 @@ const columnEdit = ({
       op,
       reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
       message: "Resolve table reviews before changing its columns.",
+    });
+  // Records placing the column apart once accepted and once rejected: the
+  // edit is read against both decisions.
+  if (op.revision === undefined && recordsPlaceColumnsApart(table, grid))
+    return columnEditAcrossRecords({
+      document,
+      op,
+      table,
+      grid,
+      conflict: (message) =>
+        refuse({
+          op,
+          reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
+          message,
+        }),
     });
   // The cells the column removes, now or when its suggestion is accepted,
   // take their bookmarks, content controls and own review records with them.
@@ -995,7 +1607,7 @@ const columnEdit = ({
   };
   const earlierGrid =
     op.revision === undefined
-      ? columnReviews({ op, table, grid, leavesRow })
+      ? columnReviews({ op, table, grid })
       : Result.ok(undefined);
   if (earlierGrid.isErr()) return Result.err(earlierGrid.error);
   // Each row the edit changes takes a stamp, one per new cell where it gets
@@ -1335,6 +1947,48 @@ const closingRows = ({ before, after }: ClosingRowsOptions): Set<number> =>
     ),
   );
 
+/**
+ * The table without the rows a merge closes, each taken out as removing a
+ * row does: a merge none of the rows left continues is no merge.
+ */
+const withoutRows = (table: Table, closing: ReadonlySet<number>): Table => {
+  let rows = table.rows;
+  for (const index of [...closing].toSorted((left, right) => right - left))
+    rows = rowsWithoutRow({ ...table, rows }, index);
+  return { ...table, rows };
+};
+
+type ClosesOtherRowsOptions = {
+  op: Extract<TableEditOp, { type: "mergeCells" }>;
+  table: Table;
+  closing: ReadonlySet<number>;
+};
+/**
+ * A direct merge's rows that close go into its first row, which then holds
+ * their words. Under a pending insertion or deletion of its own, the first
+ * row would take them with it when that change removes it.
+ */
+const closesOtherRows = ({
+  op,
+  table,
+  closing,
+}: ClosesOtherRowsOptions): Result<void, DocumentOpRefusal> => {
+  const first = table.rows[op.top]?.structuralChange;
+  if (
+    first === undefined ||
+    [...closing].every((index) =>
+      structurallyEqual(table.rows[index]?.structuralChange, first),
+    )
+  )
+    return Result.ok(undefined);
+  return refuse({
+    op,
+    reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
+    message:
+      "Resolve the pending insertion or deletion of the merge's first row before merging rows it would take whole.",
+  });
+};
+
 type TrackedClosingRowsOptions = {
   document: Document;
   op: Extract<TableEditOp, { type: "mergeCells" }>;
@@ -1399,20 +2053,18 @@ const trackedClosingRows = ({
 
 type MergeReviewsOptions = {
   op: Extract<TableEditOp, { type: "mergeCells" }>;
-  table: Table;
   selected: readonly (readonly GridCell[])[];
   verticalOnly: boolean;
 };
 /**
- * Whether a direct merge keeps the table's pending records. The merged rows
- * stand or go together: one pending insertion or deletion takes them all, or
- * none does. A merged cell is under no pending insertion, deletion or merge of
- * its own, and a cell the merge takes in records no other span, merge or
- * width than it has.
+ * Whether a direct merge keeps the table's pending records. A merged cell is
+ * under no pending insertion, deletion or merge of its own, and a cell the
+ * merge takes in records no other span, merge or width than it has. The
+ * merged rows' own insertions and deletions stay on their words
+ * (`reviewedMergeContent`).
  */
 const mergeReviews = ({
   op,
-  table,
   selected,
   verticalOnly,
 }: MergeReviewsOptions): Result<void, DocumentOpRefusal> => {
@@ -1422,16 +2074,6 @@ const mergeReviews = ({
       reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
       message,
     });
-  const rows = table.rows.slice(op.top, op.bottom);
-  if (
-    rows.some(
-      (row) =>
-        !structurallyEqual(row.structuralChange, rows.at(0)?.structuralChange),
-    )
-  )
-    return conflict(
-      "Resolve the pending row insertions and deletions the merge crosses before merging.",
-    );
   const cells = selected.flat();
   if (cells.some(({ cell }) => cell.structuralChange !== undefined))
     return conflict(
@@ -1449,6 +2091,315 @@ const mergeReviews = ({
       "Resolve the pending span and width changes of the merged cells before merging.",
     );
   return Result.ok(undefined);
+};
+
+/** A merged cell's blocks from one row, and that row's own pending change. */
+type MergedWords = {
+  blocks: readonly BlockContent[];
+  change: TableStructuralChangeInfo | undefined;
+};
+
+/** One paragraph of the merged cell, and the record its row's change gives it. */
+type MergedParagraph = {
+  paragraph: Paragraph;
+  /** Which decision removes it, with the row's change it records. */
+  removal:
+    | { kind: typeof WRAP_KINDS.INSERTION; stamp: RevisionStamp }
+    | { kind: typeof WRAP_KINDS.DELETION; stamp: RevisionStamp }
+    | undefined;
+};
+
+/** The row change each kind of record goes with. */
+const ROW_CHANGE_TYPES = {
+  [WRAP_KINDS.INSERTION]: "tableRowInsertion",
+  [WRAP_KINDS.DELETION]: "tableRowDeletion",
+} as const satisfies Record<WrapKind, TableStructuralChangeInfo["type"]>;
+
+const MARK_KINDS = {
+  [WRAP_KINDS.INSERTION]: "ins",
+  [WRAP_KINDS.DELETION]: "del",
+} as const satisfies Record<WrapKind, "ins" | "del">;
+
+/**
+ * The paragraph's content recorded as the kind of change: words a pending
+ * insertion already holds stay as they are, as a deletion keeps the words a
+ * pending deletion holds.
+ */
+const recordedContent = (
+  paragraph: Paragraph,
+  removal: NonNullable<MergedParagraph["removal"]>,
+): Result<ParagraphContent[], DocumentOpRefusal["reason"]> => {
+  const wrap = (items: readonly ParagraphContent[]) => {
+    if (items.length === 0) return Result.ok([]);
+    const wrapped = wrapTracked({
+      items,
+      from: { offset: 0, zeroWidthBefore: 0 },
+      to: {
+        offset: paragraphLength({ type: "paragraph", content: [...items] }),
+        zeroWidthBefore: Number.MAX_SAFE_INTEGER,
+      },
+      kind: removal.kind,
+      stamp: removal.stamp,
+      ...(removal.kind === WRAP_KINDS.DELETION
+        ? { commentAnchors: "stand" as const }
+        : {}),
+    });
+    switch (wrapped.kind) {
+      case "refused":
+        return Result.err(wrapped.reason);
+      case "unchanged":
+        return Result.ok([...items]);
+      case "wrapped":
+        return Result.ok(wrapped.content);
+      default: {
+        const unreachable: never = wrapped;
+        return unreachable;
+      }
+    }
+  };
+  if (removal.kind === WRAP_KINDS.DELETION) return wrap(paragraph.content);
+  // An insertion is never nested in another: the stretches between pending
+  // insertions take their own.
+  const content: ParagraphContent[] = [];
+  let stretch: ParagraphContent[] = [];
+  for (const item of [...paragraph.content, undefined]) {
+    if (item !== undefined && item.type !== "insertion") {
+      stretch.push(item);
+      continue;
+    }
+    const wrapped = wrap(stretch);
+    if (wrapped.isErr()) return wrapped;
+    content.push(...wrapped.value);
+    stretch = [];
+    if (item !== undefined) content.push(item);
+  }
+  return Result.ok(content);
+};
+
+type ReviewedMergeContentOptions = {
+  document: Document;
+  op: Extract<TableEditOp, { type: "mergeCells" }>;
+  /** The merged rows' own pending changes, one for each row. */
+  changes: readonly (TableStructuralChangeInfo | undefined)[];
+  words: readonly MergedWords[];
+};
+/**
+ * A direct merge's cell content, across rows with different pending
+ * insertions and deletions. The words of a row pending insertion keep that
+ * insertion as records of their own, and those of a row pending deletion
+ * that deletion, under its author, date and suggestion: rejecting the rows'
+ * changes removes the inserted rows' words and keeps the deleted rows' in
+ * place, and accepting them does the reverse. A paragraph mark between such
+ * words and the next ones records the change too, so the words go with their
+ * paragraphs. When the merged cell ends with words one decision removes,
+ * the last paragraph that stays takes the cell's final mark as a paragraph
+ * insertion or deletion at a container's end does.
+ */
+const reviewedMergeContent = ({
+  document,
+  op,
+  changes,
+  words,
+}: ReviewedMergeContentOptions): Result<BlockContent[], DocumentOpRefusal> => {
+  // Rows that stand or go together give their words as they are.
+  if (changes.every((change) => structurallyEqual(change, changes.at(0))))
+    return Result.ok(words.flatMap(({ blocks }) => blocks));
+  const conflict = (message: string) =>
+    refuse({
+      op,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
+      message,
+    });
+  const merged: MergedParagraph[] = [];
+  for (const { blocks: held, change } of words) {
+    for (const block of held) {
+      if (change === undefined && block.type === "paragraph") {
+        merged.push({ paragraph: block, removal: undefined });
+        continue;
+      }
+      if (
+        block.type !== "paragraph" ||
+        (change?.type !== "tableRowInsertion" &&
+          change?.type !== "tableRowDeletion")
+      )
+        return conflict(
+          "Resolve the pending row changes the merge crosses before merging cells that hold tables or content controls.",
+        );
+      // The records the words take are the row's change: its author, date
+      // and suggestion, each under an id of its own.
+      const { id, author, date, initials, suggestionId } = change.info;
+      if (date === undefined)
+        return conflict(
+          "Resolve the undated pending row changes the merge crosses before merging.",
+        );
+      const stamp: RevisionStamp = {
+        id,
+        author,
+        date,
+        ...(initials === undefined ? {} : { initials }),
+        ...(suggestionId === undefined ? {} : { suggestionId }),
+      };
+      merged.push({
+        paragraph: block,
+        removal:
+          change.type === "tableRowInsertion"
+            ? { kind: WRAP_KINDS.INSERTION, stamp }
+            : { kind: WRAP_KINDS.DELETION, stamp },
+      });
+    }
+  }
+  const lastStanding = (kind: WrapKind) =>
+    merged.findLastIndex(({ removal }) => removal?.kind !== kind);
+  // Where a decision keeps a merged row, the merged cell keeps words of a
+  // row it keeps; where it keeps none, the cell goes with them.
+  const rowStands = (kind: WrapKind) =>
+    changes.some((change) => change?.type !== ROW_CHANGE_TYPES[kind]);
+  if (
+    [WRAP_KINDS.INSERTION, WRAP_KINDS.DELETION].some(
+      (kind) => rowStands(kind) && lastStanding(kind) === -1,
+    )
+  )
+    return conflict(
+      "Resolve the pending row changes the merge crosses before merging cells whose words would all go with them.",
+    );
+  const final = merged.length - 1;
+  const after: Paragraph[] = [];
+  for (const [index, { paragraph, removal }] of merged.entries()) {
+    if (removal === undefined) {
+      after.push(paragraph);
+      continue;
+    }
+    const recorded = recordedContent(paragraph, removal);
+    if (recorded.isErr())
+      return refuse({
+        op,
+        reason: recorded.error,
+        message: "The merged rows' words cannot record their pending change.",
+      });
+    const mark = MARK_KINDS[removal.kind];
+    const existing = paragraph.pPrMark;
+    if (
+      existing !== undefined &&
+      (existing.kind !== mark || existing.deletion !== undefined)
+    )
+      return conflict(
+        "Resolve the pending paragraph mark changes of the merged rows before merging.",
+      );
+    // The cell's final mark stays; the paragraph that stays before it takes
+    // the change below.
+    const next: Paragraph = { ...paragraph, content: recorded.value };
+    if (index === final) delete next.pPrMark;
+    else if (existing === undefined)
+      next.pPrMark = { kind: mark, info: stampInfo(removal.stamp) };
+    after.push(next);
+  }
+  const ending = merged.at(final)?.removal;
+  const standing = ending === undefined ? -1 : lastStanding(ending.kind);
+  if (ending !== undefined && standing !== -1) {
+    const survivor = after[standing] ?? panic("A merged paragraph is missing.");
+    const last = after[final] ?? panic("A merged paragraph is missing.");
+    if (
+      survivor.pPrMark !== undefined ||
+      survivor.propertyChanges !== undefined ||
+      last.propertyChanges !== undefined
+    )
+      return conflict(
+        "Resolve the pending paragraph changes at the end of the merged cell before merging.",
+      );
+    const info = stampInfo(ending.stamp);
+    if (ending.kind === WRAP_KINDS.INSERTION) {
+      // Rejected, each inserted break joins into the paragraph before it,
+      // which ends up being the one that stood, with its properties.
+      after[standing] = {
+        ...survivor,
+        pPrMark: { kind: "ins", info, survivor: "first" },
+      };
+      for (let index = standing + 1; index < final; index += 1) {
+        const paragraph =
+          after[index] ?? panic("A merged paragraph is missing.");
+        if (paragraph.pPrMark?.kind === "ins")
+          after[index] = {
+            ...paragraph,
+            pPrMark: { ...paragraph.pPrMark, survivor: "first" },
+          };
+      }
+      if (
+        !structurallyEqual(
+          finalizeParagraphFormatting(survivor.formatting) ?? {},
+          finalizeParagraphFormatting(last.formatting) ?? {},
+        )
+      )
+        after[final] = {
+          ...last,
+          propertyChanges: [
+            {
+              type: "paragraphPropertyChange",
+              info,
+              ...(survivor.formatting === undefined
+                ? {}
+                : { previousFormatting: survivor.formatting }),
+            },
+          ],
+        };
+    } else {
+      // Accepted, the last paragraph takes the words and properties of the
+      // one that stood, as deleting the paragraphs after it does.
+      after[standing] = { ...survivor, pPrMark: { kind: "del", info } };
+      const formatting = finalizeParagraphFormatting(survivor.formatting);
+      if (
+        !structurallyEqual(
+          formatting ?? {},
+          finalizeParagraphFormatting(last.formatting) ?? {},
+        )
+      ) {
+        const review = reviewFieldsOf(last);
+        delete review.formatting;
+        if (formatting !== undefined) review.formatting = formatting;
+        review.propertyChanges = [
+          foldedParagraphPropertyChange({
+            paragraph: last,
+            formatting,
+            stamp: ending.stamp,
+          }),
+        ];
+        after[final] = withReviewFields(last, review);
+      }
+    }
+  }
+  // The new records take fresh ids; those the rows' words held keep theirs.
+  const before = merged.map(({ paragraph }) => paragraph);
+  const held = packageIdentityKeyIndex(document.package);
+  const own = new Map<string, number>();
+  for (const key of identityKeysOf(before))
+    own.set(key, (own.get(key) ?? 0) + 1);
+  const fresh = freshenIdentities({
+    before,
+    after,
+    newIds: op.newIds ?? {},
+    usedElsewhere: () => ({
+      has: (key) => held.count(key) > (own.get(key) ?? 0),
+    }),
+  });
+  switch (fresh.kind) {
+    case "needsIds":
+      return refuse({
+        op,
+        reason: DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
+        message: `The merged rows' words need ${fresh.missing} more revision ids.`,
+      });
+    case "invalidId":
+      return refuse({
+        op,
+        reason: DOCUMENT_OP_REFUSAL_REASONS.INVALID_NEW_ID,
+        message: `${fresh.id} cannot be a new revision id.`,
+      });
+    case "fresh":
+      return Result.ok(fresh.paragraphs);
+    default: {
+      const unreachable: never = fresh;
+      return unreachable;
+    }
+  }
 };
 
 type MergeOptions = {
@@ -1482,7 +2433,7 @@ const merge = ({
   if (selection.isErr()) return Result.err(selection.error);
   const { selected, verticalOnly } = selection.value;
   if (op.revision === undefined) {
-    const kept = mergeReviews({ op, table, selected, verticalOnly });
+    const kept = mergeReviews({ op, selected, verticalOnly });
     if (kept.isErr()) return Result.err(kept.error);
   }
   const earlierGrid = () =>
@@ -1553,10 +2504,9 @@ const merge = ({
     const closing = closingRows({ before: table.rows, after: rows });
     if (closing.size === 0) return Result.ok({ ...table, rows });
     if (op.revision === undefined)
-      return Result.ok({
-        ...table,
-        rows: rows.filter((_row, index) => !closing.has(index)),
-      });
+      return closesOtherRows({ op, table, closing }).map(() =>
+        withoutRows({ ...table, rows }, closing),
+      );
     return trackedClosingRows({
       document,
       op,
@@ -1584,11 +2534,23 @@ const merge = ({
   if (first === undefined) return mismatch(op, "No cells are selected.");
   // A cell holding one empty paragraph gives the merged cell nothing; the
   // first cell's content stays when it holds any, or when no cell does.
-  const merged = selected.flatMap((row) => row.map(({ cell }) => cell));
-  const holding = merged.filter((cell) => !isEmptyCell(cell));
-  const content = (holding.length === 0 ? [first.cell] : holding).flatMap(
-    (cell) => cell.content,
+  const changes = table.rows
+    .slice(op.top, op.bottom)
+    .map(({ structuralChange }) => structuralChange);
+  const holds = selected.some((row) =>
+    row.some(({ cell }) => !isEmptyCell(cell)),
   );
+  const words = selected.flatMap((row, offset) =>
+    row
+      .filter(({ cell }) => (holds ? !isEmptyCell(cell) : cell === first.cell))
+      .map(({ cell }) => ({
+        blocks: cell.content,
+        change: changes[offset],
+      })),
+  );
+  const reviewed = reviewedMergeContent({ document, op, changes, words });
+  if (reviewed.isErr()) return Result.err(reviewed.error);
+  const content = reviewed.value;
   const mergedCellWidth = mergedWidth(
     selected.at(0)?.map(({ cell }) => cell) ?? [],
   );
@@ -1635,10 +2597,9 @@ const merge = ({
     rows.push({ ...row, cells });
   }
   const closing = closingRows({ before: table.rows, after: rows });
-  return Result.ok({
-    ...table,
-    rows: rows.filter((_row, index) => !closing.has(index)),
-  });
+  return closesOtherRows({ op, table, closing }).map(() =>
+    withoutRows({ ...table, rows }, closing),
+  );
 };
 
 type SplitOptions = {
@@ -1704,20 +2665,22 @@ const split = ({
       message:
         "Resolve the pending insertions, deletions and merges of the split cell before splitting it.",
     });
-  // The new cells of a span take the cell's properties; its pending property
-  // changes would need records of their own there, under ids a direct edit
-  // has none of.
-  if (
-    op.revision === undefined &&
-    span > 1 &&
-    group.some(({ cell }) => cell.propertyChanges !== undefined)
-  )
-    return refuse({
-      op,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
-      message:
-        "Resolve the pending property changes of the split cell before splitting its columns.",
-    });
+  // The new cells of a span take the cell's properties, and with them its
+  // pending property changes, each under a record of its own.
+  const copiedChanges =
+    op.revision === undefined
+      ? directRevisionIds({
+          document,
+          op,
+          count: group.reduce(
+            (sum, { cell }) =>
+              sum + (cell.propertyChanges?.length ?? 0) * (span - 1),
+            0,
+          ),
+        })
+      : Result.ok([]);
+  if (copiedChanges.isErr()) return Result.err(copiedChanges.error);
+  const copiedIds = copiedChanges.value.values();
   if (
     group.some(({ cell }) => {
       const width = cell.formatting?.width;
@@ -1814,7 +2777,19 @@ const split = ({
             type: "tableCellInsertion",
             info: stampInfo(cellStamp),
           };
-        replacement.push(next);
+        const copied = copiedPropertyChanges({
+          source: entry.cell,
+          cell: next,
+          ids: copiedIds,
+        });
+        if (copied.isErr())
+          return refuse({
+            op,
+            reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
+            message:
+              "A pending change records another span than the split changes.",
+          });
+        replacement.push(copied.value);
       }
     }
     cells.splice(entry.index, 1, ...replacement);
@@ -1855,7 +2830,20 @@ export const tableEditParagraphDemand = (
   const grid = statedGrid(table, op);
   if (grid.isErr()) return Result.err(grid.error);
   switch (op.type) {
-    case DOCUMENT_OP_TYPES.INSERT_COLUMN:
+    case DOCUMENT_OP_TYPES.INSERT_COLUMN: {
+      const plans = recordsPlaceColumnsApart(table, grid.value)
+        ? columnPlanAcrossRecords({
+            table,
+            grid: grid.value,
+            op: { ...op, newBlockIds: [] },
+          })
+        : undefined;
+      if (plans !== undefined)
+        return Result.ok(
+          plans.filter(
+            (plan) => plan.type === "cells" && plan.added !== undefined,
+          ).length * (op.count ?? 1),
+        );
       return Result.ok(
         grid.value.rows.filter((cells, row) => {
           const before = table.rows[row]?.formatting?.gridBefore ?? 0;
@@ -1869,6 +2857,7 @@ export const tableEditParagraphDemand = (
           );
         }).length * (op.count ?? 1),
       );
+    }
     case DOCUMENT_OP_TYPES.MERGE_CELLS: {
       const selection = mergeSelection({ table, grid: grid.value, op });
       if (selection.isErr()) return Result.err(selection.error);

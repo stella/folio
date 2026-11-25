@@ -92,9 +92,59 @@ const withMergesHandedOn = (
   return handed ? { ...nextRow, cells } : undefined;
 };
 
-/** The table's rows without row `rowIndex`, the merges it starts handed on. */
+/**
+ * The row before `rowIndex` once that row is removed, when the removed row
+ * holds the only continuation of a vertical merge the row before starts: the
+ * merge no row continues is no merge, and the cell starting it states none.
+ * `undefined` when the removed row ends no such merge.
+ */
+const withMergesEnded = (
+  table: Table,
+  rowIndex: number,
+): TableRow | undefined => {
+  const grid = tableGrid(table, DOCUMENT_OP_TYPES.DELETE_ROW);
+  if (grid.isErr()) return undefined;
+  const previousRow = table.rows[rowIndex - 1];
+  if (previousRow === undefined) return undefined;
+  const removed = grid.value.rows[rowIndex] ?? [];
+  const following = grid.value.rows[rowIndex + 1] ?? [];
+  const ended = new Set(
+    removed
+      .filter(
+        (slot) =>
+          slot.ownerRow === rowIndex - 1 &&
+          !following.some(
+            (entry) =>
+              entry.ownerRow === slot.ownerRow &&
+              entry.ownerIndex === slot.ownerIndex,
+          ),
+      )
+      .map((slot) => slot.ownerIndex),
+  );
+  if (ended.size === 0) return undefined;
+  const cells = previousRow.cells.map((cell, index) => {
+    if (!ended.has(index)) return cell;
+    // The captured properties stated the merge.
+    const {
+      vMerge: _vMerge,
+      sourceXml: _sourceXml,
+      ...formatting
+    } = cell.formatting ?? {};
+    if (Object.keys(formatting).length > 0) return { ...cell, formatting };
+    const { formatting: _formatting, ...plain } = cell;
+    return plain;
+  });
+  return { ...previousRow, cells };
+};
+
+/**
+ * The table's rows without row `rowIndex`: the merges it starts handed on,
+ * and those it alone continues ended.
+ */
 export const rowsWithoutRow = (table: Table, rowIndex: number): TableRow[] => {
   const rows = [...table.rows];
+  const ended = withMergesEnded(table, rowIndex);
+  if (ended !== undefined) rows[rowIndex - 1] = ended;
   const next = withMergesHandedOn(table, rowIndex);
   if (next === undefined) rows.splice(rowIndex, 1);
   else rows.splice(rowIndex, 2, next);

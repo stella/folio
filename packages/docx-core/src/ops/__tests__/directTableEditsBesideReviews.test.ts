@@ -17,6 +17,8 @@ import type {
 } from "../../model/document";
 import { applyDocumentOp } from "../apply";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
+import { tableEditParagraphDemand } from "../tableEdits";
+import { locateTableRow } from "../tableLocation";
 import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
@@ -32,6 +34,9 @@ const FRESH = Array.from(
   { length: 10 },
   (_, index) => `00F00${String(index)}A0`,
 );
+/** Revision ids for the records a direct edit adds beside pending ones. */
+const NEW_REVISION_IDS = Array.from({ length: 20 }, (_, index) => 500 + index);
+const isNewRevisionId = (id: number) => id >= 500;
 
 const paragraph = (paraId: string): Paragraph => ({
   type: "paragraph",
@@ -72,6 +77,8 @@ const OP_NAMES = [
   "insertColumn",
   "insertColumns",
   "deleteColumn",
+  "deleteMiddleColumn",
+  "appendColumn",
 ] as const;
 type OpName = (typeof OP_NAMES)[number];
 
@@ -103,11 +110,29 @@ const OPS = {
     count: 2,
   },
   deleteColumn: { type: DOCUMENT_OP_TYPES.DELETE_COLUMN, column: 0 },
+  deleteMiddleColumn: { type: DOCUMENT_OP_TYPES.DELETE_COLUMN, column: 1 },
+  appendColumn: {
+    type: DOCUMENT_OP_TYPES.INSERT_COLUMN,
+    column: 3,
+    width: 1500,
+  },
 } as const satisfies Record<OpName, { type: TableEditOp["type"] }>;
 
-const opFor = (name: OpName, table: Table): TableEditOp => {
-  const spec = OPS[name];
-  const address = { story: OP_STORIES.MAIN, blockId: at(0, 0) };
+const documentOf = (table: Table): Document => ({
+  package: {
+    document: { content: [table, paragraph("00000001")] },
+  },
+});
+
+const opFor = (name: OpName, table: Table, column?: number): TableEditOp => {
+  const named = OPS[name];
+  const spec =
+    column !== undefined && "column" in named ? { ...named, column } : named;
+  const address = {
+    story: OP_STORIES.MAIN,
+    blockId: at(0, 0),
+    newIds: { revision: NEW_REVISION_IDS },
+  };
   switch (spec.type) {
     case DOCUMENT_OP_TYPES.MERGE_CELLS:
       return {
@@ -117,23 +142,23 @@ const opFor = (name: OpName, table: Table): TableEditOp => {
       };
     case DOCUMENT_OP_TYPES.SPLIT_CELL:
       return {
+        ...address,
         ...spec,
-        story: OP_STORIES.MAIN,
         blockId: at(3, 0),
         newBlockIds: FRESH.slice(0, 1),
       };
-    case DOCUMENT_OP_TYPES.INSERT_COLUMN:
-      // Every row takes a new cell but one whose first cell the column crosses.
+    case DOCUMENT_OP_TYPES.INSERT_COLUMN: {
+      // As many new cells as the editor's compiler asks ids for.
+      const demand = locateTableRow(documentOf(table), address).andThen(
+        (location) => tableEditParagraphDemand(location, spec),
+      );
+      if (demand.isErr()) throw demand.error;
       return {
         ...address,
         ...spec,
-        newBlockIds: FRESH.slice(
-          0,
-          table.rows.filter(
-            ({ cells }) => (cells.at(0)?.formatting?.gridSpan ?? 1) === 1,
-          ).length * ("count" in spec ? spec.count : 1),
-        ),
+        newBlockIds: FRESH.slice(0, demand.value),
       };
+    }
     case DOCUMENT_OP_TYPES.DELETE_COLUMN:
       return { ...address, ...spec };
     default: {
@@ -148,9 +173,24 @@ type Outcome =
       type: "applies";
       /** The record ids that go with the cells the edit removes. */
       removed?: readonly number[];
+      /**
+       * How many records the edit adds to keep pending ones on new cells or
+       * on the words it moves.
+       */
+      added?: number;
+      /**
+       * The decisions that leave the edit nothing to do, as rejecting takes
+       * away every row a merge joins but one.
+       */
+      undone?: readonly ("accept" | "reject")[];
+      /** The column the edit lands in, in a decision's table without some columns. */
+      decidedColumn?: Partial<Record<"accept" | "reject", number>>;
     }
   | { type: "refused"; reason: string; message: string };
 const APPLIES = { type: "applies" } as const satisfies Outcome;
+/** A column a record places apart where no one table holds both decisions' edits. */
+const PLACED_APART =
+  "Resolve the pending cell insertions, deletions and span changes that place the column apart before changing its columns.";
 const refusedAs = (
   message: string,
   reason: string = DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
@@ -165,6 +205,8 @@ const ALL_APPLY = {
   insertColumn: APPLIES,
   insertColumns: APPLIES,
   deleteColumn: APPLIES,
+  deleteMiddleColumn: APPLIES,
+  appendColumn: APPLIES,
 } as const satisfies Record<OpName, Outcome>;
 
 /** A pending insertion of the second row and deletion of the third. */
@@ -211,13 +253,12 @@ const SHAPES = {
           : Object.assign({}, each, { structuralChange });
       }),
     },
-    // Merging a row that stands with one that a rejection would remove
-    // would keep the removed row's words in the row that stands.
+    // The inserted row's words keep its insertion in the merged cell, and the
+    // paragraph before them its final mark: rejecting takes them away with
+    // the row, which leaves the merge nothing to join.
     outcome: {
       ...ALL_APPLY,
-      mergeDown: refusedAs(
-        "Resolve the pending row insertions and deletions the merge crosses before merging.",
-      ),
+      mergeDown: { type: "applies", added: 2, undone: ["reject"] },
     },
   },
   "pending cell and row property changes": {
@@ -271,11 +312,9 @@ const SHAPES = {
     },
     outcome: {
       ...ALL_APPLY,
-      // The split's new cell takes the cell's pending vertical alignment,
-      // which only a record of its own could keep pending.
-      split: refusedAs(
-        "Resolve the pending property changes of the split cell before splitting its columns.",
-      ),
+      // The split's new cell takes the cell's pending vertical alignment
+      // under a record of its own.
+      split: { type: "applies", added: 1 },
       deleteColumn: { type: "applies", removed: [9] },
     },
   },
@@ -294,7 +333,11 @@ const SHAPES = {
           : {},
       ),
     },
-    outcome: ALL_APPLY,
+    outcome: {
+      ...ALL_APPLY,
+      // Accepted, the deleted column goes, and the last column is the third.
+      appendColumn: { type: "applies", decidedColumn: { accept: 2 } },
+    },
   },
   "a pending column insertion": {
     table: {
@@ -312,7 +355,116 @@ const SHAPES = {
           : {},
       ),
     },
-    outcome: ALL_APPLY,
+    outcome: {
+      ...ALL_APPLY,
+      // Rejected, the inserted column goes, and the last column is the third.
+      appendColumn: { type: "applies", decidedColumn: { reject: 2 } },
+    },
+  },
+  // Rejected, the spanning cell spans one column, and its row ends a column
+  // early. A column the spanning cell takes in only once accepted is a new
+  // cell rejecting keeps, beside it; one its row reaches only once accepted
+  // is a new cell accepting keeps. A deletion would take a cell from one
+  // decision's row only, which no record states.
+  "a pending span change": {
+    table: {
+      type: "table",
+      columnWidths: WIDTHS,
+      rows: rows((r, c) =>
+        r === 3 && c === 0
+          ? {
+              propertyChanges: [
+                {
+                  type: "tableCellPropertyChange",
+                  info: { id: 10, ...INFO },
+                  previousFormatting: {},
+                },
+              ],
+            }
+          : {},
+      ),
+    },
+    outcome: {
+      ...ALL_APPLY,
+      split: refusedAs(
+        "A pending change records another span than the split changes.",
+      ),
+      insertColumn: { type: "applies", added: 1 },
+      insertColumns: { type: "applies", added: 2 },
+      deleteColumn: refusedAs(PLACED_APART),
+      deleteMiddleColumn: refusedAs(PLACED_APART),
+      // Rejecting would take the new cell from a row that ends early, and
+      // its neighbour would widen over the column.
+      appendColumn: refusedAs(PLACED_APART),
+    },
+  },
+  // Rejected, the row omits no first column, and ends a column early. Its
+  // cells stand in other columns in each decision: only a column its row
+  // reaches in one decision alone lands in both.
+  "a pending omission change": {
+    table: {
+      type: "table",
+      columnWidths: WIDTHS,
+      rows: [
+        ...rows(),
+        row([cell(at(4, 1)), cell(at(4, 2))], {
+          formatting: { gridBefore: 1 },
+          propertyChanges: [
+            {
+              type: "tableRowPropertyChange",
+              info: { id: 11, ...INFO },
+              previousFormatting: {},
+            },
+          ],
+        }),
+      ],
+    },
+    outcome: {
+      ...ALL_APPLY,
+      insertColumn: refusedAs(PLACED_APART),
+      insertColumns: refusedAs(PLACED_APART),
+      deleteColumn: refusedAs(PLACED_APART),
+      deleteMiddleColumn: refusedAs(PLACED_APART),
+      // Rejecting would take the new cell from a row that ends early, and
+      // its neighbour would widen over the column.
+      appendColumn: refusedAs(PLACED_APART),
+    },
+  },
+  // A cell deleted from one row only: accepted, the cell before it widens
+  // over its column, which the other rows keep.
+  "a pending cell deletion that takes part of a column": {
+    table: {
+      type: "table",
+      columnWidths: WIDTHS,
+      rows: [
+        ...rows().slice(0, 3),
+        row([
+          cell(at(3, 0)),
+          cell(at(3, 1), {
+            structuralChange: {
+              type: "tableCellDeletion",
+              info: { id: 11, ...INFO },
+            },
+          }),
+          cell(at(3, 2)),
+        ]),
+      ],
+    },
+    outcome: {
+      ...ALL_APPLY,
+      split: refusedAs(
+        "A one-row, one-column cell has nothing to split.",
+        DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE,
+      ),
+      // Accepted, the cell before the deleted one spans the new column; the
+      // new cell is deleted beside it, and accepting hands it its column.
+      insertColumn: { type: "applies", added: 1 },
+      insertColumns: { type: "applies", added: 2 },
+      // Accepted, the first cell spans two columns and stays; rejected, it
+      // spans one and goes.
+      deleteColumn: refusedAs(PLACED_APART),
+      deleteMiddleColumn: { type: "applies", removed: [11] },
+    },
   },
   // The cell a split inserted beside the cell it narrowed: rejecting them
   // widens the cell back, so the row stands on another grid.
@@ -353,24 +505,24 @@ const SHAPES = {
         "A one-row, one-column cell has nothing to split.",
         DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE,
       ),
-      insertColumn: refusedAs(
-        "Resolve the pending cell insertions and deletions that take part of a column before changing its columns.",
-      ),
-      insertColumns: refusedAs(
-        "Resolve the pending cell insertions and deletions that take part of a column before changing its columns.",
-      ),
+      // Rejected, the narrowed cell spans the new column; accepted, the new
+      // cell stands beside it: the new cell is inserted under the split's
+      // author, and the narrowed cell's earlier span takes the column.
+      insertColumn: { type: "applies", added: 1 },
+      insertColumns: { type: "applies", added: 2 },
+      // Accepted, the first column holds only the narrowed cell, which goes;
+      // rejected, the cell spans the second column too and stays: no grid
+      // holds a cell that goes beside the inserted one that comes.
       deleteColumn: refusedAs(
-        "Resolve the pending cell insertions and deletions that take part of a column before changing its columns.",
+        "Resolve the pending cell insertions, deletions and span changes that place the column apart before changing its columns.",
       ),
+      // The inserted cell goes with its record, and the narrowed cell's
+      // earlier span loses the column.
+      deleteMiddleColumn: { type: "applies", removed: [11] },
     },
   },
 } as const satisfies Record<string, Shape>;
 
-const documentOf = (table: Table): Document => ({
-  package: {
-    document: { content: [table, paragraph("00000001")] },
-  },
-});
 const tableOf = (document: Document): Table => {
   const table = document.package.document.content.at(0);
   if (table?.type !== "table") throw new Error("The table stays first.");
@@ -438,16 +590,31 @@ describe.each(Object.entries(SHAPES))(
       if (result.isErr()) throw result.error;
       const edited = result.value.document;
       const removed = new Set(expected.removed ?? []);
-      expect(revisionIds(edited).toSorted(ascending)).toEqual(
+      const editedIds = revisionIds(edited);
+      expect(
+        editedIds.filter((id) => !isNewRevisionId(id)).toSorted(ascending),
+      ).toEqual(
         revisionIds(original)
           .filter((id) => !removed.has(id))
           .toSorted(ascending),
+      );
+      expect(editedIds.filter(isNewRevisionId)).toHaveLength(
+        expected.added ?? 0,
       );
       for (const decision of ["accept", "reject"] as const) {
         const resolved = resolveAll(edited, decision);
         expect(revisionIds(resolved)).toEqual([]);
         const before = resolveAll(original, decision);
-        const want = apply(before, opFor(opName, tableOf(before))).document;
+        const decidedOp = opFor(opName, tableOf(before));
+        const column = expected.decidedColumn?.[decision];
+        const want = expected.undone?.includes(decision)
+          ? before
+          : apply(
+              before,
+              column !== undefined && "column" in decidedOp
+                ? opFor(opName, tableOf(before), column)
+                : decidedOp,
+            ).document;
         expect(withoutFreshIds(tableOf(resolved))).toEqual(
           withoutFreshIds(tableOf(want)),
         );

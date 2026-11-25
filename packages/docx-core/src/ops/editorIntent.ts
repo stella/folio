@@ -924,11 +924,15 @@ export const createEditorIntentIdAllocator = ({
             break;
           }
           case DOCUMENT_OP_TYPES.MERGE_CELLS:
-            demand = (op.bottom - op.top + 1) * 2;
+            // The merged cell's last paragraph and the one before it, where
+            // a decision removes the words it ends with.
+            demand = (op.bottom - op.top + 1) * 2 + 2;
             // A row the merge leaves only continuations records its
-            // deletion: the row and each of its paragraphs.
+            // deletion: the row and each of its paragraphs. A direct merge
+            // across rows pending insertion or deletion records it on the
+            // words each such row gives the merged cell, its first one's too.
             for (const row of located.value.table.rows.slice(
-              op.top + 1,
+              op.top,
               op.bottom,
             )) {
               demand += 1;
