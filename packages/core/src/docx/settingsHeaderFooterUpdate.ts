@@ -17,14 +17,22 @@ const XML_TOKEN =
 const SETTINGS_CHILD_ORDINALS: ReadonlyMap<string, number> = new Map(
   SETTINGS_CHILDREN.map((name, index) => [name, index] as const),
 );
-const EVEN_AND_ODD_HEADERS_ORDER =
-  SETTINGS_CHILD_ORDINALS.get("evenAndOddHeaders");
 
-/** Null means the source is malformed or outside the supported namespace profiles. */
-export const updateEvenAndOddHeaders = (
+/** The on/off children of `w:settings` a caller may set without re-serializing the part. */
+export type SettingsOnOffChild = "evenAndOddHeaders" | "updateFields";
+
+/**
+ * Set (`true`), clear (`false`) or remove (`undefined`) one on/off child of
+ * `w:settings`, at its place in the schema's child order; the rest of the part
+ * keeps its bytes. Null means the source is malformed or outside the supported
+ * namespace profiles.
+ */
+export const updateSettingsOnOffChild = (
   xml: string,
+  localName: SettingsOnOffChild,
   enabled: boolean | undefined,
 ): string | null => {
+  const childOrder = SETTINGS_CHILD_ORDINALS.get(localName);
   const root = parseXmlDocument(xml);
   if (
     !root ||
@@ -41,8 +49,8 @@ export const updateEvenAndOddHeaders = (
   let rootOpenEnd = -1;
   let selfClosingRootStart = -1;
   let firstFollowingChildStart = -1;
-  if (EVEN_AND_ODD_HEADERS_ORDER === undefined) {
-    panic("Generated CT_Settings schema does not define evenAndOddHeaders");
+  if (childOrder === undefined) {
+    return panic(`Generated CT_Settings schema does not define ${localName}`);
   }
   for (const token of xml.matchAll(XML_TOKEN)) {
     const tag = token[0];
@@ -59,7 +67,7 @@ export const updateEvenAndOddHeaders = (
         const child = children[childIndex++];
         if (!child || childStart < 0) return null;
         if (
-          getLocalName(child.name) === "evenAndOddHeaders" &&
+          getLocalName(child.name) === localName &&
           WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(child) ?? "")
         ) {
           spans.push({
@@ -84,7 +92,7 @@ export const updateEvenAndOddHeaders = (
         firstFollowingChildStart < 0 &&
         WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(child) ?? "") &&
         (SETTINGS_CHILD_ORDINALS.get(getLocalName(child.name)) ?? -1) >
-          EVEN_AND_ODD_HEADERS_ORDER
+          childOrder
       ) {
         firstFollowingChildStart = token.index;
       }
@@ -92,7 +100,7 @@ export const updateEvenAndOddHeaders = (
       if (tag.endsWith("/>")) {
         childIndex += 1;
         if (
-          getLocalName(child.name) === "evenAndOddHeaders" &&
+          getLocalName(child.name) === localName &&
           WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(child) ?? "")
         ) {
           spans.push({
@@ -111,7 +119,7 @@ export const updateEvenAndOddHeaders = (
   const flag =
     enabled === undefined
       ? ""
-      : `<folioW:evenAndOddHeaders xmlns:folioW="${getNamespaceUri(root)}"${enabled ? "" : ' folioW:val="0"'}/>`;
+      : `<folioW:${localName} xmlns:folioW="${getNamespaceUri(root)}"${enabled ? "" : ' folioW:val="0"'}/>`;
   if (selfClosingRootStart >= 0) {
     if (!flag) return xml;
     return spliceXml(xml, [
@@ -133,3 +141,9 @@ export const updateEvenAndOddHeaders = (
   }
   return spliceXml(xml, spans);
 };
+
+/** Null means the source is malformed or outside the supported namespace profiles. */
+export const updateEvenAndOddHeaders = (
+  xml: string,
+  enabled: boolean | undefined,
+): string | null => updateSettingsOnOffChild(xml, "evenAndOddHeaders", enabled);
