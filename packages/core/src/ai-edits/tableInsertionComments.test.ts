@@ -19,7 +19,6 @@ import { FolioDocxReviewer } from "./headless";
 
 const MODES = ["direct", "tracked-changes"] as const;
 const SESSIONS = [
-  "legacy",
   "canonical",
 ] as const satisfies readonly HeadlessReviewerSession[];
 const CASES = SESSIONS.flatMap((session) =>

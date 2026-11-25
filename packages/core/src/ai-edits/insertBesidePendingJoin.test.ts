@@ -23,7 +23,6 @@ import { FolioDocxReviewer } from "./headless";
 const MARKDOWN = "# Terms\n\n1. Numbered clause one\n\nUnnumbered body text.";
 
 const SESSIONS = [
-  "legacy",
   "canonical",
 ] as const satisfies readonly HeadlessReviewerSession[];
 
@@ -259,18 +258,6 @@ const CANONICAL_AROUND = {
 
 describe("insertions on both sides of a pending join", () => {
   for (const order of ["after first", "before first"] as const) {
-    test(`leave the joined words together, in a batch as one at a time (${order}, legacy)`, async () => {
-      const session = "legacy";
-      const sequential = await around({ session, order, batched: false });
-      expect(await around({ session, order, batched: true })).toEqual(
-        sequential,
-      );
-      const joined = sequential.indexOf("Terms Numbered clause one");
-      expect(joined).toBeGreaterThan(-1);
-      expect(sequential.indexOf("Before.")).toBe(joined - 1);
-      expect(sequential.indexOf("After.")).toBe(joined + 1);
-    });
-
     test(`read the join as the batch runs, in a batch as one at a time (${order}, canonical)`, async () => {
       const session = "canonical";
       const sequential = await around({ session, order, batched: false });
@@ -485,11 +472,6 @@ describe("a suggested paragraph beside a pending join", () => {
   };
 
   for (const type of ["insertBeforeBlock", "insertAfterBlock"] as const) {
-    test(`copies the paragraph it names as it stands (${type}, legacy)`, async () => {
-      const placed = await placeBeside("legacy", type, "suggested");
-      expect(placed.kind).toBe("listItem");
-      expect(placed.sameList).toBe(true);
-    });
     // Tracked and suggested insertions agree: accepting the suggestion leaves
     // what the tracked insertion's acceptance does.
     test(`lands where the tracked insertion does (${type}, canonical)`, async () => {
@@ -549,7 +531,7 @@ describe("a paragraph between a pending join and the table it reaches", () => {
   };
 
   const refusedOn = (anchor: "bravo" | "cell") =>
-    anchor === "bravo" ? SESSIONS : (["legacy"] as const);
+    anchor === "bravo" ? SESSIONS : ([] as const);
   for (const mode of ["direct", "tracked-changes", "suggested"] as const) {
     for (const anchor of ["bravo", "cell"] as const) {
       for (const session of refusedOn(anchor))
@@ -644,56 +626,6 @@ describe("a paragraph between a pending join and the table it reaches", () => {
       ]);
     });
 
-  test("is applied and stands apart once the paragraph the join runs into is deleted (legacy)", async () => {
-    // Deleting the paragraph a join runs into keeps its break, the joined
-    // paragraph's: nothing runs past it, so a paragraph after it stands.
-    const { reviewer, bravo } = await beforeTable("merge first", "legacy");
-    expect(
-      reviewer.applyOperations(
-        [
-          {
-            id: "insert",
-            type: "insertAfterBlock",
-            blockId: bravo,
-            text: "Inserted.",
-          },
-        ],
-        { mode: "tracked-changes" },
-      ).skipped,
-    ).toEqual([]);
-    reviewer.acceptAll();
-    expect(reviewer.snapshot().blocks.map(({ text }) => text)).toEqual([
-      "Alpha. ",
-      "Inserted.",
-      "Cell",
-      "Charlie.",
-    ]);
-  });
-
-  test("is applied and stands apart with a paragraph going whole before the table (legacy)", async () => {
-    const { reviewer, alpha } = await beforeTable("delete first", "legacy");
-    expect(
-      reviewer.applyOperations(
-        [
-          {
-            id: "insert",
-            type: "insertAfterBlock",
-            blockId: alpha,
-            text: "Inserted.",
-          },
-        ],
-        { mode: "tracked-changes" },
-      ).skipped,
-    ).toEqual([]);
-    reviewer.acceptAll();
-    expect(reviewer.snapshot().blocks.map(({ text }) => text)).toEqual([
-      "Alpha. ",
-      "Inserted.",
-      "Cell",
-      "Charlie.",
-    ]);
-  });
-
   for (const mode of ["direct", "tracked-changes", "suggested"] as const)
     test(`right after the words, is refused: accepting runs them into the table (${mode}, canonical)`, async () => {
       const { reviewer, alpha } = await beforeTable(
@@ -764,51 +696,6 @@ describe("a paragraph between a pending join and the table it reaches", () => {
       // A deliberate refusal names no missing capability.
       expect(merged.skipped.at(0)).not.toHaveProperty("canonicalRefusal");
       expect(reviewer.snapshot().blocks.at(0)?.text).toBe("Alpha.");
-    });
-
-    test("right after the words, it is applied and stands apart", async () => {
-      const { reviewer, alpha, merged } = await beforePendingTable("legacy");
-      expect(merged.skipped).toEqual([]);
-      expect(
-        reviewer.applyOperations(
-          [
-            {
-              id: "insert",
-              type: "insertAfterBlock",
-              blockId: alpha,
-              text: "Inserted.",
-            },
-          ],
-          { mode: "tracked-changes" },
-        ).skipped,
-      ).toEqual([]);
-      reviewer.acceptAll();
-      expect(reviewer.snapshot().blocks.map(({ text }) => text)).toEqual([
-        "Alpha. ",
-        "Inserted.",
-        "Cell",
-        "Charlie.",
-      ]);
-    });
-
-    test("past a paragraph going whole, it is refused", async () => {
-      const { reviewer, bravo, merged } = await beforePendingTable("legacy");
-      expect(merged.skipped).toEqual([]);
-      expect(
-        reviewer
-          .applyOperations(
-            [
-              {
-                id: "insert",
-                type: "insertAfterBlock",
-                blockId: bravo,
-                text: "Inserted.",
-              },
-            ],
-            { mode: "tracked-changes" },
-          )
-          .skipped.map(({ reason }) => reason),
-      ).toEqual(["pendingParagraphMarkDeletion"]);
     });
   });
 

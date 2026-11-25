@@ -31,7 +31,6 @@ import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import { FolioDocxReviewer, type FolioReviewChangeKind } from "./headless";
 
 const SESSIONS = [
-  "legacy",
   "canonical",
 ] as const satisfies readonly HeadlessReviewerSession[];
 
@@ -335,24 +334,6 @@ describe("reject all after accepting one of several suggestions", () => {
 
   // KNOWN GAP (see `isDisplacedBreakGap`): passes while the gap is there and
   // fails once it is fixed, so the predicate and this test go together.
-  test.failing(
-    "a rejected paragraph suggested before one holding another suggestion's displaced break leaves nothing (legacy)",
-    async () => {
-      const session = "legacy";
-      const bytes = await fixture(session);
-      const mismatches: Shape[] = [];
-      for (const shape of await shapesOf({
-        bytes,
-        session,
-        deleted: LINES.length - 1,
-      })) {
-        const outcome = await rejectsToBaseline(bytes, shape);
-        if (outcome?.gap === true && !outcome.matches) mismatches.push(shape);
-      }
-      expect(mismatches).toEqual([]);
-    },
-    SWEEP_TIMEOUT_MS,
-  );
 
   test.each(SESSIONS)(
     "the reported flow keeps the joined words in the paragraph that stays (%s)",
@@ -425,7 +406,6 @@ describe("reject all after accepting one of several suggestions", () => {
   // that suggested paragraph into the last one, and rejecting the suggestion
   // then takes it out, leaving the original paragraphs apart.
   const lastBreakJoin = {
-    legacy: [...LINES.slice(0, 3), `${LINES[3]}${LINES[4]}`],
     canonical: [...LINES],
   } as const satisfies Record<HeadlessReviewerSession, readonly string[]>;
 

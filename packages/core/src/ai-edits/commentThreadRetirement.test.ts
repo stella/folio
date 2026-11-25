@@ -14,7 +14,6 @@ import { withoutLostCommentThreads } from "./comment-lifecycle";
 import { FolioDocxReviewer } from "./headless";
 
 const SESSIONS = [
-  "legacy",
   "canonical",
 ] as const satisfies readonly HeadlessReviewerSession[];
 

@@ -9,7 +9,6 @@ import { compareDocx } from "./compare";
 
 const SESSIONS = [
   "canonical",
-  "legacy",
 ] as const satisfies readonly HeadlessReviewerSession[];
 
 const OPTIONS = {

@@ -423,16 +423,6 @@ describe("resolving every suggestion headlessly", () => {
 
   // Legacy bulk acceptance rejects every proposal, resolves, then restages
   // each from its record; the session never restages.
-  test("legacy acceptAll fails without changing the document when a suggestion cannot be restaged", async () => {
-    const reviewer = await withUnrecordedSuggestion("legacy");
-    const before = reviewer.getContent();
-    const changes = reviewer.getChanges();
-    expect(() => reviewer.acceptAll()).toThrow(
-      "A pending suggestion has no operation to restage after bulk acceptance",
-    );
-    expect(reviewer.getContent()).toEqual(before);
-    expect(reviewer.getChanges()).toEqual(changes);
-  });
 
   for (const resolution of ["acceptAll", "rejectAll"] as const)
     test(`canonical ${resolution} panics on a suggestion the registry does not record`, async () => {
@@ -556,27 +546,6 @@ describe("resolving every suggestion headlessly", () => {
 
   // Legacy bulk acceptance restages proposals on the paragraphs they were made
   // on, so one whose paragraph was absorbed is lost (a legacy gap).
-  test("legacy bulk acceptance drops a proposal whose anchor was merged away", async () => {
-    const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocument(), {
-      session: "legacy",
-    });
-    const [first] = reviewer.getContent();
-    if (!first) throw new Error("fixture paragraphs missing");
-    applyOne(reviewer, "suggested", {
-      id: "pending",
-      type: "replaceInBlock",
-      blockId: first.id,
-      find: "First",
-      replace: "Opening",
-    });
-    applyOne(reviewer, "tracked-changes", {
-      id: "merge",
-      type: "mergeBlockWithNext",
-      blockId: first.id,
-    });
-    expect(reviewer.acceptAll().resolved).toBeGreaterThan(0);
-    expect(reviewer.exportPendingSuggestions()).toEqual([]);
-  });
 
   // Accepting the merge removes the first paragraph's mark; the paragraph
   // whose mark stays survives and holds the proposal, so its record names

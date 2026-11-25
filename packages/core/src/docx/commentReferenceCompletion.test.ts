@@ -66,7 +66,6 @@ const referencelessDocument = (): Document => ({
 });
 
 const SESSIONS = [
-  "legacy",
   "canonical",
 ] as const satisfies readonly HeadlessReviewerSession[];
 

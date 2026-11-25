@@ -125,7 +125,6 @@ const runTrace = async ({ shape, run }: Trace, mode: EditorMode) => {
 };
 
 const SESSIONS = [
-  "legacy",
   "canonical",
 ] as const satisfies readonly HeadlessReviewerSession[];
 

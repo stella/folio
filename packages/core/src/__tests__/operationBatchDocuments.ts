@@ -213,19 +213,11 @@ export const reviewerPresentation = (
   );
 };
 
-/**
- * The state an {@link OperationSession} starts from: the legacy reviewer's
- * reading of the package, since the session edits with the legacy applier.
- */
-export const legacySessionState = async (
+/** The state an {@link OperationSession} starts from: the reviewer's reading of the package. */
+export const reviewerSessionState = async (
   buffer: ArrayBuffer,
 ): Promise<EditorState> =>
-  (
-    await FolioDocxReviewer.fromBuffer(buffer, {
-      author: "Reviewer",
-      session: "legacy",
-    })
-  ).state;
+  (await FolioDocxReviewer.fromBuffer(buffer, { author: "Reviewer" })).state;
 
 /**
  * A document held in memory and edited through the same applier the legacy

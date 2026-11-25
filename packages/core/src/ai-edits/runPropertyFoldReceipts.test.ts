@@ -24,7 +24,6 @@ import { createFolioAITextRangeHandle } from "./snapshot";
 import type { FolioAIInlineFormattingPatch } from "./types";
 
 const SESSIONS = [
-  "legacy",
   "canonical",
 ] as const satisfies readonly HeadlessReviewerSession[];
 

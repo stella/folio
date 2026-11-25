@@ -27,7 +27,7 @@ const OPTIONS = {
   author: "compare",
   timestamp: "2026-09-08T00:00:00.000Z",
 } as const;
-const SESSIONS: readonly HeadlessReviewerSession[] = ["canonical", "legacy"];
+const SESSIONS: readonly HeadlessReviewerSession[] = ["canonical"];
 
 const open = (
   session: HeadlessReviewerSession,
@@ -728,121 +728,6 @@ describe("paragraph spacing comparison", () => {
 
   // Legacy refuses the second edit; canonical folds it into the pending
   // change (the test after this one).
-  test("legacy: fails closed when a second tracked paragraph-format edit targets a pending pPrChange", async () => {
-    const session = "legacy";
-    const originalSpacing = {
-      spaceBefore: 120,
-      afterAutospacing: false,
-    } as const;
-    const firstTarget = { spaceAfter: 0, beforeAutospacing: false } as const;
-    const source = await spacingDocument({ directSpacing: originalSpacing });
-    const reviewer = await open(session, source);
-    const blockId = reviewer.snapshot().blocks.at(0)?.id;
-    if (!blockId) {
-      panic("expected a paragraph block id");
-    }
-
-    const first = reviewer.applyDocumentOperations(
-      {
-        version: 1,
-        mode: "tracked-changes",
-        operations: [
-          {
-            id: "first-spacing",
-            type: "setBlockParagraphProperties",
-            blockId,
-            properties: { spacing: firstTarget },
-          },
-        ],
-      },
-      { undefinedReferences: "refuse" },
-    );
-    expect(first.skipped).toEqual([]);
-    expectDirectSpacing(reviewer, firstTarget);
-
-    const pending = await reviewer.toBuffer();
-    const reopened = await open(session, pending);
-    const second = reopened.applyDocumentOperations(
-      {
-        version: 1,
-        mode: "tracked-changes",
-        atomic: true,
-        operations: [
-          {
-            id: "second-alignment",
-            type: "setBlockParagraphProperties",
-            blockId,
-            properties: { alignment: "center" },
-          },
-        ],
-      },
-      { undefinedReferences: "refuse" },
-    );
-    expect(second.status).toBe("rejected");
-    expect(second.applied).toEqual([]);
-    expect(second.skipped).toEqual([
-      { id: "second-alignment", reason: "pendingParagraphPropertyChange" },
-    ]);
-    expect(second.issues).toEqual([
-      expect.objectContaining({
-        code: "pendingParagraphPropertyChange",
-        recovery: "resolveTrackedChange",
-        retryable: false,
-      }),
-    ]);
-    expect(
-      expectParagraphBlock(reopened.snapshot().blocks.at(0)).directAlignment,
-    ).toBeUndefined();
-    expectDirectSpacing(reopened, firstTarget);
-
-    const replacement = reopened.applyDocumentOperations(
-      {
-        version: 1,
-        mode: "tracked-changes",
-        operations: [
-          {
-            id: "second-replacement-style",
-            type: "replaceBlock",
-            blockId,
-            text: TEXT,
-            styleId: null,
-          },
-        ],
-      },
-      { undefinedReferences: "refuse" },
-    );
-    expect(replacement.applied).toEqual([]);
-    expect(replacement.skipped).toEqual([
-      {
-        id: "second-replacement-style",
-        reason: "pendingParagraphPropertyChange",
-      },
-    ]);
-
-    const stillPending = await reopened.toBuffer();
-    const stillPendingXml = await mainDocumentXml(stillPending);
-    expect(stillPendingXml.match(/<w:pPrChange\b/gu)).toHaveLength(1);
-    expect(
-      trackedParagraphPropertyParts(firstParagraphXml(stillPendingXml)),
-    ).toEqual({
-      current: expectedParagraphProperties(firstTarget),
-      previous: expectedParagraphProperties(originalSpacing),
-    });
-
-    const accepting = await open(session, stillPending);
-    expect(accepting.acceptAll().resolved).toBe(1);
-    expectDirectSpacing(
-      await open(session, await accepting.toBuffer()),
-      firstTarget,
-    );
-
-    const rejecting = await open(session, stillPending);
-    expect(rejecting.rejectAll().resolved).toBe(1);
-    expectDirectSpacing(
-      await open(session, await rejecting.toBuffer()),
-      originalSpacing,
-    );
-  });
 
   test("canonical: a second tracked paragraph-format edit folds into the pending pPrChange", async () => {
     const originalSpacing = {
@@ -1044,82 +929,6 @@ describe("paragraph spacing comparison", () => {
 
   // Canonical refuses this insertion instead: the pending change would move
   // onto a new final paragraph (the test after this one).
-  test("legacy: does not copy a pending pPrChange into an inserted terminal paragraph", async () => {
-    const session = "legacy";
-    const originalSpacing = { spaceBefore: 120 } as const;
-    const firstTarget = { spaceAfter: 240 } as const;
-    const reviewer = await open(
-      session,
-      await spacingDocument({ directSpacing: originalSpacing }),
-    );
-    const blockId = reviewer.snapshot().blocks.at(0)?.id;
-    if (!blockId) {
-      panic("expected a paragraph block id");
-    }
-
-    expect(
-      reviewer.applyDocumentOperations(
-        {
-          version: 1,
-          mode: "tracked-changes",
-          operations: [
-            {
-              id: "spacing-first",
-              type: "setBlockParagraphProperties",
-              blockId,
-              properties: { spacing: firstTarget },
-            },
-          ],
-        },
-        { undefinedReferences: "refuse" },
-      ).skipped,
-    ).toEqual([]);
-    expect(
-      reviewer.applyDocumentOperations(
-        {
-          version: 1,
-          mode: "tracked-changes",
-          operations: [
-            {
-              id: "insert-spaced",
-              type: "insertAfterBlock",
-              blockId,
-              text: INSERTED_TEXT,
-              spacing: FULL_SPACING,
-            },
-          ],
-        },
-        { undefinedReferences: "refuse" },
-      ).skipped,
-    ).toEqual([]);
-
-    const pending = await reviewer.toBuffer();
-    const pendingParagraphs = paragraphXmls(await mainDocumentXml(pending));
-    expect(pendingParagraphs).toHaveLength(2);
-    for (const paragraph of pendingParagraphs) {
-      expect(
-        paragraph.match(/<w:pPrChange\b/gu)?.length ?? 0,
-      ).toBeLessThanOrEqual(1);
-    }
-    expectDirectSpacing(await open(session, pending), firstTarget);
-    expectDirectSpacing(await open(session, pending), FULL_SPACING, 1);
-
-    const accepting = await open(session, pending);
-    expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
-    const accepted = await open(session, await accepting.toBuffer());
-    expect(accepted.snapshot().blocks.map(({ text }) => text)).toEqual([
-      TEXT,
-      INSERTED_TEXT,
-    ]);
-    expectDirectSpacing(accepted, firstTarget);
-    expectDirectSpacing(accepted, FULL_SPACING, 1);
-
-    const rejecting = await open(session, pending);
-    expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
-    const rejected = await open(session, await rejecting.toBuffer());
-    expect(rejected.snapshot().blocks.map(({ text }) => text)).toEqual([TEXT]);
-    expectDirectSpacing(rejected, originalSpacing);
-  });
 
   test("canonical: refuses a tracked insertion that would move a pending pPrChange onto a new final paragraph", async () => {
     const originalSpacing = { spaceBefore: 120 } as const;

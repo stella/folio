@@ -54,7 +54,6 @@ const shape = (reviewer: FolioDocxReviewer) =>
 // The sequence generator previously sampled deletion and insertion independently.
 // Cross every insertion property with a deleted terminal suffix on every run.
 for (const engine of [
-  "legacy",
   "canonical",
 ] as const satisfies readonly HeadlessReviewerSession[])
   for (const finalKind of ["paragraph", "heading"] as const) {

@@ -103,7 +103,7 @@ export const FINDING_SYMPTOMS: Record<Finding, FailureSymptom> = {
 export const FINDING_ENGINES = {
   LEGACY_TOC_REGENERATION_DANGLING_REFERENCES: ["legacy"],
   LEGACY_PARAGRAPH_TAB_EDITS_LOST: ["legacy"],
-  MARKDOWN_DROPS_TEXT_BOX: ["legacy", "canonical"],
+  MARKDOWN_DROPS_TEXT_BOX: ["canonical"],
   LEGACY_INSERT_AFTER_EMPTIED_JOIN: ["legacy"],
   LEGACY_REPLACEMENT_TAKES_COMMENT: ["legacy"],
 } as const satisfies Record<Finding, readonly ReviewerEngine[]>;

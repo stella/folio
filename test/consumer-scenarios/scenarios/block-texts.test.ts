@@ -9,10 +9,7 @@ import {
   type Row,
 } from "../support/oracle.ts";
 
-const ENGINES = [
-  "legacy",
-  "canonical",
-] as const satisfies readonly ReviewerEngine[];
+const ENGINES = ["canonical"] as const satisfies readonly ReviewerEngine[];
 
 const row = (index: number): Row => ({
   id: `block-${index}`,

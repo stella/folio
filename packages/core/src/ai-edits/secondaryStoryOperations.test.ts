@@ -41,7 +41,6 @@ import { createFolioAITextRangeHandle } from "./snapshot";
 import type { FolioAIBlock, FolioAIParagraphBlock } from "./types";
 
 const SESSIONS = [
-  "legacy",
   "canonical",
 ] as const satisfies readonly HeadlessReviewerSession[];
 

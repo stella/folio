@@ -21,7 +21,6 @@ const MODES = [
   "tracked-changes",
 ] as const satisfies readonly FolioDocumentOperationMode[];
 const SESSIONS = [
-  "legacy",
   "canonical",
 ] as const satisfies readonly HeadlessReviewerSession[];
 const INSERTED = "Inserted heading.";

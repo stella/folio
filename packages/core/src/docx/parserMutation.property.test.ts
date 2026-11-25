@@ -225,7 +225,7 @@ const applyMutation = (
 const assertSurvives = async (
   mutated: Uint8Array,
   label: string,
-  session: HeadlessReviewerSession = "legacy",
+  session: HeadlessReviewerSession = "canonical",
 ): Promise<"opened" | "refused"> => {
   assert.ok(
     mutated.byteLength <= MAX_MUTATED_BYTES,
@@ -269,7 +269,6 @@ test("parser mutation matrix covers every declared mutator", () => {
 
 for (const entry of CASES) {
   for (const session of [
-    "legacy",
     "canonical",
   ] as const satisfies readonly HeadlessReviewerSession[]) {
     test(

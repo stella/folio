@@ -74,7 +74,7 @@ export const bodyLayout = async (bytes: Uint8Array): Promise<string> =>
  */
 export const writtenLayout = async (bytes: Uint8Array): Promise<string> => {
   const sections: string[] = [];
-  for (const session of ["legacy", "canonical"] as const) {
+  for (const session of ["canonical"] as const) {
     const reviewer = await FolioDocxReviewer.fromBuffer(toArrayBuffer(bytes), {
       session,
     });

@@ -23,7 +23,7 @@ type DirectParagraphFormatting = {
   spacing: FolioAIParagraphSpacing;
 };
 
-const SESSIONS: readonly HeadlessReviewerSession[] = ["canonical", "legacy"];
+const SESSIONS: readonly HeadlessReviewerSession[] = ["canonical"];
 
 const JOINED_FORMATTING = {
   styleId: "JoinedBody",

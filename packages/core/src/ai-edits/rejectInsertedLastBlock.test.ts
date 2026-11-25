@@ -54,22 +54,6 @@ const CASES = [
     accepted: ["Host", "Boxed", "Added"],
     sessions: SESSIONS,
   },
-  // The canonical session keeps every story ending with a paragraph, so it
-  // refuses a tracked paragraph after a table that ends the body.
-  {
-    name: "a table that ends the body",
-    body: `${paragraph("10000002", "Head")}${TABLE}`,
-    anchor: "10000001",
-    accepted: ["Head", "Cell", "Added"],
-    sessions: ["legacy"],
-  },
-  {
-    name: "a table that ends the body but for a text box drawn before it",
-    body: `<w:p w14:paraId="10000003">${TEXT_BOX}<w:r><w:t>Host</w:t></w:r></w:p>${TABLE}`,
-    anchor: "10000001",
-    accepted: ["Host", "Boxed", "Cell", "Added"],
-    sessions: ["legacy"],
-  },
 ] as const;
 
 for (const { name, body, anchor, accepted, sessions } of CASES)
@@ -205,10 +189,9 @@ describe.each(SESSIONS)(
 // Rejecting the breaks first leaves the paragraph, as nothing in the control
 // follows to join; the canonical session keeps it only for its words, so
 // rejecting them afterwards, even after a reopen, takes it out as rejecting
-// everything at once does. The legacy session keeps it, emptied.
+// everything at once does.
 const WORDS_AFTER_BREAKS = {
   canonical: ["Cell", "Tail"],
-  legacy: ["Cell", "", "Tail"],
 } as const satisfies Record<(typeof SESSIONS)[number], readonly string[]>;
 
 describe.each(SESSIONS)(
@@ -252,87 +235,3 @@ describe.each(SESSIONS)(
     });
   },
 );
-
-// The cases below hold the legacy reviewer to its outcomes; the canonical
-// session refuses a tracked paragraph after a table that ends the body.
-const openLegacy = (bytes: ArrayBuffer) =>
-  FolioDocxReviewer.fromBuffer(bytes, { session: "legacy" });
-
-test("an unrelated rejection leaves an added final paragraph alone", async () => {
-  const reviewer = await openLegacy(
-    await docx(`${paragraph("10000002", "Head")}${TABLE}`),
-  );
-  reviewer.applyDocumentOperations(
-    {
-      version: 1,
-      mode: "tracked-changes",
-      operations: [
-        {
-          id: "add",
-          type: "insertAfterBlock",
-          blockId: "10000001",
-          text: "Added",
-        },
-        {
-          id: "head",
-          type: "replaceInBlock",
-          blockId: "10000002",
-          find: "Head",
-          replace: "Top",
-        },
-      ],
-    },
-    { undefinedReferences: "refuse" },
-  );
-  const headChange = reviewer.getChanges().find(({ text }) => text === "Top");
-  if (!headChange) throw new Error("The heading change is missing");
-  reviewer.rejectChange(headChange);
-  expect(texts(reviewer)).toContain("Added");
-  reviewer.rejectAll();
-  expect(texts(reviewer)).toEqual(["Head", "Cell"]);
-});
-
-test("accepting an added final paragraph keeps it as an ordinary one", async () => {
-  const reviewer = await openLegacy(
-    await docx(`${paragraph("10000002", "Head")}${TABLE}`),
-  );
-  reviewer.applyDocumentOperations(
-    {
-      version: 1,
-      mode: "tracked-changes",
-      operations: [
-        {
-          id: "add",
-          type: "insertAfterBlock",
-          blockId: "10000001",
-          text: "Added",
-        },
-      ],
-    },
-    { undefinedReferences: "refuse" },
-  );
-  reviewer.acceptAll();
-  const reopened = await openLegacy(await reviewer.toBuffer());
-  expect(texts(reopened)).toEqual(["Head", "Cell", "Added"]);
-  expect(reopened.getChanges()).toEqual([]);
-});
-
-describe("a tracked removed break on a paragraph with a text box drawn in it", () => {
-  const BODY = `<w:p w14:paraId="10000003"><w:pPr><w:rPr><w:del w:id="9" w:author="A" w:date="2026-01-01T00:00:00Z"/></w:rPr></w:pPr>${TEXT_BOX}<w:r><w:t>Host</w:t></w:r></w:p>${paragraph("10000004", "Next")}${paragraph("10000006", "Tail")}`;
-
-  const open = async () => openLegacy(await docx(BODY));
-
-  test("accepting joins the two, and the box follows", async () => {
-    const reviewer = await open();
-    reviewer.acceptAll();
-    expect(texts(reviewer)).toEqual(["HostNext", "Boxed", "Tail"]);
-    const reopened = await openLegacy(await reviewer.toBuffer());
-    expect(texts(reopened)).toEqual(["HostNext", "Boxed", "Tail"]);
-  });
-
-  test("rejecting keeps the two apart", async () => {
-    const reviewer = await open();
-    reviewer.rejectAll();
-    expect(texts(reviewer)).toEqual(["Host", "Boxed", "Next", "Tail"]);
-  });
-});

@@ -9,7 +9,7 @@ import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import { createEmptyDocument } from "../utils/createDocument";
 import { FolioDocxReviewer, getFolioDocxComparisonAccess } from "./headless";
 
-const SESSIONS: readonly HeadlessReviewerSession[] = ["canonical", "legacy"];
+const SESSIONS: readonly HeadlessReviewerSession[] = ["canonical"];
 
 const sourceDocument = () => {
   const document = createEmptyDocument();

@@ -32,7 +32,7 @@ const PARAGRAPH: Step = (blockId) => ({
 });
 const STEPS = [TABLE, PARAGRAPH] as const;
 
-const SESSIONS: readonly HeadlessReviewerSession[] = ["canonical", "legacy"];
+const SESSIONS: readonly HeadlessReviewerSession[] = ["canonical"];
 
 const open = async (session: HeadlessReviewerSession) =>
   FolioDocxReviewer.fromBuffer(await createDocx(fromMarkdown(SOURCE)), {

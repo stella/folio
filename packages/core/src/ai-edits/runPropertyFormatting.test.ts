@@ -629,7 +629,6 @@ const assertSingularRunPropertyChanges = (
 };
 
 const HEADLESS_REVIEWER_SESSIONS = [
-  "legacy",
   "canonical",
 ] as const satisfies readonly HeadlessReviewerSession[];
 

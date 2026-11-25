@@ -37,7 +37,6 @@ const controlText = async (reviewer: FolioDocxReviewer): Promise<string> => {
 };
 
 describe.each([
-  "legacy",
   "canonical",
 ] as const satisfies readonly HeadlessReviewerSession[])(
   "text added at a content control's end (%s)",

@@ -15,7 +15,6 @@ export const CANONICAL_GAP = {
   tableGeometry: "pm-table-geometry",
   paragraphIdentity: "pm-paragraph-identity",
   documentOperations: "pm-document-operations",
-  aiSnapshots: "pm-ai-snapshots",
   publicComments: "publicOps.comments",
   publicUnsupportedInline: "publicOps.unsupportedInline",
   commentReplacementAlignment: "comment-replacement-alignment",
@@ -98,8 +97,7 @@ type CanonicalCapability = {
 } & (
   | {
       owner: "document-operations";
-      legacySessionMutation:
-        "pm-public-operations" | "pm-headless-reviewer" | "canonical";
+      legacySessionMutation: "pm-public-operations" | "canonical";
     }
   | { owner: "controller" | "adapters" | "prosemirror" | "ai-edits" }
 );
@@ -221,16 +219,10 @@ export const CANONICAL_CAPABILITIES: {
   };
   readonly "publicOps.headlessSession": {
     readonly owner: "document-operations";
-    readonly legacySessionMutation: "pm-headless-reviewer";
-    readonly kind: "mutation-source";
+    readonly legacySessionMutation: "canonical";
+    readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Hosts can still pin the legacy reviewer engine, which runs on ProseMirror; a canonical reviewer refuses to resolve one story of a suggestion that reaches several, which resolves only whole.";
-  };
-  readonly "pm-ai-snapshots": {
-    readonly owner: "ai-edits";
-    readonly kind: "mutation-source";
-    readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Headless AI edits still use PM execution and snapshot undo.";
+    readonly summary: "A reviewer refuses to resolve one story of a suggestion that reaches several, which resolves only whole.";
   };
 } = {
   [CANONICAL_GAP.authorityRouting]: {
@@ -359,17 +351,11 @@ export const CANONICAL_CAPABILITIES: {
   },
   [CANONICAL_GAP.publicHeadlessSession]: {
     owner: "document-operations",
-    legacySessionMutation: "pm-headless-reviewer",
-    kind: "mutation-source",
+    legacySessionMutation: "canonical",
+    kind: "refusal",
     adapters: ["react", "vue"],
     summary:
-      "Hosts can still pin the legacy reviewer engine, which runs on ProseMirror; a canonical reviewer refuses to resolve one story of a suggestion that reaches several, which resolves only whole.",
-  },
-  [CANONICAL_GAP.aiSnapshots]: {
-    owner: "ai-edits",
-    kind: "mutation-source",
-    adapters: ["react", "vue"],
-    summary: "Headless AI edits still use PM execution and snapshot undo.",
+      "A reviewer refuses to resolve one story of a suggestion that reaches several, which resolves only whole.",
   },
 } as const satisfies Record<CanonicalGap, CanonicalCapability>;
 
@@ -391,22 +377,10 @@ export const usesCanonicalSession = (
 ): boolean => session !== "legacy";
 
 /**
- * The engine a headless reviewer holds its document in. It defaults to the
- * canonical session, as the editors do; a host can pin either engine.
+ * The engine a headless reviewer holds its document in: the canonical
+ * session, as the editors do.
  */
-export type HeadlessReviewerSession = "legacy" | "canonical";
-
-/** A host that names no engine reviews on the canonical session. */
-export const DEFAULT_HEADLESS_REVIEWER_SESSION = "canonical";
-
-/**
- * Whether a headless reviewer runs on the canonical session: the one place
- * the reviewer's default is decided.
- */
-export const headlessReviewerUsesCanonicalSession = (
-  session: HeadlessReviewerSession = DEFAULT_HEADLESS_REVIEWER_SESSION,
-): boolean =>
-  usesCanonicalSession(session, CANONICAL_GAP.publicHeadlessSession);
+export type HeadlessReviewerSession = "canonical";
 
 export const canonicalRefusalMessage = (
   gap: CanonicalGap,

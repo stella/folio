@@ -139,7 +139,6 @@ const controlXml = (xml: string): string | undefined =>
     .replaceAll(/ w14:(?:paraId|textId)="[0-9A-F]{8}"/gu, "");
 
 const SESSIONS = [
-  "legacy",
   "canonical",
 ] as const satisfies readonly HeadlessReviewerSession[];
 

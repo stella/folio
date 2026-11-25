@@ -8,7 +8,7 @@ import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import type { Footnote } from "../types/document";
 import { compareDocx } from "./compare";
 
-const SESSIONS: readonly HeadlessReviewerSession[] = ["canonical", "legacy"];
+const SESSIONS: readonly HeadlessReviewerSession[] = ["canonical"];
 const NOTE_IDS = [1, 2, 3, 4, 5, 6] as const;
 
 /** A body referencing six footnotes, each note ending in `tail`. */

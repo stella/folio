@@ -169,7 +169,6 @@ const secondaryStoryTexts = async (
 };
 
 describe.each([
-  "legacy",
   "canonical",
 ] as const satisfies readonly HeadlessReviewerSession[])(
   "story text parity (%s)",

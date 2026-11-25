@@ -19,7 +19,7 @@ const OPTIONS = {
   timestamp: "2026-09-09T12:00:00.000Z",
 } as const;
 
-const SESSIONS: readonly HeadlessReviewerSession[] = ["canonical", "legacy"];
+const SESSIONS: readonly HeadlessReviewerSession[] = ["canonical"];
 
 const SECTION_A = {
   sectionStart: "nextPage",

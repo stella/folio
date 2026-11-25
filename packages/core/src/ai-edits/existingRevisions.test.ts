@@ -57,62 +57,6 @@ const outside = {
   replace: "Next",
 } as const;
 
-test("rejects a held batch when deleting an intervening paragraph exposes a foreign break", async () => {
-  const docx = await createDocx({
-    package: {
-      document: {
-        content: [
-          {
-            type: "paragraph",
-            paraId: "10000000",
-            content: [textRun("First")],
-            pPrMark: {
-              kind: "ins",
-              info: { id: 1, author: "First Reviewer" },
-            },
-          },
-          {
-            type: "paragraph",
-            paraId: "10000001",
-            content: [textRun("Middle")],
-          },
-          {
-            type: "paragraph",
-            paraId: "10000002",
-            content: [textRun("Final")],
-          },
-        ],
-      },
-    },
-  });
-  const reviewer = await FolioDocxReviewer.fromBuffer(docx, {
-    author: "Second Reviewer",
-    session: "legacy",
-  });
-  const result = apply(
-    reviewer,
-    [
-      { id: "middle", type: "deleteBlock", blockId: "10000001" },
-      { id: "final", type: "deleteBlock", blockId: "10000002" },
-    ],
-    POLICY,
-  );
-  expect(result.status).toBe("rejected");
-  expect(result.applied).toEqual([]);
-  expect(result.skipped).toEqual([
-    { id: "middle", reason: "atomicBatchRejected" },
-    expect.objectContaining({
-      id: "final",
-      reason: "existingRevisionConflict",
-    }),
-  ]);
-  expect(reviewer.getContent().map(({ text }) => text)).toEqual([
-    "First",
-    "Middle",
-    "Final",
-  ]);
-});
-
 for (const session of ["canonical"] as const) {
   test(`${session} protects a foreign revision in a collapsed cell when deleting its table`, async () => {
     const docx = await createDocx({

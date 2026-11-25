@@ -95,7 +95,7 @@ const BASE: readonly (readonly Piece[])[] = [
   ["Either party may terminate", { footnote: 40 }, " on notice."],
 ];
 
-const SESSIONS: readonly HeadlessReviewerSession[] = ["canonical", "legacy"];
+const SESSIONS: readonly HeadlessReviewerSession[] = ["canonical"];
 
 /** The comparison and its readers, all on one session. */
 const sessionHelpers = (session: HeadlessReviewerSession) => {

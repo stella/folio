@@ -58,7 +58,6 @@ const boxContent = (xml: string): string =>
   /<w:txbxContent>([\s\S]*?)<\/w:txbxContent>/u.exec(xml)?.[1] ?? "";
 
 describe.each([
-  "legacy",
   "canonical",
 ] as const satisfies readonly HeadlessReviewerSession[])(
   "a text box whose content ends in a table (%s)",

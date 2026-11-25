@@ -47,7 +47,6 @@ const paragraphsOf = (contents: ParagraphContent[][]): Document => ({
 });
 
 const SESSIONS = [
-  "legacy",
   "canonical",
 ] as const satisfies readonly HeadlessReviewerSession[];
 

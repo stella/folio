@@ -67,7 +67,6 @@ const run = async (): Promise<void> => {
   const encoded = process.argv.at(2);
   if (!encoded) throw new Error("Missing parser mutation case bytes");
   const SESSIONS = [
-    "legacy",
     "canonical",
   ] as const satisfies readonly HeadlessReviewerSession[];
   const session = SESSIONS.find(

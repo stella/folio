@@ -108,7 +108,6 @@ const open = async (
   });
 
 const SESSIONS = [
-  "legacy",
   "canonical",
 ] as const satisfies readonly HeadlessReviewerSession[];
 

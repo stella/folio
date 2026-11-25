@@ -70,7 +70,7 @@ const replaceFirstWord = (
   );
 };
 
-describe.each<HeadlessReviewerSession>(["legacy", "canonical"])(
+describe.each<HeadlessReviewerSession>(["canonical"])(
   "fork() on the %s engine",
   (session) => {
     test("the copy reads as the original, a pending suggestion included", async () => {

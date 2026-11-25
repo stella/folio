@@ -23,7 +23,6 @@ import { repackDocx } from "./rezip";
 const DOCUMENT_PART = "word/document.xml";
 const COMMENTS_PART = "word/comments.xml";
 const SESSIONS = [
-  "legacy",
   "canonical",
 ] as const satisfies readonly HeadlessReviewerSession[];
 

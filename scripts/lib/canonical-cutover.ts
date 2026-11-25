@@ -157,8 +157,6 @@ const mutationGap = (
     }
     if (name === "fromBuffer" && file.endsWith("/headless.ts"))
       return CANONICAL_GAP.publicHeadlessSession;
-    if (name === "captureReviewerState" && file.endsWith("/headless.ts"))
-      return CANONICAL_GAP.aiSnapshots;
   }
   return undefined;
 };

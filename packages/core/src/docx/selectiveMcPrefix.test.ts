@@ -45,7 +45,6 @@ const paragraphContents = (xml: string): string[] =>
   );
 
 describe.each([
-  "legacy",
   "canonical",
 ] as const satisfies readonly HeadlessReviewerSession[])(
   "selective save with an aliased markup-compatibility prefix (%s)",
