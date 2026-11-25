@@ -949,6 +949,9 @@ export const isCopyOriginAncestors: (value: unknown) => value is CopyOriginAnces
 // @public
 export const isKeptCut: (cut: unknown) => cut is KeptCut;
 
+// @public (undocumented)
+export const isKeptCutPiece: (value: unknown) => value is KeptCutPiece;
+
 // @public
 export function isTextOnlyRun(run: Run): boolean;
 
@@ -978,6 +981,9 @@ export type JoinInlineOp = {
 
 // @public
 export const joinPropertyChangeLink: (input: JoinPropertyChangeLinkOptions) => SetParagraphReviewOp | undefined;
+
+// @public
+export type KeptCutPiece = "before" | "after" | "both";
 
 // @public
 export type LeasedId = {
@@ -1156,7 +1162,7 @@ export const paragraphHoldsContentOnceAccepted: (paragraph: Paragraph) => Paragr
 export const paragraphIdsIn: (value: unknown) => string[];
 
 // @public
-export const paragraphKeptCutsFromChanges: (content: readonly ParagraphContent[], writtenOnChange: (joins: SeamJoins) => VersionOneKept | undefined) => ParagraphContent[];
+export const paragraphKeptCutsFromChanges: (content: readonly ParagraphContent[], writtenOnChange: (joins: SeamJoins) => VersionOneKept | undefined, legacyPiece?: LegacyKeptCutPiece) => ParagraphContent[];
 
 // @public
 export const paragraphLength: (paragraph: Paragraph) => number;
