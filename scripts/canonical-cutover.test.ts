@@ -100,7 +100,7 @@ describe("canonical cutover guard", () => {
         'import { tableEditing as repair } from "prosemirror-tables";',
         "tableEditing",
       ],
-    ];
+    ] as const;
     for (const [code, primitive] of fixtures)
       expect(failuresOf(code)).toContain(
         `packages/react/src/fixture.tsx: ${primitive} belongs in the reference editor`,
