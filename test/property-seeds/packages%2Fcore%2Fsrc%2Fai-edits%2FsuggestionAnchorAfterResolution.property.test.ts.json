@@ -17,6 +17,12 @@
       "path": "96:3:2:4:4:4:4:4:5:5:5:6:6:7:7",
       "note": "Cancelling a tracked insertion removes the anchor of a surviving proposal before Accept All",
       "date": "2026-11-25"
+    },
+    {
+      "seed": 2046565531,
+      "path": "96:3:2:3:3:3:3:3:3:4:4:4:8:8:6:6:6:6:7:7:7:20:9:14:12:12:11:10:12:10:10:10:11:10:12:11:10:10:10:11:11:10:10:18:21:15:5:5:15:11:5:16:19:20:20:18",
+      "note": "A proposed comment on a paragraph whose words are all pending deletion covers no shown words, so it is refused rather than staged unseen",
+      "date": "2026-11-25"
     }
   ]
 }
