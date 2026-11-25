@@ -438,12 +438,14 @@ const earlierGap = (left: Gap, right: Gap): Gap =>
  * deleted content, which it leaves alone, and one holding nothing else is
  * dropped.
  *
- * An empty container marks nothing on its own. Whether it goes depends on
- * its region, the part of the range between two range boundaries or comment
- * anchors: it goes with the region when the region removes something else,
- * and stays when the region holds nothing else to remove. The region is the
- * same whoever edits and in either mode, so a direct replacement and an
- * accepted suggestion keep the same containers.
+ * An empty container marks nothing on its own: a suggestion removes it only
+ * with a tracked stretch that records something else. A direct edit that
+ * keeps lone empty containers reads its stretches as a suggestion by an
+ * author who owns nothing there would: the part of the range between two
+ * range boundaries or comment anchors (its region), content already deleted
+ * or moved away included. An empty container goes with a region that
+ * removes something else, so the direct edit and the accepted suggestion
+ * keep the same containers.
  */
 type ReplacementDeletionSegmentsOptions = {
   spans: readonly LeafSpan[];
@@ -494,8 +496,9 @@ export const replacementDeletionSegments = ({
       continue;
     }
     const segmentPlan = plan === "untouched" ? "tracked" : plan;
-    // An empty container marks nothing tracked: it goes only with a region
-    // that removes something else, whatever stretch it falls in.
+    // An empty container marks nothing tracked: a suggestion drops a
+    // stretch holding nothing else, and a direct edit removes it only with a
+    // region that removes something else, whatever stretch it falls in.
     const empty =
       plan !== "untouched" &&
       keepsLoneEmptyContainers &&
@@ -523,7 +526,10 @@ export const replacementDeletionSegments = ({
     out.push(open);
   }
   return out.flatMap((stretch) =>
-    stretch.records || (stretch.empties && recordingRegions.has(stretch.region))
+    stretch.records ||
+    (mode.type === "editing" &&
+      stretch.empties &&
+      recordingRegions.has(stretch.region))
       ? [
           {
             plan: stretch.plan,
