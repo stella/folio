@@ -5,11 +5,12 @@
  * removed cell's properties and content, so the merged cell keeps its words.
  * Every path that removes a row goes through {@link rowsWithoutRow}.
  */
-import type { Table, TableCell, TableRow } from "../model/document";
+import type { Paragraph, Table, TableCell, TableRow } from "../model/document";
 import {
   TABLE_CELL_VERTICAL_MERGES,
   tableCellVerticalMerge,
 } from "../model/tableCellVerticalMerge";
+import { rangeBoundaryDefinitions } from "./rangeBoundaries";
 import { tableGrid } from "./tableGrid";
 import { DOCUMENT_OP_TYPES } from "./types";
 
@@ -137,9 +138,82 @@ const withMergesEnded = (
   return { ...previousRow, cells };
 };
 
+const BOUNDARIES = rangeBoundaryDefinitions();
+type Boundary = Extract<
+  Paragraph["content"][number],
+  { type: keyof typeof BOUNDARIES }
+>;
+
+/** Every range boundary in `value`, at any depth, in source order. */
+const boundariesIn = (value: unknown, out: Boundary[] = []): Boundary[] => {
+  if (typeof value !== "object" || value === null) return out;
+  const type: unknown = Reflect.get(value, "type");
+  // SAFETY: a model node whose type names a range boundary is one.
+  if (typeof type === "string" && Object.hasOwn(BOUNDARIES, type))
+    out.push(value as Boundary);
+  else for (const field of Object.values(value)) boundariesIn(field, out);
+  return out;
+};
+
+/**
+ * The range boundaries in `removed`, other than those `kept` still holds,
+ * whose other end stands outside it. Removed content takes its words, not
+ * the end of a range reaching past it: these ends stay where it was. A range
+ * wholly inside goes with it.
+ */
+export const rangeEndsReachingPast = (
+  removed: unknown,
+  kept?: unknown,
+): Boundary[] => {
+  const keeps = new Set(boundariesIn(kept));
+  const key = (node: Boundary) => `${BOUNDARIES[node.type].family}:${node.id}`;
+  const lost = boundariesIn(removed).filter((node) => !keeps.has(node));
+  return lost.filter(
+    (node) => lost.filter((other) => key(other) === key(node)).length === 1,
+  );
+};
+
+/**
+ * `rows` with the ends of ranges reaching past the removed row
+ * ({@link rangeEndsReachingPast}) where the row was: at the start of the row
+ * after it, else at the end of the row before. With no row left the table
+ * goes, and its removal keeps them.
+ */
+const withRangeEndsKept = (
+  removed: TableRow,
+  rows: TableRow[],
+  rowIndex: number,
+): TableRow[] => {
+  const ends = rangeEndsReachingPast(removed, rows[rowIndex]);
+  const after = rowIndex < rows.length;
+  const at = after ? rowIndex : rowIndex - 1;
+  const row = rows[at];
+  const cellAt = after ? 0 : (row?.cells.length ?? 0) - 1;
+  const cell = row?.cells[cellAt];
+  if (ends.length === 0 || row === undefined || cell === undefined) return rows;
+  const content = [...cell.content];
+  const index = after
+    ? content.findIndex((block) => block.type === "paragraph")
+    : content.findLastIndex((block) => block.type === "paragraph");
+  const paragraph = content[index];
+  if (paragraph?.type !== "paragraph") return rows;
+  content[index] = {
+    ...paragraph,
+    content: after
+      ? [...ends, ...paragraph.content]
+      : [...paragraph.content, ...ends],
+  };
+  const cells = [...row.cells];
+  cells[cellAt] = { ...cell, content };
+  const out = [...rows];
+  out[at] = { ...row, cells };
+  return out;
+};
+
 /**
  * The table's rows without row `rowIndex`: the merges it starts handed on,
- * and those it alone continues ended.
+ * those it alone continues ended, and the ends of ranges reaching past it
+ * kept.
  */
 export const rowsWithoutRow = (table: Table, rowIndex: number): TableRow[] => {
   const rows = [...table.rows];
@@ -148,7 +222,10 @@ export const rowsWithoutRow = (table: Table, rowIndex: number): TableRow[] => {
   const next = withMergesHandedOn(table, rowIndex);
   if (next === undefined) rows.splice(rowIndex, 1);
   else rows.splice(rowIndex, 2, next);
-  return rows;
+  const removed = table.rows[rowIndex];
+  return removed === undefined
+    ? rows
+    : withRangeEndsKept(removed, rows, rowIndex);
 };
 
 /**

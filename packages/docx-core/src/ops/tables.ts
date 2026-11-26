@@ -45,6 +45,7 @@ import {
 import { stampInfo, WRAP_KINDS } from "./review";
 import { replaceStoryBody } from "./stories";
 import { locateBlockInsertion, locateTableRow } from "./tableLocation";
+import { rangeEndsReachingPast } from "./tableRowRemoval";
 import { permitsRestoredCellFinalMark, trackTableRows } from "./tableTracking";
 import {
   type DeleteTableOp,
@@ -681,6 +682,24 @@ export const applyTableOp = (
       const blocks = [...blockListAt(body.content, location.list)];
       if (op.revision === undefined) {
         blocks.splice(location.index, 1);
+        // The table's ends of ranges reaching past it stay where it was: at
+        // the end of the paragraph before it, else at the start of the next.
+        const ends = rangeEndsReachingPast(location.table);
+        const before = blocks[location.index - 1]?.type === "paragraph";
+        const at = before
+          ? location.index - 1
+          : blocks.findIndex(
+              (block, index) =>
+                index >= location.index && block.type === "paragraph",
+            );
+        const host = blocks[at];
+        if (ends.length > 0 && host?.type === "paragraph")
+          blocks[at] = {
+            ...host,
+            content: before
+              ? [...host.content, ...ends]
+              : [...ends, ...host.content],
+          };
       } else {
         if (
           location.table.preserved !== undefined ||
