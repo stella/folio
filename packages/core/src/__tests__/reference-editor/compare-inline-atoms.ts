@@ -25,6 +25,7 @@ import {
   MISSING_NOTE_DETAIL,
   ownsFieldResult,
   sameBlockTopology,
+  sameSupportedAtoms,
 } from "../../compare/inline-atom-alignment";
 import {
   type AtomBlock,
