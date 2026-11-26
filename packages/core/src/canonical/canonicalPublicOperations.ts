@@ -6998,7 +6998,11 @@ export class CanonicalPublicOperations {
           // A table after it, standing or put there by the batch first.
           (after?.type.name === "table" || precedesInsertedTable) &&
           isInsertedPPrMark(paragraph.node.attrs["pPrMark"]) &&
-          holdsOriginalWords))
+          holdsOriginalWords &&
+          // Words a pending join runs into it go by the block deletion,
+          // which reads the joined paragraph whole and records itself on an
+          // added mark before a table its author's insertion put there.
+          joinedWordsStart === undefined))
     ) {
       if (paragraph.start === end) return refusal("noopOperation");
       // Words a pending join runs into it go with its own, as below. Between
