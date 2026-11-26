@@ -9,7 +9,10 @@ export const INTERNAL_CLIPBOARD_TYPE = "application/x-stella-folio";
 /**
  * Standard clipboard MIME types
  */
-export const CLIPBOARD_TYPES = {
+export const CLIPBOARD_TYPES: {
+  readonly HTML: "text/html";
+  readonly PLAIN: "text/plain";
+} = {
   HTML: "text/html",
   PLAIN: "text/plain",
 } as const;
