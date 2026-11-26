@@ -1050,7 +1050,7 @@ export const deleteBlocks = ({
           held,
         })
       : undefined;
-  if (takenOver !== undefined && broken !== undefined && owner !== undefined) {
+  if (takenOver !== undefined && broken !== undefined) {
     const rejected = applyOps(document, [
       {
         type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
@@ -1074,18 +1074,18 @@ export const deleteBlocks = ({
     // it gets back reads as it stood before every change taken back, its
     // own pending change from the properties it had included (one the
     // paragraph `broken` was inserted after took over the story's last
-    // mark): `broken` keeps its properties over that, as a pending change.
+    // mark): `broken` keeps its properties over that, as that pending
+    // change. A taken-back paragraph with no such change records none.
     const { pPrMark: _addedMark, ...restyle } = reviewFieldsOf(broken);
-    if ((broken.propertyChanges?.length ?? 0) === 0) {
-      if (sameParagraphProperties(survivor.formatting, broken.formatting))
+    if (!broken.propertyChanges?.length) {
+      const recorded = last.paragraph.propertyChanges?.[0];
+      if (
+        !recorded ||
+        sameParagraphProperties(survivor.formatting, broken.formatting)
+      )
         return Result.ok({ document: retracted, inverse, touched });
-      const recorded = found.at(-1)?.paragraph.propertyChanges?.at(0)?.info;
       restyle.propertyChanges = [
-        paragraphPropertyChange(
-          recorded ?? stampInfo(owner),
-          survivor,
-          restyle.formatting,
-        ),
+        paragraphPropertyChange(recorded.info, survivor, restyle.formatting),
       ];
     }
     const kept = applyOps(retracted, [
