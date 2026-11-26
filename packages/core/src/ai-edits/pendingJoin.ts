@@ -18,20 +18,24 @@ import { buildCleanBlockText } from "./clean-text";
 import type { NoteReferenceLabels } from "./note-references";
 import type { FolioAIEditSkippedOperation } from "./types";
 
-/**
- * A paragraph mark accepting removes: a pending deletion, a relocation's
- * source, or an added one another author deleted after (`deletion`), as
- * docx-core's `markGoes` reads it.
- */
+/** A paragraph mark that is a pending deletion, or a relocation's source. */
 export const isDeletedPPrMark = (value: unknown): boolean =>
   typeof value === "object" &&
   value !== null &&
-  (("kind" in value && (value.kind === "del" || value.kind === "moveFrom")) ||
-    ("deletion" in value &&
-      value.deletion !== undefined &&
-      value.deletion !== null));
+  "kind" in value &&
+  (value.kind === "del" || value.kind === "moveFrom");
 
-const markGoesWhenAccepted = isDeletedPPrMark;
+/**
+ * A paragraph mark accepting removes: a deleted one, or an added one another
+ * author deleted after (`deletion`), as docx-core's `markGoes` reads it.
+ */
+const markGoesWhenAccepted = (value: unknown): boolean =>
+  isDeletedPPrMark(value) ||
+  (typeof value === "object" &&
+    value !== null &&
+    "deletion" in value &&
+    value.deletion !== undefined &&
+    value.deletion !== null);
 
 /** A table row's or cell's revision record. */
 const hasRevisionMarker = (value: unknown): boolean =>
@@ -445,11 +449,17 @@ export type PendingMarkEditOptions = {
   cleanText: string;
 };
 
-/** The shared property boundary, independent of the paragraph's representation. */
+/**
+ * The shared property boundary, independent of the paragraph's
+ * representation: any mark accepting removes, including one added and then
+ * deleted by another author, takes the edited properties with it.
+ */
 export const pendingParagraphPropertiesRefusal = (
   mark: unknown,
 ): PendingRefusal | undefined =>
-  isDeletedPPrMark(mark) ? PENDING_PARAGRAPH_MARK_PROPERTY_REFUSAL : undefined;
+  markGoesWhenAccepted(mark)
+    ? PENDING_PARAGRAPH_MARK_PROPERTY_REFUSAL
+    : undefined;
 
 /**
  * The refusal an operation that places no block meets on a paragraph whose
