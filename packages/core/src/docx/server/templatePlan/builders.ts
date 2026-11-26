@@ -3,6 +3,7 @@
  * a paragraph's content, a complex REF field with a cached result, the
  * update-on-open setting, and freezing a field to its cached result.
  */
+import { sliceText } from "../../../utils/sliceText";
 import { updateSettingsOnOffChild } from "../../settingsHeaderFooterUpdate";
 import type { XmlElement } from "../../xmlParser";
 import { sha256Hex } from "./package";
@@ -190,8 +191,10 @@ export const applyRefCaseFormat = (
       return text.toLowerCase();
     case "upper":
       return text.toUpperCase();
-    case "firstcap":
-      return text.charAt(0).toUpperCase() + text.slice(1);
+    case "firstcap": {
+      const initial = sliceText({ text, units: "graphemes", end: 1 });
+      return initial.toUpperCase() + text.slice(initial.length);
+    }
     case null:
       return text;
     default:
