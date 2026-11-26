@@ -46,6 +46,7 @@ import type {
   Document,
   Paragraph,
   ParagraphContent,
+  Run,
 } from "../types/document";
 import { FolioDocxReviewer, type FolioReviewComment } from "./headless";
 import type { FolioAIEditOperation } from "./types";
@@ -256,7 +257,7 @@ const sessionArbitrary = (structure: boolean): fc.Arbitrary<GeneratedSession> =>
     ),
   });
 
-const run = (text: string): ParagraphContent => ({
+const run = (text: string): Run => ({
   type: "run",
   content: [{ type: "text", text }],
 });
