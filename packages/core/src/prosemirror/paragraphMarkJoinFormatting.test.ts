@@ -4,7 +4,7 @@ import { EditorState } from "prosemirror-state";
 import { Step, Transform } from "prosemirror-transform";
 
 import { joinAtParagraphMark } from "../__tests__/reference-editor/paragraphRevision";
-import { resolveWholeStory } from "../internal/wholeStoryRevisionResolution";
+import { resolveWholeStory } from "../__tests__/reference-editor/wholeStoryRevisionResolution";
 import { createStyleEngine } from "../style-engine/styleEngine";
 import type { Document, ParagraphContent } from "../types/document";
 import { expectParagraphAttrs } from "./attrs";

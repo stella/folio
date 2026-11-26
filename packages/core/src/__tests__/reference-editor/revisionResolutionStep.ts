@@ -7,7 +7,7 @@ import {
   StepResult,
 } from "prosemirror-transform";
 
-import { composeRevisionResolutionMaps } from "../../internal/revisionResolutionStep";
+import { composeRevisionResolutionMaps } from "./revisionResolutionMaps";
 
 type DeferredInverse = {
   doc: PMNode;

@@ -19,14 +19,14 @@
 import { Mark, type Node as PMNode } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
 
-import { formattingEquals } from "../docx/runConsolidator";
-import { RUN_FORMATTING_MARK_NAMES } from "./runFormattingMarkNames";
-import { readAuthoredRunFormatting } from "./runFormattingReconciliation";
+import { formattingEquals } from "../../docx/runConsolidator";
+import { RUN_FORMATTING_MARK_NAMES } from "../../prosemirror/runFormattingMarkNames";
+import { readAuthoredRunFormatting } from "../../prosemirror/runFormattingReconciliation";
 import {
   type ParagraphRunStyleContext,
   paragraphRunStyleContextAt,
   type RunStyleResolver,
-} from "./runStyleFormatting";
+} from "../../prosemirror/runStyleFormatting";
 
 const isFormattingMark = (mark: Mark): boolean =>
   RUN_FORMATTING_MARK_NAMES.has(mark.type.name);

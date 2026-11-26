@@ -4,13 +4,13 @@ import { TableMap } from "prosemirror-tables";
 
 import { applyFolioAIEditOperations } from "../../__tests__/reference-editor/apply";
 import { rejectAIEditRevision } from "../../__tests__/reference-editor/comments";
-import { createFolioAIEditSnapshot } from "../../ai-edits/snapshot";
-import { schema } from "../schema";
 import {
   createRestoredTableCell,
   tableCellContinuationFromNode,
   tableCellContinuationPayload,
-} from "./tableCellMergeResolution";
+} from "../../__tests__/reference-editor/tableCellMergeProjection";
+import { createFolioAIEditSnapshot } from "../../ai-edits/snapshot";
+import { schema } from "../schema";
 
 const paragraph = (text: string) =>
   schema.node("paragraph", null, [schema.text(text)]);

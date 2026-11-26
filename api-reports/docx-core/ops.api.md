@@ -845,6 +845,16 @@ export type IdLeaseState = {
 };
 
 // @public
+export type IndependentMarkupParagraph = {
+    index: number;
+    sourceLength: number;
+    omitted: readonly {
+        from: number;
+        to: number;
+    }[];
+};
+
+// @public
 export const INHERIT_RUN_PROPS = "inherit";
 
 // @public
@@ -1359,6 +1369,14 @@ export type ResolvedDocumentView = {
 
 // @public
 export const resolvedDocumentView: (document: Document_2, decision: RevisionDecision) => ResolvedDocumentView;
+
+// @public
+export type ResolvedMarkupDocumentView = ResolvedDocumentView & {
+    independentInline?: readonly IndependentMarkupParagraph[];
+};
+
+// @public
+export const resolvedMarkupDocumentView: (document: Document_2, decision: RevisionDecision) => ResolvedMarkupDocumentView;
 
 // @public
 export type ResolveRevisionOp = {

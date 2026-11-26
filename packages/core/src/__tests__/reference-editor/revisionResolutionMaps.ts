@@ -1,6 +1,6 @@
 import { StepMap } from "prosemirror-transform";
 
-import { indexedPositionMap } from "./indexedPositionMap";
+import { indexedPositionMap } from "../../internal/indexedPositionMap";
 
 type IndexedMapChange = {
   oldStart: number;

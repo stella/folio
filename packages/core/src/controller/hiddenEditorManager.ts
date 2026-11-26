@@ -90,6 +90,7 @@ import {
   isCommentRecordsSync,
 } from "../prosemirror/commentRecords";
 import { createEmptyDoc, toProseDoc } from "../prosemirror/conversion";
+import { retainMarkupViewSource } from "../prosemirror/conversion/markupViewSource";
 import { registerEditorCommandOwner } from "../prosemirror/executeEditorCommand";
 import type { HistoryShortcutOwner } from "../prosemirror/extensions/core/historyCommands";
 import type { ExtensionManager } from "../prosemirror/extensions/ExtensionManager";
@@ -1313,6 +1314,7 @@ export const createHiddenEditorManager = (
             appliedTransaction.docChanged &&
             !isCommentRecordsSync(appliedTransaction),
         );
+        retainMarkupViewSource(view.state, applied.state);
         view.updateState(applied.state);
 
         const docChanged = documentEdits.length > 0;

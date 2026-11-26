@@ -474,7 +474,7 @@ const KEPT_CUT_FIELDS = {
   holders: true,
 } as const satisfies Record<RecordField<KeptCut>, true>;
 
-const isRevisionId = (value: unknown): boolean =>
+export const isRevisionId = (value: unknown): boolean =>
   typeof value === "number" &&
   Number.isInteger(value) &&
   value >= 0 &&

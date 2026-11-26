@@ -108,6 +108,10 @@ import {
   canonicalSelectionRange,
 } from "../prosemirror/canonicalSelectionRange";
 import { expectCommentRangeBoundaryAttrs } from "../prosemirror/commentRangeBoundaryAttrs";
+import {
+  markupViewSources,
+  markupViewStateSources,
+} from "../prosemirror/conversion/markupViewSource";
 import { storyConversionOptions } from "../prosemirror/conversion/storyConversionOptions";
 import {
   collectPairedBookmarkIds,
@@ -1670,7 +1674,14 @@ const project = ({
   };
   const kept =
     previous === undefined ? undefined : projectChangedBlocks(previous, walk);
-  return kept === undefined ? projectEveryBlock(walk) : Result.ok(kept);
+  const result = kept === undefined ? projectEveryBlock(walk) : Result.ok(kept);
+  if (result.isOk() && !markupViewSources.has(result.value.doc))
+    markupViewSources.set(result.value.doc, {
+      document,
+      story,
+      options,
+    });
+  return result;
 };
 
 const intentStory = (intent: EditorIntent): OpStory => {
@@ -1854,18 +1865,26 @@ const authorizedProjections = new WeakMap<
   ProjectionAuthorization
 >();
 
+const canonicalProjectionAuthorization = (
+  transaction: Transaction,
+  session: CanonicalSession,
+): ProjectionAuthorization | undefined => {
+  const authorization = authorizedProjections.get(transaction);
+  if (
+    authorization?.session === session &&
+    authorization.version === session.version &&
+    transaction.doc.eq(authorization.doc)
+  )
+    return authorization;
+  return undefined;
+};
+
 /** Metadata is descriptive; transaction identity and session version authorize mutations. */
 export const isCanonicalProjectionTransaction = (
   transaction: Transaction,
   session: CanonicalSession,
-): boolean => {
-  const authorization = authorizedProjections.get(transaction);
-  return (
-    authorization?.session === session &&
-    authorization.version === session.version &&
-    transaction.doc.eq(authorization.doc)
-  );
-};
+): boolean =>
+  canonicalProjectionAuthorization(transaction, session) !== undefined;
 
 type PublishCanonicalProjectionOptions = {
   state: EditorState;
@@ -1911,7 +1930,11 @@ export const publishCanonicalProjection = ({
       },
       never
     > => {
-  if (!isCanonicalProjectionTransaction(commit.transaction, session))
+  const authorization = canonicalProjectionAuthorization(
+    commit.transaction,
+    session,
+  );
+  if (authorization === undefined)
     return refuse("The staged canonical projection is unauthorized.", INTERNAL);
   const applied = Result.try({
     try: () => state.applyTransaction(commit.transaction),
@@ -1943,6 +1966,12 @@ export const publishCanonicalProjection = ({
     );
   const published = commit.publish();
   if (published.isErr()) return published;
+  const source = markupViewSources.get(authorization.doc);
+  markupViewStateSources.set(staged.state, {
+    ...source,
+    document: commit.document,
+    story: commit.projection.story,
+  });
   return Result.ok(staged);
 };
 

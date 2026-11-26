@@ -2,6 +2,7 @@ import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
 
+import { resolveStateStory } from "../../__tests__/reference-editor/markupViewProjection";
 import {
   EXPECTED_CANCELLED_STYLE_TOGGLES,
   findStyleToggleRun,
@@ -17,7 +18,6 @@ import type {
 } from "../../layout-engine/types";
 import { proseDocToBlocks } from "../../prosemirror/conversion/fromProseDoc";
 import { headerFooterToProseDoc } from "../../prosemirror/conversion/toProseDoc";
-import { resolveStateStory } from "../../prosemirror/markupViewProjection";
 import { schema } from "../../prosemirror/schema";
 import type { BlockContent, HeaderFooter } from "../../types/document";
 import type { HeaderFooterMetrics } from "./headerFooterLayout";
