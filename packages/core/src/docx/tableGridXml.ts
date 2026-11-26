@@ -6,6 +6,7 @@
 import {
   gridColumnsInRows,
   MAX_TABLE_GRID_COLUMNS as MAX_GRID_COLUMNS,
+  statedTableColumnWidths,
 } from "@stll/docx-core/model";
 
 import type { Table, TableGridChange } from "../types/document";
@@ -57,15 +58,18 @@ const currentGridColumnCount = (
  * measure for is written back without one; spelling it as a zero would claim a
  * width the source never stated.
  */
-const serializeTableGridChange = (change: TableGridChange): string => {
-  const { id, columnWidths } = change;
-  const columns = columnWidths
+const serializeGridColumns = (widths: readonly (number | undefined)[]) =>
+  widths
     .map((width) =>
       width === undefined
         ? "<w:gridCol/>"
         : `<w:gridCol w:w="${intAttr(width)}"/>`,
     )
     .join("");
+
+const serializeTableGridChange = (change: TableGridChange): string => {
+  const { id, columnWidths } = change;
+  const columns = serializeGridColumns(columnWidths);
   return `<w:tblGridChange w:id="${intAttr(id)}"${serializeTableGeometryChange(change)}><w:tblGrid>${columns}</w:tblGrid></w:tblGridChange>`;
 };
 
@@ -84,11 +88,9 @@ export const modelTableGrid = (table: Table): string => {
   const change = table.formatting?.gridChange;
   const gridChange =
     change === undefined ? "" : serializeTableGridChange(change);
-  const columnWidths = table.columnWidths;
+  const columnWidths = statedTableColumnWidths(table);
   if (columnWidths && columnWidths.length > 0) {
-    const columns = columnWidths
-      .map((w) => `<w:gridCol w:w="${intAttr(w)}"/>`)
-      .join("");
+    const columns = serializeGridColumns(columnWidths);
     return `<w:tblGrid>${columns}${gridChange}</w:tblGrid>`;
   }
   const columns = currentGridColumnCount(table, change);

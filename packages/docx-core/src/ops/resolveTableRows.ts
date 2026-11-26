@@ -11,6 +11,10 @@ import type {
   TableStructuralChangeInfo,
 } from "../model/document";
 import { maxOf } from "../model/extremes";
+import {
+  statedTableColumnWidths,
+  withTableColumnWidths,
+} from "../model/tableColumnWidths";
 import { storyBody, storyParagraphs } from "./blocks";
 import { combineEdits, type DocumentEdit } from "./edits";
 import { IDENTITY_SPACES, identityKeysIn, slotKey } from "./ids";
@@ -283,7 +287,7 @@ const propertyTable = ({
   ids,
   reject,
   keepsGrid = false,
-}: PropertyTableOptions): Result<Table, "unsupported"> => {
+}: PropertyTableOptions): Table => {
   const gridSnapshot = table.formatting?.gridChange;
   const selectedGrid = gridSnapshot !== undefined && ids.has(gridSnapshot.id);
   const tableSnapshot = table.propertyChanges?.at(-1);
@@ -293,17 +297,7 @@ const propertyTable = ({
     ids.has(tableSnapshot.info.id)
       ? tableSnapshot
       : undefined;
-  if (
-    gridSnapshot !== undefined &&
-    ids.has(gridSnapshot.id) &&
-    reject &&
-    gridSnapshot.columnWidths.some((width) => width === undefined) &&
-    // A grid stating no widths at all restores as one.
-    gridSnapshot.columnWidths.some((width) => width !== undefined)
-  ) {
-    return Result.err("unsupported");
-  }
-  let next = table;
+  let next = selectedGrid ? { ...table } : table;
   const properties = resolveProperties({
     changes: table.propertyChanges,
     formatting: table.formatting,
@@ -345,15 +339,10 @@ const propertyTable = ({
     }
     // The earlier grid comes back, unless a row keeps a cell in the columns
     // the change added: the columns it holds stay.
-    if (reject && !keepsGrid) {
-      const columnWidths = gridSnapshot.columnWidths.flatMap((width) =>
-        width === undefined ? [] : [width],
-      );
-      next = { ...next, columnWidths };
-      if (columnWidths.length === 0) delete next.columnWidths;
-    }
+    if (reject && !keepsGrid)
+      next = withTableColumnWidths(next, gridSnapshot.columnWidths);
   }
-  return Result.ok(next);
+  return next;
 };
 
 type PropertyRowOptions = {
@@ -510,10 +499,7 @@ const resolveCellColumns = ({
     cell.structuralChange !== undefined &&
     ids.has(cell.structuralChange.info.id) &&
     removeCells(cell.structuralChange);
-  const columnWidths =
-    table.columnWidths !== undefined && table.columnWidths.length > 0
-      ? table.columnWidths
-      : undefined;
+  const columnWidths = statedTableColumnWidths(table);
   const gridRows: GridRow[] = [];
   const ends: number[] = [];
   const losesEveryCell = (row: TableRow) =>
@@ -629,13 +615,13 @@ const resolveCellColumns = ({
     rows.push({ ...row, cells });
   }
   if (rows.length === 0) return Result.err("unsupported");
-  const next: Table = { ...table, rows };
-  if (columnWidths !== undefined) {
+  let next: Table = { ...table, rows };
+  if (columnWidths !== undefined && columnWidths.length > 0) {
     const nextWidths = columnWidths.filter(
       (_width, slot) => !removable.has(slot),
     );
     if (nextWidths.length === 0) return Result.err("unsupported");
-    next.columnWidths = nextWidths;
+    next = withTableColumnWidths(next, nextWidths);
   }
   return Result.ok({ table: next, holdsRemovedColumns });
 };
@@ -1130,25 +1116,14 @@ export const resolveTableRows = ({
       ids,
       reject,
     });
-    if (propertiesResolved.isErr())
-      return Result.err(
-        refusal(
-          op,
-          "The previous grid contains widths the table model cannot restore.",
-        ),
-      );
     // Cells the decision removes take no bookmark beside them with them.
     const geometry = grid?.geometryChange;
-    const nextTable = relocatePositionedMarkers(
-      table,
-      propertiesResolved.value,
-      {
-        mergedOwner: selectedGridChange ? pendingMergedOwner(table) : undefined,
-        ...(!reject && selectedGridChange && geometry?.type === "mergeCells"
-          ? { freshCellRevisions: new Set(geometry.revisionIds) }
-          : {}),
-      },
-    );
+    const nextTable = relocatePositionedMarkers(table, propertiesResolved, {
+      mergedOwner: selectedGridChange ? pendingMergedOwner(table) : undefined,
+      ...(!reject && selectedGridChange && geometry?.type === "mergeCells"
+        ? { freshCellRevisions: new Set(geometry.revisionIds) }
+        : {}),
+    });
     const applied = applyOps(current, [
       {
         type: DOCUMENT_OP_TYPES.SET_TABLE,
@@ -1214,10 +1189,12 @@ export const withTableRecordsResolved = (
       ids.has(table.formatting.gridChange.id),
   });
   if (cells.isErr()) return Result.err(cells.error);
-  return propertyTable({
-    table: cells.value.table,
-    keepsGrid: cells.value.holdsRemovedColumns,
-    ids,
-    reject,
-  });
+  return Result.ok(
+    propertyTable({
+      table: cells.value.table,
+      keepsGrid: cells.value.holdsRemovedColumns,
+      ids,
+      reject,
+    }),
+  );
 };

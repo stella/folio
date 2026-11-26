@@ -20,10 +20,18 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
 import {
+  applyDocumentOp,
+  applyDocumentOps,
+  DOCUMENT_OP_TYPES,
+  OP_STORIES,
+  REVISION_DECISIONS,
+} from "@stll/docx-core/ops";
+
+import {
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../../test/property-testing";
-import type { Table } from "../../types/document";
+import type { Document, Table } from "../../types/document";
 import { parseParagraph } from "../paragraphParser";
 import { serializeParagraph } from "../serializer/paragraphSerializer";
 import { serializeTable } from "../serializer/tableSerializer";
@@ -182,6 +190,112 @@ describe("w:tblGridChange survives a grid the serializer has to rebuild", () => 
         },
       ),
       propertyConfig({ numRuns: 100 }),
+    );
+  });
+
+  test("rejecting an imported grid change restores missing widths separately from zero widths", () => {
+    const namespaces = `${W_NS} xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"`;
+    const read = (fragment: string): Table => {
+      const table = parseTable(
+        parseElement(fragment.replace("<w:tbl>", `<w:tbl ${namespaces}>`)),
+        new Map(),
+        null,
+        null,
+        null,
+        null,
+      );
+      if (table === undefined) throw new Error("Expected a table.");
+      return table;
+    };
+    const tableOf = (document: Document): Table => {
+      const table = document.package.document.content.at(0);
+      if (table?.type !== "table") throw new Error("Expected a table.");
+      return table;
+    };
+    const withTable = (table: Table): Document => ({
+      package: {
+        document: {
+          content: [
+            table,
+            { type: "paragraph", paraId: "00000004", content: [] },
+          ],
+        },
+      },
+    });
+
+    const oldGrid = '<w:gridCol/><w:gridCol w:w="0"/><w:gridCol w:w="3400"/>';
+    const pending = withTable(
+      read(
+        '<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="1100"/><w:gridCol w:w="1200"/><w:gridCol w:w="1300"/>' +
+          `<w:tblGridChange w:id="42"><w:tblGrid>${oldGrid}</w:tblGrid></w:tblGridChange></w:tblGrid>` +
+          '<w:tr><w:tc><w:p w14:paraId="00000001"/></w:tc><w:tc><w:p w14:paraId="00000002"/></w:tc><w:tc><w:p w14:paraId="00000003"/></w:tc></w:tr></w:tbl>',
+      ),
+    );
+    const reject = {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: [42],
+      decision: REVISION_DECISIONS.REJECT,
+    } as const;
+    const rejected = applyDocumentOp(pending, reject).unwrap();
+    expect(
+      applyDocumentOps(rejected.document, rejected.inverse).unwrap().document,
+    ).toEqual(pending);
+    const restored = tableOf(rejected.document);
+    expect(restored.columnWidths).toEqual([0, 0, 3400]);
+    expect(restored.omittedColumnWidthIndices).toEqual([0]);
+    const restoredXml = serializeTable(restored, serializeParagraph);
+    expect(restoredXml).toContain(`<w:tblGrid>${oldGrid}</w:tblGrid>`);
+    const reopened = read(restoredXml);
+    expect(reopened.omittedColumnWidthIndices).toEqual([0]);
+
+    const inserted = applyDocumentOp(withTable(reopened), {
+      type: DOCUMENT_OP_TYPES.INSERT_COLUMN,
+      story: OP_STORIES.MAIN,
+      blockId: "00000001",
+      column: 0,
+      width: 900,
+      newBlockIds: ["00000005"],
+    }).unwrap().document;
+    const insertedTable = tableOf(inserted);
+    expect(insertedTable.columnWidths).toEqual([900, 0, 0, 3400]);
+    expect(insertedTable.omittedColumnWidthIndices).toEqual([1]);
+    expect(serializeTable(insertedTable, serializeParagraph)).toContain(
+      `<w:tblGrid><w:gridCol w:w="900"/>${oldGrid}</w:tblGrid>`,
+    );
+
+    const resize = applyDocumentOp(inserted, {
+      type: DOCUMENT_OP_TYPES.SET_TABLE_GRID,
+      story: OP_STORIES.MAIN,
+      blockId: "00000001",
+      columnWidths: [500, 600, 700, 800],
+      revision: { id: 43, author: "Reviewer", date: "2026-11-27T00:00:00Z" },
+      newIds: { revision: [44] },
+    }).unwrap().document;
+    expect(tableOf(resize).omittedColumnWidthIndices).toBeUndefined();
+    expect(tableOf(resize).formatting?.gridChange?.columnWidths).toEqual([
+      900,
+      undefined,
+      0,
+      3400,
+    ]);
+    const rejectedResize = applyDocumentOp(resize, {
+      ...reject,
+      revisionIds: [43, 44],
+    }).unwrap().document;
+    expect(rejectedResize).toEqual(inserted);
+
+    const deleted = applyDocumentOp(rejectedResize, {
+      type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
+      story: OP_STORIES.MAIN,
+      blockId: "00000001",
+      column: 2,
+    }).unwrap().document;
+    const deletedTable = tableOf(deleted);
+    expect(deletedTable.columnWidths).toEqual([900, 0, 3400]);
+    expect(deletedTable.omittedColumnWidthIndices).toEqual([1]);
+    expect(serializeTable(deletedTable, serializeParagraph)).toContain(
+      '<w:tblGrid><w:gridCol w:w="900"/><w:gridCol/><w:gridCol w:w="3400"/></w:tblGrid>',
     );
   });
 });

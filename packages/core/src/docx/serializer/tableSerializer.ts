@@ -55,8 +55,8 @@ import { gridColumnCount, modelTableGrid } from "../tableGridXml";
 import { TABLE_LOOK_FLAGS } from "../tableLook";
 import {
   parseTableCellProperties,
-  parseTableGrid,
   parseTableGridChange,
+  parseTableGridWidthFields,
   parseTableProperties,
   parseTablePropertyExceptions,
   parseTableRowProperties,
@@ -1069,8 +1069,12 @@ function serializeTableGrid(table: Table): string {
       parseXml(gridSourceXml, OOXML_NAMESPACE_SCOPE).elements?.[0] ?? null;
     const declared =
       element === null ? 0 : findChildren(element, "w", "gridCol").length;
+    const parsedWidths = parseTableGridWidthFields(element);
     if (
-      canonicalJson(parseTableGrid(element)) === canonicalJson(columnWidths) &&
+      canonicalJson(parsedWidths.columnWidths) ===
+        canonicalJson(columnWidths) &&
+      canonicalJson(parsedWidths.omittedColumnWidthIndices) ===
+        canonicalJson(table.omittedColumnWidthIndices) &&
       declared === (columnWidths?.length || gridColumnCount(table)) &&
       canonicalJson(
         element === null ? undefined : parseTableGridChange(element),

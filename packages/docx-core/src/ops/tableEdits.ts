@@ -22,6 +22,10 @@ import {
 import { maxOf } from "../model/extremes";
 import { MAX_TABLE_GRID_COLUMNS } from "../model/tableGridLimits";
 import {
+  statedTableColumnWidths,
+  withTableColumnWidths,
+} from "../model/tableColumnWidths";
+import {
   storyBody,
   storyParagraphs,
   updateBlockList,
@@ -953,6 +957,23 @@ const columnReviews = ({
 
 type ColumnOp = Extract<TableEditOp, { type: "insertColumn" | "deleteColumn" }>;
 
+const gridWidthsBeforeEdit = (table: Table, width: number) =>
+  statedTableColumnWidths(table) ??
+  Array.from({ length: width }, () => undefined);
+
+const withEditedColumnWidths = (table: Table, op: ColumnOp): Table => {
+  const widths = statedTableColumnWidths(table);
+  if (widths === undefined) return table;
+  if (op.type === DOCUMENT_OP_TYPES.INSERT_COLUMN)
+    widths.splice(
+      op.column,
+      0,
+      ...Array.from({ length: op.count ?? 1 }, () => op.width),
+    );
+  else widths.splice(op.column, op.count ?? 1);
+  return withTableColumnWidths(table, widths);
+};
+
 /**
  * Whether a pending record places a column differently once it is accepted
  * than once it is rejected: a cell insertion or deletion that takes only part
@@ -1405,19 +1426,7 @@ const columnEditAcrossRecords = ({
       message:
         "Resolve comments, moves and bookmarks reaching past the column before removing it.",
     });
-  const columnWidths =
-    table.columnWidths === undefined ? undefined : [...table.columnWidths];
-  if (columnWidths !== undefined) {
-    if (op.type === DOCUMENT_OP_TYPES.INSERT_COLUMN)
-      columnWidths.splice(
-        op.column,
-        0,
-        ...Array.from({ length: count }, () => op.width),
-      );
-    else columnWidths.splice(op.column, 1);
-  }
-  const edited: Table = { ...table, rows };
-  if (columnWidths !== undefined) edited.columnWidths = columnWidths;
+  const edited = withEditedColumnWidths({ ...table, rows }, op);
   // Each decision of the edited table is the edit of that decision's table.
   const newIds =
     op.type === DOCUMENT_OP_TYPES.INSERT_COLUMN ? op.newBlockIds : [];
@@ -1886,19 +1895,7 @@ const columnEdit = ({
     rows.push(next);
   }
   if (trackedDeletion) return Result.ok({ ...table, rows });
-  const columnWidths =
-    table.columnWidths === undefined ? undefined : [...table.columnWidths];
-  if (columnWidths !== undefined) {
-    if (op.type === DOCUMENT_OP_TYPES.INSERT_COLUMN)
-      columnWidths.splice(
-        op.column,
-        0,
-        ...Array.from({ length: count }, () => op.width),
-      );
-    else columnWidths.splice(op.column, count);
-  }
-  const next = { ...table, rows };
-  if (columnWidths !== undefined) next.columnWidths = columnWidths;
+  const next = withEditedColumnWidths({ ...table, rows }, op);
   if (earlierGrid.value !== undefined)
     next.formatting = { ...table.formatting, gridChange: earlierGrid.value };
   const gridStamp = stamps.value[rowStamps];
@@ -1931,10 +1928,7 @@ const columnEdit = ({
       gridChange: {
         id: gridStamp.id,
         ...(geometryChange === undefined ? {} : { geometryChange }),
-        columnWidths:
-          table.columnWidths === undefined
-            ? Array.from({ length: grid.width }, () => undefined)
-            : [...table.columnWidths],
+        columnWidths: gridWidthsBeforeEdit(table, grid.width),
       },
     };
     next.propertyChanges = [
@@ -2725,9 +2719,7 @@ const suggestMerge = ({
       ...table.formatting,
       gridChange: {
         id: gridStamp.id,
-        columnWidths:
-          table.columnWidths ??
-          Array.from({ length: grid.width }, () => undefined),
+        columnWidths: gridWidthsBeforeEdit(table, grid.width),
         geometryChange,
       },
     },
@@ -3523,10 +3515,7 @@ export const applyTableEdit = (
         });
       const stamps = stampsFor(op, 2);
       if (stamps.isErr()) return Result.err(stamps.error);
-      const { columnWidths: _previous, ...rest } = table;
-      const next: Table = unmeasured
-        ? rest
-        : { ...rest, columnWidths: [...op.columnWidths] };
+      const next = withTableColumnWidths(table, op.columnWidths);
       const gridStamp = stamps.value.at(0);
       const propertyStamp = stamps.value.at(1);
       if (gridStamp !== undefined && propertyStamp !== undefined) {
@@ -3534,10 +3523,7 @@ export const applyTableEdit = (
           ...table.formatting,
           gridChange: {
             id: gridStamp.id,
-            columnWidths:
-              table.columnWidths === undefined
-                ? Array.from({ length: grid.value.width }, () => undefined)
-                : [...table.columnWidths],
+            columnWidths: gridWidthsBeforeEdit(table, grid.value.width),
           },
         };
         next.propertyChanges = [

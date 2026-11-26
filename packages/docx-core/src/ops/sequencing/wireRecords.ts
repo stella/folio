@@ -491,6 +491,7 @@ const tableFields = {
   formatting: boundedJson,
   propertyChanges: boundedJson,
   columnWidths: optional(array(number)),
+  omittedColumnWidthIndices: optional(array(natural)),
   rows: array(tableRow),
   preserved: boundedJson,
   bookmarks: boundedJson,

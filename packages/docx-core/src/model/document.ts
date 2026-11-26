@@ -49,6 +49,11 @@ import type {
   Footnote,
   HeaderFooter,
 } from "./content";
+
+export {
+  statedTableColumnWidths,
+  tableColumnWidthFields,
+} from "./tableColumnWidths";
 import type { WritableRecord } from "./deepReadonly";
 import type { NumberingDefinitions } from "./lists";
 import type { ParseWarning } from "./parseWarning";
