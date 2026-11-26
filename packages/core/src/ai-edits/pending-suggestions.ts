@@ -14,11 +14,11 @@ import {
   expectParagraphAttrs,
   expectTrackedChangeMarkAttrs,
 } from "../prosemirror/attrs";
-import { getSuggestions } from "../prosemirror/commands/comments";
 import { storyConversionOptions } from "../prosemirror/conversion/storyConversionOptions";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { getDocumentStyleResolver } from "../prosemirror/plugins/documentStyleState";
 import { createStyleResolver } from "../prosemirror/styles/styleResolver";
+import { getSuggestionRanges } from "../prosemirror/suggestionQueries";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
 import type { Document } from "../types/document";
 import { canonicalJson } from "../utils/canonicalJson";
@@ -1082,14 +1082,15 @@ export class FolioPendingSuggestionRegistry {
           continue;
         }
       }
-      const ranges =
-        getSuggestions(view.state).find(
-          (entry) => entry.suggestionId === suggestionId,
-        )?.ranges ?? [];
       const placed =
         saved === null
           ? null
-          : placedRecord({ record, live: view.live, saved, ranges });
+          : placedRecord({
+              record,
+              live: view.live,
+              saved,
+              ranges: getSuggestionRanges(view.state, suggestionId),
+            });
       this.records.set(key, placed ?? retiredRecord(record));
     }
   }
