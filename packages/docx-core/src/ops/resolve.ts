@@ -7634,11 +7634,12 @@ const joinOps = (
   });
   if (outcome.kind === "refuse") {
     return Result.err(
-      refusal(
-        op,
-        outcome.reason,
-        `Resolving the mark of ${paraId} would leave its container without a final paragraph.`,
-      ),
+      new DocumentOpRefusal({
+        opType: op.type,
+        reason: outcome.reason,
+        message: `Resolving the mark of ${paraId} would leave its container without a final paragraph.`,
+        blockedParagraphMarkRevisionId: revisionId,
+      }),
     );
   }
   // The paragraph after this one ran into the table or block in this

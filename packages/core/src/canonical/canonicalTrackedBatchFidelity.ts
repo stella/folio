@@ -209,10 +209,10 @@ const checkCanonicalTrackedBatchFidelity = ({
 
   // Resolve the full changed story so joins, range repairs and lock checks see
   // the same neighbors and package records as canonical review.
-  const rejectedBefore = review.reject("before");
-  const rejectedAfter = review.reject("after");
-  if (rejectedBefore === undefined || rejectedAfter === undefined)
+  const rejected = review.reject();
+  if (rejected === null)
     return "Reject All could not resolve the tracked result.";
+  const { original: rejectedBefore, edited: rejectedAfter } = rejected;
   if (
     rejectedBefore !== rejectedAfter &&
     !sameOriginalBlocks(rejectedBefore, rejectedAfter, createdCommentIds)

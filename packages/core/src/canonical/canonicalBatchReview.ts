@@ -111,13 +111,29 @@ const resolveStory = ({
   );
 };
 
-type StoryAcceptanceOptions = {
+type StoryPairOptions = {
   before: { version: StoryVersion; ids: readonly number[] };
   after: { version: StoryVersion; ids: readonly number[] };
   story: OpStory;
+  decision: RevisionDecision;
+  /** The edited side's paragraphs read their properties as this states them. */
+  restores?: Document;
 };
 
-const acceptStoryPair = ({ before, after, story }: StoryAcceptanceOptions) => {
+/**
+ * Both sides of a batch resolved the same way. A revision the document held
+ * before the batch that blocks its own resolution, alone and the same way on
+ * both sides, stays pending on both: the proof is about what the batch
+ * changes, and a blocker the batch did not make must not refuse every edit
+ * of a document that holds one.
+ */
+const resolveStoryPair = ({
+  before,
+  after,
+  story,
+  decision,
+  restores,
+}: StoryPairOptions) => {
   let beforeIds = before.ids;
   let afterIds = after.ids;
   while (true) {
@@ -125,13 +141,14 @@ const acceptStoryPair = ({ before, after, story }: StoryAcceptanceOptions) => {
       version: before.version,
       story,
       ids: beforeIds,
-      decision: "accept",
+      decision,
     });
     const edited = resolveStory({
       version: after.version,
       story,
       ids: afterIds,
-      decision: "accept",
+      decision,
+      ...(restores === undefined ? {} : { restores }),
     });
     if (original?.type === "resolved" && edited?.type === "resolved")
       return { original: original.content, edited: edited.content };
@@ -178,32 +195,37 @@ export const createCanonicalBatchReview = ({
       ? (beforeIds ??= revisionIdsOf(before.projection))
       : (afterIds ??= revisionIdsOf(after.projection));
 
-  let accepted: ReturnType<typeof acceptStoryPair> | null;
+  let accepted: ReturnType<typeof resolveStoryPair> | null;
   const accept = () => {
     if (accepted !== undefined) return accepted;
     accepted =
-      acceptStoryPair({
+      resolveStoryPair({
         story,
+        decision: "accept",
         before: { version: before, ids: revisions("before").ordinary },
         after: { version: after, ids: revisions("after").ordinary },
       }) ?? null;
     return accepted;
+  };
+  let rejected: ReturnType<typeof resolveStoryPair> | null;
+  const reject = () => {
+    if (rejected !== undefined) return rejected;
+    rejected =
+      resolveStoryPair({
+        story,
+        decision: "reject",
+        before: { version: before, ids: revisions("before").all },
+        after: { version: after, ids: revisions("after").all },
+        restores: before.document,
+      }) ?? null;
+    return rejected;
   };
   return {
     story,
     before: before.document,
     after: after.document,
     accept,
-    reject(side: "before" | "after") {
-      const rejected = resolveStory({
-        version: side === "before" ? before : after,
-        story,
-        ids: revisions(side).all,
-        decision: "reject",
-        ...(side === "after" ? { restores: before.document } : {}),
-      });
-      return rejected?.type === "resolved" ? rejected.content : undefined;
-    },
+    reject,
     acceptedCommentIds(side: "before" | "after") {
       const pair = accept();
       return pair === null
