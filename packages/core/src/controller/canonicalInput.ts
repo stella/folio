@@ -16,7 +16,6 @@ import {
 } from "../prosemirror/textInput";
 import {
   CANONICAL_CONDITION,
-  CANONICAL_GAP,
   type CanonicalRefusalGround,
 } from "../types/canonicalCapabilities";
 import { createCanonicalComposition } from "./canonicalComposition";
@@ -27,10 +26,12 @@ const INVALID_REQUEST: CanonicalRefusalGround = {
 const COMPOSING: CanonicalRefusalGround = {
   condition: CANONICAL_CONDITION.composing,
 };
-/** An editor given no structure or cut handler, as the story editors are. */
-const STORY_EDITOR_STRUCTURE: CanonicalRefusalGround = {
-  gap: CANONICAL_GAP.storyEditorStructure,
-};
+/**
+ * A boundary built without a structure or cut handler. Every editor folio
+ * builds, the body and each header, footer and note, gives it both; one built
+ * without them takes no such edit.
+ */
+const NO_HANDLER: CanonicalRefusalGround = INVALID_REQUEST;
 
 /** Deletions whose extent the browser measures: by word or by line. */
 export const WORD_AND_LINE_DELETIONS: ReadonlySet<string> = new Set([
@@ -132,20 +133,21 @@ type ReplaceTextInput = {
     }
 );
 
+/** A paragraph structure edit a key asks for. */
+export type CanonicalStructureInput =
+  | "split"
+  | "joinBackward"
+  | "joinForward"
+  | "lineBreak"
+  | "pageBreak"
+  | "tab"
+  | "indent"
+  | "outdent"
+  | "deleteTable";
+
 type CanonicalInputOptions = {
   replace: (input: ReplaceTextInput) => void;
-  structure?: (
-    type:
-      | "split"
-      | "joinBackward"
-      | "joinForward"
-      | "lineBreak"
-      | "pageBreak"
-      | "tab"
-      | "indent"
-      | "outdent"
-      | "deleteTable",
-  ) => void;
+  structure?: (type: CanonicalStructureInput) => void;
   command?: (name: "toggleBold" | "toggleItalic" | "toggleUnderline") => void;
   breakUndoGroup?: () => void;
   beginComposition?: () => boolean;
@@ -460,7 +462,7 @@ export const createCanonicalInputBoundary = (
           return refuseEvent(
             event,
             "Paragraph structure edits are unavailable in this session.",
-            STORY_EDITOR_STRUCTURE,
+            NO_HANDLER,
           );
         if (modifier) options.structure("pageBreak");
         else options.structure(event.shiftKey ? "lineBreak" : "split");
@@ -866,7 +868,7 @@ export const createCanonicalInputBoundary = (
         return refuseEvent(
           event,
           "The canonical clipboard owner is unavailable.",
-          STORY_EDITOR_STRUCTURE,
+          NO_HANDLER,
         );
       },
       drop: (_view: EditorView, event: Event): boolean => {

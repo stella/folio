@@ -4,7 +4,6 @@ export const CANONICAL_GAP = {
   trackedTableStructure: "tracked-table-structure",
   storyContentProjection: "story-content-projection",
   trackedChangeRecords: "tracked-change-records",
-  storyEditorStructure: "story-editor-structure",
   publicComments: "publicOps.comments",
   publicUnsupportedInline: "publicOps.unsupportedInline",
   commentReplacementAlignment: "comment-replacement-alignment",
@@ -174,12 +173,6 @@ export const CANONICAL_CAPABILITIES: {
     readonly adapters: readonly ["react", "vue"];
     readonly summary: "A suggested change whose content the tracked-change records cannot express is refused: comment boundaries in a tracked range, paragraph-mark run properties, a join at a section break, a record inside a field.";
   };
-  readonly "story-editor-structure": {
-    readonly owner: "controller";
-    readonly kind: "refusal";
-    readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Header, footer and note editors refuse Enter and cut, which the body editor makes through document operations.";
-  };
   readonly "publicOps.comments": {
     readonly owner: "document-operations";
     readonly kind: "refusal";
@@ -233,13 +226,6 @@ export const CANONICAL_CAPABILITIES: {
     adapters: ["react", "vue"],
     summary:
       "A suggested change whose content the tracked-change records cannot express is refused: comment boundaries in a tracked range, paragraph-mark run properties, a join at a section break, a record inside a field.",
-  },
-  [CANONICAL_GAP.storyEditorStructure]: {
-    owner: "controller",
-    kind: "refusal",
-    adapters: ["react", "vue"],
-    summary:
-      "Header, footer and note editors refuse Enter and cut, which the body editor makes through document operations.",
   },
   [CANONICAL_GAP.publicComments]: {
     owner: "document-operations",

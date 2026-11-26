@@ -3212,9 +3212,12 @@ class CanonicalSession {
     {
       resourceOps = [],
       semantic = "structure",
+      story = OP_STORIES.MAIN,
     }: {
       resourceOps?: readonly DocumentOp[];
       semantic?: CanonicalInputSemantic;
+      /** The story whose editor holds the cell selection. */
+      story?: OpStory;
     } = {},
   ): Result<CanonicalCommit, CanonicalSessionError> {
     if (!(state.selection instanceof CellSelection))
@@ -3222,7 +3225,7 @@ class CanonicalSession {
         "The structural edit needs a cell selection.",
         INVALID_REQUEST,
       );
-    const projected = this.projectStory(OP_STORIES.MAIN);
+    const projected = this.projectStory(story);
     if (projected.isErr()) return projected;
     const projection = projected.value;
     const intents: EditorIntent[] = [];
@@ -3586,14 +3589,19 @@ class CanonicalSession {
     });
   }
 
+  /** Split the paragraph at the selection of the editor showing `story`. */
   prepareSplit(
     state: EditorState,
+    story: OpStory = OP_STORIES.MAIN,
   ): Result<CanonicalCommit, CanonicalSessionError> {
-    const from = this.projection.inputAddressAt(state.selection.from);
+    const projected = this.projectStory(story);
+    if (projected.isErr()) return projected;
+    const projection = projected.value;
+    const from = projection.inputAddressAt(state.selection.from);
     if (from.isErr()) return from;
-    const to = this.projection.inputAddressAt(state.selection.to);
+    const to = projection.inputAddressAt(state.selection.to);
     if (to.isErr()) return to;
-    const source = this.projection.paragraph(from.value.blockId);
+    const source = projection.paragraph(from.value.blockId);
     const styles = Object.hasOwn(this.currentDocument.package, "styles")
       ? this.currentDocument.package.styles
       : this.styles;
@@ -3625,18 +3633,23 @@ class CanonicalSession {
     return this.prepareIntents(state, { intents });
   }
 
+  /** Join the paragraph at the caret of the editor showing `story` with its neighbour. */
   prepareJoin(
     state: EditorState,
     direction: "backward" | "forward",
+    story: OpStory = OP_STORIES.MAIN,
   ): Result<CanonicalCommit, CanonicalSessionError> {
-    const checked = this.checkState(state);
+    const projected = this.projectStory(story);
+    if (projected.isErr()) return projected;
+    const projection = projected.value;
+    const checked = this.checkState(state, projection);
     if (checked.isErr()) return checked;
     if (!state.selection.empty)
       return refuse(
         "Join requires a collapsed text selection.",
         INVALID_REQUEST,
       );
-    const at = this.projection.inputAddressAt(state.selection.from);
+    const at = projection.inputAddressAt(state.selection.from);
     if (at.isErr()) return at;
     const groups = editorParagraphGroups(this.currentDocument, at.value.story);
     const index = groups.findIndex(({ paragraphs }) =>
@@ -3651,8 +3664,8 @@ class CanonicalSession {
     if (!first?.paraId || !second?.paraId)
       return noChange("There is no adjacent paragraph to join.");
     if (
-      this.projection.paragraph(first.paraId)?.container !==
-      this.projection.paragraph(second.paraId)?.container
+      projection.paragraph(first.paraId)?.container !==
+      projection.paragraph(second.paraId)?.container
     )
       return noChange("There is no adjacent paragraph to join.");
     // The same visible test that routed the key here. An input address moves past
