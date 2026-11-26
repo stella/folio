@@ -2695,13 +2695,17 @@ type AddedMarkBeforeTableOptions = {
 };
 
 /**
- * A tracked deletion of a body paragraph whose break is another owner's
- * pending insertion, right before a table, or `author`'s own right before a
- * table whose rows are all pending insertion, as the batch stands when it
- * runs: the block deletion records the deletion beside that insertion and
- * takes the words, so accepting removes the paragraph as the direct deletion
- * does. Read as it runs, it is the same whether that table, or that
- * insertion, came before the batch or from it.
+ * A tracked deletion of a paragraph whose break is a pending insertion, in
+ * any block list (a text box's or a cell's too), as the batch stands when it
+ * runs. Right before a table, with another owner's break, or `author`'s own
+ * before a table whose rows are all pending insertion, the block deletion
+ * records the deletion beside that insertion and takes the words, so
+ * accepting removes the paragraph as the direct deletion does. Taking the
+ * words only, planned before a table, is stale once an insertion the order
+ * ran first stands between them: the block deletion then joins the words to
+ * that paragraph, as deleting it after that insertion does. Read as it runs,
+ * it is the same whether that table, or that insertion, came before the batch
+ * or from it.
  */
 const addedMarkBeforeTableAsItRuns = ({
   document,
@@ -2711,15 +2715,25 @@ const addedMarkBeforeTableAsItRuns = ({
   gainsFollower,
   intents,
 }: AddedMarkBeforeTableOptions): readonly EditorIntent[] => {
-  const blocks = findStoryBody(document, story)?.content ?? [];
-  const index = blocks.findIndex(
-    (block) =>
-      block.type === "paragraph" &&
-      idKey(block.paraId ?? "") === idKey(blockId),
-  );
+  const here = locateParagraphThroughTextBoxes(document, story, blockId);
+  const blocks = here?.blocks ?? [];
+  const index = here?.index ?? -1;
   const paragraph = blocks[index];
   const following = blocks[index + 1];
   const previous = blocks[index - 1];
+  const [only] = intents;
+  if (
+    following?.type === "paragraph" &&
+    paragraph?.type === "paragraph" &&
+    paragraph.paraId !== undefined &&
+    paragraph.pPrMark?.kind === "ins" &&
+    paragraph.pPrMark.deletion === undefined &&
+    intents.length === 1 &&
+    only?.type === "replaceText" &&
+    idKey(only.from.blockId) === idKey(blockId) &&
+    idKey(only.to.blockId) === idKey(blockId)
+  )
+    return [{ type: "deleteParagraphs", story, blockIds: [paragraph.paraId] }];
   // A paragraph before it whose mark goes would run into the table once both
   // are accepted: the deletion then takes the words only. A block the batch
   // puts after that paragraph stands between them instead.
@@ -3040,6 +3054,42 @@ type InsertionAnchor =
    * blocks put after one paragraph do, so it reads as `after` that start.
    */
   | { type: "containerStart"; at: { type: "after"; blockId: string } };
+
+/**
+ * A table-side anchor as the paragraph standing on that side of the outermost
+ * table, as `blockInsertionPlace` names a paragraph's place there: before the
+ * table is after the paragraph it follows, after it before the one after. A
+ * group of insertions there then replays as one placed beside that paragraph
+ * would, whichever of them names the table.
+ */
+const tableSideAsParagraph = (
+  anchor: InsertionAnchor,
+  projection: CanonicalProjection,
+): InsertionAnchor => {
+  if (anchor.type !== "table") return anchor;
+  const paragraph = projection.paragraph(anchor.at.blockId);
+  const table =
+    paragraph === undefined
+      ? null
+      : findOutermostTableBoundary(projection.doc, paragraph.start - 1);
+  if (table === null) return anchor;
+  const after = anchor.at.type === "after";
+  const position = table[anchor.at.type];
+  const $at = projection.doc.resolve(position);
+  const beside = after ? $at.nodeAfter : $at.nodeBefore;
+  const neighbour =
+    beside?.type.name === "paragraph"
+      ? projection.paragraphStartingAt(
+          after ? position : position - beside.nodeSize,
+        )
+      : undefined;
+  return neighbour === undefined
+    ? anchor
+    : {
+        type: "paragraph",
+        at: { type: after ? "before" : "after", blockId: neighbour.blockId },
+      };
+};
 
 /**
  * The anchor a group of insertions after a paragraph replays against: the
@@ -6731,7 +6781,7 @@ export class CanonicalPublicOperations {
           projection: projected.value,
         }) ?? panic("An admitted insertion lost its source placement.");
       return gapAnchorBeforeFollower({
-        anchor: place.anchor,
+        anchor: tableSideAsParagraph(place.anchor, projected.value),
         projection: projected.value,
         removedBlockIds: batchRemovedBlockIds,
       });
@@ -8247,11 +8297,16 @@ export class CanonicalPublicOperations {
           operation.type === "insertBeforeBlock" &&
           !followed &&
           besideDeletions.deleted.has(blockId) &&
-          !keepsTablesApart);
+          !keepsTablesApart &&
+          findOutermostTableBoundary(
+            projection.value.doc,
+            paragraph.start - 1,
+          ) === null);
       // A container's final mark remains on a paragraph inserted before it.
       // Before a table or control, its own mark goes: insert after it first
       // so the block deletion has a following paragraph to receive its text
-      // (`deletedParagraphPlacement`).
+      // (`deletedParagraphPlacement`). A cell's paragraph names its table,
+      // which the insertion goes beside instead.
       let insertion: BlockInsertion = operation;
       if (movedPast !== undefined)
         insertion = { ...operation, blockId: movedPast.blockId };

@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "title": "PINNED #1350: the body's last paragraph with a pending table after it, deleted as a paragraph goes before that table, goes once the tracked batch is accepted, as applied directly",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "styleNumbered",
+  "mode": "tracked-changes",
+  "seed": 2125039752,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 3911721584,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "1BF99289",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 1688932289,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "1BF99289"
+        },
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "@9",
+          "text": "Payment agreement supplier buyer."
+        }
+      ]
+    }
+  ],
+  "weights": {
+    "version": 1,
+    "cells": {},
+    "operations": []
+  },
+  "origin": "shrunk from swap+unpin+splice of 7380c747f6a179a7"
+}
