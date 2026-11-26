@@ -442,8 +442,21 @@ type StatedProperties = {
    *  sides it counts in characters, as written; null without an indent of
    *  its own. */
   indent: string | null;
+  /** The paragraph's own tab stops as `kind@position` in twentieths of a
+   *  point, in the order written; null without stops of its own. */
+  tabStops: string | null;
   endsSection: boolean;
 };
+
+const tabStopsKey = (tabs: XmlElement | null): string | null =>
+  tabs === null
+    ? null
+    : wChildren(tabs, "tab")
+        .map(
+          (tab) =>
+            `${wAttr(tab, "val") ?? ""}@${String(twipsOrNull(wAttr(tab, "pos")) ?? wAttr(tab, "pos"))}${wAttr(tab, "leader") === null ? "" : `;${wAttr(tab, "leader") ?? ""}`}`,
+        )
+        .join(",");
 
 const indentKey = (
   left: number | null | undefined,
@@ -485,6 +498,7 @@ const statedProperties = (paragraph: XmlElement): StatedProperties => {
             twipsOrNull(wAttr(indent, "hanging")),
             twipsOrNull(wAttr(indent, "firstLine")),
           )}${characterIndentKey(indent)}`,
+    tabStops: tabStopsKey(wChild(properties, "tabs")),
     endsSection: wChild(properties, "sectPr") !== null,
   };
 };
@@ -597,6 +611,10 @@ export const reportTemplatePlanOutput = async ({
             paragraph.indent.hanging,
             paragraph.indent.firstLine,
           );
+    const tabStops =
+      paragraph.tabStops === null
+        ? null
+        : paragraph.tabStops.map((stop) => `left@${String(stop)}`).join(",");
     if (numbering.kind === "direct") {
       return {
         styleId,
@@ -605,6 +623,7 @@ export const reportTemplatePlanOutput = async ({
         pageBreakBefore,
         keepNext,
         indent,
+        tabStops,
         endsSection,
       };
     }
@@ -622,6 +641,7 @@ export const reportTemplatePlanOutput = async ({
       pageBreakBefore,
       keepNext,
       indent,
+      tabStops,
       endsSection,
     };
   };
@@ -655,11 +675,12 @@ export const reportTemplatePlanOutput = async ({
     }
     if (
       stated.keepNext !== planned.keepNext ||
-      stated.indent !== planned.indent
+      stated.indent !== planned.indent ||
+      stated.tabStops !== planned.tabStops
     ) {
       issues.push({
         code: "paragraph-format-mismatch",
-        message: `Block ${blockId} does not carry the keep-with-next or the indent the plan gives it.`,
+        message: `Block ${blockId} does not carry the keep-with-next, the indent or the tab stops the plan gives it.`,
         blockId,
       });
     }
@@ -808,6 +829,7 @@ export const reportTemplatePlanOutput = async ({
               before.pageBreakBefore === after.pageBreakBefore &&
               before.keepNext === after.keepNext &&
               before.indent === after.indent &&
+              before.tabStops === after.tabStops &&
               before.endsSection === after.endsSection &&
               before.numId === after.numId &&
               before.ilvl === after.ilvl &&

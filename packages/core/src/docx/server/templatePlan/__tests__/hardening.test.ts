@@ -491,6 +491,27 @@ describe("malformed plans", () => {
       }),
     ],
     [
+      "tab stops that do not ascend",
+      (plan) => {
+        firstItem(plan)["tabStops"] = [2552, 2552];
+        return plan;
+      },
+    ],
+    [
+      "an empty list of tab stops",
+      (plan) => {
+        firstItem(plan)["tabStops"] = [];
+        return plan;
+      },
+    ],
+    [
+      "a tab stop that is no whole number",
+      (plan) => {
+        firstItem(plan)["tabStops"] = [851.5];
+        return plan;
+      },
+    ],
+    [
       "a negative start",
       (plan) => ({
         ...plan,
@@ -1587,6 +1608,59 @@ describe("page starts", () => {
         ({ pageBreakBefore }) => pageBreakBefore === true,
       ),
     ).toHaveLength(1);
+  });
+
+  test("an item gives its paragraph tab stops of its own", async () => {
+    const source = await twoParagraphs();
+    const items =
+      (tabStops: number[] | undefined) => (blocks: PlannedBlock[]) =>
+        blocks.map(({ id, hash }, index): TemplatePlanItem => ({
+          kind: "source",
+          blockId: id,
+          hash,
+          styleId: "HouseBody",
+          numbering: { numId: 1, ilvl: 1 },
+          ...(index === 0 && tabStops !== undefined
+            ? { tabStops, indent: { left: 851 } }
+            : {}),
+        }));
+    const stopped = await planFor({
+      source,
+      template,
+      items: items([2552, 2572]),
+    });
+    const plain = await planFor({ source, template, items: items(undefined) });
+    const { docx, report } = unwrap(
+      await applyTemplatePlan({ source, template, plan: stopped }),
+    );
+    const document = await documentOf(docx);
+
+    expect(report.ok).toBe(true);
+    // Behind the list and in front of the indent, as the schema orders them.
+    expect(document).toContain(
+      '<w:numPr><w:ilvl w:val="1"/><w:numId w:val="1"/></w:numPr><w:tabs><w:tab w:val="left" w:pos="2552"/><w:tab w:val="left" w:pos="2572"/></w:tabs><w:ind w:left="851"/></w:pPr>',
+    );
+    expect(document.split("<w:tabs>")).toHaveLength(2);
+    // Verification holds the output to the plan both ways, and to each stop.
+    const moved = await replacePart(
+      docx,
+      "word/document.xml",
+      document.replace('w:pos="2572"', 'w:pos="3000"'),
+    );
+    for (const [plan, output] of [
+      [plain, docx],
+      [
+        stopped,
+        unwrap(await applyTemplatePlan({ source, template, plan: plain })).docx,
+      ],
+      [stopped, moved],
+    ] as const) {
+      expect(
+        (await verifyFor({ source, template, output, plan })).issues.map(
+          ({ code, blockId }) => [code, blockId],
+        ),
+      ).toEqual([["paragraph-format-mismatch", "p0"]]);
+    }
   });
 
   test("an item keeps its paragraph with the next and gives it an indent of its own", async () => {

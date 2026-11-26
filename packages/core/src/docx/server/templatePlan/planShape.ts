@@ -166,6 +166,25 @@ const isIndent = (value: unknown): boolean => {
   );
 };
 
+/** The most tab stops a plan may give one paragraph. */
+const MAX_TAB_STOPS = 8;
+
+/**
+ * Whether `value` is a list of tab stops a plan may state: one to eight
+ * whole numbers of twentieths of a point, above zero and ascending.
+ */
+const isTabStops = (value: unknown): boolean =>
+  Array.isArray(value) &&
+  value.length > 0 &&
+  value.length <= MAX_TAB_STOPS &&
+  value.every(
+    (stop, index) =>
+      isCount(stop) &&
+      stop > 0 &&
+      stop <= MAX_INDENT &&
+      (index === 0 || stop > value[index - 1]),
+  );
+
 const sourceItemIssue = (item: Json, where: string): string | null => {
   if (!isString(item["blockId"]) || !isString(item["hash"])) {
     return `${where} names no source block and hash.`;
@@ -182,6 +201,9 @@ const sourceItemIssue = (item: Json, where: string): string | null => {
   }
   if (item["indent"] !== undefined && !isIndent(item["indent"])) {
     return `${where} carries a malformed indent.`;
+  }
+  if (item["tabStops"] !== undefined && !isTabStops(item["tabStops"])) {
+    return `${where} carries malformed tab stops.`;
   }
   const merge = item["mergeNext"];
   if (merge !== undefined && !(isString(merge) && MERGES.has(merge))) {
@@ -216,7 +238,8 @@ const sourceItemIssue = (item: Json, where: string): string | null => {
       !isOptionalString(entry["stripLabel"]) ||
       !isOptionalBoolean(entry["labelAsText"]) ||
       !isOptionalBoolean(entry["keepNext"]) ||
-      (entry["indent"] !== undefined && !isIndent(entry["indent"]))
+      (entry["indent"] !== undefined && !isIndent(entry["indent"])) ||
+      (entry["tabStops"] !== undefined && !isTabStops(entry["tabStops"]))
     ) {
       return `${where} carries a malformed nested placement.`;
     }

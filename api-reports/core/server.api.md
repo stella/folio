@@ -2268,6 +2268,7 @@ export type TemplatePlanNestedParagraph = {
     labelAsText?: boolean;
     keepNext?: boolean;
     indent?: TemplatePlanIndent;
+    tabStops?: number[];
 };
 
 // @public (undocumented)
@@ -2429,6 +2430,7 @@ export type TemplatePlanSourceItem = {
     pageBreakBefore?: boolean;
     keepNext?: boolean;
     indent?: TemplatePlanIndent;
+    tabStops?: number[];
     endsSection?: TemplatePlanSection;
     cellStyleId?: string;
     nested?: TemplatePlanNestedParagraph[];

@@ -112,6 +112,8 @@ export type ResolvedParagraph = {
   keepNext: boolean;
   /** The paragraph's own indent, or null. */
   indent: TemplatePlanIndent | null;
+  /** The paragraph's own left tab stops, or null. */
+  tabStops: readonly number[] | null;
   /** The section the paragraph is the last of, or null. */
   endsSection: TemplatePlanSection | null;
 };
@@ -712,6 +714,7 @@ type ParagraphRequest = {
   pageBreakBefore?: boolean;
   keepNext?: boolean;
   indent?: TemplatePlanIndent | undefined;
+  tabStops?: readonly number[] | undefined;
   endsSection?: TemplatePlanSection | undefined;
 };
 
@@ -971,6 +974,7 @@ export const resolvePlan = (
     pageBreakBefore = false,
     keepNext = false,
     indent,
+    tabStops,
     endsSection,
   }: ParagraphRequest): Result<ResolvedParagraph, TemplatePlanError> => {
     const first = parts.at(0);
@@ -1129,6 +1133,7 @@ export const resolvePlan = (
       pageBreakBefore,
       keepNext,
       indent: indent ?? null,
+      tabStops: tabStops ?? null,
       endsSection: endsSection ?? null,
     };
     for (const { block } of resolvedParts) {
@@ -1169,6 +1174,7 @@ export const resolvePlan = (
       item.pageBreakBefore !== undefined ||
       item.keepNext !== undefined ||
       item.indent !== undefined ||
+      item.tabStops !== undefined ||
       item.endsSection !== undefined ||
       item.numbering !== undefined
     ) {
@@ -1222,6 +1228,7 @@ export const resolvePlan = (
         ordinal: tableOrdinal * 1_000_000 + nested.block.index,
         keepNext: override?.keepNext === true,
         indent: override?.indent,
+        tabStops: override?.tabStops,
       });
       if (Result.isError(paragraph)) {
         return paragraph;
@@ -1355,6 +1362,7 @@ export const resolvePlan = (
             next.pageBreakBefore !== undefined ||
             next.keepNext !== undefined ||
             next.indent !== undefined ||
+            next.tabStops !== undefined ||
             next.endsSection !== undefined
           ) {
             return Result.err(
@@ -1384,6 +1392,7 @@ export const resolvePlan = (
           pageBreakBefore: item.pageBreakBefore === true,
           keepNext: item.keepNext === true,
           indent: item.indent,
+          tabStops: item.tabStops,
           endsSection: item.endsSection,
         });
         if (Result.isError(paragraph)) {

@@ -361,6 +361,8 @@ export type TemplatePlanNestedParagraph = {
   keepNext?: boolean;
   /** As on a source item. */
   indent?: TemplatePlanIndent;
+  /** As on a source item. */
+  tabStops?: number[];
 };
 
 /** A page other than the template's, in twentieths of a point. */
@@ -432,6 +434,13 @@ export type TemplatePlanSourceItem = {
    * for a table, and not for a block that joins the paragraph before it.
    */
   indent?: TemplatePlanIndent;
+  /**
+   * The paragraph's own left tab stops, in twentieths of a point from the
+   * left margin and in ascending order (`w:tabs`), over its style's: for a
+   * line of a label, a tab and a value whose values are to start at one
+   * position. Not for a table.
+   */
+  tabStops?: number[];
   /**
    * The paragraph is the last of a section, described here: for a part of
    * the document whose page is another than the template's, such as a

@@ -639,8 +639,14 @@ export const paragraphXml = (
       `<${w}:numPr><${w}:numId ${w}:val="${NO_LIST_NUM_ID}"/></${w}:numPr>`,
     );
   }
-  // The indent follows the list; nothing this writer puts in between.
-  const { indent } = emit.paragraph;
+  // Tab stops follow the list and stand in front of the indent.
+  const { indent, tabStops } = emit.paragraph;
+  if (tabStops !== null) {
+    const stops = tabStops
+      .map((stop) => `<${w}:tab ${w}:val="left" ${w}:pos="${String(stop)}"/>`)
+      .join("");
+    properties.push(`<${w}:tabs>${stops}</${w}:tabs>`);
+  }
   if (indent !== null) {
     const sides = (["left", "hanging", "firstLine"] as const)
       .filter((side) => indent[side] !== undefined)
