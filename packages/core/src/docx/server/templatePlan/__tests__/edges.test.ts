@@ -342,4 +342,55 @@ describe("applyTemplatePlan edge content", () => {
       revertedReport.issues.map(({ code, part }) => [code, part]),
     ).toContainEqual(["numbering-mismatch", "word/numbering.xml"]);
   });
+
+  test("a line break behind a stripped label goes with it when the plan says so", async () => {
+    const template = await buildTemplate();
+    const source = await buildMinimalDocx(
+      p(`${r("Article I")}<w:r><w:br/></w:r>${r(" First things")}`),
+    );
+    const planWith = async (stripLabelBreak: boolean) =>
+      await planFor({
+        source,
+        template,
+        items: (ids) =>
+          ids.map(({ id, hash }) => ({
+            kind: "source",
+            blockId: id,
+            hash,
+            styleId: "HouseArticle",
+            numbering: { numId: 1, ilvl: 0 },
+            stripLabel: "Article I",
+            ...(stripLabelBreak ? { stripLabelBreak } : {}),
+          })),
+      });
+    const textOf = async (docx: Uint8Array) =>
+      unwrap(await analyzeDocxBlocks(docx)).blocks.map(({ text }) => text);
+
+    // Left out, the break stays the paragraph's first character.
+    const kept = unwrap(
+      await applyTemplatePlan({
+        source,
+        template,
+        plan: await planWith(false),
+      }),
+    );
+    expect(kept.report.ok).toBe(true);
+    expect(await textOf(kept.docx)).toEqual(["\n First things"]);
+
+    // Asked for, the break and the blank around it go with the label.
+    const plan = await planWith(true);
+    const joined = unwrap(await applyTemplatePlan({ source, template, plan }));
+    expect(joined.report.ok).toBe(true);
+    expect(await textOf(joined.docx)).toEqual(["First things"]);
+    expect(joined.report.blocks.at(0)?.strippedPrefix).toBe("Article I\n ");
+
+    // The two outputs are not each other's: verification tells them apart.
+    const mixed = await verifyFor({
+      source,
+      template,
+      plan,
+      output: kept.docx,
+    });
+    expect(mixed.ok).toBe(false);
+  });
 });
