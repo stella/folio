@@ -44,10 +44,17 @@ const symbolSearch = () =>
     ".symbol-dialog input.symbol-search",
   );
 
+const recentCells = () =>
+  Array.from(
+    document.body.querySelectorAll(".symbol-recent .symbol-cell"),
+    (recent) => recent.textContent?.trim(),
+  );
+
 test("an editor dialog loads on first open, sets itself up, and unmounts on close", async () => {
   const container = document.createElement("div");
   document.body.append(container);
   const state = reactive({ showInsertSymbol: false });
+  const inserted: (string | undefined)[] = [];
   const app = createApp(
     defineComponent({
       setup() {
@@ -71,6 +78,7 @@ test("an editor dialog loads on first open, sets itself up, and unmounts on clos
             "onUpdate:showInsertSymbol": (value: boolean) => {
               state.showInsertSymbol = value;
             },
+            onInsertSymbol: (symbol: string) => inserted.push(symbol),
           });
       },
     }),
@@ -84,10 +92,22 @@ test("an editor dialog loads on first open, sets itself up, and unmounts on clos
     await settle(() => document.activeElement === symbolSearch());
     expect(symbolSearch()).not.toBeNull();
     expect(document.activeElement).toBe(symbolSearch());
+    expect(recentCells()).toEqual([]);
+
+    const cell = document.body.querySelector<HTMLButtonElement>(
+      ".symbol-grid .symbol-cell",
+    );
+    cell?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    expect(inserted).toEqual([cell?.textContent?.trim()]);
 
     state.showInsertSymbol = false;
     await settle(() => symbolSearch() === null);
     expect(symbolSearch()).toBeNull();
+
+    // Reopening mounts a new dialog that still lists the recent symbol.
+    state.showInsertSymbol = true;
+    await settle(() => symbolSearch() !== null);
+    expect(recentCells()).toEqual(inserted);
   } finally {
     app.unmount();
     container.remove();

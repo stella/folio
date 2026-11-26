@@ -116,6 +116,7 @@ import {
 } from "@stll/folio-core/symbols";
 
 import { useTranslation } from "../../i18n";
+import { recentSymbols, rememberRecentSymbol } from "./recentSymbols";
 
 const { t } = useTranslation();
 
@@ -129,7 +130,6 @@ const searchRef = ref<HTMLInputElement | null>(null);
 const search = ref("");
 const activeCategory = ref("Common");
 const selectedSymbol = ref("");
-const recentSymbols = ref<string[]>([]);
 
 const categories = SYMBOL_CATEGORIES;
 
@@ -163,11 +163,7 @@ function close() {
 
 function insertSymbol(sym: string) {
   if (!sym) return;
-  // Track recent
-  recentSymbols.value = [
-    sym,
-    ...recentSymbols.value.filter((s) => s !== sym),
-  ].slice(0, 10);
+  rememberRecentSymbol(sym);
   emit("insert", sym);
 }
 </script>

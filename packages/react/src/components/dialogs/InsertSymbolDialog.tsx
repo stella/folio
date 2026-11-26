@@ -29,6 +29,10 @@ export type InsertSymbolDialogProps = {
 
 const RECENT_LIMIT = 10;
 
+// The editor mounts this dialog only while it is open, so recent symbols live
+// outside the component and persist across openings.
+let sessionRecentSymbols: readonly string[] = [];
+
 /** Format a character as its `U+XXXX` code point label. */
 function codePointLabel(char: string): string {
   return `U+${(char.codePointAt(0) ?? 0).toString(16).toUpperCase().padStart(4, "0")}`;
@@ -51,7 +55,9 @@ export function InsertSymbolDialog({
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("Common");
   const [selectedSymbol, setSelectedSymbol] = useState("");
-  const [recentSymbols, setRecentSymbols] = useState<string[]>([]);
+  const [recentSymbols, setRecentSymbols] = useState(
+    () => sessionRecentSymbols,
+  );
 
   const activeSymbols: SymbolSearchEntry[] = search
     ? filterSymbols(search)
@@ -65,9 +71,11 @@ export function InsertSymbolDialog({
     if (!symbol) {
       return;
     }
-    setRecentSymbols((prev) =>
-      [symbol, ...prev.filter((s) => s !== symbol)].slice(0, RECENT_LIMIT),
-    );
+    sessionRecentSymbols = [
+      symbol,
+      ...sessionRecentSymbols.filter((s) => s !== symbol),
+    ].slice(0, RECENT_LIMIT);
+    setRecentSymbols(sessionRecentSymbols);
     onInsert(symbol);
   };
 
