@@ -8,8 +8,11 @@ import { expect, test } from "bun:test";
 import type { Document, Table, TableCell } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import {
+  type DeleteColumnOp,
   DOCUMENT_OP_TYPES,
   type DocumentOp,
+  type InsertColumnOp,
+  type MergeCellsOp,
   OP_STORIES,
   REVISION_DECISIONS,
 } from "../types";
@@ -82,7 +85,11 @@ const wrapsEveryRow = (document: Document) =>
 const at = { story: OP_STORIES.MAIN, blockId: "10000001" };
 
 test("a column or cell edit, direct or suggested, keeps a row content control around its rows", () => {
-  const edits: [string, DocumentOp, boolean][] = [
+  const edits: [
+    string,
+    InsertColumnOp | DeleteColumnOp | MergeCellsOp,
+    boolean,
+  ][] = [
     [
       "column insertion",
       {
