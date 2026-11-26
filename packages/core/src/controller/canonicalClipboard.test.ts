@@ -33,6 +33,7 @@ import { toFlowBlocks } from "../layout-bridge/convert/toFlowBlocks";
 import { listRenderingAttrPatch } from "../prosemirror/listRenderingAttrs";
 import { schema } from "../prosemirror/schema";
 import type { BlockContent, Document, Paragraph } from "../types/document";
+import { readModel, type ReadonlyDocument } from "../types/documentModel";
 import { prepareCanonicalPaste } from "./canonicalClipboard";
 
 setDefaultTimeout(propertyTestTimeout(180_000));
@@ -61,8 +62,8 @@ const seed = (): Document => {
   return document;
 };
 
-const modelTexts = (document: Document) =>
-  document.package.document.content.map((paragraph) => {
+const modelTexts = (document: ReadonlyDocument) =>
+  readModel(document).package.document.content.map((paragraph) => {
     if (paragraph.type !== "paragraph")
       throw new TypeError("Expected clipboard paragraph.");
     return paragraphLogicalText(paragraph);
@@ -113,11 +114,11 @@ const blockShape = (block: BlockContent): unknown => {
     }),
   );
 };
-const shapeOf = (document: Document) =>
-  document.package.document.content.map(blockShape);
+const shapeOf = (document: ReadonlyDocument) =>
+  readModel(document).package.document.content.map(blockShape);
 
-const sourceFacts = (document: Document) =>
-  document.package.document.content.map((paragraph) => {
+const sourceFacts = (document: ReadonlyDocument) =>
+  readModel(document).package.document.content.map((paragraph) => {
     if (paragraph.type !== "paragraph")
       throw new TypeError("Clipboard source paragraph disappeared.");
     return {
@@ -126,12 +127,18 @@ const sourceFacts = (document: Document) =>
     };
   });
 
-const assertClipboardModel = (actual: Document, expected: Document) => {
+const assertClipboardModel = (
+  actual: ReadonlyDocument,
+  expected: ReadonlyDocument,
+) => {
   assertExactModel(actual, expected);
   assertExactModel(sourceFacts(actual), sourceFacts(expected));
 };
 
-const assertClipboardSources = (document: Document, before: Document) => {
+const assertClipboardSources = (
+  document: ReadonlyDocument,
+  before: ReadonlyDocument,
+) => {
   const priorIds = new Set(sourceFacts(before).map(({ paraId }) => paraId));
   const sources = sourceFacts(document);
   const tokens = sources.flatMap(({ sourceToken }) =>
@@ -639,7 +646,10 @@ describe("canonical clipboard", () => {
           });
 
           const original = session.document;
-          const journal: { before: Document; after: Document }[] = [];
+          const journal: {
+            before: ReadonlyDocument;
+            after: ReadonlyDocument;
+          }[] = [];
           const refusals = new Map<string, number>();
           let expectedRefusals = 0;
           for (const targetSeed of targets) {
@@ -822,7 +832,7 @@ describe("canonical clipboard", () => {
             doc: session.projection.doc,
           });
 
-          const assertOwnedNote = (document: Document) => {
+          const assertOwnedNote = (document: ReadonlyDocument) => {
             const references: { type: string; id: number }[] = [];
             for (const paragraph of document.package.document.content) {
               if (paragraph.type !== "paragraph")
@@ -844,7 +854,10 @@ describe("canonical clipboard", () => {
           };
           const original = session.document;
           assertOwnedNote(original);
-          const journal: { before: Document; after: Document }[] = [];
+          const journal: {
+            before: ReadonlyDocument;
+            after: ReadonlyDocument;
+          }[] = [];
           const refusals = new Map<string, number>();
           let expectedRefusals = 0;
           for (const targetSeed of targets) {
@@ -1786,8 +1799,8 @@ describe("canonical clipboard", () => {
             sourceFacts(baseline).map(({ paraId }) => paraId),
           );
           const journal: {
-            before: Document;
-            after: Document;
+            before: ReadonlyDocument;
+            after: ReadonlyDocument;
             beforeSelection: unknown;
             afterSelection: unknown;
           }[] = [];
