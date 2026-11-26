@@ -7,8 +7,8 @@ import {
   type RulerParagraphEdit,
 } from "../prosemirror/commands/rulerParagraph";
 import {
-  CANONICAL_GAP,
-  type CanonicalGap,
+  CANONICAL_CONDITION,
+  type CanonicalRefusalGround,
 } from "../types/canonicalCapabilities";
 import type {
   Document,
@@ -43,7 +43,7 @@ const source = (): Document => ({
 const deps = (
   host: HTMLElement,
   document: Document,
-  refused: (CanonicalGap | undefined)[],
+  refused: CanonicalRefusalGround[],
 ) =>
   ({
     getHost: () => host,
@@ -63,7 +63,7 @@ const deps = (
     onEditorViewReady: () => undefined,
     onEditorViewDestroy: () => undefined,
     onRemoteSelectionsChange: () => undefined,
-    onSessionRefusal: (_message, ground) => refused.push(ground.gap),
+    onSessionRefusal: (_message, ground) => refused.push(ground),
   }) satisfies HiddenEditorManagerDeps;
 
 type Run = "owner" | "raw";
@@ -78,7 +78,7 @@ const edited = (edit: RulerParagraphEdit, run: Run) => {
   const releaseDom = acquireHarnessDom();
   const host = document.createElement("div");
   document.body.append(host);
-  const refused: (CanonicalGap | undefined)[] = [];
+  const refused: CanonicalRefusalGround[] = [];
   const manager = createHiddenEditorManager(deps(host, source(), refused));
   try {
     manager.ensureView();
@@ -143,7 +143,7 @@ describe("ruler paragraph edits in a canonical session", () => {
       documentSource.package.endnotes = [
         { type: "endnote", id: 1, content: storyContent("56789012") },
       ];
-      const refused: (CanonicalGap | undefined)[] = [];
+      const refused: CanonicalRefusalGround[] = [];
       const manager = createHiddenEditorManager(
         deps(bodyHost, documentSource, refused),
       );
@@ -183,7 +183,9 @@ describe("ruler paragraph edits in a canonical session", () => {
           expect(manager.api.canUndo()).toBe(false);
         }
         // The native input boundary reports a refusal once until the next gesture.
-        expect(refused).toEqual([CANONICAL_GAP.dispatch]);
+        expect(refused).toEqual([
+          { condition: CANONICAL_CONDITION.invalidRequest },
+        ]);
       } finally {
         parts.destroy();
         notes.destroy();

@@ -33,6 +33,7 @@ import {
   canonicalActivationRefusalRow,
   type HarnessRefusal,
   type HarnessRefusalRow,
+  refusalMatchesRow,
   validateHarnessRefusalRows,
 } from "./canonical-refusal-rows";
 import { assertExactModel } from "./exactModel";
@@ -166,19 +167,17 @@ export const createCanonicalEditorHarness = (
     onEditorViewDestroy: () => {},
     onRemoteSelectionsChange: () => {},
     onSessionRefusal: (message, ground) => {
-      // A rule refusal never matches a ledger row, so it reads as unexpected.
-      const { gap } = ground;
-      const row = expectedRows.find(
-        (candidate) => candidate.gap === gap && candidate.message === message,
+      // A rule refusal never matches a declared row, so it reads as unexpected.
+      const { gap, condition } = ground;
+      const row = expectedRows.find((candidate) =>
+        refusalMatchesRow(candidate, { gap, condition, message }),
       );
       refusals.push({
         gap,
         ...(ground.rule === undefined ? {} : { rule: ground.rule }),
+        ...(condition === undefined ? {} : { condition }),
         message,
-        expectation:
-          row && gap === row.gap && message === row.message
-            ? "declared"
-            : "unexpected",
+        expectation: row ? "declared" : "unexpected",
         ...(row ? { row: row.id } : {}),
       });
     },
@@ -204,8 +203,8 @@ export const createCanonicalEditorHarness = (
         manager.api.getCanonicalDocument() !== null ||
         manager.api.canUndo() ||
         manager.api.canRedo() ||
-        refusal?.gap !== activationRow.gap ||
-        refusal.message !== activationRow.message
+        refusal === undefined ||
+        !refusalMatchesRow(activationRow, refusal)
       ) {
         dispose();
         panic(
@@ -217,9 +216,14 @@ export const createCanonicalEditorHarness = (
     if (refusal)
       throw new CanonicalSessionRefusalError({
         ground:
-          refusal.rule === undefined
-            ? { gap: refusal.gap ?? CANONICAL_GAP.dispatch }
-            : { rule: refusal.rule },
+          refusal.rule !== undefined
+            ? { rule: refusal.rule }
+            : refusal.condition !== undefined
+              ? { condition: refusal.condition }
+              : {
+                  gap:
+                    refusal.gap ?? panic("A gap refusal lost its ledger gap."),
+                },
         message: refusal.message,
       });
     panic("The canonical conformance controller did not create its view.");
@@ -459,13 +463,17 @@ export const createCanonicalHarnessCase = (
   if (
     row &&
     created.error instanceof CanonicalSessionRefusalError &&
-    created.error.gap === row.gap &&
-    created.error.message === row.message
+    refusalMatchesRow(row, {
+      gap: created.error.ground.gap,
+      condition: created.error.ground.condition,
+      message: created.error.message,
+    })
   )
     return {
       type: "activationRefused",
       refusal: {
         gap: row.gap,
+        ...(row.condition === undefined ? {} : { condition: row.condition }),
         message: row.message,
         expectation: "declared",
         row: row.id,

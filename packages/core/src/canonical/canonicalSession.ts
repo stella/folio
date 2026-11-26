@@ -35,6 +35,7 @@ import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
   type DocumentOpRefusal,
+  type DocumentOpRefusalReason,
   documentStories,
   type EditorIntent,
   type EditorIntentMode,
@@ -126,7 +127,6 @@ import {
   CANONICAL_CONDITION,
   CANONICAL_GAP,
   CANONICAL_RULE,
-  type CanonicalGap,
   type CanonicalRefusalGround,
 } from "../types/canonicalCapabilities";
 import type { CanonicalSaveSnapshot } from "../types/canonicalSave";
@@ -157,6 +157,7 @@ import {
   storyFactContributions,
   type StoryProjectionFacts,
 } from "./canonicalProjectionBlocks";
+import { groundForDocumentOpRefusal } from "./canonicalRefusalGrounds";
 import { rebaseHistorySteps, remoteSelection } from "./canonicalRemoteHistory";
 import { canonicalRevisionLocks } from "./canonicalRevisionLocks";
 import {
@@ -188,17 +189,34 @@ export class CanonicalSessionError extends CanonicalSessionErrorBase<{
   ground: CanonicalRefusalGround;
 }> {}
 
-const refuse = (message: string) =>
-  Result.err(
-    new CanonicalSessionError({
-      ground: { gap: CANONICAL_GAP.dispatch },
-      message,
-      reason: "refused",
-    }),
-  );
-/** A refusal under the gap or rule it belongs to. */
-const refuseUnder = (ground: CanonicalRefusalGround, message: string) =>
+const INVALID_REQUEST: CanonicalRefusalGround = {
+  condition: CANONICAL_CONDITION.invalidRequest,
+};
+const STALE: CanonicalRefusalGround = { condition: CANONICAL_CONDITION.stale };
+const INTERNAL: CanonicalRefusalGround = {
+  condition: CANONICAL_CONDITION.internal,
+};
+const COMPOSING: CanonicalRefusalGround = {
+  condition: CANONICAL_CONDITION.composing,
+};
+const ID_SPACE: CanonicalRefusalGround = {
+  condition: CANONICAL_CONDITION.idSpace,
+};
+const HOST_TRANSACTION: CanonicalRefusalGround = {
+  condition: CANONICAL_CONDITION.hostTransaction,
+};
+
+/** A refusal under the gap, rule or condition it belongs to. */
+const refuse = (message: string, ground: CanonicalRefusalGround) =>
   Result.err(new CanonicalSessionError({ ground, message, reason: "refused" }));
+/** A refusal the document operations stated, under its reason's ground. */
+const refuseOp = ({
+  reason,
+  message,
+}: {
+  reason: DocumentOpRefusalReason;
+  message: string;
+}) => refuse(message, groundForDocumentOpRefusal(reason));
 /** A change a content control's lock forbids: the document's rule, not a gap. */
 const lockRefusal = (violation: LockedControlViolation) =>
   Result.err(
@@ -208,10 +226,11 @@ const lockRefusal = (violation: LockedControlViolation) =>
       reason: "refused",
     }),
   );
+/** A request that changes nothing: not a refusal, and never shown. */
 const noChange = (message: string) =>
   Result.err(
     new CanonicalSessionError({
-      ground: { gap: CANONICAL_GAP.dispatch },
+      ground: INVALID_REQUEST,
       message,
       reason: "noChange",
     }),
@@ -219,42 +238,25 @@ const noChange = (message: string) =>
 
 /**
  * What the session says for an intent the compiler or the engine refused. A
- * change the engine cannot record belongs to the capability that would record
- * it: the tracked table records for a
- * suggested row, column or table change. Every other refusal is unclassified.
+ * suggested row, column or table change the engine cannot record belongs to
+ * the tracked table records; every other refusal reports its reason's ground.
  */
 const intentRefusal = (
   intent: EditorIntent,
   mode: CanonicalSessionMode,
-  { reason, message }: { reason: string; message: string },
+  { reason, message }: { reason: DocumentOpRefusalReason; message: string },
 ) => {
   if (reason === DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE)
     return noChange(message);
-  // The suggestion's shape is one review records cannot hold: a rule, not a gap.
-  if (reason === DOCUMENT_OP_REFUSAL_REASONS.UNRECORDABLE_LINK_SUGGESTION)
-    return Result.err(
-      new CanonicalSessionError({
-        ground: { rule: CANONICAL_RULE.linkSuggestionShape },
-        message,
-        reason: "refused",
-      }),
-    );
-  if (reason !== DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE)
-    return refuse(message);
-  let gap: CanonicalGap;
-  switch (intent.type) {
-    case "table":
-    case "tableRow":
-    case "tableBlock":
-      if (mode.type !== "suggesting") return refuse(message);
-      gap = CANONICAL_GAP.trackedTableStructure;
-      break;
-    default:
-      return refuse(message);
-  }
-  return Result.err(
-    new CanonicalSessionError({ ground: { gap }, message, reason: "refused" }),
-  );
+  if (
+    reason === DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE &&
+    mode.type === "suggesting" &&
+    (intent.type === "table" ||
+      intent.type === "tableRow" ||
+      intent.type === "tableBlock")
+  )
+    return refuse(message, { gap: CANONICAL_GAP.trackedTableStructure });
+  return refuseOp({ reason, message });
 };
 
 const COMMENT_OPERATION_TYPES: ReadonlySet<DocumentOp["type"]> = new Set([
@@ -604,7 +606,7 @@ class CanonicalProjection {
     // inside an indivisible inline element or a character. The paragraphs
     // of text boxes are addressed with the story's own.
     const unaddressed = (message: string) =>
-      refuseUnder({ condition: CANONICAL_CONDITION.invalidRequest }, message);
+      refuse(message, { condition: CANONICAL_CONDITION.invalidRequest });
     if (!Number.isInteger(position))
       return unaddressed("The input position is not an integer.");
     position = canonicalContentPosition(this.doc, position);
@@ -703,7 +705,10 @@ class CanonicalProjection {
       address.offset > paragraph.text.length ||
       splitsSurrogatePair(paragraph.text, address.offset)
     ) {
-      return refuse("The canonical selection is outside a plain paragraph.");
+      return refuse(
+        "The canonical selection is outside a plain paragraph.",
+        INVALID_REQUEST,
+      );
     }
     const gaps =
       paragraph.gaps.at(address.offset) ?? panic("Missing canonical boundary");
@@ -715,10 +720,14 @@ class CanonicalProjection {
       gaps.find(({ zeroWidthBefore }) => zeroWidthBefore === ordinal) ??
       gaps.find(({ first, last }) => first <= ordinal && ordinal <= last);
     if (!Number.isInteger(ordinal) || ordinal < 0 || ordinal > lastOrdinal)
-      return refuse("The canonical selection is outside a paragraph gap.");
+      return refuse(
+        "The canonical selection is outside a paragraph gap.",
+        INVALID_REQUEST,
+      );
     if (gap === undefined)
       return refuse(
         "This source gap is inside a collapsed or erased inline boundary and has no editor position.",
+        INVALID_REQUEST,
       );
     return Result.ok(paragraph.start + gap.position);
   }
@@ -760,6 +769,7 @@ class CanonicalProjection {
     } else
       return refuse(
         "Canonical input requires text, an inline atom, or the whole document selection.",
+        INVALID_REQUEST,
       );
     const anchor = this.addressAt(anchorPosition);
     if (anchor.isErr()) return anchor;
@@ -1307,7 +1317,7 @@ const projectBlock = (
         : walk.inline.project(inlineArgs);
     if (inline.isErr()) {
       failure = new CanonicalSessionError({
-        ground: { gap: CANONICAL_GAP.dispatch },
+        ground: { gap: CANONICAL_GAP.storyContentProjection },
         reason: "refused",
         message: inline.error.message,
       });
@@ -1474,7 +1484,7 @@ const projectEveryBlock = ({
     ) ||
     [...textBoxHosts].some((source) => continuationSources.has(source))
   ) {
-    return refuse("The projection changed paragraph structure.");
+    return refuse("The projection changed paragraph structure.", INTERNAL);
   }
   return Result.ok(
     new CanonicalProjection({
@@ -1621,7 +1631,7 @@ const project = ({
   previous,
 }: ProjectStoryOptions): Result<CanonicalProjection, CanonicalSessionError> => {
   const body = findStoryBody(document, story);
-  if (!body) return refuse("The canonical story no longer exists.");
+  if (!body) return refuse("The canonical story no longer exists.", STALE);
   const currentStyles = Object.hasOwn(document.package, "styles")
     ? document.package.styles
     : styles;
@@ -1645,7 +1655,7 @@ const project = ({
     },
     catch: (cause) =>
       new CanonicalSessionError({
-        ground: { gap: CANONICAL_GAP.dispatch },
+        ground: INTERNAL,
         reason: "refused",
         message: `Canonical projection failed: ${cause instanceof Error ? cause.message : String(cause)}`,
       }),
@@ -1901,12 +1911,12 @@ export const publishCanonicalProjection = ({
       never
     > => {
   if (!isCanonicalProjectionTransaction(commit.transaction, session))
-    return refuse("The staged canonical projection is unauthorized.");
+    return refuse("The staged canonical projection is unauthorized.", INTERNAL);
   const applied = Result.try({
     try: () => state.applyTransaction(commit.transaction),
     catch: (cause) =>
       new CanonicalSessionError({
-        ground: { gap: CANONICAL_GAP.dispatch },
+        ground: INTERNAL,
         reason: "refused",
         message: `Canonical plugin staging failed: ${cause instanceof Error ? cause.message : String(cause)}`,
       }),
@@ -1916,6 +1926,7 @@ export const publishCanonicalProjection = ({
   if (!staged.transactions.includes(commit.transaction))
     return refuse(
       "A plugin refused or changed the canonical projection: a plugin filtered the projection transaction.",
+      HOST_TRANSACTION,
     );
   if (
     !staged.state.doc.eq(commit.projection.doc) ||
@@ -1927,6 +1938,7 @@ export const publishCanonicalProjection = ({
   )
     return refuse(
       `A plugin refused or changed the canonical projection: ${projectionChangeOf(commit.projection.doc, staged.state.doc)}.`,
+      HOST_TRANSACTION,
     );
   const published = commit.publish();
   if (published.isErr()) return published;
@@ -2292,7 +2304,7 @@ class CanonicalSession {
     CanonicalSessionError
   > {
     const refused = (message: string) =>
-      refuseUnder({ gap: CANONICAL_GAP.commentReplacementAlignment }, message);
+      refuse(message, { gap: CANONICAL_GAP.commentReplacementAlignment });
     const addressed: { from: TextPosition; to: TextPosition; text: string }[] =
       [];
     for (const [index, piece] of pieces.entries()) {
@@ -2386,11 +2398,11 @@ class CanonicalSession {
       if (fresh.isErr()) return fresh;
       const id = fresh.value[0]?.[0];
       return id === undefined
-        ? refuse("The paragraph identity lease is exhausted.")
+        ? refuse("The paragraph identity lease is exhausted.", ID_SPACE)
         : Result.ok(id);
     }
     if (this.nextBlockId > 0x7fffffff)
-      return refuse("The paragraph identity space is exhausted.");
+      return refuse("The paragraph identity space is exhausted.", ID_SPACE);
     return Result.ok(
       this.nextBlockId.toString(16).padStart(8, "0").toUpperCase(),
     );
@@ -2414,12 +2426,12 @@ class CanonicalSession {
         taken: (id) => this.allocatedBlockIds.has(formatParaId(id)),
       });
       if (leased.length < total)
-        return refuse("The paragraph identity lease is exhausted.");
+        return refuse("The paragraph identity lease is exhausted.", ID_SPACE);
       ids.push(...leased.map(formatParaId));
     }
     for (let candidate = this.nextBlockId; ids.length < total; candidate += 1) {
       if (candidate > 0x7fffffff)
-        return refuse("The paragraph identity space is exhausted.");
+        return refuse("The paragraph identity space is exhausted.", ID_SPACE);
       const id = candidate.toString(16).padStart(8, "0").toUpperCase();
       if (!this.allocatedBlockIds.has(id)) ids.push(id);
     }
@@ -2544,7 +2556,7 @@ class CanonicalSession {
   get document(): ReadonlyDocument {
     if (this.isComposing)
       throw new CanonicalSessionError({
-        ground: { gap: CANONICAL_GAP.dispatch },
+        ground: COMPOSING,
         reason: "refused",
         message: "Composition must finish before taking a snapshot.",
       });
@@ -2784,7 +2796,10 @@ class CanonicalSession {
     if (projected.isErr()) return projected;
     const projection = projected.value;
     if (state.doc !== projection.doc && !state.doc.eq(projection.doc))
-      return refuse("The story editor shows a stale canonical projection.");
+      return refuse(
+        "The story editor shows a stale canonical projection.",
+        STALE,
+      );
     const selection = projection.selectionAt(state);
     // A selection the session cannot hold (a node selection on a note's
     // mark) replaces the one held before, so nothing restores that one.
@@ -2817,16 +2832,22 @@ class CanonicalSession {
    */
   adoptIdLease(lease: IdLease): Result<void, CanonicalSessionError> {
     if (this.leased !== undefined)
-      return refuse("The session already holds an id lease.");
+      return refuse("The session already holds an id lease.", INVALID_REQUEST);
     if (this.currentVersion !== 0)
-      return refuse("The session was edited before it took an id lease.");
+      return refuse(
+        "The session was edited before it took an id lease.",
+        INVALID_REQUEST,
+      );
     this.leased = new CanonicalIdLease(lease, this.currentDocument);
     return Result.ok(undefined);
   }
   /** Add blocks the authority granted; ids this session already minted stay spent. */
   extendIdLease(lease: IdLease): Result<void, CanonicalSessionError> {
     if (this.leased === undefined)
-      return refuse("The session was created without an id lease.");
+      return refuse(
+        "The session was created without an id lease.",
+        INVALID_REQUEST,
+      );
     this.leased.extend(lease);
     return Result.ok(undefined);
   }
@@ -2850,7 +2871,7 @@ class CanonicalSession {
 
   beginComposition(): Result<void, CanonicalSessionError> {
     if (this.isComposing)
-      return refuse("A canonical composition is already pending.");
+      return refuse("A canonical composition is already pending.", COMPOSING);
     this.lifecycle = { type: "composing" };
     this.breakUndoGroup();
     return Result.ok(undefined);
@@ -2866,9 +2887,12 @@ class CanonicalSession {
     projection = this.projection,
   ): Result<void, CanonicalSessionError> {
     if (this.isComposing)
-      return refuse("Composition must finish before committing another edit.");
+      return refuse(
+        "Composition must finish before committing another edit.",
+        COMPOSING,
+      );
     if (state.doc !== projection.doc && !state.doc.eq(projection.doc)) {
-      return refuse("The input uses a stale canonical projection.");
+      return refuse("The input uses a stale canonical projection.", STALE);
     }
     return Result.ok(undefined);
   }
@@ -2890,7 +2914,8 @@ class CanonicalSession {
     const projection = projected.value;
     const checked = this.checkState(state, projection);
     if (checked.isErr()) return checked;
-    if (!Number.isFinite(time)) return refuse("The input time is invalid.");
+    if (!Number.isFinite(time))
+      return refuse("The input time is invalid.", INVALID_REQUEST);
     if (
       !Number.isSafeInteger(from) ||
       !Number.isSafeInteger(to) ||
@@ -2900,7 +2925,10 @@ class CanonicalSession {
       hasIllegalXmlCharacters(text) ||
       /[\t\r\n]/u.test(text)
     ) {
-      return refuse("Canonical input accepts a well-formed text replacement.");
+      return refuse(
+        "Canonical input accepts a well-formed text replacement.",
+        INVALID_REQUEST,
+      );
     }
     if (from === to && text.length === 0)
       return noChange("The input makes no text change.");
@@ -2912,6 +2940,7 @@ class CanonicalSession {
       if (from !== state.selection.from || to !== state.selection.to)
         return refuse(
           "A replacement range cannot partially address a cell selection.",
+          INVALID_REQUEST,
         );
       // Typing over selected cells clears each of them and writes the text
       // into the first, as the editor does.
@@ -2919,7 +2948,10 @@ class CanonicalSession {
       const firstRange = ranges.at(0);
       const lastRange = ranges.at(-1);
       if (firstRange === undefined || lastRange === undefined)
-        return refuse("The selected cells contain no editable text.");
+        return refuse(
+          "The selected cells contain no editable text.",
+          INVALID_REQUEST,
+        );
       const intents: EditorIntent[] = [];
       const commentChanges = [];
       let first = true;
@@ -2955,9 +2987,9 @@ class CanonicalSession {
           removal: this.replacementRemoval(),
         })
       )
-        return refuseUnder(
-          { gap: CANONICAL_GAP.commentReplacementAlignment },
+        return refuse(
           "Canonical replacement cannot preserve the aligned comment ranges.",
+          { gap: CANONICAL_GAP.commentReplacementAlignment },
         );
       return this.prepareIntents(state, { intents, semantic });
     }
@@ -2995,7 +3027,7 @@ class CanonicalSession {
             ? { author: this.mode.author }
             : undefined,
       });
-      if (retirement.isErr()) return refuse(retirement.error.message);
+      if (retirement.isErr()) return refuseOp(retirement.error);
       const removal = this.replacementRemoval();
       const whole = [
         {
@@ -3039,9 +3071,9 @@ class CanonicalSession {
           split.changes.length < 2 ||
           !aligned(split.changes, retired)
         )
-          return refuseUnder(
-            { gap: CANONICAL_GAP.commentReplacementAlignment },
+          return refuse(
             "Canonical replacement cannot preserve the aligned comment ranges.",
+            { gap: CANONICAL_GAP.commentReplacementAlignment },
           );
         pieces = split.changes;
       }
@@ -3083,7 +3115,7 @@ class CanonicalSession {
         return Result.err(compiled.error);
       return compiled.error.reason === DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE
         ? noChange(compiled.error.message)
-        : refuse(compiled.error.message);
+        : refuseOp(compiled.error);
     }
     const { ops, selection: caret } = compiled.value;
     const postSelection = {
@@ -3186,7 +3218,10 @@ class CanonicalSession {
     } = {},
   ): Result<CanonicalCommit, CanonicalSessionError> {
     if (!(state.selection instanceof CellSelection))
-      return refuse("The structural edit needs a cell selection.");
+      return refuse(
+        "The structural edit needs a cell selection.",
+        INVALID_REQUEST,
+      );
     const projected = this.projectStory(OP_STORIES.MAIN);
     if (projected.isErr()) return projected;
     const projection = projected.value;
@@ -3210,7 +3245,8 @@ class CanonicalSession {
           text: "",
         });
     }
-    if (first === undefined) return refuse("The cell selection is empty.");
+    if (first === undefined)
+      return refuse("The cell selection is empty.", INVALID_REQUEST);
     intents.push(structure({ ...first, offset: 0, zeroWidthBefore: 0 }));
     return this.prepareIntents(state, { intents, resourceOps, semantic });
   }
@@ -3238,7 +3274,10 @@ class CanonicalSession {
     if (first === undefined) return noChange("The intent batch is empty.");
     const story = intentStory(first);
     if (intents.some((intent) => !sameStory(story, intentStory(intent))))
-      return refuse("A compound input must address one story.");
+      return refuse(
+        "A compound input must address one story.",
+        INVALID_REQUEST,
+      );
     const projected = this.projectStory(story);
     if (projected.isErr()) return projected;
     const checked = this.checkState(state, projected.value);
@@ -3251,7 +3290,7 @@ class CanonicalSession {
     const edits: AppliedDocumentOp[] = [];
     if (resourceOps.length > 0) {
       const imported = applyDocumentOps(document, resourceOps);
-      if (imported.isErr()) return refuse(imported.error.message);
+      if (imported.isErr()) return refuseOp(imported.error);
       document = imported.value.document;
       edits.push(imported.value);
     }
@@ -3409,6 +3448,7 @@ class CanonicalSession {
         if (version !== this.currentVersion || base !== this.currentDocument)
           return refuse(
             "The compiled operations use a stale canonical document.",
+            STALE,
           );
         // The combiner reads only the last document, so the effects need no
         // intermediate versions.
@@ -3592,7 +3632,10 @@ class CanonicalSession {
     const checked = this.checkState(state);
     if (checked.isErr()) return checked;
     if (!state.selection.empty)
-      return refuse("Join requires a collapsed text selection.");
+      return refuse(
+        "Join requires a collapsed text selection.",
+        INVALID_REQUEST,
+      );
     const at = this.projection.inputAddressAt(state.selection.from);
     if (at.isErr()) return at;
     const groups = editorParagraphGroups(this.currentDocument, at.value.story);
@@ -3615,7 +3658,10 @@ class CanonicalSession {
     // The same visible test that routed the key here. An input address moves past
     // tracked-deleted text, so it cannot say whether the caret is at the boundary.
     if (!isCanonicalJoinBoundary(state, direction))
-      return refuse("Join requires a caret at a paragraph boundary.");
+      return refuse(
+        "Join requires a caret at a paragraph boundary.",
+        INVALID_REQUEST,
+      );
     return this.prepareIntent(state, {
       type: "joinParagraphs",
       story: at.value.story,
@@ -3671,7 +3717,7 @@ class CanonicalSession {
     ];
     // Resolution can retire the selected paragraph; choose a valid result anchor before staging.
     const applied = applyDocumentOps(this.currentDocument, ops);
-    if (applied.isErr()) return refuse(applied.error.message);
+    if (applied.isErr()) return refuseOp(applied.error);
     const projected = project({
       document: applied.value.document,
       styles: this.styles,
@@ -3684,7 +3730,8 @@ class CanonicalSession {
     );
     // The first paragraph may sit inside a table that opens the story.
     const first = projected.value.firstParagraph;
-    if (first === undefined) return refuse("Resolution left no paragraph.");
+    if (first === undefined)
+      return refuse("Resolution left no paragraph.", INTERNAL);
     let offset = surviving
       ? Math.min(preSelection.value.head.offset, surviving.text.length)
       : 0;
@@ -3800,7 +3847,7 @@ class CanonicalSession {
     const body = findStoryBody(this.currentDocument, story);
     if (body === undefined) {
       this.storyProjections.delete(key);
-      return refuse("The canonical story no longer exists.");
+      return refuse("The canonical story no longer exists.", STALE);
     }
     const cached = this.storyProjections.get(key);
     const { styles, theme } = this.currentDocument.package;
@@ -3831,7 +3878,8 @@ class CanonicalSession {
     state: EditorState,
     ops: readonly DocumentOp[],
   ): Result<CanonicalCommit, CanonicalSessionError> {
-    if (ops.length === 0) return refuse("The operation batch is empty.");
+    if (ops.length === 0)
+      return refuse("The operation batch is empty.", INVALID_REQUEST);
     const selected = this.projection.selectionAt(state);
     if (selected.isErr()) return selected;
     let preparedOps = ops;
@@ -3890,7 +3938,7 @@ class CanonicalSession {
             cloneDocumentWithParagraphPropertySources(document),
             structuredClone(next),
           );
-          if (applied.isErr()) return refuse(applied.error.message);
+          if (applied.isErr()) return refuseOp(applied.error);
           document = applied.value.document;
         }
         tracked.push(next);
@@ -3985,6 +4033,7 @@ class CanonicalSession {
     this.reportHistoryDrop(dropped);
     return refuse(
       `The ${stack} step no longer applies after a remote edit: ${applied.error.message}`,
+      STALE,
     );
   }
 
@@ -4034,7 +4083,7 @@ class CanonicalSession {
     const checked = this.checkState(state, projected.value);
     if (checked.isErr()) return checked;
     const applied = applyDocumentOps(this.currentDocument, change.batch.ops);
-    if (applied.isErr()) return refuse(applied.error.message);
+    if (applied.isErr()) return refuseOp(applied.error);
     const shown = projected.value.selectionAt(state);
     const before = shown.isOk() ? shown.value : this.currentSelection;
     const selection = remoteSelection({
@@ -4180,7 +4229,7 @@ class CanonicalSession {
   ): Result<CanonicalCommit, CanonicalSessionError> {
     const group = this.applied.at(-1);
     if (group === undefined)
-      return refuse("There is no canonical edit to undo.");
+      return refuse("There is no canonical edit to undo.", INVALID_REQUEST);
     const ops = undoOpsOf(group);
     const rebased = this.rebasedStepApplies(group, ops, "undo");
     if (rebased.isErr()) return rebased;
@@ -4211,7 +4260,7 @@ class CanonicalSession {
   ): Result<CanonicalCommit, CanonicalSessionError> {
     const undone = this.undone.at(-1);
     if (undone === undefined)
-      return refuse("There is no canonical edit to redo.");
+      return refuse("There is no canonical edit to redo.", INVALID_REQUEST);
     const rebased = this.rebasedStepApplies(
       undone.group,
       undone.redoOps,
@@ -4273,7 +4322,7 @@ class CanonicalSession {
       stagedApplied === undefined
         ? applyDocumentOps(this.currentDocument, ops)
         : Result.ok(stagedApplied);
-    if (applied.isErr()) return refuse(applied.error.message);
+    if (applied.isErr()) return refuseOp(applied.error);
     if (applied.value.inverse.length === 0)
       return noChange("The intent makes no document change.");
     // Judged on the result, so every path into the session meets one rule.
@@ -4308,6 +4357,7 @@ class CanonicalSession {
     if (leaseJudgement?.type === "outside")
       return refuse(
         `The ${leaseJudgement.id.kind} id ${leaseJudgement.id.id} is outside this author's id lease.`,
+        INVALID_REQUEST,
       );
     const changed = changedStories({
       document: applied.value.document,
@@ -4467,6 +4517,7 @@ class CanonicalSession {
       )
         return refuse(
           "Canonical history cannot restore the selected inline atom.",
+          INTERNAL,
         );
     }
     // History keeps what this publish shows, so the selection shown is one
@@ -4508,12 +4559,14 @@ class CanonicalSession {
         if (this.isComposing || this.groupingBoundary !== baseBoundary)
           return refuse(
             "The staged canonical commit crossed a composition or selection boundary.",
+            STALE,
           );
         if (this.version !== baseVersion)
-          return refuse("The staged canonical commit is stale.");
+          return refuse("The staged canonical commit is stale.", STALE);
         if (!isCanonicalProjectionTransaction(transaction, this)) {
           return refuse(
             "The staged canonical projection was changed after preparation.",
+            HOST_TRANSACTION,
           );
         }
         for (const blockId of applied.value.touched.inserted)
@@ -4617,13 +4670,14 @@ export const createCanonicalSession = (
   const owned = cloneDocumentWithParagraphPropertySources(document);
   const source = normalizeCanonicalSource(owned);
   const unsupported = unsupportedSeedReason(source.document);
-  if (unsupported !== null) return refuse(unsupported);
+  if (unsupported !== null)
+    return refuse(unsupported, { gap: CANONICAL_GAP.storyContentProjection });
   const identified = preservePropertySourcesWholeStories({
     target: normalizeForOps(source.document),
     source: owned,
   });
   const validated = validateOpsDocument(identified);
-  if (validated.isErr()) return refuse(validated.error.message);
+  if (validated.isErr()) return refuseOp(validated.error);
   const caches = newStoryProjectionCaches();
   const normalized = preservePropertySourcesWholeStories({
     target: normalizeCanonicalListRendering(identified, caches.lists).document,
@@ -4663,7 +4717,10 @@ const visibleDeletionContext = (state: EditorState) => {
     containerDepth < 0 ||
     selection.$from.node(paragraphDepth).type.name !== "paragraph"
   )
-    return refuse("Canonical deletion requires a caret inside a paragraph.");
+    return refuse(
+      "Canonical deletion requires a caret inside a paragraph.",
+      INVALID_REQUEST,
+    );
   const container = selection.$from.node(containerDepth);
   const containerStart = selection.$from.start(containerDepth);
   const index = selection.$from.index(containerDepth);
@@ -4686,7 +4743,7 @@ const visibleDeletionContext = (state: EditorState) => {
     const native = canonicalNativeCells(paragraph);
     if (native.isErr()) {
       issue = new CanonicalSessionError({
-        ground: { gap: CANONICAL_GAP.dispatch },
+        ground: { gap: CANONICAL_GAP.storyContentProjection },
         reason: "refused",
         message: native.error.message,
       });
@@ -4707,7 +4764,7 @@ const visibleDeletionContext = (state: EditorState) => {
         selection.from < to
       ) {
         issue = new CanonicalSessionError({
-          ground: { gap: CANONICAL_GAP.dispatch },
+          ground: INVALID_REQUEST,
           reason: "refused",
           message: "Character deletion cannot start inside an inline atom.",
         });
@@ -4759,6 +4816,7 @@ export const deletionRange = (
   if (!(selection instanceof TextSelection))
     return refuse(
       "Canonical deletion requires text, an inline atom, or the whole document selection.",
+      INVALID_REQUEST,
     );
   if (!selection.empty)
     return Result.ok({ from: selection.from, to: selection.to });
@@ -4769,21 +4827,31 @@ export const deletionRange = (
       ? parent.childBefore(offset).node
       : parent.childAfter(offset).node;
   if (adjacent?.type.name === "noteMarker")
-    return refuse("Automatic note marks cannot be deleted as characters.");
+    return refuse(
+      "Automatic note marks cannot be deleted as characters.",
+      INVALID_REQUEST,
+    );
   const context = visibleDeletionContext(state);
   if (context.isErr()) return context;
   const { text, physicalStarts, physicalEnds, visibleOffset } = context.value;
   if (splitsSurrogatePair(text, visibleOffset))
-    return refuse("The deletion would split a surrogate pair.");
+    return refuse(
+      "The deletion would split a surrogate pair.",
+      INVALID_REQUEST,
+    );
   if (splitsGraphemeCluster(text, visibleOffset))
     return refuse(
       "Character deletion requires a caret at a grapheme boundary.",
+      INVALID_REQUEST,
     );
   if (
     (direction === "backward" && visibleOffset === 0) ||
     (direction === "forward" && visibleOffset === text.length)
   )
-    return refuse("There is no visible character to delete in this paragraph.");
+    return refuse(
+      "There is no visible character to delete in this paragraph.",
+      INVALID_REQUEST,
+    );
   let boundary = visibleOffset + (direction === "backward" ? -1 : 1);
   while (splitsGraphemeCluster(text, boundary))
     boundary += direction === "backward" ? -1 : 1;
@@ -4830,6 +4898,9 @@ export const measuredDeletionRange = (
     if (node.type.name === "noteMarker") noteMarkers += 1;
   });
   if (noteMarkers > 0)
-    return refuse("Automatic note marks cannot be deleted as characters.");
+    return refuse(
+      "Automatic note marks cannot be deleted as characters.",
+      INVALID_REQUEST,
+    );
   return Result.ok({ from, to });
 };

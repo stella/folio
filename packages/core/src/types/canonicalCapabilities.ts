@@ -3,7 +3,8 @@ export const CANONICAL_GAP = {
   commands: "command-descriptors",
   trackedTableStructure: "tracked-table-structure",
   storyContentProjection: "story-content-projection",
-  dispatch: "unclassified-transactions",
+  trackedChangeRecords: "tracked-change-records",
+  storyEditorStructure: "story-editor-structure",
   publicComments: "publicOps.comments",
   publicUnsupportedInline: "publicOps.unsupportedInline",
   commentReplacementAlignment: "comment-replacement-alignment",
@@ -55,6 +56,9 @@ export const CANONICAL_CONDITION: {
   readonly composing: "composing";
   readonly invalidRequest: "invalidRequest";
   readonly idSpace: "idSpace";
+  readonly stale: "stale";
+  readonly hostTransaction: "hostTransaction";
+  readonly internal: "internal";
 } = {
   /** No session holds a document yet, or the editor showing it has closed. */
   notReady: "notReady",
@@ -69,6 +73,18 @@ export const CANONICAL_CONDITION: {
   invalidRequest: "invalidRequest",
   /** No id is left to mint, in the document or in this author's lease. */
   idSpace: "idSpace",
+  /** The projection, version or lease the change was prepared against moved on. */
+  stale: "stale",
+  /**
+   * A plugin or raw dispatch changed the document outside document
+   * operations; hosts express edits through `applyDocumentOperations`.
+   */
+  hostTransaction: "hostTransaction",
+  /**
+   * The session failed to project or stage the change: a defect to report,
+   * not a missing capability.
+   */
+  internal: "internal",
 } as const;
 
 export type CanonicalCondition =
@@ -152,11 +168,17 @@ export const CANONICAL_CAPABILITIES: {
     readonly adapters: readonly ["react", "vue"];
     readonly summary: "Unsupported inline, field and review content cannot be projected after canonical edits; pasted embedded blocks, comment and note references copied outside the editor, and compositions over such content refuse.";
   };
-  readonly "unclassified-transactions": {
+  readonly "tracked-change-records": {
+    readonly owner: "document-operations";
+    readonly kind: "refusal";
+    readonly adapters: readonly ["react", "vue"];
+    readonly summary: "A suggested change whose content the tracked-change records cannot express is refused: comment boundaries in a tracked range, paragraph-mark run properties, a join at a section break, a record inside a field.";
+  };
+  readonly "story-editor-structure": {
     readonly owner: "controller";
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "A host plugin or raw dispatch that changes the document is refused, naming the transaction's meta keys; hosts express edits as document operations (applyDocumentOperations).";
+    readonly summary: "Header, footer and note editors refuse Enter and cut, which the body editor makes through document operations.";
   };
   readonly "publicOps.comments": {
     readonly owner: "document-operations";
@@ -205,12 +227,19 @@ export const CANONICAL_CAPABILITIES: {
     summary:
       "Unsupported inline, field and review content cannot be projected after canonical edits; pasted embedded blocks, comment and note references copied outside the editor, and compositions over such content refuse.",
   },
-  [CANONICAL_GAP.dispatch]: {
+  [CANONICAL_GAP.trackedChangeRecords]: {
+    owner: "document-operations",
+    kind: "refusal",
+    adapters: ["react", "vue"],
+    summary:
+      "A suggested change whose content the tracked-change records cannot express is refused: comment boundaries in a tracked range, paragraph-mark run properties, a join at a section break, a record inside a field.",
+  },
+  [CANONICAL_GAP.storyEditorStructure]: {
     owner: "controller",
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
-      "A host plugin or raw dispatch that changes the document is refused, naming the transaction's meta keys; hosts express edits as document operations (applyDocumentOperations).",
+      "Header, footer and note editors refuse Enter and cut, which the body editor makes through document operations.",
   },
   [CANONICAL_GAP.publicComments]: {
     owner: "document-operations",

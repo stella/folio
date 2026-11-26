@@ -173,8 +173,8 @@ const load = async ({ page, bytes, baseline, suggesting }: LoadFuzzOptions) => {
     const errors = await drainCanonicalErrors(page);
     expect(errors).toHaveLength(1);
     for (const error of errors) {
-      expect(error.status).toBe("refusal");
-      if (error.status !== "refusal") throw new TypeError(error.message);
+      if (error.status !== "refusal" && error.status !== "conditionRefusal")
+        throw new TypeError(error.message);
       expect(
         matchCanonicalRefusalRow({ rows: [activationRow], refusal: error }),
       ).toEqual(activationRow);
@@ -191,7 +191,8 @@ const load = async ({ page, bytes, baseline, suggesting }: LoadFuzzOptions) => {
         };
       }),
     ).toEqual({ view: false, owner: false, undo: false, redo: false });
-    missingCanonical.record(activationRow.gap);
+    if (activationRow.gap !== undefined)
+      missingCanonical.record(activationRow.gap);
     return { type: "activationRefused", row: activationRow } as const;
   }
   await expect.poll(() => liveBlocks(page)).toEqual(projectLive(baseline));
@@ -483,14 +484,15 @@ const driveWithAuthority = async (page: Page, action: BrowserInputAction) => {
   const errors = await drainCanonicalErrors(page);
   if (rows.length > 0) expect(errors.length).toBeGreaterThan(0);
   for (const error of errors) {
-    if (error.status !== "refusal") throw new TypeError(error.message);
+    if (error.status !== "refusal" && error.status !== "conditionRefusal")
+      throw new TypeError(error.message);
     const row = matchCanonicalRefusalRow({ rows, refusal: error });
     expect(
       row,
-      `Unregistered canonical refusal: ${error.gap}: ${error.message}`,
+      `Unregistered canonical refusal: ${error.status === "refusal" ? error.gap : error.condition}: ${error.message}`,
     ).toBeDefined();
     if (!row) throw new TypeError("Unregistered canonical refusal.");
-    missingCanonical.record(row.gap);
+    if (row.gap !== undefined) missingCanonical.record(row.gap);
   }
   if (errors.length > 0) expect(after).toEqual(before);
 };
