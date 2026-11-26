@@ -56,7 +56,6 @@ for (const story of stories) {
               story,
               getView: () => view,
               getApi: () => null,
-              enabled: () => true,
               onSelectionChange: () => {},
               onRefusal: (message) => {
                 throw new TypeError(message);

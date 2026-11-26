@@ -93,6 +93,8 @@ const createFakeApi = (): { api: HiddenEditorApi; calls: Call[] } => {
     getCanonicalStorySelection: () => null,
     getCanonicalStoryProjection: () => null,
     replaceCanonicalStoryText: () => false,
+    applyCanonicalStoryStructure: () => false,
+    cutCanonicalStory: () => false,
     noteCanonicalStoryView: () => {},
 
     focus: record("focus"),

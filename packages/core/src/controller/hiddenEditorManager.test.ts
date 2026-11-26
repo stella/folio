@@ -39,7 +39,11 @@ import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { HyperlinkRemovalRefusal } from "../prosemirror/hyperlinkRemoval";
 import { insertTableOfContentsInView } from "../prosemirror/insertOperations";
 import { singletonManager } from "../prosemirror/schema";
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
+import {
+  CANONICAL_CONDITION,
+  CANONICAL_GAP,
+  type CanonicalRefusalGround,
+} from "../types/canonicalCapabilities";
 import type { CanonicalCommentRequest } from "../types/canonicalComments";
 import type { Document, Paragraph, ParagraphContent } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
@@ -224,14 +228,13 @@ const assertNotePasteRefusal = ({
     if (paragraph?.type !== "paragraph")
       panic("Missing paste fixture paragraph");
     paragraph.paraId = "74000000";
-    const refusals: { reason: string; gap: unknown }[] = [];
+    const refusals: { reason: string; ground: CanonicalRefusalGround }[] = [];
     const { deps } = makeDeps({
       getHost: () => host,
       getDocument: () => source,
       getDocumentContext: () => source,
       getExtensionManager: () => singletonManager,
-      onSessionRefusal: (reason, ground) =>
-        refusals.push({ reason, gap: ground.gap }),
+      onSessionRefusal: (reason, ground) => refusals.push({ reason, ground }),
     });
     const manager = createHiddenEditorManager(deps);
     try {
@@ -250,7 +253,9 @@ const assertNotePasteRefusal = ({
       expect(() => view.pasteHTML(reference.outerHTML)).not.toThrow();
       expect(view.state.doc).toBe(before.doc);
       expect(refusals).toHaveLength(1);
-      expect(refusals.at(0)?.gap).toBe(CANONICAL_GAP.dispatch);
+      expect(refusals.at(0)?.ground).toEqual({
+        condition: CANONICAL_CONDITION.invalidRequest,
+      });
       expect(refusals.at(0)?.reason).toContain("attributed text occurrences");
     } finally {
       manager.destroyView();
@@ -1937,17 +1942,14 @@ test(
               panic("Expected generated paragraph");
             paragraph.paraId = "12345678";
             const reasons: string[] = [];
+            const grounds: CanonicalRefusalGround[] = [];
             const { deps } = makeDeps({
               getHost: () => host,
               getDocument: () => source,
               getDocumentContext: () => source,
               onSessionRefusal: (reason, ground) => {
-                const gap = ground.gap;
-                expect(
-                  gap !== undefined &&
-                    Object.values(CANONICAL_GAP).includes(gap),
-                ).toBe(true);
                 reasons.push(reason);
+                grounds.push(ground);
               },
             });
             const manager = createHiddenEditorManager(deps);
@@ -2012,11 +2014,18 @@ test(
                   expect(reasons.slice(beforeRefusals)).toEqual([
                     "Unclassified native text is unavailable in this session.",
                   ]);
+                  expect(grounds.slice(beforeRefusals)).toEqual([
+                    { condition: CANONICAL_CONDITION.invalidRequest },
+                  ]);
                 } else if (kind === "pluginMutation") {
-                  // The refusal names the plugin that made the change.
+                  // The refusal names the plugin that made the change, a
+                  // transaction made outside document operations.
                   expect(view.state).toBe(beforeState);
                   expect(reasons.slice(beforeRefusals)).toEqual([
                     `A transaction with meta ${metaKey} changed the document outside the session's operations; express the edit as document operations.`,
+                  ]);
+                  expect(grounds.slice(beforeRefusals)).toEqual([
+                    { condition: CANONICAL_CONDITION.hostTransaction },
                   ]);
                 } else {
                   expect(reasons).toHaveLength(beforeRefusals);

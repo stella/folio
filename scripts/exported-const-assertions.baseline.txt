@@ -60,7 +60,6 @@ packages/core/src/types/canonicalCapabilities.ts:CANONICAL_GAP
 packages/core/src/types/documentEnumValues.ts:OUTLINE_STYLE_CSS_ALIAS_VALUES
 packages/core/src/utils/authorColors.ts:AUTHOR_COLORS
 packages/core/src/utils/borderCss.ts:CSS_BORDER_STYLE_VALUES
-packages/core/src/utils/clipboard.ts:CLIPBOARD_TYPES
 packages/core/src/utils/scriptSegments.ts:SCRIPT_CLASS
 packages/docx-core/src/model/borderStyle.gen.ts:BORDER_STYLES
 packages/docx-core/src/model/content.ts:BIDI_CONTROLS

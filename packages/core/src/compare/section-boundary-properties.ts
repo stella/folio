@@ -7,7 +7,6 @@ import {
 
 import { sectionReferenceHistory } from "../docx/sectionReferenceHistory";
 import { expectParagraphAttrs } from "../prosemirror/attrs";
-import { resolveAllChangesInHeadlessStateWithMapping } from "../prosemirror/commands/comments";
 import type {
   Document,
   Paragraph,
@@ -399,107 +398,6 @@ const stagedBoundaryProperties = ({
   };
 };
 
-export type StageSectionBoundaryPropertiesResult =
-  | {
-      status: "matched";
-      transaction: import("prosemirror-state").Transaction;
-      nextRevisionId: number;
-      rangeCount: number;
-    }
-  | { status: "unalignable"; detail: string }
-  | { status: "budget-exceeded" };
-
-/** Stage section deltas after document operations, against the accepted projection. */
-export const stageSectionBoundaryProperties = ({
-  state,
-  target,
-  originalRevisionIdSeed,
-  revisionStamp,
-  author,
-  maxRanges,
-  mapTargetProperties,
-}: {
-  state: import("prosemirror-state").EditorState;
-  target: PMNode;
-  originalRevisionIdSeed: number;
-  revisionStamp: { idSeed: number; date: string };
-  author: string;
-  maxRanges: number;
-  mapTargetProperties: MapTargetProperties;
-}): StageSectionBoundaryPropertiesResult => {
-  if (!Number.isSafeInteger(maxRanges) || maxRanges < 0)
-    return { status: "budget-exceeded" };
-  // A target no paragraph of which ends a section has no endpoint to stage,
-  // whatever the accepted projection says, so it is not worth building: that
-  // is an accept-all over the whole redlined story. Whether the rest of the
-  // accepted story agrees with the target is the round-trip check's question.
-  if (!hasSectionEndpoint(target)) {
-    return {
-      status: "matched",
-      transaction: state.tr,
-      nextRevisionId: revisionStamp.idSeed,
-      rangeCount: 0,
-    };
-  }
-  const reviewedState = resolveAllChangesInHeadlessStateWithMapping(
-    state,
-    "accept",
-  );
-  const inverse = reviewedState.mapping.invert();
-  const plan = planSectionBoundaryUpdates({
-    accepted: reviewedState.state.doc,
-    target,
-    originalRevisionIdSeed,
-    maxRanges,
-    mapTargetProperties,
-    sourceOf: (paragraph) => {
-      const mapped = inverse.mapResult(paragraph.position, 1);
-      if (mapped.deleted)
-        return { status: "missing", detail: "boundary has no source position" };
-      const current = state.doc.nodeAt(mapped.pos);
-      if (!current || current.type.name !== "paragraph")
-        return {
-          status: "missing",
-          detail: "mapped boundary is not a paragraph",
-        };
-      const attrs = expectParagraphAttrs(current);
-      return {
-        status: "found",
-        key: mapped.pos,
-        sectionProperties: attrs._sectionProperties,
-        pPrMark: attrs.pPrMark ?? undefined,
-      };
-    },
-  });
-  if (plan.status !== "matched") return plan;
-  let nextRevisionId = revisionStamp.idSeed;
-  let transaction = state.tr;
-  for (const update of plan.updates.toSorted(
-    (left, right) => right.key - left.key,
-  )) {
-    const position = transaction.mapping.map(update.key, 1);
-    const node = transaction.doc.nodeAt(position);
-    if (!node || node.type.name !== "paragraph") {
-      return { status: "unalignable", detail: "boundary moved while staging" };
-    }
-    transaction = transaction.setNodeMarkup(position, undefined, {
-      ...node.attrs,
-      _sectionProperties: stagedBoundaryProperties({
-        update,
-        id: nextRevisionId++,
-        author,
-        date: revisionStamp.date,
-      }),
-    });
-  }
-  return {
-    status: "matched",
-    transaction,
-    nextRevisionId,
-    rangeCount: plan.updates.length,
-  };
-};
-
 type StageSectionBoundaryOperationsResult =
   | {
       status: "matched";
@@ -510,12 +408,9 @@ type StageSectionBoundaryOperationsResult =
   | { status: "budget-exceeded" };
 
 /**
- * Stage section deltas on a document model: planned as
- * {@link stageSectionBoundaryProperties} plans them, on `accepted`, the
- * accepted projection of `document`, with each boundary paragraph found in
- * `document` by its paragraph id. One section-endpoint operation per
- * endpoint, revision ids given from the last endpoint back as the
- * transaction gives them.
+ * Plan section deltas on the accepted projection of `document` and find each
+ * boundary in the authored document by paragraph id. Emit one operation per
+ * endpoint, assigning revision ids from the last endpoint back.
  */
 export const stageSectionBoundaryOperations = ({
   document,

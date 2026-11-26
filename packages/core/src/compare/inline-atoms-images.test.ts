@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 
+import { matchInlineAtoms } from "../__tests__/reference-editor/compare-inline-atoms";
 import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
 import {
   acceptAllChanges,
@@ -9,7 +10,7 @@ import {
 } from "../prosemirror/commands/comments";
 import { schema } from "../prosemirror/schema";
 import { prepareTargetInlineAtom } from "./inline-atom-resources";
-import { matchInlineAtoms, sameInlineAtoms } from "./inline-atoms";
+import { sameInlineAtoms } from "./inline-atoms";
 
 const BASE_IMAGE =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";

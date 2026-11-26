@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 
+import { matchInlineAtoms } from "../__tests__/reference-editor/compare-inline-atoms";
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
 import { createDocx } from "../docx/rezip";
@@ -13,7 +14,7 @@ import { schema } from "../prosemirror/schema";
 import type { ParagraphContent } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { compareDocx } from "./compare";
-import { matchInlineAtoms, sameInlineAtoms } from "./inline-atoms";
+import { sameInlineAtoms } from "./inline-atoms";
 
 const field = () =>
   schema.nodes["field"]!.create({

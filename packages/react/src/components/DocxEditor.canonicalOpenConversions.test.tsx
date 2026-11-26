@@ -160,7 +160,7 @@ test("a refused seed opens from the state the pages convert, converting once", a
   ).mockImplementation(() =>
     Result.err(
       new canonicalSessions.CanonicalSessionError({
-        ground: { gap: CANONICAL_GAP.dispatch },
+        ground: { gap: CANONICAL_GAP.storyContentProjection },
         message: "The session cannot hold this document.",
         reason: "refused",
       }),

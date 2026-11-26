@@ -73,6 +73,7 @@ const RAW_STATE: Record<string, Record<string, string>> = {
     setControlledCommentsRetry: "number",
   },
   "paged-editor/PagedEditor.tsx": {
+    setImageOverlayRequested: "boolean set on image selection",
     setNoteStoryActive: "boolean",
     setLayout:
       "a new layout on every pass; comparing it costs more than a render",

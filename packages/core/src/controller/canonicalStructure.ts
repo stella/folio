@@ -15,11 +15,13 @@ import {
   editorParagraphGroups,
   editorPositionAtPhysicalPosition,
   OP_STORIES,
+  type OpStory,
   physicalPositionAtEditorOffset,
 } from "@stll/docx-core/ops";
 
 import {
   type CanonicalCommit,
+  type CanonicalProjection,
   type CanonicalSession,
   CanonicalSessionError,
 } from "../canonical/canonicalSession";
@@ -45,7 +47,10 @@ import {
   paragraphNumberingSourcesFromBoundary,
 } from "../prosemirror/numberingAttr";
 import { createStyleResolver } from "../prosemirror/styles/styleResolver";
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
+import {
+  CANONICAL_CONDITION,
+  CANONICAL_GAP,
+} from "../types/canonicalCapabilities";
 import type {
   BlockContent,
   Document,
@@ -57,6 +62,7 @@ import { maxOf } from "../utils/extremes";
 import { collectHeadings } from "../utils/headingCollector";
 import { itemBefore } from "../utils/listItems";
 import { prepareContentControlValue } from "./canonicalContentControlValue";
+import type { CanonicalStructureInput } from "./canonicalInput";
 
 const DEFAULT_TOC_PAGE_WIDTH_TWIPS = 12240;
 const DEFAULT_TOC_MARGIN_TWIPS = 1440;
@@ -93,7 +99,7 @@ const noChange = (message: string) =>
   );
 
 const selectedParagraphs = (
-  session: CanonicalSession,
+  projection: CanonicalProjection,
   state: EditorState,
   topLevelOnly = false,
 ) => {
@@ -112,7 +118,7 @@ const selectedParagraphs = (
       const id = node.attrs["paraId"];
       if (ids.has(id)) return;
       ids.add(id);
-      const paragraph = session.projection.paragraph(id)?.source;
+      const paragraph = projection.paragraph(id)?.source;
       if (paragraph !== undefined) paragraphs.push(paragraph);
     },
   );
@@ -159,14 +165,14 @@ type ParagraphPosition = {
 
 /** Each selected paragraph with the block container that owns it. A list may run through several containers, such as table cells, as the editor applies it. */
 const paragraphPositions = (
-  session: CanonicalSession,
+  projection: CanonicalProjection,
   paragraphs: readonly Paragraph[],
 ): Result<readonly ParagraphPosition[], CanonicalSessionError> => {
   if (paragraphs.length === 0)
     return noChange("List changes require a paragraph selection.");
   const positions: ParagraphPosition[] = [];
   for (const paragraph of paragraphs) {
-    const address = session.projection.paragraph(paragraph.paraId ?? "");
+    const address = projection.paragraph(paragraph.paraId ?? "");
     if (address === undefined)
       return refuse("A selected paragraph has no canonical address.");
     const index = address.container.findIndex((item) => item === paragraph);
@@ -228,6 +234,7 @@ const numberingIntent = (
   session: CanonicalSession,
   positions: readonly ParagraphPosition[],
   request: ListRequest,
+  story: OpStory = OP_STORIES.MAIN,
 ): EditorIntent => {
   const definitions = readModel(session.document).package.numbering;
   const map =
@@ -320,7 +327,7 @@ const numberingIntent = (
     target,
     items: positions.map(({ paragraph }) => ({
       at: {
-        story: OP_STORIES.MAIN,
+        story,
         blockId: paragraph.paraId ?? "",
         offset: 0,
       },
@@ -334,12 +341,41 @@ type TextReplacementCommand = Extract<
   { type: "replaceText" }
 >;
 
-/** Toolbar meanings enter the same operation journal as native input. */
+/**
+ * Toolbar meanings enter the same operation journal as native input, in the
+ * story whose editor holds `state`: the body, or a header, footer or note.
+ */
 export const prepareCanonicalCommands = (
   session: CanonicalSession,
   state: EditorState,
   commands: readonly CanonicalCommandIntent[],
+  story: OpStory = OP_STORIES.MAIN,
 ): Result<CanonicalCommit, CanonicalSessionError> => {
+  // Section breaks, notes and a table of contents of headings belong to the
+  // main story: a section ends only there, a note holds no note, and the
+  // headings a contents lists are the body's.
+  if (
+    story !== OP_STORIES.MAIN &&
+    commands.some(
+      ({ type }) =>
+        type === "setSectionBreak" ||
+        type === "removeSectionBreak" ||
+        type === "insertNote" ||
+        type === "deleteNote" ||
+        type === "generateTOC",
+    )
+  )
+    return Result.err(
+      new CanonicalSessionError({
+        ground: { condition: CANONICAL_CONDITION.invalidRequest },
+        message:
+          "Section breaks, notes and tables of contents go in the main story.",
+        reason: "refused",
+      }),
+    );
+  const projected = session.projectStory(story);
+  if (projected.isErr()) return projected;
+  const projection = projected.value;
   // A text replacement is the session's own text input; several ranges,
   // the last first, are one replacement.
   const replacements = commands.filter(
@@ -355,20 +391,15 @@ export const prepareCanonicalCommands = (
         from: only.from,
         to: only.to,
         text: only.text,
+        story,
       });
     const intents: EditorIntent[] = [];
     for (const replacement of replacements) {
       // The replaced text's own edges, as a selection typed over names them.
-      const edges = session.projection.rangeEdgesAt(
-        replacement.from,
-        replacement.to,
-      );
-      const from = session.projection.inputAddressAt(
-        replacement.from,
-        edges.start,
-      );
+      const edges = projection.rangeEdgesAt(replacement.from, replacement.to);
+      const from = projection.inputAddressAt(replacement.from, edges.start);
       if (from.isErr()) return from;
-      const to = session.projection.inputAddressAt(replacement.to, edges.end);
+      const to = projection.inputAddressAt(replacement.to, edges.end);
       if (to.isErr()) return to;
       intents.push({
         type: "replaceText",
@@ -417,7 +448,7 @@ export const prepareCanonicalCommands = (
       sectionCommands.length !== 1
     )
       return refuse("A section change must be prepared on its own.");
-    const paragraphs = selectedParagraphs(session, state, true);
+    const paragraphs = selectedParagraphs(projection, state, true);
     if (paragraphs.length === 0)
       return refuse("Section breaks require a top-level document paragraph.");
     const command =
@@ -447,7 +478,7 @@ export const prepareCanonicalCommands = (
       }),
     );
   }
-  const paragraphs = selectedParagraphs(session, state);
+  const paragraphs = selectedParagraphs(projection, state);
   const noteCommands = commands.filter(
     (command) => command.type === "insertNote" || command.type === "deleteNote",
   );
@@ -465,7 +496,7 @@ export const prepareCanonicalCommands = (
     if (blockIdGroups.isErr()) return blockIdGroups;
     for (const [commandIndex, command] of ordered.entries()) {
       if (command.type === "deleteNote") {
-        const at = session.projection.addressAt(command.from);
+        const at = projection.addressAt(command.from);
         if (at.isErr()) return at;
         ops.push({
           type: DOCUMENT_OP_TYPES.REMOVE_NOTE,
@@ -474,7 +505,7 @@ export const prepareCanonicalCommands = (
         } as const);
         continue;
       }
-      const at = session.projection.addressAt(command.at);
+      const at = projection.addressAt(command.at);
       if (at.isErr()) return at;
       if (command.content.some((block) => block.type !== "paragraph"))
         return refuse("Canonical note insertion requires paragraph content.");
@@ -505,7 +536,7 @@ export const prepareCanonicalCommands = (
   for (const command of commands) {
     switch (command.type) {
       case "generateTOC": {
-        const at = session.projection.addressAt(command.at);
+        const at = projection.addressAt(command.at);
         if (at.isErr()) return at;
         const definitions = readModel(session.document).package.styles;
         const styles = createBuiltInStyleIndex(
@@ -513,8 +544,8 @@ export const prepareCanonicalCommands = (
           definitions?.docDefaults,
         );
         const headings = [];
-        for (const heading of collectHeadings(session.projection.doc, styles)) {
-          const address = session.projection.addressAt(heading.pmPos + 1);
+        for (const heading of collectHeadings(projection.doc, styles)) {
+          const address = projection.addressAt(heading.pmPos + 1);
           if (address.isErr()) return address;
           const outline = headingOutlineLevel(heading.level);
           if (outline?.kind !== "heading")
@@ -558,16 +589,16 @@ export const prepareCanonicalCommands = (
       case "setHyperlink":
       case "removeHyperlink":
       case "insertHyperlink": {
-        const from = session.projection.addressAt(command.from);
+        const from = projection.addressAt(command.from);
         if (from.isErr()) return from;
-        const to = session.projection.addressAt(command.to);
+        const to = projection.addressAt(command.to);
         if (to.isErr()) return to;
         intents.push({ ...command, from: from.value, to: to.value });
         break;
       }
       case "formatTable": {
         for (const target of command.targets) {
-          const at = session.projection.addressAt(target.at);
+          const at = projection.addressAt(target.at);
           if (at.isErr()) return at;
           const address = { story: at.value.story, blockId: at.value.blockId };
           switch (target.scope) {
@@ -610,7 +641,7 @@ export const prepareCanonicalCommands = (
         break;
       }
       case "editTableBlock": {
-        const at = session.projection.addressAt(command.at);
+        const at = projection.addressAt(command.at);
         if (at.isErr()) return at;
         intents.push({
           type: "tableBlock",
@@ -623,7 +654,7 @@ export const prepareCanonicalCommands = (
         break;
       }
       case "editTableRow": {
-        const at = session.projection.addressAt(command.at);
+        const at = projection.addressAt(command.at);
         if (at.isErr()) return at;
         intents.push({
           type: "tableRow",
@@ -636,7 +667,7 @@ export const prepareCanonicalCommands = (
         break;
       }
       case "editTable": {
-        const at = session.projection.addressAt(command.at);
+        const at = projection.addressAt(command.at);
         if (at.isErr()) return at;
         intents.push({
           type: "table",
@@ -652,9 +683,9 @@ export const prepareCanonicalCommands = (
         // Run by the editor as it is; it changes no content.
         break;
       case "insertBreak": {
-        const from = session.projection.addressAt(command.from);
+        const from = projection.addressAt(command.from);
         if (from.isErr()) return from;
-        const to = session.projection.addressAt(command.to);
+        const to = projection.addressAt(command.to);
         if (to.isErr()) return to;
         intents.push({
           type: "insertAtom",
@@ -675,9 +706,9 @@ export const prepareCanonicalCommands = (
       case "replaceText":
         return panic("Text replacements are prepared before editor intents.");
       case "formatRun": {
-        const from = session.projection.addressAt(command.from);
+        const from = projection.addressAt(command.from);
         if (from.isErr()) return from;
-        const to = session.projection.addressAt(command.to);
+        const to = projection.addressAt(command.to);
         if (to.isErr()) return to;
         intents.push({
           type: "formatRun",
@@ -688,7 +719,7 @@ export const prepareCanonicalCommands = (
         break;
       }
       case "formatParagraph": {
-        const at = session.projection.addressAt(command.at);
+        const at = projection.addressAt(command.at);
         if (at.isErr()) return at;
         intents.push({
           type: "formatParagraph",
@@ -698,7 +729,7 @@ export const prepareCanonicalCommands = (
         break;
       }
       case "toggleList": {
-        const positions = paragraphPositions(session, paragraphs);
+        const positions = paragraphPositions(projection, paragraphs);
         if (positions.isErr()) return positions;
         const definitions = readModel(session.document).package.numbering;
         const map =
@@ -719,9 +750,12 @@ export const prepareCanonicalCommands = (
           });
         if (!already) {
           intents.push(
-            numberingIntent(session, positions.value, {
-              kind: command.kind === "bullet" ? "bullet" : "numbered",
-            }),
+            numberingIntent(
+              session,
+              positions.value,
+              { kind: command.kind === "bullet" ? "bullet" : "numbered" },
+              story,
+            ),
           );
           break;
         }
@@ -730,7 +764,7 @@ export const prepareCanonicalCommands = (
           intents.push({
             type: "formatParagraph",
             at: {
-              story: OP_STORIES.MAIN,
+              story,
               blockId: paragraph.paraId ?? "",
               offset: 0,
             },
@@ -739,14 +773,14 @@ export const prepareCanonicalCommands = (
         break;
       }
       case "removeList": {
-        const positions = paragraphPositions(session, paragraphs);
+        const positions = paragraphPositions(projection, paragraphs);
         if (positions.isErr()) return positions;
         const removed = numberingRemoval(session);
         for (const paragraph of paragraphs)
           intents.push({
             type: "formatParagraph",
             at: {
-              story: OP_STORIES.MAIN,
+              story,
               blockId: paragraph.paraId ?? "",
               offset: 0,
             },
@@ -755,14 +789,14 @@ export const prepareCanonicalCommands = (
         break;
       }
       case "changeListLevel": {
-        const positions = paragraphPositions(session, paragraphs);
+        const positions = paragraphPositions(projection, paragraphs);
         if (positions.isErr()) return positions;
         const removed = numberingRemoval(session);
         for (const paragraph of paragraphs) {
           const numPr = effectiveNumbering(paragraph);
           if (numPr?.kind !== "reference") continue;
           const at = {
-            story: OP_STORIES.MAIN,
+            story,
             blockId: paragraph.paraId ?? "",
             offset: 0,
           } as const;
@@ -793,7 +827,7 @@ export const prepareCanonicalCommands = (
       }
       case "restartNumbering":
       case "continueNumbering": {
-        const positions = paragraphPositions(session, paragraphs);
+        const positions = paragraphPositions(projection, paragraphs);
         if (positions.isErr()) return positions;
         const source = paragraphs.at(0);
         const numPr = effectiveNumbering(source);
@@ -885,7 +919,7 @@ export const prepareCanonicalCommands = (
             const effective = effectiveNumbering(paragraph);
             return {
               at: {
-                story: OP_STORIES.MAIN,
+                story,
                 blockId: paragraph.paraId ?? "",
                 offset: 0,
               },
@@ -902,6 +936,153 @@ export const prepareCanonicalCommands = (
     }
   }
   return session.prepareIntents(state, { intents });
+};
+
+/**
+ * The structure edit a key asks for at the selection of the editor showing
+ * `story`, the body or a header, footer or note, as one commit: Enter splits
+ * the paragraph (or takes an empty list paragraph out of its list),
+ * Backspace and Delete at a paragraph's edge join it with its neighbour
+ * (Backspace first takes the paragraph out of its list or clears its
+ * indent), Tab and Shift+Tab change a list paragraph's level, and Tab, a line
+ * break and a page break go in as atoms. Over selected cells, each is
+ * cleared and the edit happens in the first. A table's deletion is the
+ * caller's: it runs the table command.
+ */
+export const prepareCanonicalStructure = (
+  session: CanonicalSession,
+  state: EditorState,
+  story: OpStory,
+  type: Exclude<CanonicalStructureInput, "deleteTable">,
+): Result<CanonicalCommit, CanonicalSessionError> => {
+  // A page break ends a page of the main story: Word puts none in a header,
+  // footer or note, whose text belongs to every page or to one note.
+  if (type === "pageBreak" && story !== OP_STORIES.MAIN)
+    return Result.err(
+      new CanonicalSessionError({
+        ground: { condition: CANONICAL_CONDITION.invalidRequest },
+        message: "A page break goes in the main story.",
+        reason: "refused",
+      }),
+    );
+  if (
+    state.selection instanceof CellSelection &&
+    (type === "split" ||
+      type === "tab" ||
+      type === "lineBreak" ||
+      type === "pageBreak")
+  )
+    return session.prepareCellSelectionStructure(
+      state,
+      (at) =>
+        type === "split"
+          ? {
+              // A paragraph break: two empty paragraphs whose open ends
+              // join the halves of the first cell's paragraph.
+              type: "replaceFragment",
+              from: at,
+              to: at,
+              paragraphs: [
+                { type: "paragraph", content: [] },
+                { type: "paragraph", content: [] },
+              ],
+              openStart: 1,
+              openEnd: 1,
+            }
+          : {
+              type: "insertAtom",
+              from: at,
+              to: at,
+              atom:
+                type === "tab"
+                  ? { type: "tab" }
+                  : {
+                      type: "break",
+                      breakType: type === "pageBreak" ? "page" : "textWrapping",
+                    },
+            },
+      { story },
+    );
+  const projected = session.projectStory(story);
+  if (projected.isErr()) return projected;
+  const projection = projected.value;
+  const selection = projection.selectionAt(state);
+  if (selection.isErr()) return selection;
+  const paragraph = projection.paragraph(selection.value.head.blockId)?.source;
+  switch (type) {
+    case "split":
+      return isCanonicalListParagraph(paragraph) &&
+        state.selection.$from.parent.content.size === 0
+        ? prepareCanonicalCommands(
+            session,
+            state,
+            [{ type: "removeList" }],
+            story,
+          )
+        : session.prepareSplit(state, story);
+    case "joinBackward":
+      // A paragraph its style numbers leaves the list as one of its own.
+      if (isCanonicalListParagraph(paragraph))
+        return prepareCanonicalCommands(
+          session,
+          state,
+          [{ type: "removeList" }],
+          story,
+        );
+      if (
+        (paragraph?.formatting?.indentLeft ?? 0) > 0 ||
+        (paragraph?.formatting?.indentFirstLine ?? 0) > 0
+      )
+        return session.prepareIntent(state, {
+          type: "formatParagraph",
+          at: selection.value.head,
+          patch: {
+            indentLeft: null,
+            indentFirstLine: null,
+            hangingIndent: null,
+          },
+        });
+      return session.prepareJoin(state, "backward", story);
+    case "joinForward":
+      return session.prepareJoin(state, "forward", story);
+    case "indent":
+    case "outdent":
+      return prepareCanonicalCommands(
+        session,
+        state,
+        [
+          {
+            type: "changeListLevel",
+            direction: type === "indent" ? "increase" : "decrease",
+          },
+        ],
+        story,
+      );
+    case "tab":
+    case "lineBreak":
+    case "pageBreak": {
+      const from = projection.addressAt(state.selection.from);
+      if (from.isErr()) return from;
+      const to = projection.addressAt(state.selection.to);
+      if (to.isErr()) return to;
+      return session.prepareIntent(state, {
+        type: "insertAtom",
+        from: from.value,
+        to: to.value,
+        atom:
+          type === "tab"
+            ? { type: "tab" }
+            : {
+                type: "break",
+                breakType: type === "pageBreak" ? "page" : "textWrapping",
+              },
+      });
+    }
+    default: {
+      const unreachable: never = type;
+      return unreachable;
+    }
+  }
 };
 
 type CanonicalAutoformatTrigger = { from: number; to: number; text: string };
@@ -955,7 +1136,7 @@ export const prepareCanonicalAutoformat = (
       patch: { styleId },
     };
   } else {
-    const positions = paragraphPositions(session, [source]);
+    const positions = paragraphPositions(session.projection, [source]);
     if (positions.isErr()) return undefined;
     paragraphIntent = numberingIntent(session, positions.value, request);
   }

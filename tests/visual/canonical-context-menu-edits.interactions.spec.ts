@@ -153,6 +153,14 @@ const firstParagraph = (page: Page) =>
 
 for (const adapter of adapters) {
   test.describe(`${adapter.name} canonical context menu edits`, () => {
+    test("first picture selection shows resize handles", async ({ page }) => {
+      await open(page, adapter.port);
+      const handle = page.locator('.paged-editor [data-handle="se"]');
+      await expect(handle).toHaveCount(0);
+      await page.locator(".layout-run-image, .layout-image").first().click();
+      await expect(handle).toBeVisible();
+    });
+
     test("Delete removes the selection", async ({ page }) => {
       await open(page, adapter.port);
       await select(page, BETA.from - 1, BETA.to);

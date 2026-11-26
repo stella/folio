@@ -167,16 +167,16 @@ const runCanonicalBrowserHistory = async ({
     validateHarnessRefusalRows(rows);
     if (rows.length > 0) expect(errors.length).toBeGreaterThan(0);
     for (const error of errors) {
-      expect(error.status).toBe("refusal");
       expect(error.type).toBe("CanonicalSessionRefusalError");
-      if (error.status !== "refusal") throw new TypeError(error.message);
+      if (error.status !== "refusal" && error.status !== "conditionRefusal")
+        throw new TypeError(error.message);
       const matchedRow = matchCanonicalRefusalRow({ rows, refusal: error });
       expect(matchedRow).toBeDefined();
       if (!matchedRow)
         throw new TypeError(
           "Canonical browser refusal did not match a declared row.",
         );
-      missing.record(matchedRow.gap);
+      if (matchedRow.gap !== undefined) missing.record(matchedRow.gap);
     }
     if (action.kind === "imeReplacement" && action.completion === "cancel") {
       expect(after.document).toEqual(before.document);

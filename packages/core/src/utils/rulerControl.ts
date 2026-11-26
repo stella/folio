@@ -3,6 +3,8 @@ import { TWIPS_PER_INCH } from "./units";
 // Match the centimetre ruler ticks (rounded OOXML twips).
 const TWIPS_PER_CM = 567;
 
+export const HORIZONTAL_RULER_HEIGHT_PX = 22;
+
 const MIN_CONTENT_SIZE_TWIPS = 720;
 
 type RulerBounds = { min: number; max: number };
