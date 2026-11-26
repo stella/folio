@@ -25,6 +25,7 @@ import {
   propertyRevisionRecords,
 } from "../revisionCarriers";
 import { getTableCellMergeChange } from "../tableCellMergeRevision";
+import { isTableRowRevisionCompanion } from "../tableRowRevisionOwnership";
 
 /**
  * One tracked change surfaced by {@link extractTrackedChanges}. Each entry
@@ -147,9 +148,7 @@ type RowRevisionScope = {
 
 /**
  * Fold a run's revision mark into the enclosing row's card when both halves
- * are the same change. Folio writes both under one revision id; Word mints a
- * fresh `w:id` per element, so an author + timestamp match counts too. Returns
- * false for a third party's edit inside the row, which keeps its own card.
+ * are the same change. An independent edit inside the row keeps its own card.
  */
 const foldIntoRowRevision = (
   scope: RowRevisionScope | undefined,
@@ -159,11 +158,20 @@ const foldIntoRowRevision = (
     return false;
   }
   const revisionId = mark.attrs["revisionId"] as number;
-  const sameRevision =
-    revisionId === scope.entry.revisionId ||
-    ((mark.attrs["author"] as string) === scope.entry.author &&
-      (mark.attrs["date"] as string | undefined) === scope.entry.date);
-  if (!sameRevision) {
+  if (
+    !isTableRowRevisionCompanion({
+      row: {
+        id: scope.entry.revisionId,
+        author: scope.entry.author,
+        date: scope.entry.date,
+      },
+      candidate: {
+        id: revisionId,
+        author: mark.attrs["author"],
+        date: mark.attrs["date"],
+      },
+    })
+  ) {
     return false;
   }
   if (revisionId !== scope.entry.revisionId) {

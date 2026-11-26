@@ -130,6 +130,7 @@ import {
   rowHoldsNoCells,
   type RowsEmptiedInBatch,
 } from "../../prosemirror/tableGridMutation";
+import { isTableRowRevisionCompanion } from "../../prosemirror/tableRowRevisionOwnership";
 import {
   runInCellPending,
   runParagraphIntoTable,
@@ -829,7 +830,7 @@ function resolveChangeUnguarded(
             follows !== "nothing"
               ? resolved.parent.lastChild?.type.name === "paragraph"
               : preceding?.type.name === "paragraph" ||
-                (preceding !== undefined &&
+                (preceding !== null &&
                   resolved.parent.type.name === "blockSdt"),
           followingTableCanReceiveRunIn:
             follows === "table" &&
@@ -1241,26 +1242,6 @@ function collectTableRowStructuralOp(
   return null;
 }
 
-/**
- * Whether an inline revision mark inside a row belongs to that row's own
- * structural revision. Folio writes both halves under one id; Word mints a
- * fresh `w:id` per element, so an author + timestamp match counts too. A third
- * party's edit inside the same row matches neither and survives untouched.
- */
-function markBelongsToRowRevision(
-  mark: Mark,
-  revision: TableRowRevisionAttr,
-): boolean {
-  if (mark.attrs["revisionId"] === revision.revisionId) {
-    return true;
-  }
-  return (
-    revision.author !== undefined &&
-    mark.attrs["author"] === revision.author &&
-    (mark.attrs["date"] ?? null) === (revision.date ?? null)
-  );
-}
-
 type ClearTableRowContentMarksOptions = {
   tr: Transaction;
   rowPos: number;
@@ -1287,13 +1268,28 @@ function clearTableRowContentMarks({
     return;
   }
   const contentFrom = rowPos + 1;
+  const rowRevision = {
+    id: revision.revisionId,
+    author: revision.author,
+    date: revision.date,
+  };
   const removals: { from: number; to: number; mark: Mark }[] = [];
   row.descendants((node, offset) => {
     if (!node.isInline) {
       return true;
     }
     for (const mark of node.marks) {
-      if (mark.type === markType && markBelongsToRowRevision(mark, revision)) {
+      if (
+        mark.type === markType &&
+        isTableRowRevisionCompanion({
+          row: rowRevision,
+          candidate: {
+            id: mark.attrs["revisionId"],
+            author: mark.attrs["author"],
+            date: mark.attrs["date"],
+          },
+        })
+      ) {
         const from = contentFrom + offset;
         removals.push({ from, to: from + node.nodeSize, mark });
       }
@@ -2830,16 +2826,14 @@ const acceptSuggestions = (
       const from = pos;
       const to = pos + node.nodeSize;
       for (const mark of node.marks) {
-        if (
-          !isSuggestionMark(mark) ||
-          typeof mark.attrs["suggestionId"] !== "string" ||
-          !matchesSuggestion(mark.attrs["suggestionId"])
-        ) {
-          continue;
-        }
-        changed = true;
-        tr.removeMark(from, to, mark);
-        if (mark.type === runPropertyChangeType) {
+        const suggestionId = mark.attrs["suggestionId"];
+        const acceptOwn =
+          isSuggestionMark(mark) &&
+          typeof suggestionId === "string" &&
+          matchesSuggestion(suggestionId);
+        if (mark.type === runPropertyChangeType && acceptOwn) {
+          changed = true;
+          tr.removeMark(from, to, mark);
           // Re-author each recorded change under the accepting user; keep the
           // rest of the change (previousFormatting, revision id) intact.
           const nextChanges: RunPropertyChange[] = [];
@@ -2860,19 +2854,38 @@ const acceptSuggestions = (
           );
           continue;
         }
-        if (mark.type === insertionType || mark.type === deletionType) {
-          tr.addMark(
-            from,
-            to,
-            mark.type.create({
-              ...mark.attrs,
-              author: options.author,
-              date,
-              provenance: "user",
-              suggestionId: null,
-            }),
-          );
+        if (mark.type !== insertionType && mark.type !== deletionType) continue;
+        let acceptedAncestor = false;
+        const ancestors: TrackedRevisionAncestor[] = [];
+        for (const ancestor of expectTrackedChangeMarkAttrs(mark)
+          ._docxRevisionAncestors ?? []) {
+          const { suggestionId: owner, ...record } = ancestor;
+          if (owner === undefined || !matchesSuggestion(owner)) {
+            ancestors.push(ancestor);
+            continue;
+          }
+          acceptedAncestor = true;
+          ancestors.push({ ...record, author: options.author, date });
         }
+        if (!acceptOwn && !acceptedAncestor) continue;
+        changed = true;
+        tr.removeMark(from, to, mark);
+        tr.addMark(
+          from,
+          to,
+          mark.type.create({
+            ...mark.attrs,
+            ...(acceptOwn
+              ? {
+                  author: options.author,
+                  date,
+                  provenance: "user",
+                  suggestionId: null,
+                }
+              : {}),
+            ...(acceptedAncestor ? { _docxRevisionAncestors: ancestors } : {}),
+          }),
+        );
       }
       return undefined;
     });
@@ -2959,9 +2972,19 @@ export function acceptAllSuggestions(
  */
 export function rejectSuggestion(suggestionId: string): Command {
   return (state, dispatch) => {
-    const entry = collectSuggestions(state).get(suggestionId);
+    const suggestions = collectSuggestions(state);
+    const entry = suggestions.get(suggestionId);
     if (!entry) {
       return false;
+    }
+    // The reference resolver selects structural revisions by physical ID.
+    // A repeated ID within one suggestion is fine, but a shared ID cannot
+    // identify just one proposal, even when their inline spans are disjoint.
+    for (const [otherId, other] of suggestions) {
+      if (otherId === suggestionId) continue;
+      for (const id of other.revisionIds) {
+        if (entry.revisionIds.has(id)) return false;
+      }
     }
 
     const removesWholeNode =
@@ -2977,12 +3000,12 @@ export function rejectSuggestion(suggestionId: string): Command {
       const ranges = mergeSegments(entry.segments);
       const from = ranges[0]?.from ?? 0;
       const to = ranges.at(-1)?.to ?? from;
-      resolveChangeUnguarded(from, to, "reject", [...entry.revisionIds])(
-        state,
-        (resolved) => {
-          tr = resolved;
-        },
-      );
+      const resolved = resolveChangeUnguarded(from, to, "reject", [
+        ...entry.revisionIds,
+      ])(state, (transaction) => {
+        tr = transaction;
+      });
+      if (!resolved) return false;
     }
     const workingTr: Transaction = tr ?? state.tr;
 
@@ -2992,8 +3015,7 @@ export function rejectSuggestion(suggestionId: string): Command {
       mode: "reject",
       resolves: (revisionId: number) => entry.revisionIds.has(revisionId),
     } as const;
-    // A revision id may repeat across suggestions until save renumbers it, so
-    // a whole node goes only when it is this suggestion's own insertion.
+    // A whole node goes only when it is this suggestion's own insertion.
     workingTr.doc.descendants((node, pos) => {
       if (
         rejectionRemovesWholeNode(node, rejected) &&
@@ -3064,11 +3086,15 @@ export function rejectAllSuggestions(): Command {
     // so whole-node inserts can be dropped from the same transaction below.
     let tr: Transaction | null = null;
     if (revisionIds.size > 0) {
-      resolveChangeUnguarded(0, state.doc.content.size, "reject", [
-        ...revisionIds,
-      ])(state, (resolved) => {
-        tr = resolved;
+      const resolved = resolveChangeUnguarded(
+        0,
+        state.doc.content.size,
+        "reject",
+        [...revisionIds],
+      )(state, (transaction) => {
+        tr = transaction;
       });
+      if (!resolved) return false;
     }
     const workingTr: Transaction = tr ?? state.tr;
 

@@ -12,6 +12,7 @@
 
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
+import { EditorState } from "prosemirror-state";
 
 import { ZipArchive } from "@stll/docx-core/zip";
 
@@ -19,8 +20,11 @@ import {
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import { acceptAIEditRevision } from "../__tests__/reference-editor/comments";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
+import { schema } from "../prosemirror/schema";
+import { extractTrackedChanges } from "../prosemirror/utils/extractTrackedChanges";
 import type {
   Table,
   TableCell,
@@ -29,6 +33,7 @@ import type {
 } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { FolioDocxReviewer } from "./headless";
+import { getTrackedChangeGroupsForIds, getTrackedChangesFromDoc } from "./read";
 
 const REVISION: TrackedChangeInfo = {
   id: 41,
@@ -134,6 +139,62 @@ const blockText = (paragraph: { content?: unknown[] }): string => {
 };
 
 describe("a Word-style tracked row carries its cell content with it", () => {
+  test.each([undefined, null, ""])(
+    "accepting an undated row keeps a separate undated insertion by the same author (%p)",
+    (date) => {
+      const rowRevision = { revisionId: 10, author: "Reviewer", date };
+      const laterEdit = schema.mark("insertion", {
+        ...rowRevision,
+        revisionId: 11,
+      });
+      const added = schema.node("tableRow", { trIns: rowRevision }, [
+        schema.node("tableCell", null, [
+          schema.node("paragraph", null, [
+            schema.text("Added row", [schema.mark("insertion", rowRevision)]),
+            schema.text("Later edit", [laterEdit]),
+          ]),
+        ]),
+      ]);
+      const kept = schema.node("tableRow", null, [
+        schema.node("tableCell", null, [
+          schema.node("paragraph", null, [schema.text("Kept row")]),
+        ]),
+      ]);
+      const doc = schema.node("doc", null, [
+        schema.node("table", null, [kept, added]),
+      ]);
+      let state = EditorState.create({ doc });
+
+      const changes = [
+        { type: "rowInserted", id: 10 },
+        { type: "insertion", id: 11 },
+      ];
+      expect(
+        getTrackedChangesFromDoc(doc).map(({ type, id }) => ({ type, id })),
+      ).toEqual(changes);
+      expect(getTrackedChangeGroupsForIds(doc, [10, 11])).toEqual([[10], [11]]);
+      expect(
+        extractTrackedChanges(state).entries.map(({ type, revisionId }) => ({
+          type,
+          id: revisionId,
+        })),
+      ).toEqual(changes);
+
+      expect(
+        acceptAIEditRevision(rowRevision.revisionId)(state, (tr) => {
+          state = state.apply(tr);
+        }),
+      ).toBe(true);
+      const retainedRow = state.doc.child(0).child(1);
+      expect(retainedRow.attrs["trIns"]).toBeNull();
+      const paragraph = retainedRow.child(0).child(0);
+      expect(paragraph.child(0).text).toBe("Added row");
+      expect(paragraph.child(0).marks).toEqual([]);
+      expect(paragraph.child(1).text).toBe("Later edit");
+      expect(paragraph.child(1).marks).toEqual([laterEdit]);
+    },
+  );
+
   test("an inserted row accepts to the row and rejects to nothing", async () => {
     const buffer = await buildTableDocx([
       { texts: ["Kept"] },
