@@ -66,6 +66,11 @@ export type DocxBlockNumbering = {
   numId: number;
   ilvl: number;
   abstractNumId: number;
+  /**
+   * The level prints a bullet: its label is a mark, whatever character
+   * stands for it (a font's `o` as much as a dot), and no designator.
+   */
+  bullet?: true;
 };
 
 export type DocxTableCell = {

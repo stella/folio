@@ -367,7 +367,12 @@ export const createLabelCounter = ({
       const numberingInfo: DocxBlockNumbering | null =
         abstractNumId === null
           ? null
-          : { numId: resolved.numId, ilvl: resolved.ilvl, abstractNumId };
+          : {
+              numId: resolved.numId,
+              ilvl: resolved.ilvl,
+              abstractNumId,
+              ...(listRendering.isBullet ? { bullet: true as const } : {}),
+            };
       // A level whose run properties hide it counts and shows nothing.
       if (listRendering.markerHidden === true) {
         return { ...NO_LABEL, numbering: numberingInfo };
