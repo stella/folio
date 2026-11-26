@@ -14,7 +14,6 @@ import type {
   Paragraph,
   ParagraphContent,
   RunContent,
-  Table,
 } from "../model/document";
 import { cloneModel } from "./modelClone";
 import {
@@ -23,6 +22,7 @@ import {
   isInlineContainer,
   withChildren,
 } from "./offsets";
+import { mapPastedBlockParagraphs, type PastedBlock } from "./pastedBlocks";
 
 /** The notes and comments pasted references and markers name, by those ids. */
 export type PasteAnnotations = {
@@ -96,9 +96,9 @@ type AnchoredBlocks = {
   /** The bookmark ids this paste's placeholders hold. */
   ids: ReadonlySet<number>;
   /** The blocks with a placeholder for each reference and marker. */
-  blocks: (Paragraph | Table)[];
+  blocks: PastedBlock[];
   /** The blocks without the references and markers. */
-  plain: (Paragraph | Table)[];
+  plain: PastedBlock[];
   anchors: PasteAnchor[];
 };
 
@@ -107,7 +107,7 @@ type AnchoredBlocks = {
  * and numbered apart from every bookmark in `destination` and in the blocks.
  */
 export const withPasteAnchors = (
-  blocks: readonly (Paragraph | Table)[],
+  blocks: readonly PastedBlock[],
   destination: Bookmarks = { names: new Set(), ids: new Set() },
 ): AnchoredBlocks => {
   const pasted = bookmarksIn(blocks);
@@ -179,24 +179,12 @@ export const withPasteAnchors = (
     }
     return out;
   };
-  const block = (each: Paragraph | Table): Paragraph | Table =>
-    each.type === "paragraph"
-      ? { ...each, content: inline(each.content) }
-      : {
-          ...each,
-          rows: each.rows.map((row) => ({
-            ...row,
-            cells: row.cells.map((cell) => ({
-              ...cell,
-              content: cell.content.map((inner) =>
-                inner.type === "paragraph" || inner.type === "table"
-                  ? block(inner)
-                  : inner,
-              ),
-            })),
-          })),
-        };
-  const anchoredBlocks = blocks.map(block);
+  const anchoredBlocks = blocks.map((each) =>
+    mapPastedBlockParagraphs(each, (paragraph) => ({
+      ...paragraph,
+      content: inline(paragraph.content),
+    })),
+  );
   return {
     prefix,
     ids,

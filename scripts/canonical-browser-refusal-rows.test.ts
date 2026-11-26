@@ -114,7 +114,12 @@ test("typing, pasting and deleting over selected cells stay strict; IME replacem
 });
 
 test("canonical browser refusal rows reject retired ledger gaps", () => {
-  expect(() => validateHarnessRefusalRows(imeOverCells, {})).toThrow(
+  const row = {
+    id: "retired-gap-row",
+    gap: CANONICAL_GAP.storyContentProjection,
+    message: "refused",
+  };
+  expect(() => validateHarnessRefusalRows([row], {})).toThrow(
     "Retired canonical refusal row must become strict",
   );
 });

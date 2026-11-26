@@ -3,7 +3,6 @@ import { panic } from "better-result";
 import {
   CANONICAL_CAPABILITIES,
   CANONICAL_CONDITION,
-  CANONICAL_GAP,
 } from "../packages/core/src/types/canonicalCapabilities";
 import type {
   CanonicalCondition,
@@ -98,7 +97,7 @@ const SELECTED_CELL_REFUSALS = {
   imeReplacement: [
     {
       id: "selected-cells-composition",
-      gap: CANONICAL_GAP.storyContentProjection,
+      condition: CANONICAL_CONDITION.invalidRequest,
       message:
         "Composition changed unsupported content; the canonical document was restored.",
     },

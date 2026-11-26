@@ -170,6 +170,7 @@ import { groundForDocumentOpRefusal } from "./canonicalRefusalGrounds";
 import { rebaseHistorySteps, remoteSelection } from "./canonicalRemoteHistory";
 import { canonicalRevisionLocks } from "./canonicalRevisionLocks";
 import {
+  type CanonicalSeedIssue,
   changedWindow,
   unsupportedEditReason,
   unsupportedSeedReason,
@@ -214,6 +215,17 @@ const ID_SPACE: CanonicalRefusalGround = {
 const HOST_TRANSACTION: CanonicalRefusalGround = {
   condition: CANONICAL_CONDITION.hostTransaction,
 };
+
+/**
+ * The ground of an edit whose result the session cannot hold. Comments and
+ * anchors that are no valid set, and a story left with no block, are a
+ * request the document does not allow. Content no operation writes (an
+ * unstructured field character, text holding a tab or a line feed, a block
+ * of no kind the model has) can come only from an operation the session
+ * applied wrongly: the operations refuse such text and write fields whole.
+ */
+const editIssueGround = (issue: CanonicalSeedIssue): CanonicalRefusalGround =>
+  issue.kind === "content" ? INTERNAL : INVALID_REQUEST;
 
 /** A refusal under the gap, rule or condition it belongs to. */
 const refuse = (message: string, ground: CanonicalRefusalGround) =>
@@ -1035,9 +1047,14 @@ const placeShownSelection = (
   return read.isOk() ? read.value : undefined;
 };
 
+/**
+ * A projected paragraph the document does not hold, or holds once for two:
+ * the projection and the document it was made from are out of step, a defect
+ * of the session.
+ */
 const structureRefusal = () =>
   new CanonicalSessionError({
-    ground: { gap: CANONICAL_GAP.storyContentProjection },
+    ground: INTERNAL,
     reason: "refused",
     message: "The projection changed paragraph structure.",
   });
@@ -1229,10 +1246,14 @@ type BlockWalk = {
 
 const NO_OPEN_COMMENTS: ReadonlySet<number> = new Set();
 
-/** The refusal of a paragraph whose source the projection cannot align with its node. */
+/**
+ * The refusal of a paragraph whose source the projection cannot align with
+ * its node. Every inline item the document holds has a projection policy, so
+ * such a paragraph is a projection out of step with the document.
+ */
 const inlineRefusal = (message: string): CanonicalSessionError =>
   new CanonicalSessionError({
-    ground: { gap: CANONICAL_GAP.storyContentProjection },
+    ground: INTERNAL,
     reason: "refused",
     message,
   });
@@ -4534,20 +4555,15 @@ class CanonicalSession {
       document: applied.value.document,
       previous: this.currentDocument,
     });
-    if (
-      unsupportedEditReason({
-        previous: this.currentDocument,
-        document: applied.value.document,
-        stories: changed,
-      }) !== null
-    )
-      return Result.err(
-        new CanonicalSessionError({
-          ground: { gap: CANONICAL_GAP.storyContentProjection },
-          reason: "refused",
-          message:
-            "The operations produce unsupported canonical story content.",
-        }),
+    const unsupported = unsupportedEditReason({
+      previous: this.currentDocument,
+      document: applied.value.document,
+      stories: changed,
+    });
+    if (unsupported !== null)
+      return refuse(
+        "The operations produce unsupported canonical story content.",
+        editIssueGround(unsupported),
       );
     applied.value.document = preservePropertySources({
       target: applied.value.document,
@@ -4841,8 +4857,10 @@ export const createCanonicalSession = (
   const owned = cloneDocumentWithParagraphPropertySources(document);
   const source = normalizeCanonicalSource(owned);
   const unsupported = unsupportedSeedReason(source.document);
-  if (unsupported !== null)
-    return refuse(unsupported, { gap: CANONICAL_GAP.storyContentProjection });
+  // A document the reader wrote never holds one: it keeps loose field markup
+  // as preserved XML and writes tabs and breaks as their own elements. Like
+  // a document `validateOpsDocument` refuses, it is not one to open.
+  if (unsupported !== null) return refuse(unsupported.message, INVALID_REQUEST);
   const identified = preservePropertySourcesWholeStories({
     target: normalizeForOps(source.document),
     source: owned,
@@ -4917,9 +4935,10 @@ const visibleDeletionContext = (state: EditorState) => {
   container.forEach((paragraph, paragraphOffset, paragraphIndex) => {
     if (paragraphIndex < first || paragraphIndex > last) return;
     const native = canonicalNativeCells(paragraph);
+    // The session projected this paragraph: every node in it has a policy.
     if (native.isErr()) {
       issue = new CanonicalSessionError({
-        ground: { gap: CANONICAL_GAP.storyContentProjection },
+        ground: INTERNAL,
         reason: "refused",
         message: native.error.message,
       });
