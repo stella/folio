@@ -201,6 +201,22 @@ export type DocxTemplateStyle = {
    * null when neither the style nor one it is based on states one.
    */
   alignment: string | null;
+  /**
+   * Whether the style sets its text in bold (`w:b`), inheritance and the
+   * document's defaults resolved.
+   */
+  bold: boolean;
+  /**
+   * The font size the style gives its text, in half-points (`w:sz`),
+   * inheritance and the document's defaults resolved; null when none of
+   * them states one.
+   */
+  size: number | null;
+  /**
+   * Whether the style keeps its paragraph on the page of the next one
+   * (`w:keepNext`), inheritance and the document's defaults resolved.
+   */
+  keepNext: boolean;
   isDefault: boolean;
 };
 

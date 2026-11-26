@@ -468,6 +468,9 @@ export type DocxTemplateStyle = {
     } | null;
     outlineLvl: number | null;
     alignment: string | null;
+    bold: boolean;
+    size: number | null;
+    keepNext: boolean;
     isDefault: boolean;
 };
 

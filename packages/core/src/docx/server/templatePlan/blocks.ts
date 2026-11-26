@@ -26,6 +26,7 @@ import {
   type ParagraphRead,
   readParagraph,
   type StoryState,
+  toggleOf,
   walkBlocks,
 } from "./story";
 import type {
@@ -38,6 +39,7 @@ import type {
 import { TemplatePlanError } from "./types";
 import {
   elementChildren,
+  halfPointsOrNull,
   isW,
   type RawPart,
   readRawPart,
@@ -165,6 +167,83 @@ export const styleAlignment = (
     cursor = styles.get(cursor)?.basedOn;
   }
   return null;
+};
+
+/** What a style states of the look of its text; null where it states
+ *  nothing. */
+type StatedLook = {
+  bold: boolean | null;
+  /** In half-points. */
+  size: number | null;
+  keepNext: boolean | null;
+};
+
+const statedLook = (
+  paragraph: XmlElement | null,
+  run: XmlElement | null,
+): StatedLook => ({
+  bold: toggleOf(wChild(run, "b")),
+  size: halfPointsOrNull(wChildVal(run, "sz")),
+  keepNext: toggleOf(wChild(paragraph, "keepNext")),
+});
+
+/** The look each style of the styles part states itself, by style id, and
+ *  the look the document's defaults state. */
+export const statedLooks = (
+  stylesPath: string | null,
+  stylesXml: string | null,
+): { styles: Map<string, StatedLook>; defaults: StatedLook } => {
+  const styles = new Map<string, StatedLook>();
+  const part =
+    stylesPath === null || stylesXml === null
+      ? null
+      : readRawPart(stylesPath, stylesXml);
+  for (const style of wChildren(part?.root, "style")) {
+    const styleId = wAttr(style, "styleId");
+    if (styleId !== null) {
+      styles.set(
+        styleId,
+        statedLook(wChild(style, "pPr"), wChild(style, "rPr")),
+      );
+    }
+  }
+  const defaults = wChild(part?.root, "docDefaults");
+  return {
+    styles,
+    defaults: statedLook(
+      wChild(wChild(defaults, "pPrDefault"), "pPr"),
+      wChild(wChild(defaults, "rPrDefault"), "rPr"),
+    ),
+  };
+};
+
+/**
+ * The look a style gives its text: each property from the nearest style in
+ * the `basedOn` chain that states it, then from the document's defaults.
+ * Without a statement text is not bold and a paragraph is not kept with the
+ * next; the size stays null, which leaves it to the application.
+ */
+export const styleLook = (
+  styleId: string | null,
+  styles: StyleMap,
+  { styles: stated, defaults }: ReturnType<typeof statedLooks>,
+): { bold: boolean; size: number | null; keepNext: boolean } => {
+  const look: StatedLook = { bold: null, size: null, keepNext: null };
+  const seen = new Set<string>();
+  let cursor: string | undefined = styleId ?? undefined;
+  while (cursor !== undefined && !seen.has(cursor)) {
+    seen.add(cursor);
+    const own = stated.get(cursor);
+    look.bold ??= own?.bold ?? null;
+    look.size ??= own?.size ?? null;
+    look.keepNext ??= own?.keepNext ?? null;
+    cursor = styles.get(cursor)?.basedOn;
+  }
+  return {
+    bold: look.bold ?? defaults.bold ?? false,
+    size: look.size ?? defaults.size,
+    keepNext: look.keepNext ?? defaults.keepNext ?? false,
+  };
 };
 
 /**
