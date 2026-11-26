@@ -2123,7 +2123,7 @@ export const createHiddenEditorManager = (
         };
         if (
           !publishCommit(prepared.value, (message, ground) => {
-            failure = { message, ground };
+            failure = { message, ground: ground ?? failure.ground };
           })
         )
           return fail(failure.message, failure.ground);
@@ -2255,7 +2255,7 @@ export const createHiddenEditorManager = (
           };
           if (
             !publishCommit(prepared.value, (message, ground) => {
-              failure = { message, ground };
+              failure = { message, ground: ground ?? failure.ground };
             })
           )
             return fail(failure.message, failure.ground);
