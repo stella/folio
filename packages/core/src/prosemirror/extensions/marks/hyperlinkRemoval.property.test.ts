@@ -7,10 +7,6 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../../../test/property-testing";
-import {
-  acceptAllChanges,
-  rejectAllChanges,
-} from "../../../__tests__/reference-editor/comments";
 import { createSuggestionModePlugin } from "../../../__tests__/reference-editor/suggestionMode";
 import { getCanonicalCommandIntents } from "../../canonicalCommands";
 import { removeHyperlinkInRange } from "../../hyperlinkRemoval";
