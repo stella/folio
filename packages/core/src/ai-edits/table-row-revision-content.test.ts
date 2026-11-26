@@ -168,7 +168,7 @@ describe("a Word-style tracked row carries its cell content with it", () => {
       const changes = [
         { type: "rowInserted", id: 10 },
         { type: "insertion", id: 11 },
-      ];
+      ] satisfies { type: "rowInserted" | "insertion"; id: number }[];
       expect(
         getTrackedChangesFromDoc(doc).map(({ type, id }) => ({ type, id })),
       ).toEqual(changes);
