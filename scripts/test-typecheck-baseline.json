@@ -984,7 +984,6 @@
     "TS2739": 1
   },
   "packages/core/src/controller/hiddenEditorManager.test.ts": {
-    "TS2322": 1,
     "TS2353": 1,
     "TS2367": 1,
     "TS2532": 35,

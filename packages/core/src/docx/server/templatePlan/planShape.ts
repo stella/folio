@@ -415,6 +415,11 @@ export const planShapeIssue = (plan: unknown): string | null => {
     spansIssue(plan) ??
     fieldsIssue(plan["fields"]) ??
     compatIssue(plan["compat"]) ??
+    (plan["trackedChanges"] === undefined ||
+    plan["trackedChanges"] === "accept" ||
+    plan["trackedChanges"] === "reject"
+      ? null
+      : "The plan names an unknown view of tracked changes.") ??
     sectionIssue(plan["lastSection"], "The plan's last section") ??
     (plan["textEffects"] === undefined ||
     plan["textEffects"] === "normalize" ||

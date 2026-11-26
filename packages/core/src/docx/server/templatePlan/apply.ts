@@ -15,6 +15,8 @@ import {
   type AnalyzedDocument,
   type AnalyzedNotes,
   analyzeDocument,
+  analyzeSource,
+  viewOf,
 } from "./blocks";
 import {
   freezeFields,
@@ -1225,7 +1227,7 @@ const applyUnguarded = async ({
 }: ApplyTemplatePlanArgs): Promise<
   Result<ApplyTemplatePlanResult, TemplatePlanError>
 > => {
-  const analyzedSource = await analyzeDocument(source);
+  const analyzedSource = await analyzeSource(source, viewOf(plan));
   if (Result.isError(analyzedSource)) {
     return analyzedSource;
   }

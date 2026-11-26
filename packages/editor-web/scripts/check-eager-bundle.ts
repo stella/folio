@@ -18,8 +18,8 @@ type Metrics = { minified: number; gzip: number; docxOps: number };
 const BUDGETS = {
   // docxOps +1.1 kB: table row and table removal keep the ends of ranges
   // reaching past them.
-  react: { minified: 3_750_950, gzip: 1_180_750, docxOps: 664_100 },
-  vue: { minified: 3_445_950, gzip: 1_076_750, docxOps: 664_200 },
+  react: { minified: 3_747_950, gzip: 1_179_950, docxOps: 664_100 },
+  vue: { minified: 3_442_950, gzip: 1_076_000, docxOps: 664_200 },
 } as const satisfies Record<Adapter, Metrics>;
 
 const HOST_PEERS = [

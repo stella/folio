@@ -30,6 +30,8 @@ import {
   type AnalyzedNotes,
   analyzeDocument,
   type AnalyzedStory,
+  analyzeSource,
+  viewOf,
 } from "./blocks";
 import {
   applyRefCaseFormat,
@@ -546,6 +548,16 @@ export const reportTemplatePlanOutput = async ({
   }
   const out = analyzedOutput.value;
   const issues: TemplatePlanIssue[] = [];
+  // A plan made for one view of tracked changes writes none of them out.
+  if (
+    source.manifest.trackedChangesResolved !== undefined &&
+    out.manifest.trackedChanges > 0
+  ) {
+    issues.push({
+      code: "revision-left",
+      message: `The output holds ${String(out.manifest.trackedChanges)} tracked change(s).`,
+    });
+  }
   const warnings: string[] = [
     ...source.manifest.warnings.map((warning) => `Source: ${warning}`),
     ...out.story.warnings,
@@ -1975,6 +1987,9 @@ export const reportTemplatePlanOutput = async ({
     sourceSha256: source.manifest.sha256,
     templateSha256: template.manifest.sha256,
     outputSha256: out.manifest.sha256,
+    ...(source.manifest.trackedChangesResolved === undefined
+      ? {}
+      : { trackedChanges: source.manifest.trackedChangesResolved }),
     blocks,
     counts,
     footnotes,
@@ -2034,7 +2049,7 @@ const verifyUnguarded = async ({
 }: VerifyTemplatePlanOutputArgs): Promise<
   Result<TemplatePlanReport, TemplatePlanError>
 > => {
-  const analyzedSource = await analyzeDocument(source);
+  const analyzedSource = await analyzeSource(source, viewOf(plan));
   if (Result.isError(analyzedSource)) {
     return analyzedSource;
   }

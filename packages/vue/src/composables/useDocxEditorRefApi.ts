@@ -81,11 +81,6 @@ import {
   getSelectedText,
 } from "@stll/folio-core/prosemirror";
 import {
-  findAIEditRevisionRange,
-  findSuggestionRange,
-  getSuggestions,
-} from "@stll/folio-core/prosemirror/commands/comments";
-import {
   blockSdtAttrsToSdtProperties,
   findBlockSdtMatch,
   findBlockSdtMatches,
@@ -99,6 +94,11 @@ import {
   recordingCommentsView,
 } from "@stll/folio-core/prosemirror/commentRecords";
 import { projectMarkupView } from "@stll/folio-core/prosemirror/markupViewProjection";
+import { findAIEditRevisionRange } from "@stll/folio-core/prosemirror/revisionRangeQueries";
+import {
+  findSuggestionRange,
+  getSuggestions,
+} from "@stll/folio-core/prosemirror/suggestionQueries";
 import { findStartPosForParaId } from "@stll/folio-core/prosemirror/utils/findParagraphByParaId";
 import { getFolioParaIdFromBlockId } from "@stll/folio-core/types/block-id";
 import type { Comment } from "@stll/folio-core/types/content";

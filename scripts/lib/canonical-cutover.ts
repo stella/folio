@@ -2,7 +2,6 @@ import {
   CANONICAL_CAPABILITIES,
   CANONICAL_GAP,
 } from "../../packages/core/src/types/canonicalCapabilities";
-import { censusUndescribedCanonicalCommands } from "./canonical-command-census";
 import {
   createLineIndex,
   type Node,
@@ -442,11 +441,6 @@ export const inspectCanonicalSources = (
           file,
         );
         if (headlessGap) markerFor(node, headlessGap);
-        if (
-          node.type === "IfStatement" &&
-          text(node.test) === "intents === undefined"
-        )
-          markerFor(node, CANONICAL_GAP.commands);
       });
       for (const marker of markers)
         if (!usedMarkers.has(marker.index))
@@ -456,31 +450,13 @@ export const inspectCanonicalSources = (
   for (const gap of gapIds)
     if (!sites.has(gap))
       failures.push(`Ledger entry ${gap} has no source site`);
-  const remainingCommands = new Map<string, string[]>();
-  for (const [gap, capability] of Object.entries(CANONICAL_CAPABILITIES)) {
-    if (!("remainingCommands" in capability)) continue;
-    remainingCommands.set(
-      gap,
-      censusUndescribedCanonicalCommands(
-        sources.filter(
-          ({ file }) =>
-            file.startsWith("packages/core/src/prosemirror/") &&
-            file.endsWith(".ts"),
-        ),
-      ),
-    );
-  }
-  return { failures, sites, remainingCommands };
+  return { failures, sites };
 };
 
-type CanonicalCutoverDocsOptions = {
-  sites: Map<string, Set<string>>;
-  remainingCommands: Map<string, string[]>;
-};
+type CanonicalCutoverDocsOptions = { sites: Map<string, Set<string>> };
 
 export const canonicalCutoverDocs = ({
   sites,
-  remainingCommands,
 }: CanonicalCutoverDocsOptions) => {
   const headers = [
     "Id",
@@ -523,18 +499,5 @@ export const canonicalCutoverDocs = ({
     tableRow(widths.map((width) => "-".repeat(width))),
     ...rows.map(tableRow),
     "",
-    "## Remaining command registrations",
-    "",
-    "Derived from the extension command registry. Entries lack a structural proof that every factory return path attaches a canonical descriptor; this conservative census is not a runtime support policy. CI requires the committed list to match the census and rejects new entries against the PR-base source census.",
-    "",
-    ...[...remainingCommands].flatMap(([gap, commands]) =>
-      // An empty list ends at its heading, as the formatter leaves it.
-      [`### ${gap} (${commands.length})`].concat(
-        commands.length === 0
-          ? []
-          : ["", ...commands.map((command) => `- \`${command}\``)],
-        [""],
-      ),
-    ),
   ].join("\n");
 };
