@@ -53,6 +53,15 @@ import {
   propertyTestTimeout,
 } from "../../../../../test/property-testing";
 import { KEPT_CUTS, projectReview } from "../../../../../test/reviewProjection";
+import type {
+  BookmarkStart,
+  Hyperlink,
+  InlineSdt,
+  InlineWrapper,
+  Insertion,
+  ParagraphContent,
+  Run,
+} from "../../model/content";
 import type { BlockContent, Document, Paragraph } from "../../model/document";
 import {
   type AppliedDocumentOp,
@@ -1536,6 +1545,329 @@ describe("tracked operations and their resolution", () => {
     );
     if (insertionUndone.isErr()) throw insertionUndone.error;
     assertExactModel(insertionUndone.value.document, original);
+  });
+
+  test("L3: a split's cut goes on through a paragraph its rejection leaves only kept boundaries", () => {
+    // A link split between its tab and its text, then split again at the
+    // tab's end, a comment start inserted in the empty paragraph between.
+    // Rejecting it all at once rejoins the link around the kept start, as
+    // rejecting each change in turn does.
+    const link = (content: ParagraphContent[]): Hyperlink => ({
+      type: "hyperlink",
+      rId: "rId9",
+      href: "https://example.org",
+      children: [
+        { type: "inlineWrapper", kind: "bidi", control: "embedding", content },
+      ],
+    });
+    const info = (id: number) => ({
+      id,
+      author: "C",
+      date: `2026-03-04T05:00:0${String(id - 1)}Z`,
+    });
+    const tab: Run = { type: "run", content: [{ type: "tab" }] };
+    const text: Run = {
+      type: "run",
+      content: [{ type: "text", text: "a" }],
+    };
+    const tracked: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              paraId: "10000000",
+              content: [link([tab])],
+              pPrMark: {
+                kind: "ins",
+                info: info(2),
+                resolutionJoin: 0,
+                survivor: "first",
+                takenOverMark: 1,
+              },
+            },
+            {
+              type: "paragraph",
+              paraId: "10000001",
+              content: [
+                {
+                  type: "insertion",
+                  info: info(3),
+                  content: [link([{ type: "commentRangeStart", id: 1 }])],
+                  resolutionJoins: { before: 0, after: 0, remove: 0 },
+                },
+              ],
+              pPrMark: { kind: "ins", info: info(1), resolutionJoin: 3 },
+            },
+            { type: "paragraph", paraId: "00000001", content: [link([text])] },
+          ],
+        },
+      },
+    };
+    const atOnce = resolved(tracked, [1, 2, 3], REVISION_DECISIONS.REJECT);
+    expect(atOnce.package.document.content).toStrictEqual([
+      {
+        type: "paragraph",
+        paraId: "00000001",
+        content: [link([tab, { type: "commentRangeStart", id: 1 }, text])],
+      },
+    ]);
+    const oneByOne = resolvedInTurn(
+      tracked,
+      [[1], [2], [3]],
+      REVISION_DECISIONS.REJECT,
+    );
+    assertExactModel(projectedWithCuts(atOnce), projectedWithCuts(oneByOne));
+  });
+
+  test("L3: a cut goes on through a control piece its rejection empties", () => {
+    // Pieces of a control, the middle one holding only an insertion made at
+    // the cut and a link piece cut beside it. Rejecting both at once puts
+    // the kept bookmark start into the link the pieces rejoin, as rejecting
+    // the inner insertion first does.
+    const control = (id: number, content: InlineSdt["content"]): InlineSdt => ({
+      type: "inlineSdt",
+      properties: { sdtType: "richText", id, tag: "clause" },
+      content,
+    });
+    const link = (children: Hyperlink["children"]): Hyperlink => ({
+      type: "hyperlink",
+      rId: "rId9",
+      href: "https://example.org",
+      children,
+    });
+    const bidi = (content: ParagraphContent[]): InlineWrapper => ({
+      type: "inlineWrapper",
+      kind: "bidi",
+      control: "embedding",
+      content,
+    });
+    const text = (value: string): Run => ({
+      type: "run",
+      content: [{ type: "text", text: value }],
+    });
+    const start = (id: number): BookmarkStart => ({
+      type: "bookmarkStart",
+      id,
+      name: "_Link",
+    });
+    const tracked: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              paraId: "00000001",
+              content: [
+                control(1, [link([bidi([text("b")])])]),
+                {
+                  type: "insertion",
+                  info: { id: 2, author: "C", date: "2026-03-04T05:00:01Z" },
+                  content: [link([start(2)])],
+                  resolutionJoins: { before: 0, after: 0, remove: 1 },
+                },
+                control(293649, [
+                  {
+                    type: "insertion",
+                    info: { id: 1, author: "A", date: "2026-03-04T05:00:00Z" },
+                    content: [
+                      link([{ ...start(1), copyOriginAncestors: [0] }]),
+                      link([bidi([text("a")])]),
+                    ],
+                    resolutionJoins: { before: 1, after: 0, remove: 1 },
+                  },
+                ]),
+                control(293648, [link([start(1)]), link([bidi([text("a")])])]),
+              ],
+            },
+          ],
+        },
+      },
+    };
+    const atOnce = resolved(tracked, [1, 2], REVISION_DECISIONS.REJECT);
+    expect(atOnce.package.document.content).toStrictEqual([
+      {
+        type: "paragraph",
+        paraId: "00000001",
+        content: [
+          control(1, [
+            link([bidi([text("b")]), start(2), start(1)]),
+            link([bidi([text("a")])]),
+          ]),
+        ],
+      },
+    ]);
+    const oneByOne = resolvedInTurn(
+      tracked,
+      [[1], [2]],
+      REVISION_DECISIONS.REJECT,
+    );
+    assertExactModel(projectedWithCuts(atOnce), projectedWithCuts(oneByOne));
+  });
+
+  test("L3: a pending deletion keeps the cut an insertion rejected inside it carried to its edge", () => {
+    // A bidi wrapper cut by a link inserted inside a deletion, the piece
+    // beyond it opening with an older insertion whose removal joins it back.
+    // Rejecting that insertion first, while the deletion still stands, leaves
+    // its cut on the deletion, so the pieces rejoin as rejecting it all at
+    // once does.
+    const bidi = (content: ParagraphContent[]): InlineWrapper => ({
+      type: "inlineWrapper",
+      kind: "bidi",
+      control: "embedding",
+      content,
+    });
+    const text = (value: string): Run => ({
+      type: "run",
+      content: [{ type: "text", text: value }],
+    });
+    const deleted = { author: "C", date: "2026-03-04T05:00:01Z" };
+    const start: BookmarkStart = {
+      type: "bookmarkStart",
+      id: 1,
+      name: "_Link",
+    };
+    const tracked: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              paraId: "00000001",
+              content: [
+                bidi([
+                  text("a"),
+                  {
+                    type: "deletion",
+                    info: { id: 2, ...deleted },
+                    content: [text("a")],
+                    resolutionJoins: { before: 2, after: 0, remove: 0 },
+                  },
+                ]),
+                {
+                  type: "insertion",
+                  info: { id: 4, author: "C", date: "2026-03-04T05:00:03Z" },
+                  content: [
+                    {
+                      type: "hyperlink",
+                      rId: "rId9",
+                      href: "https://example.org",
+                      children: [start],
+                    },
+                  ],
+                  resolutionJoins: { before: 0, after: 0, remove: 0 },
+                },
+                {
+                  type: "deletion",
+                  info: { id: 3, ...deleted },
+                  content: [
+                    bidi([
+                      {
+                        type: "insertion",
+                        info: {
+                          id: 1,
+                          author: "A",
+                          date: "2026-03-04T05:00:00Z",
+                        },
+                        content: [text("aa")],
+                        resolutionJoins: { before: 0, after: 2, remove: 2 },
+                      },
+                      text("a"),
+                    ]),
+                  ],
+                  resolutionJoins: { before: 0, after: 0, remove: 0 },
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    const oneByOne = resolvedInTurn(
+      tracked,
+      [[1], [2, 3], [4]],
+      REVISION_DECISIONS.REJECT,
+    );
+    expect(oneByOne.package.document.content).toStrictEqual([
+      {
+        type: "paragraph",
+        paraId: "00000001",
+        content: [bidi([text("aa"), start, text("a")])],
+      },
+    ]);
+    const atOnce = resolved(tracked, [1, 2, 3, 4], REVISION_DECISIONS.REJECT);
+    assertExactModel(projectedWithCuts(atOnce), projectedWithCuts(oneByOne));
+  });
+
+  test("L3: a paragraph join's deferred seam names the piece a rejoined piece merged into", () => {
+    // An insertion split by an inserted paragraph mark. Rejecting the mark
+    // first rejoins the insertion's pieces and defers the seam on the piece
+    // that stays, so rejecting the insertion then gives what rejecting it
+    // all at once does.
+    const text = (value: string): Run => ({
+      type: "run",
+      content: [{ type: "text", text: value }],
+    });
+    const piece = (id: number, before: number): Insertion => ({
+      type: "insertion",
+      info: { id, author: "C", date: "2026-03-04T05:00:00Z" },
+      content: [text("x")],
+      resolutionJoins: { before, after: 2, remove: 2 },
+    });
+    const tracked: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              paraId: "10000000",
+              content: [text("a"), piece(1, 2)],
+              pPrMark: {
+                kind: "ins",
+                info: { id: 2, author: "C", date: "2026-03-04T05:00:01Z" },
+                resolutionJoin: 3,
+              },
+            },
+            {
+              type: "paragraph",
+              paraId: "00000001",
+              content: [piece(3, 0), text("a")],
+            },
+          ],
+        },
+      },
+    };
+    const markRejected = resolved(tracked, [2], REVISION_DECISIONS.REJECT);
+    expect(markRejected.package.document.content).toStrictEqual([
+      {
+        type: "paragraph",
+        paraId: "00000001",
+        content: [
+          text("a"),
+          {
+            ...piece(1, 2),
+            content: [text("xx")],
+            resolutionJoins: {
+              before: 2,
+              after: 2,
+              remove: 2,
+              deferredRemove: [{ depth: 3, blockers: [1] }],
+            },
+          },
+          text("a"),
+        ],
+      },
+    ]);
+    const atOnce = resolved(tracked, [1, 2, 3], REVISION_DECISIONS.REJECT);
+    expect(atOnce.package.document.content).toStrictEqual([
+      { type: "paragraph", paraId: "00000001", content: [text("aa")] },
+    ]);
+    const oneByOne = resolvedInTurn(
+      tracked,
+      [[2], [1, 3]],
+      REVISION_DECISIONS.REJECT,
+    );
+    assertExactModel(projectedWithCuts(atOnce), projectedWithCuts(oneByOne));
   });
 
   test("L1: accepting a tracked operation's revisions gives the direct operation's result", () => {

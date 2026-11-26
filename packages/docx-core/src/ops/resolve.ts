@@ -2371,7 +2371,7 @@ const withRejoinedBlockers = ({
 }: {
   nodes: readonly InlineNode[];
   retired: ReadonlyMap<number, number>;
-  resolution: Resolution;
+  resolution?: Resolution;
 }): InlineNode[] => {
   const successor = (id: number): number => {
     let current = id;
@@ -2416,7 +2416,8 @@ const withRejoinedBlockers = ({
     }
     if (children === undefined)
       next = withKeptCutHoldersRenamed(next, successor);
-    if (next !== node) carryResolutionState(resolution, node, next);
+    if (next !== node && resolution !== undefined)
+      carryResolutionState(resolution, node, next);
     return next;
   };
   return nodes.map(rewrite);
@@ -2428,7 +2429,10 @@ type CutReach = {
   /** Records each side's edge goes through to the deepest level that stays. */
   before: number;
   after: number;
-  /** Set where it ends at pieces of one change the resolution removes. */
+  /**
+   * Set where it ends at pieces of one change the resolution removes, or at
+   * a removed change that was all its container held.
+   */
   gone?: true;
 };
 
@@ -2532,7 +2536,14 @@ const cutReach = ({
       index,
       side === "before" ? "end" : "start",
     );
-    if (chain === undefined) return false;
+    if (chain === undefined) {
+      // Removed as all its container held, it empties a piece that folds
+      // into the piece beyond: the cut goes on into the record it meets.
+      const parent = chains[side][index - 1];
+      if (parent !== undefined && childNodes(parent)?.length === 1)
+        reach.gone = true;
+      return false;
+    }
     chains[side] = chain;
     return true;
   };
@@ -5136,6 +5147,22 @@ const resolveList = ({
       if (inner.edges.first !== undefined) edges.first = inner.edges.first + 1;
       if (inner.edges.last !== undefined) edges.last = inner.edges.last + 1;
       resolution.cutEdges.set(rebuilt, edges);
+      // A pending removal whose piece a resolved change inside it left cut at
+      // its edge keeps that cut as its own join there: rejecting it later
+      // joins the piece as resolving both at once does.
+      if (
+        (rebuilt.type === "deletion" || rebuilt.type === "moveFrom") &&
+        rebuilt.resolutionJoins !== undefined
+      ) {
+        const joins = rebuilt.resolutionJoins;
+        rebuilt = Object.assign({}, rebuilt, {
+          resolutionJoins: Object.assign({}, joins, {
+            before: Math.max(joins.before, inner.edges.first ?? 0),
+            after: Math.max(joins.after, inner.edges.last ?? 0),
+          }),
+        });
+        resolution.cutEdges.set(rebuilt, edges);
+      }
     }
     appendSource(rebuilt, index);
   }
@@ -7438,7 +7465,11 @@ const joinOps = (
       keepsFirst ? idKey(paraId) : nextId,
       emptiedEndsOf(merged, emptied),
     );
-    const mergedContent = asParagraphContent(merged);
+    // A deferred seam naming a piece the join merged away names the piece
+    // it merged into, as after an inline seam join.
+    const mergedContent = asParagraphContent(
+      withRejoinedBlockers({ nodes: merged, retired: rejoined }),
+    );
     // The joined paragraph ends with the staying mark and its section break;
     // the one the resolved mark ended goes with it.
     let survivor: Paragraph;
@@ -8934,7 +8965,7 @@ const planSingleRecordResolution = (
       const firstCut = resolvedCutEdges.get(key)?.first ?? 0;
       const mark = candidate.pPrMark;
       if (
-        (resolvedContents.get(key)?.length ?? 0) !== 0 ||
+        !(resolvedContents.get(key) ?? []).every(isKeptBoundaryCarrier) ||
         mark === undefined ||
         !markWasAdded(mark.kind)
       ) {
@@ -8942,7 +8973,9 @@ const planSingleRecordResolution = (
         known.set(index, suffix);
         break;
       }
-      // An empty inserted paragraph can carry part of a cut to a later join.
+      // An inserted paragraph left empty, or with only the boundaries a
+      // rejection keeps (they hold no piece of the cut), can carry part of a
+      // cut to a later join.
       const chainCut =
         op.decision === REVISION_DECISIONS.REJECT && ids.has(mark.info.id)
           ? (mark.resolutionJoin ?? 0)
