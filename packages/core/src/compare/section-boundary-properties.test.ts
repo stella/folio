@@ -1,9 +1,28 @@
+import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
+import type { Node as PMNode } from "prosemirror-model";
+import { EditorState } from "prosemirror-state";
 
+import {
+  applyDocumentOps,
+  DOCUMENT_OP_TYPES,
+  OP_STORIES,
+  type RevisionDecision,
+} from "@stll/docx-core/ops";
+
+import { revisionIdsIn } from "../ai-edits/read";
+import { expectParagraphAttrs } from "../prosemirror/attrs";
+import {
+  acceptAllChanges,
+  rejectAllChanges,
+} from "../prosemirror/commands/comments";
+import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { schema } from "../prosemirror/schema";
+import type { Document } from "../types/document";
 import {
   compareSectionBoundaryProperties,
-  stageSectionBoundaryProperties,
+  stageSectionBoundaryOperations,
 } from "./section-boundary-properties";
 
 const paragraph = (text: string, sectionProperties?: Record<string, unknown>) =>
@@ -112,20 +131,8 @@ describe("compareSectionBoundaryProperties", () => {
   });
 });
 
-import { EditorState } from "prosemirror-state";
-
-import {
-  acceptAllChanges,
-  rejectAllChanges,
-} from "../prosemirror/commands/comments";
-
-const resolve = ({
-  state,
-  mode,
-}: {
-  state: EditorState;
-  mode: "accept" | "reject";
-}) => {
+const resolveReference = (doc: PMNode, mode: RevisionDecision) => {
+  const state = EditorState.create({ doc });
   let resolved = state;
   (mode === "accept" ? acceptAllChanges() : rejectAllChanges())(
     state,
@@ -133,7 +140,91 @@ const resolve = ({
       resolved = state.apply(transaction);
     },
   );
-  return resolved;
+  return resolved.doc;
+};
+
+const documentModelOf = (doc: PMNode) => {
+  const paragraphs: PMNode[] = [];
+  doc.forEach((node, _offset, index) => {
+    paragraphs.push(
+      node.type.create(
+        { ...node.attrs, paraId: (index + 1).toString(16).padStart(8, "0") },
+        node.content,
+      ),
+    );
+  });
+  return fromProseDoc(schema.node("doc", null, paragraphs), undefined, {
+    stylesheetSource: { type: "package" },
+  });
+};
+
+const resolveModel = (document: Document, decision: RevisionDecision) => {
+  const revisionIds = [...revisionIdsIn(document.package.document.content)];
+  return toProseDoc(
+    applyDocumentOps(document, [
+      {
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story: OP_STORIES.MAIN,
+        decision,
+        revisionIds,
+      },
+    ]).unwrap().document,
+  );
+};
+
+type StageOptions = Omit<
+  Parameters<typeof stageSectionBoundaryOperations>[0],
+  "document" | "accepted"
+> & { doc: PMNode };
+
+const stage = ({ doc, ...options }: StageOptions) => {
+  const document = documentModelOf(doc);
+  const result = stageSectionBoundaryOperations({
+    ...options,
+    document,
+    accepted: () => resolveModel(document, "accept"),
+  });
+  if (result.status !== "matched")
+    panic("Could not stage one section endpoint", { result });
+  expect(result.operations).toHaveLength(1);
+  expect(result.nextRevisionId).toBe(options.revisionStamp.idSeed + 1);
+  return applyDocumentOps(document, result.operations).unwrap().document;
+};
+
+const paragraphFacts = (document: PMNode) => {
+  const facts: {
+    text: string;
+    sectionProperties: ReturnType<
+      typeof expectParagraphAttrs
+    >["_sectionProperties"];
+  }[] = [];
+  document.forEach((node) => {
+    facts.push({
+      text: node.textContent,
+      sectionProperties: expectParagraphAttrs(node)._sectionProperties,
+    });
+  });
+  return facts;
+};
+
+const expectReviewed = ({
+  document,
+  accepted,
+  rejected,
+}: {
+  document: Document;
+  accepted: PMNode;
+  rejected: PMNode;
+}) => {
+  const pending = toProseDoc(document);
+  for (const [decision, expected] of [
+    ["accept", accepted],
+    ["reject", rejected],
+  ] as const) {
+    const actual = paragraphFacts(resolveModel(document, decision));
+    expect(actual).toEqual(paragraphFacts(expected));
+    expect(actual).toEqual(paragraphFacts(resolveReference(pending, decision)));
+  }
 };
 
 test("stages nothing, and reads no accepted projection, for a target without endpoints", () => {
@@ -148,45 +239,29 @@ test("stages nothing, and reads no accepted projection, for a target without end
       schema.text(" text"),
     ]),
   );
-  // Accepting every change walks the document; a target that ends no section
-  // at a paragraph has nothing to stage, so the walk would be pure cost.
-  for (const walk of ["descendants", "nodesBetween"] as const) {
-    Object.defineProperty(doc, walk, {
-      configurable: true,
-      value: () => {
-        throw new Error(
-          "The accepted projection was built for a target without endpoints.",
-        );
-      },
-    });
-  }
-  const state = EditorState.create({ schema, doc });
-  const result = stageSectionBoundaryProperties({
-    state,
+  const result = stageSectionBoundaryOperations({
+    document: documentModelOf(doc),
+    accepted: () =>
+      panic("Unexpected accepted projection for a target without endpoints"),
     target: documentWith(paragraph("Before"), paragraph("Rewritten text")),
     originalRevisionIdSeed: 10,
     maxRanges: 1,
     revisionStamp: { idSeed: 30, date: "2026-09-13T00:00:00.000Z" },
     author: "Compare",
-    mapTargetProperties: () => {
-      throw new Error("No endpoint should be mapped.");
-    },
+    mapTargetProperties: () => panic("Unexpected section mapping"),
   });
-  expect(result.status).toBe("matched");
-  if (result.status !== "matched") return;
-  expect(result.transaction.docChanged).toBe(false);
-  expect(result.nextRevisionId).toBe(30);
-  expect(result.rangeCount).toBe(0);
+  expect(result).toEqual({
+    status: "matched",
+    nextRevisionId: 30,
+    operations: [],
+  });
 });
 
 test("stages a boundary on an already inserted blank paragraph", () => {
   const inserted = schema.node("paragraph", {
     pPrMark: { kind: "ins", info: { id: 20, author: "Compare" } },
   });
-  const state = EditorState.create({
-    schema,
-    doc: documentWith(paragraph("Before"), inserted, paragraph("After")),
-  });
+  const doc = documentWith(paragraph("Before"), inserted, paragraph("After"));
   const target = documentWith(
     paragraph("Before"),
     schema.node("paragraph", {
@@ -194,8 +269,8 @@ test("stages a boundary on an already inserted blank paragraph", () => {
     }),
     paragraph("After"),
   );
-  const result = stageSectionBoundaryProperties({
-    state,
+  const pending = stage({
+    doc,
     target,
     originalRevisionIdSeed: 10,
     maxRanges: 1,
@@ -206,15 +281,11 @@ test("stages a boundary on an already inserted blank paragraph", () => {
       target: targetProperties,
     }),
   });
-  expect(result.status).toBe("matched");
-  if (result.status !== "matched") return;
-  const pending = state.apply(result.transaction);
-  expect(resolve({ state: pending, mode: "accept" }).doc.eq(target)).toBe(true);
-  expect(
-    resolve({ state: pending, mode: "reject" }).doc.eq(
-      documentWith(paragraph("Before"), paragraph("After")),
-    ),
-  ).toBe(true);
+  expectReviewed({
+    document: pending,
+    accepted: target,
+    rejected: documentWith(paragraph("Before"), paragraph("After")),
+  });
 });
 
 test("aligns an inserted endpoint after a preceding deleted paragraph", () => {
@@ -222,21 +293,18 @@ test("aligns an inserted endpoint after a preceding deleted paragraph", () => {
     "paragraph",
     { pPrMark: { kind: "del", info: { id: 9, author: "Compare" } } },
     schema.text("Removed", [
-      schema.mark("deletion", { revisionId: 9, author: "Compare" }),
+      schema.mark("deletion", { revisionId: 8, author: "Compare" }),
     ]),
   );
   const inserted = schema.node("paragraph", {
     pPrMark: { kind: "ins", info: { id: 20, author: "Compare" } },
   });
-  const state = EditorState.create({
-    schema,
-    doc: documentWith(
-      deleted,
-      paragraph("Before"),
-      inserted,
-      paragraph("After"),
-    ),
-  });
+  const doc = documentWith(
+    deleted,
+    paragraph("Before"),
+    inserted,
+    paragraph("After"),
+  );
   const target = documentWith(
     paragraph("Before"),
     schema.node("paragraph", {
@@ -244,8 +312,8 @@ test("aligns an inserted endpoint after a preceding deleted paragraph", () => {
     }),
     paragraph("After"),
   );
-  const result = stageSectionBoundaryProperties({
-    state,
+  const pending = stage({
+    doc,
     target,
     originalRevisionIdSeed: 10,
     maxRanges: 1,
@@ -256,19 +324,15 @@ test("aligns an inserted endpoint after a preceding deleted paragraph", () => {
       target: targetProperties,
     }),
   });
-  expect(result.status).toBe("matched");
-  if (result.status !== "matched") return;
-  const pending = state.apply(result.transaction);
-  expect(resolve({ state: pending, mode: "accept" }).doc.eq(target)).toBe(true);
-  expect(
-    resolve({ state: pending, mode: "reject" }).doc.eq(
-      documentWith(
-        paragraph("Removed"),
-        paragraph("Before"),
-        paragraph("After"),
-      ),
+  expectReviewed({
+    document: pending,
+    accepted: target,
+    rejected: documentWith(
+      paragraph("Removed"),
+      paragraph("Before"),
+      paragraph("After"),
     ),
-  ).toBe(true);
+  });
 });
 
 test("stages retained endpoint properties alongside an inline text revision", () => {
@@ -280,18 +344,13 @@ test("stages retained endpoint properties alongside an inline text revision", ()
     revisionId: 5,
     author: "Compare",
   });
-  const state = EditorState.create({
-    schema,
-    doc: documentWith(
-      schema.node(
-        "paragraph",
-        {
-          _sectionProperties: { sectionStart: "nextPage", marginLeft: 720 },
-        },
-        [schema.text("Old", [deletion]), schema.text("New", [insertion])],
-      ),
-    ),
-  });
+  const previous = { sectionStart: "nextPage", marginLeft: 720 };
+  const doc = documentWith(
+    schema.node("paragraph", { _sectionProperties: previous }, [
+      schema.text("Old", [deletion]),
+      schema.text("New", [insertion]),
+    ]),
+  );
   const target = documentWith(
     schema.node(
       "paragraph",
@@ -301,8 +360,8 @@ test("stages retained endpoint properties alongside an inline text revision", ()
       schema.text("New"),
     ),
   );
-  const result = stageSectionBoundaryProperties({
-    state,
+  const pending = stage({
+    doc,
     target,
     originalRevisionIdSeed: 10,
     revisionStamp: { idSeed: 20, date: "2026-09-13T00:00:00.000Z" },
@@ -314,14 +373,9 @@ test("stages retained endpoint properties alongside an inline text revision", ()
       return { kind, previous: current, target: targetProperties };
     },
   });
-  expect(result.status).toBe("matched");
-  if (result.status !== "matched") return;
-  const pending = state.apply(result.transaction);
-  expect(resolve({ state: pending, mode: "accept" }).doc.eq(target)).toBe(true);
-  const rejected = resolve({ state: pending, mode: "reject" }).doc;
-  expect(rejected.firstChild?.textContent).toBe("Old");
-  expect(rejected.firstChild?.attrs["_sectionProperties"]).toEqual({
-    sectionStart: "nextPage",
-    marginLeft: 720,
+  expectReviewed({
+    document: pending,
+    accepted: target,
+    rejected: documentWith(paragraph("Old", previous)),
   });
 });
