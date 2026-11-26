@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 
 import type {
   Document,
+  HeaderFooter,
   Paragraph,
   ParagraphContent,
   TableCell,
@@ -78,9 +79,14 @@ test("proposal ownership is story-local and includes nested revision owners", ()
     },
     { type: "insertion", info: info(3), content: [run("ordinary")] },
   ]);
-  const { document: header } = documentOf([
+  const { content } = documentOf([
     { type: "insertion", info: info(1, "header"), content: [run("header")] },
-  ]).package;
+  ]).package.document;
+  const header = {
+    type: "header",
+    hdrFtrType: "default",
+    content,
+  } as const satisfies HeaderFooter;
   const document = {
     package: { ...body.package, headers: new Map([["rId1", header]]) },
   };
