@@ -13,7 +13,7 @@ import { cloneDocumentWithParagraphPropertySources } from "../docx/paragraphProp
 import { createDocx } from "../docx/rezip";
 import { paragraph, run } from "../docx/server/build";
 import { fromMarkdown } from "../markdown/fromMarkdown";
-import { CANONICAL_GAP, CANONICAL_RULE } from "../types/canonicalCapabilities";
+import { CANONICAL_RULE } from "../types/canonicalCapabilities";
 import type { BlockContent, Insertion } from "../types/document";
 import { FolioDocxReviewer, getFolioDocxComparisonAccess } from "./headless";
 
@@ -148,9 +148,7 @@ const firstSession = (observations: readonly Observation[]) => {
 };
 const expectRefusal = (
   action: () => unknown,
-  ground:
-    | { rule: typeof CANONICAL_RULE.contentControlLock }
-    | { gap: typeof CANONICAL_GAP.publicHeadlessSession },
+  ground: { rule: typeof CANONICAL_RULE.contentControlLock },
 ) => {
   let thrown: unknown;
   try {

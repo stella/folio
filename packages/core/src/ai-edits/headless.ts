@@ -138,8 +138,10 @@ import { schema } from "../prosemirror/schema";
 import { sectionPropertiesOf } from "../prosemirror/sectionCarrier";
 import { getSuggestions } from "../prosemirror/suggestionQueries";
 import {
+  CANONICAL_CONDITION,
   CANONICAL_GAP,
   CANONICAL_RULE,
+  type CanonicalCondition,
   type HeadlessReviewerSession,
 } from "../types/canonicalCapabilities";
 import type { Comment } from "../types/content";
@@ -330,12 +332,26 @@ const canonicalOpStory = (story: FolioEditableDocumentStoryHandle): OpStory => {
   }
 };
 
-/** The refusal of a canonical reviewer for what it cannot do on the session yet. */
+/**
+ * The refusal of a canonical reviewer for a staged suggestion the session
+ * left pending: the suggestion's resolution refused without stating why.
+ */
 const canonicalReviewerRefusal = (action: string): CanonicalSessionError =>
   new CanonicalSessionError({
     ground: { gap: CANONICAL_GAP.publicHeadlessSession },
     reason: "refused",
     message: `A canonical headless reviewer cannot ${action} yet.`,
+  });
+
+/** A reviewer request under one of the session's conditions. */
+const canonicalReviewerConditionRefusal = (
+  condition: CanonicalCondition,
+  message: string,
+): CanonicalSessionError =>
+  new CanonicalSessionError({
+    ground: { condition },
+    reason: "refused",
+    message,
   });
 
 /** Options for {@link FolioDocxReviewer.applyOperations}. */
@@ -1661,7 +1677,6 @@ export class FolioDocxReviewer {
   }
 
   /** Parse a `.docx` buffer into a reviewer. */
-  // canonical-gap: publicOps.headlessSession
   static fromBuffer(
     buffer: ArrayBuffer,
     options: FolioDocxReviewerOptions = {},
@@ -1753,8 +1768,12 @@ export class FolioDocxReviewer {
   }
 
   private canonicalComparisonAccess(): FolioDocxComparisonAccess {
-    const refuse = (action: string): never => {
-      throw canonicalReviewerRefusal(action);
+    // A caller that matches inline atoms passes the comparison's note labels.
+    const missingNoteLabels = (): never => {
+      throw canonicalReviewerConditionRefusal(
+        CANONICAL_CONDITION.invalidRequest,
+        "Inline atoms are matched with the comparison's note reference labels.",
+      );
     };
     return Object.freeze({
       // The session writes a story-final table's deletion in standard
@@ -1780,9 +1799,7 @@ export class FolioDocxReviewer {
             story: canonicalOpStory(targetStory),
             snapshot: targetSnapshot,
           },
-          noteReferenceLabels:
-            noteReferenceLabels ??
-            refuse("match inline atoms without the comparison's note labels"),
+          noteReferenceLabels: noteReferenceLabels ?? missingNoteLabels(),
           author: this.author,
         });
         if (result.status !== "matched") return result;
@@ -2540,9 +2557,12 @@ export class FolioDocxReviewer {
           idSeed: revisionStamp.idSeed,
         },
       });
+      // The session's input mints a paragraph for every cell, so a paired
+      // cell always holds one to address it by.
       if (matched.status === "unaddressable")
-        throw canonicalReviewerRefusal(
-          "change the properties of a table cell without a paragraph id",
+        throw canonicalReviewerConditionRefusal(
+          CANONICAL_CONDITION.internal,
+          "A paired table cell holds no paragraph to address it by.",
         );
       if (matched.operations.length > 0)
         this.commitOpsOnSession(matched.operations);
@@ -2575,7 +2595,8 @@ export class FolioDocxReviewer {
   /**
    * Resolve one editable story to its original or final state, its staged
    * suggestions with its other changes. A suggestion that reaches another
-   * story resolves only whole, through the suggestion methods. A lock that
+   * story resolves only in this one: its part in the others stays pending,
+   * for their own story resolution or the suggestion methods. A lock that
    * prevents any target change from resolving refuses before mutation.
    */
   resolveReviewedStory({
@@ -3042,7 +3063,11 @@ export class FolioDocxReviewer {
     )
       return null;
     const id = freshCommentId(document, session.idLease);
-    if (id.isErr()) throw canonicalReviewerRefusal("mint a comment id");
+    if (id.isErr())
+      throw canonicalReviewerConditionRefusal(
+        CANONICAL_CONDITION.idSpace,
+        "No comment id is left to give the reply.",
+      );
     const author = input.author ?? this.author;
     const date = input.date ?? new Date().toISOString();
     this.commitCommentOnSession(session, {
@@ -3231,13 +3256,15 @@ export class FolioDocxReviewer {
   /**
    * One pending suggestion through the session's suggestion intent: rejected
    * with the comments it proposes, or adopted as ordinary tracked changes by
-   * `author`. All stories belonging to the proposal publish together.
+   * `author`. All stories belonging to the proposal publish together, or
+   * only its part in `story`.
    */
   private resolveSuggestionOnSession(
     session: CanonicalSession,
     suggestionId: string,
     resolution: "accept" | "reject",
     author: string,
+    story?: OpStory,
   ): boolean {
     if (!this.activeSuggestionIds().has(suggestionId)) return false;
     const prepared = session.prepareSuggestion(this.state, {
@@ -3245,6 +3272,7 @@ export class FolioDocxReviewer {
       resolution,
       author,
       date: new Date().toISOString(),
+      ...(story === undefined ? {} : { story }),
     });
     // A proposal the engine will not resolve stays staged: `false`.
     if (prepared.isErr() && prepared.error.reason === "refused") return false;
@@ -3430,8 +3458,8 @@ export class FolioDocxReviewer {
    * A story holding staged suggestions resolved to `view`: its suggestions
    * resolve with its other changes, on a fork, and the fork's operations
    * land here as one commit, so a refusal leaves this reviewer as it was. A
-   * suggestion that reaches another story resolves only whole, so resolving
-   * one of its stories refuses.
+   * suggestion that reaches another story resolves here only in this story:
+   * its records in the others stay pending.
    */
   private resolveStoryWithSuggestions({
     story,
@@ -3443,18 +3471,14 @@ export class FolioDocxReviewer {
     staged: ReadonlySet<string>;
   }): boolean {
     const key = editableStoryKey(story);
+    const reaching = new Set<string>();
     for (const handle of this.listStoryHandlesInternal()) {
       if (editableStoryKey(handle) === key) continue;
       const other = this.getEditableStoryState(handle);
-      if (
-        other &&
-        [...this.pendingSuggestionIdsForStory(handle, other)].some(
-          (suggestionId) => staged.has(suggestionId),
-        )
-      )
-        throw canonicalReviewerRefusal(
-          "resolve one story of a suggestion that reaches another",
-        );
+      for (const suggestionId of other
+        ? this.pendingSuggestionIdsForStory(handle, other)
+        : [])
+        if (staged.has(suggestionId)) reaching.add(suggestionId);
     }
     const copy = this.fork();
     const { session } = copy.engine;
@@ -3470,6 +3494,7 @@ export class FolioDocxReviewer {
           suggestionId,
           view === "final" ? "accept" : "reject",
           this.author,
+          reaching.has(suggestionId) ? canonicalOpStory(story) : undefined,
         );
       const after = copy.getEditableStoryState(story);
       if (after && copy.pendingSuggestionIdsForStory(story, after).size > 0)
@@ -3481,6 +3506,11 @@ export class FolioDocxReviewer {
       unsubscribe();
     }
     if (operations.length > 0) this.commitOpsOnSession(operations);
+    // The story holds none of them now; what restages is their other part.
+    this.pendingSuggestions.forgetStoryRecords({
+      story,
+      suggestionIds: reaching,
+    });
     return resolved;
   }
 

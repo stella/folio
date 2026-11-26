@@ -999,6 +999,39 @@ export class FolioPendingSuggestionRegistry {
   }
 
   /**
+   * Forget a story's records of suggestions resolved in that story alone.
+   * Their records in other stories stay, and so does a record that is the
+   * last one its suggestion has.
+   */
+  forgetStoryRecords({
+    story,
+    suggestionIds,
+  }: {
+    story: FolioDocumentStoryHandle;
+    suggestionIds: ReadonlySet<string>;
+  }): void {
+    const storyKey = canonicalJson(story);
+    const recordedElsewhere = new Set(
+      [...this.records.values()].flatMap(({ suggestionId, story: other }) =>
+        canonicalJson(other) === storyKey ? [] : [suggestionId],
+      ),
+    );
+    for (const [key, record] of this.records)
+      if (
+        canonicalJson(record.story) === storyKey &&
+        suggestionIds.has(record.suggestionId) &&
+        recordedElsewhere.has(record.suggestionId)
+      )
+        this.records.delete(key);
+    if (
+      ![...this.records.values()].some(
+        (record) => canonicalJson(record.story) === storyKey,
+      )
+    )
+      this.sourceFingerprints.delete(storyKey);
+  }
+
+  /**
    * Anchor every live record whose paragraph is gone from its story, a
    * resolution or an edit having removed it, where a save keeps its
    * suggestion: a split at its own paragraph mark, text proposals over the
