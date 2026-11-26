@@ -477,19 +477,6 @@ export type DocxTemplateStyle = {
 };
 
 // @public
-export type DocxTrackedChanges = {
-    insertions: number;
-    deletions: number;
-    moves: number;
-    paragraphMarks: number;
-    tableRows: number;
-    formattingChanges: number;
-    authors: string[];
-    first: string | null;
-    last: string | null;
-};
-
-// @public
 export type DocxTextEffect = "glow" | "shadow" | "reflection" | "textOutline" | "textFill" | "scene3d" | "props3d";
 
 // @public
@@ -508,6 +495,19 @@ export type DocxTextEffectOwner = {
 
 // @public
 export function docxToMarkdown(input: ArrayBuffer | Uint8Array, opts?: MarkdownOptions): Promise<string>;
+
+// @public
+export type DocxTrackedChanges = {
+    insertions: number;
+    deletions: number;
+    moves: number;
+    paragraphMarks: number;
+    tableRows: number;
+    formattingChanges: number;
+    authors: string[];
+    first: string | null;
+    last: string | null;
+};
 
 // @public
 export const endnote: (doc: import__stll_docx_core_model.Document, content: string | Paragraph[]) => Run;
