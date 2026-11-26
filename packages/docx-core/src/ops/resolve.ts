@@ -5146,6 +5146,22 @@ const resolveList = ({
       if (inner.edges.first !== undefined) edges.first = inner.edges.first + 1;
       if (inner.edges.last !== undefined) edges.last = inner.edges.last + 1;
       resolution.cutEdges.set(rebuilt, edges);
+      // A pending removal whose piece a resolved change inside it left cut at
+      // its edge keeps that cut as its own join there: rejecting it later
+      // joins the piece as resolving both at once does.
+      if (
+        (rebuilt.type === "deletion" || rebuilt.type === "moveFrom") &&
+        rebuilt.resolutionJoins !== undefined
+      ) {
+        const joins = rebuilt.resolutionJoins;
+        rebuilt = Object.assign({}, rebuilt, {
+          resolutionJoins: Object.assign({}, joins, {
+            before: Math.max(joins.before, inner.edges.first ?? 0),
+            after: Math.max(joins.after, inner.edges.last ?? 0),
+          }),
+        });
+        resolution.cutEdges.set(rebuilt, edges);
+      }
     }
     appendSource(rebuilt, index);
   }

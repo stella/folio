@@ -1696,6 +1696,96 @@ describe("tracked operations and their resolution", () => {
     assertExactModel(projectedWithCuts(atOnce), projectedWithCuts(oneByOne));
   });
 
+  test("L3: a pending deletion keeps the cut an insertion rejected inside it carried to its edge", () => {
+    // A bidi wrapper cut by a link inserted inside a deletion, the piece
+    // beyond it opening with an older insertion whose removal joins it back.
+    // Rejecting that insertion first, while the deletion still stands, leaves
+    // its cut on the deletion, so the pieces rejoin as rejecting it all at
+    // once does.
+    const bidi = (content: InlineNode[]): InlineNode => ({
+      type: "inlineWrapper",
+      kind: "bidi",
+      control: "embedding",
+      content,
+    });
+    const text = (value: string): InlineNode => ({
+      type: "run",
+      content: [{ type: "text", text: value }],
+    });
+    const deleted = { author: "C", date: "2026-03-04T05:00:01Z" };
+    const start: InlineNode = { type: "bookmarkStart", id: 1, name: "_Link" };
+    const tracked: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              paraId: "00000001",
+              content: [
+                bidi([
+                  text("a"),
+                  {
+                    type: "deletion",
+                    info: { id: 2, ...deleted },
+                    content: [text("a")],
+                    resolutionJoins: { before: 2, after: 0, remove: 0 },
+                  },
+                ]),
+                {
+                  type: "insertion",
+                  info: { id: 4, author: "C", date: "2026-03-04T05:00:03Z" },
+                  content: [
+                    {
+                      type: "hyperlink",
+                      rId: "rId9",
+                      href: "https://example.org",
+                      children: [start],
+                    },
+                  ],
+                  resolutionJoins: { before: 0, after: 0, remove: 0 },
+                },
+                {
+                  type: "deletion",
+                  info: { id: 3, ...deleted },
+                  content: [
+                    bidi([
+                      {
+                        type: "insertion",
+                        info: {
+                          id: 1,
+                          author: "A",
+                          date: "2026-03-04T05:00:00Z",
+                        },
+                        content: [text("aa")],
+                        resolutionJoins: { before: 0, after: 2, remove: 2 },
+                      },
+                      text("a"),
+                    ]),
+                  ],
+                  resolutionJoins: { before: 0, after: 0, remove: 0 },
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    const oneByOne = resolvedInTurn(
+      tracked,
+      [[1], [2, 3], [4]],
+      REVISION_DECISIONS.REJECT,
+    );
+    expect(oneByOne.package.document.content).toStrictEqual([
+      {
+        type: "paragraph",
+        paraId: "00000001",
+        content: [bidi([text("aa"), start, text("a")])],
+      },
+    ]);
+    const atOnce = resolved(tracked, [1, 2, 3, 4], REVISION_DECISIONS.REJECT);
+    assertExactModel(projectedWithCuts(atOnce), projectedWithCuts(oneByOne));
+  });
+
   test("L1: accepting a tracked operation's revisions gives the direct operation's result", () => {
     const law = (tally: Tally) =>
       fc.property(
