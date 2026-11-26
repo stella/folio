@@ -44,6 +44,15 @@ describe("applyTemplatePlan edge content", () => {
         p(`${r("Annex ")}<w:fldSimple w:instr=" AUTONUM "/>${r(" - Lists")}`),
       ].join(""),
     );
+    // The manifest says where the numbers stand that its text does not hold.
+    expect(
+      unwrap(await analyzeDocxBlocks(source)).blocks.map(
+        ({ text, selfNumbers }) => [text, selfNumbers],
+      ),
+    ).toEqual([
+      ["Annex  - Summary", [6]],
+      ["Annex  - Lists", [6]],
+    ]);
     const plan = await planFor({
       source,
       template,

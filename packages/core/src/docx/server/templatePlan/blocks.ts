@@ -279,6 +279,19 @@ const pageBreaksOf = ({ atoms }: ParagraphRead): number =>
       kind === "pageBreak" && wAttr(element, "type") === "page",
   ).length;
 
+/** Where in a paragraph's text its self-numbering fields stand. */
+const selfNumbersOf = ({ atoms }: ParagraphRead): number[] => {
+  const offsets: number[] = [];
+  let at = 0;
+  for (const { kind, text } of atoms) {
+    if (kind === "selfNumber") {
+      offsets.push(at);
+    }
+    at += text.length;
+  }
+  return offsets;
+};
+
 type AnalyzeStoryOptions = {
   container: XmlElement;
   resources: StoryResources;
@@ -357,6 +370,10 @@ export const analyzeStory = ({
       const pageBreaks = pageBreaksOf(read);
       if (pageBreaks > 0) {
         block.pageBreaks = pageBreaks;
+      }
+      const selfNumbers = selfNumbersOf(read);
+      if (selfNumbers.length > 0) {
+        block.selfNumbers = selfNumbers;
       }
       if (read.pageBreakBefore ?? style?.pPr?.pageBreakBefore === true) {
         block.pageBreakBefore = true;

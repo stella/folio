@@ -112,6 +112,13 @@ export type DocxBlock = {
    */
   pageBreaks?: number;
   /**
+   * Offsets in `text` at which the paragraph holds a field that numbers
+   * itself (`AUTONUM`, `AUTONUMLGL`, `AUTONUMOUT`), when it holds any. The
+   * number such a field prints is in no text: `Annex  - Summary` with one at
+   * offset 6 reads `Annex 1 - Summary` on the page.
+   */
+  selfNumbers?: number[];
+  /**
    * The paragraph starts on a new page by its own formatting or its
    * style's (`w:pageBreakBefore`). A plan carries it over with an item's
    * `pageBreakBefore`; no other direct formatting of a paragraph comes along.
