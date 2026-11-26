@@ -25,9 +25,10 @@ const BUDGETS = {
   // minified +1.3 kB, gzip +0.5 kB: a session opening a story aligns each
   // paragraph's text when it is first addressed. docxOps +3.8 kB, past the
   // room left: a pasted or dragged block container (content control, text
-  // box) is placed whole, with its notes and comments.
-  react: { minified: 3_751_500, gzip: 1_181_000, docxOps: 673_500 },
-  vue: { minified: 3_446_400, gzip: 1_077_000, docxOps: 673_600 },
+  // box) is placed whole, with its notes and comments. docxOps +6.5 kB: room
+  // again for ops correctness fixes; the ops measure about 674 kB.
+  react: { minified: 3_751_500, gzip: 1_181_000, docxOps: 680_000 },
+  vue: { minified: 3_446_400, gzip: 1_077_000, docxOps: 680_000 },
 } as const satisfies Record<Adapter, Metrics>;
 
 const HOST_PEERS = [
