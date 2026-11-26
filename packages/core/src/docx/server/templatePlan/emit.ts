@@ -590,6 +590,8 @@ export type ParagraphEmit = {
   instructionOf: (segment: ExpectedSegment) => string | null;
   /** Whether the paragraph's style binds a list that `numbering: null` must cancel. */
   styleBindsList: boolean;
+  /** The `w:sectPr` of the section the paragraph is the last of, or null. */
+  sectionXml: string | null;
 };
 
 /** Runs of a placed paragraph, inside its bookmark when it is a reference target. */
@@ -633,6 +635,10 @@ export const paragraphXml = (
     properties.push(
       `<${w}:numPr><${w}:numId ${w}:val="${NO_LIST_NUM_ID}"/></${w}:numPr>`,
     );
+  }
+  // A section's properties close the paragraph's.
+  if (emit.sectionXml !== null) {
+    properties.push(emit.sectionXml);
   }
   const runs = segmentsRunsXml(
     emit.paragraph.segments,

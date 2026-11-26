@@ -6,6 +6,7 @@ import { type NumberingMap, parseNumbering } from "../../numberingParser";
 import { parseSectionProperties } from "../../sectionParser";
 import { parseStylesPackage, type StyleMap } from "../../styleParser";
 import type { XmlElement } from "../../xmlParser";
+import { keepsShiftReturnSpacing } from "./builders";
 import { defaultsBaseline, type Emphasis } from "./emphasis";
 import {
   createLabelCounter,
@@ -42,6 +43,8 @@ import {
   readRawPart,
   wAttr,
   wChild,
+  wChildren,
+  wChildVal,
 } from "./xml";
 
 const BLOCK_HASH_LENGTH = 12;
@@ -84,6 +87,8 @@ type StoryResources = {
   /** The language the document defaults give every run, or null. */
   defaultLanguage: string | null;
   numbering: NumberingMap | null;
+  /** The alignment each paragraph style states for itself (`w:jc`). */
+  alignments?: ReadonlyMap<string, string>;
 };
 
 type OpenTable = {
@@ -121,6 +126,45 @@ const sectionOf = (sectPr: XmlElement, index: number): DocxSection => {
     },
     columns: properties.columnCount ?? 1,
   };
+};
+
+/** The alignment each style of a styles part states for itself (`w:jc`). */
+export const statedAlignments = (
+  stylesPath: string | null,
+  stylesXml: string | null,
+): Map<string, string> => {
+  const alignments = new Map<string, string>();
+  const part =
+    stylesPath === null || stylesXml === null
+      ? null
+      : readRawPart(stylesPath, stylesXml);
+  for (const style of wChildren(part?.root, "style")) {
+    const styleId = wAttr(style, "styleId");
+    const alignment = wChildVal(wChild(style, "pPr"), "jc");
+    if (styleId !== null && alignment !== null) {
+      alignments.set(styleId, alignment);
+    }
+  }
+  return alignments;
+};
+
+/** The alignment of the nearest style in the `basedOn` chain that states one. */
+export const styleAlignment = (
+  styleId: string | null,
+  styles: StyleMap,
+  stated: ReadonlyMap<string, string>,
+): string | null => {
+  const seen = new Set<string>();
+  let cursor: string | undefined = styleId ?? undefined;
+  while (cursor !== undefined && !seen.has(cursor)) {
+    seen.add(cursor);
+    const alignment = stated.get(cursor);
+    if (alignment !== undefined) {
+      return alignment;
+    }
+    cursor = styles.get(cursor)?.basedOn;
+  }
+  return null;
 };
 
 /**
@@ -238,6 +282,18 @@ export const analyzeStory = ({
       }
       if (read.hasSectionBreak) {
         block.endsSection = true;
+      }
+      const alignment =
+        read.alignment ??
+        (resources.alignments === undefined
+          ? null
+          : styleAlignment(
+              styleId ?? resources.defaultStyleId,
+              resources.styles,
+              resources.alignments,
+            ));
+      if (alignment !== null) {
+        block.alignment = alignment;
       }
       index += 1;
       const parent = tables.at(-1);
@@ -540,6 +596,7 @@ export const analyzeDocument = async (
     footnotesPath,
     endnotesPath,
     pkg.partPath("comments"),
+    pkg.partPath("settings"),
   ]) {
     // oxlint-disable-next-line no-await-in-loop -- serialized reads keep the archive budget exact
     const text = await readPartText(pkg, path);
@@ -554,6 +611,7 @@ export const analyzeDocument = async (
     footnotesXml = null,
     endnotesXml = null,
     commentsXml = null,
+    settingsXml = null,
   ] = texts;
 
   const read = Result.try({
@@ -579,6 +637,7 @@ export const analyzeDocument = async (
             stylesPackage?.styleDefinitions.docDefaults?.rPr?.language?.val ??
             null,
           numbering,
+          alignments: statedAlignments(stylesPath, stylesXml),
         },
       });
       const footnotes = analyzeNotes("footnotes", footnotesPath, footnotesXml);
@@ -629,6 +688,10 @@ export const analyzeDocument = async (
     sha256: pkg.sha256,
     blocks: story.topLevel.map(({ block }) => block),
     sections: storySections(story),
+    compat: {
+      doNotExpandShiftReturn:
+        settingsXml !== null && keepsShiftReturnSpacing(settingsXml),
+    },
     footnotes: noteList(footnotes),
     endnotes: noteList(endnotes),
     comments: countComments(commentsXml),

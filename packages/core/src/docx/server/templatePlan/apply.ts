@@ -18,6 +18,8 @@ import {
 } from "./blocks";
 import {
   freezeFields,
+  sectionPropertiesXml,
+  setKeepShiftReturnSpacing,
   setUpdateFieldsOnOpen,
   withoutContained,
 } from "./builders";
@@ -735,9 +737,42 @@ const writeOutput = async ({
     segment.kind === "reference"
       ? (instructions.get(segment.reference) ?? null)
       : null;
+  // Sections the plan ends are built from the template's last one. The
+  // first of them begins the document; when there is any, the body's own
+  // last section is a later one too.
+  const bodySection = wChild(template.body, "sectPr");
+  const sectionEnds = resolved.items.flatMap((item) =>
+    item.kind === "paragraph" && item.paragraph.endsSection !== null
+      ? [item.paragraph]
+      : [],
+  );
+  const sectionXmlOf = new Map<ResolvedParagraph, string>();
+  for (const [position, paragraph] of sectionEnds.entries()) {
+    const section = paragraph.endsSection;
+    const xml =
+      bodySection === null || section === null
+        ? null
+        : sectionPropertiesXml(
+            template.document.xml,
+            bodySection,
+            documentContext.prefixes.w,
+            {
+              first: position === 0,
+              page: section.page,
+              start: position === 0 ? null : (section.start ?? "nextPage"),
+            },
+          );
+    if (xml === null) {
+      return Result.err(
+        unreadable(pkg.documentPath, "A section could not be built."),
+      );
+    }
+    sectionXmlOf.set(paragraph, xml);
+  }
   const emitOf = (paragraph: ResolvedParagraph): ParagraphEmit => ({
     paragraph,
     bookmark: resolved.bookmarks.get(paragraph),
+    sectionXml: sectionXmlOf.get(paragraph) ?? null,
     instructionOf,
     styleBindsList:
       styleNumbering(
@@ -784,7 +819,6 @@ const writeOutput = async ({
     templateSplices.push({ start, end: inner.end, newXml: content.value });
     replaced.push({ start, end: inner.end });
   }
-  const bodySection = wChild(template.body, "sectPr");
   const keptElements = [
     ...resolved.keptTemplateBlocks.map(({ element }) => element),
     ...resolved.items.flatMap((item) =>
@@ -825,6 +859,9 @@ const writeOutput = async ({
       case "paragraph":
         xml = paragraphXml(emitOf(item.paragraph), documentContext);
         break;
+      case "separator":
+        xml = Result.ok(`<${documentContext.prefixes.w}:p/>`);
+        break;
       case "table":
         xml = tableXml(
           {
@@ -849,7 +886,23 @@ const writeOutput = async ({
     body.push(xml.value);
   }
   if (bodySection !== null) {
-    const section = keptXml(bodySection);
+    const { lastSection } = plan;
+    const split = sectionEnds.length > 0 || lastSection !== undefined;
+    const rebuilt = split
+      ? sectionPropertiesXml(
+          template.document.xml,
+          bodySection,
+          documentContext.prefixes.w,
+          {
+            first: sectionEnds.length === 0,
+            page: lastSection?.page,
+            start:
+              sectionEnds.length === 0 ? null : (lastSection?.start ?? null),
+          },
+        )
+      : null;
+    const section =
+      rebuilt === null ? keptXml(bodySection) : Result.ok(rebuilt);
     if (Result.isError(section)) {
       return section;
     }
@@ -1076,6 +1129,37 @@ const writeOutput = async ({
       if (settings !== settingsXml.value) {
         parts.set(settingsPath, settings);
       }
+    }
+  }
+
+  if (plan.compat?.doNotExpandShiftReturn === true) {
+    const settingsPath = pkg.partPath("settings");
+    // The settings as written so far: update-on-open may have changed them.
+    const written = settingsPath === null ? undefined : parts.get(settingsPath);
+    const settingsXml =
+      typeof written === "string"
+        ? Result.ok(written)
+        : await readTemplateText(settingsPath);
+    if (Result.isError(settingsXml)) {
+      return settingsXml;
+    }
+    if (settingsPath === null || settingsXml.value === null) {
+      return Result.err(
+        new TemplatePlanError({
+          code: "part-missing",
+          message:
+            "The template has no settings part to set a compatibility setting in.",
+        }),
+      );
+    }
+    const settings = setKeepShiftReturnSpacing(settingsXml.value);
+    if (settings === null) {
+      return Result.err(
+        unreadable(settingsPath, "The settings part could not be updated."),
+      );
+    }
+    if (settings !== settingsXml.value) {
+      parts.set(settingsPath, settings);
     }
   }
 

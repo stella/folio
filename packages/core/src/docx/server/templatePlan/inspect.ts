@@ -6,7 +6,9 @@ import { parseSectionProperties } from "../../sectionParser";
 import {
   type AnalyzedDocument,
   analyzeDocument,
+  statedAlignments,
   storySections,
+  styleAlignment,
   styleOutlineLevel,
 } from "./blocks";
 import { styleNumbering } from "./labels";
@@ -38,30 +40,9 @@ import {
   wAttr,
   wChild,
   wChildren,
-  wChildVal,
 } from "./xml";
 
 const DEFAULT_LEVEL_START = 1;
-
-/** The `w:jc` each style of the styles part states itself, by style id. */
-const statedAlignments = ({
-  stylesPath,
-  stylesXml,
-}: AnalyzedDocument): Map<string, string> => {
-  const alignments = new Map<string, string>();
-  const part =
-    stylesPath === null || stylesXml === null
-      ? null
-      : readRawPart(stylesPath, stylesXml);
-  for (const style of wChildren(part?.root, "style")) {
-    const styleId = wAttr(style, "styleId");
-    const alignment = wChildVal(wChild(style, "pPr"), "jc");
-    if (styleId !== null && alignment !== null) {
-      alignments.set(styleId, alignment);
-    }
-  }
-  return alignments;
-};
 
 type LevelIndent = DocxTemplateNumberingLevel["indent"];
 
@@ -102,21 +83,7 @@ const NO_INDENT: LevelIndent = {
 
 const inspectStyles = (analyzed: AnalyzedDocument): DocxTemplateStyle[] => {
   const { styles, numbering } = analyzed;
-  const stated = statedAlignments(analyzed);
-  /** The alignment of the nearest style in the `basedOn` chain that states one. */
-  const alignmentOf = (styleId: string): string | null => {
-    const seen = new Set<string>();
-    let cursor: string | undefined = styleId;
-    while (cursor !== undefined && !seen.has(cursor)) {
-      seen.add(cursor);
-      const alignment = stated.get(cursor);
-      if (alignment !== undefined) {
-        return alignment;
-      }
-      cursor = styles.get(cursor)?.basedOn;
-    }
-    return null;
-  };
+  const stated = statedAlignments(analyzed.stylesPath, analyzed.stylesXml);
   return [...styles.values()].map((style) => {
     const bound = styleNumbering(style.styleId, styles, numbering);
     return {
@@ -129,7 +96,7 @@ const inspectStyles = (analyzed: AnalyzedDocument): DocxTemplateStyle[] => {
           ? { numId: bound.numId, ilvl: bound.ilvl ?? 0 }
           : null,
       outlineLvl: styleOutlineLevel(style),
-      alignment: alignmentOf(style.styleId),
+      alignment: styleAlignment(style.styleId, styles, stated),
       isDefault: style.default === true,
     };
   });

@@ -31,7 +31,12 @@ import {
   analyzeDocument,
   type AnalyzedStory,
 } from "./blocks";
-import { applyRefCaseFormat, fieldBookmarkOf, refCaseFormat } from "./builders";
+import {
+  applyRefCaseFormat,
+  fieldBookmarkOf,
+  keepsShiftReturnSpacing,
+  refCaseFormat,
+} from "./builders";
 import {
   linkAddress,
   linkAddressKey,
@@ -79,6 +84,7 @@ import {
 } from "./story";
 import type {
   ApplyTemplatePlanOptions,
+  DocxSection,
   TemplatePlan,
   TemplatePlanBlockResult,
   TemplatePlanError,
@@ -87,6 +93,7 @@ import type {
   TemplatePlanNoteCounts,
   TemplatePlanReferenceResult,
   TemplatePlanReport,
+  TemplatePlanSectionPage,
   TemplatePlanSpanCounts,
   VerifyTemplatePlanOutputArgs,
 } from "./types";
@@ -423,6 +430,7 @@ type StatedProperties = {
   numId: number | null;
   ilvl: number | null;
   pageBreakBefore: boolean;
+  endsSection: boolean;
 };
 
 const statedProperties = (paragraph: XmlElement): StatedProperties => {
@@ -434,6 +442,7 @@ const statedProperties = (paragraph: XmlElement): StatedProperties => {
     ilvl: integerOrNull(wChildVal(numbering, "ilvl")),
     // An element that is there and switched off starts no page.
     pageBreakBefore: toggleOf(wChild(properties, "pageBreakBefore")) === true,
+    endsSection: wChild(properties, "sectPr") !== null,
   };
 };
 
@@ -536,12 +545,14 @@ export const reportTemplatePlanOutput = async ({
       return statedProperties(slot.element);
     }
     const { styleId, numbering, pageBreakBefore } = paragraph;
+    const endsSection = paragraph.endsSection !== null;
     if (numbering.kind === "direct") {
       return {
         styleId,
         numId: numbering.numId,
         ilvl: numbering.ilvl,
         pageBreakBefore,
+        endsSection,
       };
     }
     const cancelsList =
@@ -556,6 +567,7 @@ export const reportTemplatePlanOutput = async ({
       numId: cancelsList ? 0 : null,
       ilvl: null,
       pageBreakBefore,
+      endsSection,
     };
   };
   const checkProperties = (
@@ -583,6 +595,15 @@ export const reportTemplatePlanOutput = async ({
         message: planned.pageBreakBefore
           ? `Block ${blockId} does not start the new page the plan gives it.`
           : `Block ${blockId} starts a new page the plan does not give it.`,
+        blockId,
+      });
+    }
+    if (stated.endsSection !== planned.endsSection) {
+      issues.push({
+        code: "section-mismatch",
+        message: planned.endsSection
+          ? `Block ${blockId} does not end the section the plan gives it.`
+          : `Block ${blockId} ends a section the plan does not give it.`,
         blockId,
       });
     }
@@ -720,6 +741,7 @@ export const reportTemplatePlanOutput = async ({
             return (
               before.styleId === after.styleId &&
               before.pageBreakBefore === after.pageBreakBefore &&
+              before.endsSection === after.endsSection &&
               before.numId === after.numId &&
               before.ilvl === after.ilvl &&
               sameReading(was, is) &&
@@ -746,6 +768,15 @@ export const reportTemplatePlanOutput = async ({
       }
       case "paragraph":
         assign(item.paragraph, block);
+        break;
+      case "separator":
+        if (
+          block?.read === null ||
+          block?.read === undefined ||
+          block.read.atoms.length > 0
+        ) {
+          missing("An empty paragraph that parts two tables is not in place.");
+        }
         break;
       case "slot":
         assign(item.paragraph, block);
@@ -777,6 +808,41 @@ export const reportTemplatePlanOutput = async ({
     missing(
       `The plan places ${resolved.items.length} block(s), the output holds ${outputTopLevel.length}.`,
     );
+  }
+
+  // A section the plan describes has the page it describes.
+  const pageIssue = (
+    page: TemplatePlanSectionPage | undefined,
+    section: DocxSection | undefined,
+  ): boolean =>
+    page !== undefined &&
+    (section === undefined ||
+      section.orientation !== page.orientation ||
+      section.size.width !== page.width ||
+      section.size.height !== page.height ||
+      (page.margins !== undefined &&
+        (section.margins.top !== page.margins.top ||
+          section.margins.right !== page.margins.right ||
+          section.margins.bottom !== page.margins.bottom ||
+          section.margins.left !== page.margins.left)));
+  for (const [paragraph, block] of outputOf) {
+    if (
+      pageIssue(
+        paragraph.endsSection?.page,
+        out.manifest.sections[block.block.sectionIndex],
+      )
+    ) {
+      issues.push({
+        code: "section-mismatch",
+        message: `The section block ${paragraph.parts.at(0)?.block.block.id ?? "?"} ends does not have the page the plan gives it.`,
+      });
+    }
+  }
+  if (pageIssue(plan.lastSection?.page, out.manifest.sections.at(-1))) {
+    issues.push({
+      code: "section-mismatch",
+      message: "The last section does not have the page the plan gives it.",
+    });
   }
 
   // Text, emphasis and objects of every placed paragraph.
@@ -1399,6 +1465,16 @@ export const reportTemplatePlanOutput = async ({
       `${nestedUnfrozen} field(s) of a frozen kind sit inside another field's code and stay live.`,
     );
   }
+  if (
+    plan.compat?.doNotExpandShiftReturn === true &&
+    (settingsXml.value === null || !keepsShiftReturnSpacing(settingsXml.value))
+  ) {
+    issues.push({
+      code: "compat-mismatch",
+      message:
+        "The compatibility setting the plan switches on is not on in the output.",
+    });
+  }
   const updateOnOpen = plan.fields?.updateOnOpen;
   if (updateOnOpen !== undefined && updateOnOpen !== updatesOnOpen) {
     issues.push({
@@ -1504,6 +1580,9 @@ export const reportTemplatePlanOutput = async ({
     labelLost: 0,
     labelAsText: 0,
     pageStarts: 0,
+    sectionEnds: 0,
+    tableSeparators: resolved.items.filter(({ kind }) => kind === "separator")
+      .length,
   };
   const tables = new Map<string, TemplatePlanBlockResult>();
   for (const block of source.story.order) {
@@ -1569,6 +1648,9 @@ export const reportTemplatePlanOutput = async ({
     }
     if (leads && paragraph?.pageBreakBefore === true) {
       counts.pageStarts += 1;
+    }
+    if (leads && paragraph !== undefined && paragraph.endsSection !== null) {
+      counts.sectionEnds += 1;
     }
     if (text === "identical") {
       counts.textIdentical += 1;

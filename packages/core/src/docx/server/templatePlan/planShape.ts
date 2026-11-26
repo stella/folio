@@ -98,6 +98,46 @@ const numberingIssue = (value: unknown, where: string): string | null => {
   return null;
 };
 
+const SECTION_STARTS = new Set(["nextPage", "evenPage", "oddPage"]);
+const ORIENTATIONS = new Set(["portrait", "landscape"]);
+const isTwips = (value: unknown): boolean =>
+  typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+
+/** Why `section` is not a section of a plan, or null when it is one. */
+const sectionIssue = (section: unknown, where: string): string | null => {
+  if (section === undefined) {
+    return null;
+  }
+  if (!isObject(section)) {
+    return `${where} describes a malformed section.`;
+  }
+  const { page, start } = section;
+  if (start !== undefined && !(isString(start) && SECTION_STARTS.has(start))) {
+    return `${where} names an unknown section start.`;
+  }
+  if (page === undefined) {
+    return null;
+  }
+  if (
+    !isObject(page) ||
+    !(isString(page["orientation"]) && ORIENTATIONS.has(page["orientation"])) ||
+    !isTwips(page["width"]) ||
+    !isTwips(page["height"]) ||
+    page["width"] === 0 ||
+    page["height"] === 0
+  ) {
+    return `${where} describes a malformed page.`;
+  }
+  const margins = page["margins"];
+  return margins === undefined ||
+    (isObject(margins) &&
+      ["top", "right", "bottom", "left"].every((side) =>
+        isTwips(margins[side]),
+      ))
+    ? null
+    : `${where} describes malformed page margins.`;
+};
+
 const sourceItemIssue = (item: Json, where: string): string | null => {
   if (!isString(item["blockId"]) || !isString(item["hash"])) {
     return `${where} names no source block and hash.`;
@@ -115,6 +155,10 @@ const sourceItemIssue = (item: Json, where: string): string | null => {
   const merge = item["mergeNext"];
   if (merge !== undefined && !(isString(merge) && MERGES.has(merge))) {
     return `${where} names an unknown merge.`;
+  }
+  const section = sectionIssue(item["endsSection"], where);
+  if (section !== null) {
+    return section;
   }
   const numbering = numberingIssue(item["numbering"], where);
   if (numbering !== null) {
@@ -340,6 +384,15 @@ const fieldsIssue = (fields: unknown): string | null => {
   return null;
 };
 
+const compatIssue = (compat: unknown): string | null => {
+  if (compat === undefined) {
+    return null;
+  }
+  return isObject(compat) && isOptionalBoolean(compat["doNotExpandShiftReturn"])
+    ? null
+    : "The plan's compatibility settings are malformed.";
+};
+
 /** Why `plan` is not a version 1 template plan, or null when it is one. */
 export const planShapeIssue = (plan: unknown): string | null => {
   if (
@@ -355,6 +408,8 @@ export const planShapeIssue = (plan: unknown): string | null => {
     omitIssue(plan["omit"]) ??
     patchesIssue(plan["numberingPatches"]) ??
     spansIssue(plan) ??
-    fieldsIssue(plan["fields"])
+    fieldsIssue(plan["fields"]) ??
+    compatIssue(plan["compat"]) ??
+    sectionIssue(plan["lastSection"], "The plan's last section")
   );
 };

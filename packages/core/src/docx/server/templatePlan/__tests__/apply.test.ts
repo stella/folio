@@ -238,6 +238,8 @@ describe("applyTemplatePlan", () => {
         "HouseTable",
         "........................\t........................",
       ],
+      // The body may not end in a table: the writer closes it.
+      [null, null, ""],
     ]);
   });
 
@@ -259,6 +261,8 @@ describe("applyTemplatePlan", () => {
       labelLost: 0,
       labelAsText: 0,
       pageStarts: 0,
+      sectionEnds: 0,
+      tableSeparators: 1,
     });
     expect(
       report.blocks.map(({ blockId, disposition, text }) => [
@@ -563,7 +567,7 @@ describe("applyTemplatePlan slots", () => {
     const blocks = unwrap(await analyzeDocxBlocks(docx)).blocks;
     const document = (await readPart(docx, "word/document.xml")) ?? "";
 
-    expect(blocks.at(-1)?.text).toBe(
+    expect(blocks.at(-2)?.text).toBe(
       `${SOURCE_TEXT.mixed}\t........................`,
     );
     expect(

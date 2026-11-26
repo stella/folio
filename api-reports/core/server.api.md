@@ -301,6 +301,7 @@ export type DocxBlock = {
     pageBreaks?: number;
     pageBreakBefore?: true;
     endsSection?: true;
+    alignment?: string;
     cells?: DocxTableCell[];
     nested?: DocxBlock[];
 };
@@ -310,6 +311,7 @@ export type DocxBlockManifest = {
     sha256: string;
     blocks: DocxBlock[];
     sections: DocxSection[];
+    compat: DocxCompat;
     footnotes: DocxNote[];
     endnotes: DocxNote[];
     comments: number;
@@ -322,6 +324,11 @@ export type DocxBlockNumbering = {
     numId: number;
     ilvl: number;
     abstractNumId: number;
+};
+
+// @public
+export type DocxCompat = {
+    doNotExpandShiftReturn: boolean;
 };
 
 // @public (undocumented)
@@ -2138,6 +2145,10 @@ export type TemplatePlan = {
         freezeKinds?: string[];
         updateOnOpen?: boolean;
     };
+    compat?: {
+        doNotExpandShiftReturn?: boolean;
+    };
+    lastSection?: TemplatePlanSection;
 };
 
 // @public (undocumented)
@@ -2185,7 +2196,7 @@ export type TemplatePlanHighlight = {
 
 // @public (undocumented)
 export type TemplatePlanIssue = {
-    code: "text-mismatch" | "emphasis-mismatch" | "note-mismatch" | "block-missing" | "reference-broken" | "bookmark-dangling" | "field-unbalanced" | "relationship-dangling" | "note-dangling" | "numbering-dangling" | "style-dangling" | "style-mismatch" | "numbering-mismatch" | "page-start-mismatch" | "template-mismatch" | "prompting-field-left" | "field-not-frozen" | "update-fields-mismatch" | "conformance";
+    code: "text-mismatch" | "emphasis-mismatch" | "note-mismatch" | "block-missing" | "reference-broken" | "bookmark-dangling" | "field-unbalanced" | "relationship-dangling" | "note-dangling" | "numbering-dangling" | "style-dangling" | "style-mismatch" | "numbering-mismatch" | "page-start-mismatch" | "section-mismatch" | "template-mismatch" | "prompting-field-left" | "field-not-frozen" | "update-fields-mismatch" | "compat-mismatch" | "conformance";
     message: string;
     blockId?: string;
     part?: string;
@@ -2293,6 +2304,8 @@ export type TemplatePlanReport = {
         labelLost: number;
         labelAsText: number;
         pageStarts: number;
+        sectionEnds: number;
+        tableSeparators: number;
     };
     footnotes: TemplatePlanNoteCounts;
     endnotes: TemplatePlanNoteCounts;
@@ -2334,6 +2347,25 @@ export type TemplatePlanReport = {
     warnings: string[];
 };
 
+// @public
+export type TemplatePlanSection = {
+    page?: TemplatePlanSectionPage;
+    start?: "nextPage" | "evenPage" | "oddPage";
+};
+
+// @public
+export type TemplatePlanSectionPage = {
+    orientation: "portrait" | "landscape";
+    width: number;
+    height: number;
+    margins?: {
+        top: number;
+        right: number;
+        bottom: number;
+        left: number;
+    };
+};
+
 // @public (undocumented)
 export type TemplatePlanSourceItem = {
     kind: "source";
@@ -2345,6 +2377,7 @@ export type TemplatePlanSourceItem = {
     labelAsText?: boolean;
     mergeNext?: TemplatePlanMerge;
     pageBreakBefore?: boolean;
+    endsSection?: TemplatePlanSection;
     cellStyleId?: string;
     nested?: TemplatePlanNestedParagraph[];
 };
