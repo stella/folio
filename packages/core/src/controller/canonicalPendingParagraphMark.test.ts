@@ -45,7 +45,7 @@ const BY = 'w:date="2026-01-01T00:00:00Z"';
 /** A mark pending deletion: deleted, or added by one author and deleted by another. */
 const PENDING_MARKS = {
   deleted: `<w:del w:id="1" w:author="Reviewer" ${BY}/>`,
-  addedThenDeleted: `<w:ins w:id="2" w:author="Writer" ${BY}/><w:del w:id="1" w:author="Reviewer" ${BY}/>`,
+  addedThenDeleted: `<w:ins w:id="2" w:author="First Reviewer" ${BY}/><w:del w:id="1" w:author="Reviewer" ${BY}/>`,
 } as const;
 type PendingMark = keyof typeof PENDING_MARKS;
 
