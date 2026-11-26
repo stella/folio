@@ -57,6 +57,7 @@ import {
 } from "@stll/folio-core/controller/autocompleteSuggestion";
 import { afterCanonicalCompositionSettles } from "@stll/folio-core/controller/canonicalInputTimer";
 import type { CanonicalRoomCollaboration } from "@stll/folio-core/controller/canonicalRoomEditor";
+import { createDisplayListPainterLoader } from "@stll/folio-core/controller/deferredDisplayListPainter";
 import { DOCUMENT_CHANGE_NOTIFY_DELAY_MS } from "@stll/folio-core/controller/documentChangeNotification";
 import { createFolioEditor } from "@stll/folio-core/controller/folioEditor";
 import type {
@@ -73,7 +74,7 @@ import { CanonicalSessionRefusalError } from "@stll/folio-core/controller/hidden
 import type { HiddenEditorTransactionUpdate } from "@stll/folio-core/controller/hiddenEditorManager";
 import { createHyphenationReadiness } from "@stll/folio-core/controller/hyphenationReadiness";
 import { createLatestRequestGate } from "@stll/folio-core/controller/latestRequestGate";
-import { runLayoutPipeline as runLayoutPipelineCompute } from "@stll/folio-core/controller/layoutPipeline";
+import { runLayoutPipelineWithPainter as runLayoutPipelineCompute } from "@stll/folio-core/controller/layoutPipelineExecution";
 import type { LayoutRunOptions } from "@stll/folio-core/controller/layoutRunOptions";
 import {
   browserClock,
@@ -82,7 +83,10 @@ import {
 } from "@stll/folio-core/controller/layoutScheduler";
 import { createLayoutSession } from "@stll/folio-core/controller/layoutSession";
 import type { NoteStoryKey } from "@stll/folio-core/controller/noteEditorManager";
-import type { PageRendererName } from "@stll/folio-core/display-list/editor/pageRenderer";
+import {
+  PAGE_RENDERER,
+  type PageRendererName,
+} from "@stll/folio-core/display-list/editor/pageRenderer";
 import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import { allowsDirectDrawingEdit } from "@stll/folio-core/docx/imageRawXml";
 import { getFootnoteText } from "@stll/folio-core/docx/storyPlainText";
@@ -2309,8 +2313,46 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     // scheduler runs between a render and its effects has already laid out
     // inputs the layout-input effect below has not seen.
     const laidOutLayoutInputSignatureRef = useRef<string | null>(null);
+    const pageRendererRef = useRef(pageRenderer);
+    const displayListPainterLoaderRef = useRef<ReturnType<
+      typeof createDisplayListPainterLoader
+    > | null>(null);
+    const readDisplayListPainter = useCallback(() => {
+      displayListPainterLoaderRef.current ??= createDisplayListPainterLoader({
+        onReady: () => {
+          if (
+            pageRendererRef.current !== PAGE_RENDERER.displayList ||
+            !pagesContainerRef.current ||
+            pendingInitialFontWaitsRef.current.size > 0
+          )
+            return;
+          const state =
+            hiddenPMRef.current?.getView()?.state ??
+            readPrecomputedInitialStateRef.current();
+          if (state)
+            runLayoutPipelineRef.current(state, { reason: "layout-input" });
+        },
+        onError: (error) => {
+          if (
+            pagesContainerRef.current &&
+            pageRendererRef.current === PAGE_RENDERER.displayList
+          )
+            onErrorRef.current?.(error);
+        },
+      });
+      return displayListPainterLoaderRef.current();
+    }, []);
     const runLayoutPipeline = useCallback(
       (state: EditorState, options: LayoutRunOptions = {}) => {
+        const displayListPagePainter =
+          pageRenderer === PAGE_RENDERER.displayList
+            ? readDisplayListPainter()
+            : undefined;
+        if (
+          pageRenderer === PAGE_RENDERER.displayList &&
+          !displayListPagePainter
+        )
+          return;
         const outcome = runLayoutPipelineCompute(
           {
             contentWidth,
@@ -2320,7 +2362,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
             pageGap,
             showMarginGuides,
             marginGuideColor,
-            ...(pageRenderer === undefined ? {} : { pageRenderer }),
+            ...(displayListPagePainter ? { displayListPagePainter } : {}),
             syncCoordinator,
             headerContent,
             footerContent,
@@ -2386,6 +2428,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         showMarginGuides,
         marginGuideColor,
         pageRenderer,
+        readDisplayListPainter,
         syncCoordinator,
         headerContent,
         footerContent,
@@ -2418,7 +2461,8 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     const runLayoutPipelineRef = useRef(runLayoutPipeline);
     useLayoutEffect(() => {
       runLayoutPipelineRef.current = runLayoutPipeline;
-    }, [runLayoutPipeline]);
+      pageRendererRef.current = pageRenderer;
+    }, [runLayoutPipeline, pageRenderer]);
     /**
      * Lays out a layout-input change the initial font wait held back, once an
      * initial pass has painted and no wait is pending.
