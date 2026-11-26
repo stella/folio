@@ -293,7 +293,7 @@ test("aligns an inserted endpoint after a preceding deleted paragraph", () => {
     "paragraph",
     { pPrMark: { kind: "del", info: { id: 9, author: "Compare" } } },
     schema.text("Removed", [
-      schema.mark("deletion", { revisionId: 9, author: "Compare" }),
+      schema.mark("deletion", { revisionId: 8, author: "Compare" }),
     ]),
   );
   const inserted = schema.node("paragraph", {
