@@ -77,6 +77,11 @@ export type AtomRevision = {
   date: string | null;
   deleted?: string;
   mark?: true;
+  /**
+   * The insertion a deletion sits in: text one hand inserted and another
+   * deleted again. It reads in neither view and is on record in both.
+   */
+  within?: { author: string; date: string | null };
 };
 
 /**
@@ -664,9 +669,15 @@ const readInline = (
     } else if (REVISION_INCLUDED.has(name) || REVISION_EXCLUDED.has(name)) {
       state.trackedChanges += 1;
       const kept = state.keepsRevisions ? revisionOf(child, name) : null;
-      if (kept !== null && context.revision !== undefined) {
-        // A change inside a change: neither tag says both.
-        state.untaggedRevisions += 1;
+      const outer = context.revision;
+      if (kept !== null && outer !== undefined) {
+        // A deletion inside an insertion is tagged with both; any other
+        // change inside a change has no tag that says both.
+        if (kept.kind === "del" && outer.kind === "ins" && !outer.within) {
+          kept.within = { author: outer.author, date: outer.date };
+        } else {
+          state.untaggedRevisions += 1;
+        }
       }
       if (kept !== null) {
         readInline(child, walk, { ...context, revision: kept });

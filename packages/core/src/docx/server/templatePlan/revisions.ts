@@ -472,6 +472,109 @@ const summaryOf = (tally: Tally): DocxTrackedChanges => ({
  */
 export const DELETED_PARAGRAPH_MARK = "\uE000";
 
+/**
+ * The element a deleted table row is kept in by a reading that keeps
+ * tracked changes. The accepted view has no such row, so it may be no row
+ * of the table to the readers of blocks; in a namespace of its own it is
+ * none, and the writer and verification find it by this name.
+ */
+export const KEPT_DELETED_ROW_NAMESPACE = "urn:stll:folio:kept-deleted-row";
+const KEPT_DELETED_ROW = "keptDeletedRow";
+
+/** The row a kept-deleted-row element holds, or null for any other element. */
+export const keptDeletedRowOf = (element: XmlElement): XmlElement | null =>
+  element.namespaceUri === KEPT_DELETED_ROW_NAMESPACE
+    ? (elementChildren(element).find((child) => wName(child) === "tr") ?? null)
+    : null;
+
+/** The deletion a row's properties record, or null. */
+export const deletedRowMarkOf = (row: XmlElement): XmlElement | null =>
+  wChild(wChild(row, "trPr"), "del");
+
+/** The insertion a row's properties record, or null. */
+export const insertedRowMarkOf = (row: XmlElement): XmlElement | null =>
+  wChild(wChild(row, "trPr"), "ins");
+
+/** What a deleted row held: its cells' text, deleted text included, a tab
+ *  between cells and a line break between paragraphs. */
+export const rowTextOf = (row: XmlElement): string => {
+  const paragraphText = (paragraph: XmlElement): string => {
+    let text = "";
+    const stack = [...elementChildren(paragraph)].toReversed();
+    for (let next = stack.pop(); next !== undefined; next = stack.pop()) {
+      const name = wName(next);
+      if (name === "t" || name === "delText") {
+        text += (next.elements ?? [])
+          .map((node) => (node.type === "text" ? String(node.text ?? "") : ""))
+          .join("");
+      } else {
+        stack.push(...elementChildren(next).toReversed());
+      }
+    }
+    return text;
+  };
+  const cellText = (cell: XmlElement): string => {
+    const lines: string[] = [];
+    const stack = [...elementChildren(cell)].toReversed();
+    for (let next = stack.pop(); next !== undefined; next = stack.pop()) {
+      if (wName(next) === "p") {
+        lines.push(paragraphText(next));
+      } else {
+        stack.push(...elementChildren(next).toReversed());
+      }
+    }
+    return lines.join("\n");
+  };
+  const cells: string[] = [];
+  const stack = [...elementChildren(row)].toReversed();
+  for (let next = stack.pop(); next !== undefined; next = stack.pop()) {
+    if (wName(next) === "tc") {
+      cells.push(cellText(next));
+    } else if (wName(next) !== "trPr") {
+      stack.push(...elementChildren(next).toReversed());
+    }
+  }
+  return cells.join("\t");
+};
+
+/**
+ * The row revisions a table carries in the kept form, in order: an inserted
+ * row by the place it has among the table's rows, a deleted one by the
+ * place it was taken from and by its text; each with who made the change.
+ * Rows of a table nested in a cell are that table's.
+ */
+export const tableRowRevisions = (table: XmlElement): string[] => {
+  const out: string[] = [];
+  let rows = 0;
+  const by = (mark: XmlElement | null): string =>
+    `${wAttr(mark, "author") ?? ""}:${wAttr(mark, "date") ?? ""}`;
+  const visit = (container: XmlElement): void => {
+    for (const child of elementChildren(container)) {
+      const deleted = keptDeletedRowOf(child);
+      if (deleted !== null) {
+        out.push(
+          `${String(rows)}:del:${by(deletedRowMarkOf(deleted))}:${rowTextOf(deleted)}`,
+        );
+      } else if (wName(child) === "tr") {
+        const inserted = insertedRowMarkOf(child);
+        if (inserted !== null) {
+          out.push(`${String(rows)}:ins:${by(inserted)}`);
+        }
+        rows += 1;
+      } else if (wName(child) === "sdt") {
+        const content = wChild(child, "sdtContent");
+        if (content !== null) {
+          visit(content);
+        }
+      } else if (wName(child) === "customXml") {
+        visit(child);
+      }
+    }
+  };
+  visit(table);
+  return out;
+};
+
 const deletedMarkOf = (paragraph: XmlElement): XmlElement | null =>
   wChild(wChild(wChild(paragraph, "pPr"), "rPr"), "del");
 
@@ -525,6 +628,13 @@ const joinChildren = (walk: JoinWalk, container: XmlElement): string => {
     const between = walk.xml.slice(cursor, range.start);
     cursor = range.end;
     const source = walk.xml.slice(range.start, range.end);
+    if (wName(child) === "tr" && deletedRowMarkOf(child) !== null) {
+      // A deleted row is no row of the accepted view: it is set aside
+      // whole, where it stands, for the writer to put back.
+      release();
+      out += `${between}<kept:${KEPT_DELETED_ROW} xmlns:kept="${KEPT_DELETED_ROW_NAMESPACE}">${source}</kept:${KEPT_DELETED_ROW}>`;
+      continue;
+    }
     if (wName(child) !== "p") {
       release();
       out += between + joinElement(walk, child, source);

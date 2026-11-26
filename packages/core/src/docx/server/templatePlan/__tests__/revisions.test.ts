@@ -260,6 +260,20 @@ describe("a plan for one view of tracked changes", () => {
   });
 });
 
+/** The paragraph texts of a document in one view, cells included. */
+const viewTexts = async (
+  docx: Uint8Array,
+  view: TemplatePlanTrackedView,
+): Promise<string[]> => {
+  const flat = (blocks: readonly DocxBlock[]): DocxBlock[] =>
+    blocks.flatMap((block) => [block, ...flat(block.nested ?? [])]);
+  return flat(
+    unwrap(await analyzeDocxBlocks(docx, { trackedChanges: view })).blocks,
+  )
+    .filter(({ kind }) => kind === "paragraph")
+    .map(({ text }) => text);
+};
+
 describe("a plan that keeps the tracked changes of its source", () => {
   let template: Uint8Array;
   beforeAll(async () => {
@@ -376,8 +390,8 @@ describe("a plan that keeps the tracked changes of its source", () => {
         "no paragraph to join",
       ],
       [
-        `<w:tbl><w:tr><w:trPr><w:del w:id="8" ${BY}/></w:trPr><w:tc>${p(r("Row"))}</w:tc></w:tr></w:tbl>${p(r("After."))}`,
-        "table row",
+        `<w:tbl><w:tr><w:tc><w:tcPr><w:cellDel w:id="8" ${BY}/></w:tcPr>${p(r("Cell"))}</w:tc><w:tc>${p(r("Other"))}</w:tc></w:tr></w:tbl>${p(r("After."))}`,
+        "table cell",
       ],
       [
         p(
@@ -386,7 +400,9 @@ describe("a plan that keeps the tracked changes of its source", () => {
         "move",
       ],
       [
-        p(`${r("An ")}${ins(`${r("added ")}${del("old ", 7)}`)}${r("word.")}`),
+        p(
+          `${r("An ")}<w:del w:id="6" ${BY}>${ins(`<w:r><w:delText>old </w:delText></w:r>`, 7)}</w:del>${r("word.")}`,
+        ),
         "inside another change",
       ],
     ];
@@ -506,6 +522,109 @@ describe("a plan that keeps the tracked changes of its source", () => {
     expect(
       codeOf(await applyTemplatePlan({ source, template, plan: merged })),
     ).toBe("merge-invalid");
+  });
+
+  test("an inserted table row keeps its record and a deleted one is put back as deleted", async () => {
+    const cell = (inner: string): string => `<w:tc>${inner}</w:tc>`;
+    const source = await buildMinimalDocx(
+      [
+        "<w:tbl>",
+        `<w:tr>${cell(p(r("Kept")))}</w:tr>`,
+        `<w:tr><w:trPr><w:del w:id="20" ${BY_OTHER}/></w:trPr>${cell(marked(del("Gone", 21), "del"))}</w:tr>`,
+        `<w:tr><w:trPr><w:ins w:id="22" ${BY}/></w:trPr>${cell(marked(ins(r("New"), 23), "ins"))}</w:tr>`,
+        "</w:tbl>",
+        p(r("After.")),
+      ].join(""),
+    );
+    const plan = await keeping(source);
+    const { docx, report } = unwrap(
+      await applyTemplatePlan({ source, template, plan }),
+    );
+    const document = await partOf(docx, "word/document.xml");
+
+    expect(report.ok).toBe(true);
+    expect(document.match(/<w:tr>/gu)).toHaveLength(3);
+    expect(document).toMatch(
+      /<w:tr><w:trPr><w:del w:id="\d+" w:author="Second Author" w:date="2026-02-07T09:30:00Z"\/><\/w:trPr><w:tc><w:p><w:pPr><w:rPr><w:del [^>]*\/><\/w:rPr><\/w:pPr><w:del [^>]*><w:r><w:delText xml:space="preserve">Gone<\/w:delText><\/w:r><\/w:del><\/w:p><\/w:tc><\/w:tr>/u,
+    );
+    expect(document).toMatch(
+      /<w:tr><w:trPr><w:ins w:id="\d+" w:author="First Author" w:date="2026-01-05T10:00:00Z"\/><\/w:trPr>/u,
+    );
+    // Both readings of the output's table are the source's.
+    expect(
+      (await viewTexts(docx, "accept")).filter((line) =>
+        /Kept|Gone|New/u.test(line),
+      ),
+    ).toEqual(["Kept", "New"]);
+    expect(
+      (await viewTexts(docx, "reject")).filter((line) =>
+        /Kept|Gone|New/u.test(line),
+      ),
+    ).toEqual(["Kept", "Gone"]);
+    // Verification misses a deleted row that is gone or reworded, and an
+    // inserted row that lost its record.
+    for (const xml of [
+      document.replace(/<w:tr><w:trPr><w:del .*?<\/w:tr>/u, ""),
+      document.replace(">Gone<", ">Went<"),
+      document.replace(/<w:trPr><w:ins [^>]*\/><\/w:trPr>/u, ""),
+    ]) {
+      expect(xml).not.toBe(document);
+      const zip = await ZipArchive.read(docx);
+      zip.set("word/document.xml", xml);
+      expect(
+        (
+          await verifyFor({
+            source,
+            template,
+            output: await zip.generate(),
+            plan,
+          })
+        ).ok,
+      ).toBe(false);
+    }
+  });
+
+  test("text one hand inserted and another deleted again is on record as both", async () => {
+    const source = await buildMinimalDocx(
+      p(`${r("An ")}${ins(`${r("added ")}${del("old ", 7)}`)}${r("word.")}`),
+    );
+    const plan = await keeping(source, body);
+    const { docx, report } = unwrap(
+      await applyTemplatePlan({ source, template, plan }),
+    );
+    const document = await partOf(docx, "word/document.xml");
+
+    expect(report.ok).toBe(true);
+    expect(document).toMatch(
+      /<w:ins w:id="\d+" w:author="First Author" [^>]*><w:del w:id="\d+" w:author="Second Author" [^>]*><w:r><w:delText xml:space="preserve">old <\/w:delText><\/w:r><\/w:del><\/w:ins>/u,
+    );
+    // It reads in neither view.
+    expect(
+      (await viewTexts(docx, "accept")).filter((line) => line.includes("word")),
+    ).toEqual(["An added word."]);
+    expect(
+      (await viewTexts(docx, "reject")).filter((line) => line.includes("word")),
+    ).toEqual(["An word."]);
+    const zip = await ZipArchive.read(docx);
+    zip.set(
+      "word/document.xml",
+      document
+        .replace(
+          /<w:ins [^>]*>(<w:del [^>]*><w:r><w:delText xml:space="preserve">old )/u,
+          "$1",
+        )
+        .replace("</w:del></w:ins>", "</w:del>"),
+    );
+    expect(
+      (
+        await verifyFor({
+          source,
+          template,
+          output: await zip.generate(),
+          plan,
+        })
+      ).ok,
+    ).toBe(false);
   });
 
   test("a label that holds a change is not stripped", async () => {
