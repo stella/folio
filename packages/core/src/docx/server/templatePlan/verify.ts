@@ -1330,6 +1330,20 @@ export const reportTemplatePlanOutput = async ({
         );
       }
     }
+    const fonts = wChild(wChild(level, "rPr"), "rFonts");
+    if (
+      patch.font !== undefined &&
+      (["ascii", "hAnsi", "eastAsia", "cs"].some(
+        (name) => wAttr(fonts, name) !== patch.font,
+      ) ||
+        ["asciiTheme", "hAnsiTheme", "eastAsiaTheme", "cstheme"].some(
+          (name) => wAttr(fonts, name) !== null,
+        ))
+    ) {
+      numberingMismatch(
+        `Level ${patch.ilvl} of list definition ${patch.abstractNumId} is not set in the planned face.`,
+      );
+    }
     const indent = wChild(wChild(level, "pPr"), "ind");
     for (const [name, value] of Object.entries(patch.indent ?? {})) {
       if (twipsOrNull(wAttr(indent, name)) !== value) {

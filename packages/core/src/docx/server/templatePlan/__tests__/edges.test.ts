@@ -389,6 +389,117 @@ describe("applyTemplatePlan edge content", () => {
     ).toContainEqual(["numbering-mismatch", "word/numbering.xml"]);
   });
 
+  test("sets a level's label in a face and keeps its other run properties", async () => {
+    const base = await buildTemplate();
+    const numbering = (await readPart(base, "word/numbering.xml")) ?? "";
+    const indentOf = (ilvl: number): string =>
+      `<w:pPr><w:ind w:left="${(ilvl + 1) * 567}" w:hanging="567"/></w:pPr>`;
+    // Level 0 states run properties without a face, level 1 names a theme
+    // face, level 2 writes its run properties self-closed, level 3 has none.
+    const template = await replacePart(
+      base,
+      "word/numbering.xml",
+      numbering
+        .replace(
+          indentOf(0),
+          `${indentOf(0)}<w:rPr><w:rStyle w:val="Mark"/><w:b/></w:rPr>`,
+        )
+        .replace(
+          indentOf(1),
+          `${indentOf(1)}<w:rPr><w:rFonts w:asciiTheme="minorHAnsi" w:hAnsiTheme="minorHAnsi"/><w:sz w:val="18"/></w:rPr>`,
+        )
+        .replace(indentOf(2), `${indentOf(2)}<w:rPr/>`),
+    );
+    expect(template).not.toBe(base);
+    const source = await buildMinimalDocx(`${p(r("first"))}${p(r("second"))}`);
+    const plan = await planFor({
+      source,
+      template,
+      items: (ids) =>
+        ids.map(({ id, hash }) => ({
+          kind: "source",
+          blockId: id,
+          hash,
+          styleId: "HouseBody",
+          numbering: { numId: 1, ilvl: 3 },
+        })),
+      extra: {
+        numberingPatches: [
+          { abstractNumId: 0, ilvl: 0, font: "Courier New" },
+          { abstractNumId: 0, ilvl: 1, font: "Courier New" },
+          { abstractNumId: 0, ilvl: 2, font: "Courier New" },
+          {
+            abstractNumId: 0,
+            ilvl: 3,
+            numFmt: "bullet",
+            lvlText: "o",
+            font: "Courier New",
+          },
+        ],
+      },
+    });
+    const { docx, report } = unwrap(
+      await applyTemplatePlan({ source, template, plan }),
+    );
+    const patched = (await readPart(docx, "word/numbering.xml")) ?? "";
+    const face =
+      '<w:rFonts w:ascii="Courier New" w:hAnsi="Courier New" w:eastAsia="Courier New" w:cs="Courier New" w:hint="default"/>';
+
+    expect(report.ok).toBe(true);
+    // The face follows the character style; the weight stays.
+    expect(patched).toContain(
+      `<w:rPr><w:rStyle w:val="Mark"/>${face}<w:b/></w:rPr>`,
+    );
+    // A theme face would override the named one: it is replaced, the size stays.
+    expect(patched).toContain(`<w:rPr>${face}<w:sz w:val="18"/></w:rPr>`);
+    expect(patched).toContain(`${indentOf(2)}<w:rPr>${face}</w:rPr>`);
+    expect(patched).toContain(
+      `<w:numFmt w:val="bullet"/><w:pStyle w:val="HouseLetter"/><w:lvlText w:val="o"/><w:lvlJc w:val="left"/>${indentOf(3)}<w:rPr>${face}</w:rPr></w:lvl>`,
+    );
+    // Set in that face the mark reads as the letter it is, and says so.
+    expect(
+      unwrap(await analyzeDocxBlocks(docx)).blocks.map(
+        ({ label, numbering: listed }) => [label, listed?.bulletFont],
+      ),
+    ).toEqual([
+      ["o", "Courier New"],
+      ["o", "Courier New"],
+    ]);
+
+    // A face for one script only is not the planned face.
+    const mixed = patched.replace(
+      `${indentOf(2)}<w:rPr>${face}</w:rPr>`,
+      `${indentOf(2)}<w:rPr>${face.replace('w:eastAsia="Courier New"', 'w:eastAsia="Serif"')}</w:rPr>`,
+    );
+    expect(mixed).not.toBe(patched);
+    expect(
+      (
+        await verifyFor({
+          source,
+          template,
+          plan,
+          output: await replacePart(docx, "word/numbering.xml", mixed),
+        })
+      ).issues.map(({ code, part }) => [code, part]),
+    ).toContainEqual(["numbering-mismatch", "word/numbering.xml"]);
+
+    // An output whose level lost the face is not what was planned.
+    const reverted = patched.replace(
+      `<w:rPr>${face}</w:rPr></w:lvl>`,
+      "</w:lvl>",
+    );
+    expect(reverted).not.toBe(patched);
+    const revertedReport = await verifyFor({
+      source,
+      template,
+      plan,
+      output: await replacePart(docx, "word/numbering.xml", reverted),
+    });
+    expect(
+      revertedReport.issues.map(({ code, part }) => [code, part]),
+    ).toContainEqual(["numbering-mismatch", "word/numbering.xml"]);
+  });
+
   test("a line break behind a stripped label goes with it when the plan says so", async () => {
     const template = await buildTemplate();
     const source = await buildMinimalDocx(

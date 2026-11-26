@@ -306,6 +306,50 @@ const levelPropertiesXml = ({
   return `${part.xml.slice(range.start, at)}${indentXml}${part.xml.slice(at, range.end)}`;
 };
 
+type LevelFontOptions = {
+  part: RawPart;
+  level: XmlElement;
+  w: string;
+  font: string;
+};
+
+/**
+ * The `w:rPr` of a level with its label set in `font`. Whatever else the
+ * level's run properties state is kept; the face is named for every script
+ * a label is written in, and no theme face is left to override it.
+ */
+const levelRunPropertiesXml = ({
+  part,
+  level,
+  w,
+  font,
+}: LevelFontOptions): string | null => {
+  const face = escapeXmlAttribute(font);
+  const fontsXml = `<${w}:rFonts ${w}:ascii="${face}" ${w}:hAnsi="${face}" ${w}:eastAsia="${face}" ${w}:cs="${face}" ${w}:hint="default"/>`;
+  const properties = wChild(level, "rPr");
+  const range = properties === null ? null : rangeOf(properties);
+  if (properties === null || range === null) {
+    return `<${w}:rPr>${fontsXml}</${w}:rPr>`;
+  }
+  const existing = wChild(properties, "rFonts");
+  const existingRange = existing === null ? null : rangeOf(existing);
+  if (existingRange !== null) {
+    return sliceWithSplices(part.xml, range, [
+      { ...existingRange, newXml: fontsXml },
+    ]);
+  }
+  const inner = innerRangeOf(part.xml, properties);
+  if (inner === null) {
+    const name = properties.name ?? `${w}:rPr`;
+    return `${part.xml.slice(range.start, range.end - 2).trimEnd()}>${fontsXml}</${name}>`;
+  }
+  // `w:rFonts` follows only the character style in the schema's order.
+  const style = wChild(properties, "rStyle");
+  const styleRange = style === null ? null : rangeOf(style);
+  const at = styleRange?.end ?? inner.start;
+  return `${part.xml.slice(range.start, at)}${fontsXml}${part.xml.slice(at, range.end)}`;
+};
+
 type NumberingEdit = {
   patches: readonly TemplatePlanNumberingPatch[];
   mints: ResolvedPlan["mints"];
@@ -364,7 +408,11 @@ const editNumbering = (
       patch.indent === undefined
         ? undefined
         : levelPropertiesXml({ part, level, w, indent: patch.indent });
-    if (properties === null) {
+    const runProperties =
+      patch.font === undefined
+        ? undefined
+        : levelRunPropertiesXml({ part, level, w, font: patch.font });
+    if (properties === null || runProperties === null) {
       return Result.err(
         unreadable(part.path, "The numbering part could not be patched."),
       );
@@ -385,6 +433,7 @@ const editNumbering = (
           ? {}
           : { lvlText: valued("lvlText", patch.lvlText) }),
         ...(properties === undefined ? {} : { pPr: properties }),
+        ...(runProperties === undefined ? {} : { rPr: runProperties }),
       };
     const inner = innerRangeOf(part.xml, level);
     for (const [index, name] of LEVEL_CHILD_ORDER.entries()) {

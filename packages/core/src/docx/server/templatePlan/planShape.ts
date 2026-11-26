@@ -72,6 +72,13 @@ export const isPlainText = (text: string): boolean => {
   return true;
 };
 
+/** A font face as `w:rFonts` names one: plain text, not blank, of a sane length. */
+const isFontName = (value: unknown): boolean =>
+  isString(value) &&
+  value.trim() !== "" &&
+  value.length <= 64 &&
+  isPlainText(value);
+
 const numberingIssue = (value: unknown, where: string): string | null => {
   if (value === undefined || value === null) {
     return null;
@@ -336,8 +343,9 @@ const patchesIssue = (patches: unknown): string | null => {
       return `Two numbering patches change level ${String(patch["ilvl"])} of list definition ${String(patch["abstractNumId"])}.`;
     }
     seen.add(key);
-    const { numFmt, lvlText, start, suff, indent } = patch;
+    const { numFmt, lvlText, start, suff, indent, font } = patch;
     if (
+      (font !== undefined && !isFontName(font)) ||
       (numFmt !== undefined &&
         !(isString(numFmt) && NUMBER_FORMATS.has(numFmt))) ||
       (lvlText !== undefined && !(isString(lvlText) && isPlainText(lvlText))) ||
