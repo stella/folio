@@ -853,7 +853,11 @@ describe("independent table forward oracles", () => {
           const direct = applied(document, op);
           const pending = applyDocumentOp(document, {
             ...op,
-            revision: { id: 100_000, author: "Reviewer" },
+            revision: {
+              id: 100_000,
+              author: "Reviewer",
+              date: "2026-11-26T00:00:00Z",
+            },
             newIds: { revision: [100_001, 100_002, 100_003] },
           }).unwrap();
           const pendingTable = tableOf(pending.document);

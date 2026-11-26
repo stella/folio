@@ -1,6 +1,15 @@
 import { describe, expect, test } from "bun:test";
 
-import type { Table } from "../../types/document";
+import {
+  applyDocumentOp,
+  applyDocumentOps,
+  DOCUMENT_OP_TYPES,
+  type DocumentOp,
+  OP_STORIES,
+  REVISION_DECISIONS,
+} from "@stll/docx-core/ops";
+
+import type { Document, SdtProperties, Table } from "../../types/document";
 import { serializeTable } from "./tableSerializer";
 
 const serializeParagraph = (): string => "<w:p/>";
@@ -120,4 +129,146 @@ describe("serializeTable grid source", () => {
 
     expect(xml.match(/<w:gridCol\b/gu)).toHaveLength(3);
   });
+});
+
+describe("serializeTable shared content controls after edits", () => {
+  const control = { id: 4242, sdtType: "richText" } satisfies SdtProperties;
+  const wrapped = { contentControls: [control] };
+  const captureXml = '<w:proofErr w:type="spellStart"/>';
+  const first = "00000001";
+  const second = "00000002";
+  const outside = "00000003";
+  const inserted = "00000004";
+  const anchoredCell = (paraId: string) => ({
+    type: "tableCell" as const,
+    content: [{ type: "paragraph" as const, paraId, content: [] }],
+  });
+  const row = (paraId: string) => ({
+    type: "tableRow" as const,
+    cells: [anchoredCell(paraId)],
+  });
+  const xmlOf = (document: Document): string => {
+    const table = document.package.document.content.at(0);
+    if (table?.type !== "table") throw new Error("Expected fixture table.");
+    return serializeTable(
+      table,
+      ({ paraId }) => `<w:p w14:paraId="${paraId ?? ""}"/>`,
+    );
+  };
+  const applied = (document: Document, op: DocumentOp) => {
+    const result = applyDocumentOp(document, op);
+    if (result.isErr()) throw result.error;
+    return result.value;
+  };
+
+  for (const scope of ["row", "cell"] as const) {
+    test.each(["inside", "after"] as const)(
+      `${scope} insertion %s a shared control keeps the capture in one wrapper`,
+      (placement) => {
+        const at = placement === "inside" ? 1 : 2;
+        const preserved = {
+          children: [{ ...wrapped, index: at, xml: captureXml }],
+        };
+        const table: Table =
+          scope === "row"
+            ? {
+                type: "table",
+                preserved,
+                rows: [
+                  { ...row(first), ...wrapped },
+                  { ...row(second), ...wrapped },
+                  row(outside),
+                ],
+              }
+            : {
+                type: "table",
+                columnWidths: [500, 600, 700],
+                rows: [
+                  {
+                    type: "tableRow",
+                    preserved,
+                    cells: [
+                      { ...anchoredCell(first), ...wrapped },
+                      { ...anchoredCell(second), ...wrapped },
+                      anchoredCell(outside),
+                    ],
+                  },
+                ],
+              };
+        const baseline = {
+          package: { document: { content: [table] } },
+        } satisfies Document;
+        const target = { story: OP_STORIES.MAIN, blockId: first };
+        const operation =
+          scope === "row"
+            ? {
+                ...target,
+                type: DOCUMENT_OP_TYPES.INSERT_ROW,
+                at,
+                row: row(inserted),
+              }
+            : {
+                ...target,
+                type: DOCUMENT_OP_TYPES.INSERT_COLUMN,
+                column: at,
+                width: 800,
+                newBlockIds: [inserted],
+              };
+        const direct = applied(baseline, operation);
+        const tracked = applied(baseline, {
+          ...operation,
+          revision: {
+            id: 100,
+            author: "Reviewer",
+            date: "2026-11-26T00:00:00Z",
+          },
+          newIds: { revision: [101, 102, 103] },
+        });
+
+        for (const edit of [direct, tracked]) {
+          const xml = xmlOf(edit.document);
+          const wrapper = /<w:sdtContent>(.*?)<\/w:sdtContent>/u.exec(xml)?.[1];
+          expect(xml.match(/<w:sdt\b/gu)).toHaveLength(1);
+          if (wrapper === undefined) throw new Error("Expected SDT content.");
+          expect(wrapper).toContain(captureXml);
+          expect(wrapper).toContain(`w14:paraId="${first}"`);
+          expect(wrapper).toContain(`w14:paraId="${second}"`);
+          expect(wrapper).not.toContain(`w14:paraId="${outside}"`);
+          expect(xml).toContain(`w14:paraId="${inserted}"`);
+          expect(wrapper.includes(`w14:paraId="${inserted}"`)).toBe(
+            placement === "inside",
+          );
+
+          const undone = applyDocumentOps(edit.document, edit.inverse);
+          if (undone.isErr()) throw undone.error;
+          expect(xmlOf(undone.value.document)).toBe(xmlOf(baseline));
+        }
+
+        expect(xmlOf(tracked.document)).toContain(
+          scope === "row" ? '<w:ins w:id="100"' : '<w:cellIns w:id="100"',
+        );
+        const revisionIds = tracked.revisions;
+        if (revisionIds === undefined)
+          throw new Error("Expected revision ids.");
+        for (const decision of [
+          REVISION_DECISIONS.ACCEPT,
+          REVISION_DECISIONS.REJECT,
+        ]) {
+          const resolved = applied(tracked.document, {
+            type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+            story: OP_STORIES.MAIN,
+            revisionIds,
+            decision,
+          });
+          expect(xmlOf(resolved.document)).toBe(
+            xmlOf(
+              decision === REVISION_DECISIONS.ACCEPT
+                ? direct.document
+                : baseline,
+            ),
+          );
+        }
+      },
+    );
+  }
 });
