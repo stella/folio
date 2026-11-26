@@ -407,6 +407,51 @@ export type SectionRewrite = {
   page: TemplatePlanSectionPage | undefined;
   /** How the section begins; null keeps what the template states. */
   start: string | null;
+  /**
+   * Header and footer references the section takes over from the sections
+   * in front of it and does not state itself, as markup. Left out, the
+   * section is written with its own alone.
+   */
+  inherited?: readonly string[];
+};
+
+/**
+ * The header and footer references a body's last section takes over from
+ * the sections in front of it: a section that states no header of a kind
+ * shows the one of the section before. An output built from the last
+ * section alone would lose them, so they are stated on it. Each is the
+ * reference of the nearest earlier section that states that kind, as it is
+ * written in `xml`; kinds the last section states itself are left out.
+ */
+export const inheritedReferencesXml = (
+  xml: string,
+  body: XmlElement,
+  last: XmlElement,
+): string[] => {
+  const keyOf = (reference: XmlElement): string | null => {
+    const name = wName(reference);
+    return name === "headerReference" || name === "footerReference"
+      ? `${name}:${wAttr(reference, "type") ?? "default"}`
+      : null;
+  };
+  const referencesOf = (sectPr: XmlElement | null): [string, XmlElement][] =>
+    elementChildren(sectPr).flatMap((child) => {
+      const key = keyOf(child);
+      return key === null ? [] : [[key, child] as [string, XmlElement]];
+    });
+  const inEffect = new Map<string, XmlElement>();
+  for (const block of elementChildren(body)) {
+    const sectPr =
+      wName(block) === "p" ? wChild(wChild(block, "pPr"), "sectPr") : null;
+    for (const [key, reference] of referencesOf(sectPr)) {
+      inEffect.set(key, reference);
+    }
+  }
+  const own = new Set(referencesOf(last).map(([key]) => key));
+  return [...inEffect].flatMap(([key, reference]) => {
+    const range = own.has(key) ? null : rangeOf(reference);
+    return range === null ? [] : [xml.slice(range.start, range.end)];
+  });
 };
 
 /**
@@ -419,7 +464,7 @@ export const sectionPropertiesXml = (
   xml: string,
   sectPr: XmlElement,
   w: string,
-  { first, page, start }: SectionRewrite,
+  { first, page, start, inherited = [] }: SectionRewrite,
 ): string | null => {
   const attributes = (element: XmlElement, names: readonly string[]): string =>
     names
@@ -430,7 +475,8 @@ export const sectionPropertiesXml = (
       )
       .join("");
   const type = start === null ? "" : `<${w}:type ${w}:val="${start}"/>`;
-  const out: string[] = [];
+  // References stand first in a section's properties.
+  const out: string[] = [...inherited];
   let typeWritten = type === "";
   for (const child of elementChildren(sectPr)) {
     const name = wName(child);
