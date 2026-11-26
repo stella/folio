@@ -71,6 +71,12 @@ export type DocxBlockNumbering = {
    * stands for it (a font's `o` as much as a dot), and no designator.
    */
   bullet?: true;
+  /**
+   * The text face a bullet's mark is a character of, when the level names
+   * one: set in another face the mark is another shape, so a level that
+   * prints it elsewhere needs the face too.
+   */
+  bulletFont?: string;
 };
 
 export type DocxTableCell = {
@@ -430,6 +436,11 @@ export type TemplatePlanNumberingPatch = {
   lvlText?: string;
   start?: number;
   suff?: "tab" | "space" | "nothing";
+  /**
+   * The face the level's label is set in. Whatever else the level's run
+   * properties state is kept.
+   */
+  font?: string;
   /**
    * The paragraph indent the level gives, in twentieths of a point. A value
    * left out keeps what the level states; `hanging` and `firstLine` exclude

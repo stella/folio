@@ -491,6 +491,13 @@ describe("malformed plans", () => {
       }),
     ],
     [
+      "a blank face of a level",
+      (plan) => ({
+        ...plan,
+        numberingPatches: [{ abstractNumId: 0, ilvl: 0, font: " " }],
+      }),
+    ],
+    [
       "a negative start",
       (plan) => ({
         ...plan,

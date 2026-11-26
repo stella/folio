@@ -8,7 +8,8 @@ import type {
   ParagraphNumberingOverride,
 } from "@stll/docx-core/model";
 
-import type { Paragraph } from "../../../types/document";
+import type { ListRendering, Paragraph } from "../../../types/document";
+import { bulletMarkerFontName, bulletTextFace } from "../../bulletMarkers";
 import {
   computeListMarker,
   type ComputeListMarkerOptions,
@@ -61,6 +62,24 @@ const PLAIN_FORMATS: ReadonlySet<string> = new Set([
 ]);
 
 const LEVEL_PLACEHOLDER = /%([1-9])/gu;
+
+/**
+ * What a block says of a bullet level: that it is one, and the text face its
+ * mark is a character of. `mark` is the level's own text, before it is read
+ * as the glyph it paints.
+ */
+const bulletFacts = (
+  { isBullet, markerFormatting }: ListRendering,
+  mark: string,
+): Pick<DocxBlockNumbering, "bullet" | "bulletFont"> => {
+  if (!isBullet) {
+    return {};
+  }
+  const face = bulletTextFace(mark, bulletMarkerFontName(markerFormatting));
+  return face === undefined
+    ? { bullet: true }
+    : { bullet: true, bulletFont: face };
+};
 
 type AsTextOptions = {
   label: string;
@@ -371,7 +390,7 @@ export const createLabelCounter = ({
               numId: resolved.numId,
               ilvl: resolved.ilvl,
               abstractNumId,
-              ...(listRendering.isBullet ? { bullet: true as const } : {}),
+              ...bulletFacts(listRendering, template),
             };
       // A level whose run properties hide it counts and shows nothing.
       if (listRendering.markerHidden === true) {

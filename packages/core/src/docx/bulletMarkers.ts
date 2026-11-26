@@ -30,6 +30,22 @@ const isTextFontCharacter = (
   !isOoxmlSymbolFont(fontName);
 
 /**
+ * The text face a bullet level's mark is a character of, when it is one: the
+ * mark then looks as it does only in that face (the customary `o` of a
+ * monospace face). Undefined for a mark of a symbol face and for a level that
+ * names no face.
+ */
+export const bulletTextFace = (
+  bulletChar: string,
+  fontName: string | undefined,
+): string | undefined => {
+  const charCode = bulletChar.codePointAt(0);
+  return charCode !== undefined && isTextFontCharacter(charCode, fontName)
+    ? fontName
+    : undefined;
+};
+
+/**
  * Map a bullet level's `w:lvlText` to the character painted for it.
  *
  * `fontName` is the level's own `w:rFonts` face. When it is an ordinary text
