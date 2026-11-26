@@ -130,7 +130,7 @@ export {
   type DocumentPreset,
   type DocumentStyleSet,
 } from "@stll/folio-core/style-sets/types";
-export { createDocx } from "@stll/folio-core/docx/rezip";
+export { createDocx } from "@stll/folio-core/docx/createDocx";
 export type { Document } from "@stll/folio-core/types/document";
 export type { DocxCompatibility } from "@stll/folio-core/docx/compatibility";
 export {

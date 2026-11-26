@@ -77,10 +77,6 @@ import {
 } from "@stll/folio-core/controller/hiddenEditorApi";
 import { CanonicalSessionRefusalError } from "@stll/folio-core/controller/hiddenEditorManager";
 import type { NoteStoryKey } from "@stll/folio-core/controller/noteEditorManager";
-import {
-  canonicalSaveDiagnosticError,
-  serializeCanonicalSave,
-} from "@stll/folio-core/docx/canonicalSave";
 import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import { getCachedNumberingMap } from "@stll/folio-core/docx/numberingParser";
 import { findPageNumberAtEditorPosition } from "@stll/folio-core/layout-engine/pmPageIndex";
@@ -3453,6 +3449,8 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
           if (snapshot && editor) {
             const view = editor.getView();
             const editorState = view?.state;
+            const { canonicalSaveDiagnosticError, serializeCanonicalSave } =
+              await import("@stll/folio-core/docx/canonicalSave");
             const result = await serializeCanonicalSave({
               snapshot,
               options,
