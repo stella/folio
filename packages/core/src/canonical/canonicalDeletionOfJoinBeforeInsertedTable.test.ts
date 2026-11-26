@@ -23,7 +23,8 @@ const IDS = ["0000000A", "0000000B", "0000000C"] as const;
 const open = async (markdown: string) => {
   const document = fromMarkdown(markdown);
   document.package.document.content.forEach((block, index) => {
-    if (block.type === "paragraph") block.paraId = IDS[index];
+    const id = IDS[index];
+    if (block.type === "paragraph" && id !== undefined) block.paraId = id;
   });
   const prepared = await prepareCanonicalDocxInput(await createDocx(document));
   if (prepared.isErr()) throw prepared.error;
