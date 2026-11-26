@@ -850,3 +850,64 @@ describe("tracked whole table properties", () => {
     propertyTestTimeout(240_000),
   );
 });
+
+test(
+  "tables in a wrapper without a local paragraph resolve and undo at the outer anchor",
+  () => {
+    assertProperty(
+      fc.property(
+        shapes,
+        fc.constantFrom("sdt", "customXml", "wrapperCell"),
+        fc.boolean(),
+        (seed, container, insert) => {
+          const shape = {
+            ...seed,
+            container,
+            placement: "before",
+          } satisfies Shape;
+          const table = makeTable(shape);
+          const original = documentOf(shape, [table]);
+          const op: DocumentOp = insert
+            ? {
+                type: DOCUMENT_OP_TYPES.INSERT_TABLE,
+                story: OP_STORIES.MAIN,
+                at: { type: "beforeTable", blockId: id(0x100) },
+                table: makeTable(shape, 0x200),
+              }
+            : {
+                type: DOCUMENT_OP_TYPES.DELETE_TABLE,
+                story: OP_STORIES.MAIN,
+                blockId: id(0x100),
+              };
+          const direct = applied(original, op);
+          exactInverse(original, direct);
+          const pending = applied(original, {
+            ...op,
+            revision: stamp(),
+            newIds: freshIds(),
+          });
+          exactInverse(original, pending);
+          const accepted = resolved(
+            pending.document,
+            pending.revisions,
+            REVISION_DECISIONS.ACCEPT,
+          );
+          const rejected = resolved(
+            pending.document,
+            pending.revisions,
+            REVISION_DECISIONS.REJECT,
+          );
+          expect(accepted.document).toStrictEqual(direct.document);
+          expect(rejected.document).toStrictEqual(original);
+          exactInverse(pending.document, accepted);
+          exactInverse(pending.document, rejected);
+        },
+      ),
+      {
+        numRuns: 200,
+        id: "tables in a wrapper without a local paragraph resolve and undo at the outer anchor",
+      },
+    );
+  },
+  propertyTestTimeout(30_000),
+);

@@ -4,6 +4,7 @@ import { panic, Result } from "better-result";
 import type {
   BlockContent,
   Document,
+  DocumentBody,
   Paragraph,
   Table,
 } from "../model/document";
@@ -117,6 +118,50 @@ const isSubsequence = (
   return index === shorter.length;
 };
 
+const fixedBlocks = (items: readonly BlockContent[]): BlockContent[] => {
+  const fixed: BlockContent[] = [];
+  for (const block of items) {
+    if (
+      block.type === "table" ||
+      block.type === "paragraph" ||
+      isBlockBoundary(block)
+    )
+      continue;
+    if (block.type === "blockSdt" || block.type === "blockCustomXml")
+      fixed.push({ ...block, content: fixedBlocks(block.content) });
+    else fixed.push(block);
+  }
+  return fixed;
+};
+
+const survivingTableAnchor = (
+  body: DocumentBody,
+  list: ParagraphLocation["list"],
+): ParagraphLocation | undefined => {
+  let current = list;
+  for (;;) {
+    const blocks = blockListAt(body.content, current);
+    const index = blocks.findLastIndex((block) => block.type === "paragraph");
+    const paragraph = blocks[index];
+    if (paragraph?.type === "paragraph")
+      return { list: current, index, paragraph };
+    const step = current.at(-1);
+    if (step === undefined || step.kind === "tableCell") return undefined;
+    current = current.slice(0, -1);
+  }
+};
+
+const tableBlocksForAnchor = (
+  body: DocumentBody,
+  list: ParagraphLocation["list"],
+  anchor: ParagraphLocation,
+  blocks: BlockContent[],
+): readonly BlockContent[] => {
+  if (sameBlockList(list, anchor.list)) return blocks;
+  const replaced = updateBlockList(body.content, list, () => blocks);
+  return blockListAt(replaced, anchor.list);
+};
+
 type CommitBlocksOptions = {
   document: Document;
   op: TableOp;
@@ -173,13 +218,6 @@ const commitBlocks = ({
   }
   // A range boundary between blocks moves with the paragraphs: one that goes
   // leaves its boundaries where it was. Wrappers and captured blocks stay.
-  const fixedBlocks = (items: readonly BlockContent[]) =>
-    items.filter(
-      (block) =>
-        block.type !== "table" &&
-        block.type !== "paragraph" &&
-        !isBlockBoundary(block),
-    );
   // The exact inverse may put whole wrappers and captured blocks in or take
   // them out, as a paste of one and its undo do; it never changes one in
   // place or reorders them.
@@ -479,24 +517,23 @@ const insertBesideTable = ({
   const { list, index: tableIndex } = located.value;
   const body = storyBody(document, op.story);
   const blocks = [...blockListAt(body.content, list)];
-  const carrierIndex = blocks.findLastIndex(
-    (block) => block.type === "paragraph",
-  );
-  const carrier = blocks[carrierIndex];
-  if (carrier?.type !== "paragraph")
+  const anchor = survivingTableAnchor(body, list);
+  if (anchor === undefined)
     return refuse({
       op,
       reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
-      message: "The table's block list ends without a paragraph.",
+      message: "The table's container has no surviving paragraph.",
     });
-  const anchor: ParagraphLocation = {
-    list,
-    index: carrierIndex,
-    paragraph: carrier,
-  };
+  const commit = () =>
+    commitBlocks({
+      document,
+      op,
+      anchor,
+      blocks: tableBlocksForAnchor(body, list, anchor, blocks),
+    });
   if (op.revision === undefined) {
     blocks.splice(tableIndex, 0, op.table);
-    return commitBlocks({ document, op, anchor, blocks });
+    return commit();
   }
   const tracked = trackTableRows({
     document,
@@ -508,7 +545,7 @@ const insertBesideTable = ({
   });
   if (tracked.isErr()) return Result.err(tracked.error);
   blocks.splice(tableIndex, 0, { ...op.table, rows: tracked.value });
-  return commitBlocks({ document, op, anchor, blocks });
+  return commit();
 };
 
 export const applyTableOp = (
@@ -664,9 +701,7 @@ export const applyTableOp = (
           reason: DOCUMENT_OP_REFUSAL_REASONS.STALE,
           message: "The table to remove has changed.",
         });
-      const anchor = storyParagraphs(body).find((paragraph) =>
-        sameBlockList(paragraph.list, location.list),
-      );
+      const anchor = survivingTableAnchor(body, location.list);
       if (anchor === undefined)
         return refuse({
           op,
@@ -695,6 +730,7 @@ export const applyTableOp = (
               ? [...host.content, ...ends]
               : [...ends, ...host.content],
           };
+        else if (ends.length > 0) blocks.splice(location.index, 0, ...ends);
       } else {
         // A row already suggested for deletion keeps its own suggestion; the
         // table's deletion marks every other row.
@@ -727,7 +763,12 @@ export const applyTableOp = (
           ),
         };
       }
-      return commitBlocks({ document, op, anchor, blocks });
+      return commitBlocks({
+        document,
+        op,
+        anchor,
+        blocks: tableBlocksForAnchor(body, location.list, anchor, blocks),
+      });
     }
     case DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS: {
       const anchor = storyParagraphs(body).find(
