@@ -69,7 +69,9 @@ const open = async ({ paragraphs, tableAfter }: Case) => {
   const { docx } = await ensureParaIds(
     await createDocx(fromMarkdown(parts.join("\n\n"))),
   );
-  return FolioDocxReviewer.fromBuffer(docx, { author: "Earlier" });
+  return FolioDocxReviewer.fromBuffer(docx.slice().buffer, {
+    author: "Earlier",
+  });
 };
 
 /** The case's document with the pending changes its setup leaves, reopened. */
@@ -82,7 +84,10 @@ const prepared = async (setup: Case) => {
   const target = ids[Math.min(setup.target, ids.length - 1)] ?? "";
   // A join of a paragraph a table follows is refused, which leaves no change.
   const apply = (operation: FolioDocumentOperation) =>
-    earlier.applyOperations([operation], { mode: "tracked-changes" });
+    earlier.applyOperations([operation], {
+      undefinedReferences: "refuse",
+      mode: "tracked-changes",
+    });
   switch (setup.setup) {
     case "none":
       break;
@@ -171,7 +176,10 @@ const run = async (
       ),
   );
   const anchors = anchorsOf(reviewer);
-  const result = reviewer.applyOperations(operations(anchors), { mode });
+  const result = reviewer.applyOperations(operations(anchors), {
+    undefinedReferences: "refuse",
+    mode,
+  });
   return {
     reviewer,
     before,
@@ -204,7 +212,7 @@ const gapsOneAtATime = async (setup: Case) => {
   return setup.insertions.map((insertion, at) => {
     const { skipped } = reviewer.applyOperations(
       [operationOf(insertion, at, anchors)],
-      { mode: "tracked-changes" },
+      { undefinedReferences: "refuse", mode: "tracked-changes" },
     );
     if (skipped.length > 0) return undefined;
     const blocks = reviewer.snapshot().blocks;
@@ -556,7 +564,7 @@ test.each(["tracked-changes", "direct"] as const)(
       setup.insertions.map((insertion, at) =>
         operationOf(insertion, at, anchors),
       ),
-      { mode },
+      { undefinedReferences: "refuse", mode },
     );
     expect(result.skipped).toEqual([]);
     reviewer.acceptAll();
