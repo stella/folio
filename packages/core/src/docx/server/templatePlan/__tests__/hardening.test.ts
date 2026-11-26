@@ -1633,6 +1633,42 @@ describe("page starts", () => {
         })
       ).issues.map(({ code, blockId }) => [code, blockId]),
     ).toEqual([["paragraph-format-mismatch", "p0"]]);
+    // The same indent written with a unit is the same indent; one counted
+    // in characters beside it is another paragraph.
+    const written = '<w:ind w:left="851" w:hanging="851"/>';
+    const outputWith = async (indent: string): Promise<Uint8Array> =>
+      await replacePart(
+        docx,
+        "word/document.xml",
+        document.replace(written, indent),
+      );
+    expect(
+      (
+        await verifyFor({
+          source,
+          template,
+          plan: formatted,
+          output: await outputWith(
+            '<w:ind w:left="42.55pt" w:hanging="42.55pt"/>',
+          ),
+        })
+      ).issues.map(({ code }) => code),
+    ).toEqual([]);
+    for (const changed of [
+      '<w:ind w:left="1in" w:hanging="851"/>',
+      '<w:ind w:left="851" w:leftChars="200" w:hanging="851"/>',
+    ]) {
+      expect(
+        (
+          await verifyFor({
+            source,
+            template,
+            plan: formatted,
+            output: await outputWith(changed),
+          })
+        ).issues.map(({ code, blockId }) => [code, blockId]),
+      ).toEqual([["paragraph-format-mismatch", "p0"]]);
+    }
     // A hanging and a first-line indent exclude each other.
     expect(
       codeOf(

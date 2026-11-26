@@ -437,8 +437,10 @@ type StatedProperties = {
   ilvl: number | null;
   pageBreakBefore: boolean;
   keepNext: boolean;
-  /** The paragraph's own indent as `left:hanging:firstLine`, a side it
-   *  does not state left empty; null without an indent of its own. */
+  /** The paragraph's own indent as `left:hanging:firstLine` in twentieths
+   *  of a point, a side it does not state left empty, followed by the
+   *  sides it counts in characters, as written; null without an indent of
+   *  its own. */
   indent: string | null;
   endsSection: boolean;
 };
@@ -448,6 +450,21 @@ const indentKey = (
   hanging: number | null | undefined,
   firstLine: number | null | undefined,
 ): string => [left, hanging, firstLine].map((side) => side ?? "").join(":");
+
+/** The sides of an indent counted in characters: they override the
+ *  measured ones, so a paragraph that states one is another paragraph. */
+const CHARACTER_INDENTS = [
+  "leftChars",
+  "startChars",
+  "hangingChars",
+  "firstLineChars",
+] as const;
+
+const characterIndentKey = (indent: XmlElement): string =>
+  CHARACTER_INDENTS.flatMap((name) => {
+    const value = wAttr(indent, name);
+    return value === null ? [] : [`;${name}=${value}`];
+  }).join("");
 
 const statedProperties = (paragraph: XmlElement): StatedProperties => {
   const properties = wChild(paragraph, "pPr");
@@ -463,11 +480,11 @@ const statedProperties = (paragraph: XmlElement): StatedProperties => {
     indent:
       indent === null
         ? null
-        : indentKey(
-            integerOrNull(wAttr(indent, "left") ?? wAttr(indent, "start")),
-            integerOrNull(wAttr(indent, "hanging")),
-            integerOrNull(wAttr(indent, "firstLine")),
-          ),
+        : `${indentKey(
+            twipsOrNull(wAttr(indent, "left") ?? wAttr(indent, "start")),
+            twipsOrNull(wAttr(indent, "hanging")),
+            twipsOrNull(wAttr(indent, "firstLine")),
+          )}${characterIndentKey(indent)}`,
     endsSection: wChild(properties, "sectPr") !== null,
   };
 };
