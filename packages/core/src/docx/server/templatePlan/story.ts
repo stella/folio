@@ -116,6 +116,14 @@ export type ParagraphBookmark = { name: string; id: string; atomIndex: number };
 /** A bookmark end, with how many atoms of its paragraph come before it. */
 export type ParagraphBookmarkEnd = { id: string; atomIndex: number };
 
+/** The sides of `w:ind` that count in characters of the document grid. */
+const CHARACTER_INDENTS = [
+  "leftChars",
+  "startChars",
+  "hangingChars",
+  "firstLineChars",
+] as const;
+
 /** The sides a `w:ind` states; a hanging indent is a negative first line. */
 const ownIndent = (
   indent: XmlElement | null,
@@ -157,6 +165,9 @@ export type ParagraphRead = {
    *  point: where its lines start, and what its first line adds to that
    *  (negative for a hanging indent). Null for a side it does not state. */
   indent: { left: number | null; firstLine: number | null };
+  /** Whether the paragraph states an indent in characters, which stands
+   *  over the measured one and cannot be given in twentieths of a point. */
+  indentInCharacters: boolean;
   /** Whether the paragraph mark is a tracked insertion or deletion. */
   hasTrackedMark: boolean;
 };
@@ -568,6 +579,10 @@ export const readParagraph = (
     pageBreakBefore: toggleOf(wChild(properties, "pageBreakBefore")),
     alignment: wChildVal(properties, "jc"),
     indent: ownIndent(wChild(properties, "ind")),
+    indentInCharacters: CHARACTER_INDENTS.some((name) => {
+      const value = wAttr(wChild(properties, "ind"), name);
+      return value !== null && !/^[+-]?0*$/u.test(value.trim());
+    }),
     hasTrackedMark,
   };
   state.paragraphOrdinal += 1;

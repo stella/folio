@@ -187,6 +187,10 @@ describe("analyzeDocxBlocks", () => {
             p(r("an item moved out"), `${numPr(1, 0)}<w:ind w:left="2000"/>`),
             p(r("inset by its style"), '<w:pStyle w:val="Inset"/>'),
             p(r("listed by its style"), '<w:pStyle w:val="Listed"/>'),
+            p(
+              r("counted in characters"),
+              '<w:ind w:left="400" w:leftChars="200"/>',
+            ),
             p(r("plain")),
           ].join(""),
           {
@@ -209,6 +213,8 @@ describe("analyzeDocxBlocks", () => {
       { left: 851, firstLine: 0 },
       // A list the style brings: the style's own indent over the level's.
       { left: 924, firstLine: -360 },
+      // An indent counted in characters is not one in this unit.
+      undefined,
       undefined,
     ]);
   });
