@@ -3,6 +3,7 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { Fragment, type Node as ProseNode, Slice } from "prosemirror-model";
 import { EditorState, Plugin, TextSelection } from "prosemirror-state";
+import { CellSelection } from "prosemirror-tables";
 
 import {
   paragraphNumberingReference,
@@ -31,7 +32,7 @@ import { createDocx } from "../docx/rezip";
 import { toFlowBlocks } from "../layout-bridge/convert/toFlowBlocks";
 import { listRenderingAttrPatch } from "../prosemirror/listRenderingAttrs";
 import { schema } from "../prosemirror/schema";
-import type { Document, Paragraph } from "../types/document";
+import type { BlockContent, Document, Paragraph } from "../types/document";
 import { prepareCanonicalPaste } from "./canonicalClipboard";
 
 setDefaultTimeout(propertyTestTimeout(180_000));
@@ -88,6 +89,32 @@ const authoredTextMarks = (doc: ProseNode) => {
   });
   return characters;
 };
+
+/** A paragraph holding `value` in one run. */
+const textParagraph = (value: string, paraId: string): Paragraph => ({
+  type: "paragraph",
+  paraId,
+  content:
+    value === ""
+      ? []
+      : [{ type: "run", content: [{ type: "text", text: value }] }],
+});
+
+/** A block's text: a paragraph's, or a table's cells in rows, nested ones too. */
+const blockShape = (block: BlockContent): unknown => {
+  if (block.type === "paragraph") return paragraphLogicalText(block);
+  if (block.type !== "table") return block.type;
+  return block.rows.map((row) =>
+    row.cells.map((cell) => {
+      const inner = cell.content.map(blockShape);
+      return inner.every((item) => typeof item === "string")
+        ? inner.join("|")
+        : inner;
+    }),
+  );
+};
+const shapeOf = (document: Document) =>
+  document.package.document.content.map(blockShape);
 
 const sourceFacts = (document: Document) =>
   document.package.document.content.map((paragraph) => {
@@ -2273,35 +2300,33 @@ describe("canonical clipboard", () => {
   });
 
   test("a dragged table moves up or down in either mode as one journal entry that saves", async () => {
-    const text = (value: string, paraId: string): Paragraph => ({
-      type: "paragraph",
-      paraId,
-      content:
-        value === ""
-          ? []
-          : [{ type: "run", content: [{ type: "text", text: value }] }],
-    });
     const tableSeed = (): Document => {
       const document: Document = {
         package: {
           document: {
             content: [
-              text("zero", "00000001"),
-              text("one", "00000002"),
+              textParagraph("zero", "00000001"),
+              textParagraph("one", "00000002"),
               {
                 type: "table",
                 rows: [
                   {
                     type: "tableRow",
                     cells: [
-                      { type: "tableCell", content: [text("A1", "0000AA01")] },
-                      { type: "tableCell", content: [text("B1", "0000AA02")] },
+                      {
+                        type: "tableCell",
+                        content: [textParagraph("A1", "0000AA01")],
+                      },
+                      {
+                        type: "tableCell",
+                        content: [textParagraph("B1", "0000AA02")],
+                      },
                     ],
                   },
                 ],
               },
-              text("two", "00000003"),
-              text("three", "00000004"),
+              textParagraph("two", "00000003"),
+              textParagraph("three", "00000004"),
             ],
           },
         },
@@ -2309,20 +2334,6 @@ describe("canonical clipboard", () => {
       assignDocumentParagraphPropertySourceContract(document, "c".repeat(64));
       return document;
     };
-    const shapeOf = (document: Document) =>
-      document.package.document.content.map((block) => {
-        if (block.type === "paragraph") return paragraphLogicalText(block);
-        if (block.type !== "table") return block.type;
-        return block.rows.map((row) =>
-          row.cells.map((cell) =>
-            cell.content
-              .map((inner) =>
-                inner.type === "paragraph" ? paragraphLogicalText(inner) : "",
-              )
-              .join("|"),
-          ),
-        );
-      });
     const cells = [["A1", "B1"]];
     const expected = {
       down: ["zero", "onetwo", "th", cells, "ree"],
@@ -2391,6 +2402,137 @@ describe("canonical clipboard", () => {
           commit: session.prepareRedo(state).unwrap(),
         }).unwrap().state;
         assertExactModel(session.document, after);
+      }
+  });
+
+  test("a copy that opens or closes inside a table pastes a table of the cells it holds", () => {
+    const cell = (...content: BlockContent[]) => ({
+      type: "tableCell" as const,
+      content,
+    });
+    const seedDocument = (): Document => {
+      const document: Document = {
+        package: {
+          document: {
+            content: [
+              textParagraph("lead", "00000001"),
+              {
+                type: "table",
+                rows: [
+                  {
+                    type: "tableRow",
+                    cells: [
+                      cell(textParagraph("A1", "0000AA01")),
+                      cell(textParagraph("B1", "0000AA02")),
+                    ],
+                  },
+                  {
+                    type: "tableRow",
+                    cells: [
+                      cell(textParagraph("A2", "0000AA03")),
+                      cell(
+                        textParagraph("B2", "0000AA04"),
+                        {
+                          type: "table",
+                          rows: [
+                            {
+                              type: "tableRow",
+                              cells: [
+                                cell(textParagraph("N1", "0000BB01")),
+                                cell(textParagraph("N2", "0000BB02")),
+                              ],
+                            },
+                          ],
+                        },
+                        textParagraph("", "0000AA05"),
+                      ),
+                    ],
+                  },
+                ],
+              },
+              textParagraph("tail", "00000002"),
+            ],
+          },
+        },
+      };
+      assignDocumentParagraphPropertySourceContract(document, "d".repeat(64));
+      return document;
+    };
+    const nested = [["N1", "N2"]];
+    const cases = [
+      {
+        name: "selected cells of a column",
+        copy: (doc: ProseNode, at: (value: string) => number) =>
+          CellSelection.create(
+            doc,
+            doc.resolve(at("B1")).before(-1),
+            doc.resolve(at("B2")).before(-1),
+          ).content(),
+        pasted: [["B1"], [["B2", nested, ""]]],
+      },
+      {
+        name: "text from inside a cell to the paragraph after the table",
+        copy: (doc: ProseNode, at: (value: string) => number) =>
+          doc.slice(at("A2") + 1, at("tail") + 2),
+        pasted: [["2", ["B2", nested, ""]]],
+      },
+      {
+        name: "text from inside a nested table's cell to the paragraph after the table",
+        copy: (doc: ProseNode, at: (value: string) => number) =>
+          doc.slice(at("N2") + 1, at("tail") + 2),
+        pasted: [[[[["2"]], ""]]],
+      },
+    ];
+    for (const { name, copy, pasted } of cases)
+      for (const suggesting of [false, true]) {
+        const session = createCanonicalSession(seedDocument()).unwrap();
+        session.setMode(
+          suggesting
+            ? { type: "suggesting", author: "Paster" }
+            : { type: "editing" },
+        );
+        let state = EditorState.create({ schema, doc: session.projection.doc });
+        const starts = new Map<string, number>();
+        state.doc.descendants((node, position) => {
+          if (node.type.name === "paragraph" && !starts.has(node.textContent))
+            starts.set(node.textContent, position + 1);
+        });
+        const at = (value: string) =>
+          starts.get(value) ?? panic(`Missing paragraph ${value}.`);
+        const slice = copy(state.doc, at);
+        expect(
+          slice.openStart > 1 ||
+            slice.content.firstChild?.type.name === "tableRow",
+        ).toBe(true);
+        const before = session.document;
+        const commit = prepareCanonicalPaste({
+          session,
+          state,
+          slice,
+          pasteTarget: at("lead") + 4,
+        });
+        if (commit.isErr()) throw new Error(`${name}: ${commit.error.message}`);
+        state = publishCanonicalProjection({
+          session,
+          state,
+          commit: commit.value,
+        }).unwrap().state;
+        const tables = session.document.package.document.content.filter(
+          (block) => block.type === "table",
+        );
+        // The pasted table goes in after "lead", ahead of the source table.
+        expect(tables).toHaveLength(2);
+        const first = tables.at(0);
+        if (first === undefined) throw new TypeError("Missing pasted table.");
+        if (!suggesting) expect(blockShape(first)).toEqual(pasted);
+        expect(state.doc.eq(session.projection.doc)).toBe(true);
+        state = publishCanonicalProjection({
+          session,
+          state,
+          commit: session.prepareUndo(state).unwrap(),
+        }).unwrap().state;
+        assertExactModel(session.document, before);
+        expect(shapeOf(session.document)).toEqual(shapeOf(seedDocument()));
       }
   });
 });
