@@ -40,6 +40,7 @@ import {
   TemplatePlanError,
   type TemplatePlanErrorCode,
   type TemplatePlanHighlight,
+  type TemplatePlanIndent,
   type TemplatePlanMerge,
   type TemplatePlanNumbering,
   type TemplatePlanOmitReason,
@@ -107,6 +108,10 @@ export type ResolvedParagraph = {
   placement: "body" | "nested" | "slot";
   /** Whether the paragraph starts on a new page. */
   pageBreakBefore: boolean;
+  /** Whether the paragraph is kept with the one after it. */
+  keepNext: boolean;
+  /** The paragraph's own indent, or null. */
+  indent: TemplatePlanIndent | null;
   /** The section the paragraph is the last of, or null. */
   endsSection: TemplatePlanSection | null;
 };
@@ -705,6 +710,8 @@ type ParagraphRequest = {
   /** Where a `"new"` list without a group gets its own key. */
   ordinal: number;
   pageBreakBefore?: boolean;
+  keepNext?: boolean;
+  indent?: TemplatePlanIndent | undefined;
   endsSection?: TemplatePlanSection | undefined;
 };
 
@@ -962,6 +969,8 @@ export const resolvePlan = (
     placement,
     ordinal,
     pageBreakBefore = false,
+    keepNext = false,
+    indent,
     endsSection,
   }: ParagraphRequest): Result<ResolvedParagraph, TemplatePlanError> => {
     const first = parts.at(0);
@@ -1118,6 +1127,8 @@ export const resolvePlan = (
       inlineObjects: pieces.filter(({ kind }) => kind === "object").length,
       placement,
       pageBreakBefore,
+      keepNext,
+      indent: indent ?? null,
       endsSection: endsSection ?? null,
     };
     for (const { block } of resolvedParts) {
@@ -1156,6 +1167,8 @@ export const resolvePlan = (
       item.stripLabel !== undefined ||
       item.labelAsText !== undefined ||
       item.pageBreakBefore !== undefined ||
+      item.keepNext !== undefined ||
+      item.indent !== undefined ||
       item.endsSection !== undefined ||
       item.numbering !== undefined
     ) {
@@ -1207,6 +1220,8 @@ export const resolvePlan = (
         numbering: override?.numbering,
         placement: "nested",
         ordinal: tableOrdinal * 1_000_000 + nested.block.index,
+        keepNext: override?.keepNext === true,
+        indent: override?.indent,
       });
       if (Result.isError(paragraph)) {
         return paragraph;
@@ -1338,12 +1353,14 @@ export const resolvePlan = (
             next.cellStyleId !== undefined ||
             next.nested !== undefined ||
             next.pageBreakBefore !== undefined ||
+            next.keepNext !== undefined ||
+            next.indent !== undefined ||
             next.endsSection !== undefined
           ) {
             return Result.err(
               refuse({
                 code: "merge-invalid",
-                message: `Block ${next.blockId} joins the paragraph before it and cannot carry a style, a list, a page start or a section end of its own.`,
+                message: `Block ${next.blockId} joins the paragraph before it and cannot carry a style, a list, a page start, a format or a section end of its own.`,
                 blockId: next.blockId,
               }),
             );
@@ -1365,6 +1382,8 @@ export const resolvePlan = (
           placement: "body",
           ordinal,
           pageBreakBefore: item.pageBreakBefore === true,
+          keepNext: item.keepNext === true,
+          indent: item.indent,
           endsSection: item.endsSection,
         });
         if (Result.isError(paragraph)) {

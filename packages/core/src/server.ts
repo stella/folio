@@ -377,6 +377,7 @@ export {
   type TemplatePlanHighlight,
   type TemplatePlanIssue,
   type TemplatePlanItem,
+  type TemplatePlanIndent,
   type TemplatePlanMerge,
   type TemplatePlanNestedParagraph,
   type TemplatePlanNoteCounts,

@@ -318,6 +318,17 @@ export type TemplatePlanNumbering = {
 
 export type TemplatePlanMerge = "lineBreak" | "space" | "none";
 
+/**
+ * A paragraph's own indent, in twentieths of a point (`w:ind`). A side left
+ * out stays what the style or the list level gives; a hanging indent and a
+ * first-line indent exclude each other.
+ */
+export type TemplatePlanIndent = {
+  left?: number;
+  hanging?: number;
+  firstLine?: number;
+};
+
 export type TemplatePlanNestedParagraph = {
   blockId: string;
   styleId?: string;
@@ -325,6 +336,10 @@ export type TemplatePlanNestedParagraph = {
   stripLabel?: string;
   /** As on a source item. */
   labelAsText?: boolean;
+  /** As on a source item. */
+  keepNext?: boolean;
+  /** As on a source item. */
+  indent?: TemplatePlanIndent;
 };
 
 /** A page other than the template's, in twentieths of a point. */
@@ -383,6 +398,19 @@ export type TemplatePlanSourceItem = {
    * Verification compares what the paragraph states for itself.
    */
   pageBreakBefore?: boolean;
+  /**
+   * Keep the paragraph on the page of the one after it (`w:keepNext`): for
+   * a line that heads what follows in a style that does not say so. Not
+   * for a table, and not for a block that joins the paragraph before it.
+   * `false` is the same as leaving it out.
+   */
+  keepNext?: boolean;
+  /**
+   * The paragraph's own indent, over its style's and its list level's:
+   * for a number written as text that hangs the way the list's would. Not
+   * for a table, and not for a block that joins the paragraph before it.
+   */
+  indent?: TemplatePlanIndent;
   /**
    * The paragraph is the last of a section, described here: for a part of
    * the document whose page is another than the template's, such as a
@@ -558,6 +586,7 @@ export type TemplatePlanIssue = {
     | "style-mismatch"
     | "numbering-mismatch"
     | "page-start-mismatch"
+    | "paragraph-format-mismatch"
     | "section-mismatch"
     | "template-mismatch"
     | "prompting-field-left"

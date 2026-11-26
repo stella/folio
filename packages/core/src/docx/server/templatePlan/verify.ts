@@ -436,18 +436,38 @@ type StatedProperties = {
   numId: number | null;
   ilvl: number | null;
   pageBreakBefore: boolean;
+  keepNext: boolean;
+  /** The paragraph's own indent as `left:hanging:firstLine`, a side it
+   *  does not state left empty; null without an indent of its own. */
+  indent: string | null;
   endsSection: boolean;
 };
+
+const indentKey = (
+  left: number | null | undefined,
+  hanging: number | null | undefined,
+  firstLine: number | null | undefined,
+): string => [left, hanging, firstLine].map((side) => side ?? "").join(":");
 
 const statedProperties = (paragraph: XmlElement): StatedProperties => {
   const properties = wChild(paragraph, "pPr");
   const numbering = wChild(properties, "numPr");
+  const indent = wChild(properties, "ind");
   return {
     styleId: wChildVal(properties, "pStyle"),
     numId: integerOrNull(wChildVal(numbering, "numId")),
     ilvl: integerOrNull(wChildVal(numbering, "ilvl")),
     // An element that is there and switched off starts no page.
     pageBreakBefore: toggleOf(wChild(properties, "pageBreakBefore")) === true,
+    keepNext: toggleOf(wChild(properties, "keepNext")) === true,
+    indent:
+      indent === null
+        ? null
+        : indentKey(
+            integerOrNull(wAttr(indent, "left") ?? wAttr(indent, "start")),
+            integerOrNull(wAttr(indent, "hanging")),
+            integerOrNull(wAttr(indent, "firstLine")),
+          ),
     endsSection: wChild(properties, "sectPr") !== null,
   };
 };
@@ -550,14 +570,24 @@ export const reportTemplatePlanOutput = async ({
     if (slot !== undefined) {
       return statedProperties(slot.element);
     }
-    const { styleId, numbering, pageBreakBefore } = paragraph;
+    const { styleId, numbering, pageBreakBefore, keepNext } = paragraph;
     const endsSection = paragraph.endsSection !== null;
+    const indent =
+      paragraph.indent === null
+        ? null
+        : indentKey(
+            paragraph.indent.left,
+            paragraph.indent.hanging,
+            paragraph.indent.firstLine,
+          );
     if (numbering.kind === "direct") {
       return {
         styleId,
         numId: numbering.numId,
         ilvl: numbering.ilvl,
         pageBreakBefore,
+        keepNext,
+        indent,
         endsSection,
       };
     }
@@ -573,6 +603,8 @@ export const reportTemplatePlanOutput = async ({
       numId: cancelsList ? 0 : null,
       ilvl: null,
       pageBreakBefore,
+      keepNext,
+      indent,
       endsSection,
     };
   };
@@ -601,6 +633,16 @@ export const reportTemplatePlanOutput = async ({
         message: planned.pageBreakBefore
           ? `Block ${blockId} does not start the new page the plan gives it.`
           : `Block ${blockId} starts a new page the plan does not give it.`,
+        blockId,
+      });
+    }
+    if (
+      stated.keepNext !== planned.keepNext ||
+      stated.indent !== planned.indent
+    ) {
+      issues.push({
+        code: "paragraph-format-mismatch",
+        message: `Block ${blockId} does not carry the keep-with-next or the indent the plan gives it.`,
         blockId,
       });
     }
@@ -747,6 +789,8 @@ export const reportTemplatePlanOutput = async ({
             return (
               before.styleId === after.styleId &&
               before.pageBreakBefore === after.pageBreakBefore &&
+              before.keepNext === after.keepNext &&
+              before.indent === after.indent &&
               before.endsSection === after.endsSection &&
               before.numId === after.numId &&
               before.ilvl === after.ilvl &&

@@ -1589,6 +1589,69 @@ describe("page starts", () => {
     ).toHaveLength(1);
   });
 
+  test("an item keeps its paragraph with the next and gives it an indent of its own", async () => {
+    const source = await twoParagraphs();
+    const items = (formatted: boolean) => (blocks: PlannedBlock[]) =>
+      blocks.map(({ id, hash }, index): TemplatePlanItem => ({
+        kind: "source",
+        blockId: id,
+        hash,
+        styleId: "HouseBody",
+        ...(index === 0 && formatted
+          ? { keepNext: true, indent: { left: 851, hanging: 851 } }
+          : {}),
+      }));
+    const formatted = await planFor({ source, template, items: items(true) });
+    const plain = await planFor({ source, template, items: items(false) });
+    const { docx, report } = unwrap(
+      await applyTemplatePlan({ source, template, plan: formatted }),
+    );
+    const document = await documentOf(docx);
+
+    expect(report.ok).toBe(true);
+    // In the order the schema gives a paragraph's properties.
+    expect(document).toContain(
+      '<w:pPr><w:pStyle w:val="HouseBody"/><w:keepNext/><w:ind w:left="851" w:hanging="851"/></w:pPr>',
+    );
+    expect(document.split("<w:keepNext/>")).toHaveLength(2);
+    // Verification holds the output to the plan both ways.
+    expect(
+      (
+        await verifyFor({ source, template, output: docx, plan: plain })
+      ).issues.map(({ code, blockId }) => [code, blockId]),
+    ).toEqual([["paragraph-format-mismatch", "p0"]]);
+    const unformatted = unwrap(
+      await applyTemplatePlan({ source, template, plan: plain }),
+    );
+    expect(
+      (
+        await verifyFor({
+          source,
+          template,
+          output: unformatted.docx,
+          plan: formatted,
+        })
+      ).issues.map(({ code, blockId }) => [code, blockId]),
+    ).toEqual([["paragraph-format-mismatch", "p0"]]);
+    // A hanging and a first-line indent exclude each other.
+    expect(
+      codeOf(
+        await applyFor({
+          source,
+          template,
+          items: (blocks) =>
+            blocks.map(({ id, hash }) => ({
+              kind: "source",
+              blockId: id,
+              hash,
+              styleId: "HouseBody",
+              indent: { hanging: 300, firstLine: 300 },
+            })),
+        }),
+      ),
+    ).toBe("plan-invalid");
+  });
+
   test("verification notices a page start the plan does not give, and a missing one", async () => {
     const source = await twoParagraphs();
     const items = (pageBreakBefore: boolean) => (blocks: PlannedBlock[]) =>
