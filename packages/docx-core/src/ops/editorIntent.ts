@@ -362,8 +362,9 @@ export type EditorIntent =
        * Clipboard blocks, tables among them, over a range: the range is
        * cleared, an open first or last paragraph joins the text at its edge,
        * and the blocks between go in before the caret's paragraph, split at
-       * the caret when text stands before it. Without a table it is
-       * `replaceFragment`.
+       * the caret when text stands before it. Only when every block is a
+       * paragraph is it `replaceFragment`; a table, a container or kept
+       * block markup among them is placed as a block.
        */
       type: "pasteBlocks";
       from: TextPosition;
@@ -400,8 +401,10 @@ export type EditorIntent =
        * deleted, the text of the range is deleted as `moveFragment` deletes
        * it, and the blocks go in at the target as `pasteBlocks` places them,
        * a suggestion recording them as inserted. A container has no tracked
-       * record, so a suggestion moving one refuses. Without a table or a
-       * container it is `moveFragment`.
+       * record, so a suggestion moving one refuses. Only when every block
+       * is a paragraph is it `moveFragment`. A direct move keeps the notes
+       * and comments the blocks' references and markers name, under their
+       * own ids.
        */
       type: "moveBlocks";
       from: TextPosition;
@@ -529,6 +532,12 @@ type CompileEditorIntentOptions = {
   replacementFormattingDocument?: Document;
   /** Lowest candidate for compiler-owned pasted block IDs, including retired session IDs. */
   firstBlockId?: number;
+  /**
+   * Pasted blocks a direct move took from this story: their note references
+   * and comment markers keep naming the notes and comments they named, which
+   * the move leaves in place, rather than naming copies.
+   */
+  moved?: true;
 };
 type CompiledEditorIntent = {
   ops: DocumentOp[];
@@ -1416,6 +1425,7 @@ type BlockPasteOptions = {
   intent: BlockPasteIntent;
   mode: EditorIntentMode;
   firstBlockId?: number;
+  moved?: true | undefined;
 };
 type BlockPlacementOptions = {
   intent: Omit<BlockPasteIntent, "annotations">;
@@ -1573,14 +1583,16 @@ type CopiedAnnotation =
  */
 const compileBlockPaste = (
   document: Document,
-  { intent, mode, firstBlockId }: BlockPasteOptions,
+  { intent, mode, firstBlockId, moved }: BlockPasteOptions,
 ): Result<CompiledEditorIntent, DocumentOpRefusal> => {
   const { annotations, ...placement } = intent;
   const anchored = withPasteAnchors(
     intent.blocks,
     bookmarksIn(document.package),
   );
-  if (anchored.anchors.length === 0)
+  // Moved directly, the references and markers go with their blocks and keep
+  // the notes and comments the source left in place: there is nothing to copy.
+  if (anchored.anchors.length === 0 || moved === true)
     return compileBlockPlacement(document, {
       intent: placement,
       mode,
@@ -1934,7 +1946,10 @@ const removeContainerBlock = ({
   anchor: string;
   block: BlockContent;
   mode: EditorIntentMode;
-}): Result<{ op: DocumentOp; document: Document }, DocumentOpRefusal> => {
+}): Result<
+  { op: DocumentOp; document: Document; inverse: readonly DocumentOp[] },
+  DocumentOpRefusal
+> => {
   const refuse = (
     reason: DocumentOpRefusal["reason"],
     message: string,
@@ -1976,7 +1991,11 @@ const removeContainerBlock = ({
   };
   const applied = applyDocumentOps(document, [op]);
   if (applied.isErr()) return Result.err(applied.error);
-  return Result.ok({ op, document: applied.value.document });
+  return Result.ok({
+    op,
+    document: applied.value.document,
+    inverse: applied.value.inverse,
+  });
 };
 
 const compileBlockPlacement = (
@@ -2712,7 +2731,11 @@ const identifyClipboardContent = ({
       from: nextBlock,
       taken: (candidate) => {
         const key = formatParaId(candidate);
-        return blockIds.has(key) || packageOccupancy().paragraphs.has(key);
+        return (
+          blockIds.has(key) ||
+          packageOccupancy().paragraphs.has(key) ||
+          (mode.reservedBlockIds?.has(key) ?? false)
+        );
       },
     }).at(0);
     if (fresh === undefined) return undefined;
@@ -3253,6 +3276,55 @@ type RangeMoveOptions = {
  * deletion), and the moved content goes in where the target stands once
  * the deletion is made. A target inside the range moves nothing.
  */
+/**
+ * The note bodies a direct deletion pruned as it took their references away,
+ * from its inverse: a move puts the references back at its target, so it
+ * restores the bodies the deletion removed.
+ */
+const noteBodyRestorations = (inverse: readonly DocumentOp[]): DocumentOp[] =>
+  inverse.flatMap((op): DocumentOp[] =>
+    op.type === DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS &&
+    (op.parts.footnotes !== undefined || op.parts.endnotes !== undefined)
+      ? [
+          {
+            type: DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS,
+            expected: {
+              ...(op.expected.footnotes === undefined
+                ? {}
+                : { footnotes: op.expected.footnotes }),
+              ...(op.expected.endnotes === undefined
+                ? {}
+                : { endnotes: op.expected.endnotes }),
+            },
+            parts: {
+              ...(op.parts.footnotes === undefined
+                ? {}
+                : { footnotes: op.parts.footnotes }),
+              ...(op.parts.endnotes === undefined
+                ? {}
+                : { endnotes: op.parts.endnotes }),
+            },
+          },
+        ]
+      : [],
+  );
+
+/**
+ * The document with the note bodies of `restorations` back, and the ops that
+ * put them back. Each restoration expects the note parts its own deletion
+ * left, so they undo the deletions newest first.
+ */
+const withNoteBodiesRestored = (
+  document: Document,
+  restorations: readonly DocumentOp[],
+): Result<{ document: Document; ops: DocumentOp[] }, DocumentOpRefusal> => {
+  if (restorations.length === 0) return Result.ok({ document, ops: [] });
+  const ops = restorations.toReversed();
+  const restored = applyDocumentOps(document, ops);
+  if (restored.isErr()) return Result.err(restored.error);
+  return Result.ok({ document: restored.value.document, ops });
+};
+
 const compileRangeMove = (
   document: Document,
   { intent, mode, insert }: RangeMoveOptions,
@@ -3425,42 +3497,12 @@ const compileRangeMove = (
     if (applied.isErr()) return Result.err(applied.error);
     afterDeletion = applied.value.document;
     deletionOps.push(op);
-    for (const inverse of applied.value.inverse) {
-      if (
-        inverse.type === DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS &&
-        (inverse.parts.footnotes !== undefined ||
-          inverse.parts.endnotes !== undefined)
-      )
-        movedNoteBodies.push({
-          type: DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS,
-          expected: {
-            ...(inverse.expected.footnotes === undefined
-              ? {}
-              : { footnotes: inverse.expected.footnotes }),
-            ...(inverse.expected.endnotes === undefined
-              ? {}
-              : { endnotes: inverse.expected.endnotes }),
-          },
-          parts: {
-            ...(inverse.parts.footnotes === undefined
-              ? {}
-              : { footnotes: inverse.parts.footnotes }),
-            ...(inverse.parts.endnotes === undefined
-              ? {}
-              : { endnotes: inverse.parts.endnotes }),
-          },
-        });
-    }
+    movedNoteBodies.push(...noteBodyRestorations(applied.value.inverse));
   }
-  if (movedNoteBodies.length > 0) {
-    // Each restoration expects the note parts its own deletion left, so
-    // they undo the deletions newest first.
-    const restorations = movedNoteBodies.toReversed();
-    const restored = applyDocumentOps(afterDeletion, restorations);
-    if (restored.isErr()) return Result.err(restored.error);
-    afterDeletion = restored.value.document;
-    deletionOps.push(...restorations);
-  }
+  const restored = withNoteBodiesRestored(afterDeletion, movedNoteBodies);
+  if (restored.isErr()) return Result.err(restored.error);
+  afterDeletion = restored.value.document;
+  deletionOps.push(...restored.value.ops);
   let target = intent.target;
   for (const op of logicalDeletions) {
     if (
@@ -3627,6 +3669,9 @@ const compileBlockMove = (
   const ops: DocumentOp[] = [];
   let current = document;
   let currentMode = mode;
+  // The note bodies a direct removal pruned with their references, which
+  // the moved blocks carry to the target.
+  const movedNoteBodies: DocumentOp[] = [];
   // The latest block first, so that no removal moves the place of another.
   for (const table of covered.toReversed()) {
     if (table.type !== "table") {
@@ -3640,6 +3685,7 @@ const compileBlockMove = (
       if (removed.isErr()) return removed;
       ops.push(removed.value.op);
       current = removed.value.document;
+      movedNoteBodies.push(...noteBodyRestorations(removed.value.inverse));
       continue;
     }
     const blockId = storyParagraphs({ content: [table] }).at(0)?.paragraph
@@ -3664,8 +3710,14 @@ const compileBlockMove = (
     if (applied.isErr()) return Result.err(applied.error);
     ops.push(...removed.value.ops);
     current = applied.value.document;
+    if (mode.type === "editing")
+      movedNoteBodies.push(...noteBodyRestorations(applied.value.inverse));
     currentMode = { ...modeAfterOps(current, currentMode), ...reserved };
   }
+  const restored = withNoteBodiesRestored(current, movedNoteBodies);
+  if (restored.isErr()) return Result.err(restored.error);
+  current = restored.value.document;
+  ops.push(...restored.value.ops);
   const moved = compileRangeMove(current, {
     intent: range,
     mode: currentMode,
@@ -3684,6 +3736,9 @@ const compileBlockMove = (
         },
         mode: { ...insertMode, ...reserved },
         ...(firstBlockId === undefined ? {} : { firstBlockId }),
+        // A suggestion records a copy at the target and leaves the source's
+        // references where they stand.
+        ...(mode.type === "editing" ? { moved: true as const } : {}),
       }),
   });
   if (moved.isErr()) return moved;
@@ -3858,6 +3913,7 @@ const compileInStory = (
     firstBlockId,
     typedFormatting = TYPED_TEXT_FORMATTING.CARET,
     replacementFormattingDocument,
+    moved,
   }: CompileEditorIntentOptions,
 ): Result<CompiledEditorIntent, DocumentOpRefusal> => {
   if (
@@ -3923,6 +3979,7 @@ const compileInStory = (
         intent,
         mode,
         ...(firstBlockId === undefined ? {} : { firstBlockId }),
+        ...(moved === undefined ? {} : { moved }),
       });
     case "replaceFragment": {
       if (intent.paragraphs.length === 0)

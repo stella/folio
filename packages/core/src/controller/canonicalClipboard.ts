@@ -180,23 +180,36 @@ const withClosedTableEdges = (slice: Slice): Slice | undefined => {
  * the content copied from it: a copy that starts or ends inside a block
  * content control, custom XML element, text box or inline content control
  * holds part of it, which pastes as that content, as a copy from inside a
- * paragraph pastes as its text.
+ * paragraph pastes as its text. A block wrapper open at an edge is given up
+ * however deep the slice opens through it, its first or last paragraph then
+ * pasting whole; a paragraph open only at depth one keeps its inline content.
  */
 const withOpenContainersUnwrapped = (slice: Slice): Slice => {
+  /**
+   * One edge unwrapped. A node the edge gives up that is also the other
+   * edge's, the only child where both edges run through it, takes a depth
+   * from the other edge too.
+   */
   const unwrapEdge = (
     fragment: Fragment,
     open: number,
+    other: number,
     edge: "start" | "end",
-  ): { fragment: Fragment; open: number } => {
+  ): { fragment: Fragment; open: number; other: number } => {
     let current = fragment;
     let depth = open;
-    while (depth > 1) {
+    let otherDepth = other;
+    let shared = true;
+    while (depth > 0) {
       const node = edge === "start" ? current.firstChild : current.lastChild;
       if (node === null || node.type.name === "table") break;
       const children: ProseNode[] = [];
       current.forEach((child) => children.push(child));
       if (node.type.name !== "paragraph") {
         if (node.isTextblock || node.isLeaf || node.childCount === 0) break;
+        // An inline node at the top of a slice open one level holds its
+        // content whole; a block wrapper open at all holds part of its own.
+        if (depth === 1 && node.isInline) break;
         const inner: ProseNode[] = [];
         node.forEach((child) => inner.push(child));
         current = Fragment.from(
@@ -204,9 +217,13 @@ const withOpenContainersUnwrapped = (slice: Slice): Slice => {
             ? [...inner, ...children.slice(1)]
             : [...children.slice(0, -1), ...inner],
         );
+        shared &&= children.length === 1 && otherDepth > 0;
+        if (shared) otherDepth -= 1;
         depth -= 1;
         continue;
       }
+      // Open at depth one, a paragraph holds its inline content whole.
+      if (depth === 1) break;
       const inline =
         edge === "start" ? node.content.firstChild : node.content.lastChild;
       if (inline === null || inline.isText || inline.isLeaf) break;
@@ -226,13 +243,21 @@ const withOpenContainersUnwrapped = (slice: Slice): Slice => {
           ? [paragraph, ...children.slice(1)]
           : [...children.slice(0, -1), paragraph],
       );
+      shared &&=
+        children.length === 1 && siblings.length === 1 && otherDepth > 1;
+      if (shared) otherDepth -= 1;
       depth -= 1;
     }
-    return { fragment: current, open: depth };
+    return { fragment: current, open: depth, other: otherDepth };
   };
-  const start = unwrapEdge(slice.content, slice.openStart, "start");
-  const end = unwrapEdge(start.fragment, slice.openEnd, "end");
-  return new Slice(end.fragment, start.open, end.open);
+  const start = unwrapEdge(
+    slice.content,
+    slice.openStart,
+    slice.openEnd,
+    "start",
+  );
+  const end = unwrapEdge(start.fragment, start.other, start.open, "end");
+  return new Slice(end.fragment, end.other, end.open);
 };
 
 /** Range markers between blocks hold no text; a paste leaves them behind. */
@@ -365,6 +390,7 @@ const clipboardPreservedBlocks = (blocks: readonly BlockContent[]): string[] =>
     }
   });
 
+/** A table's own captures; the tables in its cells are their own. */
 const withoutTableCaptures = (table: Table): void => {
   if (table.formatting !== undefined) {
     delete table.formatting.sourceXml;
@@ -372,21 +398,17 @@ const withoutTableCaptures = (table: Table): void => {
   }
   for (const row of table.rows) {
     if (row.formatting !== undefined) delete row.formatting.sourceXml;
-    for (const cell of row.cells) {
+    for (const cell of row.cells)
       if (cell.formatting !== undefined) delete cell.formatting.sourceXml;
-      for (const inner of cell.content)
-        if (inner.type === "table") withoutTableCaptures(inner);
-    }
   }
 };
 
-/** Every table a container holds, freed of its verbatim captures. */
+/**
+ * Every table among the blocks freed of its verbatim captures, those nested
+ * in cells and containers, a container in a cell among them, included.
+ */
 const withoutContainedTableCaptures = (blocks: readonly BlockContent[]) => {
-  for (const block of blocks) {
-    if (block.type === "table") withoutTableCaptures(block);
-    if (block.type === "blockSdt" || block.type === "blockCustomXml")
-      withoutContainedTableCaptures(block.content);
-  }
+  for (const table of clipboardTables(blocks)) withoutTableCaptures(table);
 };
 
 /** A pasted block's own copy, each paragraph keeping its indentation provenance. */
@@ -840,6 +862,28 @@ const sameRelationship = (
   left.target === right.target &&
   left.targetMode === right.targetMode;
 
+/**
+ * The image relationship ids and the markup a range of the editor's own
+ * document holds. A move carries what it drags within the part whose
+ * relationships it names, so what this range holds stays that part's own.
+ */
+const rangeHoldings = (
+  doc: ProseNode,
+  { from, to }: { from: number; to: number },
+): { relationshipIds: ReadonlySet<string>; markup: ReadonlySet<string> } => {
+  const relationshipIds = new Set<string>();
+  const markup = new Set<string>();
+  doc.nodesBetween(from, to, (node) => {
+    const rId: unknown = node.attrs["rId"];
+    if (node.type.name === "image" && typeof rId === "string")
+      relationshipIds.add(rId);
+    for (const value of Object.values(node.attrs))
+      if (typeof value === "string" && value.startsWith("<")) markup.add(value);
+    return true;
+  });
+  return { relationshipIds, markup };
+};
+
 /** Clipboard slices are input payloads; their paragraph identities and private captures are not owners. */
 type PrepareCanonicalPasteOptions = {
   session: CanonicalSession;
@@ -884,7 +928,11 @@ export const prepareCanonicalPaste = ({
   const closed = withClosedTableEdges(copied);
   if (closed === undefined)
     return refuse("The clipboard table holds no cells.", INVALID_CLIPBOARD);
-  const slice = withOpenContainersUnwrapped(closed);
+  // A table the copy opened through a container is reached only once the
+  // container is given up; it pastes the cells it holds as a top-level one does.
+  const slice = withClosedTableEdges(withOpenContainersUnwrapped(closed));
+  if (slice === undefined)
+    return refuse("The clipboard table holds no cells.", INVALID_CLIPBOARD);
   if (slice.openStart > 1 || slice.openEnd > 1)
     return refuse(
       "Clipboard tables and nested block containers require canonical table editing.",
@@ -1200,6 +1248,13 @@ export const prepareCanonicalPaste = ({
   // Drawing ids the destination already uses, read once an opaque drawing
   // needs a fresh one.
   let drawingIds: Set<number> | undefined;
+  // A move's blocks are the dragged range of this session's own document,
+  // which no source package describes: the images and kept markup that range
+  // holds keep the relationships they name.
+  const moved =
+    moveTarget === undefined
+      ? undefined
+      : rangeHoldings(state.doc, moveSource ?? selectionRange);
   // New inline images have no opaque XML dependencies. Existing package images
   // retain their relationship only when its resolved source belongs to this package.
   const importResources = (
@@ -1282,6 +1337,12 @@ export const prepareCanonicalPaste = ({
           if (rebound.isErr()) return rebound;
           image.hlinkHoverXml = rebound.value;
         }
+        if (
+          moved !== undefined &&
+          image.rId !== undefined &&
+          moved.relationshipIds.has(image.rId)
+        )
+          continue;
         const relationship =
           image.rId === undefined ? undefined : relationships.get(image.rId);
         const ownedPath = relationship?.target.startsWith("/")
@@ -1414,7 +1475,8 @@ export const prepareCanonicalPaste = ({
   ): Result<void, CanonicalSessionError> => {
     const referenced = relationshipIdsIn(xml);
     if (referenced.isErr()) return referenced;
-    if (referenced.value.length === 0) return Result.ok(undefined);
+    if (referenced.value.length === 0 || moved?.markup.has(xml) === true)
+      return Result.ok(undefined);
     const samePackage =
       sourceDocument !== undefined &&
       sourceDocument.originalBuffer !== undefined &&

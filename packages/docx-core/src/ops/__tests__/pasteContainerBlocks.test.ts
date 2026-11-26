@@ -259,3 +259,168 @@ describe("dragging a block content control", () => {
       );
   });
 });
+
+describe("a pasted container's paragraph identities", () => {
+  test("pass over the ids the session retired", () => {
+    const document: Document = {
+      package: { document: { content: [paragraph("next", "00000001")] } },
+    };
+    const at = { story: OP_STORIES.MAIN, blockId: "00000001", offset: 0 };
+    const compiled = compileEditorIntent(document, {
+      intent: {
+        type: "pasteBlocks",
+        from: at,
+        to: at,
+        blocks: [
+          {
+            type: "blockSdt",
+            properties: { sdtType: "richText", id: 7 },
+            content: [paragraph("held")],
+          },
+        ],
+        openStart: 0,
+        openEnd: 0,
+      },
+      mode: { type: "editing", reservedBlockIds: new Set(["00000002"]) },
+    });
+    if (compiled.isErr()) throw compiled.error;
+    const applied = applyDocumentOps(document, compiled.value.ops);
+    if (applied.isErr()) throw applied.error;
+    const ids = paraIds(applied.value.document.package.document.content);
+    expect(ids).not.toContain("00000002");
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(validateOpsDocument(applied.value.document).isOk()).toBe(true);
+  });
+});
+
+const inControl = (held: Paragraph): PastedBlock => ({
+  type: "blockSdt",
+  properties: { sdtType: "richText", id: 7 },
+  content: [held],
+});
+const inTable = (held: Paragraph): PastedBlock => ({
+  type: "table",
+  rows: [{ type: "tableRow", cells: [{ type: "tableCell", content: [held] }] }],
+});
+
+describe.each([
+  {
+    kind: "block content control",
+    wrap: inControl,
+    suggested: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+  },
+  // A suggestion keeps the source's reference; its copy would need a note.
+  {
+    kind: "table",
+    wrap: inTable,
+    suggested: DOCUMENT_OP_REFUSAL_REASONS.INVALID_OPERATION,
+  },
+])(
+  "dragging a $kind holding a note reference and a comment",
+  ({ wrap, suggested }) => {
+    const held = (): Paragraph => ({
+      type: "paragraph",
+      paraId: "00000005",
+      content: [
+        { type: "commentRangeStart", id: 4 },
+        run("held"),
+        { type: "run", content: [{ type: "footnoteRef", id: 1 }] },
+        { type: "commentRangeEnd", id: 4 },
+        { type: "commentReference", id: 4 },
+      ],
+    });
+    const document = (): Document => ({
+      package: {
+        document: {
+          content: [
+            paragraph("one", "00000002"),
+            wrap(held()),
+            paragraph("two", "00000003"),
+            paragraph("three", "00000004"),
+          ],
+          comments: [
+            {
+              id: 4,
+              author: "Reviewer",
+              date: "2026-01-02T00:00:00Z",
+              content: [paragraph("Standing comment", "0000C004")],
+            },
+          ],
+        },
+        footnotes: [
+          {
+            type: "footnote",
+            id: 1,
+            content: [paragraph("Standing note", "0000F001")],
+          },
+        ],
+      },
+    });
+    const at = (blockId: string, offset: number) => ({
+      story: OP_STORIES.MAIN,
+      blockId,
+      offset,
+    });
+    const drag = (dragged: Document, mode: EditorIntentMode) => {
+      const { paraId: _paraId, ...copied } = held();
+      return compileEditorIntent(dragged, {
+        intent: {
+          type: "moveBlocks",
+          from: at("00000002", 3),
+          to: at("00000003", 0),
+          target: at("00000004", 2),
+          blocks: [paragraph(""), wrap(copied), paragraph("")],
+          openStart: 1,
+          openEnd: 1,
+        },
+        mode,
+      });
+    };
+    const anchorsIn = (moved: Document) => {
+      const text = JSON.stringify(moved.package.document.content);
+      return {
+        notes: text.match(/"footnoteRef","id":1/gu)?.length ?? 0,
+        comments:
+          text.match(/"comment(?:RangeStart|RangeEnd|Reference)","id":4/gu)
+            ?.length ?? 0,
+      };
+    };
+
+    test("moves it directly, keeping the note and the comment under their ids", () => {
+      const dragged = document();
+      const compiled = drag(dragged, DIRECT);
+      if (compiled.isErr()) throw compiled.error;
+      const applied = applyDocumentOps(dragged, compiled.value.ops);
+      if (applied.isErr()) throw applied.error;
+      const moved = applied.value.document;
+      expect(validateOpsDocument(moved).isOk()).toBe(true);
+      expect(moved.package.document.content.map(({ type }) => type)).toEqual([
+        "paragraph",
+        "paragraph",
+        wrap(held()).type,
+        "paragraph",
+      ]);
+      // One reference and one set of markers, each naming the one it named.
+      expect(anchorsIn(moved)).toEqual({ notes: 1, comments: 3 });
+      expect(moved.package.footnotes).toEqual(document().package.footnotes);
+      expect(moved.package.document.comments).toEqual(
+        document().package.document.comments,
+      );
+      const undone = applyDocumentOps(moved, applied.value.inverse);
+      if (undone.isErr()) throw undone.error;
+      expect(undone.value.document).toEqual(document());
+    });
+
+    test("refuses as a suggestion", () => {
+      const compiled = drag(document(), {
+        type: "suggesting",
+        revision: { id: 90, author: "R", date: "2026-01-02T00:00:00Z" },
+        newIds: {
+          revision: Array.from({ length: 80 }, (_, index) => 91 + index),
+        },
+      });
+      expect(compiled.isErr()).toBe(true);
+      if (compiled.isErr()) expect(compiled.error.reason).toBe(suggested);
+    });
+  },
+);
