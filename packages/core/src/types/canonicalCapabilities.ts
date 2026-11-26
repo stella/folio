@@ -152,7 +152,7 @@ export const CANONICAL_CAPABILITIES: {
     readonly owner: "controller";
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Unsupported inline, field and review content cannot be projected after canonical edits; pasted embedded blocks, comment and note references copied outside the editor, and compositions over such content refuse.";
+    readonly summary: "A paste of content whose package parts the model does not carry refuses: an opaque drawing or kept block markup from another package, and a copied comment holding images or external links.";
   };
   readonly "tracked-change-records": {
     readonly owner: "document-operations";
@@ -185,7 +185,7 @@ export const CANONICAL_CAPABILITIES: {
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
-      "Unsupported inline, field and review content cannot be projected after canonical edits; pasted embedded blocks, comment and note references copied outside the editor, and compositions over such content refuse.",
+      "A paste of content whose package parts the model does not carry refuses: an opaque drawing or kept block markup from another package, and a copied comment holding images or external links.",
   },
   [CANONICAL_GAP.trackedChangeRecords]: {
     owner: "document-operations",

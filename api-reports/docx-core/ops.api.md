@@ -597,7 +597,7 @@ export type EditorIntent = HyperlinkEditorIntent | GenerateTOCIntent | {
     type: "pasteBlocks";
     from: TextPosition;
     to: TextPosition;
-    blocks: readonly (Paragraph | Table)[];
+    blocks: readonly PastedBlock[];
     openStart: 0 | 1;
     openEnd: 0 | 1;
     annotations?: PasteAnnotations;
@@ -1244,6 +1244,9 @@ export type PasteAnnotations = {
     notes: readonly (Footnote | Endnote)[];
     comments: readonly Comment_2[];
 };
+
+// @public
+export type PastedBlock = Paragraph | Table | BlockSdt | BlockCustomXml | PreservedBlock;
 
 // @public
 export const pendingSuggestionIdsIn: (document: Document_2) => Set<string>;

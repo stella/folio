@@ -312,7 +312,7 @@ describe("canonical clipboard", () => {
     }
   });
 
-  test("a copied note linking outside its part refuses, since its new part holds no such relationship", () => {
+  test("a copied note linking outside its part pastes with its link, which the save writes into the note part", async () => {
     const destination = seed();
     const sourceDocument = seed();
     sourceDocument.package.footnotes = [
@@ -365,11 +365,26 @@ describe("canonical clipboard", () => {
       slice,
       sourceDocument,
     });
-    if (prepared.isOk()) throw new TypeError("The paste was not refused.");
-    expect(prepared.error.message).toContain("relationships");
-    expect(session.document.package.footnotes ?? []).toEqual(
-      destination.package.footnotes ?? [],
-    );
+    if (prepared.isErr()) throw prepared.error;
+    publishCanonicalProjection({
+      session,
+      state,
+      commit: prepared.value,
+    }).unwrap();
+    const linkIn = (document: Document) => {
+      let link: { href?: string | undefined } | undefined;
+      for (const note of document.package.footnotes ?? [])
+        for (const block of note.content)
+          if (block.type === "paragraph")
+            for (const item of block.content)
+              if (item.type === "hyperlink") link = item;
+      return link;
+    };
+    expect(linkIn(session.document)?.href).toBe("https://source.example.test");
+    const reopened = await parseDocx(await createDocx(session.document), {
+      preloadFonts: false,
+    });
+    expect(linkIn(reopened)?.href).toBe("https://source.example.test");
   });
 
   test("a copied footnote keeps its source paragraph style, and the destination's own note keeps its style", () => {
