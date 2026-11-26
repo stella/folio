@@ -1092,10 +1092,11 @@ test("read preconditions and session lifecycle cannot mutate the journal", () =>
       ])
       .skipped.at(0)?.reason,
   ).toBe("preconditionFailed");
+  // A payload the operations do not take is the request's condition.
   expect(
-    editor.apply([{ ...operation, replace: "**gamma**" }]).issues.at(0)
-      ?.canonicalRefusal?.gap,
-  ).toBe("publicOps.unsupportedInline");
+    editor.apply([{ ...operation, replace: "ga\rmma" }]).issues.at(0)
+      ?.canonicalRefusal,
+  ).toEqual({ condition: "invalidRequest" });
   // A row, column or cell operation on a block in no table is skipped as
   // the default engine skips it, under no gap.
   for (const outsideOperation of [
