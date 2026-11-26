@@ -85,10 +85,6 @@ import {
 } from "@stll/folio-core/controller/noteEditorManager";
 import type { PageRendererName } from "@stll/folio-core/display-list/editor/pageRenderer";
 import {
-  canonicalSaveDiagnosticError,
-  serializeCanonicalSave,
-} from "@stll/folio-core/docx/canonicalSave";
-import {
   holdsUniqueParagraphIds,
   openCanonicalDocx,
   prepareCanonicalDocumentInput,
@@ -1375,10 +1371,13 @@ export function useDocxEditor(
     try {
       const snapshot = manager.api.captureCanonicalSave();
       if (snapshot) {
+        const saveFlags = toValue(featureFlags);
+        const { canonicalSaveDiagnosticError, serializeCanonicalSave } =
+          await import("@stll/folio-core/docx/canonicalSave");
         const result = await serializeCanonicalSave({
           snapshot,
           options: serializationOptions,
-          featureFlags: toValue(featureFlags),
+          featureFlags: saveFlags,
         });
         for (const diagnostic of result.diagnostics) {
           if (!serializationOptions?.onDiagnostic)

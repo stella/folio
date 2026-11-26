@@ -33,7 +33,7 @@ import { ComputedRef } from 'vue';
 import { consumeTemplateSlashQuery } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
 import { ContentControlFilter } from '@stll/folio-core/content-controls';
 import { createAICitationDecorationsPlugin } from '@stll/folio-core/prosemirror/plugins/aiCitationDecorations';
-import { createDocx } from '@stll/folio-core/docx/rezip';
+import { createDocx } from '@stll/folio-core/docx/createDocx';
 import { createEmptyDocument } from '@stll/folio-core/utils/createDocument';
 import { CreateEmptyDocumentOptions } from '@stll/folio-core/utils/createDocument';
 import { createFolioAIEditSnapshot } from '@stll/folio-core/ai-edits';
