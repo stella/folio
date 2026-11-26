@@ -175,6 +175,41 @@ describe("analyzeDocxBlocks", () => {
     );
   });
 
+  test("a block says where its lines start: by itself, by its list level, by its style", async () => {
+    const numbering = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="lowerRoman"/><w:lvlText w:val="%1."/><w:pPr><w:ind w:left="1506" w:hanging="360"/></w:pPr></w:lvl></w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num></w:numbering>`;
+    const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style><w:style w:type="paragraph" w:styleId="Inset"><w:name w:val="Inset"/><w:basedOn w:val="Normal"/><w:pPr><w:ind w:left="851"/></w:pPr></w:style></w:styles>`;
+    const { blocks } = unwrap(
+      await analyzeDocxBlocks(
+        await buildMinimalDocx(
+          [
+            p(r("an item"), numPr(1, 0)),
+            p(r("a line under it"), '<w:ind w:left="786" w:firstLine="774"/>'),
+            p(r("an item moved out"), `${numPr(1, 0)}<w:ind w:left="2000"/>`),
+            p(r("inset by its style"), '<w:pStyle w:val="Inset"/>'),
+            p(r("plain")),
+          ].join(""),
+          {
+            "[Content_Types].xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>`,
+            "word/_rels/document.xml.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`,
+            "word/numbering.xml": numbering,
+            "word/styles.xml": styles,
+          },
+        ),
+      ),
+    );
+
+    expect(blocks.map(({ indent }) => indent)).toEqual([
+      // The level's: its text starts at 1506, its number hangs in front.
+      { left: 1506, firstLine: -360 },
+      // The paragraph's own.
+      { left: 786, firstLine: 774 },
+      // Its own left over the level's, the level's hanging first line kept.
+      { left: 2000, firstLine: -360 },
+      { left: 851, firstLine: 0 },
+      undefined,
+    ]);
+  });
+
   test("a paragraph numbered without a numbering part has no label", async () => {
     const { blocks } = unwrap(
       await analyzeDocxBlocks(

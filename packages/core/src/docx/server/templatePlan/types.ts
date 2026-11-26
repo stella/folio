@@ -129,6 +129,14 @@ export type DocxBlock = {
    * Absent when neither states one.
    */
   alignment?: string;
+  /**
+   * The paragraph's indent in effect, in twentieths of a point: `left` is
+   * where its lines start, `firstLine` what its first line adds to that
+   * (negative for a hanging indent). Each side is the paragraph's own, else
+   * its list level's, else its style's with inheritance resolved. Absent
+   * when none of them states an indent.
+   */
+  indent?: { left: number; firstLine: number };
   /** Table only: its cells in row order. */
   cells?: DocxTableCell[];
   /** Table only: every block inside the table in document order. */

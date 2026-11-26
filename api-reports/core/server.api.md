@@ -302,6 +302,10 @@ export type DocxBlock = {
     pageBreakBefore?: true;
     endsSection?: true;
     alignment?: string;
+    indent?: {
+        left: number;
+        firstLine: number;
+    };
     cells?: DocxTableCell[];
     nested?: DocxBlock[];
 };

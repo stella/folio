@@ -131,6 +131,38 @@ const sectionOf = (sectPr: XmlElement, index: number): DocxSection => {
   };
 };
 
+type IndentSides = { left: number | null; firstLine: number | null };
+
+/** The sides a list level or a style states, as the document model holds
+ *  them: a hanging indent is a negative first line. */
+const modelIndent = (
+  formatting:
+    | { indentLeft?: number; indentFirstLine?: number; hangingIndent?: boolean }
+    | undefined,
+): IndentSides => {
+  const first = formatting?.indentFirstLine;
+  let firstLine: number | null = null;
+  if (first !== undefined) {
+    firstLine = formatting?.hangingIndent === true ? -Math.abs(first) : first;
+  }
+  return { left: formatting?.indentLeft ?? null, firstLine };
+};
+
+/**
+ * The indent in effect: each side from the paragraph itself, else from its
+ * list level, else from its style. Null when none of them states a side.
+ */
+const indentInEffect = (
+  ...sources: readonly IndentSides[]
+): { left: number; firstLine: number } | null => {
+  const left = sources.find((source) => source.left !== null)?.left ?? null;
+  const firstLine =
+    sources.find((source) => source.firstLine !== null)?.firstLine ?? null;
+  return left === null && firstLine === null
+    ? null
+    : { left: left ?? 0, firstLine: firstLine ?? 0 };
+};
+
 /** The alignment each style of a styles part states for itself (`w:jc`). */
 export const statedAlignments = (
   stylesPath: string | null,
@@ -393,6 +425,21 @@ export const analyzeStory = ({
             ));
       if (alignment !== null) {
         block.alignment = alignment;
+      }
+      const level =
+        label.numbering === null
+          ? null
+          : (resources.numbering?.getLevel(
+              label.numbering.numId,
+              label.numbering.ilvl,
+            ) ?? null);
+      const indent = indentInEffect(
+        read.indent,
+        modelIndent(level?.pPr),
+        modelIndent(style?.pPr),
+      );
+      if (indent !== null) {
+        block.indent = indent;
       }
       index += 1;
       const parent = tables.at(-1);
