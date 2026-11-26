@@ -3,4 +3,4 @@
 "@stll/folio-core": patch
 ---
 
-Keep wrapped table markup in place through merged-cell review and report table snapshots with explicitly undefined fields as a document rule.
+Preserve wrapped markup and existing cell records through table review, and report table snapshots with explicitly undefined fields as a document rule.

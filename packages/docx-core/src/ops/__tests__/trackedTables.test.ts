@@ -532,6 +532,89 @@ describe("terminal table insertion carrier", () => {
 
 describe("tracked table refusals", () => {
   test.each(["insert", "delete"] as const)(
+    "%s carries opaque cell markup and existing cell revisions",
+    (mode) => {
+      const source = makeTable();
+      const row = source.rows.at(0);
+      const cell = row?.cells.at(0);
+      if (row === undefined || cell === undefined)
+        throw new Error("Fixture has a row and cell.");
+      const prior = { id: 50, author: "Earlier" };
+      const table: Table = {
+        ...source,
+        rows: [
+          {
+            ...row,
+            cells: [
+              {
+                ...cell,
+                structuralChange: { type: "tableCellDeletion", info: prior },
+                propertyChanges: [
+                  {
+                    type: "tableCellPropertyChange",
+                    info: { ...prior, id: 51 },
+                    previousFormatting: { fitText: true },
+                  },
+                ],
+                content: [
+                  {
+                    type: "preservedBlock",
+                    xml: '<w:proofErr w:type="spellStart"/>',
+                  },
+                  {
+                    ...makeParagraph("00000010"),
+                    content: [
+                      {
+                        type: "run",
+                        content: [{ type: "text", text: "Kept" }],
+                      },
+                      {
+                        type: "preservedInline",
+                        xml: '<w:proofErr w:type="spellEnd"/>',
+                        text: "",
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      };
+      const following = makeParagraph("00000002");
+      const before = documentOf(
+        mode === "insert" ? [following] : [table, following],
+      );
+      const op =
+        mode === "insert"
+          ? ({
+              type: DOCUMENT_OP_TYPES.INSERT_TABLE,
+              story: OP_STORIES.MAIN,
+              at: { type: "before", blockId: "00000002" },
+              table,
+            } satisfies DocumentOp)
+          : ({
+              type: DOCUMENT_OP_TYPES.DELETE_TABLE,
+              story: OP_STORIES.MAIN,
+              blockId: "00000010",
+            } satisfies DocumentOp);
+      const pending = applied(before, { ...op, revision, newIds });
+      expect(pending.revisions).not.toContain(prior.id);
+      for (const decision of [
+        REVISION_DECISIONS.ACCEPT,
+        REVISION_DECISIONS.REJECT,
+      ])
+        expect(
+          resolve(pending.document, pending.revisions, decision).document,
+        ).toStrictEqual(
+          decision === REVISION_DECISIONS.ACCEPT
+            ? applied(before, op).document
+            : before,
+        );
+    },
+  );
+
+  test.each(["insert", "delete"] as const)(
     "%s refuses unsupported cell content and conflicting revisions",
     (mode) => {
       const source = makeTable();
@@ -552,26 +635,6 @@ describe("tracked table refusals", () => {
             ],
           },
           reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
-        },
-        {
-          value: {
-            ...source,
-            rows: [
-              {
-                ...row,
-                cells: [
-                  {
-                    ...cell,
-                    structuralChange: {
-                      type: "tableCellDeletion",
-                      info: foreign,
-                    },
-                  },
-                ],
-              },
-            ],
-          },
-          reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
         },
         ...(
           [

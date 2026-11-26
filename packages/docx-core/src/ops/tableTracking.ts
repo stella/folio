@@ -117,8 +117,6 @@ const trackableInline = (nodes: readonly InlineNode[]): boolean =>
       case "moveFromRangeEnd":
       case "moveToRangeStart":
       case "moveToRangeEnd":
-      case "preservedInline":
-      case "preservedXml":
         return false;
       default:
         return trackableInline(childNodes(node) ?? []);
@@ -126,9 +124,8 @@ const trackableInline = (nodes: readonly InlineNode[]): boolean =>
   });
 
 /**
- * Captured blocks, section breaks and moves have no tracked-row
- * construction. Bookmark and comment boundaries hold no words to mark, and
- * the row's structural record carries a nested table whole.
+ * A row's structural record carries opaque blocks and nested tables whole.
+ * A section break or move requires preserving its other endpoint as well.
  */
 const trackableBlocks = (blocks: readonly BlockContent[]): boolean =>
   blocks.every((block) => {
@@ -148,8 +145,8 @@ const trackableBlocks = (blocks: readonly BlockContent[]): boolean =>
       case "bookmarkEnd":
       case "commentRangeStart":
       case "commentRangeEnd":
-        return true;
       case "preservedBlock":
+        return true;
       case "moveFromRangeStart":
       case "moveFromRangeEnd":
       case "moveToRangeStart":
@@ -161,6 +158,14 @@ const trackableBlocks = (blocks: readonly BlockContent[]): boolean =>
       }
     }
   });
+
+const holdsCapturedInline = (items: readonly InlineNode[]): boolean =>
+  items.some(
+    (item) =>
+      item.type === "preservedInline" ||
+      item.type === "preservedXml" ||
+      holdsCapturedInline(childNodes(item) ?? []),
+  );
 
 type TrackTableRowsOptions = {
   document: Document;
@@ -228,7 +233,13 @@ export const trackTableRows = ({
   const reviewedFinalMark = [...finals].find(
     (paragraph) => paragraph.pPrMark !== undefined,
   )?.pPrMark;
-  if (!missingFinalParagraph && reviewedFinalMark !== undefined) {
+  if (missingFinalParagraph)
+    return refused({
+      op,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+      message: "A cell needs a final paragraph to record its mark.",
+    });
+  if (reviewedFinalMark !== undefined) {
     return refused({
       op,
       reason: pendingParagraphMarkReason(reviewedFinalMark),
@@ -236,13 +247,9 @@ export const trackTableRows = ({
     });
   }
   if (
-    missingFinalParagraph ||
     rows.some((row) =>
       row.cells.some(
-        (cell) =>
-          cell.structuralChange !== undefined ||
-          (cell.propertyChanges?.length ?? 0) > 0 ||
-          (!survivingCells.has(cell) && !trackableBlocks(cell.content)),
+        (cell) => !survivingCells.has(cell) && !trackableBlocks(cell.content),
       ),
     )
   ) {
@@ -312,19 +319,23 @@ export const trackTableRows = ({
       after.push(paragraph);
       continue;
     }
-    const wrapped = wrapTracked({
-      items: paragraph.content,
-      from: { offset: 0, zeroWidthBefore: 0 },
-      to: {
-        offset: paragraphLength(paragraph),
-        zeroWidthBefore: Number.MAX_SAFE_INTEGER,
-      },
-      kind,
-      stamp: revision,
-      ...(kind === WRAP_KINDS.DELETION
-        ? { commentAnchors: "stand" as const }
-        : {}),
-    });
+    // The row owns an opaque paragraph's removal or insertion. Leave its
+    // verbatim XML in the original container, outside new inline wrappers.
+    const wrapped = holdsCapturedInline(paragraph.content)
+      ? { kind: "unchanged" as const }
+      : wrapTracked({
+          items: paragraph.content,
+          from: { offset: 0, zeroWidthBefore: 0 },
+          to: {
+            offset: paragraphLength(paragraph),
+            zeroWidthBefore: Number.MAX_SAFE_INTEGER,
+          },
+          kind,
+          stamp: revision,
+          ...(kind === WRAP_KINDS.DELETION
+            ? { commentAnchors: "stand" as const }
+            : {}),
+        });
     if (wrapped.kind === "refused") {
       return refused({
         op,
