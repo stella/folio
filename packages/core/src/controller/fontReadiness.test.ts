@@ -1,12 +1,14 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 
 import { toProseDoc } from "../prosemirror";
 import { schema } from "../prosemirror/schema";
 import { createEmptyDocument } from "../utils/createDocument";
+import * as fontResolver from "../utils/fontResolver";
 import { ScriptedFontSet } from "./__tests__/scriptedFontSet";
 import {
   collectInitialLayoutFontFaces,
   collectInitialLayoutFontFamilies,
+  collectLayoutText,
   readFontSetSignature,
   waitForInitialLayoutFonts,
 } from "./fontReadiness";
@@ -321,6 +323,60 @@ describe("initial layout font loading", () => {
     ]);
     expect(collectInitialLayoutFontFamilies(null, pmDoc)).toContain(
       "Times New Roman",
+    );
+  });
+});
+
+describe("initial layout font collection cost", () => {
+  const cambriaParagraphs = (count: number) => {
+    const bold = schema.marks["bold"]?.create();
+    const cambria = schema.marks["fontFamily"]?.create({
+      ascii: "Cambria",
+      hAnsi: "Cambria",
+    });
+    if (!bold || !cambria) {
+      throw new Error("Expected bold and fontFamily marks in schema");
+    }
+    return schema.node(
+      "doc",
+      null,
+      Array.from({ length: count }, (_, index) =>
+        schema.node("paragraph", null, [
+          schema.text(`plain ${index} `),
+          schema.text("Cambria", [cambria]),
+          schema.text(" bold Cambria", [bold, cambria]),
+        ]),
+      ),
+    );
+  };
+
+  test("resolves each font family once, however many runs name it", () => {
+    const resolve = spyOn(fontResolver, "resolveFontFamily");
+    try {
+      const short = collectInitialLayoutFontFaces(null, cambriaParagraphs(2));
+      const shortCalls = resolve.mock.calls.length;
+      resolve.mockClear();
+      const long = collectInitialLayoutFontFaces(null, cambriaParagraphs(400));
+
+      expect(resolve.mock.calls.length).toBe(shortCalls);
+      expect(long.map(fontFaceKey)).toEqual(short.map(fontFaceKey));
+      expect(long.map(fontFaceKey)).toContain("Cambria|normal|700");
+      expect(long.map(fontFaceKey)).toContain("Caladea|normal|400");
+    } finally {
+      resolve.mockRestore();
+    }
+  });
+
+  test("collects each character once, in first-seen order", () => {
+    const pmDoc = schema.node("doc", null, [
+      schema.node("paragraph", null, [schema.text("ba\u00e9\tab \u{1f600}b")]),
+      schema.node("paragraph", null, [
+        schema.text("\ud800x\u{1f600}\u{1f601}"),
+      ]),
+    ]);
+
+    expect(collectLayoutText(null, pmDoc)).toBe(
+      " ba\u00e9\u{1f600}\ud800x\u{1f601}",
     );
   });
 });
