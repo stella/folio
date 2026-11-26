@@ -22,7 +22,7 @@ import {
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
-import { createSuggestionModePlugin } from "./plugins/suggestionMode";
+import { createSuggestionModePlugin } from "../__tests__/reference-editor/suggestionMode";
 import { createTextInputPlugin } from "./textInput";
 
 // Synchronous generated XML or editor-state cases use a 15-second base budget.

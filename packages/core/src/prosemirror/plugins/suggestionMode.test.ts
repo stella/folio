@@ -15,7 +15,8 @@ import {
   handleSuggestionPaste,
   setSuggestionMode,
   suggestionModeKey,
-} from "./suggestionMode";
+} from "../../__tests__/reference-editor/suggestionMode";
+import { pastePlainTextSlice } from "../commands/pastePlainText";
 
 // Minimal schema with insertion/deletion marks
 const schema = new Schema({
@@ -228,10 +229,7 @@ describe("SuggestionMode Plugin", () => {
 
       const { view, get } = mockView(state);
       const slice = new Slice(Fragment.from(schema.text("quick")), 0, 0);
-      const pluginState = suggestionModeKey.getState(state)!;
-
-      const handled = handleSuggestionPaste(view, slice, pluginState);
-      expect(handled).toBe(true);
+      pastePlainTextSlice(view, slice);
 
       const marks = getMarks(get());
       const deleted = marks.find((m) => m.text.includes("lazy"));

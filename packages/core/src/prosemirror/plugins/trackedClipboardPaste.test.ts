@@ -12,6 +12,11 @@ import {
 } from "prosemirror-state";
 
 import { acquireHarnessDom } from "../../../../../test/harnessDom";
+import {
+  createSuggestionModePlugin,
+  handleSuggestionPaste,
+  suggestionModeKey,
+} from "../../__tests__/reference-editor/suggestionMode";
 import { fromMarkdown } from "../../markdown/fromMarkdown";
 import { expectTrackedChangeMarkAttrs } from "../attrs";
 import { fromProseDoc } from "../conversion/fromProseDoc";
@@ -20,11 +25,6 @@ import { transformPastedHTML } from "../extensions/features/PasteStyleInlinerExt
 import { schema } from "../schema";
 import { enclosingInsertionAncestors } from "../trackedRevisionPath";
 import { mintRevisionId } from "./revisionIds";
-import {
-  createSuggestionModePlugin,
-  handleSuggestionPaste,
-  suggestionModeKey,
-} from "./suggestionMode";
 
 let releaseDom: ReturnType<typeof acquireHarnessDom>;
 

@@ -68,8 +68,8 @@ import {
   withCanonicalTableInsertion,
 } from "../../canonicalTableCommands";
 import { mintRevisionId } from "../../plugins/revisionIds";
-import { makeRevisionInfo } from "../../plugins/suggestionMode";
 import type { TableAttrs, TableCellAttrs } from "../../schema/nodes";
+import { makeRevisionInfo } from "../../suggestionCommands";
 import {
   pastedSliceWithNewTableCells,
   pasteTableCells,

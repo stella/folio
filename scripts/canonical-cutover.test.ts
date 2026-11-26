@@ -125,36 +125,29 @@ describe("canonical cutover guard", () => {
     ).toContain(
       "packages/react/src/fixture.tsx: reference engine plugins belong in test support",
     );
+    const command =
+      "packages/core/src/prosemirror/commands/replaceRangeText.ts";
+    expect(
+      failuresOf(
+        'import { deleteSelectionAsSuggestion } from "../../__tests__/reference-editor/suggestionMode";',
+        command,
+      ),
+    ).toContain(`${command}: reference engine plugins belong in test support`);
   });
 
-  test("mutation primitives require their actual capability markers", () => {
-    const fixtures = [
-      {
-        gap: CANONICAL_GAP.suggestionPlugin,
-        file: "packages/core/src/prosemirror/plugins/suggestionMode.ts",
-        code: "const plugin = {\nappendTransaction() {}\n};",
-      },
-      {
-        gap: CANONICAL_GAP.publicHeadlessSession,
-        file: "packages/core/src/ai-edits/headless.ts",
-        code: "class Reviewer {\nstatic fromBuffer() {}\n}",
-      },
-    ];
-    for (const { gap, file, code } of fixtures)
-      expect(
-        failuresOf(code, file).some((failure) =>
-          failure.includes(`${gap} source needs its ledger marker`),
-        ),
-      ).toBe(true);
-    const mutationSources = Object.entries(CANONICAL_CAPABILITIES).filter(
-      ([, capability]) => capability.kind === "mutation-source",
+  test("the headless session factory requires its capability marker", () => {
+    const gap = CANONICAL_GAP.publicHeadlessSession;
+    const file = "packages/core/src/ai-edits/headless.ts";
+    const method = "static fromBuffer() {}";
+    expect(failuresOf(`class Reviewer {\n${method}\n}`, file)).toContain(
+      `${file}:2: ${gap} source needs its ledger marker`,
     );
-    const mutationFixtures = fixtures.filter(
-      ({ gap }) => CANONICAL_CAPABILITIES[gap].kind === "mutation-source",
-    );
-    expect(mutationSources.map(([id]) => id).sort()).toEqual(
-      mutationFixtures.map(({ gap }) => gap).sort(),
-    );
+    expect(
+      failuresOf(
+        `class Reviewer {\n// canonical-gap: ${gap}\n${method}\n}`,
+        file,
+      ),
+    ).toEqual([]);
   });
 
   test("production callers cannot reconstruct a document from PM", () => {

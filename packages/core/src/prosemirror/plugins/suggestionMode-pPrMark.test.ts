@@ -7,7 +7,7 @@ import type { EditorView } from "prosemirror-view";
 import {
   createSuggestionModePlugin,
   paragraphBoundaryTarget,
-} from "./suggestionMode";
+} from "../../__tests__/reference-editor/suggestionMode";
 
 const schema = new Schema({
   nodes: {

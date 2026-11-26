@@ -9,7 +9,7 @@ import { Fragment, type Node as PMNode, Slice } from "prosemirror-model";
 import { CellSelection } from "prosemirror-tables";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
-import { deleteSelectionAsSuggestion } from "../prosemirror/plugins/suggestionMode";
+import { deleteSelectionAsSuggestion } from "../prosemirror/suggestionCommands";
 import { DOCUMENT_SHAPES } from "./documentShapes";
 import {
   createHarnessState,

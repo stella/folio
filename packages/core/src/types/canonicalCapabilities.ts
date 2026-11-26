@@ -9,7 +9,6 @@ export const CANONICAL_GAP = {
   sectionProperties: "section-properties",
   dispatch: "unclassified-transactions",
   saveSerialization: "save-serialization",
-  suggestionPlugin: "pm-suggestion-plugin",
   publicComments: "publicOps.comments",
   publicUnsupportedInline: "publicOps.unsupportedInline",
   commentReplacementAlignment: "comment-replacement-alignment",
@@ -85,16 +84,11 @@ export type CanonicalRefusalGround =
   { gap: CanonicalGap; rule?: never } | { rule: CanonicalRule; gap?: never };
 
 type CanonicalCapability = {
-  kind: "routing" | "refusal" | "mutation-source";
+  kind: "routing" | "refusal";
   adapters: readonly ("react" | "vue")[];
   summary: string;
   remainingCommands?: { registry: "extension-commands" };
-  owner:
-    | "document-operations"
-    | "controller"
-    | "adapters"
-    | "prosemirror"
-    | "ai-edits";
+  owner: "document-operations" | "controller" | "adapters" | "ai-edits";
 };
 
 export const CANONICAL_CAPABILITIES: {
@@ -154,12 +148,6 @@ export const CANONICAL_CAPABILITIES: {
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
     readonly summary: "Canonical save waits for composition to finish and reports package serialization refusals and fidelity fallbacks.";
-  };
-  readonly "pm-suggestion-plugin": {
-    readonly owner: "prosemirror";
-    readonly kind: "mutation-source";
-    readonly adapters: readonly ["react", "vue"];
-    readonly summary: "The legacy suggestion plugin produces PM transactions.";
   };
   readonly "publicOps.comments": {
     readonly owner: "document-operations";
@@ -248,12 +236,6 @@ export const CANONICAL_CAPABILITIES: {
     adapters: ["react", "vue"],
     summary:
       "Canonical save waits for composition to finish and reports package serialization refusals and fidelity fallbacks.",
-  },
-  [CANONICAL_GAP.suggestionPlugin]: {
-    owner: "prosemirror",
-    kind: "mutation-source",
-    adapters: ["react", "vue"],
-    summary: "The legacy suggestion plugin produces PM transactions.",
   },
   [CANONICAL_GAP.publicComments]: {
     owner: "document-operations",

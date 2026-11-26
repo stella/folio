@@ -6,6 +6,11 @@ import type { EditorView } from "prosemirror-view";
 import { ZipArchive } from "@stll/docx-core/zip";
 
 import { propertyTestTimeout } from "../../../../../test/property-testing";
+import {
+  createSuggestionModePlugin,
+  handleSuggestionPaste,
+  suggestionModeKey,
+} from "../../__tests__/reference-editor/suggestionMode";
 import { parseDocx } from "../../docx/parser";
 import { createEmptyDocx, repackDocx } from "../../docx/rezip";
 import {
@@ -21,11 +26,6 @@ import {
   paragraphRemainsOf,
   rangeBoundaryItemsOf,
 } from "../keptRangeBoundaries";
-import {
-  createSuggestionModePlugin,
-  handleSuggestionPaste,
-  suggestionModeKey,
-} from "../plugins/suggestionMode";
 import { expectRangeAnchorAttrs } from "../rangeAnchorAttrs";
 import { schema } from "../schema";
 import { trackedRevisionPathOf } from "../trackedRevisionPath";

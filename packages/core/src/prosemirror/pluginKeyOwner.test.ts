@@ -12,6 +12,7 @@ import {
 } from "../../../../scripts/lib/oxc-ast";
 import { createParagraphChangeTrackerPlugin } from "../__tests__/reference-editor/ParagraphChangeTrackerExtension";
 import { ParaIdAllocatorExtension } from "../__tests__/reference-editor/ParaIdAllocatorExtension";
+import { createSuggestionModePlugin } from "../__tests__/reference-editor/suggestionMode";
 import { createCommentRecordsPlugin } from "./commentRecords";
 import { AutoBidiDetectionExtension } from "./extensions/features/AutoBidiDetectionExtension";
 import { EmptyParagraphFormatExtension } from "./extensions/features/EmptyParagraphFormatExtension";
@@ -29,7 +30,6 @@ import {
   createDocumentStylesPlugin,
 } from "./plugins/documentStyles";
 import { createSelectionTrackerPlugin } from "./plugins/selectionTracker";
-import { createSuggestionModePlugin } from "./plugins/suggestionMode";
 import { createTemplateDirectivesPlugin } from "./plugins/templateDirectives";
 import * as directives from "./plugins/templateDirectives";
 import { createTemplatePreviewValuesPlugin } from "./plugins/templatePreviewValues";

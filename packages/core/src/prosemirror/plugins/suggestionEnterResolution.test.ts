@@ -17,13 +17,13 @@ import {
   saveHarnessState,
   summarizeState,
 } from "../../__tests__/editorHarness";
-import { FolioDocxReviewer } from "../../ai-edits/headless";
-import { schema } from "../schema";
-import { createDocumentStylesPlugin } from "./documentStyles";
 import {
   createSuggestionModePlugin,
   deleteSelectionAsSuggestion,
-} from "./suggestionMode";
+} from "../../__tests__/reference-editor/suggestionMode";
+import { FolioDocxReviewer } from "../../ai-edits/headless";
+import { schema } from "../schema";
+import { createDocumentStylesPlugin } from "./documentStyles";
 
 const project = (state: EditorState) => {
   let images = 0;

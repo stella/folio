@@ -33,7 +33,7 @@ import {
   Selection,
   TextSelection,
 } from "prosemirror-state";
-import type { PluginKey, Transaction } from "prosemirror-state";
+import type { Transaction } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 import {
   Mapping,
@@ -45,97 +45,67 @@ import type { EditorView } from "prosemirror-view";
 
 import type { ParagraphMarkChange } from "@stll/docx-core/model";
 
-import type { TrackedChangeInfo } from "../../types/document";
-import { maxOf, minOf } from "../../utils/extremes";
-import { addTrackedDeletionMark } from "../addTrackedDeletionMark";
+import { addTrackedDeletionMark } from "../../prosemirror/addTrackedDeletionMark";
 import {
   expectParagraphAttrs,
   expectTableRowAttrs,
   expectTrackedChangeMarkAttrs,
-} from "../attrs";
-import { clearIndentOnBackspace } from "../commands/clearParagraphIndent";
-import { paragraphJoinAfter } from "../commands/paragraphBookmarkJoin";
-import { paragraphPropertiesSnapshot } from "../commands/propertyChangeScope";
-import { paragraphEndsItsContainer } from "../containerFinalParagraph";
-import { encloseWholeControls } from "../contentControlRevisions";
-import { splitBlockClearBorders } from "../extensions/features/BaseKeymapExtension";
-import { JOINED_RUNS_RESTYLED_META } from "../extensions/features/JoinedRunStyleExtension";
-import { expandNoteReferenceDeletionRange } from "../extensions/marks/noteReferenceDeletion";
-import { isInlineAnchor } from "../extensions/nodes/inlineAnchorDom";
-import { joinAtParagraphMark } from "../paragraphMarkJoin";
+} from "../../prosemirror/attrs";
+import { clearIndentOnBackspace } from "../../prosemirror/commands/clearParagraphIndent";
+import { paragraphJoinAfter } from "../../prosemirror/commands/paragraphBookmarkJoin";
+import { paragraphPropertiesSnapshot } from "../../prosemirror/commands/propertyChangeScope";
+import { paragraphEndsItsContainer } from "../../prosemirror/containerFinalParagraph";
+import { encloseWholeControls } from "../../prosemirror/contentControlRevisions";
+import { splitBlockClearBorders } from "../../prosemirror/extensions/features/BaseKeymapExtension";
+import { JOINED_RUNS_RESTYLED_META } from "../../prosemirror/extensions/features/JoinedRunStyleExtension";
+import { expandNoteReferenceDeletionRange } from "../../prosemirror/extensions/marks/noteReferenceDeletion";
+import { isInlineAnchor } from "../../prosemirror/extensions/nodes/inlineAnchorDom";
+import { joinAtParagraphMark } from "../../prosemirror/paragraphMarkJoin";
 import {
   carryParagraphProperties,
   paragraphLeftAfter,
   recordReplacedParagraphProperties,
-} from "../paragraphPropertyCarry";
-import { createPluginKeyOwner } from "../pluginKeyOwner";
-import { rebaseParagraphRuns } from "../rebaseParagraphRunFormatting";
-import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
-import { paragraphRunStyleContext } from "../runStyleFormatting";
-import type { ParagraphPropertyChangeAttrs } from "../schema/nodes";
-import { cellPasteRange, pasteTableCells } from "../tableCellPaste";
-import { deleteTableRowAt } from "../tableGridMutation";
+} from "../../prosemirror/paragraphPropertyCarry";
+import { getDocumentNumbering } from "../../prosemirror/plugins/documentNumbering";
+import {
+  documentStylesKey,
+  getDocumentStyleResolver,
+} from "../../prosemirror/plugins/documentStyles";
+import { selectLockedInlineControl } from "../../prosemirror/plugins/lockedControlKeyHandling";
+import {
+  mintRevisionId,
+  seedRevisionIdsFromDoc,
+} from "../../prosemirror/plugins/revisionIds";
+import { rebaseParagraphRuns } from "../../prosemirror/rebaseParagraphRunFormatting";
+import { RUN_FORMATTING_MARK_NAMES } from "../../prosemirror/runFormattingMarkNames";
+import { paragraphRunStyleContext } from "../../prosemirror/runStyleFormatting";
+import type { ParagraphPropertyChangeAttrs } from "../../prosemirror/schema/nodes";
+import {
+  makeMarkAttrs,
+  SUGGESTED_TEXT_INPUT_META,
+  type SuggestedRangeDeletion,
+  SUGGESTION_BYPASS_META,
+  SUGGESTION_META,
+  type SuggestionMarkAttrs as MarkAttrs,
+  type SuggestionMode,
+  suggestionModeKey,
+} from "../../prosemirror/suggestionCommands";
+import {
+  cellPasteRange,
+  pasteTableCells,
+} from "../../prosemirror/tableCellPaste";
+import { deleteTableRowAt } from "../../prosemirror/tableGridMutation";
 import {
   afterNativeCompositionFlush,
   formattingMarksBesideLockedControl,
   handleEditorBeforeInput,
   keepTypedTextInComments,
-} from "../textInput";
-import { canCarryTrackedRunMark } from "../trackedRunInlineAtoms";
-import { getDocumentNumbering } from "./documentNumbering";
-import { documentStylesKey, getDocumentStyleResolver } from "./documentStyles";
-import { selectLockedInlineControl } from "./lockedControlKeyHandling";
-import { mintRevisionId, seedRevisionIdsFromDoc } from "./revisionIds";
+} from "../../prosemirror/textInput";
+import { canCarryTrackedRunMark } from "../../prosemirror/trackedRunInlineAtoms";
+import type { TrackedChangeInfo } from "../../types/document";
+import { maxOf, minOf } from "../../utils/extremes";
 
-export const suggestionModeKey: Readonly<{
-  key: string;
-  createKey: () => PluginKey<SuggestionModeState>;
-  owns: (plugin: Plugin<SuggestionModeState>) => boolean;
-  get: (state: EditorState) => Plugin<SuggestionModeState> | undefined;
-  getState: (state: EditorState) => SuggestionModeState | undefined;
-}> = createPluginKeyOwner<SuggestionModeState>("suggestionMode");
-export const SUGGESTION_META = "suggestionModeApplied";
-export const SUGGESTION_BYPASS_META = "suggestionModeBypass";
-/**
- * The text a tracked text-input transaction typed. Rules that react to typing
- * (list autoformat) read it, because this plugin claims text input before any
- * input rule sees it.
- */
-export const SUGGESTED_TEXT_INPUT_META = "suggestionModeTextInput";
-
-type SuggestionModeState = {
-  active: boolean;
-  author: string;
-};
-
-type MarkAttrs = {
-  revisionId: number;
-  author: string;
-  date: string;
-};
-
-function makeMarkAttrs(pluginState: SuggestionModeState): MarkAttrs {
-  return {
-    revisionId: mintRevisionId(),
-    author: pluginState.author,
-    date: new Date().toISOString(),
-  };
-}
-
-export function makeRevisionInfo(
-  state: EditorState,
-): { id: number; author: string; date: string } | null {
-  const pluginState = suggestionModeKey.getState(state);
-  if (!pluginState?.active) {
-    return null;
-  }
-  const attrs = makeMarkAttrs(pluginState);
-  return {
-    id: attrs.revisionId,
-    author: attrs.author,
-    date: attrs.date,
-  };
-}
+export { suggestionModeKey } from "../../prosemirror/suggestionCommands";
 
 /**
  * A removed paragraph mark leaves the paragraph after it once accepted. An
@@ -161,9 +131,7 @@ function carryIntoParagraphLeft(
   });
 }
 
-function makeParagraphMarkInfo(
-  pluginState: SuggestionModeState,
-): TrackedChangeInfo {
+function makeParagraphMarkInfo(pluginState: SuggestionMode): TrackedChangeInfo {
   const attrs = makeMarkAttrs(pluginState);
   return {
     id: attrs.revisionId,
@@ -228,7 +196,7 @@ function markRangeAsDeleted(
   from: number,
   to: number,
   deletionType: MarkType,
-  pluginState: SuggestionModeState,
+  pluginState: SuggestionMode,
   /** Set for a deletion the user made across paragraphs (Delete, cut, typing over). */
   joinState?: EditorState,
 ): void {
@@ -577,7 +545,7 @@ function markRangeAsInserted(
 function pasteEndsDocumentWithBlock(
   view: Pick<EditorView, "dispatch" | "state">,
   slice: Slice,
-  pluginState: SuggestionModeState,
+  pluginState: SuggestionMode,
 ): boolean {
   const { state } = view;
   const { $from } = state.selection;
@@ -660,7 +628,7 @@ function pasteEndsDocumentWithBlock(
 export function handleSuggestionPaste(
   view: Pick<EditorView, "dispatch" | "state">,
   slice: Slice,
-  pluginState: SuggestionModeState,
+  pluginState: SuggestionMode,
 ): boolean {
   const { selection } = view.state;
   const selectsAll = selection instanceof AllSelection;
@@ -1112,7 +1080,7 @@ const holdsOnlyStruckText = (
 export function handleSuggestionTableCellPaste(
   view: EditorView,
   slice: Slice,
-  pluginState: SuggestionModeState,
+  pluginState: SuggestionMode,
 ): boolean {
   const insertionType = view.state.schema.marks["insertion"];
   const deletionType = view.state.schema.marks["deletion"];
@@ -1353,7 +1321,7 @@ function applySuggestionInsert(
   from: number,
   to: number,
   text: string,
-  pluginState: SuggestionModeState,
+  pluginState: SuggestionMode,
 ): boolean {
   const insertionType = view.state.schema.marks["insertion"];
   if (!insertionType) {
@@ -1546,12 +1514,12 @@ function separateSplitStretch(
  * inserted is retracted, anything else is marked deleted. `false` when the
  * editor is not suggesting.
  */
-export function suggestRangeDeletion(
-  state: EditorState,
-  tr: Transaction,
-  from: number,
-  to: number,
-): boolean {
+function suggestRangeDeletion({
+  state,
+  tr,
+  from,
+  to,
+}: SuggestedRangeDeletion): boolean {
   const pluginState = suggestionModeKey.getState(state);
   const insertionType = state.schema.marks["insertion"];
   const deletionType = state.schema.marks["deletion"];
@@ -1573,7 +1541,7 @@ export function suggestRangeDeletion(
  */
 export function handleSuggestionEnter(
   view: EditorView,
-  pluginState: SuggestionModeState,
+  pluginState: SuggestionMode,
 ): boolean {
   const state = view.state;
   if (state.selection.$from.parent.type.name !== "paragraph") {
@@ -1768,7 +1736,7 @@ export function paragraphBoundaryTarget(
 function applyPPrDel(
   view: EditorView,
   targetParagraphPos: number,
-  pluginState: SuggestionModeState,
+  pluginState: SuggestionMode,
 ): boolean {
   const targetNode = view.state.doc.nodeAt(targetParagraphPos);
   if (!targetNode || targetNode.type.name !== "paragraph") {
@@ -2065,7 +2033,7 @@ type MarkComposedAsInsertionOptions = {
   foreignSize: number;
   /** Whether another writer edited the document, even with no change of size. */
   foreignEdit: boolean;
-  pluginState: SuggestionModeState;
+  pluginState: SuggestionMode;
   replaced: Slice | null;
   compositionId: number | null;
 };
@@ -2323,7 +2291,7 @@ type RestoreReplacedInlineOptions = {
   tr: Transaction;
   replaced: readonly ReplacedInline[];
   deletionType: MarkType;
-  pluginState: SuggestionModeState;
+  pluginState: SuggestionMode;
 };
 
 /**
@@ -2440,7 +2408,7 @@ type TrackSpanningReplacementOptions = {
   replacement: SpanningReplacement;
   insertionType: MarkType;
   deletionType: MarkType;
-  pluginState: SuggestionModeState;
+  pluginState: SuggestionMode;
 };
 
 /**
@@ -2509,11 +2477,19 @@ export function createSuggestionModePlugin(
       // Seed the revision-id counter from the loaded document on every
       // EditorState.create so suggesting-mode edits stay inside the signed
       // 32-bit range OOXML consumers accept (eigenpal/docx-editor#1093).
-      init(_config, instance): SuggestionModeState {
+      init(_config, instance) {
         seedRevisionIdsFromDoc(instance.doc);
-        return { active: initialActive, author };
+        return {
+          active: initialActive,
+          author,
+          commands: {
+            paste: handleSuggestionPaste,
+            deleteRange: suggestRangeDeletion,
+            deleteSelection: deleteSelectionAsSuggestion,
+          },
+        };
       },
-      apply(tr, state): SuggestionModeState {
+      apply(tr, state) {
         const nativeCompositionId = tr.getMeta("composition");
         if (
           composing &&
@@ -2782,7 +2758,6 @@ export function createSuggestionModePlugin(
     },
 
     // Catch-all: mark any unhandled new content (e.g. paste) as insertion
-    // canonical-gap: pm-suggestion-plugin
     appendTransaction(transactions, oldState, newState) {
       const pluginState = suggestionModeKey.getState(newState);
       if (!pluginState?.active) {
@@ -2943,7 +2918,7 @@ export function setSuggestionMode(
   author?: string,
 ): boolean {
   if (dispatch) {
-    const meta: Partial<SuggestionModeState> = { active };
+    const meta: Partial<SuggestionMode> = { active };
     if (author !== undefined) {
       meta.author = author;
     }
@@ -2951,11 +2926,4 @@ export function setSuggestionMode(
     dispatch(tr);
   }
   return true;
-}
-
-/**
- * Check if suggestion mode is currently active.
- */
-export function isSuggestionModeActive(state: EditorState): boolean {
-  return suggestionModeKey.getState(state)?.active ?? false;
 }

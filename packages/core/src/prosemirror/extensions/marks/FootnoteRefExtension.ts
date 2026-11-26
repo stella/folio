@@ -14,9 +14,9 @@ import {
   noteReferenceOccurrencePlugin,
 } from "../../noteReferenceOccurrences";
 import {
-  suggestionModeKey,
+  isSuggestionModeActive,
   suggestRangeDeletion,
-} from "../../plugins/suggestionMode";
+} from "../../suggestionCommands";
 import { createMarkExtension } from "../create";
 import type { ExtensionRuntime, MarkExtension } from "../types";
 import {
@@ -99,7 +99,7 @@ export const FootnoteRefExtension: (
     const deleteWholeNoteReference =
       (direction: "backward" | "forward"): Command =>
       (state, dispatch) => {
-        if (suggestionModeKey.getState(state)?.active) {
+        if (isSuggestionModeActive(state)) {
           return false;
         }
         const { from, to, empty } = state.selection;
@@ -166,7 +166,14 @@ export const FootnoteRefExtension: (
       }
       const tr = state.tr;
       for (const reference of references.toReversed()) {
-        if (!suggestRangeDeletion(state, tr, reference.from, reference.to)) {
+        if (
+          !suggestRangeDeletion({
+            state,
+            tr,
+            from: reference.from,
+            to: reference.to,
+          })
+        ) {
           tr.delete(reference.from, reference.to);
         }
       }

@@ -59,7 +59,6 @@ import { insertPageBreak } from "../prosemirror/commands/pageBreak";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { ResolvedStyleAttrs } from "../prosemirror/extensions/core/ParagraphExtension";
-import { deleteSelectionAsSuggestion } from "../prosemirror/plugins/suggestionMode";
 import { createStyleResolver } from "../prosemirror/styles/styleResolver";
 import type { BlockContent, Comment, Document } from "../types/document";
 import type { DocumentShape } from "./documentShapes";
@@ -83,6 +82,7 @@ import type {
   EditorMode,
   SelectionPlacement,
 } from "./editorHarness";
+import { deleteSelectionAsSuggestion } from "./reference-editor/suggestionMode";
 
 // ============================================================================
 // OPERATIONS

@@ -228,7 +228,7 @@ const CONFORMANCE_PRODUCTION_IMPORTS = new Map<string, readonly string[]>([
   ["packages/core/src/prosemirror/commands/pageBreak", ["insertPageBreak"]],
   ["packages/core/src/prosemirror/conversion/fromProseDoc", ["fromProseDoc"]],
   [
-    "packages/core/src/prosemirror/plugins/suggestionMode",
+    "packages/core/src/__tests__/reference-editor/suggestionMode",
     ["deleteSelectionAsSuggestion"],
   ],
   [

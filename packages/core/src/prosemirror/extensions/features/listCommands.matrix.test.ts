@@ -40,6 +40,7 @@ import {
 } from "../../../../../../test/property-testing";
 import { createReferenceEditorKit } from "../../../__tests__/createReferenceEditorKit";
 import { getChangeTrackerState } from "../../../__tests__/reference-editor/ParagraphChangeTrackerExtension";
+import { createSuggestionModePlugin } from "../../../__tests__/reference-editor/suggestionMode";
 import { FolioDocxReviewer } from "../../../ai-edits/headless";
 import { ensureParaIds } from "../../../docx/ensureParaIds";
 import { paragraphNumberingReferenceId } from "../../../docx/numberingReference";
@@ -65,7 +66,6 @@ import {
 import { paragraphIndentationFromFormatting } from "../../paragraphIndentation";
 import { createDocumentNumberingPlugin } from "../../plugins/documentNumbering";
 import { createDocumentStylesPlugin } from "../../plugins/documentStyles";
-import { createSuggestionModePlugin } from "../../plugins/suggestionMode";
 import { dispatchEditorTextInput } from "../../textInput";
 import { ExtensionManager } from "../ExtensionManager";
 import { toggleBulletList, toggleNumberedList } from "./ListExtension";

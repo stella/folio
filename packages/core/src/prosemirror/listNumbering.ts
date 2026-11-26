@@ -45,7 +45,6 @@ import {
 import { directParagraphIndentation } from "./paragraphIndentation";
 import { getDocumentNumbering } from "./plugins/documentNumbering";
 import { getDocumentStyleResolver } from "./plugins/documentStyleState";
-import { makeRevisionInfo, SUGGESTION_META } from "./plugins/suggestionMode";
 import type { RunStyleResolver } from "./runStyleFormatting";
 import type {
   ParagraphAttrs,
@@ -55,6 +54,7 @@ import {
   listAttrsFromNumbering,
   listIndentationProvenancePatch,
 } from "./styles/resolvedStyleAttrs";
+import { makeRevisionInfo, SUGGESTION_META } from "./suggestionCommands";
 
 const PARAGRAPH_NODE = "paragraph";
 

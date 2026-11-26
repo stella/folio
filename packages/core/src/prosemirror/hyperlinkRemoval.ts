@@ -22,15 +22,15 @@ import {
   getDocumentStyleResolver,
 } from "./plugins/documentStyles";
 import {
-  isSuggestionModeActive,
-  makeRevisionInfo,
-  suggestRangeDeletion,
-} from "./plugins/suggestionMode";
-import {
   readAuthoredRunFormatting,
   reconcileRunFormattingMarks,
 } from "./runFormattingReconciliation";
 import { paragraphRunStyleContextAt } from "./runStyleFormatting";
+import {
+  isSuggestionModeActive,
+  makeRevisionInfo,
+  suggestRangeDeletion,
+} from "./suggestionCommands";
 
 type LinkedPiece = { from: number; to: number; node: PMNode };
 type LinkedRange = { from: number; to: number; pieces: LinkedPiece[] };
@@ -274,7 +274,7 @@ export const removeHyperlinkInRange = (
         change ? change.addToSet(marks) : marks,
       );
     }
-    suggestRangeDeletion(state, tr, range.from, range.to);
+    suggestRangeDeletion({ state, tr, from: range.from, to: range.to });
   }
   return tr;
 };

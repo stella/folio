@@ -7,13 +7,13 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../../../test/property-testing";
+import { createSuggestionModePlugin } from "../../../__tests__/reference-editor/suggestionMode";
 import { getCanonicalCommandIntents } from "../../canonicalCommands";
 import { acceptAllChanges, rejectAllChanges } from "../../commands/comments";
 import {
   HyperlinkRemovalRefusal,
   removeHyperlinkInRange,
 } from "../../hyperlinkRemoval";
-import { createSuggestionModePlugin } from "../../plugins/suggestionMode";
 import { schema, singletonManager } from "../../schema";
 
 setDefaultTimeout(propertyTestTimeout(15_000));
