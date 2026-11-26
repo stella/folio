@@ -2184,6 +2184,62 @@ describe("sections a plan ends", () => {
     );
   });
 
+  test("a section built from the template's last one states the headers that one inherits", async () => {
+    // The template's first section states the header and the footer; its
+    // last section states none and shows the same.
+    const base = await buildTemplate();
+    const document = (await readPart(base, "word/document.xml")) ?? "";
+    const stated =
+      /<w:sectPr>(?<references>(?:<w:(?:header|footer)Reference [^>]*\/>)+)(?<rest>.*?)<\/w:sectPr><\/w:body>/u.exec(
+        document,
+      )?.groups;
+    if (stated === undefined) {
+      throw new Error("fixture");
+    }
+    const references = stated["references"] ?? "";
+    const rest = stated["rest"] ?? "";
+    const inheriting = await replacePart(
+      base,
+      "word/document.xml",
+      document
+        .replace(
+          "<w:body>",
+          `<w:body><w:p><w:pPr><w:sectPr>${references}${rest}</w:sectPr></w:pPr></w:p>`,
+        )
+        .replace(
+          `<w:sectPr>${references}${rest}</w:sectPr></w:body>`,
+          `<w:sectPr>${rest}</w:sectPr></w:body>`,
+        ),
+    );
+    expect(inheriting).not.toBe(base);
+    const source = await three();
+    const whole = await planFor({
+      source,
+      template: inheriting,
+      items: ending({}),
+    });
+    const parted = await planFor({
+      source,
+      template: inheriting,
+      items: ending({ 0: {} }),
+    });
+    for (const plan of [whole, parted]) {
+      const { docx, report } = unwrap(
+        await applyTemplatePlan({ source, template: inheriting, plan }),
+      );
+      expect(report.ok).toBe(true);
+      const sections = [
+        ...((await readPart(docx, "word/document.xml")) ?? "").matchAll(
+          /<w:sectPr>.*?<\/w:sectPr>/gu,
+        ),
+      ].map(([section]) => section);
+      expect(sections.length).toBeGreaterThan(0);
+      for (const section of sections) {
+        expect(section.startsWith(`<w:sectPr>${references}`)).toBe(true);
+      }
+    }
+  });
+
   test("verification holds the output to the plan's sections", async () => {
     const source = await three();
     const plan = await planFor({
