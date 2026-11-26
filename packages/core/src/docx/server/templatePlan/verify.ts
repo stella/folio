@@ -30,6 +30,7 @@ import {
   type AnalyzedNotes,
   analyzeDocument,
   type AnalyzedStory,
+  analyzeKeptForm,
   analyzeSource,
   viewOf,
 } from "./blocks";
@@ -167,17 +168,21 @@ type ContentUnit = {
 /**
  * A kept tracked change as marks of a content: an insertion marks every
  * unit of its text (or its place, for content without text), a deletion its
- * place and what was deleted; both with their author and date. Two contents
+ * place and what was deleted, a paragraph mark its place; each with its
+ * author and date. Two contents
  * that read the same then show the same changes by the same hands.
  */
 const revisionMarks = (
-  { kind, author, date, deleted }: AtomRevision,
+  { kind, author, date, deleted, mark }: AtomRevision,
   at: number,
   length: number,
 ): string[] => {
   const by = `${author}:${date ?? ""}`;
   if (kind === "del") {
     return [`${at}:del:${by}:${deleted ?? ""}`];
+  }
+  if (mark === true) {
+    return [`${at}:mark:${by}`];
   }
   return Array.from(
     { length: Math.max(length, 1) },
@@ -606,7 +611,9 @@ export const reportTemplatePlanOutput = async ({
 }: ReportArgs): Promise<Result<TemplatePlanReport, TemplatePlanError>> => {
   // An output that keeps tracked changes is read the way its source was.
   const keepsRevisions = source.manifest.trackedChangesKept !== undefined;
-  const analyzedOutput = await analyzeDocument(output, { keepsRevisions });
+  const analyzedOutput = keepsRevisions
+    ? await analyzeKeptForm(output)
+    : await analyzeDocument(output);
   if (Result.isError(analyzedOutput)) {
     return analyzedOutput;
   }

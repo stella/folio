@@ -1380,6 +1380,20 @@ export const resolvePlan = (
           items.push(table.value);
           break;
         }
+        // A paragraph mark the source records as inserted is the mark of
+        // its paragraph: joined to the next block it would stand nowhere.
+        if (
+          item.mergeNext !== undefined &&
+          block.value.read.atoms.some(({ revision }) => revision?.mark === true)
+        ) {
+          return Result.err(
+            refuse({
+              code: "merge-invalid",
+              message: `Block ${item.blockId} ends in a tracked paragraph mark and cannot join the next block.`,
+              blockId: item.blockId,
+            }),
+          );
+        }
         const parts: PlannedPart[] = [
           {
             block: block.value,
