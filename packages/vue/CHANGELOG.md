@@ -1,5 +1,43 @@
 # @stll/folio-vue
 
+## 0.33.0
+
+### Minor Changes
+
+- [#3605](https://github.com/stella/folio/pull/3605) [`baa0fa2`](https://github.com/stella/folio/commit/baa0fa2521ede665e9c7f67ba26b5d10683ad4e6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A refusal can now name a condition of the session or the request, such as a read-only editor, a composition in progress, a document that is not open yet, a request naming a missing comment, or an exhausted id space. Its ground is `{ condition }` from the new `CANONICAL_CONDITION`, and the editor shows the new catalog message `editor.changeNotApplied` ("This change couldn't be made.") in every shipped locale.
+
+  - Section property and comment changes refused for such a condition report it. `CanonicalSectionPropertiesResult` and `CanonicalCommentResult` now carry `ground` instead of `gap`, and `CanonicalCommentError` carries `ground`.
+  - The `authority-routing`, `comment-model-edits`, `section-properties` and `direct-model-edits` gaps are retired.
+  - In Vue, `setDocument(doc)` now opens `doc`, as `loadDocument` does, instead of refusing.
+  - In React, a section change made before the editor is ready shows the catalog message instead of the internal one.
+
+- [#3598](https://github.com/stella/folio/pull/3598) [`79abf23`](https://github.com/stella/folio/commit/79abf230f731333aa49529b6736cda2f8f7ce4fa) Thanks [@jan-kubica](https://github.com/jan-kubica)! - The dialog components are no longer exported from the package root. Import them from the `dialogs` subpath instead:
+
+  ```ts
+  // before
+  import { HyperlinkDialog } from "@stll/folio-react";
+  // after
+  import { HyperlinkDialog } from "@stll/folio-react/dialogs";
+  ```
+
+  The same applies to `@stll/folio-vue` and `@stll/folio-vue/dialogs`. This lets bundlers keep the editor's dialogs out of the startup chunk: each loads the first time it opens. The Vue editor now loads its dialogs (find and replace, hyperlink, symbol, image and table properties, page setup, numbering value, watermark) on first open and mounts each only while it is open, as the React editor does. A Vue dialog mounted already open sets itself up as one opened later does. In both editors the Insert Symbol dialog keeps its recent symbols across openings.
+
+### Patch Changes
+
+- [#3632](https://github.com/stella/folio/pull/3632) [`208ac8c`](https://github.com/stella/folio/commit/208ac8c0c7b885d00a3c5bbfa57f538f977bc3df) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Use canonical review for tracked fidelity, comment receipts, and saved suggestion positions. Pass a canonical document model to `createPendingSuggestionSourceSnapshot` and a saved source callback to `placeRemovedAnchors`. The deep ProseMirror fidelity and snapshot-only comment-mark helpers are test-only or removed.
+
+- [#3605](https://github.com/stella/folio/pull/3605) [`baa0fa2`](https://github.com/stella/folio/commit/baa0fa2521ede665e9c7f67ba26b5d10683ad4e6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Saving works for a picture copied into a header, footer or note whose id another binding in that part already holds. The picture is saved under a fresh id in that part, and the editor's document keeps its own. Before, the save failed with a `conflict` refusal.
+
+  - Saving during an input composition is now refused under the `composing` condition.
+  - `CanonicalSaveDiagnosticError` and `CanonicalImageRelationshipRefusalError` no longer carry a `gap`.
+  - The `save-serialization` gap is retired.
+
+- [#3602](https://github.com/stella/folio/pull/3602) [`6bca37f`](https://github.com/stella/folio/commit/6bca37f2e3be16501dea5113d84a2fe2e70a6e90) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Load the display-list painter when the editor selects the display-list renderer.
+
+- [#3603](https://github.com/stella/folio/pull/3603) [`1556c3c`](https://github.com/stella/folio/commit/1556c3ccb5fd558b307cd00a97c7d56ad0305f76) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Load ruler and image selection controls when the editor first needs them.
+- Updated dependencies [[`baa0fa2`](https://github.com/stella/folio/commit/baa0fa2521ede665e9c7f67ba26b5d10683ad4e6), [`208ac8c`](https://github.com/stella/folio/commit/208ac8c0c7b885d00a3c5bbfa57f538f977bc3df), [`baa0fa2`](https://github.com/stella/folio/commit/baa0fa2521ede665e9c7f67ba26b5d10683ad4e6), [`cdc024b`](https://github.com/stella/folio/commit/cdc024bd6294343f210005f9bbfaa4bfe1865504), [`baa0fa2`](https://github.com/stella/folio/commit/baa0fa2521ede665e9c7f67ba26b5d10683ad4e6), [`6bca37f`](https://github.com/stella/folio/commit/6bca37f2e3be16501dea5113d84a2fe2e70a6e90), [`1556c3c`](https://github.com/stella/folio/commit/1556c3ccb5fd558b307cd00a97c7d56ad0305f76), [`16cbb00`](https://github.com/stella/folio/commit/16cbb00fa8716c38b16a424846e30738a5b0e114), [`1628e39`](https://github.com/stella/folio/commit/1628e395a8ef0cacd4cd734fc9f20168df9df5d0), [`3502a36`](https://github.com/stella/folio/commit/3502a369e098f409f6539a5e3d9707ff35c094f5), [`6098b02`](https://github.com/stella/folio/commit/6098b022be88b67139ed438993cb845a1f4b5eca), [`819f6e3`](https://github.com/stella/folio/commit/819f6e38d3db04a4ebfab59167f84911bf2cf933), [`033d74c`](https://github.com/stella/folio/commit/033d74c14cdabd23402af9a28e0e58ba25943ba3), [`aceda3a`](https://github.com/stella/folio/commit/aceda3a750c2fd682608025aab15788da10e6081), [`819f6e3`](https://github.com/stella/folio/commit/819f6e38d3db04a4ebfab59167f84911bf2cf933), [`e3407a9`](https://github.com/stella/folio/commit/e3407a965aa136f420d9015f0cb2cc48df4a8f7d), [`f03cdb3`](https://github.com/stella/folio/commit/f03cdb3019d8c338422092994476363cd126e39b), [`93c97a7`](https://github.com/stella/folio/commit/93c97a7cedcbf10ec9a3f89aa255579e253e13c6), [`7233f49`](https://github.com/stella/folio/commit/7233f4948b978b559e9508d3284f3e6c4f3f1d9c), [`de07703`](https://github.com/stella/folio/commit/de07703a4b45594dd73565c75e13dd896ecd4de0), [`843a220`](https://github.com/stella/folio/commit/843a2200e5dfc5df9958e58ad7d9ebc7cd654fb5)]:
+  - @stll/folio-core@0.75.0
+
 ## 0.32.1
 
 ### Patch Changes

@@ -1,5 +1,80 @@
 # @stll/folio-core
 
+## 0.75.0
+
+### Minor Changes
+
+- [#3605](https://github.com/stella/folio/pull/3605) [`baa0fa2`](https://github.com/stella/folio/commit/baa0fa2521ede665e9c7f67ba26b5d10683ad4e6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A refusal can now name a condition of the session or the request, such as a read-only editor, a composition in progress, a document that is not open yet, a request naming a missing comment, or an exhausted id space. Its ground is `{ condition }` from the new `CANONICAL_CONDITION`, and the editor shows the new catalog message `editor.changeNotApplied` ("This change couldn't be made.") in every shipped locale.
+
+  - Section property and comment changes refused for such a condition report it. `CanonicalSectionPropertiesResult` and `CanonicalCommentResult` now carry `ground` instead of `gap`, and `CanonicalCommentError` carries `ground`.
+  - The `authority-routing`, `comment-model-edits`, `section-properties` and `direct-model-edits` gaps are retired.
+  - In Vue, `setDocument(doc)` now opens `doc`, as `loadDocument` does, instead of refusing.
+  - In React, a section change made before the editor is ready shows the catalog message instead of the internal one.
+
+- [#3632](https://github.com/stella/folio/pull/3632) [`208ac8c`](https://github.com/stella/folio/commit/208ac8c0c7b885d00a3c5bbfa57f538f977bc3df) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Use canonical review for tracked fidelity, comment receipts, and saved suggestion positions. Pass a canonical document model to `createPendingSuggestionSourceSnapshot` and a saved source callback to `placeRemovedAnchors`. The deep ProseMirror fidelity and snapshot-only comment-mark helpers are test-only or removed.
+
+- [#3605](https://github.com/stella/folio/pull/3605) [`baa0fa2`](https://github.com/stella/folio/commit/baa0fa2521ede665e9c7f67ba26b5d10683ad4e6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Typing, pasting and commenting in a text box's paragraphs in a canonical session apply in the box, save there and undo exactly; no position in a text box's text refuses under the `publicOps.unsupportedInline` gap any more. A position that names no text, such as the edge of a text box, a point between blocks, or one inside an indivisible inline element or a character, now refuses as an invalid request (`{ condition: "invalidRequest" }`) instead of as a capability gap.
+
+- [#3631](https://github.com/stella/folio/pull/3631) [`cdc024b`](https://github.com/stella/folio/commit/cdc024bd6294343f210005f9bbfaa4bfe1865504) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep comparison staging on the canonical document model. The deep ProseMirror staging exports `compare/inline-atoms#matchInlineAtoms` and `compare/section-boundary-properties#stageSectionBoundaryProperties` are now test-only.
+
+- [#3605](https://github.com/stella/folio/pull/3605) [`baa0fa2`](https://github.com/stella/folio/commit/baa0fa2521ede665e9c7f67ba26b5d10683ad4e6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Saving works for a picture copied into a header, footer or note whose id another binding in that part already holds. The picture is saved under a fresh id in that part, and the editor's document keeps its own. Before, the save failed with a `conflict` refusal.
+
+  - Saving during an input composition is now refused under the `composing` condition.
+  - `CanonicalSaveDiagnosticError` and `CanonicalImageRelationshipRefusalError` no longer carry a `gap`.
+  - The `save-serialization` gap is retired.
+
+- [#3630](https://github.com/stella/folio/pull/3630) [`819f6e3`](https://github.com/stella/folio/commit/819f6e38d3db04a4ebfab59167f84911bf2cf933) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A template plan keeps tables apart and can keep justified lines in front of a manual line break unstretched.
+
+  - The writer puts an empty paragraph between two tables a plan places next to each other, and after a table that would end the body. Two tables with nothing between them read as one table, and a body has to end in a paragraph. `report.counts.tableSeparators` counts them; verification expects them in place.
+  - `TemplatePlan.compat.doNotExpandShiftReturn` switches `w:compat/w:doNotExpandShiftReturn` on in the output's settings, at its place in the schema's order and with every other byte of the part kept. A consumer that stretches a justified line ending in a manual line break stops doing so. Verification holds the output to it (`compat-mismatch`).
+  - A block manifest reports `compat.doNotExpandShiftReturn` of its document and, per paragraph, the `alignment` in effect (its own `w:jc`, else its style's).
+
+- [#3626](https://github.com/stella/folio/pull/3626) [`aceda3a`](https://github.com/stella/folio/commit/aceda3a750c2fd682608025aab15788da10e6081) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A block manifest says where its document starts a page or ends a section, and a template plan can start a paragraph on a new page.
+
+  - `DocxBlock` gains `pageBreaks` (page breaks among a paragraph's runs, also in a paragraph without text), `pageBreakBefore` (the paragraph's own formatting or its style's) and `endsSection`.
+  - `DocxBlockManifest` gains `sections`: each section's `start` (next page, even or odd page, next column, continuous), orientation, page size, margins and column count. A template inspection's sections carry the same facts beside their headers and footers.
+  - A source item of a plan takes `pageBreakBefore`. The paragraph is written with `w:pageBreakBefore`, verification holds the output to it (`page-start-mismatch`), and the report counts such paragraphs in `counts.pageStarts`. A table and a block joined into the paragraph before it cannot take one.
+
+  Direct paragraph formatting and section breaks of a source are not carried over as before; a plan can now keep the page starts they gave.
+
+- [#3630](https://github.com/stella/folio/pull/3630) [`819f6e3`](https://github.com/stella/folio/commit/819f6e38d3db04a4ebfab59167f84911bf2cf933) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A template plan can give a part of the document a page other than the template's, such as a landscape annex.
+
+  - A source item takes `endsSection`: its paragraph is the last of a section. `TemplatePlan.lastSection` describes the section the body ends with.
+  - Each such section is built from the template's last section: the same headers, footers and other properties, with only the plan's page (orientation, size, optionally margins) and start (`nextPage`, `evenPage`, `oddPage`) put in place. The first-page header and a page-number start stay with the document's first section.
+  - Verification holds the output to the plan's sections and their pages (`section-mismatch`); `report.counts.sectionEnds` counts them. A table, a nested paragraph and a block joined into the paragraph before it cannot end a section, and the template needs a last section to build from.
+
+- [#3622](https://github.com/stella/folio/pull/3622) [`e3407a9`](https://github.com/stella/folio/commit/e3407a965aa136f420d9015f0cb2cc48df4a8f7d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A template plan's reference may ask for its result in a letter case: `\n \* lower \h`, `\* Upper`, `\* FirstCap`. The field is written with the switch, and the predicted result of a numbered field is the target's label in that case, a roman numeral included, as the reference consumer prints it. A citation that spells the label's words in another case ("art. 3" for a label `Art. 3`) can so be one field over word and number. Any other format switch is refused as before.
+
+- [#3611](https://github.com/stella/folio/pull/3611) [`f03cdb3`](https://github.com/stella/folio/commit/f03cdb3019d8c338422092994476363cd126e39b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Refusals that carried the `unclassified-transactions` gap now name their condition, such as a stale projection, a request the document does not allow or an internal failure, and that gap is retired. A plugin or raw dispatch that changes the document outside document operations is refused under the new `hostTransaction` condition, naming the transaction's meta keys. `groundForDocumentOpRefusal(reason)` returns the ground a document operation refusal reports, and a suggested change the tracked-change records cannot express is refused under the new `tracked-change-records` gap.
+
+- [#3612](https://github.com/stella/folio/pull/3612) [`93c97a7`](https://github.com/stella/folio/commit/93c97a7cedcbf10ec9a3f89aa255579e253e13c6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Header, footer and note editors now take Enter, Shift+Enter, Tab, Backspace and Delete at a paragraph's edge, and cut, as the body editor does: each is one journalled change that undo reverts in one step and that suggesting mode records. A page break in a header, footer or note is refused, since only the main story takes one.
+
+### Patch Changes
+
+- [#3602](https://github.com/stella/folio/pull/3602) [`6bca37f`](https://github.com/stella/folio/commit/6bca37f2e3be16501dea5113d84a2fe2e70a6e90) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Load the display-list painter when the editor selects the display-list renderer.
+
+- [#3603](https://github.com/stella/folio/pull/3603) [`1556c3c`](https://github.com/stella/folio/commit/1556c3ccb5fd558b307cd00a97c7d56ad0305f76) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Load ruler and image selection controls when the editor first needs them.
+
+- [#3616](https://github.com/stella/folio/pull/3616) [`16cbb00`](https://github.com/stella/folio/commit/16cbb00fa8716c38b16a424846e30738a5b0e114) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A tracked deletion of the paragraph a pending join runs into, before a table its author inserted after it, now removes it once accepted, as the same edits in one batch do.
+
+- [#3629](https://github.com/stella/folio/pull/3629) [`1628e39`](https://github.com/stella/folio/commit/1628e395a8ef0cacd4cd734fc9f20168df9df5d0) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A paragraph one author added and another then joined to the next is read as joined everywhere a pending join is: an edit of its properties waits for the join, as one of a plain paragraph does, instead of landing where accepting the join drops it.
+
+- [#3600](https://github.com/stella/folio/pull/3600) [`3502a36`](https://github.com/stella/folio/commit/3502a369e098f409f6539a5e3d9707ff35c094f5) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Opening a document no longer loads DOMPurify. The editor's paste handling reads the clipboard formats and image files from a module that does not import the paste sanitizer; `@stll/folio-core/utils/clipboard` exports the same API as before.
+
+- [#3607](https://github.com/stella/folio/pull/3607) [`6098b02`](https://github.com/stella/folio/commit/6098b022be88b67139ed438993cb845a1f4b5eca) Thanks [@jan-kubica](https://github.com/jan-kubica)! - List numbering counts the instances of one list definition as one list, as the reference consumer does. A paragraph goes on from the last paragraph of its definition, whichever instance that one named, also across other paragraphs in between. An instance's start override sets the number once, on the first paragraph that uses the instance on that level. Before, each instance kept its own count except in a few adjacent cases, so a list that returned to an earlier instance after a restarted one skipped a number (`a)`, `b)`, `a)`, `c)` for what is printed `a)`, `b)`, `a)`, `b)`).
+
+- [#3604](https://github.com/stella/folio/pull/3604) [`033d74c`](https://github.com/stella/folio/commit/033d74c14cdabd23402af9a28e0e58ba25943ba3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - `analyzeDocxBlocks` renders a list level in the `ordinal` number format by the language of the paragraph mark, as the reference consumer prints it: Czech and German write the number with a period (`1.`), French `1er` and `2e`, English `1st`. The language is the mark's own, its style's, or the document default. A label in a language whose ordinals are known can be written as text by a template plan; in any other language it stays as before and is not written.
+
+  The prediction of a number-only reference field (`\n \t`) drops the blanks of what it keeps beside the counter: a level text `Part %1 -` gives `B-`, as the reference consumer shows it.
+
+- [#3615](https://github.com/stella/folio/pull/3615) [`7233f49`](https://github.com/stella/folio/commit/7233f4948b978b559e9508d3284f3e6c4f3f1d9c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A tracked table after an emptied paragraph that a pending join runs through is refused, as one right after a joining paragraph is: accepting would run the joined words into the table's first cell.
+
+- [#3613](https://github.com/stella/folio/pull/3613) [`de07703`](https://github.com/stella/folio/commit/de07703a4b45594dd73565c75e13dd896ecd4de0) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A tracked edit applies in a document holding a revision that cannot be rejected on its own; that revision stays pending on both sides of the edit's Reject All check.
+
+- [#3610](https://github.com/stella/folio/pull/3610) [`843a220`](https://github.com/stella/folio/commit/843a2200e5dfc5df9958e58ad7d9ebc7cd654fb5) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A tracked replacement that repeats a word now leaves a comment covering the same words as the direct edit, once accepted.
+- Updated dependencies [[`208ac8c`](https://github.com/stella/folio/commit/208ac8c0c7b885d00a3c5bbfa57f538f977bc3df), [`841ff36`](https://github.com/stella/folio/commit/841ff36484fb086575b80483485db043290e674d), [`8eb0266`](https://github.com/stella/folio/commit/8eb0266b0dfdfc5609531cd3962bd2ab1063bde5), [`538d1e0`](https://github.com/stella/folio/commit/538d1e0e7371dc1843ec85178cdb7f4d8618832d), [`de07703`](https://github.com/stella/folio/commit/de07703a4b45594dd73565c75e13dd896ecd4de0)]:
+  - @stll/docx-core@0.46.0
+
 ## 0.74.0
 
 ### Minor Changes

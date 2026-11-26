@@ -1,5 +1,21 @@
 # @stll/docx-core
 
+## 0.46.0
+
+### Minor Changes
+
+- [#3601](https://github.com/stella/folio/pull/3601) [`841ff36`](https://github.com/stella/folio/commit/841ff36484fb086575b80483485db043290e674d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Record the revisions a direct paragraph insertion borders as its sequenced `insertBlocks` effect, so a concurrent revision decision that resolves none of them passes the insertion. Journals that recorded no effect for such an insertion still read and replay; a decision rebased over one is refused.
+
+### Patch Changes
+
+- [#3632](https://github.com/stella/folio/pull/3632) [`208ac8c`](https://github.com/stella/folio/commit/208ac8c0c7b885d00a3c5bbfa57f538f977bc3df) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Use canonical review for tracked fidelity, comment receipts, and saved suggestion positions. Pass a canonical document model to `createPendingSuggestionSourceSnapshot` and a saved source callback to `placeRemovedAnchors`. The deep ProseMirror fidelity and snapshot-only comment-mark helpers are test-only or removed.
+
+- [#3614](https://github.com/stella/folio/pull/3614) [`8eb0266`](https://github.com/stella/folio/commit/8eb0266b0dfdfc5609531cd3962bd2ab1063bde5) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Rejecting a paragraph inserted before a block that ends the story removes it whole, as before the insertion.
+
+- [#3618](https://github.com/stella/folio/pull/3618) [`538d1e0`](https://github.com/stella/folio/commit/538d1e0e7371dc1843ec85178cdb7f4d8618832d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A tracked deletion that takes back one's own split of a paragraph keeps that paragraph's properties once accepted, as the direct deletion does, also where it took over the story's last paragraph mark.
+
+- [#3613](https://github.com/stella/folio/pull/3613) [`de07703`](https://github.com/stella/folio/commit/de07703a4b45594dd73565c75e13dd896ecd4de0) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A tracked edit applies in a document holding a revision that cannot be rejected on its own; that revision stays pending on both sides of the edit's Reject All check.
+
 ## 0.45.1
 
 ### Patch Changes
