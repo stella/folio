@@ -167,7 +167,11 @@ export type DocxBlockManifest = {
   sha256: string;
   /** Top-level blocks of the main story in document order; a table is one block. */
   blocks: DocxBlock[];
-  /** The sections of the main story in order; a block names its own by `sectionIndex`. */
+  /**
+   * The sections of the main story in order; a block names its own by
+   * `sectionIndex`. A body that states no section properties of its own
+   * still ends in a section: it is listed with the defaults, nothing stated.
+   */
   sections: DocxSection[];
   /** Compatibility settings of the document that change how its text is laid out. */
   compat: DocxCompat;
@@ -315,6 +319,10 @@ export type TemplatePlanSourceItem = {
    * source began by a break the plan does not place, by the paragraph's own
    * formatting, or by a section. Not for a table, and not for a block that
    * joins the paragraph before it.
+   *
+   * `false` is the same as leaving it out: nothing is written, and a style
+   * of the template that starts its paragraphs on a new page still does.
+   * Verification compares what the paragraph states for itself.
    */
   pageBreakBefore?: boolean;
   /** Table only: the paragraph style of its cells. */

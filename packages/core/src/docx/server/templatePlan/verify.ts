@@ -79,6 +79,7 @@ import {
   type ParagraphRead,
   readParagraph,
   type StoryField,
+  toggleOf,
   walkBlocks,
 } from "./story";
 import type {
@@ -436,7 +437,8 @@ const statedProperties = (paragraph: XmlElement): StatedProperties => {
     styleId: wChildVal(properties, "pStyle"),
     numId: integerOrNull(wChildVal(numbering, "numId")),
     ilvl: integerOrNull(wChildVal(numbering, "ilvl")),
-    pageBreakBefore: wChild(properties, "pageBreakBefore") !== null,
+    // An element that is there and switched off starts no page.
+    pageBreakBefore: toggleOf(wChild(properties, "pageBreakBefore")) === true,
   };
 };
 

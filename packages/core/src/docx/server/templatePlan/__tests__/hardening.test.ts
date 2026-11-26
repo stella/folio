@@ -1527,6 +1527,31 @@ describe("page starts", () => {
     ]);
   });
 
+  test("a body without section properties still ends in a section", async () => {
+    const built = await buildMinimalDocx(p(r("Only.")));
+    const bare = await replacePart(
+      built,
+      "word/document.xml",
+      ((await readPart(built, "word/document.xml")) ?? "").replace(
+        "<w:sectPr/>",
+        "",
+      ),
+    );
+    const { blocks, sections } = unwrap(await analyzeDocxBlocks(bare));
+
+    expect(blocks.map(({ sectionIndex }) => sectionIndex)).toEqual([0]);
+    expect(sections).toEqual([
+      {
+        index: 0,
+        start: "nextPage",
+        orientation: "portrait",
+        size: { width: null, height: null },
+        margins: { top: null, right: null, bottom: null, left: null },
+        columns: 1,
+      },
+    ]);
+  });
+
   const twoParagraphs = async (): Promise<Uint8Array> =>
     await buildMinimalDocx(`${p(r("Body."))}${p(r("Annex"))}`);
 
@@ -1581,6 +1606,25 @@ describe("page starts", () => {
     expect(
       (
         await verifyFor({ source, template, output: docx, plan: without })
+      ).issues.map(({ code, blockId }) => [code, blockId]),
+    ).toEqual([["page-start-mismatch", "p1"]]);
+    // One that is there and switched off starts no page.
+    const switchedOff = await replacePart(
+      docx,
+      "word/document.xml",
+      (await documentOf(docx)).replace(
+        "<w:pageBreakBefore/>",
+        '<w:pageBreakBefore w:val="0"/>',
+      ),
+    );
+    expect(
+      (
+        await verifyFor({
+          source,
+          template,
+          output: switchedOff,
+          plan: withStart,
+        })
       ).issues.map(({ code, blockId }) => [code, blockId]),
     ).toEqual([["page-start-mismatch", "p1"]]);
     const plain = unwrap(
