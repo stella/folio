@@ -340,6 +340,15 @@ const fieldsIssue = (fields: unknown): string | null => {
   return null;
 };
 
+const compatIssue = (compat: unknown): string | null => {
+  if (compat === undefined) {
+    return null;
+  }
+  return isObject(compat) && isOptionalBoolean(compat["doNotExpandShiftReturn"])
+    ? null
+    : "The plan's compatibility settings are malformed.";
+};
+
 /** Why `plan` is not a version 1 template plan, or null when it is one. */
 export const planShapeIssue = (plan: unknown): string | null => {
   if (
@@ -355,6 +364,7 @@ export const planShapeIssue = (plan: unknown): string | null => {
     omitIssue(plan["omit"]) ??
     patchesIssue(plan["numberingPatches"]) ??
     spansIssue(plan) ??
-    fieldsIssue(plan["fields"])
+    fieldsIssue(plan["fields"]) ??
+    compatIssue(plan["compat"])
   );
 };

@@ -138,6 +138,8 @@ export type ParagraphRead = {
   hasSectionBreak: boolean;
   /** `w:pageBreakBefore` as the paragraph itself states it; null when it does not. */
   pageBreakBefore: boolean | null;
+  /** `w:jc` as the paragraph itself states it, or null. */
+  alignment: string | null;
   /** Whether the paragraph mark is a tracked insertion or deletion. */
   hasTrackedMark: boolean;
 };
@@ -547,6 +549,7 @@ export const readParagraph = (
     unsupported: [],
     hasSectionBreak: wChild(properties, "sectPr") !== null,
     pageBreakBefore: toggleOf(wChild(properties, "pageBreakBefore")),
+    alignment: wChildVal(properties, "jc"),
     hasTrackedMark,
   };
   state.paragraphOrdinal += 1;

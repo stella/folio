@@ -3,6 +3,8 @@
  * a paragraph's content, a complex REF field with a cached result, the
  * update-on-open setting, and freezing a field to its cached result.
  */
+import { SETTINGS_CHILDREN } from "@stll/docx-core/schema";
+
 import { updateSettingsOnOffChild } from "../../settingsHeaderFooterUpdate";
 import type { XmlElement } from "../../xmlParser";
 import { sha256Hex } from "./package";
@@ -13,6 +15,7 @@ import {
   innerRangeOf,
   isW,
   type PartPrefixes,
+  partPrefixes,
   rangeOf,
   type RawPart,
   readRawPart,
@@ -196,6 +199,141 @@ export const setUpdateFieldsOnOpen = (
     "updateFields",
     enabled ? true : undefined,
   );
+
+const SHIFT_RETURN = "doNotExpandShiftReturn";
+
+/** The children of `w:compat` the schema orders in front of the setting. */
+const COMPAT_BEFORE_SHIFT_RETURN: ReadonlySet<string> = new Set([
+  "useSingleBorderforContiguousCells",
+  "wpJustification",
+  "noTabHangInd",
+  "noLeading",
+  "spaceForUL",
+  "noColumnBalance",
+  "balanceSingleByteDoubleByteWidth",
+  "noExtraLineSpacing",
+  "doNotLeaveBackslashAlone",
+  "ulTrailSpace",
+]);
+
+const SWITCHED_OFF: ReadonlySet<string> = new Set(["0", "false", "off"]);
+
+const SETTINGS_CHILD_ORDINALS: ReadonlyMap<string, number> = new Map(
+  SETTINGS_CHILDREN.map((name, index) => [name, index] as const),
+);
+
+const settingsRoot = (settingsXml: string): RawPart | null => {
+  const part = readRawPart("word/settings.xml", settingsXml);
+  return part !== null && isW(part.root, "settings") ? part : null;
+};
+
+/** Whether a settings part keeps the spacing of a justified line that ends
+ *  in a manual line break (`w:compat/w:doNotExpandShiftReturn`). */
+export const keepsShiftReturnSpacing = (settingsXml: string): boolean => {
+  const setting = wChild(
+    wChild(settingsRoot(settingsXml)?.root, "compat"),
+    SHIFT_RETURN,
+  );
+  return setting !== null && !SWITCHED_OFF.has(wAttr(setting, "val") ?? "1");
+};
+
+/** An element of the part's WordprocessingML namespace, bound by the
+ *  root's prefix or, under a default namespace, by one of its own. */
+const settingsElement = (
+  root: XmlElement,
+  localName: string,
+  inner: string | null,
+): string => {
+  const prefixes = partPrefixes(root);
+  const name =
+    prefixes === null ? `folioW:${localName}` : `${prefixes.w}:${localName}`;
+  const binding =
+    prefixes === null
+      ? ` xmlns:folioW="${escapeXmlAttribute(root.namespaceUri ?? "")}"`
+      : "";
+  return inner === null
+    ? `<${name}${binding}/>`
+    : `<${name}${binding}>${inner}</${name}>`;
+};
+
+/**
+ * `settingsXml` with `w:doNotExpandShiftReturn` switched on in `w:compat`,
+ * each at its place in the schema's child order; every other byte of the
+ * part stays. Null when the part is not a settings part or gives the setting
+ * no certain place.
+ */
+export const setKeepShiftReturnSpacing = (
+  settingsXml: string,
+): string | null => {
+  const part = settingsRoot(settingsXml);
+  if (part === null) {
+    return null;
+  }
+  if (keepsShiftReturnSpacing(settingsXml)) {
+    return settingsXml;
+  }
+  const { root } = part;
+  const setting = settingsElement(root, SHIFT_RETURN, null);
+  const compat = wChild(root, "compat");
+  if (compat === null) {
+    const compatOrder = SETTINGS_CHILD_ORDINALS.get("compat") ?? 0;
+    const wrapper = settingsElement(root, "compat", setting);
+    const inner = innerRangeOf(settingsXml, root);
+    if (inner === null) {
+      // A settings part without a single child is rewritten around it.
+      const range = rangeOf(root);
+      return range === null || root.name === undefined
+        ? null
+        : spliceXml(settingsXml, [
+            {
+              start: range.end - 2,
+              end: range.end,
+              newXml: `>${wrapper}</${root.name}>`,
+            },
+          ]);
+    }
+    const following = elementChildren(root).find((child) => {
+      const name = wName(child);
+      // A child of another namespace (math properties, later extensions)
+      // follows every setting of this one.
+      return (
+        name === null || (SETTINGS_CHILD_ORDINALS.get(name) ?? -1) > compatOrder
+      );
+    });
+    const at = following === undefined ? inner.end : rangeOf(following)?.start;
+    return at === undefined
+      ? null
+      : spliceXml(settingsXml, [{ start: at, end: at, newXml: wrapper }]);
+  }
+  const range = rangeOf(compat);
+  const inner = innerRangeOf(settingsXml, compat);
+  if (range === null) {
+    return null;
+  }
+  if (inner === null) {
+    return spliceXml(settingsXml, [
+      {
+        start: range.start,
+        end: range.end,
+        newXml: settingsElement(root, "compat", setting),
+      },
+    ]);
+  }
+  // One that is there and switched off is replaced where it stands.
+  const stated = wChild(compat, SHIFT_RETURN);
+  const statedRange = stated === null ? null : rangeOf(stated);
+  if (statedRange !== null) {
+    return spliceXml(settingsXml, [{ ...statedRange, newXml: setting }]);
+  }
+  const following = elementChildren(compat).find((child) => {
+    const name = wName(child);
+    return name === null || !COMPAT_BEFORE_SHIFT_RETURN.has(name);
+  });
+  const at = following === undefined ? inner.end : rangeOf(following)?.start;
+  return at === undefined
+    ? null
+    : spliceXml(settingsXml, [{ start: at, end: at, newXml: setting }]);
+};
 
 export type FrozenFieldCount = { kind: string; count: number };
 

@@ -118,6 +118,12 @@ export type DocxBlock = {
    * on a new page.
    */
   endsSection?: true;
+  /**
+   * The paragraph alignment in effect (`w:jc`, as written: `both`, `center`,
+   * ...): the paragraph's own, else its style's with inheritance resolved.
+   * Absent when neither states one.
+   */
+  alignment?: string;
   /** Table only: its cells in row order. */
   cells?: DocxTableCell[];
   /** Table only: every block inside the table in document order. */
@@ -125,6 +131,15 @@ export type DocxBlock = {
 };
 
 export type DocxNote = { id: string; text: string };
+
+/** Compatibility settings of a document that change how its text is laid out. */
+export type DocxCompat = {
+  /**
+   * `w:doNotExpandShiftReturn`: a justified line that ends in a manual line
+   * break keeps its spaces instead of being stretched to the margin.
+   */
+  doNotExpandShiftReturn: boolean;
+};
 
 /** One section of a document's main story: its page, and how it begins. */
 export type DocxSection = {
@@ -154,6 +169,8 @@ export type DocxBlockManifest = {
   blocks: DocxBlock[];
   /** The sections of the main story in order; a block names its own by `sectionIndex`. */
   sections: DocxSection[];
+  /** Compatibility settings of the document that change how its text is laid out. */
+  compat: DocxCompat;
   footnotes: DocxNote[];
   endnotes: DocxNote[];
   comments: number;
@@ -359,6 +376,13 @@ export type TemplatePlan = {
   references?: TemplatePlanReference[];
   highlights?: TemplatePlanHighlight[];
   fields?: { freezeKinds?: string[]; updateOnOpen?: boolean };
+  /**
+   * Compatibility settings to switch on in the output's settings, which are
+   * otherwise the template's. `true` sets the setting at its place in the
+   * schema's order; nothing else of the settings changes, and a setting is
+   * never switched off.
+   */
+  compat?: { doNotExpandShiftReturn?: boolean };
 };
 
 export type TemplatePlanBlockResult = {
@@ -444,6 +468,7 @@ export type TemplatePlanIssue = {
     | "prompting-field-left"
     | "field-not-frozen"
     | "update-fields-mismatch"
+    | "compat-mismatch"
     | "conformance";
   message: string;
   blockId?: string;
@@ -476,6 +501,12 @@ export type TemplatePlanReport = {
     labelAsText: number;
     /** Placed paragraphs the plan starts on a new page. */
     pageStarts: number;
+    /**
+     * Empty paragraphs written between two tables the plan puts next to each
+     * other, and after a table that ends the body: without one the tables
+     * are one table, and a body cannot end in a table.
+     */
+    tableSeparators: number;
   };
   footnotes: TemplatePlanNoteCounts;
   endnotes: TemplatePlanNoteCounts;

@@ -301,6 +301,7 @@ export type DocxBlock = {
     pageBreaks?: number;
     pageBreakBefore?: true;
     endsSection?: true;
+    alignment?: string;
     cells?: DocxTableCell[];
     nested?: DocxBlock[];
 };
@@ -310,6 +311,7 @@ export type DocxBlockManifest = {
     sha256: string;
     blocks: DocxBlock[];
     sections: DocxSection[];
+    compat: DocxCompat;
     footnotes: DocxNote[];
     endnotes: DocxNote[];
     comments: number;
@@ -322,6 +324,11 @@ export type DocxBlockNumbering = {
     numId: number;
     ilvl: number;
     abstractNumId: number;
+};
+
+// @public
+export type DocxCompat = {
+    doNotExpandShiftReturn: boolean;
 };
 
 // @public (undocumented)
@@ -2138,6 +2145,9 @@ export type TemplatePlan = {
         freezeKinds?: string[];
         updateOnOpen?: boolean;
     };
+    compat?: {
+        doNotExpandShiftReturn?: boolean;
+    };
 };
 
 // @public (undocumented)
@@ -2185,7 +2195,7 @@ export type TemplatePlanHighlight = {
 
 // @public (undocumented)
 export type TemplatePlanIssue = {
-    code: "text-mismatch" | "emphasis-mismatch" | "note-mismatch" | "block-missing" | "reference-broken" | "bookmark-dangling" | "field-unbalanced" | "relationship-dangling" | "note-dangling" | "numbering-dangling" | "style-dangling" | "style-mismatch" | "numbering-mismatch" | "page-start-mismatch" | "template-mismatch" | "prompting-field-left" | "field-not-frozen" | "update-fields-mismatch" | "conformance";
+    code: "text-mismatch" | "emphasis-mismatch" | "note-mismatch" | "block-missing" | "reference-broken" | "bookmark-dangling" | "field-unbalanced" | "relationship-dangling" | "note-dangling" | "numbering-dangling" | "style-dangling" | "style-mismatch" | "numbering-mismatch" | "page-start-mismatch" | "template-mismatch" | "prompting-field-left" | "field-not-frozen" | "update-fields-mismatch" | "compat-mismatch" | "conformance";
     message: string;
     blockId?: string;
     part?: string;
@@ -2293,6 +2303,7 @@ export type TemplatePlanReport = {
         labelLost: number;
         labelAsText: number;
         pageStarts: number;
+        tableSeparators: number;
     };
     footnotes: TemplatePlanNoteCounts;
     endnotes: TemplatePlanNoteCounts;

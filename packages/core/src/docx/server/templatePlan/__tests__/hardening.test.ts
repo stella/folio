@@ -5,6 +5,10 @@ import { ZipArchive } from "@stll/docx-core/zip";
 
 import { applyTemplatePlan } from "../apply";
 import { analyzeDocxBlocks } from "../blocks";
+import {
+  keepsShiftReturnSpacing,
+  setKeepShiftReturnSpacing,
+} from "../builders";
 import { isManualLabel } from "../plan";
 import type {
   TemplatePlan,
@@ -1567,6 +1571,160 @@ describe("page starts", () => {
         }),
       ),
     ).toBe("plan-invalid");
+  });
+});
+
+describe("justified lines in front of a manual line break", () => {
+  const settings = (inner: string): string =>
+    `${XML}<w:settings ${NS}>${inner}</w:settings>`;
+
+  test("the setting is written at its place, and nothing else changes", () => {
+    for (const [before, after] of [
+      // No compatibility settings yet: they stand in front of the revision ids.
+      [
+        '<w:zoom w:percent="100"/><w:rsids><w:rsidRoot w:val="00000001"/></w:rsids>',
+        '<w:zoom w:percent="100"/><w:compat><w:doNotExpandShiftReturn/></w:compat><w:rsids><w:rsidRoot w:val="00000001"/></w:rsids>',
+      ],
+      // Among the other settings in the schema's order.
+      [
+        '<w:compat><w:spaceForUL/><w:ulTrailSpace/><w:useFELayout/><w:compatSetting w:name="compatibilityMode" w:uri="http://schemas.microsoft.com/office/word" w:val="15"/></w:compat>',
+        '<w:compat><w:spaceForUL/><w:ulTrailSpace/><w:doNotExpandShiftReturn/><w:useFELayout/><w:compatSetting w:name="compatibilityMode" w:uri="http://schemas.microsoft.com/office/word" w:val="15"/></w:compat>',
+      ],
+      ["<w:compat/>", "<w:compat><w:doNotExpandShiftReturn/></w:compat>"],
+      [
+        '<w:compat><w:doNotExpandShiftReturn w:val="0"/><w:useFELayout/></w:compat>',
+        "<w:compat><w:doNotExpandShiftReturn/><w:useFELayout/></w:compat>",
+      ],
+      // Already on: not a byte changes.
+      [
+        '<w:compat><w:doNotExpandShiftReturn w:val="true"/></w:compat>',
+        '<w:compat><w:doNotExpandShiftReturn w:val="true"/></w:compat>',
+      ],
+    ] as const) {
+      const written = setKeepShiftReturnSpacing(settings(before));
+      expect(written).toBe(settings(after));
+      expect(keepsShiftReturnSpacing(written ?? "")).toBe(true);
+    }
+    expect(keepsShiftReturnSpacing(settings("<w:compat/>"))).toBe(false);
+    expect(setKeepShiftReturnSpacing(`${XML}<w:settings ${NS}/>`)).toBe(
+      settings("<w:compat><w:doNotExpandShiftReturn/></w:compat>"),
+    );
+    expect(setKeepShiftReturnSpacing(`${XML}<w:styles ${NS}/>`)).toBeNull();
+  });
+
+  test("a plan switches the setting on in the output, and only when it asks", async () => {
+    const source = await buildMinimalDocx(p(r("Body.")));
+    const plain = unwrap(await applyFor({ source, template }));
+    const asked = unwrap(
+      await applyFor({
+        source,
+        template,
+        extra: { compat: { doNotExpandShiftReturn: true } },
+      }),
+    );
+    const before = (await readPart(plain.docx, "word/settings.xml")) ?? "";
+    const after = (await readPart(asked.docx, "word/settings.xml")) ?? "";
+
+    expect(keepsShiftReturnSpacing(before)).toBe(false);
+    expect(keepsShiftReturnSpacing(after)).toBe(true);
+    expect(after.replace("<w:doNotExpandShiftReturn/>", "")).toBe(before);
+    expect(unwrap(await analyzeDocxBlocks(asked.docx)).compat).toEqual({
+      doNotExpandShiftReturn: true,
+    });
+
+    // The plan asks, the output does not have it.
+    const plan = await planFor({
+      source,
+      template,
+      extra: { compat: { doNotExpandShiftReturn: true } },
+    });
+    expect(
+      (
+        await verifyFor({ source, template, output: plain.docx, plan })
+      ).issues.map(({ code }) => code),
+    ).toEqual(["compat-mismatch"]);
+  });
+
+  test("the manifest says how each paragraph is aligned", async () => {
+    const source = await buildSourceWith({
+      body: [
+        p(r("By its style.")),
+        p(r("By its own."), '<w:jc w:val="center"/>'),
+        p(r("By the style it builds on."), style("Derived")),
+        p(r("Unstated."), style("Plain")),
+      ].join(""),
+      styles:
+        '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:pPr><w:jc w:val="both"/></w:pPr></w:style><w:style w:type="paragraph" w:styleId="Derived"><w:name w:val="Derived"/><w:basedOn w:val="Normal"/></w:style><w:style w:type="paragraph" w:styleId="Plain"><w:name w:val="Plain"/></w:style>',
+    });
+    const { blocks, compat } = unwrap(await analyzeDocxBlocks(source));
+
+    expect(blocks.map(({ alignment }) => alignment ?? null)).toEqual([
+      "both",
+      "center",
+      "both",
+      null,
+    ]);
+    expect(compat).toEqual({ doNotExpandShiftReturn: false });
+  });
+});
+
+describe("tables kept apart", () => {
+  const table = (text: string): string =>
+    `<w:tbl><w:tr><w:tc>${p(r(text))}</w:tc></w:tr></w:tbl>`;
+
+  test("an empty paragraph parts two tables a plan puts next to each other and closes the body after one", async () => {
+    const source = await buildMinimalDocx(
+      `${p(r("Intro."))}${table("one")}${p("")}${table("two")}${p("")}`,
+    );
+    const { docx, report } = unwrap(
+      await applyFor({
+        source,
+        template,
+        items: (blocks) =>
+          blocks
+            .filter(({ id }) => id !== "p3" && id !== "p6")
+            .map(({ id, hash }) => ({ kind: "source", blockId: id, hash })),
+        extra: {
+          omit: [
+            { blockId: "p3", reason: "empty" },
+            { blockId: "p6", reason: "empty" },
+          ],
+        },
+      }),
+    );
+    const document = await documentOf(docx);
+
+    expect(report.ok).toBe(true);
+    expect(report.counts.tableSeparators).toBe(2);
+    expect(document).not.toContain("</w:tbl><w:tbl>");
+    expect(document.split("</w:tbl><w:p/>")).toHaveLength(3);
+    expect(document).toContain("</w:tbl><w:p/><w:sectPr");
+  });
+
+  test("tables that a paragraph parts get none, and verification misses one that is gone", async () => {
+    const source = await buildMinimalDocx(
+      `${table("one")}${p(r("Between."))}${table("two")}`,
+    );
+    const plan = await planFor({ source, template });
+    const { docx, report } = unwrap(
+      await applyTemplatePlan({ source, template, plan }),
+    );
+    const document = await documentOf(docx);
+
+    expect(report.counts.tableSeparators).toBe(1);
+    const closed = "</w:tbl><w:p/><w:sectPr";
+    expect(document).toContain(closed);
+    const open = await verifyFor({
+      source,
+      template,
+      output: await replacePart(
+        docx,
+        "word/document.xml",
+        document.replace(closed, "</w:tbl><w:sectPr"),
+      ),
+      plan,
+    });
+    expect(open.issues.map(({ code }) => code)).toContain("block-missing");
   });
 });
 

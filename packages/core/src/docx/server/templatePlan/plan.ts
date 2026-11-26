@@ -110,6 +110,12 @@ export type ResolvedParagraph = {
 
 export type ResolvedItem =
   | { kind: "template"; block: AnalyzedBlock }
+  /**
+   * An empty paragraph the writer adds, in no plan: between two tables that
+   * would otherwise stand next to each other and read as one, and after a
+   * table that would end the body.
+   */
+  | { kind: "separator" }
   | { kind: "paragraph"; paragraph: ResolvedParagraph }
   | {
       kind: "table";
@@ -637,6 +643,25 @@ export const piecesContent = (
     }
   }
   return { text, signatures };
+};
+
+const isTableItem = (item: ResolvedItem): boolean =>
+  item.kind === "table" ||
+  (item.kind === "template" && item.block.block.kind === "table");
+
+/** Puts a separator between two neighbouring tables and after a last one. */
+const partTables = (items: ResolvedItem[]): void => {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    const next = items[index + 1];
+    if (
+      item !== undefined &&
+      isTableItem(item) &&
+      (next === undefined || isTableItem(next))
+    ) {
+      items.splice(index + 1, 0, { kind: "separator" });
+    }
+  }
 };
 
 type PlannedPart = {
@@ -1415,6 +1440,8 @@ export const resolvePlan = (
     }
     nestedSlots.push(slot);
   }
+
+  partTables(items);
 
   // A template field that runs over several blocks is kept whole, in place
   // and with nothing in between, or not at all: anything placed inside it

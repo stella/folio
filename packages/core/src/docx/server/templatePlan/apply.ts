@@ -18,6 +18,7 @@ import {
 } from "./blocks";
 import {
   freezeFields,
+  setKeepShiftReturnSpacing,
   setUpdateFieldsOnOpen,
   withoutContained,
 } from "./builders";
@@ -825,6 +826,9 @@ const writeOutput = async ({
       case "paragraph":
         xml = paragraphXml(emitOf(item.paragraph), documentContext);
         break;
+      case "separator":
+        xml = Result.ok(`<${documentContext.prefixes.w}:p/>`);
+        break;
       case "table":
         xml = tableXml(
           {
@@ -1076,6 +1080,37 @@ const writeOutput = async ({
       if (settings !== settingsXml.value) {
         parts.set(settingsPath, settings);
       }
+    }
+  }
+
+  if (plan.compat?.doNotExpandShiftReturn === true) {
+    const settingsPath = pkg.partPath("settings");
+    // The settings as written so far: update-on-open may have changed them.
+    const written = settingsPath === null ? undefined : parts.get(settingsPath);
+    const settingsXml =
+      typeof written === "string"
+        ? Result.ok(written)
+        : await readTemplateText(settingsPath);
+    if (Result.isError(settingsXml)) {
+      return settingsXml;
+    }
+    if (settingsPath === null || settingsXml.value === null) {
+      return Result.err(
+        new TemplatePlanError({
+          code: "part-missing",
+          message:
+            "The template has no settings part to set a compatibility setting in.",
+        }),
+      );
+    }
+    const settings = setKeepShiftReturnSpacing(settingsXml.value);
+    if (settings === null) {
+      return Result.err(
+        unreadable(settingsPath, "The settings part could not be updated."),
+      );
+    }
+    if (settings !== settingsXml.value) {
+      parts.set(settingsPath, settings);
     }
   }
 

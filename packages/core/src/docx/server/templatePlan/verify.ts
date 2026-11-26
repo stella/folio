@@ -31,7 +31,7 @@ import {
   analyzeDocument,
   type AnalyzedStory,
 } from "./blocks";
-import { fieldBookmarkOf } from "./builders";
+import { fieldBookmarkOf, keepsShiftReturnSpacing } from "./builders";
 import {
   linkAddress,
   linkAddressKey,
@@ -745,6 +745,15 @@ export const reportTemplatePlanOutput = async ({
       case "paragraph":
         assign(item.paragraph, block);
         break;
+      case "separator":
+        if (
+          block?.read === null ||
+          block?.read === undefined ||
+          block.read.atoms.length > 0
+        ) {
+          missing("An empty paragraph that parts two tables is not in place.");
+        }
+        break;
       case "slot":
         assign(item.paragraph, block);
         break;
@@ -1388,6 +1397,16 @@ export const reportTemplatePlanOutput = async ({
       `${nestedUnfrozen} field(s) of a frozen kind sit inside another field's code and stay live.`,
     );
   }
+  if (
+    plan.compat?.doNotExpandShiftReturn === true &&
+    (settingsXml.value === null || !keepsShiftReturnSpacing(settingsXml.value))
+  ) {
+    issues.push({
+      code: "compat-mismatch",
+      message:
+        "The compatibility setting the plan switches on is not on in the output.",
+    });
+  }
   const updateOnOpen = plan.fields?.updateOnOpen;
   if (updateOnOpen !== undefined && updateOnOpen !== updatesOnOpen) {
     issues.push({
@@ -1493,6 +1512,8 @@ export const reportTemplatePlanOutput = async ({
     labelLost: 0,
     labelAsText: 0,
     pageStarts: 0,
+    tableSeparators: resolved.items.filter(({ kind }) => kind === "separator")
+      .length,
   };
   const tables = new Map<string, TemplatePlanBlockResult>();
   for (const block of source.story.order) {
