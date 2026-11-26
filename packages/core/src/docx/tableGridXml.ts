@@ -9,6 +9,7 @@ import {
 } from "@stll/docx-core/model";
 
 import type { Table, TableGridChange } from "../types/document";
+import { serializeColumnDeletionMembers } from "./reviewResolutionProvenance";
 import { intAttr } from "./serializer/xmlUtils";
 
 /**
@@ -34,10 +35,8 @@ export const gridColumnCount = (table: Table): number =>
  * measure for is written back without one; spelling it as a zero would claim a
  * width the source never stated.
  */
-const serializeTableGridChange = ({
-  id,
-  columnWidths,
-}: TableGridChange): string => {
+const serializeTableGridChange = (change: TableGridChange): string => {
+  const { id, columnWidths } = change;
   const columns = columnWidths
     .map((width) =>
       width === undefined
@@ -45,7 +44,7 @@ const serializeTableGridChange = ({
         : `<w:gridCol w:w="${intAttr(width)}"/>`,
     )
     .join("");
-  return `<w:tblGridChange w:id="${intAttr(id)}"><w:tblGrid>${columns}</w:tblGrid></w:tblGridChange>`;
+  return `<w:tblGridChange w:id="${intAttr(id)}"${serializeColumnDeletionMembers(change)}><w:tblGrid>${columns}</w:tblGrid></w:tblGridChange>`;
 };
 
 /**
@@ -70,7 +69,10 @@ export const modelTableGrid = (table: Table): string => {
       .join("");
     return `<w:tblGrid>${columns}${gridChange}</w:tblGrid>`;
   }
-  const columns = gridColumnCount(table);
+  const columns =
+    change?.columnDeletionRevisionIds === undefined
+      ? gridColumnCount(table)
+      : Math.max(0, change.columnWidths.length - 1);
   return columns === 0 && gridChange === ""
     ? "<w:tblGrid/>"
     : `<w:tblGrid>${"<w:gridCol/>".repeat(columns)}${gridChange}</w:tblGrid>`;

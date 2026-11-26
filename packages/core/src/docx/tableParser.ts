@@ -93,6 +93,7 @@ import {
   TextDirectionSchema,
 } from "./parserEnums";
 import { type PreviewLedger, standalonePreviewLedger } from "./previewBudget";
+import { parseColumnDeletionMembers } from "./reviewResolutionProvenance";
 import { captureSdtSiblingMarkers, parseSdtProperties } from "./sdtProperties";
 import { parseShading } from "./shadingParser";
 import { findChildAnySpelling } from "./strictNames";
@@ -2417,6 +2418,7 @@ export function parseTableGridChange(
   const snapshot = findChild(changeElement, "w", "tblGrid");
   return {
     id: parseTrackedChangeInfo(changeElement).id,
+    ...parseColumnDeletionMembers(changeElement),
     columnWidths: (snapshot === null
       ? []
       : findChildren(snapshot, "w", "gridCol")
@@ -2821,7 +2823,8 @@ export function parseTable(
     table.bookmarks = bookmarks;
   }
 
-  inferImplicitSingleCellRowSpans(table, rowsWithGridOffsets);
+  if (table.formatting?.gridChange?.columnDeletionRevisionIds === undefined)
+    inferImplicitSingleCellRowSpans(table, rowsWithGridOffsets);
 
   // A grid the model writes back byte for byte needs no capture; keeping one
   // would make a table saved without it read back different from itself.

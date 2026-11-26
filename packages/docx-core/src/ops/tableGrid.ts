@@ -55,15 +55,38 @@ export const tableGrid = (
   const rows: GridCell[][] = [];
   const covered: number[] = [];
   const previous = new Map<number, GridCell>();
+  // Pending deleted cells still occupy their original slots. For a compound
+  // deletion the neighboring spans and omissions have updated live values,
+  // so read their recorded earlier geometry while the removed cells remain.
+  const gridSnapshot = table.formatting?.gridChange;
+  const deletion = gridSnapshot?.columnDeletionRevisionIds;
+  if (deletion !== undefined && !Array.isArray(deletion)) return refuse();
+  const members = deletion === undefined ? undefined : new Set(deletion);
+  const statedWidth =
+    members === undefined
+      ? table.columnWidths?.length
+      : gridSnapshot?.columnWidths.length;
   for (const [rowIndex, row] of table.rows.entries()) {
-    let position = row.formatting?.gridBefore ?? 0;
-    const after = row.formatting?.gridAfter ?? 0;
+    const priorRow =
+      members === undefined
+        ? undefined
+        : row.propertyChanges?.find(({ info }) => members.has(info.id));
+    const rowFormatting =
+      priorRow === undefined ? row.formatting : priorRow.previousFormatting;
+    let position = rowFormatting?.gridBefore ?? 0;
+    const after = rowFormatting?.gridAfter ?? 0;
     if (!nonnegative(position) || !nonnegative(after)) return refuse();
     const cells: GridCell[] = [];
     for (const [index, cell] of row.cells.entries()) {
-      // A pending cell deletion still holds its columns: the grid narrows only
-      // when the deletion is accepted.
-      const span = cell.formatting?.gridSpan ?? 1;
+      const priorCell =
+        members === undefined
+          ? undefined
+          : cell.propertyChanges?.find(({ info }) => members.has(info.id));
+      const span =
+        (priorCell === undefined
+          ? cell.formatting
+          : priorCell.previousFormatting
+        )?.gridSpan ?? 1;
       if (!nonnegative(span) || span === 0 || !nonnegative(position + span))
         return refuse();
       const start = position;
@@ -106,11 +129,11 @@ export const tableGrid = (
     previous.clear();
     for (const cell of cells) previous.set(cell.start, cell);
   }
-  const width = maxOf(covered, table.columnWidths?.length ?? 0);
+  const width = maxOf(covered, statedWidth ?? 0);
   if (width === 0 || width > MAX_TABLE_GRID_COLUMNS) return refuse();
   const stated =
     covered.every((columns) => columns === width) &&
-    (table.columnWidths === undefined || table.columnWidths.length === width);
+    (statedWidth === undefined || statedWidth === width);
   return Result.ok({ width, rows, stated });
 };
 

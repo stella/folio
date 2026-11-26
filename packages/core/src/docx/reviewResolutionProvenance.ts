@@ -25,6 +25,7 @@ import type {
   ParagraphPropertyChange,
   RecordField,
   RunPropertyChange,
+  TableGridChange,
 } from "../types/document";
 import { FOLIO_REVIEW_HISTORY_NAMESPACE } from "./reviewHistoryNamespace";
 import { getAttributeByNamespaceUri, type XmlElement } from "./xmlParser";
@@ -827,6 +828,33 @@ export const serializeParagraphPropertyChangeOwner = (
     valid: isRevisionId,
   });
 
+const COLUMN_DELETION_MEMBERS = "columnDeletionRevisionIds";
+const isColumnDeletionMembers = (value: unknown): value is number[] =>
+  Array.isArray(value) &&
+  value.length > 0 &&
+  value.every(isRevisionId) &&
+  new Set(value).size === value.length;
+
+export const parseColumnDeletionMembers = (
+  node: XmlElement,
+): Pick<TableGridChange, "columnDeletionRevisionIds"> => {
+  const ids = parseAttribute({
+    node,
+    attribute: COLUMN_DELETION_MEMBERS,
+    valid: isColumnDeletionMembers,
+  });
+  return ids === undefined ? {} : { columnDeletionRevisionIds: ids };
+};
+
+export const serializeColumnDeletionMembers = (
+  change: TableGridChange,
+): string =>
+  serializeAttribute({
+    attribute: COLUMN_DELETION_MEMBERS,
+    value: change.columnDeletionRevisionIds,
+    valid: isColumnDeletionMembers,
+  });
+
 /** Every provenance attribute folio reads, with the shape its value must have. */
 const PROVENANCE_VALUE_SHAPES: Readonly<Record<string, ProvenanceShape>> = {
   resolutionJoins: isStoredJoinsOf,
@@ -840,6 +868,7 @@ const PROVENANCE_VALUE_SHAPES: Readonly<Record<string, ProvenanceShape>> = {
   [PARAGRAPH_MARK_FIELDS.survivor.attribute]: isParagraphMarkSurvivor,
   [PARAGRAPH_MARK_FIELDS.splitDate.attribute]: isParagraphMarkSplitDate,
   resolvesWith: isRevisionId,
+  [COLUMN_DELETION_MEMBERS]: isColumnDeletionMembers,
 };
 
 /**

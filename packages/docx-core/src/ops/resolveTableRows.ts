@@ -65,6 +65,26 @@ const tablesIn = (document: Document, story: OpStory): Table[] => {
   return out;
 };
 
+/** A geometry decision removes or retains the cells and the grid together. */
+export const withBelongingColumnChanges = (
+  document: Document,
+  op: ResolveRevisionOp,
+): ResolveRevisionOp => {
+  const ids = new Set(op.revisionIds);
+  for (const table of tablesIn(document, op.story)) {
+    const grid = table.formatting?.gridChange;
+    const members = grid?.columnDeletionRevisionIds;
+    if (grid === undefined || !Array.isArray(members)) continue;
+    if (!ids.has(grid.id) && !members.some((id) => ids.has(id))) continue;
+    const local = reachableOnTable(table);
+    ids.add(grid.id);
+    for (const id of members) if (local.has(id)) ids.add(id);
+  }
+  return ids.size === op.revisionIds.length
+    ? op
+    : { ...op, revisionIds: [...ids] };
+};
+
 const propertyIds = (
   changes: readonly { info: { id: number } }[] | undefined,
 ): number[] => changes?.map(({ info }) => info.id) ?? [];
@@ -650,7 +670,11 @@ const resolveCellChanges = ({
       );
     }),
   );
-  if (!hasRemovedCells)
+  if (
+    !hasRemovedCells ||
+    (selectedGridChange &&
+      table.formatting?.gridChange?.columnDeletionRevisionIds !== undefined)
+  )
     return Result.ok({ table: structureResolved, holdsRemovedColumns: false });
 
   // Cell insertions used by horizontal/vertical splits restore the owner's span

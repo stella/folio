@@ -3783,22 +3783,6 @@ const resolveTableStructure = ({
         left: cell.leftColumnIndex,
         right: cell.leftColumnIndex + 1,
       };
-      // A column covered only by spans and omissions changes geometry. A
-      // column also taking whole cells needs both geometry and cell records.
-      if (tracked) {
-        const spans = Array.from({ length: map.height }, (_, rowIndex) => {
-          const position = map.map[rowIndex * map.width + column.left];
-          const node =
-            position === undefined ? null : row.table.nodeAt(position);
-          return node === null || node.attrs["_omittedGridSlot"] != null
-            ? 0
-            : Number(node.attrs["colspan"] ?? 1);
-        });
-        if (spans.includes(1) && spans.some((span) => span > 1))
-          return skipTracked(
-            "A suggested column deletion cannot narrow a cell that spans other columns.",
-          );
-      }
       // The table is addressed by a paragraph the deletion keeps, as the
       // editor's column deletion addresses it.
       const at = tableAnchor(

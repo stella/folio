@@ -591,6 +591,8 @@ export type TableGridChange = WritableRecord & {
   id: number;
   /** One entry per `w:gridCol`, in source order. */
   columnWidths: readonly (number | undefined)[];
+  /** Cell deletions and property snapshots resolved with this column deletion. */
+  columnDeletionRevisionIds?: readonly number[];
 };
 
 /**

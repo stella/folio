@@ -191,6 +191,44 @@ describe("column operations on a table whose file states no widths", () => {
     expect(reviewed.rejected).toEqual((await outcomes(source)).rejected);
   });
 
+  test("saved mixed column deletions preserve a neighboring vertical merge under review", async () => {
+    const source = await packageOf([
+      paragraph("10000001", "Before"),
+      table(
+        [
+          row(
+            textCell("20000001", "wide", '<w:gridSpan w:val="2"/>') +
+              textCell("20000002", "merge", '<w:vMerge w:val="restart"/>'),
+          ),
+          row(
+            textCell("20000003", "deleted") +
+              textCell("20000004", "kept") +
+              textCell("20000005", "", "<w:vMerge/>"),
+          ),
+        ],
+        3,
+      ),
+      paragraph("10000002", "After"),
+    ]);
+    const op = OPERATIONS.deleteTableColumn("20000001");
+    const pending = await viaCanonicalEngine(source, op, "tracked-changes");
+    expect(pending.refusals).toEqual([]);
+    expect(pending.skipped).toEqual([]);
+    const direct = await viaCanonicalEngine(source, op, "direct");
+    expect(direct.skipped).toEqual([]);
+    const part = (await ZipArchive.read(pending.bytes)).entry(
+      "word/document.xml",
+    );
+    if (!part) throw new Error("The saved package has no document part.");
+    const xml = await part.text();
+    expect(xml).toMatch(/<w:tcPrChange\b/u);
+    expect(xml).toMatch(/<w:cellDel\b/u);
+    expect(xml).toMatch(/<w:tblGridChange\b/u);
+    const reviewed = await reviewedInSession(pending.bytes);
+    expect(reviewed.accepted).toEqual((await outcomes(direct.bytes)).accepted);
+    expect(reviewed.rejected).toEqual((await outcomes(source)).rejected);
+  });
+
   // Without the fix the canonical session refuses the suggestion the default
   // engine records; the parity check above then fails.
   test("the old refusal fails the parity check", async () => {

@@ -1595,7 +1595,27 @@ const columnEdit = ({
   // A suggested deletion keeps the grid while it is pending: the deleted
   // cells stay in their columns, and accepting removes them with their grid
   // entries.
-  const trackedDeletion = suggestedDeletion && removedCells.length > 0;
+  const narrowsSpans =
+    suggestedDeletion &&
+    grid.rows.some((entries) =>
+      entries.some(
+        ({ start, end }) =>
+          start <= op.column && op.column < end && end - start > 1,
+      ),
+    );
+  const trackedDeletion =
+    suggestedDeletion && removedCells.length > 0 && !narrowsSpans;
+  const recordsGeometry = suggestedDeletion && !trackedDeletion;
+  if (
+    recordsGeometry &&
+    (hasReviewBlockingColumns(table, false) ||
+      table.rows.some(({ structuralChange }) => structuralChange !== undefined))
+  )
+    return refuse({
+      op,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
+      message: "Resolve existing column records before changing the grid.",
+    });
   // The rows the edit leaves as they are: for a suggested deletion, those
   // with no cell in the column, which keep it for themselves when the
   // deletion is accepted; for another edit, those stopping short of the
@@ -1760,13 +1780,6 @@ const columnEdit = ({
             reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
             message: "The column's cells are already suggested for deletion.",
           });
-        if (trackedDeletion && entry.end - entry.start > 1)
-          return refuse({
-            op,
-            reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-            message:
-              "A suggested column deletion cannot narrow a cell that spans other columns.",
-          });
         if (entry.end - entry.start > 1) {
           const next = withSpan(entry.cell, entry.end - entry.start - 1);
           const stamp = rowStamp(rowIndex);
@@ -1838,6 +1851,13 @@ const columnEdit = ({
       // each without a measure, as the file states them.
       gridChange: {
         id: gridStamp.id,
+        ...(recordsGeometry
+          ? {
+              columnDeletionRevisionIds: stamps.value
+                .filter(({ id }) => id !== gridStamp.id)
+                .map(({ id }) => id),
+            }
+          : {}),
         columnWidths:
           table.columnWidths === undefined
             ? Array.from({ length: grid.width }, () => undefined)
@@ -3048,6 +3068,13 @@ export const applyTableEdit = (
       });
     return commitTable({ document, op, location, table: op.table });
   }
+  if (table.formatting?.gridChange?.columnDeletionRevisionIds !== undefined)
+    return refuse({
+      op,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
+      message:
+        "Resolve the pending column deletion before editing this table's grid or properties.",
+    });
   if (op.revision !== undefined) {
     const ambiguous = (record: object) =>
       ["formatting", "propertyChanges", "structuralChange"].some(
