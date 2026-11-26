@@ -1240,6 +1240,86 @@ describe("labels written as text", () => {
   });
 });
 
+describe("reference fields with a letter-case format", () => {
+  const cited = async (
+    text: string,
+    cite: string,
+    instruction: string,
+    lvlText = "Art. %1",
+    numFmt = "decimal",
+  ) =>
+    await applyFor({
+      source: await buildSourceWith({
+        body: [p(r("Heading")), p(r(text))].join(""),
+      }),
+      template,
+      items: (blocks) =>
+        blocks.map(({ id, hash }, index) => ({
+          kind: "source",
+          blockId: id,
+          hash,
+          numbering: index === 0 ? { numId: 1, ilvl: 0 } : null,
+        })),
+      extra: {
+        numberingPatches: [{ abstractNumId: 0, ilvl: 0, numFmt, lvlText }],
+        references: [
+          {
+            blockId: "p1",
+            start: text.indexOf(cite),
+            end: text.indexOf(cite) + cite.length,
+            targetBlockId: "p0",
+            instruction,
+            expectedText: cite,
+          },
+        ],
+      },
+    });
+
+  test("a field over a citation's word and number prints the label in the citation's case", async () => {
+    for (const [text, cite, instruction] of [
+      ["See art. 1 above.", "art. 1", "\\n \\* lower \\h"],
+      ["Art. 1 says so.", "Art. 1", "\\n \\h"],
+      ["SEE ART. 1 ABOVE.", "ART. 1", "\\n \\* Upper \\h"],
+    ] as const) {
+      const { docx, report } = unwrap(await cited(text, cite, instruction));
+      expect(report.references.results.at(0)).toMatchObject({
+        status: "ok",
+        predictedText: cite,
+      });
+      expect(report.references.predictionMismatch).toBe(0);
+      expect(await readPart(docx, "word/document.xml")).toContain(
+        ` ${instruction} </w:instrText>`,
+      );
+    }
+  });
+
+  test("a lower-case format lowers a roman numeral too, and the prediction says so", async () => {
+    const { report } = unwrap(
+      await cited(
+        "See art. I above.",
+        "art. I",
+        "\\n \\* lower \\h",
+        "Art. %1",
+        "upperRoman",
+      ),
+    );
+    expect(report.references.results.at(0)?.predictedText).toBe("art. i");
+    expect(report.references.predictionMismatch).toBe(1);
+  });
+
+  test("refuses any other format switch", async () => {
+    for (const instruction of [
+      "\\n \\* MERGEFORMAT \\h",
+      "\\n \\* lower \\* Upper \\h",
+      "\\n \\* \\h",
+    ]) {
+      expect(
+        codeOf(await cited("See art. 1 above.", "art. 1", instruction)),
+      ).toBe("plan-invalid");
+    }
+  });
+});
+
 describe("omitted blocks", () => {
   const NUMBERING =
     '<w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/></w:lvl></w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>';

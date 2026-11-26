@@ -31,7 +31,7 @@ import {
   analyzeDocument,
   type AnalyzedStory,
 } from "./blocks";
-import { fieldBookmarkOf } from "./builders";
+import { applyRefCaseFormat, fieldBookmarkOf, refCaseFormat } from "./builders";
 import {
   linkAddress,
   linkAddressKey,
@@ -1016,9 +1016,18 @@ export const reportTemplatePlanOutput = async ({
         if (!hasNumberSwitch) {
           predictedText = targetBlock.block.text;
         } else if (usesNumber) {
-          predictedText = /\\t\b/u.test(entry.reference.instruction)
+          const number = /\\t\b/u.test(entry.reference.instruction)
             ? (targetBlock.label?.numberOnly ?? null)
             : (targetBlock.label?.paragraphNumber ?? null);
+          // A letter-case format applies to the whole result, words and
+          // roman numerals alike.
+          predictedText =
+            number === null
+              ? null
+              : applyRefCaseFormat(
+                  number,
+                  refCaseFormat(entry.reference.instruction),
+                );
         }
       }
       let status: TemplatePlanReferenceResult["status"] = "ok";
