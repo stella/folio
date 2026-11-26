@@ -9,6 +9,7 @@ import { EditorState } from 'prosemirror-state';
 import * as import__stll_docx_core_model from '@stll/docx-core/model';
 import { Node as Node_2 } from 'prosemirror-model';
 import { OutlineLevel } from '@stll/docx-core/model';
+import { ParagraphAbsorption } from '@stll/docx-core/ops';
 import { ParagraphNumberingOverride } from '@stll/docx-core/model';
 import { PropertyRevisionKind } from '@stll/docx-core/model';
 import { TaggedErrorClass } from 'better-result';
@@ -33,7 +34,7 @@ export const createFolioAIEditSnapshotWithStyleResolver: (doc: Node_2, styleReso
 export const createFolioAITextRangeHandle: (input: CreateFolioAITextRangeHandleOptions) => FolioAITextRangeHandle | null;
 
 // @public
-export const createPendingSuggestionSourceSnapshot: (state: EditorState, commentIds: ReadonlySet<number>) => FolioAIEditSnapshot;
+export const createPendingSuggestionSourceSnapshot: (document: import__stll_docx_core_model.Document, commentIds: ReadonlySet<number>) => FolioAIEditSnapshot;
 
 // @public (undocumented)
 export const diffWordSegments: (before: string, after: string, options?: WordDiffOptions) => WordDiffSegment[];

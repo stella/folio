@@ -1,19 +1,8 @@
 import type { Node as PMNode } from "prosemirror-model";
-import { EditorState } from "prosemirror-state";
+import type { EditorState } from "prosemirror-state";
 
-import {
-  acceptAllChanges,
-  rejectEverySuggestion,
-} from "../prosemirror/commands/comments";
-import {
-  createDocumentNumberingPlugin,
-  getStatedDocumentNumbering,
-} from "../prosemirror/plugins/documentNumbering";
-import { createDocumentStyleContextPlugin } from "../prosemirror/plugins/documentStyles";
-import { getDocumentStyleResolver } from "../prosemirror/plugins/documentStyleState";
 import { isZeroWidthAnchor } from "../prosemirror/zeroWidthAnchors";
 import {
-  anchoredCommentIdsInProseDoc,
   commentAnchorIdsForNode,
   coveredCommentIdsInProseDoc,
   isCommentAnchorCarrier,
@@ -67,28 +56,8 @@ type RetiredCommentReceiptsOptions = {
   operations: readonly Pick<FolioAIEditOperation, "id" | "type">[];
   /** Canonical inline changes can relocate markers before later steps run. */
   sourceRanges?: ReadonlyMap<string, readonly TextSpan[]>;
-  /** Canonical review can supply its accepted package projection. */
-  acceptedCommentIds?: (side: "before" | "after") => ReadonlySet<number> | null;
-};
-
-const acceptedComments = (
-  before: EditorState,
-  doc: PMNode,
-): ReadonlySet<number> | null => {
-  const state = rejectEverySuggestion(
-    EditorState.create({
-      doc,
-      plugins: [
-        createDocumentNumberingPlugin(getStatedDocumentNumbering(before)),
-        createDocumentStyleContextPlugin(getDocumentStyleResolver(before)),
-      ],
-    }),
-  );
-  let accepted = state.doc;
-  const resolved = acceptAllChanges()(state, (transaction) => {
-    accepted = transaction.doc;
-  });
-  return resolved ? anchoredCommentIdsInProseDoc(accepted) : null;
+  /** Anchors in the accepted story on either side of the batch. */
+  acceptedCommentIds: (side: "before" | "after") => ReadonlySet<number> | null;
 };
 
 const candidatesOf = (coverage: AnchorCoverage) =>
@@ -276,12 +245,8 @@ export const addRetiredCommentReceipts = ({
         .length === 1,
   );
   if (owned.length === 0) return;
-  const originallyAccepted = acceptedCommentIds
-    ? acceptedCommentIds("before")
-    : acceptedComments(before, before.doc);
-  const finallyAccepted = acceptedCommentIds
-    ? acceptedCommentIds("after")
-    : acceptedComments(before, after);
+  const originallyAccepted = acceptedCommentIds("before");
+  const finallyAccepted = acceptedCommentIds("after");
   if (originallyAccepted === null || finallyAccepted === null) return;
 
   const byOperation = new Map<string, number[]>();

@@ -1,7 +1,10 @@
 import { panic } from "better-result";
 import type { Mark, Node as PMNode, Schema } from "prosemirror-model";
 
-import { expectPageBreakRunAttrs } from "../prosemirror/attrs";
+import {
+  expectPageBreakRunAttrs,
+  expectTrackedChangeMarkAttrs,
+} from "../prosemirror/attrs";
 import {
   runFormattingInlineAtomCleanText,
   runFormattingInlineControlCharacter,
@@ -180,6 +183,30 @@ export const isOmittedFromCleanView = (node: PMNode): boolean =>
       mark.type.name === DELETION_MARK || mark.type.name === HIDDEN_MARK,
   );
 
+/** Read inline text the way the saved story reads it, with proposals rejected. */
+export const isOmittedFromSavedSuggestionText = (node: PMNode): boolean =>
+  node.marks.some((mark) => {
+    const name = mark.type.name;
+    if (name === HIDDEN_MARK) return true;
+    if (name !== INSERTION_MARK && name !== DELETION_MARK) return false;
+    const attrs = expectTrackedChangeMarkAttrs(mark);
+    const ancestors = attrs._docxRevisionAncestors ?? [];
+    if (
+      ancestors.some(
+        ({ type, suggestionId }) =>
+          suggestionId !== undefined &&
+          (type === "insertion" || type === "moveTo"),
+      )
+    )
+      return true;
+    if (attrs.suggestionId === undefined) return name === DELETION_MARK;
+    if (name === INSERTION_MARK) return true;
+    const kept = ancestors.findLast(
+      ({ suggestionId }) => suggestionId === undefined,
+    );
+    return kept?.type === "deletion" || kept?.type === "moveFrom";
+  });
+
 export type BuildCleanBlockTextOptions = {
   /**
    * `"text"` reads a field as the result Word shows, which is the view a reader
@@ -196,6 +223,7 @@ export type BuildCleanBlockTextOptions = {
    * documents' editor text wants.
    */
   noteReferences?: NoteReferenceLabels | "sourceText";
+  view?: "saved-without-suggestions";
 };
 
 const DEFAULT_BUILD_CLEAN_BLOCK_TEXT_OPTIONS: BuildCleanBlockTextOptions = {
@@ -229,8 +257,13 @@ export const buildCleanBlockText = (
   {
     fieldResults,
     noteReferences,
+    view,
   }: BuildCleanBlockTextOptions = DEFAULT_BUILD_CLEAN_BLOCK_TEXT_OPTIONS,
 ): CleanBlockText => {
+  const omitted =
+    view === "saved-without-suggestions"
+      ? isOmittedFromSavedSuggestionText
+      : isOmittedFromCleanView;
   let text = "";
   const offsets: number[] = [];
   let structuralBoundaries: CleanTextStructuralBoundary[] | undefined;
@@ -239,11 +272,7 @@ export const buildCleanBlockText = (
   let localNumbering: NoteReferenceNumbering | undefined;
   const local = () => (localNumbering ??= createNoteReferenceNumbering());
   blockNode.descendants((node, pos) => {
-    if (
-      noteReferences !== "sourceText" &&
-      node.isText &&
-      !isOmittedFromCleanView(node)
-    ) {
+    if (noteReferences !== "sourceText" && node.isText && !omitted(node)) {
       const reference = noteReferenceOf(node);
       const label =
         reference === null ? null : noteReferenceLabelFor(node, labels, local);
@@ -278,9 +307,10 @@ export const buildCleanBlockText = (
         from,
         to: from + node.nodeSize,
         ...(clear !== undefined ? { clear } : {}),
-        presentInCleanView: !node.marks.some(
-          ({ type }) => type.name === DELETION_MARK,
-        ),
+        presentInCleanView:
+          view === "saved-without-suggestions"
+            ? !omitted(node)
+            : !node.marks.some(({ type }) => type.name === DELETION_MARK),
       });
       return false;
     }
@@ -295,7 +325,7 @@ export const buildCleanBlockText = (
       atomText = runFormattingInlineAtomCleanText(node);
     }
     if (atomText !== null) {
-      if (isOmittedFromCleanView(node)) {
+      if (omitted(node)) {
         return false;
       }
       const startPos = blockFrom + 1 + pos;
@@ -321,7 +351,7 @@ export const buildCleanBlockText = (
     if (!node.isText || node.text === undefined) {
       return true;
     }
-    if (isOmittedFromCleanView(node)) {
+    if (omitted(node)) {
       // Skip the run entirely (deleted, or OOXML w:vanish hidden text).
       // Don't update lastEnd — if the next surviving char sits right
       // after the skipped run in the live doc, we still want offsets to

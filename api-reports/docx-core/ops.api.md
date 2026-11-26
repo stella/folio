@@ -1835,7 +1835,7 @@ export const withBodyContent: (body: DocumentBody, content: BlockContent[]) => D
 export const withoutCommentThreads: (comments: readonly Comment_2[], removedRootIds: ReadonlySet<number>) => Comment_2[];
 
 // @public
-export const withoutPendingSuggestions: (document: Document_2) => Result<Document_2, DocumentOpRefusal>;
+export const withoutPendingSuggestions: (document: Document_2, input?: PendingSuggestionProjectionOptions) => Result<Document_2, DocumentOpRefusal>;
 
 // @public
 export const withParagraphCopies: (input: WithParagraphCopiesOptions) => Document_2;

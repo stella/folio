@@ -108,7 +108,6 @@ import {
   getTrackedFolioDocumentOperationCarrierBlockId,
   getTrackedFolioDocumentOperationRemovedBlockIds,
 } from "../../ai-edits/removed-blocks";
-import { addRetiredCommentReceipts } from "../../ai-edits/retired-comment-receipts";
 import {
   collectNoteReferenceLabels,
   hashFolioAIBlockContent,
@@ -349,6 +348,7 @@ import type {
 } from "../../types/document";
 import type { DeepReadonly } from "../../types/documentModel";
 import { canonicalJson } from "../../utils/canonicalJson";
+import { addReferenceRetiredCommentReceipts } from "./retired-comment-receipts";
 import { separateRevisionStretches } from "./revisionStretches";
 
 type FolioAIBlockParagraphProperties =
@@ -8599,7 +8599,7 @@ const applyFolioAIEditOperationsInternal = ({
         tr = withIdentityOf({ tr, position, source: pending.source });
     }
     if (mode === "tracked-changes")
-      addRetiredCommentReceipts({
+      addReferenceRetiredCommentReceipts({
         before: view.state,
         after: tr.doc,
         applied,

@@ -21,6 +21,7 @@ import {
   OP_STORIES,
   type OpStory,
   packageResourcesOpOf,
+  type ParagraphAbsorption,
   pendingSuggestionIdsIn,
   reconcileDocumentPartRelationships,
   resolveSectionChange,
@@ -172,7 +173,6 @@ import {
 } from "./comment-lifecycle";
 import { stagedFinalSectionProperties } from "./finalSectionReview";
 import {
-  createPendingSuggestionSourceSnapshot,
   type FolioPendingSuggestionLoadResult,
   type FolioPendingSuggestionRecord,
   FolioPendingSuggestionRegistry,
@@ -192,6 +192,7 @@ import {
 import { classifyResourceReference } from "./referenceClassification";
 import {
   collectNoteReferenceLabels,
+  createFolioAIEditSnapshotWithStyleResolver,
   createReviewerSnapshot,
   detachFolioAIEditSnapshotExternalHyperlinks,
   type FolioStoryTable,
@@ -2059,10 +2060,14 @@ export class FolioDocxReviewer {
     });
     // One whose paragraph the resolution removed whole stands beside the
     // paragraphs its suggestion added.
+    const savedAbsorptions = new Map<string, readonly ParagraphAbsorption[]>();
     this.pendingSuggestions.placeRemovedAnchors({
       activeSuggestionIds: this.activeSuggestionIds(),
       stateForStory: (story) => this.getEditableStoryState(story),
-      savedSource: sourceSnapshotForStory,
+      savedSource: (story) =>
+        this.pendingSuggestionSource(story, savedAbsorptions),
+      absorptionsForStory: (story) =>
+        savedAbsorptions.get(canonicalJson(canonicalOpStory(story))) ?? [],
     });
     return {
       resolved: true,
@@ -2287,10 +2292,14 @@ export class FolioDocxReviewer {
   /** Export staged AI operations for storage by the host, outside the DOCX. */
   exportPendingSuggestions(): FolioPendingSuggestionRecord[] {
     const active = this.activeSuggestionIds();
+    const savedAbsorptions = new Map<string, readonly ParagraphAbsorption[]>();
     return this.pendingSuggestions.exportPendingSuggestions({
       activeSuggestionIds: active,
-      snapshotForStory: (story) => this.pendingSuggestionSource(story),
+      snapshotForStory: (story) =>
+        this.pendingSuggestionSource(story, savedAbsorptions),
       stateForStory: (story) => this.getEditableStoryState(story),
+      absorptionsForStory: (story) =>
+        savedAbsorptions.get(canonicalJson(canonicalOpStory(story))) ?? [],
     });
   }
 
@@ -2302,9 +2311,18 @@ export class FolioDocxReviewer {
    */
   private pendingSuggestionSource(
     story: FolioEditableDocumentStoryHandle,
+    absorptions?: Map<string, readonly ParagraphAbsorption[]>,
   ): FolioAIEditSnapshot | null {
     if (!this.getEditableStoryState(story)) return null;
-    const document = this.toDocument();
+    const document = this.savedDocument(
+      absorptions === undefined
+        ? undefined
+        : {
+            onAbsorptions: (resolvedStory, absorbed) => {
+              absorptions.set(canonicalJson(resolvedStory), absorbed);
+            },
+          },
+    );
     const created = createCanonicalSession(document, document.package.styles);
     if (created.isErr()) throw created.error;
     const saved = new FolioDocxReviewer({
@@ -2316,7 +2334,10 @@ export class FolioDocxReviewer {
       positionalParaIds: this.positionalParaIds,
     }).getEditableStoryState(story);
     return saved
-      ? createPendingSuggestionSourceSnapshot(saved, new Set())
+      ? createFolioAIEditSnapshotWithStyleResolver(
+          saved.doc,
+          getDocumentStyleResolver(saved),
+        )
       : null;
   }
 
@@ -3532,11 +3553,17 @@ export class FolioDocxReviewer {
 
   /** The current document model with edits merged back in. */
   toDocument(): Document {
-    // The session's document as it holds it, with pending suggestions
-    // rejected as the legacy model has them. The save's own pruning (notes no
-    // reference reaches, lists nothing uses) is the save's, not the model's.
+    return this.savedDocument();
+  }
+
+  private savedDocument(
+    options?: Parameters<typeof withoutPendingSuggestions>[1],
+  ): Document {
+    // The session's document with pending suggestions rejected. The save
+    // owns pruning notes no reference reaches and unused lists.
     const model = withoutPendingSuggestions(
       this.engine.session.captureSaveSnapshot().document,
+      options,
     );
     if (model.isErr()) throw model.error;
     // The package relationships the save writes for the parts the model

@@ -13,7 +13,6 @@ import {
   describeModelError,
   findIntroducedModelErrors,
 } from "../../ai-edits/result-validation";
-import { trackedBatchFidelityError } from "../../ai-edits/tracked-batch-fidelity";
 import type { FolioAIEditSkippedOperation } from "../../ai-edits/types";
 import {
   type ApplyFolioDocumentOperationsOptions,
@@ -36,6 +35,7 @@ import {
   applyFolioAIEditOperationsInPackage,
   previewFolioAIEditOperationsWithResult,
 } from "./apply";
+import { trackedBatchFidelityError } from "./tracked-batch-fidelity";
 
 /** One run of the applier whose result has not reached the caller's view yet. */
 type BatchAttempt = {
