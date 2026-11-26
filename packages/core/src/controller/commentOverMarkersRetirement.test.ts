@@ -285,7 +285,7 @@ for (const shape of [
   "bookmarkOnlyPoint",
 ] as const)
   for (const mode of ["direct", "tracked-changes", "suggested"] as const) {
-    test(`${shape}, ${mode}: pure deletion follows parsed comment ownership or refuses unchanged`, async () => {
+    test(`${shape}, ${mode}: pure deletion follows parsed comment ownership`, async () => {
       setSystemTime(new Date("2026-01-02T03:04:05Z"));
       const prepared = (
         await prepareCanonicalDocxInput(await retirementFixture(shape))
@@ -328,36 +328,8 @@ for (const shape of [
       expect(initial.bookmarks).toHaveLength(2);
       const result = apply();
       // A tracked deletion keeps a ranged comment on its deleted words, and a
-      // direct one takes it with them; a suggestion and a point comment
-      // still have nowhere to put it.
-      if (
-        (shape === "wholeParagraph" && mode === "suggested") ||
-        shape === "pointOnDeletedWord"
-      ) {
-        expect(result.applied).toEqual([]);
-        expect(result.undoHandle).toBeNull();
-        expect(result.skipped).toMatchObject([
-          {
-            reason: "unsupportedBlock",
-            canonicalRefusal: { gap: "comment-replacement-alignment" },
-          },
-        ]);
-        expect(session.document).toBe(before);
-        expect(session.version).toBe(0);
-        expect(session.canUndo).toBe(false);
-        expect(session.canRedo).toBe(false);
-        expect(session.captureSaveSnapshot()).toEqual(snapshot);
-        expect(
-          new Uint8Array(
-            (
-              await serializeCanonicalSave({
-                snapshot: session.captureSaveSnapshot(),
-              })
-            ).buffer,
-          ),
-        ).toEqual(new Uint8Array(saved.buffer));
-        return;
-      }
+      // direct one takes it with them. A point comment on the deleted word
+      // stays where the word was.
       expect(result.applied).toHaveLength(1);
       expect(result.skipped).toEqual([]);
       expect(result.receipts.at(0)?.retiredCommentIds).toEqual(
@@ -444,10 +416,7 @@ for (const shape of [
         ).buffer,
       );
       expect(final.bookmarks).toEqual(initial.bookmarks);
-      if (
-        shape === "rangedWithTail" ||
-        (shape === "wholeParagraph" && mode !== "suggested")
-      ) {
+      if (shape === "rangedWithTail" || shape === "wholeParagraph") {
         expect(final.comments).toEqual([]);
         expect(final.definitions).toEqual([]);
         expect(final.markers).toEqual([]);

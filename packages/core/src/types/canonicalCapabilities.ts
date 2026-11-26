@@ -3,7 +3,6 @@ export const CANONICAL_GAP = {
   trackedTableStructure: "tracked-table-structure",
   storyContentProjection: "story-content-projection",
   trackedChangeRecords: "tracked-change-records",
-  commentReplacementAlignment: "comment-replacement-alignment",
   publicHeadlessSession: "publicOps.headlessSession",
 } as const;
 
@@ -160,12 +159,6 @@ export const CANONICAL_CAPABILITIES: {
     readonly adapters: readonly ["react", "vue"];
     readonly summary: "A suggested change whose content the tracked-change records cannot express is refused: comment boundaries in a tracked range, paragraph-mark run properties, a join at a section break, a record inside a field.";
   };
-  readonly "comment-replacement-alignment": {
-    readonly owner: "controller";
-    readonly kind: "refusal";
-    readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Replacements refuse when preserving aligned comments needs anchor transitions or an unproven collapsed-range policy.";
-  };
   readonly "publicOps.headlessSession": {
     readonly owner: "document-operations";
     readonly kind: "refusal";
@@ -193,13 +186,6 @@ export const CANONICAL_CAPABILITIES: {
     adapters: ["react", "vue"],
     summary:
       "A suggested change whose content the tracked-change records cannot express is refused: comment boundaries in a tracked range, paragraph-mark run properties, a join at a section break, a record inside a field.",
-  },
-  [CANONICAL_GAP.commentReplacementAlignment]: {
-    owner: "controller",
-    kind: "refusal",
-    adapters: ["react", "vue"],
-    summary:
-      "Replacements refuse when preserving aligned comments needs anchor transitions or an unproven collapsed-range policy.",
   },
   [CANONICAL_GAP.publicHeadlessSession]: {
     owner: "document-operations",

@@ -212,11 +212,7 @@ import {
 import { insertionGap } from "../prosemirror/insertionGaps";
 import { ensureParaIdsInDoc } from "../prosemirror/paraIds";
 import { forEachAnnotationIdInDoc } from "../prosemirror/plugins/revisionIds";
-import {
-  preservesReplacementCommentAlignment,
-  splitAtKeptCommentBoundaries,
-  surveyAcceptedReplacedAnnotations,
-} from "../prosemirror/replacedAnnotations";
+import { surveyAcceptedReplacedAnnotations } from "../prosemirror/replacedAnnotations";
 import { createStyleResolver } from "../prosemirror/styles/styleResolver";
 import {
   insertedColumnWidth,
@@ -225,7 +221,6 @@ import {
 import { paragraphGoes, tableGoes } from "../prosemirror/tableRunIn";
 import {
   CANONICAL_CONDITION,
-  CANONICAL_GAP,
   CANONICAL_RULE,
   type CanonicalRefusalGround,
 } from "../types/canonicalCapabilities";
@@ -8512,7 +8507,6 @@ export class CanonicalPublicOperations {
               afterLast === undefined
                 ? gap.to
                 : Math.max(gap.from, Math.min(gap.to, afterLast)),
-            markers: "retained" as const,
           });
         }
         return placed;
@@ -8561,43 +8555,6 @@ export class CanonicalPublicOperations {
           return refusal("unsupportedBlock", undefined, INVALID_REQUEST);
         replacementChanges = whole;
       }
-      const comments =
-        readModel(this.options.session.document).package.document.comments ??
-        [];
-      let retiredCommentIds: ReadonlySet<number> | undefined;
-      if (!tracked) {
-        const split = splitAtKeptCommentBoundaries({
-          doc: state.doc,
-          changes: replacementChanges,
-          comments,
-        });
-        replacementChanges = split.changes;
-        retiredCommentIds = split.retiredCommentIds;
-      }
-      if (
-        !preservesReplacementCommentAlignment({
-          doc: state.doc,
-          source: {
-            from: paragraph.start,
-            to: paragraph.start + paragraph.node.content.size,
-          },
-          changes: replacementChanges,
-          retiredCommentIds,
-          removal: tracked
-            ? { type: suggested ? "suggested" : "tracked" }
-            : { type: "direct", comments },
-        })
-      )
-        return Result.err(
-          new CanonicalPublicOperationResolutionError({
-            reason: "unsupportedBlock",
-            ground: { gap: CANONICAL_GAP.commentReplacementAlignment },
-            message:
-              "Canonical replacement cannot preserve the aligned comment ranges.",
-            detail:
-              "Canonical replacement cannot preserve the aligned comment ranges.",
-          }),
-        );
       if (tracked && !suggested)
         deletionSpans = replacementChanges.filter(
           (span) => span.from < span.to,

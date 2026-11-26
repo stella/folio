@@ -258,11 +258,11 @@ test(
 // markers alike. Tracked, the markers are deleted with the words: accepted,
 // the comment has nothing left to cover and goes as it does directly;
 // rejected, everything returns. A reference whose comment covers nothing has
-// no words to go with, and still refuses.
+// no words to go with: it moves to the start of the typed text, directly and
+// once accepted.
 for (const references of [0, 1, 2, 3])
   for (const type of ["editing", "suggesting"] as const) {
-    const takes = references <= 1;
-    test(`${type}, ${references} references: replacing the whole mixed-coverage paragraph ${takes ? "takes its comment" : "refuses atomically"}`, async () => {
+    test(`${type}, ${references} references: replacing the whole mixed-coverage paragraph takes its comment and keeps the bare references`, async () => {
       setSystemTime(new Date("2026-01-02T03:04:05Z"));
       const source = sourceDocument({
         references,
@@ -279,94 +279,75 @@ for (const references of [0, 1, 2, 3])
         ),
       );
       const before = session.document;
-      const snapshot = session.captureSaveSnapshot();
-      const saved = await serializeCanonicalSave({ snapshot });
-      const history = { undo: session.canUndo, redo: session.canRedo };
-      const version = session.version;
-      let commits = 0;
-      session.onCommitted(() => commits++);
+      const saved = await serializeCanonicalSave({
+        snapshot: session.captureSaveSnapshot(),
+      });
+      const original = await savedView(saved.buffer);
       const result = session.prepareReplace(state, {
         from: state.selection.from,
         to: state.selection.to,
         text: "x",
         semantic: "typing",
       });
-      if (takes) {
-        state = publishCanonicalProjection({
-          session,
-          state,
-          commit: result.unwrap(),
-        }).unwrap().state;
-        if (type === "suggesting") {
-          const resolve = (resolution: "accept" | "reject") => {
-            state = publishCanonicalProjection({
-              session,
-              state,
-              commit: session
-                .prepareResolve(state, {
-                  revisionIds: [...getTrackedChangeStatsFromDoc(state.doc).ids],
-                  resolution,
-                })
-                .unwrap(),
-            }).unwrap().state;
-          };
-          resolve("reject");
-          expect(
-            await savedView(
-              (
-                await serializeCanonicalSave({
-                  snapshot: session.captureSaveSnapshot(),
-                })
-              ).buffer,
-            ),
-          ).toEqual(await savedView(saved.buffer));
+      state = publishCanonicalProjection({
+        session,
+        state,
+        commit: result.unwrap(),
+      }).unwrap().state;
+      if (type === "suggesting") {
+        const resolve = (resolution: "accept" | "reject") => {
           state = publishCanonicalProjection({
             session,
             state,
-            commit: session.prepareUndo(state).unwrap(),
+            commit: session
+              .prepareResolve(state, {
+                revisionIds: [...getTrackedChangeStatsFromDoc(state.doc).ids],
+                resolution,
+              })
+              .unwrap(),
           }).unwrap().state;
-          resolve("accept");
-        }
-        const typed = await savedView(
-          (
-            await serializeCanonicalSave({
-              snapshot: session.captureSaveSnapshot(),
-            })
-          ).buffer,
-        );
-        expect(typed.definitions ?? []).toEqual([]);
-        expect(typed.markers).toEqual([]);
-        expect(typed.comments).toEqual([]);
-        expect(typed.text).toBe("x");
-        return;
+        };
+        resolve("reject");
+        expect(
+          await savedView(
+            (
+              await serializeCanonicalSave({
+                snapshot: session.captureSaveSnapshot(),
+              })
+            ).buffer,
+          ),
+        ).toEqual(original);
+        state = publishCanonicalProjection({
+          session,
+          state,
+          commit: session.prepareUndo(state).unwrap(),
+        }).unwrap().state;
+        resolve("accept");
       }
-      expect(result.isErr()).toBe(true);
-      if (result.isErr())
-        expect(result.error.ground).toEqual({
-          gap: "comment-replacement-alignment",
-        });
-      expect(session.document).toBe(before);
-      expect(session.version).toBe(version);
-      expect({ undo: session.canUndo, redo: session.canRedo }).toEqual(history);
-      expect(commits).toBe(0);
-      expect(session.captureSaveSnapshot()).toEqual(snapshot);
-      expect(
-        new Uint8Array(
-          (
-            await serializeCanonicalSave({
-              snapshot: session.captureSaveSnapshot(),
-            })
-          ).buffer,
-        ),
-      ).toEqual(new Uint8Array(saved.buffer));
-      expect(await savedView(saved.buffer)).toEqual(
-        await savedView(
-          (
-            await serializeCanonicalSave({
-              snapshot: session.captureSaveSnapshot(),
-            })
-          ).buffer,
-        ),
+      const typed = await savedView(
+        (
+          await serializeCanonicalSave({
+            snapshot: session.captureSaveSnapshot(),
+          })
+        ).buffer,
       );
+      // The ranged comment 0 goes; each bare reference stays, now before
+      // the typed text.
+      const kept = ({ id }: { id: number }) => id !== 0;
+      expect(typed.definitions ?? []).toEqual(
+        (original.definitions ?? []).filter(kept),
+      );
+      expect(typed.markers).toEqual(original.markers.filter(kept));
+      expect(typed.comments.map(({ id }) => id)).toEqual(
+        original.comments.map(({ id }) => id).filter((id) => id !== 0),
+      );
+      expect(typed.text).toBe("x");
+      while (session.canUndo)
+        state = publishCanonicalProjection({
+          session,
+          state,
+          commit: session.prepareUndo(state).unwrap(),
+        }).unwrap().state;
+      expect(session.document).toEqual(before);
     });
   }

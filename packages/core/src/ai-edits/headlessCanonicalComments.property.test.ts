@@ -21,16 +21,12 @@ import {
 } from "../../../../test/property-testing";
 import { CanonicalCommentError } from "../canonical/canonicalComments";
 import { CanonicalSessionError } from "../canonical/canonicalSession";
-import {
-  FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-  type FolioDocumentOperation,
-} from "../document-operations";
+import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
 import {
   CANONICAL_CONDITION,
-  CANONICAL_GAP,
   type HeadlessReviewerSession,
 } from "../types/canonicalCapabilities";
 import type { Document } from "../types/document";
@@ -314,7 +310,7 @@ test("a direct replacement takes the comments on its words, as accepting the tra
   expect(threads(reviewer)).toEqual(original);
 });
 
-test("a reviewer reports the comment-alignment refusal of a suggestion without replacing words or losing comments", async () => {
+test("a reviewer suggests replacing commented words, keeping the comments until the suggestion is resolved", async () => {
   const reviewer = await open(
     await ingested(
       await createDocx(
@@ -327,15 +323,6 @@ test("a reviewer reports the comment-alignment refusal of a suggestion without r
   );
   const block = reviewer.getContent().at(0);
   if (!block) throw new Error("The fixture has no paragraph");
-  const apply = (operation: FolioDocumentOperation) =>
-    reviewer.applyDocumentOperations(
-      {
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "suggested",
-        operations: [operation],
-      },
-      { undefinedReferences: "refuse" },
-    );
   const commentResults = ["time", "The"].map((quote) => {
     const result = reviewer.applyDocumentOperations(
       {
@@ -364,28 +351,55 @@ test("a reviewer reports the comment-alignment refusal of a suggestion without r
     comments: threads(reviewer),
     records: reviewer.exportPendingSuggestions(),
   };
-  const result = apply({
-    id: "replace",
-    type: "replaceBlock",
-    blockId: block.id,
-    text: "Invoice delivery payment agreement supplier buyer payment term.",
+  const commented = await reviewer.toBuffer();
+  const suggest = (target: FolioDocxReviewer) => {
+    const suggested = target.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "suggested",
+        operations: [
+          {
+            id: "replace",
+            type: "replaceBlock",
+            blockId: block.id,
+            text: "Invoice delivery payment agreement supplier buyer payment term.",
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
+    expect(suggested.skipped).toEqual([]);
+    expect(suggested.applied).toHaveLength(1);
+    return suggested;
+  };
+  // Rejected, the suggestion gives every comment back on its words.
+  const rejected = await open(commented, "canonical");
+  suggest(rejected);
+  expect(rejected.rejectSuggestion("replace")).toBe(true);
+  expect(threads(rejected)).toEqual(before.comments);
+  expect(threads(await open(await rejected.toBuffer(), "canonical"))).toEqual(
+    before.comments,
+  );
+  // Accepted, the comments go with the words they covered, as directly.
+  const accepted = await open(commented, "canonical");
+  suggest(accepted);
+  expect(accepted.acceptSuggestion("replace")).toBe(true);
+  expect(accepted.acceptAll().skipped).toEqual([]);
+  expect(threads(accepted)).toEqual([]);
+  expect(threads(await open(await accepted.toBuffer(), "canonical"))).toEqual(
+    [],
+  );
+  const result = suggest(reviewer);
+  if (result.undoHandle === null)
+    throw new Error("The suggestion has no undo handle");
+  expect(reviewer.undoDocumentOperations(result.undoHandle)).toMatchObject({
+    status: "undone",
   });
-  expect(result.applied).toEqual([]);
-  expect(result.undoHandle).toBeNull();
-  expect(result.skipped).toMatchObject([
-    {
-      reason: "unsupportedBlock",
-      canonicalRefusal: { gap: CANONICAL_GAP.commentReplacementAlignment },
-    },
-  ]);
   expect({
     document: reviewer.toDocument(),
     comments: threads(reviewer),
     records: reviewer.exportPendingSuggestions(),
   }).toEqual(before);
-  expect(threads(await open(await reviewer.toBuffer(), "canonical"))).toEqual(
-    before.comments,
-  );
   expect(reviewer.undoDocumentOperations(undoHandle)).toMatchObject({
     status: "undone",
   });
