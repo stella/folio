@@ -52,7 +52,6 @@ import {
   createCanonicalSession,
   publishCanonicalProjection,
 } from "../canonical/canonicalSession";
-import { type MatchInlineAtomsOptions } from "../compare/inline-atoms";
 import { matchInlineAtomsOnModel } from "../compare/inline-atoms-model";
 import {
   type InlineProvenanceTargetOptions,
@@ -588,14 +587,18 @@ type StoryInlineProvenanceResult =
   | { status: "unalignable" }
   | { status: "budget-exceeded" };
 
+type ModelInlineAtomOptions = Parameters<typeof matchInlineAtomsOnModel>[0];
+
 type MatchStoryInlineAtomsOptions = Omit<
-  MatchInlineAtomsOptions,
-  "state" | "author"
-> & {
-  story: FolioEditableDocumentStoryHandle;
-  targetReviewer: FolioDocxReviewer;
-  targetStory: FolioEditableDocumentStoryHandle;
-};
+  ModelInlineAtomOptions,
+  "document" | "story" | "target" | "author" | "noteReferenceLabels"
+> &
+  Partial<Pick<ModelInlineAtomOptions, "noteReferenceLabels">> & {
+    targetSnapshot: FolioAIEditSnapshot;
+    story: FolioEditableDocumentStoryHandle;
+    targetReviewer: FolioDocxReviewer;
+    targetStory: FolioEditableDocumentStoryHandle;
+  };
 
 type StoryInlineAtomsResult =
   | {
