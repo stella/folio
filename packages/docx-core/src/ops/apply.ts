@@ -3087,7 +3087,8 @@ const withoutOrphanedNotes = (before: Document, after: Document): Document => {
   };
 };
 
-type OperationExecutionPurpose = "apply" | "inspect-inverse";
+export type OperationExecutionPurpose =
+  "apply" | "inspect-inverse" | "markup-view";
 type DispatchOptions = {
   document: Document;
   op: DocumentOp;
@@ -3139,7 +3140,7 @@ const dispatchCore = ({ document, op, purpose }: DispatchOptions): Applied => {
     case DOCUMENT_OP_TYPES.REPLACE_INLINE:
       return applyParagraphPrimitive(document, op);
     case DOCUMENT_OP_TYPES.RESOLVE_REVISION:
-      return resolveRevision(document, op, applyOps);
+      return resolveRevision({ document, op, applyOps, purpose });
     case DOCUMENT_OP_TYPES.SET_REVISION_INFO:
       return setRevisionInfo(document, op);
     case DOCUMENT_OP_TYPES.DELETE_TABLE: {
@@ -3691,7 +3692,10 @@ const applyAddressedOp = ({
   }
   // An inspection replays the inverse of an edit only to read what it would
   // leave; whether that inverse applies is asked when it is applied.
-  if (purpose === "apply" && gainsSectionInTableCell(document, edit.document)) {
+  if (
+    purpose !== "inspect-inverse" &&
+    gainsSectionInTableCell(document, edit.document)
+  ) {
     return Result.err(
       refusal(
         op,
@@ -3856,6 +3860,13 @@ export const applyDocumentOps = (
   ops: readonly DocumentOp[],
 ): Result<AppliedDocumentOp, DocumentOpRefusal> =>
   applyDocumentOpsForPurpose({ document, ops, purpose: "apply" });
+
+/** Resolve revisions for a markup view through the same operation engine. */
+export const applyMarkupViewOps = (
+  document: Document,
+  ops: readonly DocumentOp[],
+): Result<AppliedDocumentOp, DocumentOpRefusal> =>
+  applyDocumentOpsForPurpose({ document, ops, purpose: "markup-view" });
 
 /**
  * Apply operations to read what they leave, as a rebase takes back a pending

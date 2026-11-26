@@ -238,6 +238,7 @@ import {
   HYPHEN_TEXT_CARRIERS,
 } from "./hyphenTextCarriers";
 import { createMarkInterner } from "./markInterner";
+import { markupViewSources } from "./markupViewSource";
 import { hasSinkChildren } from "./preservedSinkCarriers";
 import { sdtAttrsFromProperties } from "./sdtAttrs";
 
@@ -1185,6 +1186,17 @@ export function toProseDoc(
       invalid,
       cache.validated,
     );
+  markupViewSources.set(pmDoc, {
+    document,
+    options: {
+      ...(packageInputs.styles === undefined
+        ? {}
+        : { styles: packageInputs.styles }),
+      theme: packageInputs.theme,
+      ...(cache === undefined ? {} : { blockCache: cache }),
+      textBoxGroupSalt: salt,
+    },
+  });
   return pmDoc;
 }
 

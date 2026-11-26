@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { Schema } from "prosemirror-model";
 
-import { resolveAllTableChanges } from "./resolveAllTableChanges";
+import { resolveAllTableChanges } from "../../__tests__/reference-editor/resolveAllTableChanges";
 
 const schema = new Schema({
   nodes: {

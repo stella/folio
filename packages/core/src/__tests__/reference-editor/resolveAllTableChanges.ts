@@ -11,15 +11,15 @@ import {
   isTableCellMergeRevisionContinuation,
   isTableCellMergeRevisionValue,
 } from "../../docx/tableParser";
-import type { TableCell } from "../../types/document";
-import { maxOf } from "../../utils/extremes";
-import { expectTableAttrs, mergeTableAttrs } from "../attrs";
+import { expectTableAttrs, mergeTableAttrs } from "../../prosemirror/attrs";
 import {
   nodePropertyRevisionSites,
   propertyRevisionRecords,
-} from "../revisionCarriers";
-import { getTableCellMergeChange } from "../tableCellMergeRevision";
-import { isTableCellRetainedInReviewView } from "../tableCellRevisionVisibility";
+} from "../../prosemirror/revisionCarriers";
+import { getTableCellMergeChange } from "../../prosemirror/tableCellMergeRevision";
+import { isTableCellRetainedInReviewView } from "../../prosemirror/tableCellRevisionVisibility";
+import type { TableCell } from "../../types/document";
+import { maxOf } from "../../utils/extremes";
 import { resolveAllNodePropertyChangeAttrs } from "./resolveNodePropertyChangeAttrs";
 import {
   createRestoredTableCell,
@@ -27,7 +27,7 @@ import {
   tableCellContinuationCells,
   tableCellContinuationFromNode,
   tableCellContinuationPayload,
-} from "./tableCellMergeResolution";
+} from "./tableCellMergeProjection";
 import {
   resolvedTableMergeOriginAttrs,
   resolvedVisibleTableCellMergeAttrs,

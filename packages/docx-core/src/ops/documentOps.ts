@@ -244,7 +244,10 @@ export {
 export {
   resolvedDocumentView,
   type ResolvedDocumentView,
+  resolvedMarkupDocumentView,
+  type ResolvedMarkupDocumentView,
 } from "./resolvedView";
+export type { IndependentMarkupParagraph } from "./resolve";
 export {
   DOCUMENT_OP_REFUSAL_REASONS,
   DocumentOpRefusal,

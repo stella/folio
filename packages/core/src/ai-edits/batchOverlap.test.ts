@@ -33,6 +33,7 @@ import {
   textRun,
 } from "../__tests__/operationBatchDocuments";
 import { resolveAllChangesInHeadlessState } from "../__tests__/reference-editor/comments";
+import { resolveStateStory } from "../__tests__/reference-editor/markupViewProjection";
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperation,
@@ -42,7 +43,6 @@ import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown";
 import { paragraphPropertiesSnapshot } from "../prosemirror/commands/propertyChangeScope";
-import { resolveStateStory } from "../prosemirror/markupViewProjection";
 import type { ParagraphFormatting } from "../types/document";
 import type { FolioDocxReviewer } from "./headless";
 import { createFolioAITextRangeHandle } from "./snapshot";

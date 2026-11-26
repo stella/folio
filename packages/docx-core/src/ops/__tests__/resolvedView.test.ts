@@ -7,9 +7,11 @@ import {
   REVIEW_CARRIERS,
   type Table,
 } from "../../model/document";
+import { validateOpsDocument } from "../contract";
 import {
   type ResolvedDocumentView,
   resolvedDocumentView,
+  resolvedMarkupDocumentView,
 } from "../resolvedView";
 
 const info = { id: 3, author: "Reviewer", date: "2026-11-18" };
@@ -52,6 +54,83 @@ for (const decision of ["accept", "reject"] as const)
     // The host's model is read, never changed.
     expect(document.package.document.content[1]).toBe(inserted);
   });
+
+for (const decision of ["accept", "reject"] as const)
+  test(`a validated view resolves a structural revision with the same output (${decision})`, () => {
+    const source: Document = {
+      package: {
+        document: {
+          content: [
+            text("00000001", "Kept"),
+            { ...inserted, pPrMark: { kind: "ins", info: { ...info, id: 4 } } },
+            text("00000003", "Tail"),
+          ],
+        },
+      },
+    };
+    const fromModel = resolvedMarkupDocumentView(
+      structuredClone(source),
+      decision,
+    );
+    expect(validateOpsDocument(source).isOk()).toBe(true);
+    const view = resolvedMarkupDocumentView(source, decision);
+    expect(view).toEqual(fromModel);
+    expect(view.unresolved).toEqual([]);
+  });
+
+for (const decision of ["accept", "reject"] as const)
+  test(`independent text paragraphs match normal story resolution (${decision})`, () => {
+    const standing = text("00000001", "Kept");
+    const { pPrMark: _mark, ...inline } = inserted;
+    const source: Document = {
+      package: { document: { content: [standing, inline] } },
+    };
+    const independent = resolvedMarkupDocumentView(source, decision);
+    const sequential = resolvedDocumentView(source, decision);
+    expect(independent.unresolved).toEqual([]);
+    expect(sequential.unresolved).toEqual([]);
+    expect(independent.independentInline).toHaveLength(1);
+    expect(independent.document.package.document).toEqual(
+      sequential.document.package.document,
+    );
+    expect(independent.document.package.document.content[0]).toBe(standing);
+  });
+
+test("a validated document only resolves illegal XML text when removing it", () => {
+  const invalidInsertion: Paragraph = {
+    type: "paragraph",
+    paraId: "00000002",
+    content: [
+      {
+        type: "insertion",
+        info,
+        content: [
+          { type: "run", content: [{ type: "text", text: "bad\u0000text" }] },
+        ],
+      },
+    ],
+  };
+  const source: Document = {
+    package: {
+      document: { content: [text("00000001", "Kept"), invalidInsertion] },
+    },
+  };
+  expect(validateOpsDocument(source).isOk()).toBe(true);
+  for (const decision of ["accept", "reject"] as const) {
+    const view = resolvedMarkupDocumentView(source, decision);
+    const ordinary = resolvedDocumentView(source, decision);
+    expect(view.unresolved).toEqual(ordinary.unresolved);
+    expect(view.document.package.document).toEqual(
+      ordinary.document.package.document,
+    );
+    expect(view.unresolved).toEqual(decision === "accept" ? ["main"] : []);
+    expect(view.document.package.document.content.at(1)).toEqual(
+      decision === "accept"
+        ? invalidInsertion
+        : { ...invalidInsertion, content: [] },
+    );
+  }
+});
 
 test("one mark object shared by several paragraphs resolves as a record in each", () => {
   const deletedMark = { kind: "del" as const, info: { id: 91, author: "A" } };

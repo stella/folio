@@ -7,6 +7,7 @@ import {
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import { resolveStateStory } from "../__tests__/reference-editor/markupViewProjection";
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   FOLIO_PARAGRAPH_ALIGNMENT_VALUES,
@@ -16,7 +17,6 @@ import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
 import { paragraphPropertiesSnapshot } from "../prosemirror/commands/propertyChangeScope";
-import { resolveStateStory } from "../prosemirror/markupViewProjection";
 import { FolioDocxReviewer } from "./headless";
 
 const SESSIONS = ["canonical"] as const;

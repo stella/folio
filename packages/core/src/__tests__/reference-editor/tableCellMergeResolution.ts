@@ -8,18 +8,18 @@ import {
   transportTableCellsWithParagraphPropertySources,
 } from "../../docx/paragraphPropertySource";
 import { isTableCellMergeRevisionContinuation } from "../../docx/tableParser";
+import { getTableCellMergeChange } from "../../prosemirror/tableCellMergeRevision";
 import {
   createRestoredTableCell,
   tableCellContinuationCells,
   tableCellContinuationFromNode,
   tableCellContinuationPayload,
-} from "../../prosemirror/commands/tableCellMergeResolution";
+} from "./tableCellMergeProjection";
 import {
   resolvedTableMergeOriginAttrs,
   resolvedVisibleTableCellMergeAttrs,
   tableMergeFoldDecisions,
-} from "../../prosemirror/commands/tableMergeFoldDecisions";
-import { getTableCellMergeChange } from "../../prosemirror/tableCellMergeRevision";
+} from "./tableMergeFoldDecisions";
 import { removeRowsWithoutCellsInRange } from "./tableRevisionCleanup";
 
 type TableCellRevisionAttr = {

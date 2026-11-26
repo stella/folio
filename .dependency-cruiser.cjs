@@ -179,6 +179,22 @@ const noProductionReferenceEditorRule = {
   },
 };
 
+const noRetiredRevisionResolverRule = {
+  name: "editor-source-cannot-reach-retired-revision-resolvers",
+  comment:
+    "Canonical model operations own revision resolution. The old whole-story resolver paths are reserved for the reference editor.",
+  severity: "error",
+  from: productionEditorSource,
+  to: {
+    path: [
+      "^(?:packages/core/src/|@stll/folio-core/)internal/(?:wholeStoryRevisionResolution|revisionResolution(?:Inline|Tracking|Edits|Step))(?:\\.ts)?$",
+      "^(?:packages/core/src/|@stll/folio-core/)prosemirror/commands/(?:resolveAllTableChanges|resolveNodePropertyChangeAttrs|tableCellMergeResolution|tableMergeFoldDecisions)(?:\\.ts)?$",
+      "^(?:packages/core/src/|@stll/folio-core/)prosemirror/(?:rejoinRunCarriers|runPropertyChangeResolution)(?:\\.ts)?$",
+    ],
+    reachable: true,
+  },
+};
+
 const useDedicatedReviewReadersRule = {
   name: "editor-source-uses-dedicated-review-readers",
   comment:
@@ -229,6 +245,7 @@ module.exports = {
     ...documentModelRules,
     noProductionTestSupportRule,
     noProductionReferenceEditorRule,
+    noRetiredRevisionResolverRule,
     useDedicatedReviewReadersRule,
     noCircularRuntimeImportsRule,
   ],
