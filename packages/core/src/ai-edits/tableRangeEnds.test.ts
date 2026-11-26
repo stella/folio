@@ -45,7 +45,11 @@ const apply = (
 ) =>
   expect(
     reviewer.applyDocumentOperations(
-      { version: 1, mode: "direct", operations: [{ id: "e", ...operation }] },
+      {
+        version: 1,
+        mode: "direct",
+        operations: [{ id: "e", ...operation }],
+      } as never,
       { undefinedReferences: "refuse" },
     ).applied,
   ).toHaveLength(1);
