@@ -278,21 +278,13 @@ export const trackTableRows = ({
   }
   if (
     missingFinalParagraph ||
-    rows.some(
-      (row) =>
-        row.contentControls !== undefined ||
-        row.carrierStack !== undefined ||
-        row.cells.some(
-          (cell) =>
-            cell.structuralChange !== undefined ||
-            (cell.propertyChanges?.length ?? 0) > 0 ||
-            // A content control around a deleted cell, and the order of
-            // the wrappers holding it, go with its row.
-            ((cell.contentControls !== undefined ||
-              cell.carrierStack !== undefined) &&
-              kind !== WRAP_KINDS.DELETION) ||
-            (!survivingCells.has(cell) && !trackableBlocks(cell.content)),
-        ),
+    rows.some((row) =>
+      row.cells.some(
+        (cell) =>
+          cell.structuralChange !== undefined ||
+          (cell.propertyChanges?.length ?? 0) > 0 ||
+          (!survivingCells.has(cell) && !trackableBlocks(cell.content)),
+      ),
     )
   ) {
     return refused({

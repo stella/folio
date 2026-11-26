@@ -1493,12 +1493,6 @@ const columnEdit = ({
     );
   if (insert && (!Number.isSafeInteger(op.width) || op.width <= 0))
     return mismatch(op, "A column width must be a positive twip count.");
-  if (hasWrappedCellMarkup(table))
-    return refuse({
-      op,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      message: "Captures inside cell wrappers need a shared destination.",
-    });
   // A table records one previous grid (`w:tblGridChange`). A second tracked
   // insertion would have to share the pending one's record, and rejecting
   // either alone could not give back the grid without its own columns: the
