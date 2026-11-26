@@ -18,24 +18,20 @@ import { buildCleanBlockText } from "./clean-text";
 import type { NoteReferenceLabels } from "./note-references";
 import type { FolioAIEditSkippedOperation } from "./types";
 
-/** A paragraph mark that is a pending deletion, or a relocation's source. */
+/**
+ * A paragraph mark accepting removes: a pending deletion, a relocation's
+ * source, or an added one another author deleted after (`deletion`), as
+ * docx-core's `markGoes` reads it.
+ */
 export const isDeletedPPrMark = (value: unknown): boolean =>
   typeof value === "object" &&
   value !== null &&
-  "kind" in value &&
-  (value.kind === "del" || value.kind === "moveFrom");
+  (("kind" in value && (value.kind === "del" || value.kind === "moveFrom")) ||
+    ("deletion" in value &&
+      value.deletion !== undefined &&
+      value.deletion !== null));
 
-/**
- * A paragraph mark accepting removes: a deleted one, or an added one another
- * author deleted after (`deletion`), as docx-core's `markGoes` reads it.
- */
-const markGoesWhenAccepted = (value: unknown): boolean =>
-  isDeletedPPrMark(value) ||
-  (typeof value === "object" &&
-    value !== null &&
-    "deletion" in value &&
-    value.deletion !== undefined &&
-    value.deletion !== null);
+const markGoesWhenAccepted = isDeletedPPrMark;
 
 /** A table row's or cell's revision record. */
 const hasRevisionMarker = (value: unknown): boolean =>
