@@ -11,6 +11,7 @@ import {
   styleAlignment,
   styleOutlineLevel,
 } from "./blocks";
+import { findInvisibleEffects } from "./effects";
 import { styleNumbering } from "./labels";
 import { guarded, readPartText } from "./package";
 import {
@@ -291,8 +292,27 @@ export const inspectAnalyzedTemplate = async (
     fields.push(...partFields(part).map((field) => fieldOf(part.path, field)));
     bookmarks.push(...bookmarksOf(part));
   }
+  const effectParts = [
+    document,
+    ...[
+      [analyzed.numberingPath, analyzed.numberingXml] as const,
+      [analyzed.stylesPath, analyzed.stylesXml] as const,
+    ].flatMap(([path, xml]) => {
+      const part =
+        path === null || xml === null ? null : readRawPart(path, xml);
+      return part === null ? [] : [part];
+    }),
+    ...headersAndFooters.value,
+  ];
   return Result.ok({
     ...manifest,
+    invisibleEffects: effectParts.flatMap((part) =>
+      findInvisibleEffects(part).map(({ effect, owner }) => ({
+        part: part.path,
+        effect,
+        owner,
+      })),
+    ),
     styles: inspectStyles(analyzed),
     numbering: inspectNumbering(analyzed),
     fields,
