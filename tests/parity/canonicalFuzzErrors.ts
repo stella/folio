@@ -7,7 +7,6 @@ import type {
   CanonicalGap,
   CanonicalRule,
 } from "../../packages/core/src/types/canonicalCapabilities";
-import { CANONICAL_GAP } from "../../packages/core/src/types/canonicalCapabilities";
 import { CANONICAL_SAVE_DIAGNOSTIC_DISPOSITIONS } from "../../test/canonicalSaveDiagnostics";
 import type { BrowserInputAction } from "../visual/browserInputTrace";
 
@@ -23,7 +22,6 @@ type CanonicalFuzzErrorDetails =
   | {
       status: "saveDiagnostic";
       type: "CanonicalSaveDiagnosticError";
-      gap: CanonicalSaveDiagnosticError["gap"];
       diagnostic: SaveDiagnostic;
     }
   | {
@@ -62,7 +60,6 @@ export const isCanonicalSaveFallback = (error: CanonicalFuzzError) => {
     CANONICAL_SAVE_DIAGNOSTIC_DISPOSITIONS[error.diagnostic.type];
   return (
     disposition.status === "permitted" &&
-    error.gap === CANONICAL_GAP.saveSerialization &&
     error.diagnostic.part === disposition.diagnostic.part &&
     (error.phase?.type === "save" || error.phase?.type === "finalSave")
   );
@@ -78,7 +75,6 @@ const canonicalFuzzErrorDetails = (error: Error) => {
     return {
       status: "saveDiagnostic",
       type: "CanonicalSaveDiagnosticError",
-      gap: error.gap,
       diagnostic: error.diagnostic,
     } as const;
   if (CanonicalSessionRefusalError.is(error)) {

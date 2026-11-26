@@ -123,6 +123,7 @@ import {
 } from "../prosemirror/replacedAnnotations";
 import { runFormattingPatchFromMarks } from "../prosemirror/runFormattingFromMarks";
 import {
+  CANONICAL_CONDITION,
   CANONICAL_GAP,
   CANONICAL_RULE,
   type CanonicalGap,
@@ -2579,7 +2580,7 @@ class CanonicalSession {
   captureSaveSnapshot(): CanonicalSaveSnapshot {
     if (this.isComposing)
       throw new CanonicalSessionError({
-        ground: { gap: CANONICAL_GAP.saveSerialization },
+        ground: { condition: CANONICAL_CONDITION.composing },
         reason: "refused",
         message:
           "Composition must finish before saving the canonical document.",

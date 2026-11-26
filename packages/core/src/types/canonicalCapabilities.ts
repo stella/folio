@@ -4,7 +4,6 @@ export const CANONICAL_GAP = {
   trackedTableStructure: "tracked-table-structure",
   storyContentProjection: "story-content-projection",
   dispatch: "unclassified-transactions",
-  saveSerialization: "save-serialization",
   publicComments: "publicOps.comments",
   publicUnsupportedInline: "publicOps.unsupportedInline",
   commentReplacementAlignment: "comment-replacement-alignment",
@@ -159,12 +158,6 @@ export const CANONICAL_CAPABILITIES: {
     readonly adapters: readonly ["react", "vue"];
     readonly summary: "A host plugin or raw dispatch that changes the document is refused, naming the transaction's meta keys; hosts express edits as document operations (applyDocumentOperations).";
   };
-  readonly "save-serialization": {
-    readonly owner: "controller";
-    readonly kind: "refusal";
-    readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Canonical save waits for composition to finish and reports package serialization refusals and fidelity fallbacks.";
-  };
   readonly "publicOps.comments": {
     readonly owner: "document-operations";
     readonly kind: "refusal";
@@ -218,13 +211,6 @@ export const CANONICAL_CAPABILITIES: {
     adapters: ["react", "vue"],
     summary:
       "A host plugin or raw dispatch that changes the document is refused, naming the transaction's meta keys; hosts express edits as document operations (applyDocumentOperations).",
-  },
-  [CANONICAL_GAP.saveSerialization]: {
-    owner: "controller",
-    kind: "refusal",
-    adapters: ["react", "vue"],
-    summary:
-      "Canonical save waits for composition to finish and reports package serialization refusals and fidelity fallbacks.",
   },
   [CANONICAL_GAP.publicComments]: {
     owner: "document-operations",
