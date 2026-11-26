@@ -1,6 +1,6 @@
 import type { OpStory } from "@stll/docx-core/ops";
 
-import type { CanonicalGap } from "./canonicalCapabilities";
+import type { CanonicalRefusalGround } from "./canonicalCapabilities";
 import type { Comment } from "./content";
 
 /** Requests name their anchor; comment metadata never creates an unanchored root. */
@@ -24,7 +24,7 @@ export type CanonicalCommentResult =
   | { status: "applied"; comments: Comment[]; commentId?: number }
   | {
       status: "refused";
-      gap: CanonicalGap;
+      ground: CanonicalRefusalGround;
       message: string;
       /** Whether the same request can succeed once a pending composition settles. */
       retry: "afterComposition" | "never";

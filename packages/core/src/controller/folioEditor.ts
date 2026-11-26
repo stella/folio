@@ -12,7 +12,7 @@ import type { TextPosition } from "@stll/docx-core/ops";
 import { findPageNumberAtEditorPosition } from "../layout-engine/pmPageIndex";
 import type { Layout } from "../layout-engine/types";
 import type { FolioAutocompleteApi } from "../types/autocomplete";
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
+import { CANONICAL_CONDITION } from "../types/canonicalCapabilities";
 import type { Document } from "../types/document";
 import type { FolioGetDocxOptions } from "../types/docxSerialization";
 import type { DocxInput } from "../utils/docxInput";
@@ -114,7 +114,7 @@ export const createFolioEditor = (deps: FolioEditorDeps): FolioEditor => {
       if (!api)
         return {
           status: "refused",
-          gap: CANONICAL_GAP.sectionProperties,
+          ground: { condition: CANONICAL_CONDITION.notReady },
           message: "The editor is not ready for section changes.",
         };
       return api.applyCanonicalSectionProperties(patch);

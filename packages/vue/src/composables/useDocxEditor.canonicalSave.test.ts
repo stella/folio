@@ -18,7 +18,10 @@ const { createApp, defineComponent, h, ref, shallowRef, nextTick, toRaw } =
   await import("vue");
 
 import { CanonicalSessionError } from "@stll/folio-core/canonical/canonicalSession";
-import { CanonicalDocxInputError } from "@stll/folio-core/docx/canonicalSessionInput";
+import {
+  CanonicalDocxInputError,
+  openCanonicalDocx,
+} from "@stll/folio-core/docx/canonicalSessionInput";
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { createDocx, validateDocx } from "@stll/folio-core/docx/rezip";
 import type { Comment } from "@stll/folio-core/types/content";
@@ -250,14 +253,14 @@ test("canonical edits save and reopen the canonical text and paragraph identity"
       editor.getDocument() ?? panic("Expected canonical document snapshot");
     detachedRead.package.document.content = [];
     expect(editor.getDocument()?.package.document.content).not.toHaveLength(0);
-    const unsupportedWrite =
-      editor.getDocument() ?? panic("Expected canonical document snapshot");
-    unsupportedWrite.package.document.content = [];
-    editor.setDocument(unsupportedWrite);
-    expect(editor.getDocument()?.package.document.content).not.toHaveLength(0);
-    expect(errors.at(0)?.message).toContain(
-      "Direct document model changes are unavailable",
+    // setDocument opens the given document, as loadDocument does.
+    const replacement = await openCanonicalDocx(
+      await createDocx(createEmptyDocument({ initialText: "Start" })),
     );
+    if (replacement.isErr()) throw replacement.error;
+    editor.setDocument(replacement.value.document);
+    expect(errors).toEqual([]);
+    expect(editor.editorView.value?.state.doc.textContent).toBe("Start");
     expect(editor.parseError.value).toBeNull();
     expect(editor.isReady.value).toBe(true);
     const view = editor.editorView.value ?? panic("Expected body editor view");
@@ -286,7 +289,7 @@ test("canonical edits save and reopen the canonical text and paragraph identity"
     await new Promise((resolve) => window.setTimeout(resolve, 300));
     expect(hostChanges).toBeGreaterThan(0);
     const saved = await editor.save();
-    expect(errors).toHaveLength(2);
+    expect(errors).toHaveLength(1);
     expect(editor.parseError.value).toBeNull();
     if (!saved) panic("Expected saved canonical DOCX");
     const reopened = await parseDocx(await saved.arrayBuffer(), {
@@ -920,7 +923,6 @@ test.each([
         expect(error).toBeInstanceOf(CanonicalSaveDiagnosticError);
         if (!(error instanceof CanonicalSaveDiagnosticError))
           panic("Expected typed save diagnostic");
-        expect(error.gap).toBe("save-serialization");
         expect(error.diagnostic).toEqual({
           type: "selectiveSaveRefused",
           part: "word/document.xml",
@@ -1090,7 +1092,6 @@ test.each(CANONICAL_SAVE_SEEDS)(
           type: "selectiveSaveRefused",
           part: "word/document.xml",
         });
-        expect(error.gap).toBe("save-serialization");
       }
       // The prior sequence began composition after capture; also cover capture during composition.
       const errorsBeforeComposition = errors.length;
@@ -1103,7 +1104,7 @@ test.each(CANONICAL_SAVE_SEEDS)(
         expect(error).toBeInstanceOf(CanonicalSessionError);
         if (!(error instanceof CanonicalSessionError))
           panic("Expected composition save refusal");
-        expect(error.ground.gap).toBe("save-serialization");
+        expect(error.ground).toEqual({ condition: "composing" });
         expect(error.reason).toBe("refused");
       }
       expect(api.updateCanonicalInputLifecycle("endComposition")).toBe(true);

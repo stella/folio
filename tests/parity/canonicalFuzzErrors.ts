@@ -3,10 +3,10 @@ import { CanonicalSessionRefusalError } from "../../packages/core/src/controller
 import { CanonicalSaveDiagnosticError } from "../../packages/core/src/docx/canonicalSave";
 import type { SaveDiagnostic } from "../../packages/core/src/docx/saveDiagnostics";
 import type {
+  CanonicalCondition,
   CanonicalGap,
   CanonicalRule,
 } from "../../packages/core/src/types/canonicalCapabilities";
-import { CANONICAL_GAP } from "../../packages/core/src/types/canonicalCapabilities";
 import { CANONICAL_SAVE_DIAGNOSTIC_DISPOSITIONS } from "../../test/canonicalSaveDiagnostics";
 import type { BrowserInputAction } from "../visual/browserInputTrace";
 
@@ -22,7 +22,6 @@ type CanonicalFuzzErrorDetails =
   | {
       status: "saveDiagnostic";
       type: "CanonicalSaveDiagnosticError";
-      gap: CanonicalSaveDiagnosticError["gap"];
       diagnostic: SaveDiagnostic;
     }
   | {
@@ -35,6 +34,12 @@ type CanonicalFuzzErrorDetails =
       status: "ruleRefusal";
       type: "CanonicalSessionRefusalError";
       rule: CanonicalRule;
+    }
+  // A condition of the session or the request, such as a read-only editor.
+  | {
+      status: "conditionRefusal";
+      type: "CanonicalSessionRefusalError";
+      condition: CanonicalCondition;
     }
   | { status: "error"; type: string };
 
@@ -55,7 +60,6 @@ export const isCanonicalSaveFallback = (error: CanonicalFuzzError) => {
     CANONICAL_SAVE_DIAGNOSTIC_DISPOSITIONS[error.diagnostic.type];
   return (
     disposition.status === "permitted" &&
-    error.gap === CANONICAL_GAP.saveSerialization &&
     error.diagnostic.part === disposition.diagnostic.part &&
     (error.phase?.type === "save" || error.phase?.type === "finalSave")
   );
@@ -71,21 +75,28 @@ const canonicalFuzzErrorDetails = (error: Error) => {
     return {
       status: "saveDiagnostic",
       type: "CanonicalSaveDiagnosticError",
-      gap: error.gap,
       diagnostic: error.diagnostic,
     } as const;
-  if (CanonicalSessionRefusalError.is(error))
-    return error.ground.rule === undefined
-      ? ({
-          status: "refusal",
-          type: "CanonicalSessionRefusalError",
-          gap: error.ground.gap,
-        } as const)
-      : ({
-          status: "ruleRefusal",
-          type: "CanonicalSessionRefusalError",
-          rule: error.ground.rule,
-        } as const);
+  if (CanonicalSessionRefusalError.is(error)) {
+    const { ground } = error;
+    if (ground.rule !== undefined)
+      return {
+        status: "ruleRefusal",
+        type: "CanonicalSessionRefusalError",
+        rule: ground.rule,
+      } as const;
+    if (ground.condition !== undefined)
+      return {
+        status: "conditionRefusal",
+        type: "CanonicalSessionRefusalError",
+        condition: ground.condition,
+      } as const;
+    return {
+      status: "refusal",
+      type: "CanonicalSessionRefusalError",
+      gap: ground.gap,
+    } as const;
+  }
   return { status: "error", type: error.name } as const;
 };
 

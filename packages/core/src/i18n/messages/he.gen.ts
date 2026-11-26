@@ -341,6 +341,7 @@ export const messages: FolioMessages = {
     "editSessionTakenOver": "כרטיסייה, חלון או מכשיר אחר פתחו מסמך זה לעריכה, ולכן הפעלה זו שוחררה. שינויים מקומיים שלא נשמרו נשמרו — פתח מחדש את המסמך כדי להמשיך.",
     "editor": {
       "accessibleName": "עורך מסמכים",
+      "changeNotApplied": "לא ניתן היה לבצע את השינוי הזה.",
       "changeUnavailable": "עדיין לא ניתן לבצע את השינוי הזה כאן.",
       "contentLocked": "חלק זה של המסמך נעול.",
       "editing": "עריכה",

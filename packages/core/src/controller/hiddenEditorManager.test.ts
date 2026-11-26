@@ -41,7 +41,7 @@ import { insertTableOfContentsInView } from "../prosemirror/insertOperations";
 import { singletonManager } from "../prosemirror/schema";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import type { CanonicalCommentRequest } from "../types/canonicalComments";
-import type { Paragraph, ParagraphContent } from "../types/document";
+import type { Document, Paragraph, ParagraphContent } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { resolveCanonicalReviewRange } from "./canonicalReview";
 import { createHeaderFooterEditorManager } from "./headerFooterEditorManager";
@@ -978,6 +978,118 @@ test("canonical thread deletion removes explicit boundary points beside a field 
     manager.destroyView();
     host.remove();
     GlobalRegistrator.unregister();
+  }
+});
+
+test("a comment on a selection in a text box anchors there, saves, and undo is exact", async () => {
+  const releaseDom = acquireHarnessDom();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const boxed = (text: string): Paragraph => ({
+    type: "paragraph",
+    paraId: "34567890",
+    content: [{ type: "run", content: [{ type: "text", text }] }],
+  });
+  const source: Document = {
+    package: {
+      document: {
+        content: [
+          {
+            type: "paragraph",
+            paraId: "12345678",
+            content: [
+              { type: "run", content: [{ type: "text", text: "Host " }] },
+              {
+                type: "run",
+                content: [
+                  {
+                    type: "shape",
+                    shape: {
+                      type: "shape",
+                      shapeType: "textBox",
+                      id: "box",
+                      size: { width: 2_000_000, height: 800_000 },
+                      textBody: { content: [boxed("Boxed note.")] },
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+          { type: "paragraph", paraId: "23456789", content: [] },
+        ],
+      },
+    },
+  };
+  const refusals: unknown[] = [];
+  const { deps } = makeDeps({
+    getHost: () => host,
+    getDocument: () => source,
+    getDocumentContext: () => source,
+    onSessionRefusal: (_reason, ground) => refusals.push(ground),
+  });
+  const manager = createHiddenEditorManager(deps);
+  try {
+    manager.ensureView();
+    const view = manager.getView();
+    if (!view) panic("Expected canonical view");
+    const initial = manager.api.getCanonicalDocument();
+    let start = -1;
+    view.state.doc.descendants((node, position) => {
+      if (node.isText && node.text === "Boxed note.") start = position;
+      return start < 0;
+    });
+    expect(start).toBeGreaterThan(0);
+    const range = {
+      kind: "selection",
+      story: OP_STORIES.MAIN,
+      from: start + "Boxed ".length,
+      to: start + "Boxed note".length,
+    } as const;
+    // The box's edge is no position in its text.
+    expect(
+      manager.api.applyCanonicalComment({
+        type: "create",
+        text: "Nowhere",
+        author: "Reviewer",
+        anchor: { ...range, from: start - 1, to: start - 1 },
+      }),
+    ).toMatchObject({
+      status: "refused",
+      ground: { condition: "invalidRequest" },
+    });
+    expect(refusals).toEqual([{ condition: "invalidRequest" }]);
+    expect(
+      manager.api.applyCanonicalComment({
+        type: "create",
+        text: "Check the box.",
+        author: "Reviewer",
+        anchor: range,
+      }),
+    ).toMatchObject({ status: "applied" });
+    const committed = manager.api.getCanonicalDocument();
+    if (!committed) panic("Expected committed canonical document");
+    const reopened = await parseDocx(await createDocx(committed), {
+      detectVariables: false,
+      preloadFonts: false,
+    });
+    expect(JSON.stringify(reopened.package.document.comments)).toContain(
+      "Check the box.",
+    );
+    const reopenedHost = reopened.package.document.content.at(0);
+    const box = JSON.stringify(
+      reopenedHost?.type === "paragraph" ? reopenedHost.content : [],
+    );
+    // The range opens and closes inside the box's paragraph, around "note".
+    expect(box).toMatch(
+      /Boxed .*"commentRangeStart".*"note".*"commentRangeEnd"/u,
+    );
+    expect(manager.api.undo()).toBe(true);
+    expect(manager.api.getCanonicalDocument()).toEqual(initial);
+  } finally {
+    manager.destroyView();
+    host.remove();
+    releaseDom();
   }
 });
 

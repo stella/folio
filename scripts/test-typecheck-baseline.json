@@ -753,8 +753,7 @@
   "packages/core/src/controller/canonicalCopiedImageSave.test.ts": {
     "TS2339": 1,
     "TS2379": 1,
-    "TS2412": 1,
-    "TS2769": 1
+    "TS2412": 1
   },
   "packages/core/src/controller/canonicalCutPieceIdentity.test.ts": {
     "TS2379": 1

@@ -688,12 +688,23 @@ async function writeChangedParts({
       }
     }
 
-    if (options.bodyAuthority === "canonical")
-      await publishCanonicalImageResources({
+    if (options.bodyAuthority === "canonical") {
+      // The patched parts keep the model's picture ids, so a picture its part
+      // must rebind goes through the full repack.
+      const rebinding = await publishCanonicalImageResources({
         document: doc,
         zip,
         compressionLevel: 6,
+        rebind: false,
       });
+      const part = rebinding.at(0);
+      if (part !== undefined)
+        return decline({
+          scope: "part",
+          part,
+          reason: "unmaterializedStoryResource",
+        });
+    }
 
     const updates = new Map<string, string>();
 

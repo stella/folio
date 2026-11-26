@@ -27,7 +27,6 @@ import {
   type TrackedSectionEndpointRemoval,
 } from "../internal/sectionEndpointResolution";
 import { consumeSectionReferenceResolution } from "../internal/sectionReferenceResolution";
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 /**
  * DOCX Repacker - Repack modified document into valid DOCX
  *
@@ -1040,18 +1039,32 @@ const materializeEmbeddedMedia = async ({
 const CanonicalImageRelationshipRefusalErrorBase: TaggedErrorClass<"CanonicalImageRelationshipRefusalError"> =
   TaggedError("CanonicalImageRelationshipRefusalError");
 
+/**
+ * A picture the save cannot publish: the model and the package disagree on its
+ * relationship (`conflict` in the main document part, `unresolved`), its
+ * bytes are missing, or its target is unsafe.
+ */
 export class CanonicalImageRelationshipRefusalError extends CanonicalImageRelationshipRefusalErrorBase<{
   message: string;
-  gap: typeof CANONICAL_GAP.saveSerialization;
   part: string;
   relationshipId: string;
   reason: "conflict" | "unresolved" | "missingMedia" | "unsafeTarget";
 }> {}
 
 type PublishCanonicalImageResourcesOptions = {
+  /**
+   * The save's own copy of the document: a copied picture whose id another
+   * binding in its header, footer or note part already holds is published
+   * under a fresh id in that part, written onto this copy's picture.
+   */
   document: Document;
   zip: ZipArchive;
   compressionLevel: number;
+  /**
+   * Whether the caller may rebind such a picture. A caller that cannot passes
+   * false and receives the parts that need it, to save another way.
+   */
+  rebind: boolean;
 };
 
 /**
@@ -1064,7 +1077,7 @@ const publishCanonicalMediaReplacements = async ({
   document,
   zip,
   compressionLevel,
-}: PublishCanonicalImageResourcesOptions): Promise<void> => {
+}: Omit<PublishCanonicalImageResourcesOptions, "rebind">): Promise<void> => {
   const baseline = getDocumentSourceBaseline(document);
   if (baseline.type !== "captured") return;
   const contentTypes: { partName: string; contentType: string | undefined }[] =
@@ -1129,7 +1142,9 @@ export const publishCanonicalImageResources = async ({
   document,
   zip,
   compressionLevel,
-}: PublishCanonicalImageResourcesOptions): Promise<void> => {
+  rebind,
+}: PublishCanonicalImageResourcesOptions): Promise<readonly string[]> => {
+  const rebindingParts: string[] = [];
   await publishCanonicalMediaReplacements({ document, zip, compressionLevel });
   const baseline = getDocumentSourceBaseline(document);
   for (const { relsPath, blocks } of collectDocxParts(document, zip)) {
@@ -1150,22 +1165,32 @@ export const publishCanonicalImageResources = async ({
     const local = parseRelationships(xml);
     const partPath = relsPath.replace("/_rels/", "/").replace(/\.rels$/u, "");
     let changed = false;
+    // Each copied picture id this part rebinds, to the part's own fresh id.
+    const rebound = new Map<
+      NonNullable<Image["rId"]>,
+      NonNullable<Image["rId"]>
+    >();
     for (const image of images) {
-      const id = image.rId;
-      if (id === undefined) continue;
+      const rootId = image.rId;
+      if (rootId === undefined) continue;
+      const reboundId = rebound.get(rootId);
+      if (reboundId !== undefined) {
+        image.rId = reboundId;
+        continue;
+      }
+      let id = rootId;
       const refuse = (
         reason: CanonicalImageRelationshipRefusalError["reason"],
         message: string,
       ): never => {
         throw new CanonicalImageRelationshipRefusalError({
           message,
-          gap: CANONICAL_GAP.saveSerialization,
           part: relsPath,
           relationshipId: id,
           reason,
         });
       };
-      const source = local.get(id);
+      let source = local.get(id);
       const allocated = document.package.relationships?.get(id);
       // Newly allocated root resources can be published into any story. Existing
       // secondary bindings retain their own identity when root ids happen to repeat.
@@ -1231,11 +1256,29 @@ export const publishCanonicalImageResources = async ({
           (absolute === undefined
             ? source.target !== desired.target
             : sourceAbsolute !== absolute)
-        )
-          return refuse(
-            "conflict",
-            "A canonical inline picture relationship conflicts with its owning source binding.",
-          );
+        ) {
+          if (
+            desired !== allocated ||
+            relsPath === "word/_rels/document.xml.rels"
+          )
+            return refuse(
+              "conflict",
+              "A canonical inline picture relationship conflicts with its owning source binding.",
+            );
+          // A picture copied into this part took a document id another of the
+          // part's bindings holds: it is published under a fresh id here.
+          if (!rebind) {
+            if (!rebindingParts.includes(partPath))
+              rebindingParts.push(partPath);
+            continue;
+          }
+          let index = 1;
+          while (local.has(`rId${index}`)) index += 1;
+          id = mintRelationshipId(index);
+          rebound.set(rootId, id);
+          image.rId = id;
+          source = undefined;
+        }
       }
       if (
         absolute !== undefined &&
@@ -1304,6 +1347,7 @@ export const publishCanonicalImageResources = async ({
     }
     if (changed) zip.set(relsPath, xml, { level: compressionLevel });
   }
+  return rebindingParts;
 };
 
 // ============================================================================
@@ -1831,6 +1875,7 @@ const finishRepack = async ({
       document,
       zip: outputZip,
       compressionLevel,
+      rebind: true,
     });
   const parts = collectDocxParts(document, outputZip);
   normalizeExportDrawingIds(document);
@@ -2077,6 +2122,7 @@ export async function repackDocxFromRaw(
       document: exportDocument,
       zip: newZip,
       compressionLevel,
+      rebind: true,
     });
   const parts = collectDocxParts(exportDocument, newZip);
   normalizeExportDrawingIds(exportDocument);

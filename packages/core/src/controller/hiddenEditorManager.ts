@@ -115,6 +115,7 @@ import {
 } from "../prosemirror/plugins/documentStyles";
 import { schema } from "../prosemirror/schema";
 import {
+  CANONICAL_CONDITION,
   CANONICAL_GAP,
   CANONICAL_RULE,
   type CanonicalRefusalGround,
@@ -556,7 +557,7 @@ export const createHiddenEditorManager = (
     if (!document) {
       const reason = "Canonical sessions require a loaded Document.";
       editorSession = { type: "refused", reason, documentIdentity };
-      refuse(reason, { gap: CANONICAL_GAP.authorityRouting });
+      refuse(reason, { condition: CANONICAL_CONDITION.notReady });
       return false;
     }
     const result = createCanonicalSession(document, deps.getStyles());
@@ -2088,63 +2089,73 @@ export const createHiddenEditorManager = (
     canonicalOperations: {
       applyCanonicalSectionProperties: (patch) => {
         ensureView();
-        const fail = (message: string) => {
-          refuse(message, { gap: CANONICAL_GAP.sectionProperties });
-          return {
-            status: "refused",
-            gap: CANONICAL_GAP.sectionProperties,
-            message,
-          } as const;
+        const fail = (message: string, ground: CanonicalRefusalGround) => {
+          refuse(message, ground);
+          return { status: "refused", ground, message } as const;
         };
-        if (editorSession.type === "refused") return fail(editorSession.reason);
         if (editorSession.type !== "canonical")
-          return fail("The document is not ready for section changes.");
+          return fail(
+            editorSession.type === "refused"
+              ? editorSession.reason
+              : "The document is not ready for section changes.",
+            { condition: CANONICAL_CONDITION.notReady },
+          );
         if (!view || deps.getReadOnly() || isDestroying)
-          return fail("The document is not editable.");
+          return fail("The document is not editable.", {
+            condition: CANONICAL_CONDITION.notEditable,
+          });
         const session = editorSession.session;
         if (session.isComposing)
-          return fail("Section properties cannot change during composition.");
+          return fail("Section properties cannot change during composition.", {
+            condition: CANONICAL_CONDITION.composing,
+          });
         const prepared = session.prepareOperations(view.state, [
           createCanonicalSectionPropertiesOperation(
             readModel(session.document),
             patch,
           ),
         ]);
-        if (prepared.isErr()) return fail(prepared.error.message);
-        let failureMessage = "The section projection could not publish.";
+        if (prepared.isErr())
+          return fail(prepared.error.message, prepared.error.ground);
+        let failure: { message: string; ground: CanonicalRefusalGround } = {
+          message: "The section projection could not publish.",
+          ground: { condition: CANONICAL_CONDITION.notReady },
+        };
         if (
-          !publishCommit(prepared.value, (message) => {
-            failureMessage = message;
+          !publishCommit(prepared.value, (message, ground) => {
+            failure = { message, ground: ground ?? failure.ground };
           })
         )
-          return fail(failureMessage);
+          return fail(failure.message, failure.ground);
         return { status: "applied", version: session.version };
       },
       applyCanonicalComment: (request) => {
         ensureView();
         const fail = (
           message: string,
+          ground: CanonicalRefusalGround,
           retry: "afterComposition" | "never" = "never",
         ) => {
           // A deferral the adapters retry after composition is not a user-facing refusal.
-          if (retry === "never")
-            refuse(message, { gap: CANONICAL_GAP.comments });
-          return {
-            status: "refused",
-            gap: CANONICAL_GAP.comments,
-            message,
-            retry,
-          } as const;
+          if (retry === "never") refuse(message, ground);
+          return { status: "refused", ground, message, retry } as const;
         };
-        if (editorSession.type === "refused") return fail(editorSession.reason);
         if (editorSession.type !== "canonical")
-          return fail("The document is not ready for comment changes.");
+          return fail(
+            editorSession.type === "refused"
+              ? editorSession.reason
+              : "The document is not ready for comment changes.",
+            { condition: CANONICAL_CONDITION.notReady },
+          );
         if (!view || deps.getReadOnly())
-          return fail("The document is not editable.");
+          return fail("The document is not editable.", {
+            condition: CANONICAL_CONDITION.notEditable,
+          });
         const session = editorSession.session;
         if (session.isComposing)
           return fail(
             "Comments cannot change during composition.",
+            { condition: CANONICAL_CONDITION.composing },
             "afterComposition",
           );
         let command: CanonicalCommentCommand;
@@ -2153,12 +2164,16 @@ export const createHiddenEditorManager = (
             readModel(session.document),
             session.idLease,
           );
-          if (id.isErr()) return fail(id.error.message);
+          if (id.isErr())
+            return fail("No comment id is free.", {
+              condition: CANONICAL_CONDITION.idSpace,
+            });
           let anchor: CreateCommentOp["anchor"];
           switch (request.anchor.kind) {
             case "selection": {
               const projection = session.projectStory(request.anchor.story);
-              if (projection.isErr()) return fail(projection.error.message);
+              if (projection.isErr())
+                return fail(projection.error.message, projection.error.ground);
               // Selected cells end between cells: the comment spans their
               // text, from the first text inside to the last.
               const { doc } = projection.value;
@@ -2180,8 +2195,9 @@ export const createHiddenEditorManager = (
               const to = projection.value.addressAt(
                 collapsed ? request.anchor.to : textEdge(request.anchor.to, -1),
               );
-              if (from.isErr()) return fail(from.error.message);
-              if (to.isErr()) return fail(to.error.message);
+              if (from.isErr())
+                return fail(from.error.message, from.error.ground);
+              if (to.isErr()) return fail(to.error.message, to.error.ground);
               anchor =
                 request.anchor.from === request.anchor.to
                   ? { kind: "point", at: from.value }
@@ -2224,15 +2240,25 @@ export const createHiddenEditorManager = (
           command,
           idLease: session.idLease,
         });
-        if (compiled.isErr()) return fail(compiled.error.message);
+        if (compiled.isErr())
+          return fail(compiled.error.message, compiled.error.ground);
         if (compiled.value.ops.length > 0) {
           const prepared = session.prepareOperations(
             view.state,
             compiled.value.ops,
           );
-          if (prepared.isErr()) return fail(prepared.error.message);
-          if (!publishCommit(prepared.value))
-            return fail("The comment projection could not publish.");
+          if (prepared.isErr())
+            return fail(prepared.error.message, prepared.error.ground);
+          let failure: { message: string; ground: CanonicalRefusalGround } = {
+            message: "The comment projection could not publish.",
+            ground: { condition: CANONICAL_CONDITION.notReady },
+          };
+          if (
+            !publishCommit(prepared.value, (message, ground) => {
+              failure = { message, ground: ground ?? failure.ground };
+            })
+          )
+            return fail(failure.message, failure.ground);
         }
         return {
           status: "applied",

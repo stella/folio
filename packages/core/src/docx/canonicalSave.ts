@@ -8,7 +8,6 @@ import {
 } from "@stll/docx-core/ops";
 
 import { withoutUnreferencedNotes } from "../prosemirror/noteReferenceReview";
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import type {
   CanonicalSaveSnapshot,
   CanonicalSaveSnapshotBaseline,
@@ -36,10 +35,12 @@ import { withoutUnreferencedHeaderFooters } from "./unreferencedHeaderFooters";
 const CanonicalSaveDiagnosticErrorBase: TaggedErrorClass<"CanonicalSaveDiagnosticError"> =
   TaggedError("CanonicalSaveDiagnosticError");
 
-/** Forward a fidelity fallback through the adapters' existing error channel. */
+/**
+ * Forward a fidelity fallback through the adapters' existing error channel:
+ * the save succeeded, by a path that rewrote more of the package.
+ */
 export class CanonicalSaveDiagnosticError extends CanonicalSaveDiagnosticErrorBase<{
   message: string;
-  gap: typeof CANONICAL_GAP.saveSerialization;
   diagnostic: SaveDiagnostic;
 }> {}
 
@@ -48,7 +49,6 @@ export const canonicalSaveDiagnosticError = (
   diagnostic: SaveDiagnostic,
 ): CanonicalSaveDiagnosticError =>
   new CanonicalSaveDiagnosticError({
-    gap: CANONICAL_GAP.saveSerialization,
     diagnostic,
     message: `Canonical save used a fidelity fallback: ${diagnostic.type} (${diagnostic.part}).`,
   });

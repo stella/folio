@@ -59,7 +59,6 @@ test(
               globalThis.__folioCanonicalFuzzPhase = phase;
               const error = new CanonicalSaveDiagnosticError({
                 message,
-                gap: CANONICAL_GAP.saveSerialization,
                 diagnostic,
               });
               recordCanonicalFuzzError(error);
@@ -68,7 +67,6 @@ test(
               expect(errors.at(0)).toEqual({
                 status: "saveDiagnostic",
                 type: "CanonicalSaveDiagnosticError",
-                gap: CANONICAL_GAP.saveSerialization,
                 diagnostic,
                 message,
                 phase,
@@ -85,7 +83,6 @@ test(
                     diagnostic: { ...diagnostic, part: "word/styles.xml" },
                     status: "saveDiagnostic",
                     type: "CanonicalSaveDiagnosticError",
-                    gap: CANONICAL_GAP.saveSerialization,
                   }),
                 ).toBe(false);
               }
@@ -198,7 +195,6 @@ test("failure capture retains pending diagnostics and records an unavailable bro
   const pending = {
     status: "saveDiagnostic",
     type: "CanonicalSaveDiagnosticError",
-    gap: CANONICAL_GAP.saveSerialization,
     diagnostic: DIAGNOSTICS.sourceReplayMismatch,
     message: "pending diagnostic",
     phase,
@@ -280,6 +276,35 @@ test("a document rule refusal is recorded as its own status, never as a ledger r
         type: "CanonicalSessionRefusalError",
         rule: "contentControlLock",
         message: "Refused: the change reaches inside a locked control.",
+        phase: null,
+      },
+    ]);
+    expect(errors.some(isCanonicalSaveFallback)).toBe(false);
+  } finally {
+    globalThis.__folioCanonicalFuzzErrors = previousErrors;
+    globalThis.__folioCanonicalFuzzPhase = previousPhase;
+  }
+});
+
+test("a condition refusal is recorded as its own status, never as a ledger refusal", () => {
+  const previousErrors = globalThis.__folioCanonicalFuzzErrors;
+  const previousPhase = globalThis.__folioCanonicalFuzzPhase;
+  try {
+    const errors: CanonicalFuzzError[] = [];
+    globalThis.__folioCanonicalFuzzErrors = errors;
+    globalThis.__folioCanonicalFuzzPhase = undefined;
+    recordCanonicalFuzzError(
+      new CanonicalSessionRefusalError({
+        message: "The document is not editable.",
+        ground: { condition: "notEditable" },
+      }),
+    );
+    expect(errors).toEqual([
+      {
+        status: "conditionRefusal",
+        type: "CanonicalSessionRefusalError",
+        condition: "notEditable",
+        message: "The document is not editable.",
         phase: null,
       },
     ]);

@@ -25,7 +25,11 @@ import {
 import { commentThreadParaId } from "../docx/commentThreadKey";
 import { cloneParagraphWithPropertySource } from "../docx/paragraphPropertySource";
 import { threadedCommentIds } from "../docx/serializer/commentSerializer";
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
+import {
+  CANONICAL_CONDITION,
+  type CanonicalCondition,
+  type CanonicalRefusalGround,
+} from "../types/canonicalCapabilities";
 import type { Comment } from "../types/content";
 import type { Document } from "../types/document";
 import { canonicalJson } from "../utils/canonicalJson";
@@ -33,15 +37,19 @@ import { canonicalJson } from "../utils/canonicalJson";
 const CanonicalCommentErrorBase: TaggedErrorClass<"CanonicalCommentError"> =
   TaggedError("CanonicalCommentError");
 
+/**
+ * A comment command the document does not allow, such as a reply to a missing
+ * thread, or one no id is left to mint for.
+ */
 export class CanonicalCommentError extends CanonicalCommentErrorBase<{
   message: string;
-  gap: typeof CANONICAL_GAP.comments;
+  ground: CanonicalRefusalGround;
 }> {}
 
-const refuse = (message: string) =>
-  Result.err(
-    new CanonicalCommentError({ message, gap: CANONICAL_GAP.comments }),
-  );
+const refuse = (
+  message: string,
+  condition: CanonicalCondition = CANONICAL_CONDITION.invalidRequest,
+) => Result.err(new CanonicalCommentError({ message, ground: { condition } }));
 
 export type CanonicalCommentCommand =
   | {
@@ -276,7 +284,8 @@ export const compileCanonicalComments = ({
     )
       continue;
     const paraId = canonicalCommentBody(draft, "", idLease).at(0)?.paraId;
-    if (paraId === undefined) return refuse("No paragraph id is free.");
+    if (paraId === undefined)
+      return refuse("No paragraph id is free.", CANONICAL_CONDITION.idSpace);
     const op: DocumentOp = {
       type: DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT,
       id: comment.id,

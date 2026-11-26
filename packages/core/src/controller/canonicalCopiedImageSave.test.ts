@@ -1,10 +1,11 @@
-import { panic, Result } from "better-result";
+import { panic } from "better-result";
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import path from "node:path";
 import { Fragment, type Node as PMNode, Slice } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 
+import { relationshipIdOf } from "@stll/docx-core/model";
 import {
   DOCUMENT_OP_TYPES,
   OP_STORIES,
@@ -32,10 +33,7 @@ import {
   RELATIONSHIP_TYPES,
   resolveRelativePath,
 } from "../docx/relsParser";
-import {
-  CanonicalImageRelationshipRefusalError,
-  createDocx,
-} from "../docx/rezip";
+import { createDocx } from "../docx/rezip";
 import { createSimpleDocument } from "../docx/serializer/documentSerializer";
 import {
   findAttributeByNamespaceUri,
@@ -47,7 +45,6 @@ import {
   type XmlElement,
 } from "../docx/xmlParser";
 import { schema } from "../prosemirror/schema";
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import type { Document, DrawingContent, Paragraph } from "../types/document";
 import { FOLIO_DOCX_SERIALIZATION_MODE } from "../types/docxSerialization";
 import { canonicalJson } from "../utils/canonicalJson";
@@ -556,10 +553,12 @@ test.each(CASES)(
 );
 
 test.each(Object.values(FOLIO_DOCX_SERIALIZATION_MODE))(
-  "copied image conflicting owner refuses %s save",
+  "copied image whose id its owner already binds saves under a fresh id in %s",
   async (mode) => {
     const story = STORIES.header;
     const source = await destination({ story, conflictingBinding: "present" });
+    const conflictId =
+      relationshipIdOf(source.conflictId) ?? panic("Missing conflicting id");
     const driver = await copyImage({
       source: source.document,
       story,
@@ -567,35 +566,53 @@ test.each(Object.values(FOLIO_DOCX_SERIALIZATION_MODE))(
       resource: "dataUrl",
       offset: 0,
     });
-    expect(driver.allocated.image.rId).toBe(source.conflictId);
+    expect(driver.allocated.image.rId).toBe(conflictId);
     const snapshot = driver.session.captureSaveSnapshot();
     const before = snapshot.document;
-    const part = await owningPart(
-      await ZipArchive.read(
-        source.document.originalBuffer ?? panic("Missing parsed baseline"),
-      ),
-      story,
+    const saved = await serializeCanonicalSave({
+      snapshot,
+      options: { mode },
+      featureFlags: { selectiveSave: true },
+    });
+    // The selective patch keeps the model's ids, so the repack writes it.
+    expect(saved.path).toBe("full-repack");
+    const zip = await ZipArchive.read(saved.buffer);
+    const part = await owningPart(zip, story);
+    const local = parseRelationships(
+      (await zip.entry(relationshipPath(part))?.text()) ?? "",
     );
-    const result = await Result.tryPromise({
-      try: () =>
-        serializeCanonicalSave({
-          snapshot,
-          options: { mode },
-          featureFlags: { selectiveSave: true },
-        }),
-      catch: (error: unknown) => error,
+    // The owner's own binding keeps its id and target.
+    expect(local.get(conflictId)).toMatchObject({
+      type: RELATIONSHIP_TYPES.image,
+      target: "https://example.com/original.png",
+      targetMode: "External",
     });
-    expect(result.isErr()).toBe(true);
-    if (result.isOk())
-      panic("Conflicting owning relationship unexpectedly saved");
-    expect(result.error).toBeInstanceOf(CanonicalImageRelationshipRefusalError);
-    expect(result.error).toMatchObject({
-      gap: CANONICAL_GAP.saveSerialization,
-      reason: "conflict",
-      part: relationshipPath(part),
-      relationshipId: source.conflictId,
-    });
+    const bindings = imageBindings((await zip.entry(part)?.text()) ?? "");
+    expect(bindings).toHaveLength(1);
+    const fresh =
+      bindings.at(0) ?? panic("The copied picture lost its binding");
+    expect(fresh).not.toBe(conflictId);
+    const allocated =
+      before.package.relationships?.get(conflictId) ??
+      panic("Allocated relationship missing");
+    const expectedPath = resolveRelativePath(
+      "word/_rels/document.xml.rels",
+      allocated.target,
+    );
+    const binding = local.get(fresh) ?? panic("The fresh binding is missing");
+    expect(binding.type).toBe(RELATIONSHIP_TYPES.image);
+    expect(resolveRelativePath(relationshipPath(part), binding.target)).toBe(
+      expectedPath,
+    );
+    expect(await zip.entry(expectedPath)?.bytes()).toEqual(
+      new Uint8Array(
+        (before.package.media?.get(expectedPath) ?? panic("Bytes missing"))
+          .data,
+      ),
+    );
+    // The session's document keeps the picture's own id.
     assertExactModel(driver.session.captureSaveSnapshot().document, before);
+    expect(drawings(before, story).at(0)?.image.rId).toBe(conflictId);
   },
 );
 

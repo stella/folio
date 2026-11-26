@@ -166,7 +166,7 @@ export type HiddenEditorApi = {
   applyCanonicalComment: (
     request: CanonicalCommentRequest,
   ) => CanonicalCommentResult | null;
-  /** Apply a final-section patch; null is reserved for legacy sessions. */
+  /** Apply a final-section patch to the canonical session. */
   applyCanonicalSectionProperties: (
     patch: FormattingPatch<SectionProperties>,
   ) => CanonicalSectionPropertiesResult | null;

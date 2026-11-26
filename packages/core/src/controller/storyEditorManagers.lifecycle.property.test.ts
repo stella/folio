@@ -28,7 +28,7 @@ import {
 } from "../canonical/canonicalSession";
 import { cloneDocumentWithParagraphPropertySources } from "../docx/paragraphPropertySource";
 import { schema } from "../prosemirror/schema";
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
+import { CANONICAL_CONDITION } from "../types/canonicalCapabilities";
 import type { Document, Paragraph } from "../types/document";
 import { readModel } from "../types/documentModel";
 import {
@@ -366,7 +366,9 @@ test("generated canonical story lifecycle follows the owner while host props sta
               }
               if (!(error instanceof CanonicalSessionError))
                 panic("The unavailable snapshot lost its typed refusal.");
-              expect(error.ground.gap).toBe(CANONICAL_GAP.authorityRouting);
+              expect(error.ground).toEqual({
+                condition: CANONICAL_CONDITION.notReady,
+              });
             }
           } finally {
             owner.destroy();

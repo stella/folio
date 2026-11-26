@@ -373,14 +373,6 @@ export const inspectCanonicalSources = (
         }
         if (
           node.type === "CallExpression" &&
-          text(node.callee) === "refuseCanonicalModelEdit"
-        ) {
-          const gap = node.arguments.at(0);
-          if (gapKey(gap && unwrapChain(gap)) === undefined)
-            failures.push(`${file}: model refusal must name a ledger id`);
-        }
-        if (
-          node.type === "CallExpression" &&
           text(node.callee) === "handleSessionRefusal" &&
           node.arguments.length !== 2
         )
