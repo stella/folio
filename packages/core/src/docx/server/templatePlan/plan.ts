@@ -188,19 +188,22 @@ const LABEL_WORD = /^(?:\p{L}[\p{L}\p{M}]*\.?|§{1,2}|№|#)$/u;
 const LABEL_DESIGNATOR =
   /^[([]?(?<core>\d+(?:[.\-\u2013]\d+)*[a-z]?|\p{L}+)[)\]]?[.:)]*$/u;
 const LABEL_BULLET = /^[-\u2013\u2014\u2022\u00B7\u25AA\u25E6*]$/u;
+/** A number of several parts typed with blanks between them: `1. 1.`. */
+const LABEL_SPACED_NUMBER = /^\d{1,3}\.(?:[ \u00A0]+\d{1,3}\.){1,3}$/u;
 const MAX_LABEL_WORDS = 3;
 
 /**
  * Whether `label` reads as a manual list label: up to three leading words
  * ("Article", "§", "Annex No.") and one designator, a number, a roman numeral
- * or a letter with its brackets and punctuation; or a single bullet. This is
- * the only text a plan may have removed.
+ * or a letter with its brackets and punctuation; or a single bullet; or a
+ * number whose parts stand apart (`1. 1.` for `1.1.`). This is the only text
+ * a plan may have removed.
  */
 export const isManualLabel = (label: string): boolean => {
   if (label === "" || label.length > MAX_LABEL_LENGTH) {
     return false;
   }
-  if (LABEL_BULLET.test(label)) {
+  if (LABEL_BULLET.test(label) || LABEL_SPACED_NUMBER.test(label)) {
     return true;
   }
   const tokens = label.split(/[ \u00A0]/u);
