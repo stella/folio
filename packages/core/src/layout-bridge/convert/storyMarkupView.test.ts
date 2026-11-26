@@ -146,7 +146,7 @@ const hasProjectionWiring = (source: string) =>
 
 test("every independent story renderer projects before flow conversion", async () => {
   const owners = {
-    main: "../../controller/layoutPipeline.ts",
+    main: "../../controller/layoutPipelineExecution.ts",
     header: "./headerFooterLayout.ts",
     footer: "./headerFooterLayout.ts",
     footnote: "./footnoteLayout.ts",
