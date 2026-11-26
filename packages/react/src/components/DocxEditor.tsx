@@ -148,14 +148,6 @@ import type {
 } from "@stll/folio-core/prosemirror";
 import { expectTableAttrs } from "@stll/folio-core/prosemirror/attrs";
 import {
-  findAIEditRevisionRange,
-  findChangeAtPosition,
-  findNextChange,
-  findPreviousChange,
-  findSuggestionRange,
-  getSuggestions,
-} from "@stll/folio-core/prosemirror/commands/comments";
-import {
   blockSdtAttrsToSdtProperties,
   findBlockSdtMatch,
   findBlockSdtMatches,
@@ -188,7 +180,17 @@ import { createAISuggestionDecorationsPlugin } from "@stll/folio-core/prosemirro
 import { createTemplateDirectivesPlugin } from "@stll/folio-core/prosemirror/plugins/templateDirectives";
 import { createTemplatePreviewValuesPlugin } from "@stll/folio-core/prosemirror/plugins/templatePreviewValues";
 import { templateSlashMenuPlugin } from "@stll/folio-core/prosemirror/plugins/templateSlashMenu";
+import {
+  findChangeAtPosition,
+  findNextChange,
+  findPreviousChange,
+} from "@stll/folio-core/prosemirror/projectionReview";
+import { findAIEditRevisionRange } from "@stll/folio-core/prosemirror/revisionRangeQueries";
 import { selectionBounds } from "@stll/folio-core/prosemirror/selectionBounds";
+import {
+  findSuggestionRange,
+  getSuggestions,
+} from "@stll/folio-core/prosemirror/suggestionQueries";
 import { getFolioParaIdFromBlockId } from "@stll/folio-core/types/block-id";
 import {
   CANONICAL_CONDITION,

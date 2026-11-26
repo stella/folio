@@ -20,7 +20,6 @@ import {
 import { paragraphMarkOutcome } from "@stll/docx-core/ops";
 
 import { markParagraphPropertySourceTransfers } from "../../docx/paragraphPropertySource";
-import { RevisionResolutionStep } from "../../internal/revisionResolutionStep";
 import { finalRevisionParagraphRanges } from "../../internal/revisionResolutionTracking";
 import type { RemovedSectionReference } from "../../internal/sectionEndpointResolution";
 import {
@@ -59,11 +58,7 @@ import {
 } from "../../prosemirror/commands/propertyChangeScope";
 import { resolveNodePropertyChangeAttrs } from "../../prosemirror/commands/resolveNodePropertyChangeAttrs";
 import { resolveParagraphChangeAttrs } from "../../prosemirror/commands/resolveParagraphProperties";
-import {
-  hasMatchingCollapsedTableCellMerge,
-  resolveCollapsedTableCellMerge,
-  resolveVisibleTableCellMerge,
-} from "../../prosemirror/commands/tableCellMergeResolution";
+import { hasMatchingCollapsedTableCellMerge } from "../../prosemirror/commands/tableCellMergeResolution";
 import {
   removeCommentAnchors,
   retireThreadsResolvedAway,
@@ -101,18 +96,14 @@ import {
   markStructuralChange,
   markTrackedSectionEndpointRemoval,
 } from "../../prosemirror/paragraphChangeTrackerMeta";
-import { joinAtParagraphMark } from "../../prosemirror/paragraphMarkJoin";
 import {
   carryParagraphProperties,
   paragraphLeftAfter,
 } from "../../prosemirror/paragraphPropertyCarry";
-import { requestDeterministicParaIds } from "../../prosemirror/paraIds";
 import { getDocumentNumbering } from "../../prosemirror/plugins/documentNumbering";
 import { getDocumentStyleResolver } from "../../prosemirror/plugins/documentStyleState";
 import { resolvedPreservedXmlAttrs } from "../../prosemirror/preservedXmlReview";
-import { setParagraphAttrsWithRebasedRunFormatting } from "../../prosemirror/rebaseParagraphRunFormatting";
 import { rejoinRunsAt } from "../../prosemirror/rejoinRunCarriers";
-import { resolvedCommentPoints } from "../../prosemirror/replacedAnnotations";
 import { nodePropertyRevisionSites } from "../../prosemirror/revisionCarriers";
 import { RUN_FORMATTING_MARK_NAMES } from "../../prosemirror/runFormattingMarkNames";
 import { rejectedRunFormatting } from "../../prosemirror/runPropertyChangeResolution";
@@ -122,11 +113,9 @@ import type { ParagraphPropertyChangeAttrs } from "../../prosemirror/schema/node
 import { sectionRecordCopyPositions } from "../../prosemirror/sectionCarrier";
 import { isTableCellRetainedInReviewView } from "../../prosemirror/tableCellRevisionVisibility";
 import {
-  deleteTableRowAt,
   markRowEmptiedInBatch,
   reconcileOmittedGridSlots,
   reconcileTableGridAfterColumnRemoval,
-  removeRowsWithoutCellsAfterBatch,
   rowHoldsNoCells,
   type RowsEmptiedInBatch,
 } from "../../prosemirror/tableGridMutation";
@@ -142,6 +131,21 @@ import {
 import { extractTrackedChanges } from "../../prosemirror/utils/extractTrackedChanges";
 import { paragraphContentOf } from "../../prosemirror/zeroWidthAnchors";
 import type { RunPropertyChange } from "../../types/document";
+import {
+  joinAtParagraphMark,
+  requestDeterministicParaIds,
+  setParagraphAttrsWithRebasedRunFormatting,
+} from "./paragraphRevision";
+import { resolvedCommentPoints } from "./resolvedCommentPoints";
+import { RevisionResolutionStep } from "./revisionResolutionStep";
+import {
+  resolveCollapsedTableCellMerge,
+  resolveVisibleTableCellMerge,
+} from "./tableCellMergeResolution";
+import {
+  deleteTableRowAt,
+  removeRowsWithoutCellsAfterBatch,
+} from "./tableRevisionCleanup";
 
 export {
   addCommentMark,

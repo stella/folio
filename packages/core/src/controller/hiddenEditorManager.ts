@@ -98,7 +98,6 @@ import {
   toggleMarkForAllScripts,
   toggleUnderlineMark,
 } from "../prosemirror/extensions/marks/markUtils";
-import { HyperlinkRemovalRefusal } from "../prosemirror/hyperlinkRemoval";
 import { REVISION_MARK_NAMES } from "../prosemirror/keptRangeBoundaries";
 import {
   adoptNativeSelection,
@@ -119,7 +118,6 @@ import {
 import { schema } from "../prosemirror/schema";
 import {
   CANONICAL_CONDITION,
-  CANONICAL_GAP,
   CANONICAL_RULE,
   type CanonicalRefusalGround,
 } from "../types/canonicalCapabilities";
@@ -922,25 +920,10 @@ export const createHiddenEditorManager = (
       });
       return false;
     }
-    const commandState = view.state;
-    const described = Result.try({
-      try: () => getCanonicalCommandIntents(command, commandState),
-      catch: (error) => error,
-    });
-    if (described.isErr()) {
-      if (!(described.error instanceof HyperlinkRemovalRefusal))
-        throw described.error;
-      const refusal = new CanonicalSessionRefusalError({
-        ground: { gap: CANONICAL_GAP.commands },
-        message: described.error.message,
-      });
-      refuse(refusal.message, refusal.ground);
-      return false;
-    }
-    const intents = described.value;
-    // Caller commands without document intents retain their ordinary selection
-    // and probe behavior; dispatchTransaction still refuses raw document edits.
-    // canonical-gap: command-descriptors
+    const intents = getCanonicalCommandIntents(command, view.state);
+    // A command with no descriptor is a host command: it runs against the
+    // projection, so a selection change applies and a document change meets
+    // the dispatch boundary, which refuses it.
     if (intents === undefined) return undefined;
     // A selection change touches no content: the command runs as it is.
     if (
@@ -1109,9 +1092,10 @@ export const createHiddenEditorManager = (
                 );
         }
       }
+      // A host schema without the mark has nothing to toggle.
       if (command === undefined) {
         refuse("The formatting command is unavailable.", {
-          gap: CANONICAL_GAP.commands,
+          condition: CANONICAL_CONDITION.invalidRequest,
         });
         return;
       }
@@ -1127,9 +1111,10 @@ export const createHiddenEditorManager = (
         const command = deps
           .getExtensionManager()
           ?.getCommand("deleteTable")?.();
+        // A host without the table extension has no table command.
         if (command === undefined)
           refuse("Deleting the table is unavailable.", {
-            gap: CANONICAL_GAP.commands,
+            condition: CANONICAL_CONDITION.invalidRequest,
           });
         else executeCanonicalCommand(command);
         return;
@@ -2287,10 +2272,10 @@ export const createHiddenEditorManager = (
             command === undefined
               ? undefined
               : getCanonicalCommandIntents(command, storyView.state);
-          // canonical-gap: command-descriptors
+          // A host without the table extension has no table command.
           if (intents === undefined) {
             refuse("Deleting the table is unavailable.", {
-              gap: CANONICAL_GAP.commands,
+              condition: CANONICAL_CONDITION.invalidRequest,
             });
             return false;
           }

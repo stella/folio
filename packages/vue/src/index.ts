@@ -55,7 +55,7 @@ export type {
   FolioSuggestion,
   SuggestionKind,
   SuggestionAppliedAs,
-} from "@stll/folio-core/prosemirror/commands/comments";
+} from "@stll/folio-core/prosemirror/suggestionQueries";
 // Custom-font prop types: `fontFamilies` (picker list) + `fonts` (FontFace registration).
 export type { FontOption } from "./utils/fontOptions";
 export type { FontDefinition } from "./components/DocxEditor/types";

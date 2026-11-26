@@ -38,13 +38,19 @@ test("canonical browser refusal matching takes a declared row and rejects unknow
   expect(
     matchCanonicalRefusalRow({
       rows: imeOverCells,
-      refusal: { gap: CANONICAL_GAP.commands, message: "A different refusal." },
+      refusal: {
+        gap: CANONICAL_GAP.saveSerialization,
+        message: "A different refusal.",
+      },
     }),
   ).toBeUndefined();
   expect(
     matchCanonicalRefusalRow({
       rows: imeOverCells,
-      refusal: { gap: CANONICAL_GAP.commands, message: declared.message },
+      refusal: {
+        gap: CANONICAL_GAP.saveSerialization,
+        message: declared.message,
+      },
     }),
   ).toBeUndefined();
   expect(
