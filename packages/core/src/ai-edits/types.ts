@@ -14,7 +14,7 @@ import type {
   FolioContentTableLocation,
 } from "../compare/content-types";
 import type { ListKind } from "../docx/listNumberingInstances";
-import type { CanonicalGap } from "../types/canonicalCapabilities";
+import type { CanonicalRefusalGround } from "../types/canonicalCapabilities";
 import type {
   BreakContent,
   NumberFormat,
@@ -848,7 +848,14 @@ export type FolioAIEditParagraphIdentity =
 export type FolioAIEditSkippedOperation = {
   id: string;
   reason: FolioAIEditSkipReason;
-  canonicalRefusal?: { gap: CanonicalGap };
+  /**
+   * Why the canonical session refused it: a capability it does not have yet
+   * (`gap`), a rule the document states (`rule`), or a condition of the
+   * session or the request (`condition`), as `canonicalRefusalNotice` reads
+   * them. Absent where the reason alone says it, as the default engine
+   * reports the skip.
+   */
+  canonicalRefusal?: CanonicalRefusalGround;
   /**
    * What exactly was wrong when the reason alone does not say: the values a
    * `payloadDoesNotFit` skip could not place, the earlier operation an

@@ -20,6 +20,7 @@ import {
 } from "./blocks";
 import {
   freezeFields,
+  inheritedReferencesXml,
   sectionPropertiesXml,
   setKeepShiftReturnSpacing,
   setUpdateFieldsOnOpen,
@@ -793,6 +794,16 @@ const writeOutput = async ({
   // first of them begins the document; when there is any, the body's own
   // last section is a later one too.
   const bodySection = wChild(template.body, "sectPr");
+  // The headers and footers the template's last section shows without
+  // stating them: every section of the output is built from that one.
+  const inherited =
+    bodySection === null
+      ? []
+      : inheritedReferencesXml(
+          template.document.xml,
+          template.body,
+          bodySection,
+        );
   const sectionEnds = resolved.items.flatMap((item) =>
     item.kind === "paragraph" && item.paragraph.endsSection !== null
       ? [item.paragraph]
@@ -812,6 +823,7 @@ const writeOutput = async ({
               first: position === 0,
               page: section.page,
               start: position === 0 ? null : (section.start ?? "nextPage"),
+              inherited,
             },
           );
     if (xml === null) {
@@ -940,19 +952,21 @@ const writeOutput = async ({
   if (bodySection !== null) {
     const { lastSection } = plan;
     const split = sectionEnds.length > 0 || lastSection !== undefined;
-    const rebuilt = split
-      ? sectionPropertiesXml(
-          template.document.xml,
-          bodySection,
-          documentContext.prefixes.w,
-          {
-            first: sectionEnds.length === 0,
-            page: lastSection?.page,
-            start:
-              sectionEnds.length === 0 ? null : (lastSection?.start ?? null),
-          },
-        )
-      : null;
+    const rebuilt =
+      split || inherited.length > 0
+        ? sectionPropertiesXml(
+            template.document.xml,
+            bodySection,
+            documentContext.prefixes.w,
+            {
+              first: sectionEnds.length === 0,
+              page: lastSection?.page,
+              start:
+                sectionEnds.length === 0 ? null : (lastSection?.start ?? null),
+              inherited,
+            },
+          )
+        : null;
     const section =
       rebuilt === null ? keptXml(bodySection) : Result.ok(rebuilt);
     if (Result.isError(section)) {

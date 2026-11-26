@@ -14,6 +14,7 @@ import {
   MARKUP_COMPATIBILITY_NAMESPACE,
   MATH_NAMESPACE,
   relationshipAttr,
+  twipsOrNull,
   wAttr,
   wChild,
   wChildVal,
@@ -33,6 +34,7 @@ export type AtomKind =
   | "symbol"
   | "footnoteReference"
   | "endnoteReference"
+  | "selfNumber"
   | "object";
 
 export type AtomLink =
@@ -53,7 +55,24 @@ export type InlineAtom = {
   element: XmlElement | null;
   /** Fields whose result the atom is part of, outermost first. */
   fields: readonly number[];
+  /** The code of the field a `selfNumber` atom stands for. */
+  instruction?: string;
 };
+
+/**
+ * Fields that print a number counted when the document is laid out and
+ * that hold no result: the number is text of the document that no cached
+ * text stands for, so the field itself is the content.
+ */
+const SELF_NUMBERING_FIELDS: ReadonlySet<string> = new Set([
+  "AUTONUM",
+  "AUTONUMLGL",
+  "AUTONUMOUT",
+]);
+
+/** Whether a field kind prints a number of its own and caches no text. */
+export const isSelfNumberingField = (kind: string): boolean =>
+  SELF_NUMBERING_FIELDS.has(kind);
 
 export type StoryField = {
   /** Position among the fields of the story, in begin order. */
@@ -115,6 +134,26 @@ export type ParagraphBookmark = { name: string; id: string; atomIndex: number };
 /** A bookmark end, with how many atoms of its paragraph come before it. */
 export type ParagraphBookmarkEnd = { id: string; atomIndex: number };
 
+/** The sides of `w:ind` that count in characters of the document grid. */
+const CHARACTER_INDENTS = [
+  "leftChars",
+  "startChars",
+  "hangingChars",
+  "firstLineChars",
+] as const;
+
+/** The sides a `w:ind` states; a hanging indent is a negative first line. */
+const ownIndent = (
+  indent: XmlElement | null,
+): { left: number | null; firstLine: number | null } => {
+  const hanging = twipsOrNull(wAttr(indent, "hanging"));
+  return {
+    left: twipsOrNull(wAttr(indent, "left") ?? wAttr(indent, "start")),
+    firstLine:
+      hanging === null ? twipsOrNull(wAttr(indent, "firstLine")) : -hanging,
+  };
+};
+
 export type ParagraphRead = {
   element: XmlElement;
   ordinal: number;
@@ -140,6 +179,13 @@ export type ParagraphRead = {
   pageBreakBefore: boolean | null;
   /** `w:jc` as the paragraph itself states it, or null. */
   alignment: string | null;
+  /** The sides of `w:ind` the paragraph itself states, in twentieths of a
+   *  point: where its lines start, and what its first line adds to that
+   *  (negative for a hanging indent). Null for a side it does not state. */
+  indent: { left: number | null; firstLine: number | null };
+  /** Whether the paragraph states an indent in characters, which stands
+   *  over the measured one and cannot be given in twentieths of a point. */
+  indentInCharacters: boolean;
   /** Whether the paragraph mark is a tracked insertion or deletion. */
   hasTrackedMark: boolean;
 };
@@ -409,6 +455,16 @@ const readRun = (
             top.field.kind = fieldKindOf(top.field.instruction);
             top.field.endParagraphOrdinal = read.ordinal;
             top.field.closed = true;
+            if (top.phase === "code" && isSelfNumberingField(top.field.kind)) {
+              pushAtom(walk, {
+                kind: "selfNumber",
+                text: "",
+                runProperties,
+                link,
+                element: null,
+                instruction: top.field.instruction.trim(),
+              });
+            }
           }
         }
         break;
@@ -481,6 +537,16 @@ const readInline = (
       readInline(child, walk, context);
       state.open.pop();
       field.closed = true;
+      if (field.result === "" && isSelfNumberingField(field.kind)) {
+        pushAtom(walk, {
+          kind: "selfNumber",
+          text: "",
+          runProperties: null,
+          link: context.link,
+          element: null,
+          instruction: field.instruction.trim(),
+        });
+      }
     } else if (REVISION_INCLUDED.has(name)) {
       state.trackedChanges += 1;
       readInline(child, walk, context);
@@ -550,6 +616,11 @@ export const readParagraph = (
     hasSectionBreak: wChild(properties, "sectPr") !== null,
     pageBreakBefore: toggleOf(wChild(properties, "pageBreakBefore")),
     alignment: wChildVal(properties, "jc"),
+    indent: ownIndent(wChild(properties, "ind")),
+    indentInCharacters: CHARACTER_INDENTS.some((name) => {
+      const value = wAttr(wChild(properties, "ind"), name);
+      return value !== null && !/^[+-]?0*$/u.test(value.trim());
+    }),
     hasTrackedMark,
   };
   state.paragraphOrdinal += 1;

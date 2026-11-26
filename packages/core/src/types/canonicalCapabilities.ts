@@ -3,8 +3,6 @@ export const CANONICAL_GAP = {
   trackedTableStructure: "tracked-table-structure",
   storyContentProjection: "story-content-projection",
   trackedChangeRecords: "tracked-change-records",
-  publicComments: "publicOps.comments",
-  publicUnsupportedInline: "publicOps.unsupportedInline",
   commentReplacementAlignment: "comment-replacement-alignment",
   publicHeadlessSession: "publicOps.headlessSession",
 } as const;
@@ -162,18 +160,6 @@ export const CANONICAL_CAPABILITIES: {
     readonly adapters: readonly ["react", "vue"];
     readonly summary: "A suggested change whose content the tracked-change records cannot express is refused: comment boundaries in a tracked range, paragraph-mark run properties, a join at a section break, a record inside a field.";
   };
-  readonly "publicOps.comments": {
-    readonly owner: "document-operations";
-    readonly kind: "refusal";
-    readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Public comment edits refuse when their anchors or revision structure cannot be represented.";
-  };
-  readonly "publicOps.unsupportedInline": {
-    readonly owner: "document-operations";
-    readonly kind: "refusal";
-    readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Unsupported public payloads refuse with a typed compiler capability gap.";
-  };
   readonly "comment-replacement-alignment": {
     readonly owner: "controller";
     readonly kind: "refusal";
@@ -207,20 +193,6 @@ export const CANONICAL_CAPABILITIES: {
     adapters: ["react", "vue"],
     summary:
       "A suggested change whose content the tracked-change records cannot express is refused: comment boundaries in a tracked range, paragraph-mark run properties, a join at a section break, a record inside a field.",
-  },
-  [CANONICAL_GAP.publicComments]: {
-    owner: "document-operations",
-    kind: "refusal",
-    adapters: ["react", "vue"],
-    summary:
-      "Public comment edits refuse when their anchors or revision structure cannot be represented.",
-  },
-  [CANONICAL_GAP.publicUnsupportedInline]: {
-    owner: "document-operations",
-    kind: "refusal",
-    adapters: ["react", "vue"],
-    summary:
-      "Unsupported public payloads refuse with a typed compiler capability gap.",
   },
   [CANONICAL_GAP.commentReplacementAlignment]: {
     owner: "controller",

@@ -42,9 +42,11 @@ import { TemplatePlanError } from "./types";
 import {
   elementChildren,
   halfPointsOrNull,
+  integerOrNull,
   isW,
   type RawPart,
   readRawPart,
+  twipsOrNull,
   wAttr,
   wChild,
   wChildren,
@@ -93,6 +95,10 @@ type StoryResources = {
   numbering: NumberingMap | null;
   /** The alignment each paragraph style states for itself (`w:jc`). */
   alignments?: ReadonlyMap<string, string>;
+  /** The indent each list level states, by definition and level. */
+  levelIndents?: ReadonlyMap<string, IndentSides>;
+  /** The indent the document's defaults give every paragraph. */
+  defaultIndent?: IndentSides;
 };
 
 type OpenTable = {
@@ -130,6 +136,99 @@ const sectionOf = (sectPr: XmlElement, index: number): DocxSection => {
     },
     columns: properties.columnCount ?? 1,
   };
+};
+
+type IndentSides = { left: number | null; firstLine: number | null };
+
+const NO_INDENT: IndentSides = { left: null, firstLine: null };
+
+const levelKey = (abstractNumId: number, ilvl: number): string =>
+  `${String(abstractNumId)}:${String(ilvl)}`;
+
+/** The sides a `w:ind` states; a hanging indent is a negative first line. */
+const statedIndent = (indent: XmlElement | null): IndentSides => {
+  const hanging = twipsOrNull(wAttr(indent, "hanging"));
+  return {
+    left: twipsOrNull(wAttr(indent, "left") ?? wAttr(indent, "start")),
+    firstLine:
+      hanging === null ? twipsOrNull(wAttr(indent, "firstLine")) : -hanging,
+  };
+};
+
+/**
+ * The indent each level of a numbering part states, by list definition and
+ * level, read off the part itself. An override a list instance makes of a
+ * level is not followed.
+ */
+const statedLevelIndents = (
+  numberingPath: string | null,
+  numberingXml: string | null,
+): Map<string, IndentSides> => {
+  const indents = new Map<string, IndentSides>();
+  const part =
+    numberingPath === null || numberingXml === null
+      ? null
+      : readRawPart(numberingPath, numberingXml);
+  for (const definition of wChildren(part?.root, "abstractNum")) {
+    const abstractNumId = integerOrNull(wAttr(definition, "abstractNumId"));
+    for (const level of wChildren(definition, "lvl")) {
+      const ilvl = integerOrNull(wAttr(level, "ilvl"));
+      if (abstractNumId !== null && ilvl !== null) {
+        indents.set(
+          levelKey(abstractNumId, ilvl),
+          statedIndent(wChild(wChild(level, "pPr"), "ind")),
+        );
+      }
+    }
+  }
+  return indents;
+};
+
+/** The indent the document's defaults give every paragraph. */
+const statedDefaultIndent = (
+  stylesPath: string | null,
+  stylesXml: string | null,
+): IndentSides => {
+  const part =
+    stylesPath === null || stylesXml === null
+      ? null
+      : readRawPart(stylesPath, stylesXml);
+  const defaults = wChild(wChild(part?.root, "docDefaults"), "pPrDefault");
+  return statedIndent(wChild(wChild(defaults, "pPr"), "ind"));
+};
+
+/** The sides a style states, as the document model holds them: a hanging
+ *  indent is a negative first line. */
+const modelIndent = (
+  formatting:
+    | {
+        indentLeft?: number | undefined;
+        indentFirstLine?: number | undefined;
+        hangingIndent?: boolean | undefined;
+      }
+    | undefined,
+): IndentSides => {
+  const first = formatting?.indentFirstLine;
+  let firstLine: number | null = null;
+  if (first !== undefined) {
+    firstLine = formatting?.hangingIndent === true ? -Math.abs(first) : first;
+  }
+  return { left: formatting?.indentLeft ?? null, firstLine };
+};
+
+/**
+ * The indent in effect: each side from the first of `sources` that states
+ * it. Null when none of them states a side.
+ */
+const indentInEffect = (
+  ...sources: readonly IndentSides[]
+): { left: number; firstLine: number } | null => {
+  const left = sources.find((source) => source.left !== null)?.left ?? null;
+  const firstLine =
+    sources.find((source) => source.firstLine !== null)?.firstLine ?? null;
+  return left === null && firstLine === null
+    ? null
+    : { left: left ?? 0, firstLine: firstLine ?? 0 };
 };
 
 /** The alignment each style of a styles part states for itself (`w:jc`). */
@@ -178,6 +277,8 @@ type StatedLook = {
   /** In half-points. */
   size: number | null;
   keepNext: boolean | null;
+  /** In twentieths of a point. */
+  indentLeft: number | null;
 };
 
 const statedLook = (
@@ -187,6 +288,10 @@ const statedLook = (
   bold: toggleOf(wChild(run, "b")),
   size: halfPointsOrNull(wChildVal(run, "sz")),
   keepNext: toggleOf(wChild(paragraph, "keepNext")),
+  indentLeft: twipsOrNull(
+    wAttr(wChild(paragraph, "ind"), "left") ??
+      wAttr(wChild(paragraph, "ind"), "start"),
+  ),
 });
 
 /** The look each style of the styles part states itself, by style id, and
@@ -223,14 +328,25 @@ export const statedLooks = (
  * The look a style gives its text: each property from the nearest style in
  * the `basedOn` chain that states it, then from the document's defaults.
  * Without a statement text is not bold and a paragraph is not kept with the
- * next; the size stays null, which leaves it to the application.
+ * next; the size and the left indent stay null, which leaves the size to
+ * the application and the indent to a list level, if the style has one.
  */
 export const styleLook = (
   styleId: string | null,
   styles: StyleMap,
   { styles: stated, defaults }: ReturnType<typeof statedLooks>,
-): { bold: boolean; size: number | null; keepNext: boolean } => {
-  const look: StatedLook = { bold: null, size: null, keepNext: null };
+): {
+  bold: boolean;
+  size: number | null;
+  keepNext: boolean;
+  indentLeft: number | null;
+} => {
+  const look: StatedLook = {
+    bold: null,
+    size: null,
+    keepNext: null,
+    indentLeft: null,
+  };
   const seen = new Set<string>();
   let cursor: string | undefined = styleId ?? undefined;
   while (cursor !== undefined && !seen.has(cursor)) {
@@ -239,12 +355,14 @@ export const styleLook = (
     look.bold ??= own?.bold ?? null;
     look.size ??= own?.size ?? null;
     look.keepNext ??= own?.keepNext ?? null;
+    look.indentLeft ??= own?.indentLeft ?? null;
     cursor = styles.get(cursor)?.basedOn;
   }
   return {
     bold: look.bold ?? defaults.bold ?? false,
     size: look.size ?? defaults.size,
     keepNext: look.keepNext ?? defaults.keepNext ?? false,
+    indentLeft: look.indentLeft ?? defaults.indentLeft,
   };
 };
 
@@ -278,6 +396,19 @@ const pageBreaksOf = ({ atoms }: ParagraphRead): number =>
     ({ kind, element }) =>
       kind === "pageBreak" && wAttr(element, "type") === "page",
   ).length;
+
+/** Where in a paragraph's text its self-numbering fields stand. */
+const selfNumbersOf = ({ atoms }: ParagraphRead): number[] => {
+  const offsets: number[] = [];
+  let at = 0;
+  for (const { kind, text } of atoms) {
+    if (kind === "selfNumber") {
+      offsets.push(at);
+    }
+    at += text.length;
+  }
+  return offsets;
+};
 
 type AnalyzeStoryOptions = {
   container: XmlElement;
@@ -358,6 +489,10 @@ export const analyzeStory = ({
       if (pageBreaks > 0) {
         block.pageBreaks = pageBreaks;
       }
+      const selfNumbers = selfNumbersOf(read);
+      if (selfNumbers.length > 0) {
+        block.selfNumbers = selfNumbers;
+      }
       if (read.pageBreakBefore ?? style?.pPr?.pageBreakBefore === true) {
         block.pageBreakBefore = true;
       }
@@ -375,6 +510,25 @@ export const analyzeStory = ({
             ));
       if (alignment !== null) {
         block.alignment = alignment;
+      }
+      // A list the paragraph names itself gives its level's indent over
+      // the style's; a list the style brings is part of the style, whose
+      // own indent then stands over the level's.
+      const ofLevel =
+        (label.numbering === null
+          ? undefined
+          : resources.levelIndents?.get(
+              levelKey(label.numbering.abstractNumId, label.numbering.ilvl),
+            )) ?? NO_INDENT;
+      const ofStyle = modelIndent(style?.pPr);
+      const ofDefaults = resources.defaultIndent ?? NO_INDENT;
+      const indent =
+        read.numPr === undefined
+          ? indentInEffect(read.indent, ofStyle, ofLevel, ofDefaults)
+          : indentInEffect(read.indent, ofLevel, ofStyle, ofDefaults);
+      // An indent counted in characters cannot be said in this unit.
+      if (indent !== null && !read.indentInCharacters) {
+        block.indent = indent;
       }
       index += 1;
       const parent = tables.at(-1);
@@ -719,6 +873,8 @@ export const analyzeDocument = async (
             null,
           numbering,
           alignments: statedAlignments(stylesPath, stylesXml),
+          levelIndents: statedLevelIndents(numberingPath, numberingXml),
+          defaultIndent: statedDefaultIndent(stylesPath, stylesXml),
         },
       });
       const footnotes = analyzeNotes("footnotes", footnotesPath, footnotesXml);

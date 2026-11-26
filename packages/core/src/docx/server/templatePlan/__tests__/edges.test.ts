@@ -34,6 +34,52 @@ describe("innerRangeOf", () => {
 });
 
 describe("applyTemplatePlan edge content", () => {
+  test("carries a field that numbers itself as the field it is", async () => {
+    const template = await buildTemplate();
+    const number =
+      '<w:r><w:rPr><w:b/></w:rPr><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:rPr><w:b/></w:rPr><w:instrText xml:space="preserve"> AUTONUMLGL  \\* Arabic \\e </w:instrText></w:r><w:r><w:rPr><w:b/></w:rPr><w:fldChar w:fldCharType="end"/></w:r>';
+    const source = await buildMinimalDocx(
+      [
+        p(`${r("Annex ")}${number}${r(" - Summary")}`),
+        p(`${r("Annex ")}<w:fldSimple w:instr=" AUTONUM "/>${r(" - Lists")}`),
+      ].join(""),
+    );
+    // The manifest says where the numbers stand that its text does not hold.
+    expect(
+      unwrap(await analyzeDocxBlocks(source)).blocks.map(
+        ({ text, selfNumbers }) => [text, selfNumbers],
+      ),
+    ).toEqual([
+      ["Annex  - Summary", [6]],
+      ["Annex  - Lists", [6]],
+    ]);
+    const plan = await planFor({
+      source,
+      template,
+      items: (blocks) =>
+        blocks.map(({ id, hash }) => ({
+          kind: "source" as const,
+          blockId: id,
+          hash,
+          styleId: "HouseBody",
+        })),
+    });
+    const { docx, report } = unwrap(
+      await applyTemplatePlan({ source, template, plan }),
+    );
+    const document = (await readPart(docx, "word/document.xml")) ?? "";
+
+    expect(report.ok).toBe(true);
+    // The number the field prints is in no cached text: the field is kept.
+    expect(document).toContain(
+      '<w:r><w:rPr><w:b/></w:rPr><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:rPr><w:b/></w:rPr><w:instrText xml:space="preserve"> AUTONUMLGL  \\* Arabic \\e </w:instrText></w:r><w:r><w:rPr><w:b/></w:rPr><w:fldChar w:fldCharType="end"/></w:r>',
+    );
+    expect(document).toContain(
+      '<w:instrText xml:space="preserve"> AUTONUM </w:instrText>',
+    );
+    expect(report.dropped.sourceFields).toEqual([]);
+  });
+
   test("carries symbols, hyphens and breaks, and strips a label after leading space", async () => {
     const template = await buildTemplate();
     const source = await buildMinimalDocx(

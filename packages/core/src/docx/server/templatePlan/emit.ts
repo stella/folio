@@ -449,6 +449,21 @@ const pieceRunXml = (
           : `<${w}:r><${w}:rPr><${w}:rStyle ${w}:val="${escapeXmlAttribute(style)}"/></${w}:rPr>${mark}</${w}:r>`,
       );
     }
+    case "selfNumber": {
+      const instruction = piece.atom?.instruction;
+      // The field is written whole: it holds no result to write in its place.
+      return Result.ok(
+        instruction === undefined
+          ? ""
+          : [
+              `<${w}:fldChar ${w}:fldCharType="begin"/>`,
+              `<${w}:instrText xml:space="preserve"> ${escapeXmlText(instruction)} </${w}:instrText>`,
+              `<${w}:fldChar ${w}:fldCharType="end"/>`,
+            ]
+              .map((content) => run(content))
+              .join(""),
+      );
+    }
     case "object": {
       const transferred = transferObject(piece, context);
       if (Result.isError(transferred)) {
@@ -622,8 +637,11 @@ export const paragraphXml = (
   if (styleId !== null) {
     properties.push(`<${w}:pStyle ${w}:val="${escapeXmlAttribute(styleId)}"/>`);
   }
-  // `w:pPr` keeps its children in schema order: the page start stands
-  // between the style and the list.
+  // `w:pPr` keeps its children in schema order: keeping with the next
+  // paragraph and the page start stand between the style and the list.
+  if (emit.paragraph.keepNext) {
+    properties.push(`<${w}:keepNext/>`);
+  }
   if (emit.paragraph.pageBreakBefore) {
     properties.push(`<${w}:pageBreakBefore/>`);
   }
@@ -635,6 +653,21 @@ export const paragraphXml = (
     properties.push(
       `<${w}:numPr><${w}:numId ${w}:val="${NO_LIST_NUM_ID}"/></${w}:numPr>`,
     );
+  }
+  // Tab stops follow the list and stand in front of the indent.
+  const { indent, tabStops } = emit.paragraph;
+  if (tabStops !== null) {
+    const stops = tabStops
+      .map((stop) => `<${w}:tab ${w}:val="left" ${w}:pos="${String(stop)}"/>`)
+      .join("");
+    properties.push(`<${w}:tabs>${stops}</${w}:tabs>`);
+  }
+  if (indent !== null) {
+    const sides = (["left", "hanging", "firstLine"] as const)
+      .filter((side) => indent[side] !== undefined)
+      .map((side) => ` ${w}:${side}="${String(indent[side])}"`)
+      .join("");
+    properties.push(`<${w}:ind${sides}/>`);
   }
   // A section's properties close the paragraph's.
   if (emit.sectionXml !== null) {
@@ -680,6 +713,32 @@ const ROW_PROPERTIES = [
   "tblHeader",
 ] as const;
 const CELL_SPAN_PROPERTIES = ["tcW", "gridSpan", "hMerge", "vMerge"] as const;
+/** What a cell's fill states by itself; a theme colour is the template's. */
+const SHADING_KEPT = ["val", "color", "fill"] as const;
+
+/**
+ * The fill of a cell as its own colours state it. A theme colour would be
+ * read from the template's theme, which is another one; a fill stated by a
+ * theme colour alone is left out.
+ */
+const cellShadingXml = (
+  properties: XmlElement | null,
+  prefix: string,
+): string => {
+  const shading = wChild(properties, "shd");
+  const fill = wAttr(shading, "fill");
+  if (shading === null || fill === null || fill === "auto") {
+    return "";
+  }
+  const kept = SHADING_KEPT.map((name) => [name, wAttr(shading, name)] as const)
+    .filter(([, value]) => value !== null)
+    .map(
+      ([name, value]) =>
+        ` ${prefix}:${name}="${escapeXmlAttribute(value ?? "")}"`,
+    )
+    .join("");
+  return `<${prefix}:shd${kept}/>`;
+};
 
 const keptChildrenXml = (
   properties: XmlElement | null,
@@ -703,7 +762,8 @@ export type TableEmit = {
 /**
  * A source table rebuilt: its grid, spans and merges, with every cell
  * paragraph placed like a body paragraph. Without a template table style the
- * source's borders are kept so the grid stays visible.
+ * source's borders are kept so the grid stays visible, and the fill of its
+ * cells with them: a header row, the colours of a legend.
  */
 export const tableXml = (
   { table, styleId, paragraphOf }: TableEmit,
@@ -738,7 +798,7 @@ export const tableXml = (
       const name = wName(child);
       if (name === "tc") {
         const cellProperties = wChild(child, "tcPr");
-        const kept = `${keptChildrenXml(cellProperties, CELL_SPAN_PROPERTIES, w)}${styleId === null ? keptChildrenXml(cellProperties, ["tcBorders"], w) : ""}${keptChildrenXml(cellProperties, ["vAlign"], w)}`;
+        const kept = `${keptChildrenXml(cellProperties, CELL_SPAN_PROPERTIES, w)}${styleId === null ? `${keptChildrenXml(cellProperties, ["tcBorders"], w)}${cellShadingXml(cellProperties, w)}` : ""}${keptChildrenXml(cellProperties, ["vAlign"], w)}`;
         const blocks = blocksXml(child);
         if (Result.isError(blocks)) {
           return blocks;

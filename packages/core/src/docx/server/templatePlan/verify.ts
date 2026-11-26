@@ -83,6 +83,7 @@ import {
   type AtomLink,
   createStoryState,
   endStory,
+  isSelfNumberingField,
   type ParagraphRead,
   readParagraph,
   type StoryField,
@@ -155,12 +156,14 @@ type ContentUnit = {
   signature: string;
   link: string;
   element: XmlElement | null;
+  /** The code of a self-numbering field, or null. */
+  instruction: string | null;
   origin: StoryOrigin;
 };
 
 const appendUnit = (
   content: Content,
-  { kind, text, signature, link, element, origin }: ContentUnit,
+  { kind, text, signature, link, element, instruction, origin }: ContentUnit,
   resources: StoryResources,
 ): void => {
   content.text += text;
@@ -173,6 +176,8 @@ const appendUnit = (
   const at = content.text.length - text.length;
   if (kind === "pageBreak") {
     content.marks.push(`${at}:break:${wAttr(element, "type") ?? "page"}`);
+  } else if (kind === "selfNumber") {
+    content.marks.push(`${at}:number:${instruction ?? ""}`);
   } else if (kind === "object" && element !== null) {
     content.marks.push(
       `${at}:object:${objectFingerprint(element)}:${objectTargets(element, origin, resources).join(",")}`,
@@ -204,6 +209,7 @@ const expectedContent = (
           linkAddress(piece.link, resources.relationships[piece.origin]),
         ),
         element: piece.atom?.element ?? null,
+        instruction: piece.atom?.instruction ?? null,
         origin: piece.origin,
       },
       resources,
@@ -260,6 +266,7 @@ const outputContent = ({
             : `${stated};rStyle=${styleId}`,
         link,
         element: atom.element,
+        instruction: atom.instruction ?? null,
         origin,
       },
       resources,
@@ -438,18 +445,69 @@ type StatedProperties = {
   numId: number | null;
   ilvl: number | null;
   pageBreakBefore: boolean;
+  keepNext: boolean;
+  /** The paragraph's own indent as `left:hanging:firstLine` in twentieths
+   *  of a point, a side it does not state left empty, followed by the
+   *  sides it counts in characters, as written; null without an indent of
+   *  its own. */
+  indent: string | null;
+  /** The paragraph's own tab stops as `kind@position` in twentieths of a
+   *  point, in the order written; null without stops of its own. */
+  tabStops: string | null;
   endsSection: boolean;
 };
+
+const tabStopsKey = (tabs: XmlElement | null): string | null =>
+  tabs === null
+    ? null
+    : wChildren(tabs, "tab")
+        .map(
+          (tab) =>
+            `${wAttr(tab, "val") ?? ""}@${String(twipsOrNull(wAttr(tab, "pos")) ?? wAttr(tab, "pos"))}${wAttr(tab, "leader") === null ? "" : `;${wAttr(tab, "leader") ?? ""}`}`,
+        )
+        .join(",");
+
+const indentKey = (
+  left: number | null | undefined,
+  hanging: number | null | undefined,
+  firstLine: number | null | undefined,
+): string => [left, hanging, firstLine].map((side) => side ?? "").join(":");
+
+/** The sides of an indent counted in characters: they override the
+ *  measured ones, so a paragraph that states one is another paragraph. */
+const CHARACTER_INDENTS = [
+  "leftChars",
+  "startChars",
+  "hangingChars",
+  "firstLineChars",
+] as const;
+
+const characterIndentKey = (indent: XmlElement): string =>
+  CHARACTER_INDENTS.flatMap((name) => {
+    const value = wAttr(indent, name);
+    return value === null ? [] : [`;${name}=${value}`];
+  }).join("");
 
 const statedProperties = (paragraph: XmlElement): StatedProperties => {
   const properties = wChild(paragraph, "pPr");
   const numbering = wChild(properties, "numPr");
+  const indent = wChild(properties, "ind");
   return {
     styleId: wChildVal(properties, "pStyle"),
     numId: integerOrNull(wChildVal(numbering, "numId")),
     ilvl: integerOrNull(wChildVal(numbering, "ilvl")),
     // An element that is there and switched off starts no page.
     pageBreakBefore: toggleOf(wChild(properties, "pageBreakBefore")) === true,
+    keepNext: toggleOf(wChild(properties, "keepNext")) === true,
+    indent:
+      indent === null
+        ? null
+        : `${indentKey(
+            twipsOrNull(wAttr(indent, "left") ?? wAttr(indent, "start")),
+            twipsOrNull(wAttr(indent, "hanging")),
+            twipsOrNull(wAttr(indent, "firstLine")),
+          )}${characterIndentKey(indent)}`,
+    tabStops: tabStopsKey(wChild(properties, "tabs")),
     endsSection: wChild(properties, "sectPr") !== null,
   };
 };
@@ -562,14 +620,29 @@ export const reportTemplatePlanOutput = async ({
     if (slot !== undefined) {
       return statedProperties(slot.element);
     }
-    const { styleId, numbering, pageBreakBefore } = paragraph;
+    const { styleId, numbering, pageBreakBefore, keepNext } = paragraph;
     const endsSection = paragraph.endsSection !== null;
+    const indent =
+      paragraph.indent === null
+        ? null
+        : indentKey(
+            paragraph.indent.left,
+            paragraph.indent.hanging,
+            paragraph.indent.firstLine,
+          );
+    const tabStops =
+      paragraph.tabStops === null
+        ? null
+        : paragraph.tabStops.map((stop) => `left@${String(stop)}`).join(",");
     if (numbering.kind === "direct") {
       return {
         styleId,
         numId: numbering.numId,
         ilvl: numbering.ilvl,
         pageBreakBefore,
+        keepNext,
+        indent,
+        tabStops,
         endsSection,
       };
     }
@@ -585,6 +658,9 @@ export const reportTemplatePlanOutput = async ({
       numId: cancelsList ? 0 : null,
       ilvl: null,
       pageBreakBefore,
+      keepNext,
+      indent,
+      tabStops,
       endsSection,
     };
   };
@@ -613,6 +689,17 @@ export const reportTemplatePlanOutput = async ({
         message: planned.pageBreakBefore
           ? `Block ${blockId} does not start the new page the plan gives it.`
           : `Block ${blockId} starts a new page the plan does not give it.`,
+        blockId,
+      });
+    }
+    if (
+      stated.keepNext !== planned.keepNext ||
+      stated.indent !== planned.indent ||
+      stated.tabStops !== planned.tabStops
+    ) {
+      issues.push({
+        code: "paragraph-format-mismatch",
+        message: `Block ${blockId} does not carry the keep-with-next, the indent or the tab stops the plan gives it.`,
         blockId,
       });
     }
@@ -759,6 +846,9 @@ export const reportTemplatePlanOutput = async ({
             return (
               before.styleId === after.styleId &&
               before.pageBreakBefore === after.pageBreakBefore &&
+              before.keepNext === after.keepNext &&
+              before.indent === after.indent &&
+              before.tabStops === after.tabStops &&
               before.endsSection === after.endsSection &&
               before.numId === after.numId &&
               before.ilvl === after.ilvl &&
@@ -1826,8 +1916,13 @@ export const reportTemplatePlanOutput = async ({
   for (const read of placedReads) {
     for (const index of read.fieldIndices) {
       const field = source.story.state.fields[index];
-      // A HYPERLINK field with an address is carried over as a link.
-      if (field !== undefined && hyperlinkFieldLink(field) === null) {
+      // A HYPERLINK field with an address is carried over as a link, a
+      // field that numbers itself as the field it is.
+      if (
+        field !== undefined &&
+        hyperlinkFieldLink(field) === null &&
+        !isSelfNumberingField(field.kind)
+      ) {
         droppedFields.set(field.kind, (droppedFields.get(field.kind) ?? 0) + 1);
       }
     }

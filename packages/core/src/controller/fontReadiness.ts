@@ -184,6 +184,14 @@ export type LayoutFontFace = {
 type FontFaceResolutionContext = {
   fontAlternates: FontAlternates;
   documentFontFacts: DocumentFontFacts | undefined;
+  /**
+   * The families each authored family name stands for (itself, its alternate
+   * and its resolved stack), resolved once per name. A document repeats a
+   * few names over thousands of runs, and resolving a stack parses it.
+   */
+  resolvedFamilies: Map<string, readonly string[]>;
+  /** The family and descriptor requests already collected. */
+  requested: Set<string>;
 };
 
 /**
@@ -242,11 +250,23 @@ export function collectLayoutText(
   pmDoc: EditorState["doc"],
 ): string {
   const characters = new Set<string>([" "]);
+  // A long document repeats a small alphabet: each BMP code unit is looked up
+  // in a table and reaches the set once.
+  const seenUnits = new Uint8Array(0x1_00_00);
+  seenUnits[0x20] = 1;
   const addText = (text: string) => {
-    for (const character of text) {
-      if (character >= " ") {
-        characters.add(character);
+    for (let index = 0; index < text.length; index += 1) {
+      const unit = text.charCodeAt(index);
+      if (isHighSurrogate(unit) && isLowSurrogate(text.charCodeAt(index + 1))) {
+        characters.add(text.slice(index, index + 2));
+        index += 1;
+        continue;
       }
+      if (unit < 0x20 || seenUnits[unit] === 1) {
+        continue;
+      }
+      seenUnits[unit] = 1;
+      characters.add(String.fromCharCode(unit));
     }
   };
 
@@ -291,6 +311,8 @@ export function collectInitialLayoutFontFaces(
   const resolution: FontFaceResolutionContext = {
     fontAlternates: buildFontAlternates(documentModel?.package.fontTable),
     documentFontFacts: buildDocumentFontFacts(documentModel?.package.fontTable),
+    resolvedFamilies: new Map(),
+    requested: new Set(),
   };
   addLayoutFontFamilyFace({
     faces,
@@ -487,17 +509,15 @@ function addLayoutFontFamilyFace({
   faces,
   value,
   descriptor,
-  fontAlternates,
-  documentFontFacts,
   complexScriptDescriptor = descriptor,
+  ...resolution
 }: AddLayoutFontFamilyFaceOptions): void {
   if (typeof value === "string") {
     addLayoutFontFamilyNameFace({
       faces,
       family: value,
       descriptor,
-      fontAlternates,
-      documentFontFacts,
+      ...resolution,
     });
     return;
   }
@@ -521,29 +541,25 @@ function addLayoutFontFamilyFace({
     faces,
     value: fontFamily.ascii,
     descriptor,
-    fontAlternates,
-    documentFontFacts,
+    ...resolution,
   });
   addLayoutFontFamilyFace({
     faces,
     value: fontFamily.hAnsi,
     descriptor,
-    fontAlternates,
-    documentFontFacts,
+    ...resolution,
   });
   addLayoutFontFamilyFace({
     faces,
     value: fontFamily.cs,
     descriptor: complexScriptDescriptor,
-    fontAlternates,
-    documentFontFacts,
+    ...resolution,
   });
   addLayoutFontFamilyFace({
     faces,
     value: fontFamily.eastAsia,
     descriptor,
-    fontAlternates,
-    documentFontFacts,
+    ...resolution,
   });
 }
 
@@ -557,36 +573,59 @@ function addLayoutFontFamilyNameFace({
   faces,
   family,
   descriptor,
-  fontAlternates,
-  documentFontFacts,
+  ...resolution
 }: AddLayoutFontFamilyNameFaceOptions): void {
-  const normalized = family.trim();
-  if (!normalized || CSS_GENERIC_FONT_FAMILIES.has(normalized)) {
+  const request = `${family}|${descriptor.style}|${descriptor.weight}`;
+  if (resolution.requested.has(request)) {
     return;
   }
-
-  addLayoutFontFace(faces, normalized, descriptor);
-  const alternate = getFontAlternate(normalized, fontAlternates);
-  if (alternate) {
-    addLayoutFontFace(faces, alternate, descriptor);
+  resolution.requested.add(request);
+  for (const resolved of resolveLayoutFamilies(family, resolution)) {
+    addLayoutFontFace(faces, resolved, descriptor);
   }
+}
 
-  // Wait for the whole stack the renderer will actually use, not just the name
-  // the document wrote. `resolveFontFamily` appends folio's bundled substitutes
-  // and a script fallback, so an authored "Arial" run paints its Arabic in the
-  // bundled Arabic face. Collecting only authored names meant the gate released
-  // the first layout before that face had loaded, and measurement taken against
-  // the pre-load fallback disagreed with what was ultimately painted.
-  //
-  // Derived rather than listed: a hand-kept table of substitutes would be a
-  // second copy of the resolver's mapping, free to drift from it.
-  for (const stackFamily of resolvedStackFamilies({
-    family: normalized,
-    alternate,
-    documentFontFacts,
-  })) {
-    addLayoutFontFace(faces, stackFamily, descriptor);
+/**
+ * The families an authored name loads: the name, its alternate and the stack
+ * the renderer resolves it to, or none for a blank or generic name.
+ */
+function resolveLayoutFamilies(
+  family: string,
+  resolution: FontFaceResolutionContext,
+): readonly string[] {
+  const known = resolution.resolvedFamilies.get(family);
+  if (known !== undefined) {
+    return known;
   }
+  const normalized = family.trim();
+  const resolved: string[] = [];
+  if (normalized && !CSS_GENERIC_FONT_FAMILIES.has(normalized)) {
+    resolved.push(normalized);
+    const alternate = getFontAlternate(normalized, resolution.fontAlternates);
+    if (alternate) {
+      resolved.push(alternate);
+    }
+
+    // Wait for the whole stack the renderer will actually use, not just the
+    // name the document wrote. `resolveFontFamily` appends folio's bundled
+    // substitutes and a script fallback, so an authored "Arial" run paints its
+    // Arabic in the bundled Arabic face. Collecting only authored names meant
+    // the gate released the first layout before that face had loaded, and
+    // measurement taken against the pre-load fallback disagreed with what was
+    // ultimately painted.
+    //
+    // Derived rather than listed: a hand-kept table of substitutes would be a
+    // second copy of the resolver's mapping, free to drift from it.
+    resolved.push(
+      ...resolvedStackFamilies({
+        family: normalized,
+        alternate,
+        documentFontFacts: resolution.documentFontFacts,
+      }),
+    );
+  }
+  resolution.resolvedFamilies.set(family, resolved);
+  return resolved;
 }
 
 /**
@@ -625,6 +664,12 @@ function addLayoutFontFace(
     ...descriptor,
   });
 }
+
+const isHighSurrogate = (unit: number): boolean =>
+  unit >= 0xd8_00 && unit <= 0xdb_ff;
+
+const isLowSurrogate = (unit: number): boolean =>
+  unit >= 0xdc_00 && unit <= 0xdf_ff;
 
 function escapeCssFontFamily(family: string): string {
   return family.replace(/\\/gu, "\\\\").replace(/"/gu, '\\"');

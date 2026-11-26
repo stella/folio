@@ -145,6 +145,53 @@ const sectionIssue = (section: unknown, where: string): string | null => {
     : `${where} describes malformed page margins.`;
 };
 
+const INDENT_KEYS: ReadonlySet<string> = new Set([
+  "left",
+  "hanging",
+  "firstLine",
+]);
+/** The widest indent a plan may state: the widest page WordprocessingML allows. */
+const MAX_INDENT = 31_680;
+
+/**
+ * Whether `value` is an indent a plan may state: at least one of
+ * `left`, `hanging` and `firstLine`, each a whole number of twentieths of a
+ * point, and not both a hanging and a first-line indent.
+ */
+const isIndent = (value: unknown): boolean => {
+  if (!isObject(value)) {
+    return false;
+  }
+  const keys = Object.keys(value);
+  return (
+    keys.length > 0 &&
+    keys.every(
+      (key) =>
+        INDENT_KEYS.has(key) && isCount(value[key]) && value[key] <= MAX_INDENT,
+    ) &&
+    !(value["hanging"] !== undefined && value["firstLine"] !== undefined)
+  );
+};
+
+/** The most tab stops a plan may give one paragraph. */
+const MAX_TAB_STOPS = 8;
+
+/**
+ * Whether `value` is a list of tab stops a plan may state: one to eight
+ * whole numbers of twentieths of a point, above zero and ascending.
+ */
+const isTabStops = (value: unknown): boolean =>
+  Array.isArray(value) &&
+  value.length > 0 &&
+  value.length <= MAX_TAB_STOPS &&
+  value.every(
+    (stop, index) =>
+      isCount(stop) &&
+      stop > 0 &&
+      stop <= MAX_INDENT &&
+      (index === 0 || stop > value[index - 1]),
+  );
+
 const sourceItemIssue = (item: Json, where: string): string | null => {
   if (!isString(item["blockId"]) || !isString(item["hash"])) {
     return `${where} names no source block and hash.`;
@@ -157,11 +204,18 @@ const sourceItemIssue = (item: Json, where: string): string | null => {
   for (const key of [
     "labelAsText",
     "pageBreakBefore",
+    "keepNext",
     "stripLabelBreak",
   ] as const) {
     if (!isOptionalBoolean(item[key])) {
       return `${where} carries a malformed ${key}.`;
     }
+  }
+  if (item["indent"] !== undefined && !isIndent(item["indent"])) {
+    return `${where} carries a malformed indent.`;
+  }
+  if (item["tabStops"] !== undefined && !isTabStops(item["tabStops"])) {
+    return `${where} carries malformed tab stops.`;
   }
   const merge = item["mergeNext"];
   if (merge !== undefined && !(isString(merge) && MERGES.has(merge))) {
@@ -194,7 +248,10 @@ const sourceItemIssue = (item: Json, where: string): string | null => {
     if (
       !isOptionalString(entry["styleId"]) ||
       !isOptionalString(entry["stripLabel"]) ||
-      !isOptionalBoolean(entry["labelAsText"])
+      !isOptionalBoolean(entry["labelAsText"]) ||
+      !isOptionalBoolean(entry["keepNext"]) ||
+      (entry["indent"] !== undefined && !isIndent(entry["indent"])) ||
+      (entry["tabStops"] !== undefined && !isTabStops(entry["tabStops"]))
     ) {
       return `${where} carries a malformed nested placement.`;
     }
@@ -265,34 +322,6 @@ const omitIssue = (omit: unknown): string | null => {
   return null;
 };
 
-const INDENT_KEYS: ReadonlySet<string> = new Set([
-  "left",
-  "hanging",
-  "firstLine",
-]);
-/** The widest indent a patch may state: the widest page WordprocessingML allows. */
-const MAX_INDENT = 31_680;
-
-/**
- * Whether `value` is a level indent a patch may state: at least one of
- * `left`, `hanging` and `firstLine`, each a whole number of twentieths of a
- * point, and not both a hanging and a first-line indent.
- */
-const isLevelIndent = (value: unknown): boolean => {
-  if (!isObject(value)) {
-    return false;
-  }
-  const keys = Object.keys(value);
-  return (
-    keys.length > 0 &&
-    keys.every(
-      (key) =>
-        INDENT_KEYS.has(key) && isCount(value[key]) && value[key] <= MAX_INDENT,
-    ) &&
-    !(value["hanging"] !== undefined && value["firstLine"] !== undefined)
-  );
-};
-
 const patchesIssue = (patches: unknown): string | null => {
   if (patches === undefined) {
     return null;
@@ -322,7 +351,7 @@ const patchesIssue = (patches: unknown): string | null => {
       (lvlText !== undefined && !(isString(lvlText) && isPlainText(lvlText))) ||
       (start !== undefined && !isCount(start)) ||
       (suff !== undefined && !(isString(suff) && SUFFIXES.has(suff))) ||
-      (indent !== undefined && !isLevelIndent(indent))
+      (indent !== undefined && !isIndent(indent))
     ) {
       return "A numbering patch carries a malformed value.";
     }

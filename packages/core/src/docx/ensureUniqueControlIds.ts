@@ -82,6 +82,72 @@ const controlIdsIn = (xml: string): ControlId[] | undefined => {
   return scanned.status === "scanned" ? out : undefined;
 };
 
+/** Part texts that renumber repeated ids, and how many they renumber. */
+export type PackageControlIdUpdates = {
+  /** The rewritten text of each part that repeats an id, by path. */
+  updates: Map<string, string>;
+  reminted: number;
+};
+
+/** The story parts of `paths`, the body first, then the rest in a fixed order. */
+const storyPartsInOrder = (paths: Iterable<string>): string[] =>
+  [...paths]
+    .filter((path) => STORY_PART_PATTERN.test(path))
+    .sort((a, b) => {
+      const body = (path: string) =>
+        path.toLowerCase() === "word/document.xml" ? 0 : 1;
+      return body(a) - body(b) || a.localeCompare(b);
+    });
+
+/**
+ * The part texts that give each content control after the first carrying an
+ * id an id of its own; `undefined` when a part does not scan, since it may
+ * hold ids a new one would repeat. The body's controls win the
+ * first-occurrence rule.
+ */
+export const uniqueControlIdUpdates = (
+  partTexts: ReadonlyMap<string, string>,
+): PackageControlIdUpdates | undefined => {
+  const ids = new Map<string, ControlId[]>();
+  const taken = new Set<number>();
+  for (const path of storyPartsInOrder(partTexts.keys())) {
+    // SAFETY: the path is a key of `partTexts`
+    const xml = partTexts.get(path)!;
+    if (!xml.includes("sdtPr")) continue;
+    const found = controlIdsIn(xml);
+    if (found === undefined) return undefined;
+    ids.set(path, found);
+    for (const { value } of found) taken.add(value);
+  }
+  let next = 1;
+  const fresh = (): number => {
+    while (taken.has(next)) next += 1;
+    taken.add(next);
+    return next;
+  };
+  const seen = new Set<number>();
+  const updates = new Map<string, string>();
+  let reminted = 0;
+  for (const [path, found] of ids) {
+    const edits: { start: number; end: number; newXml: string }[] = [];
+    for (const { start, end, value, inFallback } of found) {
+      if (inFallback) continue;
+      if (!seen.has(value)) {
+        seen.add(value);
+        continue;
+      }
+      edits.push({ start, end, newXml: String(fresh()) });
+    }
+    if (edits.length === 0) continue;
+    // SAFETY: every path in `ids` is a key of `partTexts`
+    const patched = spliceXml(partTexts.get(path)!, edits);
+    if (patched === null) continue;
+    updates.set(path, patched);
+    reminted += edits.length;
+  }
+  return { updates, reminted };
+};
+
 export type EnsureUniqueControlIdsResult = {
   /** The normalized `.docx`; the input bytes when nothing repeated. */
   docx: Uint8Array;
@@ -104,56 +170,17 @@ export const ensureUniqueControlIds = async (
     )
   )
     return { docx, reminted: 0 };
-  // The body first, so its controls win the first-occurrence rule, then the
-  // other story parts in a fixed order.
-  const parts = entries
-    .map(({ path }) => path)
-    .filter((path) => STORY_PART_PATTERN.test(path))
-    .sort((a, b) => {
-      const body = (path: string) =>
-        path.toLowerCase() === "word/document.xml" ? 0 : 1;
-      return body(a) - body(b) || a.localeCompare(b);
-    });
   const texts = new Map<string, string>();
-  const ids = new Map<string, ControlId[]>();
-  const taken = new Set<number>();
-  for (const path of parts) {
+  for (const path of storyPartsInOrder(entries.map((entry) => entry.path))) {
     // oxlint-disable-next-line no-await-in-loop -- parts are read one at a time in a fixed order
     const xml = await zip.entry(path)?.text();
-    if (xml === undefined || !xml.includes("sdtPr")) continue;
-    const found = controlIdsIn(xml);
-    // A part the scanner cannot read may hold ids a new one would repeat.
-    if (found === undefined) return { docx, reminted: 0 };
-    texts.set(path, xml);
-    ids.set(path, found);
-    for (const { value } of found) taken.add(value);
+    if (xml !== undefined) texts.set(path, xml);
   }
-  let next = 1;
-  const fresh = (): number => {
-    while (taken.has(next)) next += 1;
-    taken.add(next);
-    return next;
-  };
-  const seen = new Set<number>();
-  let reminted = 0;
-  for (const [path, found] of ids) {
-    const edits: { start: number; end: number; newXml: string }[] = [];
-    for (const { start, end, value, inFallback } of found) {
-      if (inFallback) continue;
-      if (!seen.has(value)) {
-        seen.add(value);
-        continue;
-      }
-      edits.push({ start, end, newXml: String(fresh()) });
-    }
-    if (edits.length === 0) continue;
-    // SAFETY: every path in `ids` has its text in `texts`
-    const patched = spliceXml(texts.get(path)!, edits);
-    if (patched === null) continue;
+  const found = uniqueControlIdUpdates(texts);
+  if (found === undefined || found.reminted === 0) return { docx, reminted: 0 };
+  for (const [path, patched] of found.updates) {
     const source = zip.entry(path);
     zip.set(path, patched, source ? { modified: source.modified } : {});
-    reminted += edits.length;
   }
-  if (reminted === 0) return { docx, reminted };
-  return { docx: await zip.generate({ level: 6 }), reminted };
+  return { docx: await zip.generate({ level: 6 }), reminted: found.reminted };
 };

@@ -165,7 +165,7 @@ describe("column operations on a table whose file states no widths", () => {
         ...run,
         skipped: ["unsupportedBlock"],
         messages: ["Tracked column edits require an explicit previous grid."],
-        refusals: [{ gap: CANONICAL_GAP.publicUnsupportedInline }],
+        refusals: [{ gap: CANONICAL_GAP.trackedTableStructure }],
       };
     };
     await expect(
