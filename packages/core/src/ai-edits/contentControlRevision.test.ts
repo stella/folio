@@ -21,12 +21,12 @@ import type { EditorView } from "prosemirror-view";
 
 import { ZipArchive } from "@stll/docx-core/zip";
 
-import { createSuggestionModePlugin } from "../__tests__/reference-editor/suggestionMode";
-import { RELATIONSHIP_TYPES } from "../docx/relsParser";
 import {
   acceptAllChanges,
   rejectAllChanges,
-} from "../prosemirror/commands/comments";
+} from "../__tests__/reference-editor/comments";
+import { createSuggestionModePlugin } from "../__tests__/reference-editor/suggestionMode";
+import { RELATIONSHIP_TYPES } from "../docx/relsParser";
 import { createContentControlWidgetsPlugin } from "../prosemirror/plugins/contentControlWidgets";
 import { schema } from "../prosemirror/schema";
 import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";

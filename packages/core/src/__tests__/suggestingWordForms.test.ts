@@ -17,7 +17,6 @@ import {
 import { ZipArchive } from "@stll/docx-core/zip";
 
 import { expectParagraphAttrs } from "../prosemirror/attrs";
-import { acceptAIEditRevision } from "../prosemirror/commands/comments";
 import type { Document } from "../types/document";
 import {
   createHarnessState,
@@ -29,6 +28,7 @@ import {
   textblocks,
 } from "./editorHarness";
 import type { EditorMode } from "./editorHarness";
+import { acceptAIEditRevision } from "./reference-editor/comments";
 import { deleteSelectionAsSuggestion } from "./reference-editor/suggestionMode";
 
 const reference = JSON.parse(

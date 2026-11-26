@@ -3,6 +3,10 @@ import { EditorState } from "prosemirror-state";
 
 import { ZipArchive } from "@stll/docx-core/zip";
 
+import {
+  acceptAIEditRevision,
+  rejectAIEditRevision,
+} from "../__tests__/reference-editor/comments";
 import { createDocx } from "../docx/rezip";
 import {
   getAttributeByNamespaceUri,
@@ -10,10 +14,6 @@ import {
   getLocalName,
   parseXmlDocument,
 } from "../docx/xmlParser";
-import {
-  acceptAIEditRevision,
-  rejectAIEditRevision,
-} from "../prosemirror/commands/comments";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { BlockContent, Paragraph, Table } from "../types/document";

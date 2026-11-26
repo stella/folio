@@ -38,8 +38,8 @@ import {
   textBlocksOf,
 } from "../../compare/inline-atoms";
 import { addTrackedDeletionMark } from "../../prosemirror/addTrackedDeletionMark";
-import { resolveAllChangesInHeadlessStateWithMapping } from "../../prosemirror/commands/comments";
 import { mintNoteReferenceOccurrenceId } from "../../prosemirror/noteReferenceOccurrences";
+import { resolveAllChangesInHeadlessStateWithMapping } from "./comments";
 
 export type MatchInlineAtomsOptions = {
   state: EditorState;

@@ -16,7 +16,7 @@ import {
   rejectAIEditRevision,
   rejectAllChanges,
   rejectChange,
-} from "./comments";
+} from "../../__tests__/reference-editor/comments";
 
 const schema = new Schema({
   nodes: {

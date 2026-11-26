@@ -10,9 +10,9 @@ import { Step } from "prosemirror-transform";
 
 import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 
+import { pluginsForHeadlessRevisionResolution } from "../../__tests__/reference-editor/headlessRevisionResolutionGuard";
 import { parseDocx } from "../../docx/parser";
 import { createDocx } from "../../docx/rezip";
-import { pluginsForHeadlessRevisionResolution } from "../../internal/headlessRevisionResolutionGuard";
 import type {
   BlockContent,
   Document,

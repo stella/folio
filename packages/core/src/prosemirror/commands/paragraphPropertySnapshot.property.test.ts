@@ -7,6 +7,10 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../../test/property-testing";
+import {
+  acceptChange,
+  rejectChange,
+} from "../../__tests__/reference-editor/comments";
 import { paragraphFormattingWithAuthoredIndentation } from "../../docx/paragraphPropertySource";
 import { parseDocx } from "../../docx/parser";
 import { createDocx } from "../../docx/rezip";
@@ -21,7 +25,6 @@ import {
   withDirectParagraphIndentation,
 } from "../paragraphIndentation";
 import { createDocumentStylesPlugin } from "../plugins/documentStyles";
-import { acceptChange, rejectChange } from "./comments";
 import { paragraphPropertiesSnapshot } from "./propertyChangeScope";
 
 const distance = fc.option(

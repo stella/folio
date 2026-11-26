@@ -11,10 +11,14 @@ import type { Node as PMNode } from "prosemirror-model";
 import type { Command } from "prosemirror-state";
 import { EditorState } from "prosemirror-state";
 
+import {
+  acceptSuggestion,
+  getSuggestions,
+  rejectSuggestion,
+} from "../../__tests__/reference-editor/comments";
 import type { Document, Table } from "../../types/document";
 import { fromProseDoc } from "../conversion/fromProseDoc";
 import { schema } from "../schema";
-import { acceptSuggestion, getSuggestions, rejectSuggestion } from "./comments";
 
 const DATE = "2026-07-17T00:00:00.000Z";
 

@@ -91,7 +91,7 @@ export function truncateText(text: string, maxLength = 50): string {
 export type TrackedChangeEntry = CoreTrackedChangeEntry & {
   /**
    * Whether a content control's lock keeps the change from being accepted or
-   * rejected (see `lockHeldRevisions`): the card's buttons are disabled then.
+   * rejected under the canonical review rules. Disable the corresponding buttons.
    */
   heldByLock?: { accept: boolean; reject: boolean };
 };

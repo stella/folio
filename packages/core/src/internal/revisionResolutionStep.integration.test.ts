@@ -13,7 +13,7 @@ import {
   acceptAllChanges,
   rejectAllChanges,
   rejectChange,
-} from "../prosemirror/commands/comments";
+} from "../__tests__/reference-editor/comments";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { expectRangeAnchorAttrs } from "../prosemirror/rangeAnchorAttrs";

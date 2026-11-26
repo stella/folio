@@ -3,13 +3,11 @@ import type { Mark, Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 import { Transform } from "prosemirror-transform";
 
-import { pluginsForHeadlessRevisionResolution } from "../../internal/headlessRevisionResolutionGuard";
 import { addTrackedDeletionMark } from "../../prosemirror/addTrackedDeletionMark";
 import {
   expectFootnoteRefMarkAttrs,
   expectParagraphAttrs,
 } from "../../prosemirror/attrs";
-import { rejectAIEditRevision } from "../../prosemirror/commands/comments";
 import { proseDocToBlocks } from "../../prosemirror/conversion/fromProseDoc";
 import { footnoteToProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import {
@@ -21,6 +19,8 @@ import { createDocumentStylesPlugin } from "../../prosemirror/plugins/documentSt
 import { mintRevisionId } from "../../prosemirror/plugins/revisionIds";
 import { schema, singletonManager } from "../../prosemirror/schema";
 import type { Document, Endnote, Footnote } from "../../types/document";
+import { rejectAIEditRevision } from "./comments";
+import { pluginsForHeadlessRevisionResolution } from "./headlessRevisionResolutionGuard";
 
 type NoteKind = "footnote" | "endnote";
 const noteKey = (kind: NoteKind, id: number): NoteKey => `${kind}:${id}`;

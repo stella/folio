@@ -18,7 +18,7 @@ import {
   acceptAllChanges,
   rejectAIEditRevision,
   rejectAllChanges,
-} from "../prosemirror/commands/comments";
+} from "../__tests__/reference-editor/comments";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { extractTrackedChanges } from "../prosemirror/utils/extractTrackedChanges";
 import type { Document, InlineSdt, Paragraph } from "../types/document";

@@ -6,8 +6,6 @@ import { EditorState, type Transaction } from "prosemirror-state";
 import { paragraphNumberingReferenceId } from "@stll/docx-core/model";
 
 import { applyFolioAIEditOperations } from "../__tests__/reference-editor/apply";
-import { createDocx } from "../docx/rezip";
-import { expectParagraphAttrs } from "../prosemirror/attrs";
 import {
   acceptAIEditRevision,
   acceptAllChanges,
@@ -15,7 +13,9 @@ import {
   getSuggestions,
   rejectAIEditRevision,
   rejectAllChanges,
-} from "../prosemirror/commands/comments";
+} from "../__tests__/reference-editor/comments";
+import { createDocx } from "../docx/rezip";
+import { expectParagraphAttrs } from "../prosemirror/attrs";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document, ParagraphFormatting } from "../types/document";

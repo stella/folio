@@ -3,8 +3,8 @@ import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 
+import { rejectChange } from "../../__tests__/reference-editor/comments";
 import { schema } from "../schema";
-import { rejectChange } from "./comments";
 
 const insertedParagraphMark = {
   kind: "ins",

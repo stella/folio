@@ -5,7 +5,7 @@
  * to our core primitives:
  *   - id allocation:      commentIdAllocator (createCommentIdAllocator, seed)
  *   - comment factory:    commentOps.createComment(allocator, ...)
- *   - accept / reject:    revision-scoped acceptAIEditRevision / rejectAIEditRevision
+ *   - accept / reject:    revision-scoped canonical review
  *                         (by-id path) or range-based acceptChange / rejectChange
  *                         (raw selection path)
  *

@@ -3,7 +3,7 @@
  *
  * Single source of truth shared by every place that must swap a run's live
  * formatting back to a previously recorded set: rejecting a `runPropertyChange`
- * (commands/comments.ts) and stripping a *suggested* `runPropertyChange` at the
+ * (the reference editor) and stripping a *suggested* `runPropertyChange` at the
  * serialization boundary (conversion/fromProseDoc.ts). Keeping one list makes
  * it structurally impossible for the two paths to drift and let a formatting
  * mark survive a revert.

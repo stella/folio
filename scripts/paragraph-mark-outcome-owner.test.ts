@@ -13,7 +13,7 @@ const EXPECTED_CALLS = new Map([
   ["packages/docx-core/src/ops/blockDeletion.ts", 1],
   ["packages/core/src/internal/wholeStoryRevisionResolution.ts", 1],
   ["packages/core/src/prosemirror/tableRunIn.ts", 1],
-  ["packages/core/src/prosemirror/commands/comments.ts", 1],
+  ["packages/core/src/__tests__/reference-editor/comments.ts", 1],
 ]);
 
 const readSource = (file: string): string =>
@@ -62,10 +62,10 @@ test("a caller that replaces the shared decision is rejected", () => {
     ]),
   );
   sources.set(
-    "packages/core/src/prosemirror/commands/comments.ts",
+    "packages/core/src/__tests__/reference-editor/comments.ts",
     "const remove = true;",
   );
   expect(violations(sources)).toEqual([
-    "packages/core/src/prosemirror/commands/comments.ts",
+    "packages/core/src/__tests__/reference-editor/comments.ts",
   ]);
 });

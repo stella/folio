@@ -7,6 +7,7 @@
 import { App } from 'vue';
 import { CanonicalHistoryDrop } from '@stll/folio-core/canonical/canonicalSession';
 import { CanonicalHistoryEffect } from '@stll/folio-core/canonical/canonicalSession';
+import { CanonicalReviewEditor } from '@stll/folio-core/controller/canonicalReview';
 import { CanonicalRoomCollaboration } from '@stll/folio-core/controller/canonicalRoomEditor';
 import { CellCoordinates } from '@stll/folio-core/managers/types';
 import { ClipboardSelection } from '@stll/folio-core/managers/ClipboardManager';
@@ -344,7 +345,7 @@ export type UseTableSelectionReturn = {
 };
 
 // @public
-export function useTrackedChanges(view: Ref<EditorView | null>, stateTick: Ref<number>): ComputedRef<TrackedChangesResult & {
+export function useTrackedChanges(view: Ref<EditorView | null>, stateTick: Ref<number>, editor?: CanonicalReviewEditor): ComputedRef<TrackedChangesResult & {
 entries: TrackedChangeEntry[];
 }>;
 

@@ -16,6 +16,14 @@ import {
   propertyTestTimeout,
 } from "../../../../../test/property-testing";
 import {
+  acceptAllChanges,
+  acceptChange,
+  rejectAllChanges,
+  rejectChange,
+  resolveAllChangesInHeadlessState,
+} from "../../__tests__/reference-editor/comments";
+import { pluginsForHeadlessRevisionResolution } from "../../__tests__/reference-editor/headlessRevisionResolutionGuard";
+import {
   getChangedParagraphIds,
   hasStructuralChanges,
   hasUntrackedChanges,
@@ -25,7 +33,6 @@ import { FolioDocxReviewer } from "../../ai-edits/headless";
 import type { FolioAIBlock, FolioAIParagraphBlock } from "../../ai-edits/types";
 import { parseDocx } from "../../docx/parser";
 import { createDocx, createEmptyDocx, repackDocx } from "../../docx/rezip";
-import { pluginsForHeadlessRevisionResolution } from "../../internal/headlessRevisionResolutionGuard";
 import type {
   Document,
   HeaderFooter,
@@ -39,13 +46,6 @@ import { fromProseDoc } from "../conversion/fromProseDoc";
 import { toProseDoc } from "../conversion/toProseDoc";
 import { createDocumentStylesPlugin } from "../plugins/documentStyles";
 import { schema } from "../schema";
-import {
-  acceptAllChanges,
-  acceptChange,
-  rejectAllChanges,
-  rejectChange,
-  resolveAllChangesInHeadlessState,
-} from "./comments";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 

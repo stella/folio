@@ -10,6 +10,11 @@ import { describe, expect, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 
+import {
+  acceptChange,
+  rejectAIEditRevision,
+  rejectChange,
+} from "../../__tests__/reference-editor/comments";
 import type {
   Document,
   Paragraph,
@@ -29,7 +34,6 @@ import {
 import { readAuthoredRunFormatting } from "../runFormattingReconciliation";
 import { paragraphRunStyleContext } from "../runStyleFormatting";
 import { sectionBreakTypeOf } from "../sectionCarrier";
-import { acceptChange, rejectAIEditRevision, rejectChange } from "./comments";
 
 const CHANGE_INFO = {
   id: 42,

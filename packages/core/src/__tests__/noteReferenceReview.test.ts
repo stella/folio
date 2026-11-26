@@ -21,10 +21,6 @@ import { FolioDocxReviewer } from "../ai-edits/headless";
 import { serializeCanonicalSave } from "../docx/canonicalSave";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { referencedHeaderFooters } from "../docx/unreferencedHeaderFooters";
-import {
-  acceptAIEditRevision,
-  rejectAIEditRevision,
-} from "../prosemirror/commands/comments";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { footnoteToProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { markupViewNotes } from "../prosemirror/markupViewNotes";
@@ -34,6 +30,10 @@ import {
 } from "../prosemirror/noteReferenceReview";
 import type { Document } from "../types/document";
 import { createHarnessState, parseShapeDocument } from "./editorHarness";
+import {
+  acceptAIEditRevision,
+  rejectAIEditRevision,
+} from "./reference-editor/comments";
 import {
   createNoteReferenceFollower,
   noteReferencesRestored,

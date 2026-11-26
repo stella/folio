@@ -18,14 +18,14 @@ import { EditorState } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 
 import { applyFolioAIEditOperations } from "../__tests__/reference-editor/apply";
-import { serializeParagraph } from "../docx/serializer/paragraphSerializer";
 import {
   acceptAllChanges,
   acceptSuggestion,
   getSuggestions,
   rejectSuggestion,
   resolveAllChangesInHeadlessState,
-} from "../prosemirror/commands/comments";
+} from "../__tests__/reference-editor/comments";
+import { serializeParagraph } from "../docx/serializer/paragraphSerializer";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { schema } from "../prosemirror/schema";
 import type { Document, Paragraph } from "../types/document";

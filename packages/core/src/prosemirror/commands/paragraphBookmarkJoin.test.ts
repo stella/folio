@@ -2,8 +2,11 @@ import { expect, test } from "bun:test";
 import { type Command, EditorState, type Transaction } from "prosemirror-state";
 import { Step } from "prosemirror-transform";
 
+import {
+  acceptAllChanges,
+  acceptChange,
+} from "../../__tests__/reference-editor/comments";
 import { schema } from "../schema";
-import { acceptAllChanges, acceptChange } from "./comments";
 
 const boundary = (type: "start" | "end", id: number) =>
   schema.node("blockBookmarkBoundary", {

@@ -19,7 +19,7 @@ import { describe, expect, test } from "bun:test";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 
-import { pluginsForHeadlessRevisionResolution } from "../../internal/headlessRevisionResolutionGuard";
+import { pluginsForHeadlessRevisionResolution } from "../../__tests__/reference-editor/headlessRevisionResolutionGuard";
 import type {
   Document,
   InlineSdt,
