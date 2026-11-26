@@ -1876,6 +1876,7 @@ const canonicalProjectionAuthorization = (
     transaction.doc.eq(authorization.doc)
   )
     return authorization;
+  return undefined;
 };
 
 /** Metadata is descriptive; transaction identity and session version authorize mutations. */
