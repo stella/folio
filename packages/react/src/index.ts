@@ -39,44 +39,8 @@ export {
   FormattingBar,
   type FormattingBarProps,
 } from "./components/FormattingBar";
-export {
-  FindReplaceDialog,
-  FootnotePropertiesDialog,
-  HyperlinkDialog,
-  ImagePositionDialog,
-  ImagePropertiesDialog,
-  InsertImageDialog,
-  InsertSymbolDialog,
-  InsertTableDialog,
-  PageSetupDialog,
-  PasteSpecialDialog,
-  SplitCellDialog,
-  TablePropertiesDialog,
-  WatermarkDialog,
-  type FindReplaceDialogProps,
-  type FootnotePropertiesDialogProps,
-  type HyperlinkBookmarkOption,
-  type HyperlinkDialogData,
-  type HyperlinkDialogProps,
-  type ImagePositionData,
-  type ImagePositionDialogProps,
-  type ImagePropertiesData,
-  type ImagePropertiesDialogProps,
-  type InsertImageDialogData,
-  type InsertImageDialogProps,
-  type InsertSymbolDialogProps,
-  type InsertTableDialogData,
-  type InsertTableDialogProps,
-  type InsertTableStyleOption,
-  type PageSetupDialogProps,
-  type PasteSpecialDialogProps,
-  type PasteSpecialMode,
-  type SplitCellDialogData,
-  type SplitCellDialogProps,
-  type TableProperties,
-  type TablePropertiesDialogProps,
-  type WatermarkDialogProps,
-} from "./dialogs";
+// Dialogs are public from the `./dialogs` subpath only. A root re-export would
+// keep the editor's lazily loaded dialogs in a bundler's startup chunk.
 // View-level insert operations — consumers wire these into the toolbar's
 // `onInsert*` handlers (the Insert group renders only when a handler is passed).
 export {

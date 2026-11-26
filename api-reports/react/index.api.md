@@ -59,7 +59,6 @@ import { EditorMode } from '@stll/folio-core/managers/EditorModeManager';
 import { EditorReadOnlyReason } from '@stll/folio-core/managers/EditorModeManager';
 import { EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
-import { EndnoteProperties } from '@stll/folio-core/types/document';
 import { extractDocumentStyleSet } from '@stll/folio-core/style-sets/extract';
 import { extractDocumentStyleSetFromDocx } from '@stll/folio-core/style-sets/extract';
 import { ExtractDocumentStyleSetOptions } from '@stll/folio-core/style-sets/extract';
@@ -103,7 +102,6 @@ import { FolioSaveOptions } from '@stll/folio-core/controller/folioEditor';
 import { FolioSelectiveSaveFlags } from '@stll/folio-core/docx/selectiveSaveFlags';
 import { FolioSuggestion } from '@stll/folio-core/prosemirror/commands/comments';
 import { FolioUndefinedReferencePolicy } from '@stll/folio-core/ai-edits';
-import { FootnoteProperties } from '@stll/folio-core/types/document';
 import { ForwardRefExoticComponent } from 'react';
 import { fromMarkdown } from '@stll/folio-core/markdown';
 import { getDocumentWatermark } from '@stll/folio-core/watermark';
@@ -157,7 +155,6 @@ import { scanDirectives } from '@stll/folio-core/prosemirror/plugins/templateDir
 import { scrollFolioPositionIntoView } from '@stll/folio-core/paged-layout/scrollToPmPosition';
 import { ScrollToParaIdOptions } from '@stll/folio-core/paged-layout/paragraphFlash';
 import { SdtProperties } from '@stll/folio-core/types/document';
-import { SectionProperties } from '@stll/folio-core/types/document';
 import { Select } from '@base-ui/react/select';
 import { SelectionState } from '@stll/folio-core/prosemirror';
 import { setActiveCitationMeta } from '@stll/folio-core/prosemirror/plugins/aiCitationDecorations';
@@ -173,7 +170,6 @@ import { Style } from '@stll/folio-core/types/document';
 import { SuggestionAppliedAs } from '@stll/folio-core/prosemirror/commands/comments';
 import { SuggestionKind } from '@stll/folio-core/prosemirror/commands/comments';
 import { TableAction } from '@stll/folio-core/utils/tableOperations';
-import { TablePropertiesCommand } from '@stll/folio-core/utils/tableOperations';
 import { TemplatePreviewHiddenRange } from '@stll/folio-core/prosemirror/plugins/templatePreviewValues';
 import { TemplatePreviewSpan } from '@stll/folio-core/prosemirror/plugins/templatePreviewValues';
 import { TemplatePreviewValue } from '@stll/folio-core/prosemirror/plugins/templatePreviewValues';
@@ -523,32 +519,6 @@ export { FindMatch }
 
 export { FindOptions }
 
-// @public
-export function FindReplaceDialog(props: FindReplaceDialogProps): React_2.ReactElement | null;
-
-// @public
-export type FindReplaceDialogProps = {
-    isOpen: boolean;
-    onClose: () => void;
-    onFind: (searchText: string, options: FindOptions) => FindResult | null;
-    onQueryChange?: (searchText: string, options: FindOptions) => void;
-    onFindNext: () => FindMatch | null;
-    onFindPrevious: () => FindMatch | null;
-    onReplace: (replaceText: string) => boolean;
-    onReplaceAll: (searchText: string, replaceText: string, options: FindOptions) => ReplaceAllSummary;
-    readOnly?: boolean;
-    onHighlightMatches?: (matches: FindMatch[]) => void;
-    onClearHighlights?: () => void;
-    initialSearchText?: string;
-    replaceMode?: boolean;
-    currentSearch?: {
-        queryKey: string;
-        result: FindResult;
-    } | null;
-    className?: string;
-    style?: CSSProperties;
-};
-
 export { FindResult }
 
 export { FolioAIBlock }
@@ -641,18 +611,6 @@ export type FontOption = {
 };
 
 // @public (undocumented)
-export function FootnotePropertiesDialog(input: FootnotePropertiesDialogProps): JSX.Element;
-
-// @public (undocumented)
-export type FootnotePropertiesDialogProps = {
-    isOpen: boolean;
-    onClose: () => void;
-    onApply: (footnoteProps: FootnoteProperties, endnoteProps: EndnoteProperties) => void;
-    footnotePr?: DeepReadonly<FootnoteProperties>;
-    endnotePr?: DeepReadonly<EndnoteProperties>;
-};
-
-// @public (undocumented)
 export function FormattingBar(props: FormattingBarProps): React_2.JSX.Element;
 
 // @public (undocumented)
@@ -695,148 +653,17 @@ export type HighlightPassageOptions = {
 // @public
 export type HighlightPassageResult = "passage" | "block" | "none";
 
-// @public (undocumented)
-export type HyperlinkBookmarkOption = {
-    name: string;
-    label?: string;
-};
-
-// @public (undocumented)
-export function HyperlinkDialog(props: HyperlinkDialogProps): JSX.Element | null;
-
-// @public (undocumented)
-export type HyperlinkDialogData = {
-    href: string;
-    displayText: string;
-    tooltip?: string;
-};
-
-// @public (undocumented)
-export type HyperlinkDialogProps = {
-    isOpen: boolean;
-    onClose: () => void;
-    onSubmit: (data: HyperlinkDialogData) => void;
-    onRemove?: () => void;
-    currentData?: Partial<HyperlinkDialogData>;
-    selectedText?: string;
-    bookmarks?: readonly HyperlinkBookmarkOption[];
-};
-
 export { ImageMeta }
 
-// @public (undocumented)
-export type ImagePositionData = {
-    horizontal?: {
-        relativeTo?: string;
-        posOffset?: number;
-        align?: string;
-    };
-    vertical?: {
-        relativeTo?: string;
-        posOffset?: number;
-        align?: string;
-    };
-    distTop?: number;
-    distBottom?: number;
-    distLeft?: number;
-    distRight?: number;
-};
-
-// @public (undocumented)
-export function ImagePositionDialog(props: ImagePositionDialogProps): JSX.Element | null;
-
-// @public (undocumented)
-export type ImagePositionDialogProps = {
-    isOpen: boolean;
-    onClose: () => void;
-    onApply: (data: ImagePositionData) => void;
-    currentData?: ImagePositionData;
-};
-
-// @public (undocumented)
-export type ImagePropertiesData = {
-    alt?: string;
-    borderWidth?: number;
-    borderColor?: string;
-    borderStyle?: string;
-};
-
-// @public (undocumented)
-export function ImagePropertiesDialog(props: ImagePropertiesDialogProps): JSX.Element | null;
-
-// @public (undocumented)
-export type ImagePropertiesDialogProps = {
-    isOpen: boolean;
-    onClose: () => void;
-    onApply: (data: ImagePropertiesData) => void;
-    currentData?: ImagePropertiesData;
-};
-
 export { ImageRef }
-
-// @public (undocumented)
-export function InsertImageDialog(props: InsertImageDialogProps): JSX.Element | null;
-
-// @public (undocumented)
-export type InsertImageDialogData = {
-    file: File;
-    alt?: string;
-    width?: number;
-    height?: number;
-};
-
-// @public (undocumented)
-export type InsertImageDialogProps = {
-    isOpen: boolean;
-    onClose: () => void;
-    onInsert: (data: InsertImageDialogData) => void;
-    accept?: string;
-};
 
 export { insertImageFromFile }
 
 export { insertPageBreakInView }
 
-// @public (undocumented)
-export function InsertSymbolDialog(input: InsertSymbolDialogProps): JSX.Element;
-
-// @public (undocumented)
-export type InsertSymbolDialogProps = {
-    isOpen: boolean;
-    onClose: () => void;
-    onInsert: (symbol: string) => void;
-};
-
-// @public (undocumented)
-export function InsertTableDialog(props: InsertTableDialogProps): JSX.Element | null;
-
-// @public (undocumented)
-export type InsertTableDialogData = {
-    rows: number;
-    columns: number;
-    autofit: boolean;
-    styleId?: string;
-};
-
-// @public (undocumented)
-export type InsertTableDialogProps = {
-    isOpen: boolean;
-    onClose: () => void;
-    onInsert: (data: InsertTableDialogData) => void;
-    defaultRows?: number;
-    defaultColumns?: number;
-    styleOptions?: readonly InsertTableStyleOption[];
-};
-
 export { insertTableInView }
 
 export { insertTableOfContentsInView }
-
-// @public (undocumented)
-export type InsertTableStyleOption = {
-    id: string;
-    name: string;
-};
 
 export { inspectDocumentStyles }
 
@@ -867,33 +694,8 @@ export type OutlineItem = {
     color?: string;
 };
 
-// @public (undocumented)
-export function PageSetupDialog(props: PageSetupDialogProps): JSX.Element | null;
-
-// @public (undocumented)
-export type PageSetupDialogProps = {
-    isOpen: boolean;
-    onClose: () => void;
-    onApply: (props: Partial<SectionProperties>) => void;
-    currentProps?: DeepReadonly<SectionProperties>;
-};
-
 // @public
 export function parseZoom(zoomString: string): number | null;
-
-// @public (undocumented)
-export function PasteSpecialDialog(props: PasteSpecialDialogProps): JSX.Element | null;
-
-// @public (undocumented)
-export type PasteSpecialDialogProps = {
-    isOpen: boolean;
-    onClose: () => void;
-    onPaste: (mode: PasteSpecialMode) => void;
-    defaultMode?: PasteSpecialMode;
-};
-
-// @public (undocumented)
-export type PasteSpecialMode = "keepFormatting" | "mergeFormatting" | "plainText";
 
 export { PictureWatermark }
 
@@ -937,44 +739,11 @@ export { setFocusedSuggestionMeta }
 
 export { setTemplatePreviewValues }
 
-// @public (undocumented)
-export function SplitCellDialog(props: SplitCellDialogProps): JSX.Element | null;
-
-// @public (undocumented)
-export type SplitCellDialogData = {
-    rows: number;
-    columns: number;
-    mergeBeforeSplit: boolean;
-};
-
-// @public (undocumented)
-export type SplitCellDialogProps = {
-    isOpen: boolean;
-    onClose: () => void;
-    onSplit: (data: SplitCellDialogData) => void;
-    defaultRows?: number;
-    defaultColumns?: number;
-};
-
 export { STELLA_STYLE_SET_NAME }
 
 export { SuggestionAppliedAs }
 
 export { SuggestionKind }
-
-// @public (undocumented)
-export type TableProperties = TablePropertiesCommand;
-
-// @public (undocumented)
-export function TablePropertiesDialog(props: TablePropertiesDialogProps): JSX.Element | null;
-
-// @public (undocumented)
-export type TablePropertiesDialogProps = {
-    isOpen: boolean;
-    onClose: () => void;
-    onApply: (props: TableProperties) => void;
-    currentProps?: TableProperties;
-};
 
 export { TemplatePreviewHiddenRange }
 
@@ -1031,17 +800,6 @@ export type UseWheelZoomReturn = {
 };
 
 export { Watermark }
-
-// @public (undocumented)
-export function WatermarkDialog(props: WatermarkDialogProps): JSX.Element | null;
-
-// @public (undocumented)
-export type WatermarkDialogProps = {
-    isOpen: boolean;
-    onClose: () => void;
-    onApply: (watermark: Watermark | undefined) => void;
-    currentWatermark?: Watermark;
-};
 
 export { WordDiffSegment }
 

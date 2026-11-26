@@ -20,14 +20,13 @@ import {
   DIALOG_TITLE_CLASS,
   useCloseOnDialogOpenChange,
 } from "./dialogChrome";
+import { getRecentSymbols, rememberRecentSymbol } from "./recentSymbols";
 
 export type InsertSymbolDialogProps = {
   isOpen: boolean;
   onClose: () => void;
   onInsert: (symbol: string) => void;
 };
-
-const RECENT_LIMIT = 10;
 
 /** Format a character as its `U+XXXX` code point label. */
 function codePointLabel(char: string): string {
@@ -51,7 +50,7 @@ export function InsertSymbolDialog({
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("Common");
   const [selectedSymbol, setSelectedSymbol] = useState("");
-  const [recentSymbols, setRecentSymbols] = useState<string[]>([]);
+  const [recentSymbols, setRecentSymbols] = useState(getRecentSymbols);
 
   const activeSymbols: SymbolSearchEntry[] = search
     ? filterSymbols(search)
@@ -65,9 +64,7 @@ export function InsertSymbolDialog({
     if (!symbol) {
       return;
     }
-    setRecentSymbols((prev) =>
-      [symbol, ...prev.filter((s) => s !== symbol)].slice(0, RECENT_LIMIT),
-    );
+    setRecentSymbols(rememberRecentSymbol(symbol));
     onInsert(symbol);
   };
 

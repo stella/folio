@@ -26,6 +26,7 @@ import { HyperlinkDialog } from "./HyperlinkDialog";
 import { ImagePositionDialog } from "./ImagePositionDialog";
 import { ImagePropertiesDialog } from "./ImagePropertiesDialog";
 import { InsertImageDialog } from "./InsertImageDialog";
+import { InsertSymbolDialog } from "./InsertSymbolDialog";
 import { InsertTableDialog } from "./InsertTableDialog";
 import { PageSetupDialog } from "./PageSetupDialog";
 import { PasteSpecialDialog } from "./PasteSpecialDialog";
@@ -680,4 +681,37 @@ test("popup resets edit mode when the link changes and after closing", async () 
   await act(async () => root.unmount());
   anchorEl.remove();
   container.remove();
+});
+
+test("recent symbols persist after the editor unmounts the symbol dialog", async () => {
+  const container = document.createElement("div");
+  const onInsert = mock((_symbol: string) => {});
+  const symbolDialog = (
+    <InsertSymbolDialog isOpen onClose={noop} onInsert={onInsert} />
+  );
+  const recentSymbols = () => {
+    const label = Array.from(container.querySelectorAll("span")).find(
+      (span) => span.textContent === "Recent",
+    );
+    return Array.from(
+      label?.parentElement?.querySelectorAll("button") ?? [],
+      (button) => button.textContent,
+    );
+  };
+  let root = createRoot(container);
+  await act(async () => root.render(wrap(symbolDialog)));
+  expect(recentSymbols()).toEqual([]);
+  const symbol = container.querySelector<HTMLButtonElement>(".grid button");
+  await act(async () => {
+    symbol?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+  });
+  const inserted = onInsert.mock.calls.map(([char]) => char);
+  expect(inserted).toEqual([symbol?.textContent ?? ""]);
+  await act(async () => root.unmount());
+
+  // The editor mounts a new dialog on the next opening.
+  root = createRoot(container);
+  await act(async () => root.render(wrap(symbolDialog)));
+  expect(recentSymbols()).toEqual(inserted);
+  await act(async () => root.unmount());
 });
