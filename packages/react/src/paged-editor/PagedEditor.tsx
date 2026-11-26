@@ -1,5 +1,7 @@
 import React, {
   forwardRef,
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -280,7 +282,6 @@ import type {
   HiddenProseMirrorRemoteSelection,
 } from "./HiddenProseMirror";
 import { type FontDefinition, loadHostFontFaces } from "./hostFonts";
-import { ImageSelectionOverlay } from "./ImageSelectionOverlay";
 import type { ImageSelectionInfo } from "./ImageSelectionOverlay";
 import { PassageHighlightOverlay } from "./PassageHighlightOverlay";
 import {
@@ -297,6 +298,12 @@ import { useVisualLineNavigation } from "./useVisualLineNavigation";
 // =============================================================================
 // TYPES
 // =============================================================================
+
+const ImageSelectionOverlay = lazy(() =>
+  import("./ImageSelectionOverlay").then(
+    ({ ImageSelectionOverlay: Overlay }) => ({ default: Overlay }),
+  ),
+);
 
 /**
  * A change to the editor's document. `model` is the editor's document model:
@@ -1975,6 +1982,8 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     // Image selection state
     const [selectedImageInfo, setSelectedImageInfo] =
       useEqualState<ImageSelectionInfo | null>(null);
+    // Keep the overlay mounted after the first selection so gestures can finish.
+    const [imageOverlayRequested, setImageOverlayRequested] = useState(false);
     const isImageInteractingRef = useRef(false);
 
     /** Build ImageSelectionInfo from a DOM element with data-pm-start */
@@ -3705,6 +3714,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
               ? findBodyPmAnchor(pagesContainerRef.current, pmPos)
               : null;
             if (imgEl) {
+              setImageOverlayRequested(true);
               setSelectedImageInfo(buildImageSelectionInfo(imgEl, pmPos));
               return;
             }
@@ -4438,6 +4448,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
               } else {
                 queueHiddenEditorSelection({ type: "node", pos });
               }
+              setImageOverlayRequested(true);
               setSelectedImageInfo(buildImageSelectionInfo(imageEl, pos));
               setSelectionRects([]);
               setCaretPosition(null);
@@ -6817,18 +6828,20 @@ export const PagedEditor: React.ForwardRefExoticComponent<
               ))}
 
             {/* Image selection overlay */}
-            {!readOnly && (
-              <ImageSelectionOverlay
-                imageInfo={selectedImageInfo}
-                zoom={zoom}
-                isFocused={isFocused}
-                onResize={handleImageResize}
-                onResizeStart={handleImageResizeStart}
-                onResizeEnd={handleImageResizeEnd}
-                onDragMove={handleImageDragMove}
-                onDragStart={handleImageDragStart}
-                onDragEnd={handleImageDragEnd}
-              />
+            {!readOnly && imageOverlayRequested && (
+              <Suspense fallback={null}>
+                <ImageSelectionOverlay
+                  imageInfo={selectedImageInfo}
+                  zoom={zoom}
+                  isFocused={isFocused}
+                  onResize={handleImageResize}
+                  onResizeStart={handleImageResizeStart}
+                  onResizeEnd={handleImageResizeEnd}
+                  onDragMove={handleImageDragMove}
+                  onDragStart={handleImageDragStart}
+                  onDragEnd={handleImageDragEnd}
+                />
+              </Suspense>
             )}
 
             {/* Table quick action insert button */}

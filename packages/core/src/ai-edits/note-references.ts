@@ -194,7 +194,7 @@ let comparisonEditsNoteReferences = false;
  * Only a document comparison does this. Its operations come from a revised
  * document that adds and removes references, so refusing them would drop the
  * edit; each marker it writes is turned back into the reference the revised
- * document holds once the operations land (`compare/inline-atoms.ts`), and a
+ * document holds once the operations land (`compare/inline-atoms-model.ts`), and a
  * removed reference is a tracked deletion of the reference itself. Every other
  * caller keeps the protection. The scope is synchronous, like the applier.
  */

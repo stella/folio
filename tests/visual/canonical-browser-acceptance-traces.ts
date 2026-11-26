@@ -97,7 +97,7 @@ type SourceRefusal = Pick<
 
 const unsupportedInlineSource = {
   name: "CanonicalSessionError",
-  ground: { gap: CANONICAL_GAP.dispatch },
+  ground: { gap: CANONICAL_GAP.storyContentProjection },
   reason: "refused",
   message:
     "Canonical sessions currently require plain paragraphs and supported inline atoms.",
@@ -105,7 +105,7 @@ const unsupportedInlineSource = {
 
 const unexpectedTableRefusal = {
   name: "CanonicalSessionError",
-  ground: { gap: CANONICAL_GAP.dispatch },
+  ground: { gap: CANONICAL_GAP.storyContentProjection },
   reason: "refused",
   message: "Canonical table acceptance unexpectedly refused.",
 } as const satisfies SourceRefusal;

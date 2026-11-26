@@ -16,6 +16,7 @@ import type { EditorView } from "prosemirror-view";
 import { splitsSurrogatePair } from "../ai-edits/character-boundaries";
 import { CanonicalSessionError } from "../canonical/canonicalSession";
 import {
+  CANONICAL_CONDITION,
   CANONICAL_GAP,
   type CanonicalRefusalGround,
 } from "../types/canonicalCapabilities";
@@ -39,7 +40,7 @@ type CompositionOptions = {
     semantic: "composition";
     compositionPhase?: "correction";
   }) => void;
-  refuse: (reason: string, ground?: CanonicalRefusalGround) => void;
+  refuse: (reason: string, ground: CanonicalRefusalGround) => void;
   /**
    * The view shows provisional composition text, or the baseline again, that
    * no commit published: it needs a layout pass but changes no document.
@@ -425,7 +426,7 @@ export const createCanonicalComposition = (
       try: () => view.state.applyTransaction(transaction),
       catch: (cause) =>
         new CanonicalSessionError({
-          ground: { gap: CANONICAL_GAP.dispatch },
+          ground: { condition: CANONICAL_CONDITION.internal },
           reason: "refused",
           message: `Composition projection failed: ${String(cause)}`,
         }),
@@ -690,6 +691,7 @@ export const createCanonicalComposition = (
             applied.isErr()
               ? applied.error.message
               : "Final composition changed unsupported content; the canonical document was restored.",
+            applied.isErr() ? applied.error.ground : UNSUPPORTED_COMPOSITION,
           );
           return true;
         }
@@ -740,7 +742,9 @@ export const createCanonicalComposition = (
         typeof transaction.getMeta("composition") !== "number" &&
         authorizedNativeState !== view.state
       ) {
-        options.refuse("Other edits must wait until composition finishes.");
+        options.refuse("Other edits must wait until composition finishes.", {
+          condition: CANONICAL_CONDITION.composing,
+        });
         return true;
       }
       authorizedNativeState = null;
@@ -754,7 +758,7 @@ export const createCanonicalComposition = (
           phase: state.phase,
           text: selectedText(state.baseline, transaction),
         };
-        options.refuse(applied.error.message);
+        options.refuse(applied.error.message, applied.error.ground);
         return true;
       }
       // Validate the entire proposal against one plain replacement, including plugin output.

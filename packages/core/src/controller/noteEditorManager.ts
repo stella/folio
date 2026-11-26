@@ -13,12 +13,10 @@ import {
   createNativeNavigationPlugin,
   createNativeSelectionRefreshPlugin,
 } from "../prosemirror/nativeSelection";
-import { noteReferenceTransactionIssue } from "../prosemirror/noteReferenceOccurrences";
 import { createDocumentNumberingPlugin } from "../prosemirror/plugins/documentNumbering";
 import { createDocumentStyleContextPlugin } from "../prosemirror/plugins/documentStyles";
 import {
   CANONICAL_CONDITION,
-  CANONICAL_GAP,
   type CanonicalRefusalGround,
 } from "../types/canonicalCapabilities";
 import type {
@@ -188,7 +186,6 @@ export const createNoteEditorManager = (
         story: { kind: storyKey.kind, id: storyKey.noteId },
         getView: () => view,
         getApi: () => deps.getCanonicalApi?.() ?? null,
-        enabled: () => true,
         onRefusal: deps.onSessionRefusal,
         onSelectionChange: () =>
           deps.onTransaction?.({
@@ -221,23 +218,7 @@ export const createNoteEditorManager = (
           ],
         }),
         dispatchTransaction(transaction) {
-          if (canonical.dispatch(transaction)) return;
-          const nextState = view.state.apply(transaction);
-          const docChanged = !nextState.doc.eq(view.state.doc);
-          view.updateState(nextState);
-          const noteIssue = noteReferenceTransactionIssue(transaction);
-          if (noteIssue)
-            deps.onSessionRefusal?.(
-              noteIssue.message,
-              { gap: CANONICAL_GAP.dispatch },
-              noteIssue,
-            );
-          deps.onTransaction?.({
-            ...storyKey,
-            docChanged,
-            selectionChanged: transaction.selectionSet,
-            view,
-          });
+          canonical.dispatch(transaction);
         },
       });
       mounted.set(key, { mountNode, note: storyKey, view });

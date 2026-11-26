@@ -16,12 +16,10 @@ import {
   createNativeNavigationPlugin,
   createNativeSelectionRefreshPlugin,
 } from "../prosemirror/nativeSelection";
-import { noteReferenceTransactionIssue } from "../prosemirror/noteReferenceOccurrences";
 import { createDocumentNumberingPlugin } from "../prosemirror/plugins/documentNumbering";
 import { createDocumentStyleContextPlugin } from "../prosemirror/plugins/documentStyles";
 import {
   CANONICAL_CONDITION,
-  CANONICAL_GAP,
   type CanonicalRefusalGround,
 } from "../types/canonicalCapabilities";
 import type {
@@ -224,7 +222,6 @@ export const createHeaderFooterEditorManager = (
         story: { kind: part.kind, rId: part.rId },
         getView: () => view,
         getApi: () => deps.getCanonicalApi?.() ?? null,
-        enabled: () => true,
         onRefusal: deps.onSessionRefusal,
         onSelectionChange: () =>
           deps.onTransaction?.({
@@ -258,24 +255,7 @@ export const createHeaderFooterEditorManager = (
         }),
         dispatchTransaction(transaction) {
           if ((deps.getReadOnly?.() ?? false) && transaction.docChanged) return;
-          if (canonical.dispatch(transaction)) return;
-          const nextState = view.state.apply(transaction);
-          const docChanged = !nextState.doc.eq(view.state.doc);
-          const noteIssue = noteReferenceTransactionIssue(transaction);
-          if (noteIssue)
-            deps.onSessionRefusal?.(
-              noteIssue.message,
-              { gap: CANONICAL_GAP.dispatch },
-              noteIssue,
-            );
-          view.updateState(nextState);
-          deps.onTransaction?.({
-            docChanged,
-            kind: part.kind,
-            rId: part.rId,
-            selectionChanged: transaction.selectionSet,
-            view,
-          });
+          canonical.dispatch(transaction);
         },
       });
 

@@ -211,6 +211,7 @@ import {
 import type { OutlineDepth } from "@stll/folio-core/utils/outlineDepth";
 import { resolveOutlineHeadings } from "@stll/folio-core/utils/outlineHeadings";
 import { paintedStartSelector } from "@stll/folio-core/utils/paintedPositions";
+import { HORIZONTAL_RULER_HEIGHT_PX } from "@stll/folio-core/utils/rulerControl";
 import type { TableAction } from "@stll/folio-core/utils/tableOperations";
 import { readBlobText } from "@stll/folio-core/utils/textEncoding";
 import {
@@ -289,12 +290,10 @@ import {
   areSelectionFormattingEqual,
   mapHexToHighlightName,
 } from "./toolbarUtils";
-import { HorizontalRuler } from "./ui/HorizontalRuler";
 import { HyperlinkPopup } from "./ui/HyperlinkPopup";
 import { getBuiltinTableStyle } from "./ui/table-styles";
 import type { TableStylePreset } from "./ui/table-styles";
 import { Tooltip } from "./ui/Tooltip";
-import { VerticalRuler } from "./ui/VerticalRuler";
 import { useFolioComments } from "./useFolioComments";
 
 /** No headings to track while the outline is not shown. */
@@ -306,6 +305,20 @@ type BuiltDocumentChange = {
   /** For a change still in progress: the host is told once it settles. */
   settles?: "later";
 };
+
+const HorizontalRuler = lazy(() =>
+  import("./ui/HorizontalRuler").then(({ HorizontalRuler: Ruler }) => ({
+    default: Ruler,
+  })),
+);
+const VerticalRuler = lazy(() =>
+  import("./ui/VerticalRuler").then(({ VerticalRuler: Ruler }) => ({
+    default: Ruler,
+  })),
+);
+const horizontalRulerPlaceholder = (
+  <div aria-hidden="true" style={{ height: HORIZONTAL_RULER_HEIGHT_PX }} />
+);
 
 const CommentsSidebar = lazy(() =>
   import("./CommentsSidebar").then((m) => ({
@@ -5389,25 +5402,27 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                             transition: "padding 0.2s ease",
                           }}
                         >
-                          <HorizontalRuler
-                            sectionProps={effectiveSectionProperties ?? null}
-                            zoom={zoom}
-                            unit={rulerUnit}
-                            editable={!readOnly}
-                            onLeftMarginChange={handleLeftMarginChange}
-                            onRightMarginChange={handleRightMarginChange}
-                            indentLeft={state.paragraphIndentLeft}
-                            indentRight={state.paragraphIndentRight}
-                            onIndentLeftChange={handleIndentLeftChange}
-                            onIndentRightChange={handleIndentRightChange}
-                            firstLineIndent={state.paragraphFirstLineIndent}
-                            hangingIndent={state.paragraphHangingIndent}
-                            onFirstLineIndentChange={
-                              handleFirstLineIndentChange
-                            }
-                            tabStops={state.paragraphTabs}
-                            onTabStopRemove={handleTabStopRemove}
-                          />
+                          <Suspense fallback={horizontalRulerPlaceholder}>
+                            <HorizontalRuler
+                              sectionProps={effectiveSectionProperties ?? null}
+                              zoom={zoom}
+                              unit={rulerUnit}
+                              editable={!readOnly}
+                              onLeftMarginChange={handleLeftMarginChange}
+                              onRightMarginChange={handleRightMarginChange}
+                              indentLeft={state.paragraphIndentLeft}
+                              indentRight={state.paragraphIndentRight}
+                              onIndentLeftChange={handleIndentLeftChange}
+                              onIndentRightChange={handleIndentRightChange}
+                              firstLineIndent={state.paragraphFirstLineIndent}
+                              hangingIndent={state.paragraphHangingIndent}
+                              onFirstLineIndentChange={
+                                handleFirstLineIndentChange
+                              }
+                              tabStops={state.paragraphTabs}
+                              onTabStopRemove={handleTabStopRemove}
+                            />
+                          </Suspense>
                         </div>
                       )}
                       {/* Editor content wrapper */}
@@ -5443,16 +5458,20 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                                 paddingTop: VIEWPORT_PADDING_TOP * zoom,
                               }}
                             >
-                              <VerticalRuler
-                                sectionProps={
-                                  effectiveSectionProperties ?? null
-                                }
-                                zoom={zoom}
-                                unit={rulerUnit}
-                                editable={!readOnly}
-                                onTopMarginChange={handleTopMarginChange}
-                                onBottomMarginChange={handleBottomMarginChange}
-                              />
+                              <Suspense fallback={null}>
+                                <VerticalRuler
+                                  sectionProps={
+                                    effectiveSectionProperties ?? null
+                                  }
+                                  zoom={zoom}
+                                  unit={rulerUnit}
+                                  editable={!readOnly}
+                                  onTopMarginChange={handleTopMarginChange}
+                                  onBottomMarginChange={
+                                    handleBottomMarginChange
+                                  }
+                                />
+                              </Suspense>
                             </div>
                           )}
                           <PagedEditor

@@ -35,7 +35,6 @@ import {
   runIdentityAttrs,
 } from "../prosemirror/runIdentity";
 import { schema as canonicalSchema } from "../prosemirror/schema";
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import { createEmptyDocument } from "../utils/createDocument";
 import { createCanonicalComposition } from "./canonicalComposition";
 import {
@@ -73,13 +72,9 @@ const createLateFinalRig = (
         }).unwrap().state,
       );
     },
-    refuse: (message) =>
+    refuse: (message, ground) =>
       refusals.push(
-        new CanonicalSessionError({
-          ground: { gap: CANONICAL_GAP.dispatch },
-          message,
-          reason: "refused",
-        }),
+        new CanonicalSessionError({ ground, message, reason: "refused" }),
       ),
     undo: () => {
       const commit = session.prepareUndo(view.state).unwrap();

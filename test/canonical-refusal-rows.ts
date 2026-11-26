@@ -2,9 +2,11 @@ import { panic } from "better-result";
 
 import {
   CANONICAL_CAPABILITIES,
+  CANONICAL_CONDITION,
   CANONICAL_GAP,
 } from "../packages/core/src/types/canonicalCapabilities";
 import type {
+  CanonicalCondition,
   CanonicalGap,
   CanonicalRule,
 } from "../packages/core/src/types/canonicalCapabilities";
@@ -12,20 +14,38 @@ import type { Document } from "../packages/core/src/types/document";
 import type { BrowserInputAction } from "../tests/visual/browserInputTrace";
 
 export type HarnessRefusal = {
-  /** The ledger gap, absent for a rule refusal, which no row declares. */
+  /** The ledger gap, absent for a rule or condition refusal. */
   gap: CanonicalGap | undefined;
-  /** The document rule, present only for a rule refusal. */
+  /** The document rule, present only for a rule refusal, which no row declares. */
   rule?: CanonicalRule;
+  /** The session or request condition, present only for a condition refusal. */
+  condition?: CanonicalCondition;
   message: string;
   expectation: "declared" | "unexpected";
   row?: string;
 };
 
+/** A refusal an input is declared to meet: under a ledger gap or a condition. */
 export type HarnessRefusalRow = {
   id: string;
-  gap: CanonicalGap;
   message: string;
-};
+} & (
+  | { gap: CanonicalGap; condition?: never }
+  | { condition: CanonicalCondition; gap?: never }
+);
+
+/** Whether `refusal` is the one `row` declares: the same ground and message. */
+export const refusalMatchesRow = (
+  row: HarnessRefusalRow,
+  refusal: {
+    gap?: CanonicalGap | undefined;
+    condition?: CanonicalCondition | undefined;
+    message: string;
+  },
+) =>
+  row.gap === refusal.gap &&
+  row.condition === refusal.condition &&
+  row.message === refusal.message;
 
 export const canonicalActivationRefusalRow = (
   _source: Document,
@@ -37,7 +57,7 @@ export const validateHarnessRefusalRows = (
   capabilities: Readonly<Record<string, unknown>> = CANONICAL_CAPABILITIES,
 ) => {
   for (const row of rows)
-    if (!Object.hasOwn(capabilities, row.gap))
+    if (row.gap !== undefined && !Object.hasOwn(capabilities, row.gap))
       panic(
         `Retired canonical refusal row must become strict: ${row.id} (${row.gap})`,
       );
@@ -56,13 +76,13 @@ export const harnessRefusalProblems = ({
     .filter(
       (refusal) =>
         !rows.some(
-          (row) =>
-            row.id === refusal.row &&
-            row.gap === refusal.gap &&
-            row.message === refusal.message,
+          (row) => row.id === refusal.row && refusalMatchesRow(row, refusal),
         ),
     )
-    .map(({ gap, message }) => `${gap}: ${message}`);
+    .map(
+      ({ gap, rule, condition, message }) =>
+        `${gap ?? rule ?? condition}: ${message}`,
+    );
 };
 
 /**
@@ -85,7 +105,7 @@ const SELECTED_CELL_REFUSALS = {
     // The browser's own cleanup of a cancelled proposal, after the refusal above.
     {
       id: "selected-cells-composition-cleanup",
-      gap: CANONICAL_GAP.dispatch,
+      condition: CANONICAL_CONDITION.invalidRequest,
       message: "Unclassified native text is unavailable in this session.",
     },
   ],
@@ -125,14 +145,16 @@ export const canonicalBrowserRefusalRows = (
 
 type MatchCanonicalRefusalOptions = {
   rows: readonly HarnessRefusalRow[];
-  refusal: { gap: CanonicalGap; message: string };
+  refusal: {
+    gap?: CanonicalGap | undefined;
+    condition?: CanonicalCondition | undefined;
+    message: string;
+  };
 };
 export const matchCanonicalRefusalRow = ({
   rows,
   refusal,
 }: MatchCanonicalRefusalOptions) => {
   validateHarnessRefusalRows(rows);
-  return rows.find(
-    (row) => row.gap === refusal.gap && row.message === refusal.message,
-  );
+  return rows.find((row) => refusalMatchesRow(row, refusal));
 };

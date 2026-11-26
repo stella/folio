@@ -48,7 +48,10 @@ import {
   NO_ANONYMIZATION_HIGHLIGHTS,
 } from "./anonymizationHighlights";
 import { IDLE_AUTOCOMPLETE } from "./autocompleteSuggestion";
-import type { createCanonicalInputBoundary } from "./canonicalInput";
+import type {
+  CanonicalStructureInput,
+  createCanonicalInputBoundary,
+} from "./canonicalInput";
 import { legacyEditorPositionAt } from "./textPositionLookup";
 
 /** The inline suggestion, and what painting it needs. */
@@ -98,6 +101,16 @@ type CanonicalStoryTextOptions = {
   intent: Parameters<
     Parameters<typeof createCanonicalInputBoundary>[0]["replace"]
   >[0];
+};
+type CanonicalStoryStructureOptions = {
+  view: EditorView;
+  story: OpStory;
+  type: CanonicalStructureInput;
+};
+type CanonicalStoryCutOptions = {
+  view: EditorView;
+  story: OpStory;
+  event: ClipboardEvent;
 };
 
 /** The package a canonical save wrote, and whether it patched its baseline. */
@@ -181,6 +194,19 @@ export type HiddenEditorApi = {
   ) => { anchor: number; head: number } | null;
   getCanonicalStoryProjection: (story: OpStory) => PMNode | null;
   replaceCanonicalStoryText: (options: CanonicalStoryTextOptions) => boolean;
+  /**
+   * Make the structure edit a key asks for in the editor of a header, footer
+   * or note, as the body's editor makes it: one journalled change.
+   */
+  applyCanonicalStoryStructure: (
+    options: CanonicalStoryStructureOptions,
+  ) => boolean;
+  /**
+   * Cut the selection of a header, footer or note editor: the clipboard takes
+   * it and the story loses it, as one journalled change. True when the editor
+   * handled the event.
+   */
+  cutCanonicalStory: (options: CanonicalStoryCutOptions) => boolean;
   /**
    * The editor a person is working in for `story`: public operations on that
    * story read its state, so its selection maps through them, and publish to
@@ -279,6 +305,8 @@ export type HiddenEditorApiDeps = {
     | "applyCanonicalSectionProperties"
     | "getCanonicalStoryProjection"
     | "replaceCanonicalStoryText"
+    | "applyCanonicalStoryStructure"
+    | "cutCanonicalStory"
     | "noteCanonicalStoryView"
     | "applyCanonicalStoryHistory"
     | "getCanonicalStorySelection"
@@ -396,6 +424,10 @@ export const createHiddenEditorApi = (
       deps.canonicalOperations?.getCanonicalStoryProjection(story) ?? null,
     replaceCanonicalStoryText: (options) =>
       deps.canonicalOperations?.replaceCanonicalStoryText(options) ?? false,
+    applyCanonicalStoryStructure: (options) =>
+      deps.canonicalOperations?.applyCanonicalStoryStructure(options) ?? false,
+    cutCanonicalStory: (options) =>
+      deps.canonicalOperations?.cutCanonicalStory(options) ?? false,
     noteCanonicalStoryView: (options) => {
       deps.canonicalOperations?.noteCanonicalStoryView(options);
     },
