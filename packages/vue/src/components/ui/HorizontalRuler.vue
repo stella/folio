@@ -179,6 +179,7 @@ import {
   clampRulerValue,
   createRulerControl,
   getHorizontalRulerBounds,
+  HORIZONTAL_RULER_HEIGHT_PX,
 } from "@stll/folio-core/utils/rulerControl";
 import { pixelsToTwips, twipsToPixels } from "@stll/folio-core/utils/units";
 
@@ -232,7 +233,6 @@ const DEFAULT_PAGE_WIDTH_TWIPS = 12240;
 const DEFAULT_MARGIN_TWIPS = 1440;
 const TWIPS_PER_INCH = 1440;
 const TWIPS_PER_CM = 567;
-const RULER_HEIGHT = 22;
 const INDENT_COLOR = "var(--doc-primary)";
 const INDENT_HOVER_COLOR = "var(--doc-primary)";
 const INDENT_ACTIVE_COLOR = "var(--doc-primary-hover)";
@@ -285,7 +285,7 @@ const firstLinePosPx = computed(
 const containerStyle = computed<CSSProperties>(() => ({
   position: "relative",
   width: pageWidthPx.value + "px",
-  height: RULER_HEIGHT + "px",
+  height: HORIZONTAL_RULER_HEIGHT_PX + "px",
   backgroundColor: "transparent",
   overflow: "visible",
   userSelect: "none",
@@ -297,7 +297,7 @@ const leftMarginStyle = computed<CSSProperties>(() => ({
   top: 0,
   left: 0,
   width: leftMarginPx.value + "px",
-  height: RULER_HEIGHT + "px",
+  height: HORIZONTAL_RULER_HEIGHT_PX + "px",
   backgroundColor: "var(--doc-shadow-subtle)",
   borderRight: "1px solid var(--doc-shadow-subtle)",
   cursor: props.editable ? "ew-resize" : "default",
@@ -308,7 +308,7 @@ const rightMarginStyle = computed<CSSProperties>(() => ({
   top: 0,
   right: 0,
   width: rightMarginPx.value + "px",
-  height: RULER_HEIGHT + "px",
+  height: HORIZONTAL_RULER_HEIGHT_PX + "px",
   backgroundColor: "var(--doc-shadow-subtle)",
   borderLeft: "1px solid var(--doc-shadow-subtle)",
   cursor: props.editable ? "ew-resize" : "default",
