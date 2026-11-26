@@ -3736,13 +3736,14 @@ const materialize = (model: Model): Expected[] => {
   // a cell, so the words keep their own paragraph, separator and all. The
   // paragraphs of a text box drawn in the joined paragraph stay listed
   // after it; the join runs past them.
-  const push = (entry: Expected, row: ModelRow) => {
+  /** Push `entry`; returns the expected block that now ends with its words. */
+  const push = (entry: Expected, row: ModelRow): Expected => {
     const container = row.pre?.table;
     const inTable = row.inInsertedTable === true;
     const inTextBox = boxed(row);
     if (joinNext !== undefined && inTextBox && !joinNext.hostInTextBox) {
       out.push(entry);
-      return;
+      return entry;
     }
     if (joinNext !== undefined) {
       const { host } = joinNext;
@@ -3777,13 +3778,13 @@ const materialize = (model: Model): Expected[] => {
           joinedProperties.set(joined, head);
           out.push(joined);
           joinNext = undefined;
-          return;
+          return joined;
         }
         host.text = `${host.text}${joinNext.separator}${entry.text}`;
         // A join keeps the first paragraph's properties; formatting offsets no longer hold.
         host.formats = [];
         joinNext = undefined;
-        return;
+        return host;
       }
       // Accepted, on the canonical engine, a join whose next paragraph goes
       // runs its words into the first cell of the table that follows, whose
@@ -3800,20 +3801,22 @@ const materialize = (model: Model): Expected[] => {
         out.at(-1) === host
       ) {
         out.pop();
-        out.push({
+        const joined: Expected = {
           text: `${host.text}${joinNext.separator}${entry.text}`,
           fields: entry.fields,
           checks: entry.checks,
           formats: [],
           listLineage: entry.listLineage,
-        });
+        };
+        out.push(joined);
         joinNext = undefined;
-        return;
+        return joined;
       }
       host.text += joinNext.separator;
       joinNext = undefined;
     }
     out.push(entry);
+    return entry;
   };
   const emit = (row: ModelRow) => {
     for (const inserted of row.before) emit(inserted);
@@ -3827,8 +3830,12 @@ const materialize = (model: Model): Expected[] => {
       const shown =
         (model.mode === "suggested" ? row.ownWhileJoinPending : undefined) ??
         row;
-      segments.forEach((segment, index) =>
-        push(
+      // The block holding the row's last words: a join past a text box's
+      // paragraphs runs them into a block before those paragraphs, which a
+      // further join of this row continues, not the last block listed.
+      let host: Expected | undefined;
+      for (const [index, segment] of segments.entries()) {
+        host = push(
           {
             text: segment.text,
             fields:
@@ -3841,9 +3848,9 @@ const materialize = (model: Model): Expected[] => {
             ...(whole && row.pre ? { pre: row.pre } : {}),
           },
           row,
-        ),
-      );
-      const host = out.at(-1);
+        );
+      }
+      host ??= out.at(-1);
       if (row.mergeSeparator !== undefined && host !== undefined) {
         joinNext = {
           separator: row.mergeSeparator,
