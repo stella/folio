@@ -37,6 +37,7 @@ import {
   NO_ANONYMIZATION_TERMS,
 } from "@stll/folio-core/controller/anonymizationHighlights";
 import type { CanonicalRoomCollaboration } from "@stll/folio-core/controller/canonicalRoomEditor";
+import { createDisplayListPainterLoader } from "@stll/folio-core/controller/deferredDisplayListPainter";
 import { DOCUMENT_CHANGE_NOTIFY_DELAY_MS } from "@stll/folio-core/controller/documentChangeNotification";
 import {
   createFolioEditor,
@@ -69,8 +70,8 @@ import type {
   HiddenProseMirrorRemoteSelection,
 } from "@stll/folio-core/controller/hiddenEditorManager";
 import { createHyphenationReadiness } from "@stll/folio-core/controller/hyphenationReadiness";
-import { runLayoutPipeline as runLayoutPipelineCompute } from "@stll/folio-core/controller/layoutPipeline";
 import type { LayoutOutcome } from "@stll/folio-core/controller/layoutPipeline";
+import { runLayoutPipelineWithPainter as runLayoutPipelineCompute } from "@stll/folio-core/controller/layoutPipelineExecution";
 import type { LayoutRunOptions } from "@stll/folio-core/controller/layoutRunOptions";
 import {
   browserClock,
@@ -83,7 +84,10 @@ import {
   type NoteEditorManager,
   type NoteStoryKey,
 } from "@stll/folio-core/controller/noteEditorManager";
-import type { PageRendererName } from "@stll/folio-core/display-list/editor/pageRenderer";
+import {
+  PAGE_RENDERER,
+  type PageRendererName,
+} from "@stll/folio-core/display-list/editor/pageRenderer";
 import {
   holdsUniqueParagraphIds,
   openCanonicalDocx,
@@ -807,6 +811,19 @@ export function useDocxEditor(
     }
   }
 
+  const readDisplayListPainter = createDisplayListPainterLoader({
+    onReady: () => {
+      if (destroyed || toValue(pageRenderer) !== PAGE_RENDERER.displayList)
+        return;
+      const view = editorView.value;
+      if (view) runLayoutPipeline(view.state, { reason: "layout-input" });
+    },
+    onError: (error) => {
+      if (!destroyed && toValue(pageRenderer) === PAGE_RENDERER.displayList)
+        onError?.(error);
+    },
+  });
+
   /**
    * Assemble the compute deps from current reactive state and run the shared
    * layout pipeline (blocks → measure → layout → paint). All values are read
@@ -820,6 +837,16 @@ export function useDocxEditor(
     if (initialFontWaitPending) {
       return;
     }
+    const selectedRenderer = toValue(pageRenderer);
+    const displayListPagePainter =
+      selectedRenderer === PAGE_RENDERER.displayList
+        ? readDisplayListPainter()
+        : undefined;
+    if (
+      selectedRenderer === PAGE_RENDERER.displayList &&
+      !displayListPagePainter
+    )
+      return;
     const container = pagesContainer.value;
     // The pipeline paints into an HTMLDivElement; narrow without a cast so a
     // non-div host (or a not-yet-mounted ref) simply computes without painting.
@@ -857,10 +884,7 @@ export function useDocxEditor(
           pageGap,
           showMarginGuides: toValue(showMarginGuides) === true,
           marginGuideColor: toValue(marginGuideColor),
-          ...(() => {
-            const selected = toValue(pageRenderer);
-            return selected === undefined ? {} : { pageRenderer: selected };
-          })(),
+          ...(displayListPagePainter ? { displayListPagePainter } : {}),
           syncCoordinator,
           headerContent: hf.headerContent,
           footerContent: hf.footerContent,
