@@ -54,7 +54,7 @@ test("an editor dialog loads on first open, sets itself up, and unmounts on clos
   const container = document.createElement("div");
   document.body.append(container);
   const state = reactive({ showInsertSymbol: false });
-  const inserted: (string | undefined)[] = [];
+  const inserted: string[] = [];
   const app = createApp(
     defineComponent({
       setup() {
@@ -98,7 +98,7 @@ test("an editor dialog loads on first open, sets itself up, and unmounts on clos
       ".symbol-grid .symbol-cell",
     );
     cell?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
-    expect(inserted).toEqual([cell?.textContent?.trim()]);
+    expect(inserted).toEqual([cell?.textContent?.trim() ?? ""]);
 
     state.showInsertSymbol = false;
     await settle(() => symbolSearch() === null);

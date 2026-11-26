@@ -691,7 +691,7 @@ test("recent symbols persist after the editor unmounts the symbol dialog", async
   );
   const recentSymbols = () => {
     const label = Array.from(container.querySelectorAll("span")).find(
-      (span) => span.textContent === messages.folio.dialogs.insertSymbol.recent,
+      (span) => span.textContent === "Recent",
     );
     return Array.from(
       label?.parentElement?.querySelectorAll("button") ?? [],
