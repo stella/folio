@@ -4,7 +4,7 @@ import type { Node as PMNode } from "prosemirror-model";
 import { TextSelection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
-import type { OpStory } from "@stll/docx-core/ops";
+import { OP_STORIES, type OpStory } from "@stll/docx-core/ops";
 
 import { acquireHarnessDom } from "../../../../test/harnessDom";
 import { shapeArrayBuffer } from "../__tests__/documentShapes";
@@ -124,6 +124,7 @@ const mount = async ({ shape, story }: StoryCase, suggesting = false) => {
   manager.ensureView();
   parts.sync();
   const storyView = (): EditorView | null => {
+    if (story === OP_STORIES.MAIN) return null;
     if (story.kind === "header" || story.kind === "footer")
       return parts.getView(story.rId);
     if (story.kind === "footnote" || story.kind === "endnote")
