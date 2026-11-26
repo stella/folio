@@ -341,7 +341,7 @@ export type DocxBlockNumbering = {
     bulletFont?: string;
 };
 
-// @public
+// @public (undocumented)
 export type DocxBlockRevision = {
     kind: "insertion" | "deletion";
     start: number;
