@@ -33,7 +33,7 @@ import {
   toProseDoc,
 } from "../prosemirror/conversion/toProseDoc";
 import { schema } from "../prosemirror/schema";
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
+import { CANONICAL_CONDITION } from "../types/canonicalCapabilities";
 import type { ParagraphContent, RunContent } from "../types/document";
 
 setDefaultTimeout(propertyTestTimeout(60_000));
@@ -74,8 +74,8 @@ const checkShape = (
     if (activated.isErr()) {
       expect(activated.error).toBeInstanceOf(CanonicalSessionError);
       expect(activated.error.reason).toBe("refused");
-      expect(activated.error.ground.gap).toBe(
-        CANONICAL_GAP.storyContentProjection,
+      expect(activated.error.ground.condition).toBe(
+        CANONICAL_CONDITION.invalidRequest,
       );
       expect(activated.error.message).not.toBe(
         "The projection changed paragraph structure.",

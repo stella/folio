@@ -33,6 +33,13 @@ const schema = new Schema({
       attrs: { rId: {} },
       toDOM: (node) => ["img", { "data-rid": node.attrs["rId"] }],
     },
+    // An inline content control: an inline node holding text.
+    control: {
+      inline: true,
+      group: "inline",
+      content: "text*",
+      toDOM: () => ["span", { "data-control": "" }, 0],
+    },
     text: { group: "inline" },
   },
   marks: { strong: { toDOM: () => ["strong", 0] } },
@@ -945,6 +952,35 @@ describe("canonical input boundary", () => {
       expect(boundary.isComposing).toBe(false);
     },
   );
+
+  test.each([
+    { place: "inside an inline content control", at: 5 },
+    { place: "after an inline content control", at: 8 },
+  ])("a composition $place commits as one text replacement", async ({ at }) => {
+    const { boundary, view, inputs, refusals } = createRig();
+    // "AB", a control holding "CD", then "EF": the control's content starts
+    // at 4 and its text after it at 7.
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [
+        schema.text("AB"),
+        schema.node("control", null, schema.text("CD")),
+        schema.text("EF"),
+      ]),
+    ]);
+    view.updateState(
+      EditorState.create({ doc, selection: TextSelection.create(doc, at) }),
+    );
+    boundary.handleDOMEvents.compositionstart(view);
+    view.dispatch(
+      view.state.tr.insertText("契", at, at).setMeta("composition", 1),
+    );
+    boundary.handleDOMEvents.compositionend(view, new Event("compositionend"));
+    await new Promise<void>((resolve) => setTimeout(resolve, 40));
+    expect(refusals).toEqual([]);
+    expect(inputs).toEqual([
+      { from: at, to: at, text: "契", semantic: "composition" },
+    ]);
+  });
 
   test("generated text compositions preserve adjacent pictures and refuse picture mutations", async () => {
     await assertProperty(

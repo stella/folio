@@ -144,6 +144,7 @@ export {
   type EditorIntentMode,
 } from "./editorIntent";
 export type { PasteAnnotations } from "./pasteAnchors";
+export type { PastedBlock } from "./pastedBlocks";
 export {
   DocumentOpsContractError,
   normalizeForOps,

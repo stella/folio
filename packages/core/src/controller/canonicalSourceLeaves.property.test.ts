@@ -6,7 +6,7 @@ import {
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 import { createCanonicalSession } from "../canonical/canonicalSession";
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
+import { CANONICAL_CONDITION } from "../types/canonicalCapabilities";
 import type { Document, ParagraphContent, RunContent } from "../types/document";
 
 const omittedLeaves = [
@@ -63,7 +63,7 @@ test(
               if (result.isErr())
                 expect(result.error).toMatchObject({
                   name: "CanonicalSessionError",
-                  ground: { gap: CANONICAL_GAP.storyContentProjection },
+                  ground: { condition: CANONICAL_CONDITION.invalidRequest },
                   reason: "refused",
                   message:
                     "Canonical editing cannot preserve unstructured field instructions; a structured field is required.",

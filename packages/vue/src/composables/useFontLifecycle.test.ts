@@ -332,4 +332,37 @@ describe("useFontLifecycle", () => {
       }
     }
   });
+
+  test("a document without embedded fonts never resets the family map", async () => {
+    const setEmbeddedFontFamilies = mock(
+      (_families: ReadonlyMap<string, string> | null) => {},
+    );
+    const source = ref(new ArrayBuffer(8));
+    const scope = effectScope();
+    scope.run(() =>
+      useFontLifecycle(
+        {
+          isReady: ref(true),
+          sourceBuffer: () => source.value,
+          fonts: () => undefined,
+          remeasure: () => {},
+          setEmbeddedFontFamilies,
+        },
+        {
+          loadEmbedded: () =>
+            Promise.resolve({ faces: [], familyMap: new Map() }),
+          loadHost: () => Promise.resolve([]),
+          remove: () => {},
+        },
+      ),
+    );
+    await Promise.resolve();
+    // Replacing the document and unmounting the editor would each redraw
+    // every font run of the view if they cleared a map nothing set.
+    source.value = new ArrayBuffer(8);
+    await nextTick();
+    await Promise.resolve();
+    scope.stop();
+    expect(setEmbeddedFontFamilies).not.toHaveBeenCalled();
+  });
 });

@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "title": "PINNED #3636, fingerprint ea04f44b2bcf8980: rejecting a split inside a link joins the comment on its tail into that link, and every comment still projects",
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "stories",
+  "mode": "tracked-changes",
+  "seed": 2125039699,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 3324769842,
+      "operations": [
+        {
+          "type": "insertTableRow",
+          "blockId": "461701F4",
+          "position": "before",
+          "cellTexts": ["Earlier cell 1", "Earlier cell 2"]
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 229532689,
+      "operations": [
+        {
+          "type": "splitBlock",
+          "blockId": "79D25458",
+          "offset": 25
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 733485965,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "682BB056",
+          "text": "Supplier clause delivery clause clause invoice."
+        },
+        {
+          "type": "deleteTableRow",
+          "blockId": "@16"
+        },
+        {
+          "type": "insertTable",
+          "blockId": "7B806329",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    },
+    {
+      "action": "add_comment",
+      "seed": 477721177
+    }
+  ],
+  "weights": {
+    "version": 1,
+    "cells": {},
+    "operations": []
+  },
+  "origin": "shrunk from collisions flow seed 2125039699"
+}
