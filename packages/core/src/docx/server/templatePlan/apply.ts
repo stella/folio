@@ -898,7 +898,7 @@ const writeOutput = async ({
   }
   // A kept table of contents is closed right behind its separator: the
   // first update fills it from the document it is in.
-  for (const { element } of resolved.emptiedContents) {
+  for (const { element } of resolved.emptiedContents.keys()) {
     const start = rangeOf(fieldSeparatorRun(element) ?? element)?.end;
     const inner = innerRangeOf(template.document.xml, element);
     if (start === undefined || inner === null) {
@@ -910,6 +910,9 @@ const writeOutput = async ({
       end: inner.end,
       newXml: `<${w}:r><${w}:fldChar ${w}:fldCharType="end"/></${w}:r>`,
     });
+    // A range that starts in front of the result and ends in it has lost
+    // its end: the pass below takes its start out too.
+    replaced.push({ start, end: inner.end });
   }
   const keptElements = [
     ...resolved.keptTemplateBlocks.map(({ element }) => element),

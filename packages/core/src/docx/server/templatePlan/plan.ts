@@ -161,27 +161,32 @@ const fieldCharOf = (run: XmlElement): string | null =>
   wName(run) === "r" ? wAttr(wChild(run, "fldChar"), "fldCharType") : null;
 
 /**
- * The run of a paragraph that holds the separator of the first field the
- * paragraph begins: what follows it is the field's result. Null when the
- * field does not begin and reach its result in runs of the paragraph itself.
+ * The run of a paragraph that holds the separator of the field the
+ * paragraph begins and leaves open: what follows it is the start of a result
+ * that goes on in later paragraphs. A field the paragraph both begins and
+ * ends (a page number in front of a table of contents) is not that field.
+ * Null when no one field is left open with its result begun, in runs of the
+ * paragraph itself.
  */
 export const fieldSeparatorRun = (paragraph: XmlElement): XmlElement | null => {
-  let depth = 0;
+  const open: { separator: XmlElement | null }[] = [];
   for (const child of elementChildren(paragraph)) {
     const mark = fieldCharOf(child);
     if (mark === "begin") {
-      depth += 1;
+      open.push({ separator: null });
     } else if (mark === "end") {
-      depth -= 1;
-    } else if (mark === "separate" && depth === 1) {
-      return child;
+      open.pop();
+    } else if (mark === "separate") {
+      const top = open.at(-1);
+      if (top !== undefined && top.separator === null) {
+        top.separator = child;
+      }
     }
   }
-  return null;
+  const [left, ...others] = open;
+  return left === undefined || others.length > 0 ? null : left.separator;
 };
 
-/** Whether nothing with text follows the last field end among the runs of
- *  a paragraph: it holds the end of a field's result and no more. */
 const holdsText = (element: XmlElement): boolean => {
   let text = false;
   walkElements(element, (inner) => {
@@ -190,24 +195,46 @@ const holdsText = (element: XmlElement): boolean => {
   return text;
 };
 
-const endsWithFieldEnd = (paragraph: XmlElement): boolean => {
+/**
+ * Whether a paragraph ends the field left open in front of it and holds no
+ * more behind that end: the end of the field's result and nothing else. The
+ * end is the field's own, the first one that closes no field the paragraph
+ * began; text behind it stays, whatever field follows that text.
+ */
+const endsOpenField = (paragraph: XmlElement): boolean => {
   const children = elementChildren(paragraph);
-  const last = children.findLastIndex((child) => fieldCharOf(child) === "end");
-  return last !== -1 && !children.slice(last + 1).some(holdsText);
+  let depth = 0;
+  for (const [position, child] of children.entries()) {
+    const mark = fieldCharOf(child);
+    if (mark === "begin") {
+      depth += 1;
+    } else if (mark === "end") {
+      if (depth === 0) {
+        return !children.slice(position + 1).some(holdsText);
+      }
+      depth -= 1;
+    }
+  }
+  return false;
 };
 
 /**
  * The kept tables of contents that show entries over several paragraphs:
- * the paragraph each begins in and the further paragraphs of its entries.
- * A field that does not begin in runs of its own paragraph, that ends in a
- * paragraph with text behind it, or whose paragraphs are not all kept
- * top-level blocks, is not among them and stays as the template has it.
+ * the paragraph each begins in, the length of the text that paragraph holds
+ * in front of the field's result, and the further paragraphs of its
+ * entries. A field that does not begin in runs of its own paragraph, that
+ * ends in a paragraph with text behind it, or whose paragraphs are not all
+ * kept top-level blocks, is not among them and stays as the template has it.
  */
 const contentsWithEntries = (
   template: AnalyzedDocument,
   keptIds: ReadonlySet<string>,
-): { first: AnalyzedBlock; rest: AnalyzedBlock[] }[] => {
-  const found: { first: AnalyzedBlock; rest: AnalyzedBlock[] }[] = [];
+): { first: AnalyzedBlock; textKept: number; rest: AnalyzedBlock[] }[] => {
+  const found: {
+    first: AnalyzedBlock;
+    textKept: number;
+    rest: AnalyzedBlock[];
+  }[] = [];
   for (const field of template.story.state.fields) {
     if (
       field.kind !== "TOC" ||
@@ -228,10 +255,11 @@ const contentsWithEntries = (
       [first, ...rest].every(
         ({ block, parentId }) => parentId === null && keptIds.has(block.id),
       ) &&
+      field.resultStart >= 0 &&
       fieldSeparatorRun(first.element) !== null &&
-      endsWithFieldEnd(last.element)
+      endsOpenField(last.element)
     ) {
-      found.push({ first, rest });
+      found.push({ first, textKept: field.resultStart, rest });
     }
   }
   return found;
@@ -259,8 +287,9 @@ export type ResolvedPlan = {
   freezeKinds: ReadonlySet<string>;
   keptTemplateBlocks: AnalyzedBlock[];
   /** The paragraphs kept tables of contents begin in, written without the
-   *  entries they cache. */
-  emptiedContents: AnalyzedBlock[];
+   *  entries they cache: each with the length of the text it keeps in front
+   *  of the field's result. */
+  emptiedContents: Map<AnalyzedBlock, number>;
 };
 
 type Refusal = {
@@ -1710,12 +1739,13 @@ export const resolvePlan = (
   // that names the headings and pages of the template's sample text. The
   // field stays in the paragraph it begins in; the further paragraphs of
   // its entries are not placed.
-  const emptiedContents: AnalyzedBlock[] = [];
-  for (const { first, rest } of contentsWithEntries(
-    template,
-    keptTemplateIds,
-  )) {
-    emptiedContents.push(first);
+  // A plan that freezes such a field keeps its result as text instead, so
+  // nothing of it is a field to empty.
+  const emptiedContents = new Map<AnalyzedBlock, number>();
+  for (const { first, textKept, rest } of freezeKinds.includes("TOC")
+    ? []
+    : contentsWithEntries(template, keptTemplateIds)) {
+    emptiedContents.set(first, textKept);
     const gone = new Set(rest);
     for (let position = items.length - 1; position >= 0; position -= 1) {
       const item = items[position];

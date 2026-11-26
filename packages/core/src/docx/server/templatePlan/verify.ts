@@ -515,6 +515,18 @@ const statedProperties = (paragraph: XmlElement): StatedProperties => {
   };
 };
 
+/** Whether a kept paragraph states what the template's states. */
+const sameStated = (before: StatedProperties, after: StatedProperties) =>
+  before.styleId === after.styleId &&
+  before.pageBreakBefore === after.pageBreakBefore &&
+  before.keepNext === after.keepNext &&
+  before.indent === after.indent &&
+  before.tabStops === after.tabStops &&
+  before.alignment === after.alignment &&
+  before.endsSection === after.endsSection &&
+  before.numId === after.numId &&
+  before.ilvl === after.ilvl;
+
 /** Whether a bookmark of `read` holds all of the paragraph's content. */
 const bookmarkEncloses = (
   read: ParagraphRead | null,
@@ -617,7 +629,7 @@ export const reportTemplatePlanOutput = async ({
   }
   const slottedTemplateBlocks = new Set(slotBlocks.values());
   const emptiedTemplateBlocks = new Set(resolved.emptied);
-  const emptiedContents = new Set(resolved.emptiedContents);
+  const { emptiedContents } = resolved;
   const plannedProperties = (
     paragraph: ResolvedParagraph,
   ): StatedProperties => {
@@ -845,12 +857,19 @@ export const reportTemplatePlanOutput = async ({
                 outputParagraph.read.inlineObjects === 0
               );
             }
-            // A table of contents is kept without its cached entries.
-            if (emptiedContents.has(templateParagraph)) {
-              return outputParagraph.read.text === "";
-            }
             const before = statedProperties(templateParagraph.element);
             const after = statedProperties(outputParagraph.element);
+            // A table of contents is kept without its cached entries: the
+            // paragraph as the template sets it, with the text it holds in
+            // front of the field and no more.
+            const textKept = emptiedContents.get(templateParagraph);
+            if (textKept !== undefined) {
+              return (
+                sameStated(before, after) &&
+                outputParagraph.read.text ===
+                  templateParagraph.read.text.slice(0, textKept)
+              );
+            }
             const was = outputContent({
               read: templateParagraph.read,
               origin: "document",
@@ -864,15 +883,7 @@ export const reportTemplatePlanOutput = async ({
               styles: characterStyles,
             });
             return (
-              before.styleId === after.styleId &&
-              before.pageBreakBefore === after.pageBreakBefore &&
-              before.keepNext === after.keepNext &&
-              before.indent === after.indent &&
-              before.tabStops === after.tabStops &&
-              before.alignment === after.alignment &&
-              before.endsSection === after.endsSection &&
-              before.numId === after.numId &&
-              before.ilvl === after.ilvl &&
+              sameStated(before, after) &&
               sameReading(was, is) &&
               sameList(was.signatures, is.signatures)
             );
@@ -1636,7 +1647,7 @@ export const reportTemplatePlanOutput = async ({
     }
   }
   const keptToc = templateFields.filter(({ kind }) => kind === "TOC").length;
-  const emptiedToc = Math.min(keptToc, resolved.emptiedContents.length);
+  const emptiedToc = Math.min(keptToc, resolved.emptiedContents.size);
   if (emptiedToc > 0) {
     warnings.push(
       `${emptiedToc} table of contents field(s) show no entries until fields update: the template's cached entries were taken out.`,
