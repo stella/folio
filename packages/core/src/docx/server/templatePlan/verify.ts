@@ -83,6 +83,7 @@ import {
   type AtomLink,
   createStoryState,
   endStory,
+  isSelfNumberingField,
   type ParagraphRead,
   readParagraph,
   type StoryField,
@@ -155,12 +156,14 @@ type ContentUnit = {
   signature: string;
   link: string;
   element: XmlElement | null;
+  /** The code of a self-numbering field, or null. */
+  instruction: string | null;
   origin: StoryOrigin;
 };
 
 const appendUnit = (
   content: Content,
-  { kind, text, signature, link, element, origin }: ContentUnit,
+  { kind, text, signature, link, element, instruction, origin }: ContentUnit,
   resources: StoryResources,
 ): void => {
   content.text += text;
@@ -173,6 +176,8 @@ const appendUnit = (
   const at = content.text.length - text.length;
   if (kind === "pageBreak") {
     content.marks.push(`${at}:break:${wAttr(element, "type") ?? "page"}`);
+  } else if (kind === "selfNumber") {
+    content.marks.push(`${at}:number:${instruction ?? ""}`);
   } else if (kind === "object" && element !== null) {
     content.marks.push(
       `${at}:object:${objectFingerprint(element)}:${objectTargets(element, origin, resources).join(",")}`,
@@ -204,6 +209,7 @@ const expectedContent = (
           linkAddress(piece.link, resources.relationships[piece.origin]),
         ),
         element: piece.atom?.element ?? null,
+        instruction: piece.atom?.instruction ?? null,
         origin: piece.origin,
       },
       resources,
@@ -260,6 +266,7 @@ const outputContent = ({
             : `${stated};rStyle=${styleId}`,
         link,
         element: atom.element,
+        instruction: atom.instruction ?? null,
         origin,
       },
       resources,
@@ -1812,8 +1819,13 @@ export const reportTemplatePlanOutput = async ({
   for (const read of placedReads) {
     for (const index of read.fieldIndices) {
       const field = source.story.state.fields[index];
-      // A HYPERLINK field with an address is carried over as a link.
-      if (field !== undefined && hyperlinkFieldLink(field) === null) {
+      // A HYPERLINK field with an address is carried over as a link, a
+      // field that numbers itself as the field it is.
+      if (
+        field !== undefined &&
+        hyperlinkFieldLink(field) === null &&
+        !isSelfNumberingField(field.kind)
+      ) {
         droppedFields.set(field.kind, (droppedFields.get(field.kind) ?? 0) + 1);
       }
     }
