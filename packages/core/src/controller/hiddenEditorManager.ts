@@ -155,9 +155,9 @@ import {
   openCanonicalRoomEditor,
 } from "./canonicalRoomEditor";
 import {
-  isCanonicalListParagraph,
   prepareCanonicalAutoformat,
   prepareCanonicalCommands,
+  prepareCanonicalStructure,
 } from "./canonicalStructure";
 import {
   createHiddenEditorApi,
@@ -1017,6 +1017,64 @@ export const createHiddenEditorManager = (
     data.setData(INTERNAL_CLIPBOARD_TYPE, token);
     return { html, token };
   };
+  /**
+   * Cut the selection of the editor showing `story`: the clipboard takes it
+   * first, and the story loses it only once the clipboard holds it.
+   */
+  const cutCanonical = (
+    pmView: EditorView,
+    event: ClipboardEvent,
+    story: OpStory,
+  ): boolean => {
+    event.preventDefault();
+    if (deps.getReadOnly()) {
+      deps.onReadOnlyEditAttempt();
+      return true;
+    }
+    // The host hears of a cut the editor takes, as on the legacy engine.
+    deps.onCut?.();
+    if (editorSession.type !== "canonical" || pmView.state.selection.empty)
+      return true;
+    if (event.clipboardData === null) {
+      refuse("The clipboard cannot receive the cut content.", {
+        condition: CANONICAL_CONDITION.invalidRequest,
+      });
+      return true;
+    }
+    syncCanonicalMode();
+    // Read before the cut deletes it; kept only once the clipboard holds it.
+    const source = readModel(editorSession.session.document);
+    const session = editorSession.session;
+    const { from, to } = pmView.state.selection;
+    const prepared = session.prepareReplace(pmView.state, {
+      from,
+      to,
+      text: "",
+      semantic: "replacement",
+      story,
+    });
+    if (prepared.isErr()) {
+      refuse(prepared.error.message, prepared.error.ground);
+      return true;
+    }
+    const data = event.clipboardData;
+    const copied = Result.try({
+      try: () => writeClipboard(pmView, data),
+      catch: () =>
+        new CanonicalSessionRefusalError({
+          ground: { condition: CANONICAL_CONDITION.invalidRequest },
+          message: "The clipboard could not receive the cut content.",
+        }),
+    });
+    if (copied.isErr()) {
+      refuse(copied.error.message, copied.error.ground);
+      return true;
+    }
+    clipboardCopy = { type: "copied", document: source, ...copied.value };
+    if (story === OP_STORIES.MAIN) publishCommit(prepared.value);
+    else publishStoryCommit(pmView, prepared.value);
+    return true;
+  };
   /** The copied document, when the pasted clipboard is the editor's own copy. */
   const copiedSource = (event: ClipboardEvent) => {
     const data = event.clipboardData;
@@ -1078,152 +1136,23 @@ export const createHiddenEditorManager = (
       }
       const session = editorSession.session;
       const state = view.state;
+      // Backspace straight after an autoformat rule gives back what was typed.
       if (
-        state.selection instanceof CellSelection &&
-        (type === "split" ||
-          type === "tab" ||
-          type === "lineBreak" ||
-          type === "pageBreak")
+        type === "joinBackward" &&
+        lastInputRule?.session === session &&
+        lastInputRule.version === session.version &&
+        lastInputRule.caret === state.selection.head
       ) {
-        const overCells = session.prepareCellSelectionStructure(state, (at) =>
-          type === "split"
-            ? {
-                // A paragraph break: two empty paragraphs whose open ends
-                // join the halves of the first cell's paragraph.
-                type: "replaceFragment",
-                from: at,
-                to: at,
-                paragraphs: [
-                  { type: "paragraph", content: [] },
-                  { type: "paragraph", content: [] },
-                ],
-                openStart: 1,
-                openEnd: 1,
-              }
-            : {
-                type: "insertAtom",
-                from: at,
-                to: at,
-                atom:
-                  type === "tab"
-                    ? { type: "tab" }
-                    : {
-                        type: "break",
-                        breakType:
-                          type === "pageBreak" ? "page" : "textWrapping",
-                      },
-              },
-        );
-        if (overCells.isErr()) {
-          if (overCells.error.reason !== "noChange")
-            refuse(overCells.error.message, overCells.error.ground);
-          return;
-        }
-        publishCommit(overCells.value);
+        lastInputRule = undefined;
+        history("undo");
         return;
       }
-      const selection = session.projection.selectionAt(state);
-      if (selection.isErr()) {
-        refuse(selection.error.message, selection.error.ground);
-        return;
-      }
-      let prepared;
-      switch (type) {
-        case "split": {
-          const source = session.projection.paragraph(
-            selection.value.head.blockId,
-          )?.source;
-          prepared =
-            isCanonicalListParagraph(source) &&
-            state.selection.$from.parent.content.size === 0
-              ? prepareCanonicalCommands(session, state, [
-                  { type: "removeList" },
-                ])
-              : session.prepareSplit(state);
-          break;
-        }
-        case "joinBackward": {
-          if (
-            lastInputRule?.session === session &&
-            lastInputRule.version === session.version &&
-            lastInputRule.caret === state.selection.head
-          ) {
-            lastInputRule = undefined;
-            history("undo");
-            return;
-          }
-          const paragraph = session.projection.paragraph(
-            selection.value.head.blockId,
-          )?.source;
-          // A paragraph its style numbers leaves the list as one of its own.
-          if (isCanonicalListParagraph(paragraph)) {
-            prepared = prepareCanonicalCommands(session, state, [
-              { type: "removeList" },
-            ]);
-            break;
-          }
-          if (
-            (paragraph?.formatting?.indentLeft ?? 0) > 0 ||
-            (paragraph?.formatting?.indentFirstLine ?? 0) > 0
-          ) {
-            prepared = session.prepareIntent(state, {
-              type: "formatParagraph",
-              at: selection.value.head,
-              patch: {
-                indentLeft: null,
-                indentFirstLine: null,
-                hangingIndent: null,
-              },
-            });
-            break;
-          }
-          prepared = session.prepareJoin(state, "backward");
-          break;
-        }
-        case "joinForward":
-          prepared = session.prepareJoin(state, "forward");
-          break;
-        case "indent":
-        case "outdent":
-          prepared = prepareCanonicalCommands(session, state, [
-            {
-              type: "changeListLevel",
-              direction: type === "indent" ? "increase" : "decrease",
-            },
-          ]);
-          break;
-        case "tab":
-        case "lineBreak":
-        case "pageBreak": {
-          const from = session.projection.addressAt(state.selection.from);
-          const to = session.projection.addressAt(state.selection.to);
-          if (from.isErr()) {
-            refuse(from.error.message, from.error.ground);
-            return;
-          }
-          if (to.isErr()) {
-            refuse(to.error.message, to.error.ground);
-            return;
-          }
-          prepared = session.prepareIntent(state, {
-            type: "insertAtom",
-            from: from.value,
-            to: to.value,
-            atom:
-              type === "tab"
-                ? { type: "tab" }
-                : {
-                    type: "break",
-                    breakType: type === "pageBreak" ? "page" : "textWrapping",
-                  },
-          });
-          break;
-        }
-        default: {
-          const unreachable: never = type;
-          return unreachable;
-        }
-      }
+      const prepared = prepareCanonicalStructure(
+        session,
+        state,
+        OP_STORIES.MAIN,
+        type,
+      );
       if (prepared.isErr()) {
         if (prepared.error.reason !== "noChange")
           refuse(prepared.error.message, prepared.error.ground);
@@ -1273,54 +1202,7 @@ export const createHiddenEditorManager = (
         pmView,
       );
     },
-    cut: (pmView, event) => {
-      event.preventDefault();
-      if (deps.getReadOnly()) {
-        deps.onReadOnlyEditAttempt();
-        return true;
-      }
-      // The host hears of a cut the editor takes, as on the legacy engine.
-      deps.onCut?.();
-      if (editorSession.type !== "canonical" || pmView.state.selection.empty)
-        return true;
-      if (event.clipboardData === null) {
-        refuse("The clipboard cannot receive the cut content.", {
-          condition: CANONICAL_CONDITION.invalidRequest,
-        });
-        return true;
-      }
-      syncCanonicalMode();
-      // Read before the cut deletes it; kept only once the clipboard holds it.
-      const source = readModel(editorSession.session.document);
-      const session = editorSession.session;
-      const { from, to } = pmView.state.selection;
-      const prepared = session.prepareReplace(pmView.state, {
-        from,
-        to,
-        text: "",
-        semantic: "replacement",
-      });
-      if (prepared.isErr()) {
-        refuse(prepared.error.message, prepared.error.ground);
-        return true;
-      }
-      const data = event.clipboardData;
-      const copied = Result.try({
-        try: () => writeClipboard(pmView, data),
-        catch: () =>
-          new CanonicalSessionRefusalError({
-            ground: { condition: CANONICAL_CONDITION.invalidRequest },
-            message: "The clipboard could not receive the cut content.",
-          }),
-      });
-      if (copied.isErr()) {
-        refuse(copied.error.message, copied.error.ground);
-        return true;
-      }
-      clipboardCopy = { type: "copied", document: source, ...copied.value };
-      publishCommit(prepared.value);
-      return true;
-    },
+    cut: (pmView, event) => cutCanonical(pmView, event, OP_STORIES.MAIN),
     ...canonicalInputLifecycle,
     ...canonicalStructuralInput,
     replace: (intent) => {
@@ -2390,6 +2272,50 @@ export const createHiddenEditorManager = (
             story,
           );
       },
+      applyCanonicalStoryStructure: ({ view: storyView, story, type }) => {
+        if (!view || editorSession.type !== "canonical" || deps.getReadOnly())
+          return false;
+        syncCanonicalMode();
+        const session = editorSession.session;
+        let prepared;
+        if (type === "deleteTable") {
+          // The table command, run against the story's own selection.
+          const command = deps
+            .getExtensionManager()
+            ?.getCommand("deleteTable")?.();
+          const intents =
+            command === undefined
+              ? undefined
+              : getCanonicalCommandIntents(command, storyView.state);
+          // canonical-gap: command-descriptors
+          if (intents === undefined) {
+            refuse("Deleting the table is unavailable.", {
+              gap: CANONICAL_GAP.commands,
+            });
+            return false;
+          }
+          prepared = prepareCanonicalCommands(
+            session,
+            storyView.state,
+            intents,
+            story,
+          );
+        } else
+          prepared = prepareCanonicalStructure(
+            session,
+            storyView.state,
+            story,
+            type,
+          );
+        if (prepared.isErr()) {
+          if (prepared.error.reason !== "noChange")
+            refuse(prepared.error.message, prepared.error.ground);
+          return false;
+        }
+        return publishStoryCommit(storyView, prepared.value);
+      },
+      cutCanonicalStory: ({ view: storyView, story, event }) =>
+        cutCanonical(storyView, event, story),
       replaceCanonicalStoryText: ({ view: storyView, story, intent }) => {
         if (!view || editorSession.type !== "canonical" || deps.getReadOnly())
           return false;

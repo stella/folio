@@ -121,6 +121,29 @@ export const createCanonicalStoryEditor = ({
       )
         onSelectionChange();
     },
+    // Enter, Backspace at a paragraph's edge, Tab and cut make the same
+    // journalled changes in the story as in the body.
+    structure: (type) => {
+      const view = getView();
+      if (
+        getApi()?.applyCanonicalStoryStructure({ view, story, type }) &&
+        !view.isDestroyed
+      )
+        onSelectionChange();
+    },
+    cut: (view, event) => {
+      const api = getApi();
+      if (!api) {
+        event.preventDefault();
+        refuse("The document is not ready for a cut.", {
+          condition: CANONICAL_CONDITION.notReady,
+        });
+        return true;
+      }
+      const handled = api.cutCanonicalStory({ view, story, event });
+      if (!view.isDestroyed) onSelectionChange();
+      return handled;
+    },
     undo: () => history("undo"),
     redo: () => history("redo"),
     refuse,
