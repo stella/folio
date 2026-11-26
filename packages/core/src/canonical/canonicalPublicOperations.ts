@@ -8923,11 +8923,16 @@ export class CanonicalPublicOperations {
           }),
         );
     } else intents.push(intent);
-    const nextParagraph =
+    const joins =
       operation.type === "mergeBlockWithNext" &&
-      intent.type === "joinParagraphs"
-        ? projection.value.paragraph(intent.nextBlockId)
-        : undefined;
+      intent.type === "joinParagraphs";
+    const nextParagraph = joins
+      ? projection.value.paragraph(intent.nextBlockId)
+      : undefined;
+    // A merge plans with its second paragraph's address: one the projection
+    // cannot align is no paragraph to merge with.
+    if (joins && nextParagraph === undefined)
+      return refusal("unsupportedBlock", undefined, INVALID_REQUEST);
     let claimedTo = range.to;
     if (operation.type === "mergeBlockWithNext")
       claimedTo = paragraph.start + paragraph.node.content.size;
