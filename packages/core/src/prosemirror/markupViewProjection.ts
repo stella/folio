@@ -25,11 +25,13 @@ import { indexedPositionMap } from "../internal/indexedPositionMap";
 import type { DisplayMode } from "../managers/EditorModeManager";
 import type { NumberingDefinitions, StyleDefinitions } from "../types/document";
 import type { DeepReadonly } from "../types/documentModel";
+import { expectTableCellAttrs, expectTableRowAttrs } from "./attrs";
 import { canonicalMarkupDocument } from "./canonicalMarkupDocument";
 import { markupViewPositionMap } from "./markupViewPositionMap";
 import { createDocumentNumberingPlugin } from "./plugins/documentNumbering";
 import { createDocumentStyleContextPlugin } from "./plugins/documentStyles";
 import { getFolioNodeRevisionCarriers } from "./revisionCarriers";
+import { getTableCellMergeChange } from "./tableCellMergeRevision";
 
 /** How a view marks the paragraphs whose authored text it does not show verbatim. */
 type ChangeIndicators = "none" | "change-bars";
@@ -103,14 +105,60 @@ const documentViews = new WeakMap<
   Map<RevisionDecision, ResolvedMarkupView | null>
 >();
 
-/** Projected paragraphs whose authored runs or properties held a revision. */
+type RetainedTableChange = (retained: PMNode) => boolean;
+
+const hasStoredMergeRevision = (cells: unknown): boolean =>
+  Array.isArray(cells) && cells.some(getTableCellMergeChange);
+
+const retainedTableChange = (node: PMNode): RetainedTableChange | undefined => {
+  switch (node.type.name) {
+    case "tableRow":
+      return expectTableRowAttrs(node).trIns == null
+        ? undefined
+        : (retained) =>
+            retained.type === node.type &&
+            expectTableRowAttrs(retained).trIns == null;
+    case "tableCell":
+    case "tableHeader": {
+      const { cellMarker, rowspan, _docxVMergeContinuationCells } =
+        expectTableCellAttrs(node);
+      const inserted = cellMarker?.kind === "ins";
+      const storedRevision = hasStoredMergeRevision(
+        _docxVMergeContinuationCells,
+      );
+      if (!inserted && rowspan <= 1 && !storedRevision) return undefined;
+      return (retained) => {
+        if (retained.type !== node.type) return false;
+        const after = expectTableCellAttrs(retained);
+        return (
+          (inserted && after.cellMarker?.kind !== "ins") ||
+          rowspan > after.rowspan ||
+          (storedRevision &&
+            !hasStoredMergeRevision(after._docxVMergeContinuationCells))
+        );
+      };
+    }
+    default:
+      return undefined;
+  }
+};
+
+/** Paragraphs affected by accepted revisions, including retained rows and cells. */
 const changeBars = (
   before: PMNode,
   { doc, positionMap }: ResolvedMarkupView,
 ): PositionRange[] => {
   const toView = indexedPositionMap(positionMap);
   const changed: PositionRange[] = [];
+  const tableChanges = new Map<number, RetainedTableChange>();
   before.descendants((node, position) => {
+    const tableChange = retainedTableChange(node);
+    if (tableChange !== undefined) {
+      const from = toView(position, 1);
+      // A removed row or cell may collapse to another node's start.
+      if (toView(position + 1, -1) === from + 1)
+        tableChanges.set(from, tableChange);
+    }
     if (node.type.name !== "paragraph") return true;
     let hasRevision = getFolioNodeRevisionCarriers(node, position).length > 0;
     node.forEach((child) => {
@@ -128,6 +176,12 @@ const changeBars = (
     }
     return false;
   });
+  if (tableChanges.size > 0)
+    doc.descendants((node, position) => {
+      if (tableChanges.get(position)?.(node))
+        changed.push({ from: position, to: position + node.nodeSize });
+      return node.type.name !== "paragraph";
+    });
   return changed.filter(({ from, to }) => from >= 0 && to <= doc.content.size);
 };
 

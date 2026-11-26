@@ -10,7 +10,7 @@ import {
   sameStory,
 } from "@stll/docx-core/ops";
 
-import type { Document } from "../types/document";
+import type { Document, StyleDefinitions } from "../types/document";
 import { writableCopy } from "../types/documentModel";
 import { proseDocToBlocks } from "./conversion/fromProseDoc";
 import {
@@ -42,7 +42,9 @@ const detachedModel = (state: EditorState): Document => {
   const definitions =
     resolver === null ? undefined : styleResolverSource(resolver);
   const styles =
-    definitions === undefined ? undefined : writableCopy(definitions);
+    definitions === undefined
+      ? undefined
+      : writableCopy<StyleDefinitions>(definitions);
   return {
     package: {
       document: { content: proseDocToBlocks(state.doc, undefined, styles) },

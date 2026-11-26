@@ -106,7 +106,9 @@ const sourceDefinitions = new WeakMap<
   DeepReadonly<StyleDefinitions>
 >();
 
-export const styleResolverSource = (resolver: StyleResolver) =>
+export const styleResolverSource = (
+  resolver: StyleResolver,
+): DeepReadonly<StyleDefinitions> | undefined =>
   sourceDefinitions.get(resolver);
 
 /**
