@@ -147,6 +147,24 @@ const documentModelRules = [
   },
 ];
 
+const testSupportPath = "(^|/)__tests__(?:/|$)";
+const noProductionTestSupportRule = {
+  name: "production-editor-source-does-not-import-test-support",
+  comment:
+    "Published core, React, and Vue source must not depend on test support.",
+  severity: "error",
+  from: {
+    path: "^packages/(?:core|react|vue)/src/",
+    // Match the test and fixture exclusions in check-package-dependencies.ts.
+    pathNot: [
+      testSupportPath,
+      "(^|/)(?:__fixtures__|fixtures|__snapshots__)(?:/|$)",
+      "\\.(?:test|spec)\\.[^/]+$",
+    ],
+  },
+  to: { path: testSupportPath },
+};
+
 /**
  * Type-only edges are excluded on both ends of a cycle (the closing edge via
  * `dependencyTypesNot`, the rest of the loop via `viaOnly.dependencyTypesNot`)
@@ -181,6 +199,7 @@ module.exports = {
     ...closedWorkspaceRules,
     ...paintBackendRules,
     ...documentModelRules,
+    noProductionTestSupportRule,
     noCircularRuntimeImportsRule,
   ],
   options: {

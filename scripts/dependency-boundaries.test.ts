@@ -23,6 +23,10 @@ const DEPCRUISE_BINARY = path.join(
 );
 const DEPCRUISE_CONFIG = path.join(REPOSITORY_ROOT, ".dependency-cruiser.cjs");
 const REPOSITORY_NODE_MODULES = path.join(REPOSITORY_ROOT, "node_modules");
+const TYPESCRIPT_PRELOAD = path.join(
+  REPOSITORY_ROOT,
+  "scripts/lib/depcruise-typescript-preload.mjs",
+);
 const MANIFEST_CHECKER = path.join(
   REPOSITORY_ROOT,
   "scripts/check-workspace-manifests.ts",
@@ -37,6 +41,8 @@ const WORKSPACE_NAMES = {
   agents: "@stll/folio-agents",
   core: "@stll/folio-core",
   "docx-core": "@stll/docx-core",
+  react: "@stll/folio-react",
+  vue: "@stll/folio-vue",
 } as const;
 
 type Workspace = keyof typeof WORKSPACE_NAMES;
@@ -176,7 +182,11 @@ const cruise = (fixtureRoot: string): CruiseResult => {
       ],
       {
         cwd: fixtureRoot,
-        env: { ...process.env, NODE_PATH: REPOSITORY_NODE_MODULES },
+        env: {
+          ...process.env,
+          NODE_PATH: REPOSITORY_NODE_MODULES,
+          NODE_OPTIONS: `--import=${TYPESCRIPT_PRELOAD}`,
+        },
       },
     ),
   );
@@ -199,6 +209,79 @@ const checkManifests = (fixtureRoot: string): CruiseResult => {
 };
 
 describe("workspace dependency boundaries", () => {
+  test("keeps test support out of production editor source", () => {
+    const fixtureRoot = createFixture();
+    for (const workspace of ["core", "react", "vue"] as const) {
+      addWorkspace({ fixtureRoot, workspace });
+      writeSource(
+        fixtureRoot,
+        workspace,
+        "editor/__tests__/helper.ts",
+        "export const helper = 1;\nexport type Helper = number;\n",
+      );
+    }
+
+    writeFileSync(
+      path.join(fixtureRoot, "tsconfig.depcruise.json"),
+      JSON.stringify({
+        extends: "./tsconfig.base.json",
+        compilerOptions: {
+          baseUrl: ".",
+          paths: { "@stll/folio-core/*": ["packages/core/src/*"] },
+        },
+        include: ["packages"],
+      }),
+    );
+    writeSource(
+      fixtureRoot,
+      "core",
+      "editor/index.ts",
+      'export type { Helper } from "./__tests__/helper";\n',
+    );
+    writeSource(
+      fixtureRoot,
+      "react",
+      "editor/index.tsx",
+      'export const load = () => import("./__tests__/helper");\n',
+    );
+    writeSource(
+      fixtureRoot,
+      "vue",
+      "editor/Editor.vue",
+      '<script setup lang="ts">\nimport { helper } from "@stll/folio-core/editor/__tests__/helper";\n</script>\n<template>{{ helper }}</template>\n',
+    );
+    for (const source of [
+      "editor/Editor.test.ts",
+      "editor/Editor.spec.tsx",
+      "editor/__fixtures__/fixture.ts",
+      "editor/__tests__/consumer.ts",
+    ]) {
+      writeSource(
+        fixtureRoot,
+        "core",
+        source,
+        'export { helper } from "@stll/folio-core/editor/__tests__/helper";\n',
+      );
+    }
+
+    const result = cruise(fixtureRoot);
+
+    expect(result.exitCode, result.output).not.toBe(0);
+    expect(
+      result.output.match(
+        /production-editor-source-does-not-import-test-support/gu,
+      ),
+      result.output,
+    ).toHaveLength(3);
+    for (const source of [
+      "packages/core/src/editor/index.ts",
+      "packages/react/src/editor/index.tsx",
+      "packages/vue/src/editor/Editor.vue",
+    ]) {
+      expect(result.output).toContain(source);
+    }
+  });
+
   test("accepts an allowed declared package edge", () => {
     const fixtureRoot = createFixture();
     addWorkspace({ fixtureRoot, workspace: "docx-core" });
