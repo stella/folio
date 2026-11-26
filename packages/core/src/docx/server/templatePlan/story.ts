@@ -119,6 +119,8 @@ export type ParagraphRead = {
   element: XmlElement;
   ordinal: number;
   styleId: string | null;
+  /** The language the paragraph mark states (`w:pPr/w:rPr/w:lang`), or null. */
+  language: string | null;
   numPr: ParagraphNumberingOverride | undefined;
   paraId: string | null;
   outlineLevel: number | null;
@@ -523,6 +525,7 @@ export const readParagraph = (
     element,
     ordinal: state.paragraphOrdinal,
     styleId: wChildVal(properties, "pStyle"),
+    language: wChildVal(wChild(properties, "rPr"), "lang"),
     numPr: readParagraphNumbering(wChild(properties, "numPr")),
     paraId: paraIdAttribute(element) ?? null,
     outlineLevel: headingLevelOf(outline),
