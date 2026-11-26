@@ -48,6 +48,7 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import { groundForDocumentOpRefusal } from "../canonical/canonicalRefusalGrounds";
 import { CanonicalSessionError } from "../canonical/canonicalSession";
 import { normalizeCanonicalSource } from "../canonical/canonicalSourceNormalization";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
@@ -58,7 +59,7 @@ import { fromMarkdown } from "../markdown/fromMarkdown";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { ProseMirrorDocumentValidationError } from "../prosemirror/validation";
 import {
-  CANONICAL_GAP,
+  CANONICAL_CONDITION,
   type HeadlessReviewerSession,
 } from "../types/canonicalCapabilities";
 import type {
@@ -246,7 +247,7 @@ const viewLaws = async (
       `Canonical projection failed: ${invalid.message}`,
     );
     expect(error.reason).toBe("refused");
-    expect(error.ground).toEqual({ gap: CANONICAL_GAP.dispatch });
+    expect(error.ground).toEqual({ condition: CANONICAL_CONDITION.internal });
     return;
   }
   const before = canonical.toDocument();
@@ -270,15 +271,19 @@ const viewLaws = async (
       !CanonicalSessionError.is(error)
     )
       throw error;
-    expect(
-      Object.values(ruled).flatMap((result) =>
-        result.isErr() && knownInputBoundary(before, result.error)
-          ? [result.error.message]
-          : [],
-      ),
-    ).toContain(error.message);
+    const boundaries = Object.values(ruled).flatMap((result) =>
+      result.isErr() && knownInputBoundary(before, result.error)
+        ? [result.error]
+        : [],
+    );
+    expect(boundaries.map(({ message }) => message)).toContain(error.message);
     expect(error.reason).toBe("refused");
-    expect(error.ground).toEqual({ gap: CANONICAL_GAP.dispatch });
+    // The view refuses under the ground of the reason the rules refuse with.
+    expect(
+      boundaries
+        .filter(({ message }) => message === error.message)
+        .map(({ reason }) => groundForDocumentOpRefusal(reason)),
+    ).toContainEqual(error.ground);
     expect(canonical.toDocument()).toEqual(before);
     return;
   }
@@ -384,7 +389,7 @@ test("a typed refusal for a supported view fails the generated parity law", asyn
     read.mockImplementation(() => {
       throw new CanonicalSessionError({
         reason: "refused",
-        ground: { gap: CANONICAL_GAP.dispatch },
+        ground: { condition: CANONICAL_CONDITION.internal },
         message: "Unexpected supported-view refusal",
       });
     });
@@ -446,7 +451,7 @@ for (const kind of ["ins", "del"] as const)
         read.mockImplementation(() => {
           throw new CanonicalSessionError({
             reason: "refused",
-            ground: { gap: CANONICAL_GAP.dispatch },
+            ground: { condition: CANONICAL_CONDITION.internal },
             message: "Unexpected refusal on a supported input",
           });
         });

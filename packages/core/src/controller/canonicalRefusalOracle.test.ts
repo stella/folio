@@ -17,7 +17,10 @@ import { CanonicalSessionError } from "../canonical/canonicalSession";
 import { createBuiltInStyleIndex } from "../docx/builtInStyles";
 import { getCanonicalCommandIntents } from "../prosemirror/canonicalCommands";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
+import {
+  CANONICAL_CONDITION,
+  CANONICAL_GAP,
+} from "../types/canonicalCapabilities";
 import { collectHeadings } from "../utils/headingCollector";
 import * as canonicalStructure from "./canonicalStructure";
 
@@ -233,7 +236,7 @@ test("a supported command losing its descriptor fails standing conformance in bo
   expect(ablated?.runs).toEqual({ editing: "refused", suggesting: "refused" });
   expect(ablated?.violations).toEqual(
     expectedSilentRefusals(
-      `${CANONICAL_GAP.dispatch}: Unclassified native text is unavailable in this session.`,
+      `${CANONICAL_CONDITION.invalidRequest}: Unclassified native text is unavailable in this session.`,
     ),
   );
   expect(ablated?.refusals.map(({ expectation }) => expectation)).toEqual([

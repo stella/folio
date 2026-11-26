@@ -16,6 +16,7 @@ import {
   type TextPosition,
 } from "@stll/docx-core/ops";
 
+import { groundForDocumentOpRefusal } from "../canonical/canonicalRefusalGrounds";
 import {
   type CanonicalCommit,
   type CanonicalSession,
@@ -44,6 +45,7 @@ import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
 import { completeNumberingForDoc } from "../prosemirror/listInstanceReferences";
 import { marksToTextFormatting } from "../prosemirror/runFormattingFromMarks";
 import {
+  CANONICAL_CONDITION,
   CANONICAL_GAP,
   type CanonicalRefusalGround,
 } from "../types/canonicalCapabilities";
@@ -64,17 +66,13 @@ import {
   importClipboardStyles,
 } from "./canonicalClipboardResources";
 
-const refuse = (message: string) =>
-  Result.err(
-    new CanonicalSessionError({
-      ground: { gap: CANONICAL_GAP.dispatch },
-      message,
-      reason: "refused",
-    }),
-  );
-/** A refusal under the gap or rule it belongs to. */
-const refuseUnder = (ground: CanonicalRefusalGround, message: string) =>
+/** A refusal under the gap, rule or condition it belongs to. */
+const refuse = (message: string, ground: CanonicalRefusalGround) =>
   Result.err(new CanonicalSessionError({ ground, message, reason: "refused" }));
+/** Clipboard content the paste cannot read or resolve as given. */
+const INVALID_CLIPBOARD: CanonicalRefusalGround = {
+  condition: CANONICAL_CONDITION.invalidRequest,
+};
 
 /**
  * The gap a clipboard block the paste cannot place falls under: a table's,
@@ -243,14 +241,20 @@ const importNumbering = ({
       numIds: new Map<number, number>(),
     });
   if (source === undefined)
-    return refuse("The clipboard list has no numbering definition.");
+    return refuse(
+      "The clipboard list has no numbering definition.",
+      INVALID_CLIPBOARD,
+    );
   const sourceDefinitions = source;
   if (
     references.some(
       (id) => !sourceDefinitions.nums.some(({ numId }) => numId === id),
     )
   )
-    return refuse("The clipboard list has no numbering definition.");
+    return refuse(
+      "The clipboard list has no numbering definition.",
+      INVALID_CLIPBOARD,
+    );
   const used = new Set(references);
   const sourceNums = source.nums.filter(({ numId }) => used.has(numId));
   const usedAbstracts = new Set(
@@ -276,12 +280,18 @@ const importNumbering = ({
         ({ abstractNumId }) => abstractNumId === instance?.abstractNumId,
       );
       if (definition === undefined)
-        return refuse("The clipboard list has no abstract definition.");
+        return refuse(
+          "The clipboard list has no abstract definition.",
+          INVALID_CLIPBOARD,
+        );
       const level = definition.levels.find(
         ({ ilvl }) => ilvl === rendering.level,
       );
       if (level === undefined)
-        return refuse("The clipboard list level could not be imported.");
+        return refuse(
+          "The clipboard list level could not be imported.",
+          INVALID_CLIPBOARD,
+        );
       Object.assign(level, {
         ...numberFormatFields(
           rendering.numFmt ?? (rendering.isBullet ? "bullet" : "decimal"),
@@ -348,7 +358,10 @@ const importNumbering = ({
       if (formatting?.numPr?.kind !== "reference") continue;
       const numId = nums.get(formatting.numPr.numId);
       if (numId === undefined)
-        return refuse("The clipboard list instance could not be imported.");
+        return refuse(
+          "The clipboard list instance could not be imported.",
+          INVALID_CLIPBOARD,
+        );
       formatting.numPr = paragraphNumberingReference({
         numId,
         ...(formatting.numPr.ilvl === undefined
@@ -374,6 +387,7 @@ const importNumbering = ({
     if (numId === undefined || abstractNumId === undefined)
       return refuse(
         "The clipboard numbering definition could not be imported.",
+        INVALID_CLIPBOARD,
       );
     const imported = { ...instance, numId, abstractNumId };
     for (const override of imported.levelOverrides ?? []) {
@@ -383,6 +397,7 @@ const importNumbering = ({
       if (mapped === undefined)
         return refuse(
           "A clipboard numbering style dependency could not be imported.",
+          INVALID_CLIPBOARD,
         );
       override.lvl.pStyle = mapped;
     }
@@ -394,6 +409,7 @@ const importNumbering = ({
     if (abstractNumId === undefined)
       return refuse(
         "The clipboard numbering definition could not be imported.",
+        INVALID_CLIPBOARD,
       );
     const imported = { ...definition, abstractNumId };
     if (styleIds !== undefined) {
@@ -402,6 +418,7 @@ const importNumbering = ({
         if (mapped === undefined)
           return refuse(
             "A clipboard numbering style dependency could not be imported.",
+            INVALID_CLIPBOARD,
           );
         imported.numStyleLink = mapped;
       }
@@ -410,6 +427,7 @@ const importNumbering = ({
         if (mapped === undefined)
           return refuse(
             "A clipboard numbering style dependency could not be imported.",
+            INVALID_CLIPBOARD,
           );
         imported.styleLink = mapped;
       }
@@ -419,6 +437,7 @@ const importNumbering = ({
         if (mapped === undefined)
           return refuse(
             "A clipboard numbering style dependency could not be imported.",
+            INVALID_CLIPBOARD,
           );
         level.pStyle = mapped;
       }
@@ -533,23 +552,27 @@ export const prepareCanonicalPaste = ({
 > => {
   // Declared: the inferred union of Ok/Err branches is emitted in a nondeterministic order.
   if (session.isComposing)
-    return refuse("Composition must finish before using the clipboard.");
+    return refuse("Composition must finish before using the clipboard.", {
+      condition: CANONICAL_CONDITION.composing,
+    });
   if (slice.content.size === 0)
     return Result.err(
       new CanonicalSessionError({
-        ground: { gap: CANONICAL_GAP.dispatch },
+        ground: INVALID_CLIPBOARD,
         message: "The clipboard contains no content.",
         reason: "noChange",
       }),
     );
   if (slice.openStart > 1 || slice.openEnd > 1)
-    return refuseUnder(
-      unplacedBlockGround(slice),
+    return refuse(
       "Clipboard tables and nested block containers require canonical table editing.",
+      unplacedBlockGround(slice),
     );
   const paragraphType = state.schema.nodes["paragraph"];
   if (paragraphType === undefined)
-    return refuse("Clipboard input requires a paragraph schema.");
+    return refuse("Clipboard input requires a paragraph schema.", {
+      condition: CANONICAL_CONDITION.internal,
+    });
   const tableType = state.schema.nodes["table"];
   let inline = true;
   let blocksOnly = true;
@@ -558,9 +581,9 @@ export const prepareCanonicalPaste = ({
     blocksOnly &&= node.type === paragraphType || node.type === tableType;
   });
   if (!inline && !blocksOnly)
-    return refuseUnder(
-      unplacedBlockGround(slice),
+    return refuse(
       "Clipboard tables and embedded blocks require canonical table editing.",
+      unplacedBlockGround(slice),
     );
   // A same-parent document slice omits its paragraph; it still represents open inline edges.
   const importedSlice = inline
@@ -576,7 +599,7 @@ export const prepareCanonicalPaste = ({
       ),
     catch: (cause) =>
       new CanonicalSessionError({
-        ground: { gap: CANONICAL_GAP.dispatch },
+        ground: INVALID_CLIPBOARD,
         reason: "refused",
         message: `Clipboard normalization failed: ${cause instanceof Error ? cause.message : String(cause)}`,
       }),
@@ -588,9 +611,9 @@ export const prepareCanonicalPaste = ({
       (block.type !== "paragraph" && block.type !== "table") ||
       clipboardParagraphs(block) === undefined
     )
-      return refuseUnder(
-        unplacedBlockGround(slice),
+      return refuse(
         "The clipboard contains an unsupported block.",
+        unplacedBlockGround(slice),
       );
     blocks.push(cloneClipboardBlock(block));
   }
@@ -618,6 +641,7 @@ export const prepareCanonicalPaste = ({
   if (state.selection instanceof CellSelection && !overCells)
     return refuse(
       "Pasting over selected cells requires a per-cell paste operation.",
+      INVALID_CLIPBOARD,
     );
   const selectionRange = overCells
     ? { from: state.selection.from, to: state.selection.to }
@@ -683,6 +707,7 @@ export const prepareCanonicalPaste = ({
     if (related)
       return refuse(
         "Copied notes and comments holding images or external links require their part's relationships.",
+        { gap: CANONICAL_GAP.storyContentProjection },
       );
   }
   // The session's own document, read to build the paste's operations.
@@ -700,7 +725,10 @@ export const prepareCanonicalPaste = ({
         formatting?.styleId === undefined ? [] : [formatting.styleId],
       ),
     });
-    if (importedStyles.isErr()) return refuse(importedStyles.error.message);
+    if (importedStyles.isErr()) {
+      const { reason, message } = importedStyles.error;
+      return refuse(message, groundForDocumentOpRefusal(reason));
+    }
     styles = importedStyles.value.styles;
     for (const [index, place] of places.entries()) {
       const imported =
@@ -753,6 +781,7 @@ export const prepareCanonicalPaste = ({
       if (numId === undefined)
         return refuse(
           "A clipboard style numbering dependency could not be imported.",
+          INVALID_CLIPBOARD,
         );
       style.pPr.numPr = paragraphNumberingReference({
         numId,
@@ -779,7 +808,10 @@ export const prepareCanonicalPaste = ({
     if (target === undefined || target.length === 0)
       target = source?.targetMode === "External" ? source.target : undefined;
     if (target === undefined || target.length === 0)
-      return refuse("The clipboard hyperlink has no resolved target.");
+      return refuse(
+        "The clipboard hyperlink has no resolved target.",
+        INVALID_CLIPBOARD,
+      );
     while (relationships.has(`rId${relationshipIndex}`)) relationshipIndex += 1;
     const id = `rId${relationshipIndex++}`;
     relationships.set(id, {
@@ -796,7 +828,7 @@ export const prepareCanonicalPaste = ({
       try: () => parseXml(xml, OOXML_NAMESPACE_SCOPE),
       catch: () =>
         new CanonicalSessionError({
-          ground: { gap: CANONICAL_GAP.dispatch },
+          ground: INVALID_CLIPBOARD,
           reason: "refused",
           message: "The clipboard hyperlink metadata is malformed.",
         }),
@@ -815,6 +847,7 @@ export const prepareCanonicalPaste = ({
         if (getLocalName(name) !== "id")
           return refuse(
             "Clipboard hyperlink metadata references an unsupported package part.",
+            INVALID_CLIPBOARD,
           );
         let id = remapped.get(attribute.value);
         if (id === undefined) {
@@ -874,6 +907,7 @@ export const prepareCanonicalPaste = ({
         if (child.rawXmlMode !== undefined)
           return refuse(
             "Opaque drawings and embedded objects require their source package parts.",
+            { gap: CANONICAL_GAP.storyContentProjection },
           );
         delete child.rawXml;
         delete child.rawImageFingerprint;
@@ -940,7 +974,10 @@ export const prepareCanonicalPaste = ({
           sourceMedia !== undefined &&
           sourceMedia.data.byteLength > MAX_CLIPBOARD_IMAGE_BYTES
         )
-          return refuse("The clipboard image exceeds the import size limit.");
+          return refuse(
+            "The clipboard image exceeds the import size limit.",
+            INVALID_CLIPBOARD,
+          );
         const src =
           image.src ??
           (sourceMedia === undefined
@@ -953,7 +990,10 @@ export const prepareCanonicalPaste = ({
             ? sourceRelationship.target
             : undefined);
         if (src === undefined)
-          return refuse("The clipboard image has no source bytes or URL.");
+          return refuse(
+            "The clipboard image has no source bytes or URL.",
+            INVALID_CLIPBOARD,
+          );
         image.src = src;
         while (relationships.has(`rId${relationshipIndex}`))
           relationshipIndex += 1;
@@ -966,14 +1006,20 @@ export const prepareCanonicalPaste = ({
           const mimeType = data.at(1);
           const payload = data.at(2);
           if (mimeType === undefined || payload === undefined)
-            return refuse("The clipboard image data is malformed.");
+            return refuse(
+              "The clipboard image data is malformed.",
+              INVALID_CLIPBOARD,
+            );
           if (payload.length > Math.ceil((MAX_CLIPBOARD_IMAGE_BYTES * 4) / 3))
-            return refuse("The clipboard image exceeds the import size limit.");
+            return refuse(
+              "The clipboard image exceeds the import size limit.",
+              INVALID_CLIPBOARD,
+            );
           const decoded = Result.try({
             try: () => base64ToBytes(payload),
             catch: () =>
               new CanonicalSessionError({
-                ground: { gap: CANONICAL_GAP.dispatch },
+                ground: INVALID_CLIPBOARD,
                 message: "The clipboard image data is malformed.",
                 reason: "refused",
               }),
@@ -1005,10 +1051,14 @@ export const prepareCanonicalPaste = ({
         } else
           return refuse(
             "Clipboard images require image bytes or an HTTP image URL.",
+            INVALID_CLIPBOARD,
           );
         const relationshipId = relationshipIdOf(id);
         if (relationshipId === undefined)
-          return refuse("The clipboard image relationship id is invalid.");
+          return refuse(
+            "The clipboard image relationship id is invalid.",
+            INVALID_CLIPBOARD,
+          );
         image.rId = relationshipId;
         // Drawing identities from another package must not claim local ownership.
         delete image.id;
@@ -1079,9 +1129,9 @@ export const prepareCanonicalPaste = ({
       semantic: "paste",
     });
   if (topParagraphs.length !== blocks.length)
-    return refuseUnder(
-      { gap: CANONICAL_GAP.trackedTableStructure },
+    return refuse(
       "Moving a table by dragging requires a table move operation.",
+      { gap: CANONICAL_GAP.trackedTableStructure },
     );
   const target = session.projection.addressAt(moveTarget);
   if (target.isErr()) return target;

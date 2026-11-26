@@ -106,7 +106,10 @@ import {
   createNativeSelectionRefreshPlugin,
   isCompositionKeyDown,
 } from "../prosemirror/nativeSelection";
-import { noteReferenceTransactionIssue } from "../prosemirror/noteReferenceOccurrences";
+import {
+  NoteReferenceReplayDefect,
+  noteReferenceTransactionIssue,
+} from "../prosemirror/noteReferenceOccurrences";
 import { ensureParaIdsInDoc } from "../prosemirror/paraIds";
 import { createDocumentNumberingPlugin } from "../prosemirror/plugins/documentNumbering";
 import {
@@ -522,10 +525,7 @@ export const createHiddenEditorManager = (
           : { type: "editing" }),
     );
   };
-  const refuse = (
-    reason: string,
-    ground: CanonicalRefusalGround = { gap: CANONICAL_GAP.dispatch },
-  ): void => {
+  const refuse = (reason: string, ground: CanonicalRefusalGround): void => {
     const message = reason;
     if (deps.onSessionRefusal) deps.onSessionRefusal(message, ground);
     else throw new CanonicalSessionRefusalError({ ground, message });
@@ -709,7 +709,9 @@ export const createHiddenEditorManager = (
     const { state } = view;
     const { session } = editorSession;
     if (state.selection instanceof CellSelection) {
-      refuse("A field goes in at a text selection, not over cells.");
+      refuse("A field goes in at a text selection, not over cells.", {
+        condition: CANONICAL_CONDITION.invalidRequest,
+      });
       return false;
     }
     const range = canonicalSelectionRange(state);
@@ -759,7 +761,7 @@ export const createHiddenEditorManager = (
     )
       return Result.err(
         new CanonicalSessionError({
-          ground: { gap: CANONICAL_GAP.dispatch },
+          ground: { condition: CANONICAL_CONDITION.notReady },
           message: "The editor showing the room is closed.",
           reason: "refused",
         }),
@@ -915,7 +917,9 @@ export const createHiddenEditorManager = (
     const direction = getCanonicalHistoryDirection(command);
     if (direction !== undefined) return history(direction);
     if (editorSession.session.isComposing) {
-      refuse("Composition must finish before formatting.");
+      refuse("Composition must finish before formatting.", {
+        condition: CANONICAL_CONDITION.composing,
+      });
       return false;
     }
     const commandState = view.state;
@@ -1280,7 +1284,9 @@ export const createHiddenEditorManager = (
       if (editorSession.type !== "canonical" || pmView.state.selection.empty)
         return true;
       if (event.clipboardData === null) {
-        refuse("The clipboard cannot receive the cut content.");
+        refuse("The clipboard cannot receive the cut content.", {
+          condition: CANONICAL_CONDITION.invalidRequest,
+        });
         return true;
       }
       syncCanonicalMode();
@@ -1303,7 +1309,7 @@ export const createHiddenEditorManager = (
         try: () => writeClipboard(pmView, data),
         catch: () =>
           new CanonicalSessionRefusalError({
-            ground: { gap: CANONICAL_GAP.dispatch },
+            ground: { condition: CANONICAL_CONDITION.invalidRequest },
             message: "The clipboard could not receive the cut content.",
           }),
       });
@@ -1417,7 +1423,12 @@ export const createHiddenEditorManager = (
         if (noteIssue)
           deps.onSessionRefusal?.(
             noteIssue.message,
-            { gap: CANONICAL_GAP.dispatch },
+            {
+              condition:
+                noteIssue instanceof NoteReferenceReplayDefect
+                  ? CANONICAL_CONDITION.internal
+                  : CANONICAL_CONDITION.invalidRequest,
+            },
             noteIssue,
           );
         if (!applied.state.doc.eq(view.state.doc)) {
@@ -1426,6 +1437,7 @@ export const createHiddenEditorManager = (
               applied.transactions,
               "A plugin attempted an unclassified canonical document mutation.",
             ),
+            { condition: CANONICAL_CONDITION.hostTransaction },
           );
           return;
         }
@@ -1513,7 +1525,9 @@ export const createHiddenEditorManager = (
           top: event.clientY,
         })?.pos;
         if (target === undefined) {
-          refuse("The drop has no document destination.");
+          refuse("The drop has no document destination.", {
+            condition: CANONICAL_CONDITION.invalidRequest,
+          });
           return true;
         }
         const captured = clipboardDrag;
@@ -1524,7 +1538,9 @@ export const createHiddenEditorManager = (
             captured.session !== editorSession.session ||
             captured.version !== editorSession.session.version)
         ) {
-          refuse("The dragged content changed or has no captured source.");
+          refuse("The dragged content changed or has no captured source.", {
+            condition: CANONICAL_CONDITION.stale,
+          });
           return true;
         }
         const source =
@@ -1833,7 +1849,9 @@ export const createHiddenEditorManager = (
           unavailable: { type: "refuse" },
         })
       ) {
-        refuse("The canonical body history selection is unavailable.");
+        refuse("The canonical body history selection is unavailable.", {
+          condition: CANONICAL_CONDITION.internal,
+        });
         return false;
       }
     }
@@ -1851,7 +1869,9 @@ export const createHiddenEditorManager = (
           transaction !== bodyTransaction && transaction.docChanged,
       )
     ) {
-      refuse("A plugin refused or changed the canonical body projection.");
+      refuse("A plugin refused or changed the canonical body projection.", {
+        condition: CANONICAL_CONDITION.hostTransaction,
+      });
       return false;
     }
     const staged = publishCanonicalProjection({

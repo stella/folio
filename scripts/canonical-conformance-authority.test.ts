@@ -174,7 +174,7 @@ const CONFORMANCE_PRODUCTION_IMPORTS = new Map<string, readonly string[]>([
   ],
   [
     "packages/core/src/types/canonicalCapabilities",
-    ["CANONICAL_GAP", "CANONICAL_CAPABILITIES"],
+    ["CANONICAL_GAP", "CANONICAL_CAPABILITIES", "CANONICAL_CONDITION"],
   ],
   ["packages/core/src/docx/canonicalSave", ["serializeCanonicalSave"]],
   // A host resolves the ids its change list shows, so the lists only choose

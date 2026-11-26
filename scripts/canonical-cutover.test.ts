@@ -59,7 +59,7 @@ describe("canonical cutover guard", () => {
         fc.boolean(),
         (name, bracket) => {
           const relay =
-            "const forward = (message: string, ground: CanonicalRefusalGround = { gap: CANONICAL_GAP.dispatch }) => {};";
+            "const forward = (message: string, ground: CanonicalRefusalGround = { gap: CANONICAL_GAP.storyContentProjection }) => {};";
           const error = bracket ? `${name}["error"]` : `${name}.error`;
           const message = bracket ? `${error}["message"]` : `${error}.message`;
           const ground = bracket ? `${error}["ground"]` : `${error}.ground`;
@@ -68,7 +68,7 @@ describe("canonical cutover guard", () => {
           ).toEqual([]);
           for (const argument of [
             "",
-            ", { gap: CANONICAL_GAP.dispatch }",
+            ", { gap: CANONICAL_GAP.storyContentProjection }",
             ", other.error.ground",
           ])
             expect(
@@ -165,7 +165,7 @@ describe("canonical cutover guard", () => {
   test("cannot keep a dead source alive with an orphan comment", () => {
     expect(
       failuresOf(
-        `// canonical-gap: ${CANONICAL_GAP.dispatch}\nconst unrelated = true;`,
+        `// canonical-gap: ${CANONICAL_GAP.storyContentProjection}\nconst unrelated = true;`,
       ).some((failure) => failure.includes("orphan canonical gap marker")),
     ).toBe(true);
   });

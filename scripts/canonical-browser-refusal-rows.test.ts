@@ -1,6 +1,9 @@
 import { expect, test } from "bun:test";
 
-import { CANONICAL_GAP } from "../packages/core/src/types/canonicalCapabilities";
+import {
+  CANONICAL_CONDITION,
+  CANONICAL_GAP,
+} from "../packages/core/src/types/canonicalCapabilities";
 import {
   canonicalBrowserRefusalRows,
   matchCanonicalRefusalRow,
@@ -47,6 +50,41 @@ test("canonical browser refusal matching takes a declared row and rejects unknow
   expect(
     canonicalBrowserRefusalRows({ kind: "typing", text: "alpha" }),
   ).toEqual([]);
+});
+
+test("a condition row takes a refusal under its condition, never one under a gap", () => {
+  const cleanup = imeOverCells.find(({ condition }) => condition !== undefined);
+  if (cleanup === undefined)
+    throw new TypeError("IME replacement over cells declares a condition.");
+  expect(
+    matchCanonicalRefusalRow({
+      rows: imeOverCells,
+      refusal: {
+        condition: CANONICAL_CONDITION.invalidRequest,
+        message: cleanup.message,
+      },
+    }),
+  ).toEqual(cleanup);
+  expect(
+    matchCanonicalRefusalRow({
+      rows: imeOverCells,
+      refusal: {
+        gap: CANONICAL_GAP.storyContentProjection,
+        message: cleanup.message,
+      },
+    }),
+  ).toBeUndefined();
+  expect(
+    matchCanonicalRefusalRow({
+      rows: imeOverCells,
+      refusal: {
+        condition: CANONICAL_CONDITION.hostTransaction,
+        message: cleanup.message,
+      },
+    }),
+  ).toBeUndefined();
+  // A condition never retires, so its row needs no ledger entry.
+  expect(() => validateHarnessRefusalRows([cleanup], {})).not.toThrow();
 });
 
 test("typing, pasting and deleting over selected cells stay strict; IME replacement declares its refusal", () => {
