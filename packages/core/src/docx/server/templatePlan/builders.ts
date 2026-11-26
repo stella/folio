@@ -5,6 +5,7 @@
  */
 import { SETTINGS_CHILDREN } from "@stll/docx-core/schema";
 
+import { sliceText } from "../../../utils/sliceText";
 import { updateSettingsOnOffChild } from "../../settingsHeaderFooterUpdate";
 import type { XmlElement } from "../../xmlParser";
 import { sha256Hex } from "./package";
@@ -166,19 +167,67 @@ export const complexFieldXml = ({
 
 /** The REF switches that take no argument. */
 const REF_SWITCH = /^\\[fhnprtw]$/u;
+/** The general format switch and the letter cases it may name. */
+const FORMAT_SWITCH = "\\*";
+const CASE_FORMAT = /^(?:lower|upper|firstcap)$/iu;
+
+/** The letter case a REF instruction asks for its result in, or null. */
+export const refCaseFormat = (
+  instruction: string,
+): "lower" | "upper" | "firstcap" | null => {
+  const name = /\\\*\s*(?<name>lower|upper|firstcap)\b/iu
+    .exec(instruction)
+    ?.groups?.["name"]?.toLowerCase();
+  return name === "lower" || name === "upper" || name === "firstcap"
+    ? name
+    : null;
+};
+
+/** `text` in the letter case a `\*` switch names, as a field result has it. */
+export const applyRefCaseFormat = (
+  text: string,
+  format: ReturnType<typeof refCaseFormat>,
+): string => {
+  switch (format) {
+    case "lower":
+      // Every letter, a roman numeral's included.
+      return text.toLowerCase();
+    case "upper":
+      return text.toUpperCase();
+    case "firstcap": {
+      const initial = sliceText({ text, units: "graphemes", end: 1 });
+      return initial.toUpperCase() + text.slice(initial.length);
+    }
+    case null:
+      return text;
+    default:
+      return format satisfies never;
+  }
+};
 
 /**
- * The field code of a REF to `bookmark` with `switches` (`\n \t \h`). Null
- * when the switches hold anything but single-letter switches.
+ * The field code of a REF to `bookmark` with `switches` (`\n \t \h`,
+ * `\n \* lower \h`). Null when the switches hold anything but
+ * single-letter switches and one letter-case format.
  */
 export const refFieldInstruction = (
   bookmark: string,
   switches: string,
 ): string | null => {
   const parts = switches.trim().split(/\s+/u).filter(Boolean);
-  return parts.every((part) => REF_SWITCH.test(part))
-    ? ` REF ${bookmark} ${parts.join(" ")}${parts.length === 0 ? "" : " "}`
-    : null;
+  let formats = 0;
+  for (const [index, part] of parts.entries()) {
+    const afterFormat = parts[index - 1] === FORMAT_SWITCH;
+    if (part === FORMAT_SWITCH) {
+      formats += 1;
+      if (formats > 1 || !CASE_FORMAT.test(parts[index + 1] ?? "")) {
+        return null;
+      }
+    } else if (!afterFormat && !REF_SWITCH.test(part)) {
+      return null;
+    }
+  }
+  return ` REF ${bookmark} ${parts.join(" ")}${parts.length === 0 ? "" : " "}`;
 };
 
 /** The bookmark a REF, PAGEREF or NOTEREF instruction names. */

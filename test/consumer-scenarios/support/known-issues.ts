@@ -158,6 +158,9 @@ export const VACUOUS_CHECKED_IN_FLOWS: Readonly<
   "restyle-paragraph-pending-deletion.json": [1],
   // Renumbering the preceding mark after terminal deletion has the same refusal.
   "renumber-after-terminal-delete.json": [1],
+  // The recorded last batch is atomic and refused; the heading the earlier
+  // tracked split-and-delete keeps, accepted as directly, is what it guards.
+  "issue-1350-d80a95b0a90f4835.json": [6],
   // The recorded seed now draws atomic=true; the overlapping split refuses
   // the whole batch. known-issues.test.ts checks atomic and non-atomic intent.
   "delete-split-and-merge.json": [0],
