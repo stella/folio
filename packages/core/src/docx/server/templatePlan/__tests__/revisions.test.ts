@@ -627,6 +627,61 @@ describe("a plan that keeps the tracked changes of its source", () => {
     ).toBe(false);
   });
 
+  test("a paragraph with a tracked mark can be the target of a reference", async () => {
+    // The first target ends in an inserted mark; the second is joined to
+    // the paragraph in front of it over a deleted one.
+    const source = await buildMinimalDocx(
+      [
+        marked(r("First heading"), "ins"),
+        marked(r("Gone "), "del"),
+        p(r("second heading")),
+        p(r("See 1 and 2 above.")),
+      ].join(""),
+    );
+    const plan = await keeping(source, (blocks) =>
+      blocks.map(({ id, hash }, index) => ({
+        kind: "source",
+        blockId: id,
+        hash,
+        numbering: index < 2 ? { numId: 1, ilvl: 0 } : null,
+      })),
+    );
+    const text = "See 1 and 2 above.";
+    const cite = (number: string, targetBlockId: string) => ({
+      blockId: "p2",
+      start: text.indexOf(number),
+      end: text.indexOf(number) + 1,
+      targetBlockId,
+      instruction: "\\n \\h",
+      expectedText: number,
+    });
+    const { docx, report } = unwrap(
+      await applyTemplatePlan({
+        source,
+        template,
+        plan: {
+          ...plan,
+          numberingPatches: [
+            { abstractNumId: 0, ilvl: 0, numFmt: "decimal", lvlText: "%1" },
+          ],
+          references: [cite("1", "p0"), cite("2", "p1")],
+        },
+      }),
+    );
+    const document = await partOf(docx, "word/document.xml");
+
+    expect(report.ok).toBe(true);
+    expect(report.references.results.map(({ status }) => status)).toEqual([
+      "ok",
+      "ok",
+    ]);
+    // The bookmark of the joined target holds its own paragraph: the one
+    // that carries the number, behind the paragraph the deleted mark ended.
+    expect(document).toMatch(
+      /Gone <\/w:t><\/w:r><\/w:p><w:p>(?:<w:pPr>.*?<\/w:pPr>)?<w:bookmarkStart [^>]*\/><w:r><w:t xml:space="preserve">second heading/u,
+    );
+  });
+
   test("a label that holds a change is not stripped", async () => {
     const source = await buildMinimalDocx(
       p(`${ins(r("3."))}<w:r><w:tab/></w:r>${r("The term.")}`),
