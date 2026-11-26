@@ -8212,38 +8212,57 @@ export class CanonicalPublicOperations {
       // A comment goes with exactly the words the edit takes, so its fate
       // must not depend on the mode: accepting the tracked edit equals making
       // it directly. A word diff can strike unchanged text at a comment edge
-      // and reinsert it outside the range, or keep a word the direct cuts
-      // take. Where either plan changes words under a comment, the tracked
-      // edit takes the direct cuts: a comment the paragraph holds, or one the
-      // batch adds, which stands before the edit runs.
+      // and reinsert it outside the range, keep a word the direct cuts take,
+      // or align a repeated word to its other occurrence, so that new text
+      // lands inside a comment the direct edit writes beside, or the other
+      // way round ("done" to "done done" inserts after "done" directly and
+      // before it in a word diff). Where either plan changes words under a
+      // comment or writes text inside or at the edge of one, the tracked edit
+      // takes the direct cuts: a comment the paragraph holds, or one the batch
+      // adds, which stands before the edit runs.
       const addedComments = tracked
         ? batchCommentSpans(batchComments, blockId, clean.text)
         : [];
-      const changesCommentedWords = (
-        changes: readonly { start: number; end: number }[] | null,
+      const commentedAt = (index: number) => {
+        const position = clean.offsets[index];
+        return (
+          position !== undefined &&
+          paragraph.node
+            .nodeAt(position - paragraph.start)
+            ?.marks.some((mark) => mark.type.name === "comment") === true
+        );
+      };
+      // A gap between two characters a comment covers, or at its edge.
+      const commentTouchesGap = (gap: number) =>
+        commentedAt(gap - 1) ||
+        commentedAt(gap) ||
+        addedComments.some((span) => span.start <= gap && gap <= span.end);
+      const touchesComment = (
+        changes: readonly { start: number; end: number; text: string }[] | null,
       ) =>
-        changes?.some(
-          (change) =>
-            clean.offsets
-              .slice(start + change.start, start + change.end)
-              .some((position) =>
-                paragraph.node
-                  .nodeAt(position - paragraph.start)
-                  ?.marks.some((mark) => mark.type.name === "comment"),
-              ) ||
-            (change.end > change.start &&
-              addedComments.some(
-                (span) =>
-                  span.start < start + change.end &&
-                  start + change.start < span.end,
-              )),
-        ) === true;
-      if (tracked && changesCommentedWords([{ start: 0, end: end - start }])) {
+        changes?.some((change) => {
+          const changeStart = start + change.start;
+          const changeEnd = start + change.end;
+          for (let index = changeStart; index < changeEnd; index++)
+            if (commentedAt(index)) return true;
+          if (
+            changeEnd > changeStart &&
+            addedComments.some(
+              (span) => span.start < changeEnd && changeStart < span.end,
+            )
+          )
+            return true;
+          return (
+            change.text.length > 0 &&
+            (commentTouchesGap(changeStart) || commentTouchesGap(changeEnd))
+          );
+        }) === true;
+      if (tracked && touchesComment([{ start: 0, end: end - start, text }])) {
         const directCuts = planReplacementChanges({
           ...replacementSource,
           planChanges: planTextChanges,
         });
-        if (changesCommentedWords(planned) || changesCommentedWords(directCuts))
+        if (touchesComment(planned) || touchesComment(directCuts))
           planned = directCuts;
       }
       // The segments above keep the references, or the replacement edits

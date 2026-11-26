@@ -295,6 +295,27 @@ test("a comment goes with its words whatever the batch and mode", async () => {
     {
       id: "a comment goes with its words whatever the batch and mode",
       numRuns: 20,
+      // A repeated word: the direct edit keeps the first "done" and writes
+      // the second after it, a word diff may keep the second and write the
+      // first before it, on the other side of the comment's edge.
+      examples: [
+        [
+          {
+            words: ["period", "done"],
+            comment: { start: 0, end: 11 },
+            replaced: { start: 7, end: 11 },
+            replacement: "done done",
+          },
+        ],
+        [
+          {
+            words: ["done", "period"],
+            comment: { start: 0, end: 11 },
+            replaced: { start: 0, end: 4 },
+            replacement: "done done",
+          },
+        ],
+      ],
     },
   );
 });
