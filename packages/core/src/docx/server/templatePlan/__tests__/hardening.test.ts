@@ -498,6 +498,13 @@ describe("malformed plans", () => {
       }),
     ],
     [
+      "a label break that is no boolean",
+      (plan) => {
+        firstItem(plan)["stripLabelBreak"] = "yes";
+        return plan;
+      },
+    ],
+    [
       "a negative start",
       (plan) => ({
         ...plan,

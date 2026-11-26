@@ -154,7 +154,11 @@ const sourceItemIssue = (item: Json, where: string): string | null => {
       return `${where} carries a malformed ${key}.`;
     }
   }
-  for (const key of ["labelAsText", "pageBreakBefore"] as const) {
+  for (const key of [
+    "labelAsText",
+    "pageBreakBefore",
+    "stripLabelBreak",
+  ] as const) {
     if (!isOptionalBoolean(item[key])) {
       return `${where} carries a malformed ${key}.`;
     }
