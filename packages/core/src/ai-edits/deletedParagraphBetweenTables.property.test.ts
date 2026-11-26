@@ -6,11 +6,13 @@
  *
  * The block before the deleted paragraph is a paragraph, which may get a table
  * put after it, or a table; the block after it is nothing, a paragraph or a
- * table. An earlier batch may put tables and paragraphs beside it first, so
- * the later one meets them pending in the tracked replay. The batch deletes
- * the paragraph, in any place among up to three tables or paragraphs it puts
- * beside it or before the block that follows it (a table's cell names the
- * table). The blocks stand in the body, a text box or a table cell.
+ * table. A tracked join of the opening paragraph into the next may be
+ * pending, and an earlier batch may put tables and paragraphs beside it
+ * first, so the later one meets them pending in the tracked replay. The
+ * batch deletes the paragraph, in any place among up to three tables or
+ * paragraphs it puts beside it, beside the blocks before and after it (a
+ * table's cell names the table) or beside the opening paragraph. The blocks
+ * stand in the body, a text box or a table cell.
  *
  * A case applies the batches to a fresh package in each mode, then saves and
  * reopens it, about 300 ms; the budget is 90 s for the stated runs, scaled by
@@ -38,8 +40,11 @@ type Mode = "direct" | "tracked-changes";
 type Insertion = {
   kind: "table" | "paragraph";
   side: "before" | "after";
-  /** The deleted paragraph, or the block after it as the batch finds it. */
-  target: "anchor" | "follower";
+  /**
+   * The deleted paragraph, the block after or before it as the batch finds
+   * it (a table's cell, next to a table), or the opening paragraph.
+   */
+  target: "anchor" | "follower" | "precursor" | "opening";
 };
 type Case = {
   container: "body" | "textBox" | "cell";
@@ -47,6 +52,11 @@ type Case = {
   after: "end" | "paragraph" | "table";
   /** A table put after the paragraph before, when that is a paragraph. */
   tableAfterPrevious: boolean;
+  /**
+   * A tracked join of the opening paragraph into the one after it, pending
+   * before the batches in both replays, when that one is a paragraph.
+   */
+  pendingJoin: boolean;
   /** An earlier batch's insertions beside the paragraph. */
   earlier: readonly Insertion[];
   insertions: readonly Insertion[];
@@ -138,16 +148,23 @@ const open = async ({
 };
 
 const blockIdOf = (reviewer: FolioDocxReviewer, text: string): string => {
-  const block = reviewer.getContent().find((entry) => entry.text === text);
+  // A pending join reads the opening paragraph with the one it joins.
+  const block = reviewer
+    .getContent()
+    .find((entry) => entry.text.startsWith(text));
   if (block === undefined) throw new Error(`Missing block ${text}`);
   return block.id;
 };
 
-/** The block after the anchor as the batch finds it, the anchor at the end. */
-const followerOf = (reviewer: FolioDocxReviewer, anchor: string): string => {
+/** The block `step` places from the anchor as the batch finds it, or the anchor. */
+const besideOf = (
+  reviewer: FolioDocxReviewer,
+  anchor: string,
+  step: 1 | -1,
+): string => {
   const content = reviewer.getContent();
   const index = content.findIndex(({ id }) => id === anchor);
-  return content[index + 1]?.id ?? anchor;
+  return content[index + step]?.id ?? anchor;
 };
 
 const insertionsOf = (
@@ -156,10 +173,15 @@ const insertionsOf = (
   prefix: string,
 ): FolioDocumentOperation[] => {
   const anchor = blockIdOf(reviewer, ANCHOR);
-  const follower = followerOf(reviewer, anchor);
+  const targets = {
+    anchor,
+    follower: besideOf(reviewer, anchor, 1),
+    precursor: besideOf(reviewer, anchor, -1),
+    opening: blockIdOf(reviewer, OPENING),
+  };
   return insertions.map(({ kind, side, target }, index) => {
     const id = `${prefix}-${String(index)}`;
-    const blockId = target === "anchor" ? anchor : follower;
+    const blockId = targets[target];
     const text = `Inserted ${prefix} ${String(index)}`;
     return kind === "table"
       ? { id, type: "insertTable", blockId, position: side, rows: [[text]] }
@@ -212,6 +234,24 @@ const replay = async (setup: Case, mode: Mode) => {
   const reviewer = await open(setup);
   const original = blocksOf(reviewer);
   const applied: string[] = [];
+  if (setup.pendingJoin) {
+    const joined = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "tracked-changes",
+        operations: [
+          {
+            id: "join",
+            type: "mergeBlockWithNext",
+            blockId: blockIdOf(reviewer, OPENING),
+            separator: " ",
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
+    applied.push(...joined.applied.map(({ id }) => id));
+  }
   for (const operations of [
     () => insertionsOf(setup.earlier, reviewer, "earlier"),
     () => operationsOf(setup, reviewer),
@@ -241,7 +281,12 @@ const replay = async (setup: Case, mode: Mode) => {
 const insertionArbitrary: fc.Arbitrary<Insertion> = fc.record({
   kind: fc.constantFrom<Insertion["kind"][]>("table", "paragraph"),
   side: fc.constantFrom<Insertion["side"][]>("before", "after"),
-  target: fc.constantFrom<Insertion["target"][]>("anchor", "follower"),
+  target: fc.constantFrom<Insertion["target"][]>(
+    "anchor",
+    "follower",
+    "precursor",
+    "opening",
+  ),
 });
 
 const caseArbitrary: fc.Arbitrary<Case> = fc
@@ -250,6 +295,7 @@ const caseArbitrary: fc.Arbitrary<Case> = fc
     before: fc.constantFrom<Case["before"][]>("paragraph", "table"),
     after: fc.constantFrom<Case["after"][]>("end", "paragraph", "table"),
     tableAfterPrevious: fc.boolean(),
+    pendingJoin: fc.boolean(),
     earlier: fc.array(insertionArbitrary, { maxLength: 2 }),
     insertions: fc.array(insertionArbitrary, { maxLength: 3 }),
     deletionAt: fc.nat({ max: 4 }),
@@ -259,6 +305,8 @@ const caseArbitrary: fc.Arbitrary<Case> = fc
       // Only a paragraph before it can have a table put after it.
       tableAfterPrevious:
         setup.before === "paragraph" && setup.tableAfterPrevious,
+      // Only a paragraph after the opening one can take its pending join.
+      pendingJoin: setup.before === "paragraph" && setup.pendingJoin,
     }),
   );
 
@@ -270,6 +318,7 @@ const anchorInsertion = (
 const singleBatch = {
   container: "body",
   tableAfterPrevious: false,
+  pendingJoin: false,
   earlier: [],
 } as const;
 
@@ -282,6 +331,7 @@ const regressions: [string, Case][] = [
       before: "paragraph",
       after: "end",
       tableAfterPrevious: false,
+      pendingJoin: false,
       earlier: [anchorInsertion("paragraph", "after")],
       insertions: [anchorInsertion("table", "after")],
       deletionAt: 0,
@@ -295,6 +345,7 @@ const regressions: [string, Case][] = [
       before: "paragraph",
       after: "end",
       tableAfterPrevious: false,
+      pendingJoin: false,
       earlier: [anchorInsertion("table", "after")],
       insertions: [{ kind: "paragraph", side: "before", target: "follower" }],
       deletionAt: 0,
@@ -307,6 +358,7 @@ const regressions: [string, Case][] = [
       before: "paragraph",
       after: "end",
       tableAfterPrevious: false,
+      pendingJoin: false,
       earlier: [anchorInsertion("table", "after")],
       insertions: [
         { kind: "paragraph", side: "before", target: "follower" },
@@ -322,8 +374,237 @@ const regressions: [string, Case][] = [
       before: "paragraph",
       after: "table",
       tableAfterPrevious: false,
+      pendingJoin: false,
       earlier: [],
       insertions: [anchorInsertion("paragraph", "before")],
+      deletionAt: 0,
+    },
+  ],
+  // Seed 1758728747: what is put beside a cell's paragraph lands beside its
+  // table, which the deletion inside it leaves where it was put.
+  [
+    "a cell's paragraph before a nested table, deleted as paragraphs go before and after it and a table before it",
+    {
+      container: "cell",
+      before: "paragraph",
+      after: "table",
+      tableAfterPrevious: false,
+      pendingJoin: false,
+      earlier: [],
+      insertions: [
+        anchorInsertion("paragraph", "before"),
+        anchorInsertion("paragraph", "after"),
+        anchorInsertion("table", "before"),
+      ],
+      deletionAt: 0,
+    },
+  ],
+  // A table put after the paragraph a pending join takes lands after the
+  // join, right before the deleted paragraph, which then stands between two
+  // tables.
+  [
+    "the body's last paragraph after a pending join, deleted as a paragraph goes before it and tables after the join and after it",
+    {
+      container: "body",
+      before: "paragraph",
+      after: "end",
+      tableAfterPrevious: false,
+      pendingJoin: true,
+      earlier: [],
+      insertions: [
+        anchorInsertion("paragraph", "before"),
+        { kind: "table", side: "after", target: "opening" },
+        anchorInsertion("table", "after"),
+      ],
+      deletionAt: 3,
+    },
+  ],
+  // A table put before the next table's cell lands right after the deleted
+  // paragraph, which then stands between two tables.
+  [
+    "a paragraph before a table, deleted as tables go before it and before that table's cell and a paragraph after it",
+    {
+      container: "body",
+      before: "paragraph",
+      after: "table",
+      tableAfterPrevious: false,
+      pendingJoin: false,
+      earlier: [],
+      insertions: [
+        anchorInsertion("table", "before"),
+        { kind: "table", side: "before", target: "follower" },
+        anchorInsertion("paragraph", "after"),
+      ],
+      deletionAt: 3,
+    },
+  ],
+  // Put after the cell's paragraph before it, a table and a paragraph land
+  // after the cell's table, not beside the deleted paragraph.
+  [
+    "a cell's paragraph before a nested table, deleted as a table and a paragraph go after the cell paragraph before it",
+    {
+      container: "cell",
+      before: "paragraph",
+      after: "table",
+      tableAfterPrevious: true,
+      pendingJoin: false,
+      earlier: [],
+      insertions: [{ kind: "paragraph", side: "after", target: "precursor" }],
+      deletionAt: 0,
+    },
+  ],
+  // Directly, the tables put after the paragraph before it stay ahead of the
+  // paragraph put after it, which stands in its place.
+  [
+    "a paragraph deleted as two tables go after the one before it and a paragraph after it",
+    {
+      container: "body",
+      before: "paragraph",
+      after: "paragraph",
+      tableAfterPrevious: true,
+      pendingJoin: false,
+      earlier: [],
+      insertions: [
+        anchorInsertion("paragraph", "after"),
+        { kind: "table", side: "after", target: "precursor" },
+      ],
+      deletionAt: 0,
+    },
+  ],
+  // A paragraph put after the paragraph before it, after a table put there,
+  // stands right before it: it goes whole, not kept between tables.
+  [
+    "a paragraph before a table, deleted as a table and then a paragraph go after the one before it",
+    {
+      container: "body",
+      before: "paragraph",
+      after: "table",
+      tableAfterPrevious: true,
+      pendingJoin: false,
+      earlier: [],
+      insertions: [{ kind: "paragraph", side: "after", target: "precursor" }],
+      deletionAt: 0,
+    },
+  ],
+  // Put after the paragraph before it later in the batch, the table lands
+  // after the paragraph put before it, so it stands between two tables.
+  [
+    "a paragraph before a table, deleted as a paragraph goes before it and then a table after the one before it",
+    {
+      container: "body",
+      before: "paragraph",
+      after: "table",
+      tableAfterPrevious: false,
+      pendingJoin: false,
+      earlier: [],
+      insertions: [
+        anchorInsertion("paragraph", "before"),
+        { kind: "table", side: "after", target: "precursor" },
+      ],
+      deletionAt: 0,
+    },
+  ],
+  // Directly, both go after it before it goes, in batch order.
+  [
+    "a paragraph before a table, deleted as paragraphs go before it and then after the one before it",
+    {
+      container: "body",
+      before: "paragraph",
+      after: "table",
+      tableAfterPrevious: false,
+      pendingJoin: false,
+      earlier: [],
+      insertions: [
+        anchorInsertion("paragraph", "before"),
+        { kind: "paragraph", side: "after", target: "precursor" },
+      ],
+      deletionAt: 0,
+    },
+  ],
+  // Directly, the tables put after the paragraph before it stay ahead of the
+  // paragraph put before the one after it.
+  [
+    "a paragraph deleted as two tables go after the one before it and a paragraph before the next",
+    {
+      container: "body",
+      before: "paragraph",
+      after: "paragraph",
+      tableAfterPrevious: true,
+      pendingJoin: false,
+      earlier: [],
+      insertions: [
+        { kind: "table", side: "after", target: "precursor" },
+        { kind: "paragraph", side: "before", target: "follower" },
+      ],
+      deletionAt: 0,
+    },
+  ],
+  // Put after the table before it, named by that table's cell, a table lands
+  // in its gap after the paragraph put before it, in batch order.
+  [
+    "a paragraph after a table, deleted as a paragraph goes before it and a table after that table's cell",
+    {
+      container: "body",
+      before: "table",
+      after: "paragraph",
+      tableAfterPrevious: false,
+      pendingJoin: false,
+      earlier: [],
+      insertions: [
+        anchorInsertion("paragraph", "before"),
+        { kind: "table", side: "after", target: "precursor" },
+      ],
+      deletionAt: 0,
+    },
+  ],
+  [
+    "the body's last paragraph after a table, deleted as a paragraph goes before it and tables after it and after that table's cell",
+    {
+      container: "body",
+      before: "table",
+      after: "end",
+      tableAfterPrevious: false,
+      pendingJoin: false,
+      earlier: [],
+      insertions: [
+        anchorInsertion("paragraph", "before"),
+        anchorInsertion("table", "after"),
+        { kind: "table", side: "after", target: "precursor" },
+      ],
+      deletionAt: 0,
+    },
+  ],
+  // Directly, tables put after a pending table's cell replay beside that
+  // table, not by the paragraph after it, which the batch removes first.
+  [
+    "a paragraph after a pending table, deleted as two tables go after that table's cell",
+    {
+      container: "body",
+      before: "paragraph",
+      after: "paragraph",
+      tableAfterPrevious: false,
+      pendingJoin: false,
+      earlier: [{ kind: "table", side: "after", target: "precursor" }],
+      insertions: [
+        { kind: "table", side: "after", target: "precursor" },
+        { kind: "table", side: "after", target: "precursor" },
+      ],
+      deletionAt: 0,
+    },
+  ],
+  [
+    "a paragraph after a pending join, deleted between tables put after the join and before the next paragraph",
+    {
+      container: "body",
+      before: "paragraph",
+      after: "paragraph",
+      tableAfterPrevious: true,
+      pendingJoin: true,
+      earlier: [],
+      insertions: [
+        { kind: "table", side: "before", target: "follower" },
+        { kind: "table", side: "after", target: "opening" },
+      ],
       deletionAt: 0,
     },
   ],

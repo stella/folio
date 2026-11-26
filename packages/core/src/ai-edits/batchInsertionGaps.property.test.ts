@@ -333,18 +333,17 @@ const caseArbitrary: fc.Arbitrary<Case> = fc
     setup,
     target,
     deletes,
-    // A batch that deletes a paragraph puts paragraphs beside paragraphs:
-    // tables a direct batch puts right beside the paragraph it deletes can
-    // still leave it no paragraph to go by when it runs (the examples hold
-    // the ones that do not).
-    insertions:
-      deletes === undefined
-        ? insertions
-        : insertions.map(({ side, anchor }) => ({
-            kind: "paragraph" as const,
-            side,
-            anchor: anchor % paragraphs,
-          })),
+    // A table a direct batch puts by a paragraph beside the one it deletes
+    // can still leave it no paragraph to go by when it runs (the examples
+    // hold the ones that do not). One a table's cell names lands beside that
+    // table, where the batch reads it.
+    insertions: insertions.map((insertion) =>
+      deletes !== undefined &&
+      insertion.kind === "table" &&
+      !(table && insertion.anchor % (paragraphs + 1) === paragraphs)
+        ? { ...insertion, kind: "paragraph" as const }
+        : insertion,
+    ),
   }));
 
 const paragraph = (side: Insertion["side"], anchor: number): Insertion => ({

@@ -1,0 +1,10 @@
+{
+  "a deleted paragraph beside a table reads the same applied directly and accepted": [
+    {
+      "seed": 1758728747,
+      "path": "1:2:2:10:9",
+      "note": "A cell's deleted paragraph with paragraphs put before and after it and a table put before it: blocks put beside a cell's paragraph land beside its table, in both modes.",
+      "date": "2026-11-26"
+    }
+  ]
+}
