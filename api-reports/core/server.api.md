@@ -2204,6 +2204,7 @@ export type TemplatePlan = {
         doNotExpandShiftReturn?: boolean;
     };
     lastSection?: TemplatePlanSection;
+    emptyTemplateBlockIds?: string[];
     trackedChanges?: TemplatePlanTrackedView;
     textEffects?: "normalize" | "keep";
 };

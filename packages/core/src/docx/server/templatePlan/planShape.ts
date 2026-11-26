@@ -472,6 +472,11 @@ export const planShapeIssue = (plan: unknown): string | null => {
       ? null
       : "The plan names an unknown view of tracked changes.") ??
     sectionIssue(plan["lastSection"], "The plan's last section") ??
+    (plan["emptyTemplateBlockIds"] === undefined ||
+    (Array.isArray(plan["emptyTemplateBlockIds"]) &&
+      plan["emptyTemplateBlockIds"].every(isString))
+      ? null
+      : "The plan's emptied template blocks are no list of block ids.") ??
     (plan["textEffects"] === undefined ||
     plan["textEffects"] === "normalize" ||
     plan["textEffects"] === "keep"
