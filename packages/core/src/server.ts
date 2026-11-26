@@ -393,6 +393,7 @@ export {
   type TemplatePlanSectionPage,
   type TemplatePlanSourceItem,
   type TemplatePlanSpanCounts,
+  type TemplatePlanTrackedChanges,
   type TemplatePlanTrackedView,
   type VerifyTemplatePlanOutputArgs,
 } from "./docx/server/templatePlan/types";

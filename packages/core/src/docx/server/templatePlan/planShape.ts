@@ -468,7 +468,8 @@ export const planShapeIssue = (plan: unknown): string | null => {
     compatIssue(plan["compat"]) ??
     (plan["trackedChanges"] === undefined ||
     plan["trackedChanges"] === "accept" ||
-    plan["trackedChanges"] === "reject"
+    plan["trackedChanges"] === "reject" ||
+    plan["trackedChanges"] === "keep"
       ? null
       : "The plan names an unknown view of tracked changes.") ??
     sectionIssue(plan["lastSection"], "The plan's last section") ??

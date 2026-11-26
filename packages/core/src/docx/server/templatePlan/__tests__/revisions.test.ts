@@ -4,6 +4,7 @@ import { ZipArchive } from "@stll/docx-core/zip";
 
 import { applyTemplatePlan } from "../apply";
 import { analyzeDocxBlocks } from "../blocks";
+import { inspectDocxTemplate } from "../inspect";
 import { resolvePartRevisions } from "../revisions";
 import type {
   DocxBlock,
@@ -251,10 +252,186 @@ describe("a plan for one view of tracked changes", () => {
     );
     // A plan read from JSON may name anything.
     const unknownView: TemplatePlan = JSON.parse(
-      JSON.stringify({ ...plan, trackedChanges: "keep" }),
+      JSON.stringify({ ...plan, trackedChanges: "merge" }),
     );
     expect(
       codeOf(await applyTemplatePlan({ source, template, plan: unknownView })),
     ).toBe("plan-invalid");
+  });
+});
+
+describe("a plan that keeps the tracked changes of its source", () => {
+  let template: Uint8Array;
+  beforeAll(async () => {
+    template = await buildTemplate();
+  });
+  const partOf = async (docx: Uint8Array, path: string): Promise<string> =>
+    (await (await ZipArchive.read(docx)).entry(path)?.text()) ?? "";
+  /** A plan made on the accepted view's blocks, as a caller makes it. */
+  const keeping = async (
+    source: Uint8Array,
+    items?: Parameters<typeof planFor>[0]["items"],
+  ): Promise<TemplatePlan> => ({
+    ...(await planFor({
+      source,
+      template,
+      ...(items === undefined ? {} : { items }),
+      extra: { trackedChanges: "accept" },
+    })),
+    trackedChanges: "keep",
+  });
+  const body = (blocks: { id: string; hash: string }[]) =>
+    blocks.map(({ id, hash }) => ({
+      kind: "source" as const,
+      blockId: id,
+      hash,
+      styleId: "HouseBody",
+    }));
+
+  test("the output shows the same insertions and deletions, by the same authors, and tracks nothing new", async () => {
+    const source = await buildMinimalDocx(
+      `${p(`${r("The fee is ")}${del("100")}${ins(r("120"))}${r(".")}`)}${p(r("Untouched."))}`,
+    );
+    const plan = await keeping(source, body);
+    const { docx, report } = unwrap(
+      await applyTemplatePlan({ source, template, plan }),
+    );
+    const document = await partOf(docx, "word/document.xml");
+
+    expect(report.ok).toBe(true);
+    expect(report.trackedChangesKept).toMatchObject({
+      insertions: 1,
+      deletions: 1,
+      authors: ["First Author", "Second Author"],
+    });
+    expect(document).toMatch(
+      /<w:del w:id="\d+" w:author="Second Author" w:date="2026-02-07T09:30:00Z"><w:r><w:delText xml:space="preserve">100<\/w:delText><\/w:r><\/w:del><w:ins w:id="\d+" w:author="First Author" w:date="2026-01-05T10:00:00Z"><w:r><w:t xml:space="preserve">120<\/w:t><\/w:r><\/w:ins>/u,
+    );
+    // Both readings of the output are the source's.
+    for (const [view, text] of [
+      ["accept", "The fee is 120."],
+      ["reject", "The fee is 100."],
+    ] as const) {
+      expect(
+        unwrap(await analyzeDocxBlocks(docx, { trackedChanges: view }))
+          .blocks.map((block) => block.text)
+          .filter((line) => line.startsWith("The fee")),
+      ).toEqual([text]);
+    }
+    expect(await partOf(docx, "word/settings.xml")).not.toContain(
+      "trackRevisions",
+    );
+    // Also on a template that has tracking switched on.
+    const settings = await partOf(template, "word/settings.xml");
+    const tracking = await ZipArchive.read(template);
+    tracking.set(
+      "word/settings.xml",
+      settings.replace(/(<w:settings\b[^>]*>)/u, "$1<w:trackRevisions/>"),
+    );
+    const onTracking = await tracking.generate();
+    expect(await partOf(onTracking, "word/settings.xml")).toContain(
+      "<w:trackRevisions/>",
+    );
+    const switchedOff = unwrap(
+      await applyTemplatePlan({
+        source,
+        template: onTracking,
+        plan: {
+          ...plan,
+          templateSha256: unwrap(await inspectDocxTemplate(onTracking)).sha256,
+        },
+      }),
+    );
+    expect(await partOf(switchedOff.docx, "word/settings.xml")).not.toContain(
+      "trackRevisions",
+    );
+    // Verification holds the output to each change and to who made it.
+    const tampered = [
+      document.replace('w:author="Second Author"', 'w:author="Someone"'),
+      document.replace(/<w:del [^>]*>.*?<\/w:del>/u, ""),
+      document.replace(">120<", ">125<"),
+    ];
+    for (const xml of tampered) {
+      expect(xml).not.toBe(document);
+      const zip = await ZipArchive.read(docx);
+      zip.set("word/document.xml", xml);
+      expect(
+        (
+          await verifyFor({
+            source,
+            template,
+            output: await zip.generate(),
+            plan,
+          })
+        ).issues.map(({ code }) => code),
+      ).toEqual(["text-mismatch"]);
+    }
+  });
+
+  test("a change that the two views read as other paragraphs is refused by name", async () => {
+    const cases: [string, string][] = [
+      [
+        `${marked(r("One "), "del")}${p(r("two."))}`,
+        "inserted or deleted paragraph mark",
+      ],
+      [
+        p(
+          `${r("First.")}<w:moveFrom w:id="4" ${BY}><w:r><w:delText>Moved.</w:delText></w:r></w:moveFrom>`,
+        ),
+        "move",
+      ],
+      [
+        p(`${r("An ")}${ins(`${r("added ")}${del("old ", 7)}`)}${r("word.")}`),
+        "inside another change",
+      ],
+    ];
+    for (const [sourceBody, named] of cases) {
+      const source = await buildMinimalDocx(sourceBody);
+      const applied = await applyTemplatePlan({
+        source,
+        template,
+        plan: await keeping(source, body),
+      });
+      expect(codeOf(applied)).toBe("tracked-changes");
+      expect(applied.isErr() && applied.error.message).toContain(named);
+      // The same answer to a caller who asks before planning.
+      const asked = await analyzeDocxBlocks(source, { trackedChanges: "keep" });
+      expect(asked.isErr() && asked.error.code).toBe("tracked-changes");
+    }
+  });
+
+  test("a label that holds a change is not stripped", async () => {
+    const source = await buildMinimalDocx(
+      p(`${ins(r("3."))}<w:r><w:tab/></w:r>${r("The term.")}`),
+    );
+    const numbered = await keeping(source, ([first]) =>
+      first === undefined
+        ? []
+        : [
+            {
+              kind: "source",
+              blockId: first.id,
+              hash: first.hash,
+              styleId: "HouseBody",
+              stripLabel: "3.",
+              numbering: { numId: 1, ilvl: 1 },
+            },
+          ],
+    );
+    expect(
+      codeOf(await applyTemplatePlan({ source, template, plan: numbered })),
+    ).toBe("strip-label-mismatch");
+    // Placed with its typed number, the change goes with it.
+    const { docx, report } = unwrap(
+      await applyTemplatePlan({
+        source,
+        template,
+        plan: await keeping(source, body),
+      }),
+    );
+    expect(report.ok).toBe(true);
+    expect(await partOf(docx, "word/document.xml")).toMatch(
+      /<w:ins [^>]*><w:r><w:t xml:space="preserve">3\.<\/w:t><\/w:r><\/w:ins>/u,
+    );
   });
 });

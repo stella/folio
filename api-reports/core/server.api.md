@@ -28,7 +28,7 @@ import { XmlResourceLimits } from '@stll/docx-core/xml/limits';
 
 // @public
 export const analyzeDocxBlocks: (docx: Uint8Array, options?: {
-    trackedChanges?: TemplatePlanTrackedView;
+    trackedChanges?: TemplatePlanTrackedChanges;
 }) => Promise<Result<DocxBlockManifest, TemplatePlanError>>;
 
 // @public
@@ -327,6 +327,7 @@ export type DocxBlockManifest = {
     trackedChangesResolved?: DocxTrackedChanges & {
         view: TemplatePlanTrackedView;
     };
+    trackedChangesKept?: DocxTrackedChanges;
     warnings: string[];
 };
 
@@ -2205,7 +2206,7 @@ export type TemplatePlan = {
     };
     lastSection?: TemplatePlanSection;
     emptyTemplateBlockIds?: string[];
-    trackedChanges?: TemplatePlanTrackedView;
+    trackedChanges?: TemplatePlanTrackedChanges;
     textEffects?: "normalize" | "keep";
 };
 
@@ -2373,6 +2374,7 @@ export type TemplatePlanReport = {
     trackedChanges?: DocxTrackedChanges & {
         view: TemplatePlanTrackedView;
     };
+    trackedChangesKept?: DocxTrackedChanges;
     blocks: TemplatePlanBlockResult[];
     counts: {
         sourceBlocks: number;
@@ -2480,6 +2482,9 @@ export type TemplatePlanSpanCounts = {
     expected: number;
     output: number;
 };
+
+// @public
+export type TemplatePlanTrackedChanges = TemplatePlanTrackedView | "keep";
 
 // @public
 export type TemplatePlanTrackedView = "accept" | "reject";
