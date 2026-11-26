@@ -255,6 +255,13 @@ export type DocxTemplateStyle = {
    * (`w:keepNext`), inheritance and the document's defaults resolved.
    */
   keepNext: boolean;
+  /**
+   * The left indent the style gives its paragraphs, in twentieths of a
+   * point (`w:ind`), inheritance and the document's defaults resolved; null
+   * when none of them states one. A style bound to a list takes the indent
+   * of its level where it states none itself.
+   */
+  indentLeft: number | null;
   isDefault: boolean;
 };
 
@@ -377,6 +384,17 @@ export type TemplatePlanNumbering = {
 
 export type TemplatePlanMerge = "lineBreak" | "space" | "none";
 
+/**
+ * A paragraph's own indent, in twentieths of a point (`w:ind`). A side left
+ * out stays what the style or the list level gives; a hanging indent and a
+ * first-line indent exclude each other.
+ */
+export type TemplatePlanIndent = {
+  left?: number;
+  hanging?: number;
+  firstLine?: number;
+};
+
 export type TemplatePlanNestedParagraph = {
   blockId: string;
   styleId?: string;
@@ -384,6 +402,12 @@ export type TemplatePlanNestedParagraph = {
   stripLabel?: string;
   /** As on a source item. */
   labelAsText?: boolean;
+  /** As on a source item. */
+  keepNext?: boolean;
+  /** As on a source item. */
+  indent?: TemplatePlanIndent;
+  /** As on a source item. */
+  tabStops?: number[];
 };
 
 /** A page other than the template's, in twentieths of a point. */
@@ -450,6 +474,28 @@ export type TemplatePlanSourceItem = {
    * Verification compares what the paragraph states for itself.
    */
   pageBreakBefore?: boolean;
+  /**
+   * Keep the paragraph on the page of the one after it (`w:keepNext`): for
+   * a line that heads what follows in a style that does not say so. Not
+   * for a table, and not for a block that joins the paragraph before it.
+   * `false` is the same as leaving it out.
+   */
+  keepNext?: boolean;
+  /**
+   * The paragraph's own indent, over its style's and its list level's:
+   * for a number written as text that hangs the way the list's would. Not
+   * for a table, and not for a block that joins the paragraph before it.
+   */
+  indent?: TemplatePlanIndent;
+  /**
+   * The paragraph's own left tab stops, in twentieths of a point from the
+   * left margin and in ascending order (`w:tabs`): for a line of a label, a
+   * tab and a value whose values are to start at one position. They are
+   * added to the stops of the paragraph's style, as tab stops are in the
+   * format: a stop the style sets in front of them still ends a tab. Not
+   * for a table.
+   */
+  tabStops?: number[];
   /**
    * The paragraph is the last of a section, described here: for a part of
    * the document whose page is another than the template's, such as a
@@ -633,6 +679,7 @@ export type TemplatePlanIssue = {
     | "style-mismatch"
     | "numbering-mismatch"
     | "page-start-mismatch"
+    | "paragraph-format-mismatch"
     | "revision-left"
     | "section-mismatch"
     | "template-mismatch"

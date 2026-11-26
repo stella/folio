@@ -477,6 +477,7 @@ export type DocxTemplateStyle = {
     bold: boolean;
     size: number | null;
     keepNext: boolean;
+    indentLeft: number | null;
     isDefault: boolean;
 };
 
@@ -2251,9 +2252,16 @@ export type TemplatePlanHighlight = {
     note?: string;
 };
 
+// @public
+export type TemplatePlanIndent = {
+    left?: number;
+    hanging?: number;
+    firstLine?: number;
+};
+
 // @public (undocumented)
 export type TemplatePlanIssue = {
-    code: "text-mismatch" | "emphasis-mismatch" | "note-mismatch" | "block-missing" | "reference-broken" | "bookmark-dangling" | "field-unbalanced" | "relationship-dangling" | "note-dangling" | "numbering-dangling" | "style-dangling" | "style-mismatch" | "numbering-mismatch" | "page-start-mismatch" | "revision-left" | "section-mismatch" | "template-mismatch" | "prompting-field-left" | "field-not-frozen" | "update-fields-mismatch" | "compat-mismatch" | "conformance";
+    code: "text-mismatch" | "emphasis-mismatch" | "note-mismatch" | "block-missing" | "reference-broken" | "bookmark-dangling" | "field-unbalanced" | "relationship-dangling" | "note-dangling" | "numbering-dangling" | "style-dangling" | "style-mismatch" | "numbering-mismatch" | "page-start-mismatch" | "paragraph-format-mismatch" | "revision-left" | "section-mismatch" | "template-mismatch" | "prompting-field-left" | "field-not-frozen" | "update-fields-mismatch" | "compat-mismatch" | "conformance";
     message: string;
     blockId?: string;
     part?: string;
@@ -2279,6 +2287,9 @@ export type TemplatePlanNestedParagraph = {
     numbering?: TemplatePlanNumbering | null;
     stripLabel?: string;
     labelAsText?: boolean;
+    keepNext?: boolean;
+    indent?: TemplatePlanIndent;
+    tabStops?: number[];
 };
 
 // @public (undocumented)
@@ -2442,6 +2453,9 @@ export type TemplatePlanSourceItem = {
     labelAsText?: boolean;
     mergeNext?: TemplatePlanMerge;
     pageBreakBefore?: boolean;
+    keepNext?: boolean;
+    indent?: TemplatePlanIndent;
+    tabStops?: number[];
     endsSection?: TemplatePlanSection;
     cellStyleId?: string;
     nested?: TemplatePlanNestedParagraph[];

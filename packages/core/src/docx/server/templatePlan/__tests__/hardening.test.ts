@@ -491,6 +491,27 @@ describe("malformed plans", () => {
       }),
     ],
     [
+      "tab stops that do not ascend",
+      (plan) => {
+        firstItem(plan)["tabStops"] = [2552, 2552];
+        return plan;
+      },
+    ],
+    [
+      "an empty list of tab stops",
+      (plan) => {
+        firstItem(plan)["tabStops"] = [];
+        return plan;
+      },
+    ],
+    [
+      "a tab stop that is no whole number",
+      (plan) => {
+        firstItem(plan)["tabStops"] = [851.5];
+        return plan;
+      },
+    ],
+    [
       "a label break that is no boolean",
       (plan) => {
         firstItem(plan)["stripLabelBreak"] = "yes";
@@ -1594,6 +1615,187 @@ describe("page starts", () => {
         ({ pageBreakBefore }) => pageBreakBefore === true,
       ),
     ).toHaveLength(1);
+  });
+
+  test("keeping with the next paragraph is verified by itself", async () => {
+    const source = await twoParagraphs();
+    const items = (keepNext: boolean) => (blocks: PlannedBlock[]) =>
+      blocks.map(({ id, hash }, index): TemplatePlanItem => ({
+        kind: "source",
+        blockId: id,
+        hash,
+        styleId: "HouseBody",
+        indent: { left: 851 },
+        ...(index === 0 && keepNext ? { keepNext } : {}),
+      }));
+    const kept = await planFor({ source, template, items: items(true) });
+    const loose = await planFor({ source, template, items: items(false) });
+    // The same indent on both sides: only the keep-with-next differs.
+    for (const [plan, other] of [
+      [kept, loose],
+      [loose, kept],
+    ] as const) {
+      const { docx } = unwrap(
+        await applyTemplatePlan({ source, template, plan: other }),
+      );
+      expect(
+        (await verifyFor({ source, template, output: docx, plan })).issues.map(
+          ({ code, blockId }) => [code, blockId],
+        ),
+      ).toEqual([["paragraph-format-mismatch", "p0"]]);
+    }
+  });
+
+  test("an item gives its paragraph tab stops of its own", async () => {
+    const source = await twoParagraphs();
+    const items =
+      (tabStops: number[] | undefined) => (blocks: PlannedBlock[]) =>
+        blocks.map(({ id, hash }, index): TemplatePlanItem => ({
+          kind: "source",
+          blockId: id,
+          hash,
+          styleId: "HouseBody",
+          numbering: { numId: 1, ilvl: 1 },
+          ...(index === 0 && tabStops !== undefined
+            ? { tabStops, indent: { left: 851 } }
+            : {}),
+        }));
+    const stopped = await planFor({
+      source,
+      template,
+      items: items([2552, 2572]),
+    });
+    const plain = await planFor({ source, template, items: items(undefined) });
+    const { docx, report } = unwrap(
+      await applyTemplatePlan({ source, template, plan: stopped }),
+    );
+    const document = await documentOf(docx);
+
+    expect(report.ok).toBe(true);
+    // Behind the list and in front of the indent, as the schema orders them.
+    expect(document).toContain(
+      '<w:numPr><w:ilvl w:val="1"/><w:numId w:val="1"/></w:numPr><w:tabs><w:tab w:val="left" w:pos="2552"/><w:tab w:val="left" w:pos="2572"/></w:tabs><w:ind w:left="851"/></w:pPr>',
+    );
+    expect(document.split("<w:tabs>")).toHaveLength(2);
+    // Verification holds the output to the plan both ways, and to each stop.
+    const moved = await replacePart(
+      docx,
+      "word/document.xml",
+      document.replace('w:pos="2572"', 'w:pos="3000"'),
+    );
+    for (const [plan, output] of [
+      [plain, docx],
+      [
+        stopped,
+        unwrap(await applyTemplatePlan({ source, template, plan: plain })).docx,
+      ],
+      [stopped, moved],
+    ] as const) {
+      expect(
+        (await verifyFor({ source, template, output, plan })).issues.map(
+          ({ code, blockId }) => [code, blockId],
+        ),
+      ).toEqual([["paragraph-format-mismatch", "p0"]]);
+    }
+  });
+
+  test("an item keeps its paragraph with the next and gives it an indent of its own", async () => {
+    const source = await twoParagraphs();
+    const items = (formatted: boolean) => (blocks: PlannedBlock[]) =>
+      blocks.map(({ id, hash }, index): TemplatePlanItem => ({
+        kind: "source",
+        blockId: id,
+        hash,
+        styleId: "HouseBody",
+        ...(index === 0 && formatted
+          ? { keepNext: true, indent: { left: 851, hanging: 851 } }
+          : {}),
+      }));
+    const formatted = await planFor({ source, template, items: items(true) });
+    const plain = await planFor({ source, template, items: items(false) });
+    const { docx, report } = unwrap(
+      await applyTemplatePlan({ source, template, plan: formatted }),
+    );
+    const document = await documentOf(docx);
+
+    expect(report.ok).toBe(true);
+    // In the order the schema gives a paragraph's properties.
+    expect(document).toContain(
+      '<w:pPr><w:pStyle w:val="HouseBody"/><w:keepNext/><w:ind w:left="851" w:hanging="851"/></w:pPr>',
+    );
+    expect(document.split("<w:keepNext/>")).toHaveLength(2);
+    // Verification holds the output to the plan both ways.
+    expect(
+      (
+        await verifyFor({ source, template, output: docx, plan: plain })
+      ).issues.map(({ code, blockId }) => [code, blockId]),
+    ).toEqual([["paragraph-format-mismatch", "p0"]]);
+    const unformatted = unwrap(
+      await applyTemplatePlan({ source, template, plan: plain }),
+    );
+    expect(
+      (
+        await verifyFor({
+          source,
+          template,
+          output: unformatted.docx,
+          plan: formatted,
+        })
+      ).issues.map(({ code, blockId }) => [code, blockId]),
+    ).toEqual([["paragraph-format-mismatch", "p0"]]);
+    // The same indent written with a unit is the same indent; one counted
+    // in characters beside it is another paragraph.
+    const written = '<w:ind w:left="851" w:hanging="851"/>';
+    const outputWith = async (indent: string): Promise<Uint8Array> =>
+      await replacePart(
+        docx,
+        "word/document.xml",
+        document.replace(written, indent),
+      );
+    expect(
+      (
+        await verifyFor({
+          source,
+          template,
+          plan: formatted,
+          output: await outputWith(
+            '<w:ind w:left="42.55pt" w:hanging="42.55pt"/>',
+          ),
+        })
+      ).issues.map(({ code }) => code),
+    ).toEqual([]);
+    for (const changed of [
+      '<w:ind w:left="1in" w:hanging="851"/>',
+      '<w:ind w:left="851" w:leftChars="200" w:hanging="851"/>',
+    ]) {
+      expect(
+        (
+          await verifyFor({
+            source,
+            template,
+            plan: formatted,
+            output: await outputWith(changed),
+          })
+        ).issues.map(({ code, blockId }) => [code, blockId]),
+      ).toEqual([["paragraph-format-mismatch", "p0"]]);
+    }
+    // A hanging and a first-line indent exclude each other.
+    expect(
+      codeOf(
+        await applyFor({
+          source,
+          template,
+          items: (blocks) =>
+            blocks.map(({ id, hash }) => ({
+              kind: "source",
+              blockId: id,
+              hash,
+              styleId: "HouseBody",
+              indent: { hanging: 300, firstLine: 300 },
+            })),
+        }),
+      ),
+    ).toBe("plan-invalid");
   });
 
   test("verification notices a page start the plan does not give, and a missing one", async () => {

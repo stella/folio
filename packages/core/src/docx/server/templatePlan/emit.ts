@@ -622,8 +622,11 @@ export const paragraphXml = (
   if (styleId !== null) {
     properties.push(`<${w}:pStyle ${w}:val="${escapeXmlAttribute(styleId)}"/>`);
   }
-  // `w:pPr` keeps its children in schema order: the page start stands
-  // between the style and the list.
+  // `w:pPr` keeps its children in schema order: keeping with the next
+  // paragraph and the page start stand between the style and the list.
+  if (emit.paragraph.keepNext) {
+    properties.push(`<${w}:keepNext/>`);
+  }
   if (emit.paragraph.pageBreakBefore) {
     properties.push(`<${w}:pageBreakBefore/>`);
   }
@@ -635,6 +638,21 @@ export const paragraphXml = (
     properties.push(
       `<${w}:numPr><${w}:numId ${w}:val="${NO_LIST_NUM_ID}"/></${w}:numPr>`,
     );
+  }
+  // Tab stops follow the list and stand in front of the indent.
+  const { indent, tabStops } = emit.paragraph;
+  if (tabStops !== null) {
+    const stops = tabStops
+      .map((stop) => `<${w}:tab ${w}:val="left" ${w}:pos="${String(stop)}"/>`)
+      .join("");
+    properties.push(`<${w}:tabs>${stops}</${w}:tabs>`);
+  }
+  if (indent !== null) {
+    const sides = (["left", "hanging", "firstLine"] as const)
+      .filter((side) => indent[side] !== undefined)
+      .map((side) => ` ${w}:${side}="${String(indent[side])}"`)
+      .join("");
+    properties.push(`<${w}:ind${sides}/>`);
   }
   // A section's properties close the paragraph's.
   if (emit.sectionXml !== null) {
