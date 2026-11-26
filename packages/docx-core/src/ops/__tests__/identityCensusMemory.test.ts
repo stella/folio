@@ -28,7 +28,7 @@ const packageOf = (paragraphs: number): DocxPackage => ({
 /** Live `Map` objects once the collector has run. */
 const liveMaps = (): number => {
   Bun.gc(true);
-  return heapStats().objectTypeCounts.Map ?? 0;
+  return heapStats().objectTypeCounts["Map"] ?? 0;
 };
 
 /** How many more maps stay live while a census of `pkg` is remembered. */
