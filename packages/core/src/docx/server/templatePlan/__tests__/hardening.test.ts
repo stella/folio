@@ -2143,6 +2143,23 @@ describe("tables", () => {
     ]);
   });
 
+  test("a table that keeps its own borders keeps the fill of its cells, by the colour stated", async () => {
+    const shaded = (properties: string): string =>
+      `<w:tc><w:tcPr><w:tcW w:w="3000" w:type="dxa"/>${properties}</w:tcPr>${p(r("cell"))}</w:tc>`;
+    const source = await buildMinimalDocx(
+      `<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/></w:tblPr><w:tr>${shaded('<w:shd w:val="clear" w:color="auto" w:fill="E7E6E6" w:themeFill="background2"/><w:vAlign w:val="center"/>')}${shaded('<w:shd w:val="clear" w:color="auto" w:fill="auto"/>')}${shaded('<w:shd w:val="clear" w:themeFill="accent1"/>')}</w:tr></w:tbl>`,
+    );
+    const { docx, report } = unwrap(await applyFor({ source, template }));
+    const document = await documentOf(docx);
+
+    expect(report.ok).toBe(true);
+    expect(document).toContain(
+      '<w:tcPr><w:tcW w:w="3000" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="E7E6E6"/><w:vAlign w:val="center"/></w:tcPr>',
+    );
+    expect(document.match(/<w:shd /gu)).toHaveLength(1);
+    expect(document).not.toContain("themeFill");
+  });
+
   test("verification notices cells folded into one", async () => {
     const source = await buildMinimalDocx(
       `<w:tbl><w:tr>${cell(p(r("left")))}${cell(p(r("right")))}</w:tr></w:tbl>`,
