@@ -29,8 +29,10 @@ import {
   contentRank,
   createEditorIntentIdAllocator,
   deletionRemovesBlock,
+  DOCUMENT_OP_REFUSAL_REASONS,
   DOCUMENT_OP_TYPES,
   type DocumentOp,
+  DocumentOpRefusal,
   documentStories,
   type EditorIntent,
   type FinalBreakCandidate,
@@ -4301,7 +4303,28 @@ type CompilePublicIntentsOptions = {
     ReturnType<typeof createEditorIntentIdAllocator>
   >[];
   verifyOperation?: PublicOperationStaging["apply"];
+  /** The story the intents edit. */
+  story: OpStory;
 };
+
+const PROPERTY_FOLDING_INTENTS: ReadonlySet<EditorIntent["type"]> = new Set([
+  "joinParagraphs",
+  "splitParagraph",
+  "formatParagraph",
+  "setList",
+  "deleteParagraphs",
+]);
+
+/** Each paragraph property change of the story, by revision id. */
+const propertyChangesById = (document: Document, story: OpStory) =>
+  new Map(
+    paragraphsThroughTextBoxes(document, story).flatMap(
+      ({ paragraph }) =>
+        paragraph.propertyChanges?.map(
+          (change) => [change.info.id, change] as const,
+        ) ?? [],
+    ),
+  );
 
 // Bound the generic allocator's prospective paragraph lookup and keep
 // the unrestricted revision/control ranges of an unleased editor.
@@ -4405,12 +4428,30 @@ const compilePublicIntents = ({
   paragraphAllocationLease,
   allocations: admittedAllocations,
   verifyOperation,
+  story,
 }: CompilePublicIntentsOptions) => {
   const ops: DocumentOp[] = [];
   const recorded: RecordedRevisionIds[] = [];
   let verifiedOperation: VerifiedOperation | undefined;
   const absorbed: ParagraphAbsorption[] = [];
   const source = document;
+  // The changes pending joins of earlier operations of the batch own, under
+  // this operation's stamp. The compiler refuses a fold into a join's change
+  // from another stamp, as one at a time; stamped alike, it would take these
+  // over, so an intent that changes or drops one is refused here. Only
+  // intents that set, join, split or delete paragraphs reach those changes.
+  const standing =
+    mode === "direct" ||
+    !intents.some((intent) => PROPERTY_FOLDING_INTENTS.has(intent.type))
+      ? []
+      : [...propertyChangesById(source, story)].flatMap(([id, change]) =>
+          change.resolvesWith !== undefined &&
+          change.info.author === author &&
+          change.info.date === date &&
+          change.info.suggestionId === suggestionId
+            ? [[id, JSON.stringify(change)] as const]
+            : [],
+        );
   // The paragraph each tracked join of this operation deletes the mark of,
   // by the paragraph it keeps: properties the operation sets there belong to
   // that join.
@@ -4548,6 +4589,20 @@ const compilePublicIntents = ({
       appliedRevisions.push(...notes.revisions);
     }
     document = after;
+    const now =
+      standing.length === 0 ? undefined : propertyChangesById(after, story);
+    if (
+      now !== undefined &&
+      standing.some(([id, change]) => JSON.stringify(now.get(id)) !== change)
+    )
+      return Result.err(
+        new DocumentOpRefusal({
+          reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_PROPERTY_CHANGE,
+          message:
+            "Resolve the pending paragraph join before tracking a different change to its properties.",
+          opType: undefined,
+        }),
+      );
     ops.push(...compiled.value.ops, ...(notes?.ops ?? []));
     recorded.push({ revisions: appliedRevisions, folded: applied.folded });
     for (const id of appliedRevisions)
@@ -5993,6 +6048,7 @@ export class CanonicalPublicOperations {
             };
       const compiled = compilePublicIntents({
         document: withHeadings,
+        story,
         intents: mappedIntents,
         allocate,
         reservedBlockIds,

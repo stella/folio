@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "title": "PINNED #1356, fingerprint eb3c714b37673eff: a merge whose merged paragraph a later merge of the batch joins on waits for that join, as it does one at a time",
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "directNumbered",
+  "mode": "tracked-changes",
+  "seed": 2125039681,
+  "steps": [
+    {
+      "action": "add_comment",
+      "seed": 861368341
+    },
+    {
+      "action": "add_comment",
+      "seed": 797427144
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 101650277,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "412DDC7F",
+          "separator": " ",
+          "mergedParagraphProperties": {
+            "styleId": null,
+            "numbering": {
+              "kind": "levelOnly",
+              "ilvl": 1
+            }
+          }
+        },
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "3CEFFC83",
+          "separator": " ",
+          "mergedParagraphProperties": {
+            "numbering": {
+              "kind": "reference",
+              "numId": 7,
+              "ilvl": 0
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "weights": {
+    "version": 1,
+    "cells": {},
+    "operations": []
+  },
+  "origin": "shrunk from collisions flow seed 2125039681"
+}
