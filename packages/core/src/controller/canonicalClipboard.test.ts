@@ -371,7 +371,7 @@ describe("canonical clipboard", () => {
       state,
       commit: prepared.value,
     }).unwrap();
-    const linkIn = (document: Document) => {
+    const linkIn = (document: ReadonlyDocument) => {
       let link: { href?: string | undefined } | undefined;
       for (const note of document.package.footnotes ?? [])
         for (const block of note.content)
@@ -381,9 +381,10 @@ describe("canonical clipboard", () => {
       return link;
     };
     expect(linkIn(session.document)?.href).toBe("https://source.example.test");
-    const reopened = await parseDocx(await createDocx(session.document), {
-      preloadFonts: false,
-    });
+    const reopened = await parseDocx(
+      await createDocx(readModel(session.document)),
+      { preloadFonts: false },
+    );
     expect(linkIn(reopened)?.href).toBe("https://source.example.test");
   });
 

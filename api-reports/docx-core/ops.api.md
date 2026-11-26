@@ -614,7 +614,7 @@ export type EditorIntent = HyperlinkEditorIntent | GenerateTOCIntent | {
     from: TextPosition;
     to: TextPosition;
     target: TextPosition;
-    blocks: readonly (Paragraph | Table)[];
+    blocks: readonly PastedBlock[];
     openStart: 0 | 1;
     openEnd: 0 | 1;
 } | {

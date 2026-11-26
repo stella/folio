@@ -16,6 +16,7 @@ import {
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import type { Document, Paragraph } from "../types/document";
+import { readModel, type ReadonlyDocument } from "../types/documentModel";
 import {
   createCanonicalSession,
   publishCanonicalProjection,
@@ -41,8 +42,8 @@ const carrierDocument = (): Document => ({
   },
 });
 
-const carrierOf = (document: Document): Paragraph | undefined =>
-  document.package.document.content.find(
+const carrierOf = (document: ReadonlyDocument): Paragraph | undefined =>
+  readModel(document).package.document.content.find(
     (block): block is Paragraph =>
       block.type === "paragraph" && block.reviewCarrier !== undefined,
   );
@@ -79,9 +80,12 @@ test("a review carrier paragraph projects, takes text, undoes and saves", async 
   const typed = carrierOf(session.document);
   expect(typed?.paraId).toBe("10000002");
   expect(JSON.stringify(typed?.content)).toContain("Typed");
-  const reopened = await parseDocx(await createDocx(session.document), {
-    preloadFonts: false,
-  });
+  const reopened = await parseDocx(
+    await createDocx(readModel(session.document)),
+    {
+      preloadFonts: false,
+    },
+  );
   expect(carrierOf(reopened)?.reviewCarrier).toBe(
     REVIEW_CARRIERS.TERMINAL_TABLE,
   );
