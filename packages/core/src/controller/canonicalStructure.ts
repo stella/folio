@@ -37,6 +37,7 @@ import {
 import { cloneParagraphWithoutPropertySource } from "../docx/paragraphPropertySource";
 import { visitDocxParagraphs } from "../docx/paragraphTraversal";
 import type { CanonicalCommandIntent } from "../prosemirror/canonicalCommands";
+import { canonicalCellSelectionRanges } from "../prosemirror/canonicalSelectionRange";
 import { listRequestsForMarker } from "../prosemirror/listAutoformatMarkers";
 import {
   type ListRequest,
@@ -49,7 +50,7 @@ import {
 import { createStyleResolver } from "../prosemirror/styles/styleResolver";
 import {
   CANONICAL_CONDITION,
-  CANONICAL_GAP,
+  type CanonicalCondition,
 } from "../types/canonicalCapabilities";
 import type {
   BlockContent,
@@ -77,22 +78,20 @@ const currentSectionEndpoint = (paragraph: Paragraph) => {
   return { type: "omitted" } as const;
 };
 
-export const CELL_SELECTION_PLACEMENT_REFUSAL =
-  "A note or table of contents goes at a caret, not over selected cells.";
-
-const refuse = (message: string) =>
+const refuse = (message: string, condition: CanonicalCondition) =>
   Result.err(
     new CanonicalSessionError({
-      ground: { gap: CANONICAL_GAP.commands },
+      ground: { condition },
       message,
       reason: "refused",
     }),
   );
 
+/** The request asks for nothing to change; hosts report no refusal for it. */
 const noChange = (message: string) =>
   Result.err(
     new CanonicalSessionError({
-      ground: { gap: CANONICAL_GAP.commands },
+      ground: { condition: CANONICAL_CONDITION.invalidRequest },
       message,
       reason: "noChange",
     }),
@@ -174,11 +173,15 @@ const paragraphPositions = (
   for (const paragraph of paragraphs) {
     const address = projection.paragraph(paragraph.paraId ?? "");
     if (address === undefined)
-      return refuse("A selected paragraph has no canonical address.");
+      return refuse(
+        "A selected paragraph has no canonical address.",
+        CANONICAL_CONDITION.stale,
+      );
     const index = address.container.findIndex((item) => item === paragraph);
     if (index < 0)
       return refuse(
         "A selected paragraph is missing from its block container.",
+        CANONICAL_CONDITION.stale,
       );
     positions.push({ container: address.container, index, paragraph });
   }
@@ -342,13 +345,47 @@ type TextReplacementCommand = Extract<
 >;
 
 /**
+ * Note and contents commands over selected cells, placed as over the text
+ * they hold: a note reference follows the selected text, at the end of the
+ * last selected cell's text; a table of contents goes where the selection
+ * starts, at the start of the first selected cell's text. A note reference is
+ * deleted only from a selected cell, not from a cell the range passes over.
+ */
+const placeInSelectedCells = (
+  state: EditorState,
+  commands: readonly CanonicalCommandIntent[],
+): readonly CanonicalCommandIntent[] => {
+  const { selection } = state;
+  if (!(selection instanceof CellSelection)) return commands;
+  const ranges = canonicalCellSelectionRanges(selection);
+  const first = ranges.at(0) ?? panic("A selected cell holds a paragraph.");
+  const last = ranges.at(-1) ?? first;
+  return commands.flatMap((command): CanonicalCommandIntent[] => {
+    switch (command.type) {
+      case "insertNote":
+        return [{ ...command, at: last.to }];
+      case "generateTOC":
+        return [{ ...command, at: first.from }];
+      case "deleteNote":
+        return ranges.some(
+          ({ from, to }) => from <= command.from && command.from <= to,
+        )
+          ? [command]
+          : [];
+      default:
+        return [command];
+    }
+  });
+};
+
+/**
  * Toolbar meanings enter the same operation journal as native input, in the
  * story whose editor holds `state`: the body, or a header, footer or note.
  */
 export const prepareCanonicalCommands = (
   session: CanonicalSession,
   state: EditorState,
-  commands: readonly CanonicalCommandIntent[],
+  requested: readonly CanonicalCommandIntent[],
   story: OpStory = OP_STORIES.MAIN,
 ): Result<CanonicalCommit, CanonicalSessionError> => {
   // Section breaks, notes and a table of contents of headings belong to the
@@ -356,7 +393,7 @@ export const prepareCanonicalCommands = (
   // headings a contents lists are the body's.
   if (
     story !== OP_STORIES.MAIN &&
-    commands.some(
+    requested.some(
       ({ type }) =>
         type === "setSectionBreak" ||
         type === "removeSectionBreak" ||
@@ -365,17 +402,14 @@ export const prepareCanonicalCommands = (
         type === "generateTOC",
     )
   )
-    return Result.err(
-      new CanonicalSessionError({
-        ground: { condition: CANONICAL_CONDITION.invalidRequest },
-        message:
-          "Section breaks, notes and tables of contents go in the main story.",
-        reason: "refused",
-      }),
+    return refuse(
+      "Section breaks, notes and tables of contents go in the main story.",
+      CANONICAL_CONDITION.invalidRequest,
     );
   const projected = session.projectStory(story);
   if (projected.isErr()) return projected;
   const projection = projected.value;
+  const commands = placeInSelectedCells(state, requested);
   // A text replacement is the session's own text input; several ranges,
   // the last first, are one replacement.
   const replacements = commands.filter(
@@ -384,7 +418,10 @@ export const prepareCanonicalCommands = (
   );
   if (replacements.length > 0) {
     if (replacements.length !== commands.length)
-      return refuse("A text replacement must be prepared on its own.");
+      return refuse(
+        "A text replacement must be prepared on its own.",
+        CANONICAL_CONDITION.invalidRequest,
+      );
     const [only] = replacements;
     if (only !== undefined && replacements.length === 1)
       return session.prepareReplace(state, {
@@ -410,18 +447,6 @@ export const prepareCanonicalCommands = (
     }
     return session.prepareIntents(state, { intents });
   }
-  // A note reference or a table of contents goes at one caret; selected
-  // cells have none.
-  if (
-    state.selection instanceof CellSelection &&
-    commands.some(
-      ({ type }) =>
-        type === "generateTOC" ||
-        type === "insertNote" ||
-        type === "deleteNote",
-    )
-  )
-    return refuse(CELL_SELECTION_PLACEMENT_REFUSAL);
   const intents: EditorIntent[] = [];
   const valueCommands = commands.filter(
     (
@@ -434,7 +459,10 @@ export const prepareCanonicalCommands = (
   if (valueCommands.length > 0) {
     const [valueCommand] = valueCommands;
     if (valueCommand === undefined || commands.length !== 1)
-      return refuse("A content control's value must be set on its own.");
+      return refuse(
+        "A content control's value must be set on its own.",
+        CANONICAL_CONDITION.invalidRequest,
+      );
     return prepareContentControlValue(session, state, valueCommand);
   }
   const sectionCommands = commands.filter(
@@ -447,10 +475,16 @@ export const prepareCanonicalCommands = (
       sectionCommands.length !== commands.length ||
       sectionCommands.length !== 1
     )
-      return refuse("A section change must be prepared on its own.");
+      return refuse(
+        "A section change must be prepared on its own.",
+        CANONICAL_CONDITION.invalidRequest,
+      );
     const paragraphs = selectedParagraphs(projection, state, true);
     if (paragraphs.length === 0)
-      return refuse("Section breaks require a top-level document paragraph.");
+      return refuse(
+        "Section breaks require a top-level document paragraph.",
+        CANONICAL_CONDITION.invalidRequest,
+      );
     const command =
       sectionCommands.at(0) ?? panic("A section command was counted.");
     return session.prepareOperations(
@@ -484,7 +518,10 @@ export const prepareCanonicalCommands = (
   );
   if (noteCommands.length > 0) {
     if (noteCommands.length !== commands.length)
-      return refuse("Note changes must be prepared on their own.");
+      return refuse(
+        "Note changes must be prepared on their own.",
+        CANONICAL_CONDITION.invalidRequest,
+      );
     const ops: DocumentOp[] = [];
     const ordered = noteCommands.toReversed();
     // One allocation for the whole batch keeps the inserted notes' identities disjoint.
@@ -508,7 +545,10 @@ export const prepareCanonicalCommands = (
       const at = projection.addressAt(command.at);
       if (at.isErr()) return at;
       if (command.content.some((block) => block.type !== "paragraph"))
-        return refuse("Canonical note insertion requires paragraph content.");
+        return refuse(
+          "Canonical note insertion requires paragraph content.",
+          CANONICAL_CONDITION.invalidRequest,
+        );
       const blockIds =
         blockIdGroups.value[commandIndex] ??
         panic("A fresh identity group was reserved per note.");
@@ -549,7 +589,10 @@ export const prepareCanonicalCommands = (
           if (address.isErr()) return address;
           const outline = headingOutlineLevel(heading.level);
           if (outline?.kind !== "heading")
-            return refuse("A TOC heading has an invalid outline level.");
+            return refuse(
+              "A TOC heading has an invalid outline level.",
+              CANONICAL_CONDITION.invalidRequest,
+            );
           const styleId = styles.styleIdForTableOfContentsLevel(
             outline.level + 1,
           );
@@ -880,12 +923,16 @@ export const prepareCanonicalCommands = (
           if (!Number.isSafeInteger(start) || start < 0)
             return refuse(
               "The numbering start must be a non-negative integer.",
+              CANONICAL_CONDITION.invalidRequest,
             );
           const original = definitions.nums.find(
             (num) => num.numId === numPr.numId,
           );
           if (original === undefined)
-            return refuse("The numbering instance does not exist.");
+            return refuse(
+              "The numbering instance does not exist.",
+              CANONICAL_CONDITION.invalidRequest,
+            );
           targetId =
             maxOf(
               definitions.nums.map((num) => num.numId),

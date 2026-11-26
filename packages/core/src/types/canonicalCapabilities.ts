@@ -1,6 +1,5 @@
 /** Remaining seams to retire before the canonical session becomes the only authority. */
 export const CANONICAL_GAP = {
-  commands: "command-descriptors",
   trackedTableStructure: "tracked-table-structure",
   storyContentProjection: "story-content-projection",
   trackedChangeRecords: "tracked-change-records",
@@ -141,20 +140,10 @@ type CanonicalCapability = {
   kind: "routing" | "refusal";
   adapters: readonly ("react" | "vue")[];
   summary: string;
-  remainingCommands?: { registry: "extension-commands" };
   owner: "document-operations" | "controller" | "adapters" | "ai-edits";
 };
 
 export const CANONICAL_CAPABILITIES: {
-  readonly "command-descriptors": {
-    readonly remainingCommands: {
-      readonly registry: "extension-commands";
-    };
-    readonly owner: "controller";
-    readonly kind: "refusal";
-    readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Commands without canonical descriptors retain PM probing and hit the dispatch boundary.";
-  };
   readonly "tracked-table-structure": {
     readonly owner: "controller";
     readonly kind: "refusal";
@@ -198,14 +187,6 @@ export const CANONICAL_CAPABILITIES: {
     readonly summary: "A reviewer refuses to resolve one story of a suggestion that reaches several, which resolves only whole.";
   };
 } = {
-  [CANONICAL_GAP.commands]: {
-    remainingCommands: { registry: "extension-commands" },
-    owner: "controller",
-    kind: "refusal",
-    adapters: ["react", "vue"],
-    summary:
-      "Commands without canonical descriptors retain PM probing and hit the dispatch boundary.",
-  },
   [CANONICAL_GAP.trackedTableStructure]: {
     owner: "controller",
     kind: "refusal",

@@ -9,12 +9,6 @@ import type { HarnessRefusalRow } from "./canonical-refusal-rows";
 
 // These are fixture contracts, independent of the command planner's verdict.
 const REFUSAL_ROWS = {
-  cellSelectionPlacement: {
-    id: CANONICAL_GAP.commands,
-    gap: CANONICAL_GAP.commands,
-    message:
-      "A note or table of contents goes at a caret, not over selected cells.",
-  },
   // A suggested column deletion keeps its cells until accepted, so a cell
   // spanning the deleted column and another has no record of its narrowing.
   suggestedSpanningColumnDeletion: {
@@ -49,14 +43,6 @@ export const TOC_HEADING_SHAPES = [
 export const canonicalConformanceRefusalRows = (
   key: RefusalCase,
 ): readonly HarnessRefusalRow[] => {
-  if (
-    key.shape === "tables" &&
-    key.placement === "cross-paragraph" &&
-    (key.operation === "command:generateTOC" ||
-      key.operation === "command:insertFootnote" ||
-      key.operation === "command:insertEndnote")
-  )
-    return [REFUSAL_ROWS.cellSelectionPlacement];
   // Suggestions in the fixture's table. Over the whole document the selection
   // is in no table, so the table commands do nothing in either mode.
   const inFixtureTable =

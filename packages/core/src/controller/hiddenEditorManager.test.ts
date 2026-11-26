@@ -36,12 +36,10 @@ import { withCanonicalCommand } from "../prosemirror/canonicalCommands";
 import { pasteWithoutFormatting } from "../prosemirror/commands/pastePlainText";
 import { expectCommentRangeBoundaryAttrs } from "../prosemirror/commentRangeBoundaryAttrs";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import { HyperlinkRemovalRefusal } from "../prosemirror/hyperlinkRemoval";
 import { insertTableOfContentsInView } from "../prosemirror/insertOperations";
 import { singletonManager } from "../prosemirror/schema";
 import {
   CANONICAL_CONDITION,
-  CANONICAL_GAP,
   type CanonicalRefusalGround,
 } from "../types/canonicalCapabilities";
 import type { CanonicalCommentRequest } from "../types/canonicalComments";
@@ -2063,7 +2061,7 @@ test(
   propertyTestTimeout(31_000),
 );
 
-test("canonical command execution reports descriptor refusals without mutation", () => {
+test("canonical command execution lets a descriptor failure through without mutation", () => {
   GlobalRegistrator.register();
   const host = document.createElement("div");
   document.body.append(host);
@@ -2072,46 +2070,20 @@ test("canonical command execution reports descriptor refusals without mutation",
   if (paragraph?.type !== "paragraph")
     panic("Expected refusal fixture paragraph");
   paragraph.paraId = "12345678";
-  const reasons: { message: string; gap: string }[] = [];
+  const reasons: string[] = [];
   const { deps } = makeDeps({
     getHost: () => host,
     getDocument: () => source,
     getDocumentContext: () => source,
-    onSessionRefusal: (message, ground) =>
-      reasons.push({ message, gap: ground.gap }),
+    onSessionRefusal: (message) => reasons.push(message),
   });
   const manager = createHiddenEditorManager(deps);
   try {
     manager.ensureView();
     const view = manager.getView();
     if (!view) panic("Expected canonical refusal view");
-    const message =
-      "Hyperlink removal cannot split an indivisible inline element.";
-    const command = withCanonicalCommand(
-      () => panic("A refused descriptor must not execute its command"),
-      () => {
-        throw new HyperlinkRemovalRefusal({ message });
-      },
-    );
     const baseline = manager.api.getCanonicalDocument();
-    for (let offset = 1; offset <= 7; offset++) {
-      view.dispatch(
-        view.state.tr.setSelection(
-          TextSelection.create(view.state.doc, offset),
-        ),
-      );
-      const before = view.state;
-      expect(manager.api.executeCommand(command)).toBe(false);
-      expect(view.state).toBe(before);
-      expect(manager.api.getCanonicalDocument()).toEqual(baseline);
-      expect(manager.api.canUndo()).toBe(false);
-    }
-    expect(reasons).toEqual(
-      Array.from({ length: 7 }, () => ({
-        message,
-        gap: CANONICAL_GAP.commands,
-      })),
-    );
+    const before = view.state;
     const unexpected = new TypeError("Unexpected descriptor failure");
     const failingCommand = withCanonicalCommand(
       () => panic("A failed descriptor must not execute its command"),
@@ -2122,7 +2094,10 @@ test("canonical command execution reports descriptor refusals without mutation",
     expect(() => manager.api.executeCommand(failingCommand)).toThrow(
       unexpected,
     );
-    expect(reasons).toHaveLength(7);
+    expect(view.state).toBe(before);
+    expect(manager.api.getCanonicalDocument()).toEqual(baseline);
+    expect(manager.api.canUndo()).toBe(false);
+    expect(reasons).toEqual([]);
   } finally {
     manager.destroyView();
     host.remove();

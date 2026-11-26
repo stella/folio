@@ -4,7 +4,7 @@ import fc from "fast-check";
 import { assertProperty, propertyTestTimeout } from "../test/property-testing";
 import {
   censusUndescribedCanonicalCommands,
-  checkCanonicalCommandBaseline,
+  undescribedCanonicalCommandFailures,
 } from "./lib/canonical-command-census";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
@@ -66,7 +66,7 @@ test("descriptor proof follows factory returns and the canonical wrapper owner",
   }
 });
 
-test("registry additions and descriptor removals can only enlarge the derived remaining set", () => {
+test("every registration without a descriptor fails the census", () => {
   assertProperty(
     fc.property(
       fc.uniqueArray(fc.integer({ min: 0, max: 1000 }), {
@@ -82,16 +82,15 @@ test("registry additions and descriptor removals can only enlarge the derived re
         expect(remaining).toEqual(
           names.map((name) => `${registry}#${name}`).sort(),
         );
-        expect(checkCanonicalCommandBaseline([], remaining)).toEqual([]);
-        expect(checkCanonicalCommandBaseline(remaining, [])).toEqual(remaining);
-        expect(
-          checkCanonicalCommandBaseline(remaining.concat(remaining), remaining),
-        ).toEqual(remaining);
+        expect(undescribedCanonicalCommandFailures([])).toEqual([]);
+        expect(undescribedCanonicalCommandFailures(remaining)).toEqual(
+          remaining.map((command) => `${command} needs a canonical descriptor`),
+        );
       },
     ),
     {
       numRuns: 25,
-      id: "registry additions and descriptor removals can only enlarge the derived remaining set",
+      id: "every registration without a descriptor fails the census",
     },
   );
 });

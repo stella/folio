@@ -18,8 +18,8 @@ import { expectHyperlinkMarkAttrs } from "../../attrs";
 import { withCanonicalCommand } from "../../canonicalCommands";
 import { canonicalSelectionRange } from "../../canonicalSelectionRange";
 import {
-  assertHyperlinkRemovalRange,
   removeHyperlinkInRange,
+  widenHyperlinkRemovalRange,
 } from "../../hyperlinkRemoval";
 import { getDocumentBuiltInStyles } from "../../plugins/documentStyles";
 import type { HyperlinkAttrs } from "../../schema/marks";
@@ -264,13 +264,17 @@ export const HyperlinkExtension: (
 
     const removalRange = (state: EditorState) => {
       if (state.selection instanceof CellSelection) return undefined;
-      const { empty, $from } = state.selection;
-      const { from, to } = canonicalSelectionRange(state);
-      assertHyperlinkRemovalRange({ doc: state.doc, from, to });
-      if (!empty) return { from, to };
-      const linkMark = $from
-        .marks()
-        .find((mark) => mark.type === documentHyperlinkType(state));
+      const { from, to } = widenHyperlinkRemovalRange({
+        doc: state.doc,
+        ...canonicalSelectionRange(state),
+      });
+      if (!state.selection.empty) return { from, to };
+      // A caret inside a linked element widens to the element, whose link
+      // is the one the caret is in.
+      const $from = state.doc.resolve(from);
+      const linkMark = (
+        from === to ? $from.marks() : (state.doc.nodeAt(from)?.marks ?? [])
+      ).find((mark) => mark.type === documentHyperlinkType(state));
       if (!linkMark) return undefined;
       let contiguous: { from: number; to: number } | undefined;
       let selected: typeof contiguous;

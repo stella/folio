@@ -11,7 +11,7 @@
  * the plain text an untracked removal leaves.
  */
 
-import { TaggedError, type TaggedErrorClass } from "better-result";
+import { panic } from "better-result";
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
 
@@ -35,27 +35,20 @@ import {
 type LinkedPiece = { from: number; to: number; node: PMNode };
 type LinkedRange = { from: number; to: number; pieces: LinkedPiece[] };
 
-const HyperlinkRemovalRefusalBase: TaggedErrorClass<"HyperlinkRemovalRefusal"> =
-  TaggedError("HyperlinkRemovalRefusal");
-
-export class HyperlinkRemovalRefusal extends HyperlinkRemovalRefusalBase<{
-  message: string;
-}> {}
-
-const partialInlineRefusal = () =>
-  new HyperlinkRemovalRefusal({
-    message: "Hyperlink removal cannot split an indivisible inline element.",
-  });
-
 type HyperlinkRemovalRangeOptions = { doc: PMNode; from: number; to: number };
 
-/** Canonical inline elements have no addressable interior gaps. */
-export const assertHyperlinkRemovalRange = ({
+/**
+ * The removal range widened to the edges of every linked inline element an
+ * endpoint falls inside. Such an element, a field result a link holds whole
+ * (a contents entry's page number), carries the link as one mark: the link
+ * leaves all of it or none of it, as Remove Hyperlink takes the whole link.
+ */
+export const widenHyperlinkRemovalRange = ({
   doc,
   from,
   to,
-}: HyperlinkRemovalRangeOptions): void => {
-  for (const position of [from, to]) {
+}: HyperlinkRemovalRangeOptions): { from: number; to: number } => {
+  const outermostLinked = (position: number) => {
     const resolved = doc.resolve(position);
     for (let depth = 1; depth <= resolved.depth; depth += 1) {
       const node = resolved.node(depth);
@@ -63,9 +56,14 @@ export const assertHyperlinkRemovalRange = ({
         node.isInline &&
         node.marks.some(({ type }) => type.name === "hyperlink")
       )
-        throw partialInlineRefusal();
+        return { from: resolved.before(depth), to: resolved.after(depth) };
     }
-  }
+    return undefined;
+  };
+  return {
+    from: outermostLinked(from)?.from ?? from,
+    to: outermostLinked(to)?.to ?? to,
+  };
 };
 
 /** Contiguous stretches of linked, not yet deleted, inline content in [`from`, `to`) of `doc`. */
@@ -88,7 +86,7 @@ const linkedRanges = (doc: PMNode, from: number, to: number): LinkedRange[] => {
       !node.isText &&
       (start !== position || end !== position + node.nodeSize)
     )
-      throw partialInlineRefusal();
+      panic("A widened removal range cut a linked inline element.");
     // Non-text cut offsets address content, not the atom's outer node size.
     const piece = {
       from: start,
@@ -180,10 +178,14 @@ const setInlineMarks = (
 export const removeHyperlinkInRange = (
   state: EditorState,
   tr: Transaction,
-  from: number,
-  to: number,
+  requestedFrom: number,
+  requestedTo: number,
 ): Transaction => {
-  assertHyperlinkRemovalRange({ doc: tr.doc, from, to });
+  const { from, to } = widenHyperlinkRemovalRange({
+    doc: tr.doc,
+    from: requestedFrom,
+    to: requestedTo,
+  });
   const { schema } = state;
   const hyperlinkType = schema.marks["hyperlink"];
   if (!hyperlinkType) {
