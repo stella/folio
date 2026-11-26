@@ -7521,7 +7521,7 @@ export class CanonicalPublicOperations {
       return holdsParagraph(state.doc, blockId)
         ? refusal(
             "unsupportedBlock",
-            "The canonical session holds no address in this paragraph, such as one in a text box.",
+            "The canonical session holds no address in this paragraph.",
           )
         : refusal("missingBlock");
     if (

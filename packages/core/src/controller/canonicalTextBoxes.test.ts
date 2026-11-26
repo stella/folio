@@ -1,5 +1,6 @@
 import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
+import { Fragment, Slice } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 
 import { ZipArchive } from "@stll/docx-core/zip";
@@ -14,7 +15,9 @@ import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import { schema } from "../prosemirror/schema";
+import { CANONICAL_CONDITION } from "../types/canonicalCapabilities";
 import { createEmptyDocument } from "../utils/createDocument";
+import { prepareCanonicalPaste } from "./canonicalClipboard";
 
 const R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 const NS = `xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:r="${R}" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"`;
@@ -190,6 +193,65 @@ describe("text boxes in the canonical session", () => {
       expect(boxCount(await savedXml(current))).toBe(
         mode === "editing" ? 0 : 1,
       );
+      state = accept(state, current.prepareUndo(state).unwrap());
+      expect(current.document).toEqual(before);
+    });
+
+  for (const host of ["inline", "standalone"] as const)
+    test(`every position in the text of a box ${host === "inline" ? "beside text" : "on its own"} addresses its paragraph, and one at the box's edge names no text`, async () => {
+      const { projection } = await session(host);
+      let inText = 0;
+      let atEdge = 0;
+      projection.doc.descendants((node, position) => {
+        if (node.type.name !== "textBox") return true;
+        for (
+          let inside = position + 1;
+          inside < position + node.nodeSize;
+          inside += 1
+        ) {
+          const address = projection.addressAt(inside);
+          if (projection.doc.resolve(inside).parent.isTextblock) {
+            inText += 1;
+            expect(address.unwrap()).toMatchObject({ blockId: "20000001" });
+          } else {
+            atEdge += 1;
+            expect(address.isErr() && address.error.ground).toEqual({
+              condition: CANONICAL_CONDITION.invalidRequest,
+            });
+          }
+        }
+        return false;
+      });
+      expect(inText).toBe("Inside".length + 1);
+      expect(atEdge).toBe(2);
+    });
+
+  for (const mode of ["editing", "suggesting"] as const)
+    test(`pasting inside a box in ${mode} mode saves into the box, and undo is exact`, async () => {
+      const current = await session("inline", mode);
+      const before = current.document;
+      let state = stateFor(current);
+      state = select(state, at(state, "Inside", 3));
+      state = accept(
+        state,
+        prepareCanonicalPaste({
+          session: current,
+          state,
+          slice: new Slice(Fragment.from(schema.text("pasted")), 0, 0),
+          plain: true,
+        }).unwrap(),
+      );
+      expect(state.doc.eq(current.projection.doc)).toBe(true);
+      const xml = await savedXml(current);
+      expect(boxCount(xml)).toBe(1);
+      const box = xml.slice(
+        xml.indexOf("<w:txbxContent>"),
+        xml.indexOf("</w:txbxContent>"),
+      );
+      expect(box).toContain('w14:paraId="20000001"');
+      expect(box).toMatch(/Ins<\/w:t>.*>pasted<\/w:t>.*>ide<\/w:t>/u);
+      if (mode === "editing") expect(box).not.toContain("<w:ins ");
+      else expect(box).toContain("<w:ins ");
       state = accept(state, current.prepareUndo(state).unwrap());
       expect(current.document).toEqual(before);
     });

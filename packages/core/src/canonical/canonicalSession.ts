@@ -123,6 +123,7 @@ import {
 } from "../prosemirror/replacedAnnotations";
 import { runFormattingPatchFromMarks } from "../prosemirror/runFormattingFromMarks";
 import {
+  CANONICAL_CONDITION,
   CANONICAL_GAP,
   CANONICAL_RULE,
   type CanonicalGap,
@@ -555,17 +556,11 @@ class CanonicalProjection {
     return address;
   }
 
-  /** The paragraph whose content holds `position`, its ends included. */
-  /** Whether `position` lies in a text box's content. */
-  private insideTextBox(position: number): boolean {
-    const resolved = this.doc.resolve(
-      Math.max(0, Math.min(position, this.doc.content.size)),
-    );
-    for (let depth = resolved.depth; depth > 0; depth -= 1)
-      if (resolved.node(depth).type.name === "textBox") return true;
-    return false;
-  }
-
+  /**
+   * The paragraph whose content holds `position`, its ends included: a
+   * story paragraph, or one in a text box the story draws, which the
+   * projection lists after its host as the story's own.
+   */
   private paragraphAround(position: number): ParagraphAddress | undefined {
     // The last top-level node starting before the position.
     let low = 0;
@@ -604,26 +599,24 @@ class CanonicalProjection {
     position: number,
     edge: CanonicalAddressEdge = "caret",
   ): Result<TextPosition, CanonicalSessionError> {
+    // A position no text position names is no input the session can take,
+    // in a text box as in the story: one between blocks or at a box's edge,
+    // inside an indivisible inline element or a character. The paragraphs
+    // of text boxes are addressed with the story's own.
+    const unaddressed = (message: string) =>
+      refuseUnder({ condition: CANONICAL_CONDITION.invalidRequest }, message);
     if (!Number.isInteger(position))
-      return refuse("The input position is not an integer.");
+      return unaddressed("The input position is not an integer.");
     position = canonicalContentPosition(this.doc, position);
     const paragraph = this.paragraphAround(position);
     if (paragraph === undefined)
-      return this.insideTextBox(position)
-        ? // A text box's paragraphs belong to its shape, not to the story:
-          // the same rule a public operation on one meets.
-          refuseUnder(
-            { gap: CANONICAL_GAP.publicUnsupportedInline },
-            "The canonical session holds no address in this paragraph, such as one in a text box.",
-          )
-        : refuse("The input is outside a plain paragraph.");
+      return unaddressed("The input is outside a plain paragraph.");
     const relative = position - paragraph.start;
     const offset = paragraph.gaps.offsetOf(relative);
     if (offset < 0)
-      return refuse("The input splits an indivisible inline element.");
-    if (splitsSurrogatePair(paragraph.text, offset)) {
-      return refuse("The input would split a surrogate pair.");
-    }
+      return unaddressed("The input splits an indivisible inline element.");
+    if (splitsSurrogatePair(paragraph.text, offset))
+      return unaddressed("The input would split a surrogate pair.");
     const gaps =
       paragraph.gaps.at(offset) ?? panic("Missing canonical boundary");
     // A gap carries its seam: the ordinals its editor position stands for.
