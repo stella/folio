@@ -79,7 +79,7 @@ import {
   type StoryOrigin,
   type StoryResources,
 } from "./resources";
-import { tableRowRevisions } from "./revisions";
+import { DELETED_PARAGRAPH_MARK, tableRowRevisions } from "./revisions";
 import {
   type AtomKind,
   type AtomLink,
@@ -561,7 +561,12 @@ const statedProperties = (paragraph: XmlElement): StatedProperties => {
   };
 };
 
-/** Whether a bookmark of `read` holds all of the paragraph's content. */
+/**
+ * Whether a bookmark of `read` holds all of the paragraph's content. In a
+ * reading that keeps tracked changes the paragraph's own content begins
+ * behind the last paragraph mark deleted in it (what stands in front is the
+ * paragraph the mark ended) and ends in front of a mark somebody inserted.
+ */
 const bookmarkEncloses = (
   read: ParagraphRead | null,
   name: string,
@@ -571,12 +576,16 @@ const bookmarkEncloses = (
     start === undefined
       ? undefined
       : read?.bookmarkEnds.find(({ id }) => id === start.id);
+  if (read === null || start === undefined || end === undefined) {
+    return false;
+  }
+  const own =
+    read.atoms.findLastIndex(
+      ({ revision }) => revision?.deleted === DELETED_PARAGRAPH_MARK,
+    ) + 1;
+  const marked = read.atoms.at(-1)?.revision?.mark === true ? 1 : 0;
   return (
-    read !== null &&
-    start !== undefined &&
-    end !== undefined &&
-    start.atomIndex === 0 &&
-    end.atomIndex === read.atoms.length
+    start.atomIndex === own && end.atomIndex === read.atoms.length - marked
   );
 };
 
