@@ -53,6 +53,14 @@ import {
   propertyTestTimeout,
 } from "../../../../../test/property-testing";
 import { KEPT_CUTS, projectReview } from "../../../../../test/reviewProjection";
+import type {
+  BookmarkStart,
+  Hyperlink,
+  InlineSdt,
+  InlineWrapper,
+  ParagraphContent,
+  Run,
+} from "../../model/content";
 import type { BlockContent, Document, Paragraph } from "../../model/document";
 import {
   type AppliedDocumentOp,
@@ -1543,7 +1551,7 @@ describe("tracked operations and their resolution", () => {
     // tab's end, a comment start inserted in the empty paragraph between.
     // Rejecting it all at once rejoins the link around the kept start, as
     // rejecting each change in turn does.
-    const link = (content: InlineNode[]): InlineNode => ({
+    const link = (content: ParagraphContent[]): Hyperlink => ({
       type: "hyperlink",
       rId: "rId9",
       href: "https://example.org",
@@ -1556,8 +1564,8 @@ describe("tracked operations and their resolution", () => {
       author: "C",
       date: `2026-03-04T05:00:0${String(id - 1)}Z`,
     });
-    const tab: InlineNode = { type: "run", content: [{ type: "tab" }] };
-    const text: InlineNode = {
+    const tab: Run = { type: "run", content: [{ type: "tab" }] };
+    const text: Run = {
       type: "run",
       content: [{ type: "text", text: "a" }],
     };
@@ -1616,28 +1624,28 @@ describe("tracked operations and their resolution", () => {
     // the cut and a link piece cut beside it. Rejecting both at once puts
     // the kept bookmark start into the link the pieces rejoin, as rejecting
     // the inner insertion first does.
-    const control = (id: number, content: InlineNode[]): InlineNode => ({
+    const control = (id: number, content: InlineSdt["content"]): InlineSdt => ({
       type: "inlineSdt",
       properties: { sdtType: "richText", id, tag: "clause" },
       content,
     });
-    const link = (children: InlineNode[]): InlineNode => ({
+    const link = (children: Hyperlink["children"]): Hyperlink => ({
       type: "hyperlink",
       rId: "rId9",
       href: "https://example.org",
       children,
     });
-    const bidi = (content: InlineNode[]): InlineNode => ({
+    const bidi = (content: ParagraphContent[]): InlineWrapper => ({
       type: "inlineWrapper",
       kind: "bidi",
       control: "embedding",
       content,
     });
-    const text = (value: string): InlineNode => ({
+    const text = (value: string): Run => ({
       type: "run",
       content: [{ type: "text", text: value }],
     });
-    const start = (id: number): InlineNode => ({
+    const start = (id: number): BookmarkStart => ({
       type: "bookmarkStart",
       id,
       name: "_Link",
@@ -1702,18 +1710,22 @@ describe("tracked operations and their resolution", () => {
     // Rejecting that insertion first, while the deletion still stands, leaves
     // its cut on the deletion, so the pieces rejoin as rejecting it all at
     // once does.
-    const bidi = (content: InlineNode[]): InlineNode => ({
+    const bidi = (content: ParagraphContent[]): InlineWrapper => ({
       type: "inlineWrapper",
       kind: "bidi",
       control: "embedding",
       content,
     });
-    const text = (value: string): InlineNode => ({
+    const text = (value: string): Run => ({
       type: "run",
       content: [{ type: "text", text: value }],
     });
     const deleted = { author: "C", date: "2026-03-04T05:00:01Z" };
-    const start: InlineNode = { type: "bookmarkStart", id: 1, name: "_Link" };
+    const start: BookmarkStart = {
+      type: "bookmarkStart",
+      id: 1,
+      name: "_Link",
+    };
     const tracked: Document = {
       package: {
         document: {
