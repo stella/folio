@@ -828,31 +828,39 @@ export const serializeParagraphPropertyChangeOwner = (
     valid: isRevisionId,
   });
 
-const COLUMN_DELETION_MEMBERS = "columnDeletionRevisionIds";
-const isColumnDeletionMembers = (value: unknown): value is number[] =>
-  Array.isArray(value) &&
-  value.length > 0 &&
-  value.every(isRevisionId) &&
-  new Set(value).size === value.length;
-
-export const parseColumnDeletionMembers = (
-  node: XmlElement,
-): Pick<TableGridChange, "columnDeletionRevisionIds"> => {
-  const ids = parseAttribute({
-    node,
-    attribute: COLUMN_DELETION_MEMBERS,
-    valid: isColumnDeletionMembers,
-  });
-  return ids === undefined ? {} : { columnDeletionRevisionIds: ids };
+const TABLE_GEOMETRY_CHANGE = "tableGeometryChange";
+type GeometryChange = NonNullable<TableGridChange["geometryChange"]>;
+const isTableGeometryChange = (value: unknown): value is GeometryChange => {
+  if (
+    !record(value) ||
+    (value["type"] !== "deleteColumn" && value["type"] !== "mergeCells")
+  )
+    return false;
+  const ids = value["revisionIds"];
+  return (
+    Array.isArray(ids) &&
+    ids.length > 0 &&
+    ids.every(isRevisionId) &&
+    new Set(ids).size === ids.length
+  );
 };
 
-export const serializeColumnDeletionMembers = (
-  change: TableGridChange,
-): string =>
+export const parseTableGeometryChange = (
+  node: XmlElement,
+): Pick<TableGridChange, "geometryChange"> => {
+  const geometryChange = parseAttribute({
+    node,
+    attribute: TABLE_GEOMETRY_CHANGE,
+    valid: isTableGeometryChange,
+  });
+  return geometryChange === undefined ? {} : { geometryChange };
+};
+
+export const serializeTableGeometryChange = (change: TableGridChange): string =>
   serializeAttribute({
-    attribute: COLUMN_DELETION_MEMBERS,
-    value: change.columnDeletionRevisionIds,
-    valid: isColumnDeletionMembers,
+    attribute: TABLE_GEOMETRY_CHANGE,
+    value: change.geometryChange,
+    valid: isTableGeometryChange,
   });
 
 /** Every provenance attribute folio reads, with the shape its value must have. */
@@ -868,7 +876,7 @@ const PROVENANCE_VALUE_SHAPES: Readonly<Record<string, ProvenanceShape>> = {
   [PARAGRAPH_MARK_FIELDS.survivor.attribute]: isParagraphMarkSurvivor,
   [PARAGRAPH_MARK_FIELDS.splitDate.attribute]: isParagraphMarkSplitDate,
   resolvesWith: isRevisionId,
-  [COLUMN_DELETION_MEMBERS]: isColumnDeletionMembers,
+  [TABLE_GEOMETRY_CHANGE]: isTableGeometryChange,
 };
 
 /**

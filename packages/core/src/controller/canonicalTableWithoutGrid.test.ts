@@ -239,6 +239,57 @@ describe("column operations on a table whose file states no widths", () => {
     expect(reviewed.rejected).toEqual((await outcomes(source)).rejected);
   });
 
+  test.each(["merge", "split"] as const)(
+    "a tracked horizontal %s survives save and review",
+    async (kind) => {
+      const source = await packageOf([
+        paragraph("10000001", "Before"),
+        table(
+          [
+            row(
+              (kind === "merge"
+                ? textCell("20000001", "Owner") + textCell("20000002", "")
+                : textCell("20000001", "Owner", '<w:gridSpan w:val="2"/>')) +
+                textCell("20000003", "Tail"),
+            ),
+          ],
+          3,
+        ),
+        paragraph("10000002", "After"),
+      ]);
+      const op =
+        kind === "merge"
+          ? ({
+              type: "mergeTableCells",
+              id: "merge",
+              blockId: "20000001",
+              endBlockId: "20000002",
+            } satisfies FolioDocumentOperation)
+          : ({
+              type: "splitTableCell",
+              id: "split",
+              blockId: "20000001",
+            } satisfies FolioDocumentOperation);
+      const pending = await viaCanonicalEngine(source, op, "tracked-changes");
+      expect(pending.refusals).toEqual([]);
+      expect(pending.skipped).toEqual([]);
+      const direct = await viaCanonicalEngine(source, op, "direct");
+      expect(direct.skipped).toEqual([]);
+      const part = (await ZipArchive.read(pending.bytes)).entry(
+        "word/document.xml",
+      );
+      if (!part) throw new Error("The saved package has no document part.");
+      const xml = await part.text();
+      expect(xml).toMatch(/<w:tcPrChange\b/u);
+      expect(xml).toMatch(kind === "merge" ? /<w:cellDel\b/u : /<w:cellIns\b/u);
+      const reviewed = await reviewedInSession(pending.bytes);
+      expect(reviewed.accepted).toEqual(
+        (await outcomes(direct.bytes)).accepted,
+      );
+      expect(reviewed.rejected).toEqual((await outcomes(source)).rejected);
+    },
+  );
+
   // Without the fix the canonical session refuses the suggestion the default
   // engine records; the parity check above then fails.
   test("the old refusal fails the parity check", async () => {

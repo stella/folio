@@ -1853,9 +1853,12 @@ const columnEdit = ({
         id: gridStamp.id,
         ...(recordsGeometry
           ? {
-              columnDeletionRevisionIds: stamps.value
-                .filter(({ id }) => id !== gridStamp.id)
-                .map(({ id }) => id),
+              geometryChange: {
+                type: "deleteColumn",
+                revisionIds: stamps.value
+                  .filter(({ id }) => id !== gridStamp.id)
+                  .map(({ id }) => id),
+              },
             }
           : {}),
         columnWidths:
@@ -2422,6 +2425,87 @@ type MergeOptions = {
   table: Table;
   grid: TableGrid;
 };
+
+/** A merge that takes only empty cells changes topology without moving text. */
+const suggestHorizontalMerge = (
+  options: MergeOptions,
+  selected: readonly GridCell[],
+): Result<Table, DocumentOpRefusal> => {
+  const { op, table, grid } = options;
+  const row = table.rows[op.top];
+  const first = selected.at(0);
+  if (row === undefined || first === undefined)
+    return mismatch(op, "No cells are selected.");
+  const { revision: _stamp, ...directOp } = op;
+  const direct = merge({ ...options, op: directOp });
+  if (direct.isErr()) return direct;
+  const owner = direct.value.rows[op.top]?.cells[first.index];
+  if (owner === undefined)
+    return mismatch(op, "The merge must retain its owner cell.");
+  const stamps = stampsFor(op, selected.length + 2);
+  if (stamps.isErr()) return Result.err(stamps.error);
+  const [ownerStamp, gridStamp, tableStamp, ...deletedStamps] = stamps.value;
+  if (
+    ownerStamp === undefined ||
+    gridStamp === undefined ||
+    tableStamp === undefined
+  )
+    return mismatch(op, "The merge needs cell and grid revision stamps.");
+  const cells = [...row.cells];
+  cells[first.index] = {
+    ...owner,
+    propertyChanges: [
+      {
+        type: "tableCellPropertyChange",
+        info: stampInfo(ownerStamp),
+        ...(first.cell.formatting === undefined
+          ? {}
+          : { previousFormatting: first.cell.formatting }),
+      },
+    ],
+  };
+  for (const [index, entry] of selected.slice(1).entries()) {
+    const stamp = deletedStamps[index];
+    if (stamp === undefined)
+      return mismatch(op, "An absorbed cell needs a revision stamp.");
+    cells[entry.index] = {
+      ...entry.cell,
+      structuralChange: { type: "tableCellDeletion", info: stampInfo(stamp) },
+    };
+  }
+  const rows = [...table.rows];
+  rows[op.top] = { ...row, cells };
+  return Result.ok({
+    ...table,
+    rows,
+    formatting: {
+      ...table.formatting,
+      gridChange: {
+        id: gridStamp.id,
+        columnWidths:
+          table.columnWidths ??
+          Array.from({ length: grid.width }, () => undefined),
+        geometryChange: {
+          type: "mergeCells",
+          revisionIds: [
+            ownerStamp.id,
+            tableStamp.id,
+            ...deletedStamps.map(({ id }) => id),
+          ],
+        },
+      },
+    },
+    propertyChanges: [
+      {
+        type: "tablePropertyChange",
+        info: stampInfo(tableStamp),
+        ...(table.formatting === undefined
+          ? {}
+          : { previousFormatting: table.formatting }),
+      },
+    ],
+  });
+};
 const merge = ({
   document,
   op,
@@ -2530,6 +2614,14 @@ const merge = ({
       used: selected.length * 2,
     }).map((tracked) => Object.assign({}, table, { rows: tracked }));
   }
+  const firstRow = selected.at(0);
+  if (
+    op.revision !== undefined &&
+    selected.length === 1 &&
+    firstRow !== undefined &&
+    firstRow.slice(1).every(({ cell }) => isEmptyCell(cell))
+  )
+    return suggestHorizontalMerge({ document, op, table, grid }, firstRow);
   if (op.revision !== undefined)
     return refuse({
       op,
@@ -2639,12 +2731,6 @@ const split = ({
       op,
       "A vertical merge continuation must be addressed through its owner cell.",
     );
-  if (hasWrappedCellMarkup(table))
-    return refuse({
-      op,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      message: "Captures inside cell wrappers need a shared destination.",
-    });
   if (op.revision !== undefined && hasReview(table))
     return refuse({
       op,
@@ -2784,7 +2870,13 @@ const split = ({
     for (let column = 1; column < span; column += 1) {
       const cell = fresh.value[freshIndex++];
       if (cell !== undefined) {
-        const next = { ...cell, formatting: formattingForColumn(column) };
+        const { carrierStack, contentControls } = entry.cell;
+        const next = {
+          ...cell,
+          formatting: formattingForColumn(column),
+          ...(carrierStack === undefined ? {} : { carrierStack }),
+          ...(contentControls === undefined ? {} : { contentControls }),
+        };
         const cellStamp = stamps.value[stampIndex++];
         if (cellStamp !== undefined)
           next.structuralChange = {
@@ -3068,12 +3160,12 @@ export const applyTableEdit = (
       });
     return commitTable({ document, op, location, table: op.table });
   }
-  if (table.formatting?.gridChange?.columnDeletionRevisionIds !== undefined)
+  if (table.formatting?.gridChange?.geometryChange !== undefined)
     return refuse({
       op,
       reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
       message:
-        "Resolve the pending column deletion before editing this table's grid or properties.",
+        "Resolve the pending geometry change before editing this table's grid or properties.",
     });
   if (op.revision !== undefined) {
     const ambiguous = (record: object) =>

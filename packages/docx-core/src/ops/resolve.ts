@@ -169,7 +169,7 @@ import { edgeChain, edgeChainPastRemoved } from "./resolvedEdges";
 import {
   reachableRowIds,
   resolveTableRows,
-  withBelongingColumnChanges,
+  withBelongingTableGeometry,
 } from "./resolveTableRows";
 import {
   isAddedRevision,
@@ -8573,7 +8573,7 @@ export const planRevisionResolution = (
   options: RevisionResolutionPlanOptions,
 ): Result<RevisionResolutionPlan, DocumentOpRefusal> => {
   const { document, applyOps } = options;
-  const op = withBelongingColumnChanges(
+  const op = withBelongingTableGeometry(
     document,
     withBelongingPropertyChanges(document, options.op),
   );

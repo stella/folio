@@ -1,11 +1,11 @@
 import type { Table, TableCell, TableRow } from "./content";
 
 /** The physical geometry while the deleted cells still occupy their slots. */
-export const columnDeletionReviewGeometry = (table: Table) => {
+export const tableReviewGeometry = (table: Table) => {
   const grid = table.formatting?.gridChange;
-  if (grid === undefined || !Array.isArray(grid.columnDeletionRevisionIds))
+  if (grid === undefined || !Array.isArray(grid.geometryChange?.revisionIds))
     return undefined;
-  const ids = new Set(grid.columnDeletionRevisionIds);
+  const ids = new Set(grid.geometryChange.revisionIds);
   return {
     columnWidths: grid.columnWidths,
     rowFormatting: (row: TableRow) => {
@@ -21,7 +21,7 @@ export const columnDeletionReviewGeometry = (table: Table) => {
 
 /** A view of the pending rows with their physical spans and omissions. */
 export const tableWithPhysicalColumns = (table: Table): Table => {
-  const geometry = columnDeletionReviewGeometry(table);
+  const geometry = tableReviewGeometry(table);
   if (geometry === undefined) return table;
   const widths = geometry.columnWidths;
   const rows: TableRow[] = [];

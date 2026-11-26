@@ -93,7 +93,7 @@ import {
   TextDirectionSchema,
 } from "./parserEnums";
 import { type PreviewLedger, standalonePreviewLedger } from "./previewBudget";
-import { parseColumnDeletionMembers } from "./reviewResolutionProvenance";
+import { parseTableGeometryChange } from "./reviewResolutionProvenance";
 import { captureSdtSiblingMarkers, parseSdtProperties } from "./sdtProperties";
 import { parseShading } from "./shadingParser";
 import { findChildAnySpelling } from "./strictNames";
@@ -2418,7 +2418,7 @@ export function parseTableGridChange(
   const snapshot = findChild(changeElement, "w", "tblGrid");
   return {
     id: parseTrackedChangeInfo(changeElement).id,
-    ...parseColumnDeletionMembers(changeElement),
+    ...parseTableGeometryChange(changeElement),
     columnWidths: (snapshot === null
       ? []
       : findChildren(snapshot, "w", "gridCol")
@@ -2823,7 +2823,7 @@ export function parseTable(
     table.bookmarks = bookmarks;
   }
 
-  if (table.formatting?.gridChange?.columnDeletionRevisionIds === undefined)
+  if (table.formatting?.gridChange?.geometryChange === undefined)
     inferImplicitSingleCellRowSpans(table, rowsWithGridOffsets);
 
   // A grid the model writes back byte for byte needs no capture; keeping one

@@ -66,14 +66,14 @@ const tablesIn = (document: Document, story: OpStory): Table[] => {
 };
 
 /** A geometry decision removes or retains the cells and the grid together. */
-export const withBelongingColumnChanges = (
+export const withBelongingTableGeometry = (
   document: Document,
   op: ResolveRevisionOp,
 ): ResolveRevisionOp => {
   const ids = new Set(op.revisionIds);
   for (const table of tablesIn(document, op.story)) {
     const grid = table.formatting?.gridChange;
-    const members = grid?.columnDeletionRevisionIds;
+    const members = grid?.geometryChange?.revisionIds;
     if (grid === undefined || !Array.isArray(members)) continue;
     if (!ids.has(grid.id) && !members.some((id) => ids.has(id))) continue;
     const local = reachableOnTable(table);
@@ -673,7 +673,7 @@ const resolveCellChanges = ({
   if (
     !hasRemovedCells ||
     (selectedGridChange &&
-      table.formatting?.gridChange?.columnDeletionRevisionIds !== undefined)
+      table.formatting?.gridChange?.geometryChange !== undefined)
   )
     return Result.ok({ table: structureResolved, holdsRemovedColumns: false });
 

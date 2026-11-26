@@ -971,6 +971,8 @@ export const createEditorIntentIdAllocator = ({
             // The merged cell's last paragraph and the one before it, where
             // a decision removes the words it ends with.
             demand = (op.bottom - op.top + 1) * 2 + 2;
+            if (op.bottom - op.top === 1)
+              demand = Math.max(demand, op.right - op.left + 2);
             // A row the merge leaves only continuations records its
             // deletion: the row and each of its paragraphs. A direct merge
             // across rows pending insertion or deletion records it on the

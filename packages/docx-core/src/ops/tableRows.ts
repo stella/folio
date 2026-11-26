@@ -333,13 +333,13 @@ export const applyRowOp = (
   const location = located.value;
   if (
     op.type !== DOCUMENT_OP_TYPES.SET_TABLE_ROWS &&
-    location.table.formatting?.gridChange?.columnDeletionRevisionIds !==
-      undefined
+    location.table.formatting?.gridChange?.geometryChange !== undefined
   )
     return refused({
       op,
       reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
-      message: "Resolve the pending column deletion before changing its rows.",
+      message:
+        "Resolve the pending geometry change before changing the table's rows.",
     });
   const before = location.table.rows;
   const rows = [...before];

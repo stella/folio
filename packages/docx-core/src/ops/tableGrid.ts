@@ -8,7 +8,7 @@ import {
   tableCellVerticalMerge,
 } from "../model/tableCellVerticalMerge";
 import { MAX_TABLE_GRID_COLUMNS } from "../model/tableGridLimits";
-import { columnDeletionReviewGeometry } from "../model/tableReviewGeometry";
+import { tableReviewGeometry } from "../model/tableReviewGeometry";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import type { DocumentOpType } from "./types";
 
@@ -59,7 +59,7 @@ export const tableGrid = (
   // Pending deleted cells still occupy their original slots. For a compound
   // deletion the neighboring spans and omissions have updated live values,
   // so read their recorded earlier geometry while the removed cells remain.
-  const review = columnDeletionReviewGeometry(table);
+  const review = tableReviewGeometry(table);
   const statedWidth = (review?.columnWidths ?? table.columnWidths)?.length;
   for (const [rowIndex, row] of table.rows.entries()) {
     const rowFormatting =

@@ -1041,6 +1041,104 @@ describe("independent table forward oracles", () => {
     propertyTestTimeout(10_000),
   );
 
+  test(
+    "a tracked horizontal merge absorbs empty cells with property and cell records",
+    () => {
+      assertProperty(
+        fc.property(
+          fc.boolean(),
+          fc.integer({ min: 2, max: 6 }),
+          (measured, width) => {
+            const table: Table = {
+              type: "table",
+              ...(measured
+                ? { columnWidths: Array.from({ length: width + 1 }, () => 900) }
+                : {}),
+              rows: [
+                {
+                  type: "tableRow",
+                  cells: [
+                    cell(0x100),
+                    ...Array.from(
+                      { length: width - 1 },
+                      (_, index): TableCell => ({
+                        type: "tableCell",
+                        content: [
+                          {
+                            type: "paragraph",
+                            paraId: id(0x200 + index),
+                            content: [],
+                          },
+                        ],
+                      }),
+                    ),
+                    cell(0x300),
+                  ],
+                },
+              ],
+            };
+            const document = documentOf(table);
+            const op = {
+              type: DOCUMENT_OP_TYPES.MERGE_CELLS,
+              ...address(targetOf(table)),
+              top: 0,
+              bottom: 1,
+              left: 0,
+              right: width,
+              newBlockIds: [],
+            } satisfies DocumentOp;
+            const direct = applied(document, op);
+            const pending = applyDocumentOp(document, {
+              ...op,
+              revision: {
+                id: 100_000,
+                author: "Reviewer",
+                date: "2026-11-26T00:00:00Z",
+              },
+              newIds: {
+                revision: Array.from(
+                  { length: width + 1 },
+                  (_, index) => 100_001 + index,
+                ),
+              },
+            }).unwrap();
+            const pendingCells =
+              tableOf(pending.document).rows.at(0)?.cells ?? [];
+            expect(pendingCells.at(0)?.formatting?.gridSpan).toBe(width);
+            expect(
+              pendingCells
+                .slice(1, width)
+                .every(
+                  (record) =>
+                    record.structuralChange?.type === "tableCellDeletion",
+                ),
+            ).toBe(true);
+            expect(
+              applyDocumentOps(pending.document, pending.inverse).unwrap()
+                .document,
+            ).toStrictEqual(document);
+            for (const decision of ["accept", "reject"] as const) {
+              const resolved = applied(pending.document, {
+                type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+                story: OP_STORIES.MAIN,
+                revisionIds: [100_000],
+                decision,
+              });
+              expect(resolved.document).toStrictEqual(
+                decision === "accept" ? direct.document : document,
+              );
+            }
+          },
+        ),
+        {
+          numRuns: 30,
+          id: "a tracked horizontal merge absorbs empty cells with property and cell records",
+        },
+      );
+    },
+    propertyTestTimeout(10_000),
+  );
+
   test("sparse raw identity, width and revision arrays refuse their shape before use", () => {
     // Array.every skips holes; sparse production-shaped payloads close the gap left by ordinary missing-field cases.
     const document = fixture({

@@ -9,7 +9,7 @@ import {
 } from "@stll/docx-core/model";
 
 import type { Table, TableGridChange } from "../types/document";
-import { serializeColumnDeletionMembers } from "./reviewResolutionProvenance";
+import { serializeTableGeometryChange } from "./reviewResolutionProvenance";
 import { intAttr } from "./serializer/xmlUtils";
 
 /**
@@ -44,7 +44,7 @@ const serializeTableGridChange = (change: TableGridChange): string => {
         : `<w:gridCol w:w="${intAttr(width)}"/>`,
     )
     .join("");
-  return `<w:tblGridChange w:id="${intAttr(id)}"${serializeColumnDeletionMembers(change)}><w:tblGrid>${columns}</w:tblGrid></w:tblGridChange>`;
+  return `<w:tblGridChange w:id="${intAttr(id)}"${serializeTableGeometryChange(change)}><w:tblGrid>${columns}</w:tblGrid></w:tblGridChange>`;
 };
 
 /**
@@ -70,9 +70,13 @@ export const modelTableGrid = (table: Table): string => {
     return `<w:tblGrid>${columns}${gridChange}</w:tblGrid>`;
   }
   const columns =
-    change?.columnDeletionRevisionIds === undefined
+    change?.geometryChange === undefined
       ? gridColumnCount(table)
-      : Math.max(0, change.columnWidths.length - 1);
+      : Math.max(
+          0,
+          change.columnWidths.length -
+            Number(change.geometryChange.type === "deleteColumn"),
+        );
   return columns === 0 && gridChange === ""
     ? "<w:tblGrid/>"
     : `<w:tblGrid>${"<w:gridCol/>".repeat(columns)}${gridChange}</w:tblGrid>`;
