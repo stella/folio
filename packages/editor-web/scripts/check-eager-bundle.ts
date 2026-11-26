@@ -16,8 +16,8 @@ type Adapter = (typeof ADAPTERS)[number];
 type Metrics = { minified: number; gzip: number; docxOps: number };
 
 const BUDGETS = {
-  react: { minified: 3_817_000, gzip: 1_202_500, docxOps: 663_000 },
-  vue: { minified: 3_512_500, gzip: 1_099_000, docxOps: 664_000 },
+  react: { minified: 3_786_500, gzip: 1_191_000, docxOps: 663_000 },
+  vue: { minified: 3_481_500, gzip: 1_087_500, docxOps: 664_000 },
 } as const satisfies Record<Adapter, Metrics>;
 
 const HOST_PEERS = [
@@ -130,6 +130,10 @@ const measure = async (adapter: Adapter): Promise<Metrics> => {
           `${packageName} loaded the package attribute schema eagerly`,
         );
       }
+      // Only the clipboard paste sanitizer uses DOMPurify; opening a
+      // document must not load it.
+      if (source.includes("node_modules/dompurify/") && input.bytesInOutput > 0)
+        throw new Error(`${packageName} loaded DOMPurify eagerly`);
       if (source.startsWith("packages/docx-core/src/ops/"))
         metrics.docxOps += input.bytesInOutput;
     }
