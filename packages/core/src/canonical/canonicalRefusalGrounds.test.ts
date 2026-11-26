@@ -25,6 +25,9 @@ test("a moved-on document, an exhausted id space, a link suggestion and an untra
   expect(groundForDocumentOpRefusal(R.UNRECORDABLE_LINK_SUGGESTION)).toEqual({
     rule: CANONICAL_RULE.linkSuggestionShape,
   });
+  expect(groundForDocumentOpRefusal(R.TABLE_SNAPSHOT_PRESENCE)).toEqual({
+    rule: CANONICAL_RULE.tableSnapshotPresence,
+  });
   expect(groundForDocumentOpRefusal(R.UNTRACKABLE)).toEqual({
     gap: CANONICAL_GAP.trackedChangeRecords,
   });
@@ -36,6 +39,7 @@ test("every other document operation refusal is a request the document does not 
     R.SECTIONS_OUT_OF_STEP,
     R.NEEDS_NEW_IDS,
     R.UNRECORDABLE_LINK_SUGGESTION,
+    R.TABLE_SNAPSHOT_PRESENCE,
     R.UNTRACKABLE,
   ]);
   const others = Object.values(R).filter((reason) => !named.has(reason));

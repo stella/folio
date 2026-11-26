@@ -14,7 +14,10 @@ import { maxOf } from "../model/extremes";
 import { storyBody, storyParagraphs } from "./blocks";
 import { combineEdits, type DocumentEdit } from "./edits";
 import { IDENTITY_SPACES, identityKeysIn, slotKey } from "./ids";
-import { relocatePositionedMarkers } from "./positionedMarkers";
+import {
+  pendingMergedOwner,
+  relocatePositionedMarkers,
+} from "./positionedMarkers";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import type { ApplyOps } from "./resolve";
 import { reviewFieldsOf } from "./review";
@@ -1139,9 +1142,12 @@ export const resolveTableRows = ({
     const nextTable = relocatePositionedMarkers(
       table,
       propertiesResolved.value,
-      !reject && selectedGridChange && geometry?.type === "mergeCells"
-        ? { freshCellRevisions: new Set(geometry.revisionIds) }
-        : undefined,
+      {
+        mergedOwner: selectedGridChange ? pendingMergedOwner(table) : undefined,
+        ...(!reject && selectedGridChange && geometry?.type === "mergeCells"
+          ? { freshCellRevisions: new Set(geometry.revisionIds) }
+          : {}),
+      },
     );
     const applied = applyOps(current, [
       {

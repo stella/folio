@@ -49,6 +49,7 @@ const DOCUMENT_OP_REFUSAL_GROUNDS = {
   containerFinalMark: INVALID_REQUEST,
   insideInlineControl: INVALID_REQUEST,
   untrackable: { gap: CANONICAL_GAP.trackedChangeRecords },
+  tableSnapshotPresence: { rule: CANONICAL_RULE.tableSnapshotPresence },
   pendingBreakTakeover: INVALID_REQUEST,
   pendingParagraphMarkDeletion: INVALID_REQUEST,
   pendingParagraphMarkInsertion: INVALID_REQUEST,

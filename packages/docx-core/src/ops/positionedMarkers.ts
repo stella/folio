@@ -51,11 +51,17 @@ const sharedDepth = (
   return depth;
 };
 
+type InheritCarriersOptions<T> = {
+  siblings: T[];
+  origins: readonly (number | null)[];
+  preserveCarriers?: ReadonlySet<T> | undefined;
+};
 /** A new sibling between two members of one wrapper stays inside it. */
-const inheritCarriers = <T extends TableRow | TableCell>(
-  siblings: T[],
-  origins: readonly (number | null)[],
-): T[] => {
+const inheritCarriers = <T extends TableRow | TableCell>({
+  siblings,
+  origins,
+  preserveCarriers,
+}: InheritCarriersOptions<T>): T[] => {
   if (!origins.includes(null)) return siblings;
   let changed = false;
   const next = [...siblings];
@@ -70,7 +76,7 @@ const inheritCarriers = <T extends TableRow | TableCell>(
       const inherited = left.slice(0, depth);
       for (let index = start; index < end; index++) {
         const sibling = siblings[index];
-        if (sibling === undefined) continue;
+        if (sibling === undefined || preserveCarriers?.has(sibling)) continue;
         const existing = carriers(sibling);
         const shared = sharedDepth(inherited, existing);
         if (shared === inherited.length) continue;
@@ -199,18 +205,43 @@ const relocateCaptured = (
   return changed ? { ...preserved, children } : preserved;
 };
 
-/**
- * `after`, with its bookmark markers and captured XML moved to the gaps
- * where the edit leaves them beside table rows and row cells.
- */
-type RelocateTableMarkupOptions = { freshCellRevisions?: ReadonlySet<number> };
+export type MergedTableOwner = { rowIndex: number; cellIndex: number };
+
+export const pendingMergedOwner = (
+  table: Table,
+): MergedTableOwner | undefined => {
+  const change = table.formatting?.gridChange?.geometryChange;
+  if (change?.type !== "mergeCells") return undefined;
+  const ids = new Set(change.revisionIds);
+  for (const [rowIndex, row] of table.rows.entries()) {
+    const cellIndex = row.cells.findIndex((cell) =>
+      cell.propertyChanges?.some(({ info }) => ids.has(info.id)),
+    );
+    if (cellIndex !== -1) return { rowIndex, cellIndex };
+  }
+  return undefined;
+};
+
+type RelocateTableMarkupOptions = {
+  mergedOwner?: MergedTableOwner | undefined;
+  freshCellRevisions?: ReadonlySet<number>;
+};
+/** Keep bookmarks and captured XML in their gaps beside the surviving members. */
 export const relocatePositionedMarkers = (
   before: Table,
   after: Table,
   options?: RelocateTableMarkupOptions,
 ): Table => {
+  // A merge keeps its owner's source position even when every original
+  // paragraph was replaced, or its content includes paragraphs of later cells.
+  const mergedOwner = options?.mergedOwner;
   const rowOrigins = originsOf({ before: before.rows, after: after.rows });
-  const wrappedRows = inheritCarriers(after.rows, rowOrigins);
+  if (mergedOwner !== undefined)
+    rowOrigins[mergedOwner.rowIndex] = mergedOwner.rowIndex;
+  const wrappedRows = inheritCarriers({
+    siblings: after.rows,
+    origins: rowOrigins,
+  });
   let rowsChanged = wrappedRows !== after.rows;
   const rows = [...wrappedRows];
   for (const [index, row] of wrappedRows.entries()) {
@@ -239,7 +270,21 @@ export const relocatePositionedMarkers = (
               fresh.has(structuralChange.info.id),
           }),
     });
-    const cells = inheritCarriers(row.cells, cellOrigins);
+    if (mergedOwner?.rowIndex === index)
+      cellOrigins[mergedOwner.cellIndex] = mergedOwner.cellIndex;
+    const preservesContinuations =
+      after.formatting?.gridChange?.geometryChange?.type === "mergeCells"
+        ? new Set(
+            row.cells.filter(
+              (cell) => cell.structuralChange?.type === "tableCellInsertion",
+            ),
+          )
+        : undefined;
+    const cells = inheritCarriers({
+      siblings: row.cells,
+      origins: cellOrigins,
+      preserveCarriers: preservesContinuations,
+    });
     const destinations = { origins: cellOrigins, siblings: cells };
     // Exact row replacements can state their own gaps. Re-address inherited
     // captures against the cells they originally stood beside.

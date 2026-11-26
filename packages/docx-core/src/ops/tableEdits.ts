@@ -42,7 +42,10 @@ import {
 } from "./ids";
 import { paragraphLength } from "./offsets";
 import { applyFormattingPatch } from "./patch";
-import { relocatePositionedMarkers } from "./positionedMarkers";
+import {
+  type MergedTableOwner,
+  relocatePositionedMarkers,
+} from "./positionedMarkers";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { withTableRecordsResolved } from "./resolveTableRows";
 import {
@@ -341,19 +344,21 @@ type CommitTableOptions = {
   op: Op;
   location: TableRowLocation;
   table: Table;
+  mergedOwner?: MergedTableOwner | undefined;
 };
 const commitTable = ({
   document,
   op,
   location,
   table: edited,
+  mergedOwner,
 }: CommitTableOptions): Result<DocumentEdit, DocumentOpRefusal> => {
   // An inverse restores the table exactly; an edit moves the bookmark markers
   // beside rows and cells with the siblings it adds or removes.
   const table =
     op.type === DOCUMENT_OP_TYPES.SET_TABLE
       ? edited
-      : relocatePositionedMarkers(location.table, edited);
+      : relocatePositionedMarkers(location.table, edited, { mergedOwner });
   const preservesStructure =
     (isPropertyEdit(op) || op.type === DOCUMENT_OP_TYPES.SET_TABLE) &&
     structurallyEqual(
@@ -491,20 +496,6 @@ const withOmission = (
     else delete formatting.gridAfter;
   }
   return { ...row, formatting };
-};
-
-/** Captures and cells inside the same wrapper must move as one group. */
-const hasWrappedCellMarkup = (table: Table): boolean => {
-  const wrapped = ({
-    contentControls,
-    carrierStack,
-  }: Pick<TableCell, "contentControls" | "carrierStack">) =>
-    contentControls !== undefined || carrierStack !== undefined;
-  return table.rows.some(
-    (row) =>
-      row.preserved?.children !== undefined &&
-      (row.preserved.children.some(wrapped) || row.cells.some(wrapped)),
-  );
 };
 
 /** A cell holding one paragraph with nothing in it. */
@@ -2557,12 +2548,15 @@ const suggestMerge = ({
     },
   });
   if (direct.isErr()) return direct;
-  const owner = direct.value.rows[op.top]?.cells[first.index];
+  const settled = relocatePositionedMarkers(table, direct.value, {
+    mergedOwner: { rowIndex: op.top, cellIndex: first.index },
+  });
+  const owner = settled.rows[op.top]?.cells[first.index];
   if (owner === undefined)
     return mismatch(op, "The merge must retain its owner cell.");
   const continuationIds = new Set(op.newBlockIds.slice(0, continuationCount));
   const continuationsById = new Map<string, TableCell>();
-  for (const plannedRow of direct.value.rows)
+  for (const plannedRow of settled.rows)
     for (const cell of plannedRow.cells) {
       const paragraph = cell.content.at(0);
       if (
@@ -2754,12 +2748,6 @@ const merge = ({
   table,
   grid,
 }: MergeOptions): Result<Table, DocumentOpRefusal> => {
-  if (hasWrappedCellMarkup(table))
-    return refuse({
-      op,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      message: "Captures inside cell wrappers need a shared destination.",
-    });
   if (
     op.revision !== undefined &&
     hasReviewBlockingMerge({ table, top: op.top, bottom: op.bottom })
@@ -3448,7 +3436,7 @@ export const applyTableEdit = (
     ) {
       return refuse({
         op,
-        reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+        reason: DOCUMENT_OP_REFUSAL_REASONS.TABLE_SNAPSHOT_PRESENCE,
         message:
           "Explicit undefined review fields have no persisted OOXML property snapshot.",
       });
@@ -3577,5 +3565,18 @@ export const applyTableEdit = (
       inverse: [],
       touched: { modified: [], inserted: [], removed: [] },
     });
-  return commitTable({ document, op, location, table: changed.value });
+  const leading =
+    op.type === DOCUMENT_OP_TYPES.MERGE_CELLS
+      ? grid.value.rows[op.top]?.find(({ start }) => start === op.left)
+      : undefined;
+  return commitTable({
+    document,
+    op,
+    location,
+    table: changed.value,
+    mergedOwner:
+      leading === undefined
+        ? undefined
+        : { rowIndex: leading.row, cellIndex: leading.index },
+  });
 };
