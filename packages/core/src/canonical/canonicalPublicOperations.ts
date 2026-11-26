@@ -8780,24 +8780,24 @@ export class CanonicalPublicOperations {
       // The whole match is rewritten, so its words stand together from the
       // first change's start: each span its markers mark takes its emphasis.
       if (wordsStart !== undefined)
-        for (const span of emphasized) {
+        for (const { start: spanStart, end: spanEnd, patch } of emphasized) {
           const { story: wordsStory, blockId: wordsBlockId } = wordsStart;
           intents.push({
             type: "formatRun",
             from:
-              span.start === 0
+              spanStart === 0
                 ? wordsStart
                 : {
                     story: wordsStory,
                     blockId: wordsBlockId,
-                    offset: wordsStart.offset + span.start,
+                    offset: wordsStart.offset + spanStart,
                   },
             to: {
               story: wordsStory,
               blockId: wordsBlockId,
-              offset: wordsStart.offset + span.end,
+              offset: wordsStart.offset + spanEnd,
             },
-            patch: span.patch,
+            patch,
           });
         }
       if (rebuilds) {
