@@ -713,6 +713,32 @@ const ROW_PROPERTIES = [
   "tblHeader",
 ] as const;
 const CELL_SPAN_PROPERTIES = ["tcW", "gridSpan", "hMerge", "vMerge"] as const;
+/** What a cell's fill states by itself; a theme colour is the template's. */
+const SHADING_KEPT = ["val", "color", "fill"] as const;
+
+/**
+ * The fill of a cell as its own colours state it. A theme colour would be
+ * read from the template's theme, which is another one; a fill stated by a
+ * theme colour alone is left out.
+ */
+const cellShadingXml = (
+  properties: XmlElement | null,
+  prefix: string,
+): string => {
+  const shading = wChild(properties, "shd");
+  const fill = wAttr(shading, "fill");
+  if (shading === null || fill === null || fill === "auto") {
+    return "";
+  }
+  const kept = SHADING_KEPT.map((name) => [name, wAttr(shading, name)] as const)
+    .filter(([, value]) => value !== null)
+    .map(
+      ([name, value]) =>
+        ` ${prefix}:${name}="${escapeXmlAttribute(value ?? "")}"`,
+    )
+    .join("");
+  return `<${prefix}:shd${kept}/>`;
+};
 
 const keptChildrenXml = (
   properties: XmlElement | null,
@@ -736,7 +762,8 @@ export type TableEmit = {
 /**
  * A source table rebuilt: its grid, spans and merges, with every cell
  * paragraph placed like a body paragraph. Without a template table style the
- * source's borders are kept so the grid stays visible.
+ * source's borders are kept so the grid stays visible, and the fill of its
+ * cells with them: a header row, the colours of a legend.
  */
 export const tableXml = (
   { table, styleId, paragraphOf }: TableEmit,
@@ -771,7 +798,7 @@ export const tableXml = (
       const name = wName(child);
       if (name === "tc") {
         const cellProperties = wChild(child, "tcPr");
-        const kept = `${keptChildrenXml(cellProperties, CELL_SPAN_PROPERTIES, w)}${styleId === null ? keptChildrenXml(cellProperties, ["tcBorders"], w) : ""}${keptChildrenXml(cellProperties, ["vAlign"], w)}`;
+        const kept = `${keptChildrenXml(cellProperties, CELL_SPAN_PROPERTIES, w)}${styleId === null ? `${keptChildrenXml(cellProperties, ["tcBorders"], w)}${cellShadingXml(cellProperties, w)}` : ""}${keptChildrenXml(cellProperties, ["vAlign"], w)}`;
         const blocks = blocksXml(child);
         if (Result.isError(blocks)) {
           return blocks;
