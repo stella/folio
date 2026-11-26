@@ -41,18 +41,26 @@ const W14 = "http://schemas.microsoft.com/office/word/2010/wordml";
 const HEAD = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 const JOINED = "10000001";
 
-const paragraph = (id: string, text: string, markDeleted = false) =>
-  `<w:p w14:paraId="${id}">${markDeleted ? '<w:pPr><w:rPr><w:del w:id="1" w:author="Reviewer" w:date="2026-01-01T00:00:00Z"/></w:rPr></w:pPr>' : ""}<w:r><w:t xml:space="preserve">${text}</w:t></w:r></w:p>`;
+const BY = 'w:date="2026-01-01T00:00:00Z"';
+/** A mark pending deletion: deleted, or added by one author and deleted by another. */
+const PENDING_MARKS = {
+  deleted: `<w:del w:id="1" w:author="Reviewer" ${BY}/>`,
+  addedThenDeleted: `<w:ins w:id="2" w:author="First Reviewer" ${BY}/><w:del w:id="1" w:author="Reviewer" ${BY}/>`,
+} as const;
+type PendingMark = keyof typeof PENDING_MARKS;
+
+const paragraph = (id: string, text: string, mark?: PendingMark) =>
+  `<w:p w14:paraId="${id}">${mark === undefined ? "" : `<w:pPr><w:rPr>${PENDING_MARKS[mark]}</w:rPr></w:pPr>`}<w:r><w:t xml:space="preserve">${text}</w:t></w:r></w:p>`;
 
 const STYLES = `${HEAD}<w:styles xmlns:w="${W}"><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style><w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:pPr><w:outlineLvl w:val="0"/></w:pPr></w:style></w:styles>`;
 
 /** "Alpha", whose mark is pending deletion, then "Beta" and "Gamma". */
-const source = async () => {
+const source = async (mark: PendingMark) => {
   const zip = await ZipArchive.read(await createEmptyDocx());
   zip.set("word/styles.xml", STYLES);
   zip.set(
     "word/document.xml",
-    `${HEAD}<w:document xmlns:w="${W}" xmlns:w14="${W14}"><w:body>${paragraph(JOINED, "Alpha", true)}${paragraph("10000002", "Beta")}${paragraph("10000003", "Gamma")}<w:sectPr><w:pgSz w:w="12240" w:h="15840"/></w:sectPr></w:body></w:document>`,
+    `${HEAD}<w:document xmlns:w="${W}" xmlns:w14="${W14}"><w:body>${paragraph(JOINED, "Alpha", mark)}${paragraph("10000002", "Beta")}${paragraph("10000003", "Gamma")}<w:sectPr><w:pgSz w:w="12240" w:h="15840"/></w:sectPr></w:body></w:document>`,
   );
   return (await zip.generate({ compression: "store" })).buffer;
 };
@@ -213,12 +221,17 @@ const alphaParagraph = async (bytes: ArrayBuffer) => {
 
 describe("a paragraph whose mark is pending deletion", () => {
   test("both engines refuse a property edit alike, and apply it alike once the deletion is accepted or rejected", async () => {
-    const sourceBytes = await source();
+    const sources = {
+      deleted: await source("deleted"),
+      addedThenDeleted: await source("addedThenDeleted"),
+    };
     await assertProperty(
       fc.asyncProperty(
         caseArbitrary,
         fc.constantFrom<Mode>("direct", "tracked-changes"),
-        async ([resolution, operationFor], mode) => {
+        fc.constantFrom<PendingMark>("deleted", "addedThenDeleted"),
+        async ([resolution, operationFor], mode, mark) => {
+          const sourceBytes = sources[mark];
           let bytes = sourceBytes;
           if (resolution !== "pending") {
             const reviewer = await FolioDocxReviewer.fromBuffer(
