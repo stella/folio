@@ -48,8 +48,8 @@ type Case = {
   /** A table put after the paragraph before, when that is a paragraph. */
   tableAfterPrevious: boolean;
   /** An earlier batch's insertions beside the paragraph. */
-  earlier: Insertion[];
-  insertions: Insertion[];
+  earlier: readonly Insertion[];
+  insertions: readonly Insertion[];
   /** Where the deletion stands among the batch's operations. */
   deletionAt: number;
 };
