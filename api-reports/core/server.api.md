@@ -324,6 +324,7 @@ export type DocxBlockNumbering = {
     numId: number;
     ilvl: number;
     abstractNumId: number;
+    bullet?: true;
 };
 
 // @public
