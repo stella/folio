@@ -8,10 +8,10 @@ import {
   acceptAIEditRevision,
   rejectAIEditRevision,
 } from "../__tests__/reference-editor/comments";
+import { resolveWholeStory } from "../__tests__/reference-editor/wholeStoryRevisionResolution";
 import { readRangeAnchorAttrs } from "../prosemirror/rangeAnchorAttrs";
 import { schema } from "../prosemirror/schema";
 import { runParagraphIntoTable } from "../prosemirror/tableRunIn";
-import { resolveWholeStory } from "./wholeStoryRevisionResolution";
 
 const paragraph = (text: string) =>
   schema.node("paragraph", null, text ? [schema.text(text)] : []);

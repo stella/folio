@@ -1,24 +1,24 @@
 import type { Node as PMNode } from "prosemirror-model";
 
-import type {
-  TableCellFormatting,
-  TableFormatting,
-  TablePropertyExceptionFormatting,
-  TableRowFormatting,
-} from "../../types/document";
+import {
+  tableCellRejectAttrPatch,
+  tablePropertyExceptionsRejectAttrPatch,
+  tableRejectAttrPatch,
+  tableRowRejectAttrPatch,
+} from "../../prosemirror/commands/propertyChangeScope";
 import {
   type NodeAttrsPropertyRevisionKind,
   type NodeAttrsPropertyRevisionSite,
   nodePropertyRevisionSites,
   propertyRevisionMetadata,
   propertyRevisionRecords,
-} from "../revisionCarriers";
-import {
-  tableCellRejectAttrPatch,
-  tablePropertyExceptionsRejectAttrPatch,
-  tableRejectAttrPatch,
-  tableRowRejectAttrPatch,
-} from "./propertyChangeScope";
+} from "../../prosemirror/revisionCarriers";
+import type {
+  TableCellFormatting,
+  TableFormatting,
+  TablePropertyExceptionFormatting,
+  TableRowFormatting,
+} from "../../types/document";
 
 type NodeAttrsRejectPatch = (
   previousFormatting: unknown,

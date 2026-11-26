@@ -5,10 +5,10 @@ import {
   type DecodedTableCellParagraphSourcePayload,
   decodeTableCellParagraphSourcePayload,
 } from "../../docx/paragraphPropertySource";
+import { standaloneTableCellFromProseMirror } from "../../prosemirror/conversion/fromProseDoc";
+import { standaloneTableCellToProseMirror } from "../../prosemirror/conversion/toProseDoc";
+import { getTableCellMergeChange } from "../../prosemirror/tableCellMergeRevision";
 import type { TableCell, TableCellFormatting } from "../../types/document";
-import { standaloneTableCellFromProseMirror } from "../conversion/fromProseDoc";
-import { standaloneTableCellToProseMirror } from "../conversion/toProseDoc";
-import { getTableCellMergeChange } from "../tableCellMergeRevision";
 
 export const tableCellContinuationPayload = (
   node: PMNode,

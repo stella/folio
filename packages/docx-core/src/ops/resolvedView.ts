@@ -14,7 +14,12 @@ import {
 import { maxOf } from "../model/extremes";
 import { applyDocumentOps } from "./apply";
 import { withBodyContent } from "./blocks";
+import { knownToMeetContract } from "./contract";
 import { IDENTITY_SPACES, identityKeysIn, packageParagraphIds } from "./ids";
+import {
+  type IndependentMarkupParagraph,
+  resolveIndependentTextParagraphs,
+} from "./resolve";
 import {
   documentStories,
   findStoryBody,
@@ -24,12 +29,15 @@ import {
 import {
   DOCUMENT_OP_TYPES,
   type OpStory,
+  REVISION_DECISIONS,
   type RevisionDecision,
 } from "./types";
 
 /** A document with its changes resolved one way, and what could not be. */
 export type ResolvedDocumentView = {
   document: Document;
+  /** Every changed paragraph keeps its place and only its inline content changed. */
+  independentInline?: readonly IndependentMarkupParagraph[];
   /**
    * The stories whose resolution refused, left as they were: a reader shows
    * them with their changes still in place and says so.
@@ -38,21 +46,6 @@ export type ResolvedDocumentView = {
 };
 
 const REVISION_KEY_PREFIX = `${IDENTITY_SPACES.REVISION}:`;
-
-/** Every revision id a story's content carries, in document order. */
-const storyRevisionIds = (document: Document, story: OpStory): number[] => {
-  const body = findStoryBody(document, story);
-  if (body === undefined) return [];
-  return [
-    ...new Set(
-      identityKeysIn(body.content).flatMap((key) =>
-        key.startsWith(REVISION_KEY_PREFIX)
-          ? [Number(key.slice(REVISION_KEY_PREFIX.length))]
-          : [],
-      ),
-    ),
-  ];
-};
 
 const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" &&
@@ -363,12 +356,56 @@ export const resolvedDocumentView = (
   document: Document,
   decision: RevisionDecision,
 ): ResolvedDocumentView => {
+  const pkg = document.package;
+  const body = pkg.document;
+  const known = knownToMeetContract(document);
+  if (
+    (decision === REVISION_DECISIONS.ACCEPT ||
+      decision === REVISION_DECISIONS.REJECT) &&
+    (known || body.sections === undefined) &&
+    (body.comments?.length ?? 0) === 0 &&
+    (pkg.headers?.size ?? 0) === 0 &&
+    (pkg.footnotes?.length ?? 0) === 0 &&
+    (pkg.footers?.size ?? 0) === 0 &&
+    (pkg.endnotes?.length ?? 0) === 0
+  ) {
+    const view = resolveIndependentTextParagraphs(body, decision);
+    if (view !== undefined)
+      return {
+        document:
+          view.body === body
+            ? document
+            : { ...document, package: { ...pkg, document: view.body } },
+        ...(view.changes.length === 0
+          ? {}
+          : { independentInline: view.changes }),
+        unresolved: [],
+      };
+  }
+  // Operations replace affected story content. Reuse the exact census within
+  // this view when a story retains its blocks, including before its own turn.
+  const revisionIdsByContent = new Map<BlockContent[], readonly number[]>();
+  const storyRevisionIds = (current: Document, story: OpStory) => {
+    const content = findStoryBody(current, story)?.content;
+    if (content === undefined) return [];
+    const cached = revisionIdsByContent.get(content);
+    if (cached !== undefined) return cached;
+    const ids = new Set<number>();
+    for (const key of identityKeysIn(content))
+      if (key.startsWith(REVISION_KEY_PREFIX))
+        ids.add(Number(key.slice(REVISION_KEY_PREFIX.length)));
+    const revisionIds = [...ids];
+    revisionIdsByContent.set(content, revisionIds);
+    return revisionIds;
+  };
   const stories = documentStories(document);
   const revised = stories.filter(
     (story) => storyRevisionIds(document, story).length > 0,
   );
   if (revised.length === 0) return { document, unresolved: [] };
-  const identified = withParagraphIds(withDistinctRevisionIds(document));
+  const identified = known
+    ? { document, minted: new Map<string, string | undefined>() }
+    : withParagraphIds(withDistinctRevisionIds(document));
   const closed = withClosingParagraphs(identified.document, revised);
   let current = closed.document;
   const unresolved: OpStory[] = [];
@@ -399,12 +436,12 @@ export const resolvedDocumentView = (
   );
   // A refused story keeps the blocks it was read with, revision ids included.
   for (const story of unresolved) {
-    const body = findStoryBody(document, story);
-    if (body !== undefined)
+    const authored = findStoryBody(document, story);
+    if (authored !== undefined)
       resolvedDocument = replaceStoryBody({
         document: resolvedDocument,
         story,
-        body,
+        body: authored,
       });
   }
   return { document: resolvedDocument, unresolved };

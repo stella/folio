@@ -243,13 +243,10 @@ describe("a note goes with its reference", () => {
   test("the markup views show the notes as they resolve the body", async () => {
     const document = await open(fixture);
     const state = createHarnessState(document, "editing");
+    const notesInView = (view: "all-markup" | "original" | "no-markup") =>
+      markupViewNotes(document.package.footnotes, view, state, document);
     const shown = (view: "all-markup" | "original" | "no-markup") => {
-      const footnotes = markupViewNotes(
-        document.package.footnotes,
-        view,
-        state,
-        document,
-      );
+      const footnotes = notesInView(view);
       return noteState(
         {
           ...document,
@@ -267,6 +264,15 @@ describe("a note goes with its reference", () => {
       deleted: false,
     });
     expect(shown("no-markup")).toEqual({ text: "", deleted: false });
+    expect(notesInView("all-markup")).toBe(document.package.footnotes);
+    const original = notesInView("original")?.find(({ id }) => id === 1);
+    if (original === undefined) throw new Error("missing the resolved note");
+    expect(notesInView("original")?.find(({ id }) => id === 1)).toBe(original);
+    const unchanged = [original];
+    expect(markupViewNotes(unchanged, "original", state, document)).toBe(
+      unchanged,
+    );
+    expect(noteState(document, 1)?.deleted).toBe(true);
   });
 
   test("a save right after a restore reads the restored note", async () => {

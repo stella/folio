@@ -1,10 +1,10 @@
 import { expect, test } from "bun:test";
 
+import { resolveStateStory } from "../__tests__/reference-editor/markupViewProjection";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
-import { resolveStateStory } from "../prosemirror/markupViewProjection";
 import { FolioDocxReviewer } from "./headless";
 
 const open = async (markdown: string) => {

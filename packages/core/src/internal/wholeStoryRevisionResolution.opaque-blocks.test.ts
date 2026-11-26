@@ -2,8 +2,8 @@ import { panic } from "better-result";
 import { expect, test } from "bun:test";
 import { Step, Transform } from "prosemirror-transform";
 
+import { resolveWholeStory } from "../__tests__/reference-editor/wholeStoryRevisionResolution";
 import { schema } from "../prosemirror/schema";
-import { resolveWholeStory } from "./wholeStoryRevisionResolution";
 
 const followers = {
   preservedBlock: () => schema.node("preservedBlock", { xml: "<w:altChunk/>" }),

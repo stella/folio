@@ -4,6 +4,7 @@ import type { EditorView } from "prosemirror-view";
 import type { OpStory } from "@stll/docx-core/ops";
 
 import { CanonicalSessionError } from "../canonical/canonicalSession";
+import { retainMarkupViewSource } from "../prosemirror/conversion/markupViewSource";
 import {
   adoptNativeSelection,
   isCompositionKeyDown,
@@ -174,6 +175,7 @@ export const createCanonicalStoryEditor = ({
         view.updateState(view.state);
         return;
       }
+      retainMarkupViewSource(view.state, applied.state);
       view.updateState(applied.state);
       if (applied.transactions.some((step) => step.selectionSet)) {
         // The selection it now shows, which a peer's edit moves with the text.

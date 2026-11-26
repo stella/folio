@@ -17,74 +17,19 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, Selection } from "prosemirror-state";
-import type { Mapping, Step, StepMap } from "prosemirror-transform";
+import type { StepMap } from "prosemirror-transform";
+
+import type { RevisionDecision } from "@stll/docx-core/ops";
 
 import { indexedPositionMap } from "../internal/indexedPositionMap";
-import type { RevisionResolutionMode } from "../internal/revisionResolutionInline";
-import { finalRevisionParagraphRanges } from "../internal/revisionResolutionTracking";
-import type { RemovedSectionReference } from "../internal/sectionEndpointResolution";
-import { resolveWholeStory } from "../internal/wholeStoryRevisionResolution";
 import type { DisplayMode } from "../managers/EditorModeManager";
 import type { NumberingDefinitions, StyleDefinitions } from "../types/document";
 import type { DeepReadonly } from "../types/documentModel";
-import {
-  createDocumentNumberingPlugin,
-  getDocumentNumbering,
-} from "./plugins/documentNumbering";
+import { canonicalMarkupDocument } from "./canonicalMarkupDocument";
+import { markupViewPositionMap } from "./markupViewPositionMap";
+import { createDocumentNumberingPlugin } from "./plugins/documentNumbering";
 import { createDocumentStyleContextPlugin } from "./plugins/documentStyles";
-import { getDocumentStyleResolver } from "./plugins/documentStyleState";
-
-/** Resolve every revision in the state's story with the state's own styles and numbering. */
-export const resolveStateStory = (
-  state: EditorState,
-  mode: RevisionResolutionMode,
-): {
-  resolved: PMNode;
-  mapping: Mapping;
-  positionMap: StepMap;
-  steps: Step[];
-  changedRanges: {
-    from: number;
-    to: number;
-  }[];
-  preStructureMap: StepMap;
-  tableRanges: {
-    node: PMNode;
-    inputNode: PMNode;
-    sourceNodeSize: number;
-    position: number;
-    inputMap: StepMap;
-    positionMap: StepMap;
-    ranges: readonly {
-      from: number;
-      to: number;
-    }[];
-    paragraphOffsets: readonly {
-      source: number;
-      final: number;
-    }[];
-  }[];
-  transfers: {
-    displacedToken: string | null;
-    selectedToken: string | null;
-  }[];
-  structuralRanges: {
-    from: number;
-    to: number;
-  }[];
-  structuralMap: StepMap;
-  structural: boolean;
-  failed: boolean;
-  removedEndpointCount: number;
-  removedReferences: RemovedSectionReference[];
-  keptBoundaries: Set<PMNode>;
-} =>
-  resolveWholeStory({
-    doc: state.doc,
-    mode,
-    styleResolver: getDocumentStyleResolver(state),
-    numbering: getDocumentNumbering(state),
-  });
+import { getFolioNodeRevisionCarriers } from "./revisionCarriers";
 
 /** How a view marks the paragraphs whose authored text it does not show verbatim. */
 type ChangeIndicators = "none" | "change-bars";
@@ -93,7 +38,7 @@ type MarkupViewResolution =
   | { type: "authored" }
   | {
       type: "resolved";
-      mode: RevisionResolutionMode;
+      mode: RevisionDecision;
       indicators: ChangeIndicators;
     };
 
@@ -147,6 +92,73 @@ const projectionCache = new WeakMap<
   Map<DisplayMode, MarkupViewProjection>
 >();
 
+type ResolvedMarkupView = {
+  doc: PMNode;
+  positionMap: StepMap;
+  partial: boolean;
+  changeBarRanges?: readonly PositionRange[];
+};
+const documentViews = new WeakMap<
+  EditorState,
+  Map<RevisionDecision, ResolvedMarkupView | null>
+>();
+
+/** Projected paragraphs whose authored runs or properties held a revision. */
+const changeBars = (
+  before: PMNode,
+  { doc, positionMap }: ResolvedMarkupView,
+): PositionRange[] => {
+  const toView = indexedPositionMap(positionMap);
+  const changed: PositionRange[] = [];
+  before.descendants((node, position) => {
+    if (node.type.name !== "paragraph") return true;
+    let hasRevision = getFolioNodeRevisionCarriers(node, position).length > 0;
+    node.forEach((child) => {
+      hasRevision ||= child.marks.some(
+        ({ type }) =>
+          type.name === "insertion" ||
+          type.name === "deletion" ||
+          type.name === "runPropertyChange",
+      );
+    });
+    if (hasRevision) {
+      const from = toView(position, 1);
+      const to = toView(position + node.nodeSize, -1);
+      if (from < to) changed.push({ from, to });
+    }
+    return false;
+  });
+  return changed.filter(({ from, to }) => from >= 0 && to <= doc.content.size);
+};
+
+const viewForDecision = (
+  state: EditorState,
+  decision: RevisionDecision,
+): ResolvedMarkupView | null => {
+  let views = documentViews.get(state);
+  if (views === undefined) {
+    views = new Map();
+    documentViews.set(state, views);
+  }
+  const cached = views.get(decision);
+  if (cached !== undefined) return cached;
+  const resolved = canonicalMarkupDocument({ state, decision });
+  const view = resolved.doc.eq(state.doc)
+    ? null
+    : {
+        ...resolved,
+        positionMap:
+          resolved.positionMap ??
+          markupViewPositionMap({
+            before: state.doc,
+            after: resolved.doc,
+            decision,
+          }),
+      };
+  views.set(decision, view);
+  return view;
+};
+
 /**
  * The document a markup view lays out, for the state's current document.
  * Cached per editor state: the resolver also reads its styles and numbering
@@ -155,7 +167,7 @@ const projectionCache = new WeakMap<
 /** How a view resolves the revisions it reads, or null when it shows them inline. */
 export const markupViewResolutionMode = (
   view: DisplayMode,
-): RevisionResolutionMode | null => {
+): RevisionDecision | null => {
   const resolution = MARKUP_VIEW_RESOLUTIONS[view];
   return resolution.type === "resolved" ? resolution.mode : null;
 };
@@ -173,21 +185,22 @@ export const projectMarkupView = (
   if (cached) {
     return cached;
   }
-  const result = resolveStateStory(state, resolution.mode);
-  const projection: MarkupViewProjection = result.resolved.eq(state.doc)
-    ? AUTHORED
-    : {
-        type: "resolved",
-        doc: result.resolved,
-        positionMap: result.positionMap,
-        toView: indexedPositionMap(result.positionMap),
-        toEditor: indexedPositionMap(result.positionMap.invert()),
-        changeBarRanges:
-          resolution.indicators === "change-bars"
-            ? finalRevisionParagraphRanges(result)
-            : [],
-        completeness: result.failed ? "partial" : "complete",
-      };
+  const result = viewForDecision(state, resolution.mode);
+  const projection: MarkupViewProjection =
+    result === null
+      ? AUTHORED
+      : {
+          type: "resolved",
+          doc: result.doc,
+          positionMap: result.positionMap,
+          toView: indexedPositionMap(result.positionMap),
+          toEditor: indexedPositionMap(result.positionMap.invert()),
+          changeBarRanges:
+            resolution.indicators === "change-bars"
+              ? (result.changeBarRanges ?? changeBars(state.doc, result))
+              : [],
+          completeness: result.partial ? "partial" : "complete",
+        };
   if (!byView) {
     byView = new Map();
     projectionCache.set(state, byView);

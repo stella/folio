@@ -845,6 +845,16 @@ export type IdLeaseState = {
 };
 
 // @public
+export type IndependentMarkupParagraph = {
+    index: number;
+    sourceLength: number;
+    omitted: readonly {
+        from: number;
+        to: number;
+    }[];
+};
+
+// @public
 export const INHERIT_RUN_PROPS = "inherit";
 
 // @public
@@ -1354,6 +1364,7 @@ export const replaceStoryBody: (input: ReplaceStoryBodyOptions) => Document_2;
 // @public
 export type ResolvedDocumentView = {
     document: Document_2;
+    independentInline?: readonly IndependentMarkupParagraph[];
     unresolved: readonly OpStory[];
 };
 

@@ -1,14 +1,17 @@
 import type { Mark, Node as PMNode } from "prosemirror-model";
 
-import type { RunPropertyChange, TextFormatting } from "../types/document";
-import { expectRunIdentityMarkAttrs } from "./attrs";
-import { RUN_FORMATTING_MARK_NAMES } from "./runFormattingMarkNames";
-import { reconcileRunFormattingMarks } from "./runFormattingReconciliation";
-import { RUN_IDENTITY_MARK_NAME, runIdentityAttrs } from "./runIdentity";
+import { expectRunIdentityMarkAttrs } from "../../prosemirror/attrs";
+import { RUN_FORMATTING_MARK_NAMES } from "../../prosemirror/runFormattingMarkNames";
+import { reconcileRunFormattingMarks } from "../../prosemirror/runFormattingReconciliation";
+import {
+  RUN_IDENTITY_MARK_NAME,
+  runIdentityAttrs,
+} from "../../prosemirror/runIdentity";
 import {
   type ParagraphRunStyleContext,
   type RunStyleResolver,
-} from "./runStyleFormatting";
+} from "../../prosemirror/runStyleFormatting";
+import type { RunPropertyChange, TextFormatting } from "../../types/document";
 
 type RejectedRunFormattingOptions = {
   node: PMNode;

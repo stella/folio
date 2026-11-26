@@ -7,6 +7,7 @@ import {
   REVIEW_CARRIERS,
   type Table,
 } from "../../model/document";
+import { validateOpsDocument } from "../contract";
 import {
   type ResolvedDocumentView,
   resolvedDocumentView,
@@ -52,6 +53,111 @@ for (const decision of ["accept", "reject"] as const)
     // The host's model is read, never changed.
     expect(document.package.document.content[1]).toBe(inserted);
   });
+
+for (const decision of ["accept", "reject"] as const)
+  test(`a validated view resolves a structural revision with the same output (${decision})`, () => {
+    const source: Document = {
+      package: {
+        document: {
+          content: [
+            text("00000001", "Kept"),
+            { ...inserted, pPrMark: { kind: "ins", info: { ...info, id: 4 } } },
+            text("00000003", "Tail"),
+          ],
+        },
+      },
+    };
+    const fromModel = resolvedDocumentView(structuredClone(source), decision);
+    expect(validateOpsDocument(source).isOk()).toBe(true);
+    const view = resolvedDocumentView(source, decision);
+    expect(view).toEqual(fromModel);
+    expect(view.unresolved).toEqual([]);
+  });
+
+for (const decision of ["accept", "reject"] as const)
+  test(`independent text paragraphs match normal story resolution (${decision})`, () => {
+    const standing = text("00000001", "Kept");
+    const { pPrMark: _mark, ...inline } = inserted;
+    const source: Document = {
+      package: { document: { content: [standing, inline] } },
+    };
+    // A second story uses the ordinary model resolution path for both.
+    const withHeader: Document = {
+      package: {
+        ...source.package,
+        headers: new Map([
+          [
+            "rId1",
+            {
+              type: "header",
+              hdrFtrType: "default",
+              content: [text("00000003", "Header")],
+            },
+          ],
+        ]),
+      },
+    };
+    const independent = resolvedDocumentView(source, decision);
+    const sequential = resolvedDocumentView(withHeader, decision);
+    expect(independent.unresolved).toEqual([]);
+    expect(sequential.unresolved).toEqual([]);
+    expect(independent.document.package.document).toEqual(
+      sequential.document.package.document,
+    );
+    expect(independent.document.package.document.content[0]).toBe(standing);
+  });
+
+test("a validated document only resolves illegal XML text when removing it", () => {
+  const invalidInsertion: Paragraph = {
+    type: "paragraph",
+    paraId: "00000002",
+    content: [
+      {
+        type: "insertion",
+        info,
+        content: [
+          { type: "run", content: [{ type: "text", text: "bad\u0000text" }] },
+        ],
+      },
+    ],
+  };
+  const source: Document = {
+    package: {
+      document: { content: [text("00000001", "Kept"), invalidInsertion] },
+    },
+  };
+  const withHeader: Document = {
+    package: {
+      ...source.package,
+      headers: new Map([
+        [
+          "rId1",
+          {
+            type: "header",
+            hdrFtrType: "default",
+            content: [text("00000003", "Header")],
+          },
+        ],
+      ]),
+    },
+  };
+  expect(validateOpsDocument(source).isOk()).toBe(true);
+  expect(validateOpsDocument(withHeader).isOk()).toBe(true);
+  for (const decision of ["accept", "reject"] as const) {
+    const view = resolvedDocumentView(source, decision);
+    const ordinary = resolvedDocumentView(withHeader, decision);
+    expect(view.unresolved).toEqual(ordinary.unresolved);
+    expect(view.document.package.document).toEqual(
+      ordinary.document.package.document,
+    );
+    expect(view.unresolved).toEqual(decision === "accept" ? ["main"] : []);
+    expect(view.document.package.document.content.at(1)).toEqual(
+      decision === "accept"
+        ? invalidInsertion
+        : { ...invalidInsertion, content: [] },
+    );
+  }
+});
 
 test("one mark object shared by several paragraphs resolves as a record in each", () => {
   const deletedMark = { kind: "del" as const, info: { id: 91, author: "A" } };

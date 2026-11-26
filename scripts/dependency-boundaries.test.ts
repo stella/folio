@@ -314,7 +314,19 @@ describe("workspace dependency boundaries", () => {
       fixtureRoot,
       "core",
       "__tests__/reference-editor/comments.ts",
-      "export const acceptChange = () => null;\n",
+      'export { resolveWholeStory as acceptChange } from "./wholeStoryRevisionResolution";\n',
+    );
+    writeSource(
+      fixtureRoot,
+      "core",
+      "__tests__/reference-editor/wholeStoryRevisionResolution.ts",
+      "export const resolveWholeStory = () => null;\n",
+    );
+    writeSource(
+      fixtureRoot,
+      "core",
+      "internal/wholeStoryRevisionResolution.ts",
+      "export const resolveWholeStory = () => null;\n",
     );
     writeSource(
       fixtureRoot,
@@ -326,19 +338,19 @@ describe("workspace dependency boundaries", () => {
       fixtureRoot,
       "core",
       "prosemirror/commands/index.ts",
-      'export { findSuggestionRange } from "./comments";\nexport { acceptChange } from "../../__tests__/reference-editor/comments";\n',
+      'export { findSuggestionRange } from "./comments";\nexport { acceptChange } from "../../__tests__/reference-editor/comments";\nexport { resolveWholeStory } from "../../internal/wholeStoryRevisionResolution";\n',
     );
     writeSource(
       fixtureRoot,
       "react",
       "index.tsx",
-      'export { findSuggestionRange } from "@stll/folio-core/prosemirror/commands/comments";\nexport const load = () => import("@stll/folio-core/__fixtures__/review");\n',
+      'export { findSuggestionRange } from "@stll/folio-core/prosemirror/commands/comments";\nexport { resolveWholeStory } from "@stll/folio-core/internal/wholeStoryRevisionResolution";\nexport const load = () => import("@stll/folio-core/__fixtures__/review");\n',
     );
     writeSource(
       fixtureRoot,
       "vue",
       "Editor.vue",
-      '<script setup lang="ts">\nimport { acceptChange } from "@stll/folio-core/__fixtures__/review";\nimport { findSuggestionRange } from "@stll/folio-core/prosemirror/commands/comments";\n</script>\n<template>{{ acceptChange() }}{{ findSuggestionRange() }}</template>\n',
+      '<script setup lang="ts">\nimport { acceptChange } from "@stll/folio-core/__fixtures__/review";\nimport { resolveWholeStory } from "@stll/folio-core/internal/wholeStoryRevisionResolution";\nimport { findSuggestionRange } from "@stll/folio-core/prosemirror/commands/comments";\n</script>\n<template>{{ acceptChange() }}{{ findSuggestionRange() }}{{ resolveWholeStory() }}</template>\n',
     );
     writeSource(
       fixtureRoot,
@@ -358,17 +370,17 @@ describe("workspace dependency boundaries", () => {
     for (const rule of [
       "production-editor-source-cannot-reach-reference-editor",
       "editor-source-uses-dedicated-review-readers",
+      "editor-source-cannot-reach-retired-revision-resolvers",
     ]) {
       const failures = result.output
         .split("\n")
         .filter((line) => line.includes(rule));
-      expect(failures, result.output).toHaveLength(expectedSources.length);
-      for (const source of expectedSources) {
-        expect(
-          failures.some((line) => line.includes(source)),
-          result.output,
-        ).toBe(true);
-      }
+      const actualSources = new Set(
+        failures.flatMap((line) =>
+          expectedSources.filter((source) => line.includes(source)),
+        ),
+      );
+      expect(actualSources, result.output).toEqual(new Set(expectedSources));
     }
     expect(result.output).not.toContain("commands/comments.test.ts");
   });

@@ -108,6 +108,10 @@ import {
   canonicalSelectionRange,
 } from "../prosemirror/canonicalSelectionRange";
 import { expectCommentRangeBoundaryAttrs } from "../prosemirror/commentRangeBoundaryAttrs";
+import {
+  markupViewSources,
+  markupViewStateSources,
+} from "../prosemirror/conversion/markupViewSource";
 import { storyConversionOptions } from "../prosemirror/conversion/storyConversionOptions";
 import {
   collectPairedBookmarkIds,
@@ -1670,7 +1674,14 @@ const project = ({
   };
   const kept =
     previous === undefined ? undefined : projectChangedBlocks(previous, walk);
-  return kept === undefined ? projectEveryBlock(walk) : Result.ok(kept);
+  const result = kept === undefined ? projectEveryBlock(walk) : Result.ok(kept);
+  if (result.isOk() && !markupViewSources.has(result.value.doc))
+    markupViewSources.set(result.value.doc, {
+      document,
+      story,
+      options,
+    });
+  return result;
 };
 
 const intentStory = (intent: EditorIntent): OpStory => {
@@ -1943,6 +1954,12 @@ export const publishCanonicalProjection = ({
     );
   const published = commit.publish();
   if (published.isErr()) return published;
+  const source = markupViewSources.get(commit.projection.doc);
+  markupViewStateSources.set(staged.state, {
+    ...source,
+    document: commit.document,
+    story: commit.projection.story,
+  });
   return Result.ok(staged);
 };
 

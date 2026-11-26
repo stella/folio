@@ -20,7 +20,6 @@ import {
 import { paragraphMarkOutcome } from "@stll/docx-core/ops";
 
 import { markParagraphPropertySourceTransfers } from "../../docx/paragraphPropertySource";
-import { finalRevisionParagraphRanges } from "../../internal/revisionResolutionTracking";
 import type { RemovedSectionReference } from "../../internal/sectionEndpointResolution";
 import {
   deleteTextBoxesAnchoredAt,
@@ -56,9 +55,7 @@ import {
   hasSerializableParagraphPropertyChange,
   paragraphPropertiesSnapshot,
 } from "../../prosemirror/commands/propertyChangeScope";
-import { resolveNodePropertyChangeAttrs } from "../../prosemirror/commands/resolveNodePropertyChangeAttrs";
 import { resolveParagraphChangeAttrs } from "../../prosemirror/commands/resolveParagraphProperties";
-import { hasMatchingCollapsedTableCellMerge } from "../../prosemirror/commands/tableCellMergeResolution";
 import {
   removeCommentAnchors,
   retireThreadsResolvedAway,
@@ -90,7 +87,6 @@ import {
   lockedControlSpans,
   lockedControlViolationOfTransform,
 } from "../../prosemirror/lockedControls";
-import { resolveStateStory } from "../../prosemirror/markupViewProjection";
 import {
   markChangedParagraphRanges,
   markStructuralChange,
@@ -103,10 +99,8 @@ import {
 import { getDocumentNumbering } from "../../prosemirror/plugins/documentNumbering";
 import { getDocumentStyleResolver } from "../../prosemirror/plugins/documentStyleState";
 import { resolvedPreservedXmlAttrs } from "../../prosemirror/preservedXmlReview";
-import { rejoinRunsAt } from "../../prosemirror/rejoinRunCarriers";
 import { nodePropertyRevisionSites } from "../../prosemirror/revisionCarriers";
 import { RUN_FORMATTING_MARK_NAMES } from "../../prosemirror/runFormattingMarkNames";
-import { rejectedRunFormatting } from "../../prosemirror/runPropertyChangeResolution";
 import { paragraphRunStyleContextAt } from "../../prosemirror/runStyleFormatting";
 import type { TrackedRevisionAncestor } from "../../prosemirror/schema/marks";
 import type { ParagraphPropertyChangeAttrs } from "../../prosemirror/schema/nodes";
@@ -131,13 +125,19 @@ import {
 import { extractTrackedChanges } from "../../prosemirror/utils/extractTrackedChanges";
 import { paragraphContentOf } from "../../prosemirror/zeroWidthAnchors";
 import type { RunPropertyChange } from "../../types/document";
+import { resolveStateStory } from "./markupViewProjection";
 import {
   joinAtParagraphMark,
   requestDeterministicParaIds,
   setParagraphAttrsWithRebasedRunFormatting,
 } from "./paragraphRevision";
+import { rejoinRunsAt } from "./rejoinRunCarriers";
 import { resolvedCommentPoints } from "./resolvedCommentPoints";
+import { resolveNodePropertyChangeAttrs } from "./resolveNodePropertyChangeAttrs";
 import { RevisionResolutionStep } from "./revisionResolutionStep";
+import { finalRevisionParagraphRanges } from "./revisionResolutionTracking";
+import { rejectedRunFormatting } from "./runPropertyChangeResolution";
+import { hasMatchingCollapsedTableCellMerge } from "./tableCellMergeProjection";
 import {
   resolveCollapsedTableCellMerge,
   resolveVisibleTableCellMerge,

@@ -11,54 +11,68 @@
 
 import type { EditorState } from "prosemirror-state";
 
-import type { RevisionResolutionMode } from "../internal/revisionResolutionInline";
-import { resolveWholeStory } from "../internal/wholeStoryRevisionResolution";
+import {
+  findStoryBody,
+  resolvedDocumentView,
+  type RevisionDecision,
+} from "@stll/docx-core/ops";
+
 import type { DisplayMode } from "../managers/EditorModeManager";
 import type { Document, Endnote, Footnote } from "../types/document";
-import { proseDocToBlocks } from "./conversion/fromProseDoc";
-import { footnoteToProseDoc } from "./conversion/toProseDoc";
 import { markupViewResolutionMode } from "./markupViewProjection";
-import { getDocumentNumbering } from "./plugins/documentNumbering";
-import { getDocumentStyleResolver } from "./plugins/documentStyles";
 
-type ResolvedNote = { styleResolver: unknown; note: Footnote | Endnote };
+type NoteReviewContext = Pick<
+  Document["package"],
+  "styles" | "theme" | "numbering"
+>;
+type ResolvedNote = NoteReviewContext & { note: Footnote | Endnote };
 const resolvedNotes = new WeakMap<
-  object,
-  Map<RevisionResolutionMode, ResolvedNote>
+  Footnote | Endnote,
+  Map<RevisionDecision, ResolvedNote>
 >();
 
 const resolvedNote = <TNote extends Footnote | Endnote>(
   note: TNote,
-  mode: RevisionResolutionMode,
-  state: EditorState,
-  document: Document,
+  decision: RevisionDecision,
+  { styles, theme, numbering }: NoteReviewContext,
 ): TNote => {
-  const styleResolver = getDocumentStyleResolver(state);
-  const cached = resolvedNotes.get(note)?.get(mode);
-  if (cached?.styleResolver === styleResolver) return cached.note as TNote;
-  const { styles, theme, numbering } = document.package;
-  const doc = footnoteToProseDoc(note.content, {
+  const byDecision =
+    resolvedNotes.get(note) ?? new Map<RevisionDecision, ResolvedNote>();
+  const cached = byDecision.get(decision);
+  if (
+    cached !== undefined &&
+    cached.styles === styles &&
+    cached.theme === theme &&
+    cached.numbering === numbering
+  )
+    return cached.note as TNote;
+
+  // View resolution must retain the note even if resolving the body would
+  // discard its reference. The isolated package addresses the real note story.
+  const source = {
+    package: {
+      document: { content: [] },
+      ...(note.type === "footnote"
+        ? { footnotes: [note] }
+        : { endnotes: [note] }),
+      ...(styles !== undefined && { styles }),
+      ...(theme !== undefined && { theme }),
+      ...(numbering !== undefined && { numbering }),
+    },
+  } satisfies Document;
+  const view = resolvedDocumentView(source, decision);
+  const body = findStoryBody(view.document, { kind: note.type, id: note.id });
+  const resolved =
+    body === undefined || body.content === note.content
+      ? note
+      : { ...note, content: body.content };
+  byDecision.set(decision, {
     ...(styles !== undefined && { styles }),
     ...(theme !== undefined && { theme }),
     ...(numbering !== undefined && { numbering }),
+    note: resolved,
   });
-  const result = resolveWholeStory({
-    doc,
-    mode,
-    styleResolver,
-    numbering: getDocumentNumbering(state),
-  });
-  const resolved =
-    result.failed || result.resolved.eq(doc)
-      ? note
-      : {
-          ...note,
-          content: proseDocToBlocks(result.resolved, note.content, styles),
-        };
-  const byMode =
-    resolvedNotes.get(note) ?? new Map<RevisionResolutionMode, ResolvedNote>();
-  byMode.set(mode, { styleResolver, note: resolved });
-  resolvedNotes.set(note, byMode);
+  resolvedNotes.set(note, byDecision);
   return resolved;
 };
 
@@ -66,14 +80,14 @@ const resolvedNote = <TNote extends Footnote | Endnote>(
 export const markupViewNotes = <TNote extends Footnote | Endnote>(
   notes: TNote[] | undefined,
   view: DisplayMode,
-  state: EditorState,
+  _state: EditorState,
   document: Document | null,
 ): TNote[] | undefined => {
-  const mode = markupViewResolutionMode(view);
-  if (!notes || !mode || !document) return notes;
+  const decision = markupViewResolutionMode(view);
+  if (!notes || !decision || !document) return notes;
   let changed = false;
   const shown = notes.map((note) => {
-    const resolved = resolvedNote(note, mode, state, document);
+    const resolved = resolvedNote(note, decision, document.package);
     changed ||= resolved !== note;
     return resolved;
   });

@@ -245,6 +245,7 @@ export {
   resolvedDocumentView,
   type ResolvedDocumentView,
 } from "./resolvedView";
+export type { IndependentMarkupParagraph } from "./resolve";
 export {
   DOCUMENT_OP_REFUSAL_REASONS,
   DocumentOpRefusal,
