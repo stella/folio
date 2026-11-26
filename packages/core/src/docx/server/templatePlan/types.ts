@@ -563,7 +563,22 @@ export type TemplatePlanSourceItem = {
 export type TemplatePlanItem =
   | { kind: "template"; templateBlockIds: string[] }
   | TemplatePlanSourceItem
-  | { kind: "slot"; templateBlockId: string; sourceBlockIds: string[] };
+  | {
+      kind: "slot";
+      templateBlockId: string;
+      sourceBlockIds: string[];
+      /**
+       * A lead of the first source block that the slot does not take: the
+       * name of a field the template shows itself (`To:` in front of an
+       * addressee, where the template has a cell that says so). The block
+       * must start with `text`. It and the blanks behind it are dropped;
+       * what follows is placed word for word and must be something.
+       * `shownByTemplateBlockId` names the paragraph of the template that
+       * shows the field: one the plan keeps as it is, with text. The report
+       * names every lead dropped.
+       */
+      dropLead?: { text: string; shownByTemplateBlockId: string };
+    };
 
 export type TemplatePlanNumberingPatch = {
   abstractNumId: number;
@@ -673,6 +688,11 @@ export type TemplatePlanBlockResult = {
   emphasis: "identical" | "mismatch" | "omitted";
   /** What `stripLabel` removed, the following space included. */
   strippedPrefix?: string;
+  /**
+   * The lead a slot's `dropLead` took off the block, the blanks behind it
+   * included, and the kept paragraph of the template that shows the field.
+   */
+  droppedLead?: { text: string; shownByTemplateBlockId: string };
   /** The automatic label `labelAsText` wrote as text, without what follows it. */
   labelAsText?: string;
   /** The label the source showed: its automatic label, else the stripped one. */
