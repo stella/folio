@@ -475,13 +475,22 @@ export const DELETED_PARAGRAPH_MARK = "\uE000";
 const deletedMarkOf = (paragraph: XmlElement): XmlElement | null =>
   wChild(wChild(wChild(paragraph, "pPr"), "rPr"), "del");
 
-/** Whether `xml` may hold a paragraph mark recorded as deleted. */
+/** Whether `xml` may hold a paragraph mark recorded as deleted: an empty
+ *  deletion, in either spelling of an empty element. */
 const mayHoldDeletedMark = (xml: string): boolean =>
-  /<[A-Za-z0-9]+:del\b[^>]*\/>/u.test(xml);
+  /<[A-Za-z0-9]+:del\b[^>]*(?:\/>|><\/)/u.test(xml);
 
-/** The deletion that stands for a deleted paragraph mark, by who deleted it. */
-const markDeletionXml = (mark: XmlElement): string => {
-  const prefix = (mark.name ?? "w:del").split(":").at(0) ?? "w";
+/** Whether the opening tag of an element declares a namespace of its own. */
+const declaresNamespace = (source: string): boolean =>
+  /^<[^>]*\sxmlns[:=]/u.test(source);
+
+/**
+ * The deletion that stands for a deleted paragraph mark, by who deleted it.
+ * It is written with the prefix of the paragraph it came from, which is
+ * bound wherever that paragraph's content may stand.
+ */
+const markDeletionXml = (paragraph: XmlElement, mark: XmlElement): string => {
+  const prefix = (paragraph.name ?? "w:p").split(":").at(0) ?? "w";
   const attribute = (name: string): string => {
     const value = wAttr(mark, name);
     return value === null
@@ -499,7 +508,9 @@ type JoinWalk = { xml: string; sound: boolean };
  * stands for the mark, then that paragraph's own content under that
  * paragraph's properties. This is what the document reads with its changes
  * accepted, with the deleted mark still on record. A paragraph that has no
- * paragraph after it in its container keeps its mark.
+ * paragraph after it in its container keeps its mark, and so does one whose
+ * own tag declares a namespace: its content would lose the binding in
+ * another paragraph.
  */
 const joinChildren = (walk: JoinWalk, container: XmlElement): string => {
   const inner = innerRangeOf(walk.xml, container);
@@ -532,7 +543,7 @@ const joinChildren = (walk: JoinWalk, container: XmlElement): string => {
     }
     const carried: string = held === null ? "" : held.content;
     const joined = withLeadingContent(source, carried);
-    const mark = deletedMarkOf(child);
+    const mark = declaresNamespace(source) ? null : deletedMarkOf(child);
     if (mark === null) {
       out += between + joined;
       held = null;
@@ -541,7 +552,7 @@ const joinChildren = (walk: JoinWalk, container: XmlElement): string => {
     // The white space in front of a paragraph that is handed on goes with it.
     held = {
       xml: between + joined,
-      content: contentOf(joined) + markDeletionXml(mark),
+      content: contentOf(joined) + markDeletionXml(child, mark),
     };
   }
   release();
