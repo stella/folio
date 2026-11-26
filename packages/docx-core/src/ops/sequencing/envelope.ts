@@ -131,6 +131,25 @@ export type SequencedOpEffect =
       cutRecords?: readonly { from: Gap; to: Gap; keptMark?: Gap }[];
     }
   | {
+      type: "insertBlocks";
+      /**
+       * For an insertion before or after a paragraph: the revisions of the
+       * marks of that paragraph and of the paragraph before it in reading
+       * order (the mark itself, a deletion it holds, and the mark it took
+       * over), and of the table rows and cells holding it. Resolving one
+       * joins or removes a paragraph beside the insertion, or the row or
+       * cell around it, which comes out differently with and without the
+       * inserted paragraphs; a concurrent decision naming none passes a
+       * direct insertion.
+       *
+       * Compatibility: a journal sequenced before this effect recorded
+       * {@link NO_SEQUENCED_EFFECT} for such an insertion, which still reads
+       * and replays; a decision rebased over one is refused, since it names
+       * no bordering revisions.
+       */
+      borderingRevisionIds: readonly number[];
+    }
+  | {
       type: "touchedBlocks";
       /** Paragraphs the operation changed, inserted or removed. */
       blockIds: readonly string[];
@@ -285,7 +304,7 @@ export const SEQUENCED_EFFECT_TYPES: Readonly<
   deleteRange: "deleteRange",
   setRunProps: "setRunProps",
   setParagraphProps: NO_SEQUENCED_EFFECT,
-  insertBlocks: NO_SEQUENCED_EFFECT,
+  insertBlocks: "insertBlocks",
   splitBlock: "splitBlock",
   joinBlocks: "joinBlocks",
   resolveRevision: "touchedBlocks",
@@ -338,7 +357,7 @@ export const sequencedEffectType = (
     switch (op.at.type) {
       case "before":
       case "after":
-        return NO_SEQUENCED_EFFECT;
+        return DOCUMENT_OP_TYPES.INSERT_BLOCKS;
       case "beforeTable":
       case "afterTable":
       case "containerStart":
@@ -351,6 +370,20 @@ export const sequencedEffectType = (
     }
   }
   return SEQUENCED_EFFECT_TYPES[op.type];
+};
+
+/**
+ * Whether a sequenced effect of `type` is one `op` may carry: the effect it
+ * records, or the one a journal sequenced before that effect existed
+ * recorded for it.
+ */
+const acceptsSequencedEffect = (op: DocumentOp, type: unknown): boolean => {
+  const recorded = sequencedEffectType(op);
+  return (
+    type === recorded ||
+    (recorded === DOCUMENT_OP_TYPES.INSERT_BLOCKS &&
+      type === NO_SEQUENCED_EFFECT)
+  );
 };
 
 type CommonOperationFields = Pick<DocumentOp, "undefinedFields">;
@@ -957,6 +990,11 @@ const isDocumentBatch = (value: unknown): value is DocumentBatch =>
               type: literal("joinBlocks"),
               firstLength: natural,
             })(effect);
+          case "insertBlocks":
+            return object({
+              type: literal("insertBlocks"),
+              borderingRevisionIds: array(natural),
+            })(effect);
           case "insertContent":
             return object({
               type: literal("insertContent"),
@@ -1089,7 +1127,7 @@ const decodeDocumentBatch = (
       !effects.every((effect: unknown, index: number) => {
         if (!isRecord(effect)) return false;
         const op = value.ops.at(index);
-        return op !== undefined && effect["type"] === sequencedEffectType(op);
+        return op !== undefined && acceptsSequencedEffect(op, effect["type"]);
       })
     ) {
       return Result.err(

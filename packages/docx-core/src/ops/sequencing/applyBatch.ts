@@ -1,16 +1,23 @@
 import { panic, Result } from "better-result";
 
-import type { Document } from "../../model/document";
+import type {
+  BlockContent,
+  Document,
+  Paragraph,
+  TableStructuralChangeInfo,
+} from "../../model/document";
 import { applyDocumentOps, inspectDocumentOps } from "../apply";
-import { storyBody, storyParagraphs } from "../blocks";
+import { type ParagraphLocation, storyBody, storyParagraphs } from "../blocks";
 import { IDENTITY_SPACES, identityKeysIn, idKey, slotKey } from "../ids";
 import { compareGaps, type Gap, leafSpans, spanningRecords } from "../leaves";
+import { itemBefore } from "../listItems";
 import { paragraphLength } from "../offsets";
 import type { DocumentOpRefusal } from "../refusal";
 import {
   type DeleteRangeOp,
   DOCUMENT_OP_TYPES,
   type DocumentOp,
+  type InsertBlocksOp,
   type InsertContentOp,
   type SetRunPropsOp,
   SPLIT_HALVES,
@@ -180,6 +187,76 @@ export const inspectBatch = (
     ({ document: left, effects }) => ({ document: left, effects }),
   );
 
+/** The revisions a paragraph's mark records: the mark, its deletion, the one it took over. */
+const markRevisionIds = (paragraph: Paragraph | undefined): number[] => {
+  const mark = paragraph?.pPrMark;
+  if (mark === undefined) return [];
+  return [
+    mark.info.id,
+    ...(mark.deletion === undefined ? [] : [mark.deletion.info.id]),
+    ...(mark.takenOverMark === undefined ? [] : [mark.takenOverMark]),
+  ];
+};
+
+/** The row and cell revisions of the tables on the way down to a paragraph. */
+const holdingTableRevisionIds = (
+  blocks: readonly BlockContent[],
+  location: ParagraphLocation,
+): number[] => {
+  const ids: number[] = [];
+  const change = (info: TableStructuralChangeInfo | undefined): void => {
+    if (info !== undefined) ids.push(info.info.id);
+  };
+  let list: readonly BlockContent[] = blocks;
+  for (const step of location.list) {
+    const block = list.at(step.block);
+    if (step.kind === "tableCell" && block?.type === "table") {
+      const row = block.rows.at(step.row);
+      const cell = row?.cells.at(step.cell);
+      change(row?.structuralChange);
+      change(cell?.structuralChange);
+      list = cell?.content ?? [];
+    } else if (
+      (step.kind === "blockSdt" && block?.type === "blockSdt") ||
+      (step.kind === "blockCustomXml" && block?.type === "blockCustomXml")
+    ) {
+      list = block.content;
+    } else {
+      return ids;
+    }
+  }
+  return ids;
+};
+
+/**
+ * The revisions a direct insertion before or after a paragraph borders: see
+ * the `insertBlocks` sequenced effect. A tracked insertion records them too;
+ * its own revision refuses a concurrent decision first.
+ */
+const borderingRevisionIds = (
+  document: Document,
+  op: InsertBlocksOp,
+): number[] => {
+  if (op.at.type !== "before" && op.at.type !== "after") return [];
+  const anchorId = idKey(op.at.blockId);
+  const body = storyBody(document, op.story);
+  const paragraphs = storyParagraphs(body);
+  const index = paragraphs.findIndex(
+    ({ paragraph }) =>
+      paragraph.paraId !== undefined && idKey(paragraph.paraId) === anchorId,
+  );
+  const anchor = paragraphs.at(index);
+  if (index < 0 || anchor === undefined) return [];
+  const before = itemBefore(paragraphs, index)?.paragraph;
+  return [
+    ...new Set([
+      ...markRevisionIds(anchor.paragraph),
+      ...markRevisionIds(before),
+      ...holdingTableRevisionIds(body.content, anchor),
+    ]),
+  ].sort((left, right) => left - right);
+};
+
 const batchWith = (
   applyOps: typeof applyDocumentOps,
   document: Document,
@@ -217,6 +294,15 @@ const batchWith = (
           firstLength: paragraphLength(paragraph),
         };
       }
+    }
+    if (
+      op.type === DOCUMENT_OP_TYPES.INSERT_BLOCKS &&
+      sequencedEffectType(op) === DOCUMENT_OP_TYPES.INSERT_BLOCKS
+    ) {
+      effect = {
+        type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+        borderingRevisionIds: borderingRevisionIds(current, op),
+      };
     }
     const applied = applyOps(current, [op]);
     if (applied.isErr()) {

@@ -23,6 +23,7 @@ import {
   type SequencedBatch,
   type SequencedOpEffect,
 } from "./envelope";
+import { heldRevisionIds } from "./heldRevisions";
 import { transformInlinePair } from "./inlineTransform";
 import {
   insertionWidth,
@@ -242,12 +243,15 @@ const rejoinedOverFormat = ({
  * comment anchor: it decides the same revisions after the edit, unless the
  * edit cut a revision record in two and gave its second half a new id, or is
  * a tracked edit whose records may continue a decided revision: one order
- * decides those and the other does not, so the decision is refused.
+ * decides those and the other does not, so the decision is refused. Over a
+ * direct paragraph insertion it passes unless it decides a revision the
+ * insertion's sequenced effect names as bordering it.
  * Undefined for every other pair.
  */
 const decisionOverEdit = (
   op: DocumentOp,
   over: DocumentOp,
+  effect: SequencedOpEffect | undefined,
 ): Result<readonly DocumentOp[], BatchRejection> | undefined => {
   if (op.type !== DOCUMENT_OP_TYPES.RESOLVE_REVISION) return undefined;
   switch (over.type) {
@@ -280,6 +284,42 @@ const decisionOverEdit = (
     case DOCUMENT_OP_TYPES.CREATE_COMMENT:
       if (!isAnchoredComment(over)) return undefined;
       break;
+    // Paragraphs inserted beside a paragraph change no revision record, but
+    // resolving the mark of that paragraph or of the one before it joins or
+    // removes a paragraph beside them, which differs with and without them,
+    // and so does resolving a table row or cell holding them. The effect
+    // names those revisions; an insertion sequenced before it recorded
+    // none, so a decision over one is refused rather than guessed.
+    case DOCUMENT_OP_TYPES.INSERT_BLOCKS:
+      if (over.at.type !== "before" && over.at.type !== "after")
+        return undefined;
+      if (over.revision !== undefined) break;
+      if (effect?.type !== DOCUMENT_OP_TYPES.INSERT_BLOCKS)
+        return refusal(
+          op,
+          over,
+          "A concurrent paragraph insertion records no revisions it borders.",
+        );
+      if (op.revisionIds.some((id) => effect.borderingRevisionIds.includes(id)))
+        return refusal(
+          op,
+          over,
+          "A concurrent paragraph insertion borders a paragraph mark this decision resolves.",
+        );
+      // A direct insertion's new revision ids only freshen copies of the
+      // revisions its paragraphs hold: a copy of a decided one keeps its id
+      // in one order and takes a new one in the other.
+      if (
+        heldRevisionIds(over.blocks).some((id) =>
+          op.revisionIds.some((decided) => String(decided) === id),
+        )
+      )
+        return refusal(
+          op,
+          over,
+          "A concurrent paragraph insertion holds a copy of a revision this decision resolves.",
+        );
+      return Result.ok([op]);
     default:
       return undefined;
   }
@@ -323,7 +363,7 @@ const transformRestoredOp = ({
   if (!sameStory(story, overStory)) return Result.ok([op]);
   if (independent(op, over)) return Result.ok([op]);
   // A decision names its revisions, not positions.
-  const decided = decisionOverEdit(op, over);
+  const decided = decisionOverEdit(op, over, effect);
   if (decided !== undefined) return decided;
   // A range or point comment moves like text; text moves past its reference.
   if (isAnchoredComment(op))
