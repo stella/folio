@@ -3783,23 +3783,22 @@ const resolveTableStructure = ({
         left: cell.leftColumnIndex,
         right: cell.leftColumnIndex + 1,
       };
-      // A suggestion marks whole cells deleted; a cell spanning the column
-      // and another has no suggested form narrower than itself, in either
-      // engine. What a row omits holds no cell to mark.
-      if (
-        tracked &&
-        Array.from({ length: map.height }, (_, rowIndex) => {
+      // A column covered only by spans and omissions changes geometry. A
+      // column also taking whole cells needs both geometry and cell records.
+      if (tracked) {
+        const spans = Array.from({ length: map.height }, (_, rowIndex) => {
           const position = map.map[rowIndex * map.width + column.left];
-          return position === undefined ? null : row.table.nodeAt(position);
-        }).some(
-          (node) =>
-            node?.attrs["_omittedGridSlot"] == null &&
-            Number(node?.attrs["colspan"] ?? 1) !== 1,
-        )
-      )
-        return skipTracked(
-          "A suggested column deletion cannot narrow a cell that spans other columns.",
-        );
+          const node =
+            position === undefined ? null : row.table.nodeAt(position);
+          return node === null || node.attrs["_omittedGridSlot"] != null
+            ? 0
+            : Number(node.attrs["colspan"] ?? 1);
+        });
+        if (spans.includes(1) && spans.some((span) => span > 1))
+          return skipTracked(
+            "A suggested column deletion cannot narrow a cell that spans other columns.",
+          );
+      }
       // The table is addressed by a paragraph the deletion keeps, as the
       // editor's column deletion addresses it.
       const at = tableAnchor(
@@ -3825,7 +3824,7 @@ const resolveTableStructure = ({
             deleted,
             skipsCell: (cellPosition) => {
               const rect = map.findCell(cellPosition - row.tableStart);
-              return rect.left <= column.left && column.left < rect.right;
+              return rect.left >= column.left && rect.right <= column.right;
             },
           }) ?? address.blockId)
         : address.blockId;

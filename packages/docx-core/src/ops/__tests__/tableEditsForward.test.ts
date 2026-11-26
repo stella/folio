@@ -813,6 +813,91 @@ describe("independent table forward oracles", () => {
     propertyTestTimeout(10_000),
   );
 
+  test("tracked grid edits restore spans, omissions and unmeasured widths", () => {
+    assertProperty(
+      fc.property(
+        fc.constantFrom("span", "leading", "trailing", "resize"),
+        fc.integer({ min: 2, max: 6 }),
+        fc.boolean(),
+        (kind, width, measured) => {
+          const rows = [0x100, 0x200].map((value) => {
+            const row: TableRow = {
+              type: "tableRow",
+              cells: [cell(value, kind === "span" ? width : width - 1)],
+            };
+            if (kind === "leading") row.formatting = { gridBefore: 1 };
+            if (kind === "trailing") row.formatting = { gridAfter: 1 };
+            return row;
+          });
+          const table: Table = {
+            type: "table",
+            rows,
+            ...(measured && kind !== "resize"
+              ? { columnWidths: Array.from({ length: width }, () => 800) }
+              : {}),
+          };
+          const document = documentOf(table);
+          const target = address(targetOf(table));
+          const op =
+            kind === "resize"
+              ? ({
+                  ...target,
+                  type: DOCUMENT_OP_TYPES.SET_TABLE_GRID,
+                  columnWidths: Array.from({ length: width - 1 }, () => 900),
+                } satisfies DocumentOp)
+              : ({
+                  ...target,
+                  type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
+                  column: kind === "trailing" ? width - 1 : 0,
+                } satisfies DocumentOp);
+          const direct = applied(document, op);
+          const pending = applyDocumentOp(document, {
+            ...op,
+            revision: { id: 100_000, author: "Reviewer" },
+            newIds: { revision: [100_001, 100_002, 100_003] },
+          }).unwrap();
+          const pendingTable = tableOf(pending.document);
+          expect(
+            pendingTable.formatting?.gridChange?.columnWidths,
+          ).toHaveLength(kind === "resize" ? width - 1 : width);
+          for (const row of pendingTable.rows) {
+            if (kind === "span")
+              expect(
+                row.cells.at(0)?.propertyChanges?.at(0)?.previousFormatting,
+              ).toEqual({ gridSpan: width });
+            if (kind === "leading" || kind === "trailing")
+              expect(row.propertyChanges?.at(0)?.previousFormatting).toEqual(
+                kind === "leading" ? { gridBefore: 1 } : { gridAfter: 1 },
+              );
+          }
+          expect(
+            applyDocumentOps(pending.document, pending.inverse).unwrap()
+              .document,
+          ).toStrictEqual(document);
+          for (const decision of ["accept", "reject"] as const) {
+            const resolved = applyDocumentOp(pending.document, {
+              type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+              story: OP_STORIES.MAIN,
+              revisionIds: pending.revisions,
+              decision,
+            }).unwrap();
+            expect(resolved.document).toStrictEqual(
+              decision === "accept" ? direct.document : document,
+            );
+            expect(
+              applyDocumentOps(resolved.document, resolved.inverse).unwrap()
+                .document,
+            ).toStrictEqual(pending.document);
+          }
+        },
+      ),
+      {
+        numRuns: 60,
+        id: "tracked grid edits restore spans, omissions and unmeasured widths",
+      },
+    );
+  });
+
   test("sparse raw identity, width and revision arrays refuse their shape before use", () => {
     // Array.every skips holes; sparse production-shaped payloads close the gap left by ordinary missing-field cases.
     const document = fixture({

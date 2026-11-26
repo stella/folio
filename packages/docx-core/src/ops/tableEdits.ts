@@ -1595,7 +1595,7 @@ const columnEdit = ({
   // A suggested deletion keeps the grid while it is pending: the deleted
   // cells stay in their columns, and accepting removes them with their grid
   // entries.
-  const trackedDeletion = !insert && op.revision !== undefined;
+  const trackedDeletion = suggestedDeletion && removedCells.length > 0;
   // The rows the edit leaves as they are: for a suggested deletion, those
   // with no cell in the column, which keep it for themselves when the
   // deletion is accepted; for another edit, those stopping short of the
@@ -1621,13 +1621,6 @@ const columnEdit = ({
     stampedRows.set(rowIndex, rowStamps);
     rowStamps += takesNewCells(rowIndex) ? count : 1;
   }
-  if (trackedDeletion && stampedRows.size === 0)
-    return refuse({
-      op,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      message:
-        "A suggested column deletion needs a cell in the column to mark.",
-    });
   const stamps = stampsFor(op, trackedDeletion ? rowStamps : rowStamps + 2);
   if (stamps.isErr()) return Result.err(stamps.error);
   const rowStamp = (rowIndex: number, cell = 0) => {
@@ -3146,12 +3139,6 @@ export const applyTableEdit = (
           reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
           message: "Resolve the existing grid revision before resizing.",
         });
-      if (op.revision !== undefined && table.columnWidths === undefined)
-        return refuse({
-          op,
-          reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-          message: "A grid revision requires an explicit previous grid.",
-        });
       if (table.propertyChanges !== undefined)
         return refuse({
           op,
@@ -3172,7 +3159,10 @@ export const applyTableEdit = (
           ...table.formatting,
           gridChange: {
             id: gridStamp.id,
-            columnWidths: [...(table.columnWidths ?? [])],
+            columnWidths:
+              table.columnWidths === undefined
+                ? Array.from({ length: grid.value.width }, () => undefined)
+                : [...table.columnWidths],
           },
         };
         next.propertyChanges = [

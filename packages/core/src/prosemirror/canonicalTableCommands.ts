@@ -237,7 +237,7 @@ export const withCanonicalSelectionCommand = (command: Command): Command =>
     return [{ type: "selection" }];
   });
 
-/** A paragraph of the table's own, outside the given columns, that addresses it. */
+/** A paragraph in a cell with a slot outside the columns being removed. */
 export const tableAnchor = (
   rect: TableRect,
   avoid: { left: number; right: number } = { left: 0, right: 0 },
@@ -251,8 +251,6 @@ export const tableAnchor = (
       const cell = table.nodeAt(offset);
       // A row's gridBefore and gridAfter fillers have no source paragraph.
       if (cell === null || cell.attrs["_omittedGridSlot"] != null) continue;
-      const cellRect = map.findCell(offset);
-      if (cellRect.left < avoid.right && cellRect.right > avoid.left) continue;
       const at = firstParagraphPosition(cell, tableStart + offset);
       if (at !== undefined) return at;
     }
