@@ -1,0 +1,107 @@
+{
+  "version": 1,
+  "title": "PINNED #1350, fingerprint d80a95b0a90f4835: deleting the second half of an inserted heading one split at the story end keeps the heading, accepted as directly",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "emoji",
+  "mode": "tracked-changes",
+  "seed": 2008655382,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 3208385525,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "5E88C024",
+          "text": "Party agreement schedule payment term delivery notice supplier.",
+          "styleId": "Heading2"
+        }
+      ],
+      "atomic": false
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 4280233274,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "31617F9A",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        },
+        {
+          "type": "insertTable",
+          "blockId": "3CEFFC83",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 1688949397,
+      "operations": [
+        {
+          "type": "splitBlock",
+          "blockId": "@12",
+          "offset": 6
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 361336860,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "@9",
+          "text": "Term party goods clause notice notice."
+        },
+        {
+          "type": "insertTableColumn",
+          "blockId": "@2",
+          "position": "after"
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 1369243412,
+      "operations": [
+        {
+          "type": "deleteTableRow",
+          "blockId": "@2"
+        }
+      ]
+    },
+    {
+      "action": "mistake",
+      "seed": 3512938910
+    },
+    {
+      "action": "story batch",
+      "seed": 3257174122,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "@14"
+        },
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "@14",
+          "properties": {
+            "alignment": null
+          }
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from random flow seed 2008655382"
+}
