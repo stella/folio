@@ -146,7 +146,7 @@ export const CANONICAL_CAPABILITIES: {
     readonly owner: "controller";
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Suggested row, column and table changes refuse content the tracked table records cannot express; a dragged table refuses to move.";
+    readonly summary: "Suggested table changes refuse markup the tracked table records cannot express: a row insertion or deletion in a table holding captured markup, wrapper stacks or row content controls; a column or cell edit in a table whose rows keep captured markup between their cells; a table inserted or deleted with captured markup, bookmarks, wrapper stacks or property revisions; a column deletion through a cell spanning other columns.";
   };
   readonly "story-content-projection": {
     readonly owner: "controller";
@@ -178,7 +178,7 @@ export const CANONICAL_CAPABILITIES: {
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
-      "Suggested row, column and table changes refuse content the tracked table records cannot express; a dragged table refuses to move.",
+      "Suggested table changes refuse markup the tracked table records cannot express: a row insertion or deletion in a table holding captured markup, wrapper stacks or row content controls; a column or cell edit in a table whose rows keep captured markup between their cells; a table inserted or deleted with captured markup, bookmarks, wrapper stacks or property revisions; a column deletion through a cell spanning other columns.",
   },
   [CANONICAL_GAP.storyContentProjection]: {
     owner: "controller",

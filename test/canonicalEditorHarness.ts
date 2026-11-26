@@ -270,21 +270,27 @@ export const createCanonicalEditorHarness = (
     });
     let blocksOnly = true;
     let inlineOnly = true;
+    // Copied cells, rows or cells without their table, paste as a table.
+    const cellRoles = new Set(["row", "cell", "header_cell"]);
     slice.content.forEach((node) => {
       blocksOnly &&=
-        node.type.name === "paragraph" || node.type.name === "table";
+        node.type.name === "paragraph" ||
+        node.type.name === "table" ||
+        cellRoles.has(String(node.type.spec["tableRole"]));
       inlineOnly &&= node.isInline;
     });
-    // A table is the table gap's; any other block the story content's.
-    let holdsTable = false;
-    slice.content.descendants((node) => {
-      if (node.type.name === "table") holdsTable = true;
-    });
-    const blockGap = holdsTable
-      ? CANONICAL_GAP.trackedTableStructure
-      : CANONICAL_GAP.storyContentProjection;
+    // An edge open inside a table closes at the table, which pastes the
+    // cells it holds; any other open container is the story content's.
+    const opensInside = (open: number, edge: PMNode | null) =>
+      open > 1 &&
+      edge?.type.name !== "table" &&
+      !cellRoles.has(String(edge?.type.spec["tableRole"]));
+    const blockGap = CANONICAL_GAP.storyContentProjection;
     let row: HarnessRefusalRow | undefined;
-    if (slice.openStart > 1 || slice.openEnd > 1)
+    if (
+      opensInside(slice.openStart, slice.content.firstChild) ||
+      opensInside(slice.openEnd, slice.content.lastChild)
+    )
       row = {
         id: "clipboard-nested-blocks",
         gap: blockGap,

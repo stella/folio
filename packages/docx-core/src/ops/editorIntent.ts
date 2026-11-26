@@ -380,6 +380,23 @@ export type EditorIntent =
       openEnd: 0 | 1;
     }
   | {
+      /**
+       * Blocks, tables among them, dragged from a range to a target. The
+       * tables standing wholly between `from` and `to` are removed, or in
+       * suggesting mode recorded as deleted, the text of the range is
+       * deleted as `moveFragment` deletes it, and the blocks go in at the
+       * target as `pasteBlocks` places them, a suggestion recording them as
+       * inserted. Without a table it is `moveFragment`.
+       */
+      type: "moveBlocks";
+      from: TextPosition;
+      to: TextPosition;
+      target: TextPosition;
+      blocks: readonly (Paragraph | Table)[];
+      openStart: 0 | 1;
+      openEnd: 0 | 1;
+    }
+  | {
       type: "replaceText";
       from: TextPosition;
       to: TextPosition;
@@ -543,6 +560,7 @@ const intentEndpoints = (intent: EditorIntentAllocation) => {
     case "replaceFragment":
     case "pasteBlocks":
     case "moveFragment":
+    case "moveBlocks":
     case "replaceText":
     case "insertAtom":
     case "formatRun":
@@ -740,11 +758,14 @@ export const createEditorIntentIdAllocator = ({
         demand += 4 * (1 + span.ancestors.length);
     }
     if (incoming.length > 0) demand += 8;
-    if (intent.type === "pasteBlocks") {
+    if (intent.type === "pasteBlocks" || intent.type === "moveBlocks") {
       // The split at the caret, each pasted paragraph's mark and content, and
-      // each pasted table's rows.
+      // each pasted table's rows; a moved table's rows are recorded twice,
+      // deleted at the source and inserted at the target.
       demand += 8 + PARAGRAPH_REVISION_DEMAND;
       for (const block of intent.blocks) {
+        if (intent.type === "moveBlocks" && block.type === "table")
+          demand += 2 + block.rows.length;
         const paragraphs =
           block.type === "table"
             ? storyParagraphs({ content: [block] }).map(
@@ -765,7 +786,9 @@ export const createEditorIntentIdAllocator = ({
           demand += 4;
           continue;
         }
-        const note = intent.annotations?.notes.find(
+        const note = (
+          intent.type === "pasteBlocks" ? intent.annotations : undefined
+        )?.notes.find(
           ({ type, id }) => type === anchor.note && id === anchor.id,
         );
         demand += 4;
@@ -791,7 +814,7 @@ export const createEditorIntentIdAllocator = ({
         8 +
         (intent.headings.length + 1) *
           (PARAGRAPH_REVISION_DEMAND + 4 * leafRevisionDemand(3));
-    if (intent.type === "moveFragment") {
+    if (intent.type === "moveFragment" || intent.type === "moveBlocks") {
       const target = storyParagraphs(
         storyBody(document, intent.target.story),
       ).find(
@@ -2977,6 +3000,472 @@ const gapWithoutLeaves = (
   return { offset, zeroWidthBefore };
 };
 
+/** A range moved to a target: the range's own edges, the target, and how open the moved content is. */
+type RangeMove = {
+  from: TextPosition;
+  to: TextPosition;
+  target: TextPosition;
+  openStart: 0 | 1;
+  openEnd: 0 | 1;
+};
+type RangeMoveOptions = {
+  intent: RangeMove;
+  mode: EditorIntentMode;
+  /**
+   * The moved content placed at the target, which the deletion of the
+   * range has rebased, in the mode the deletion leaves.
+   */
+  insert: (
+    afterDeletion: Document,
+    target: TextPosition,
+    mode: EditorIntentMode,
+  ) => Result<CompiledEditorIntent, DocumentOpRefusal>;
+};
+
+/**
+ * A move of the text between `from` and `to`: the range is deleted, as
+ * `replaceText` with no text deletes it (a suggestion records the
+ * deletion), and the moved content goes in where the target stands once
+ * the deletion is made. A target inside the range moves nothing.
+ */
+const compileRangeMove = (
+  document: Document,
+  { intent, mode, insert }: RangeMoveOptions,
+): Result<CompiledEditorIntent, DocumentOpRefusal> => {
+  const range = selectedParagraphRuns(document, intent.from, intent.to);
+  if (range.isErr()) return Result.err(range.error);
+  const sourceParagraph = paragraphAt(document, intent.from);
+  const fromGap =
+    intent.from.zeroWidthBefore ??
+    (sourceParagraph === undefined
+      ? 0
+      : zeroWidthLeavesAt(sourceParagraph.content, intent.from.offset).length);
+  const toGap = intent.to.zeroWidthBefore ?? 0;
+  if (
+    idKey(intent.from.blockId) === idKey(intent.to.blockId) &&
+    intent.from.offset === intent.to.offset &&
+    fromGap >= toGap
+  ) {
+    if (
+      fromGap > toGap &&
+      (intent.from.zeroWidthBefore !== undefined ||
+        intent.to.zeroWidthBefore !== undefined)
+    ) {
+      return Result.err(
+        new DocumentOpRefusal({
+          reason: DOCUMENT_OP_REFUSAL_REASONS.INVALID_OFFSET,
+          message: "The move source marker gaps are reversed.",
+          opType: DOCUMENT_OP_TYPES.DELETE_RANGE,
+        }),
+      );
+    }
+    return Result.ok({ ops: [], selection: intent.target });
+  }
+  const locations = storyParagraphs(storyBody(document, intent.from.story));
+  const indexOf = (at: TextPosition) =>
+    locations.findIndex(
+      ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(at.blockId),
+    );
+  const first = indexOf(intent.from);
+  const last = indexOf(intent.to);
+  const targetIndex = indexOf(intent.target);
+  const targetGap =
+    intent.target.zeroWidthBefore ??
+    defaultInsertionGap(
+      paragraphAt(document, intent.target)?.content ?? [],
+      intent.target.offset,
+    ).zeroWidthBefore;
+  const targetPosition = {
+    offset: intent.target.offset,
+    zeroWidthBefore: targetGap,
+  };
+  if (
+    intent.target.story === intent.from.story &&
+    targetIndex >= first &&
+    targetIndex <= last &&
+    (targetIndex !== first ||
+      compareGaps(targetPosition, {
+        offset: intent.from.offset,
+        zeroWidthBefore: fromGap,
+      }) >= 0) &&
+    (targetIndex !== last ||
+      compareGaps(targetPosition, {
+        offset: intent.to.offset,
+        zeroWidthBefore: toGap,
+      }) <= 0)
+  ) {
+    // Moving into the selected range is an explicit no-op, including its edges.
+    return Result.ok({ ops: [], selection: intent.target });
+  }
+  const anchorDeletions: DeleteRangeOp[] = [];
+  const sourceAnchors = mode.type === "editing" ? range.value.flat() : [];
+  for (const { paragraph } of sourceAnchors) {
+    const blockId = paragraph.paraId ?? "";
+    const from =
+      idKey(blockId) === idKey(intent.from.blockId)
+        ? { offset: intent.from.offset, zeroWidthBefore: fromGap }
+        : { offset: 0, zeroWidthBefore: 0 };
+    const to =
+      idKey(blockId) === idKey(intent.to.blockId)
+        ? { offset: intent.to.offset, zeroWidthBefore: toGap }
+        : {
+            offset: paragraphLength(paragraph),
+            zeroWidthBefore: zeroWidthLeavesAt(
+              paragraph.content,
+              paragraphLength(paragraph),
+            ).length,
+          };
+    for (const span of leafSpans(paragraph.content)) {
+      if (
+        !isMoveAnchor(span.node) ||
+        span.ancestors.some(isRemovedRevisionNode) ||
+        compareGaps(span.before, from) < 0 ||
+        compareGaps(span.after, to) > 0
+      )
+        continue;
+      anchorDeletions.push({
+        type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+        from: { story: intent.from.story, blockId, ...span.before },
+        to: { story: intent.from.story, blockId, ...span.after },
+      });
+    }
+  }
+  const deleted = compileEditorIntent(document, {
+    intent: {
+      type: "replaceText",
+      from: intent.from,
+      to: intent.to,
+      text: "",
+    },
+    mode,
+  });
+  if (deleted.isErr()) return deleted;
+  const logicalDeletions =
+    anchorDeletions.length === 0
+      ? deleted.value.ops
+      : [
+          ...deleted.value.ops
+            .filter((op) => op.type === DOCUMENT_OP_TYPES.DELETE_RANGE)
+            .concat(anchorDeletions)
+            .sort(
+              (left, right) =>
+                indexOf(right.from) - indexOf(left.from) ||
+                compareGaps(
+                  {
+                    offset: right.from.offset,
+                    zeroWidthBefore: right.from.zeroWidthBefore ?? 0,
+                  },
+                  {
+                    offset: left.from.offset,
+                    zeroWidthBefore: left.from.zeroWidthBefore ?? 0,
+                  },
+                ),
+            ),
+          ...deleted.value.ops.filter(
+            (op) => op.type !== DOCUMENT_OP_TYPES.DELETE_RANGE,
+          ),
+        ];
+  const anchors = new Set(anchorDeletions);
+  const deletionOps: DocumentOp[] = [];
+  const movedNoteBodies: DocumentOp[] = [];
+  let afterDeletion = document;
+  for (const planned of logicalDeletions) {
+    let op = planned;
+    if (
+      planned.type === DOCUMENT_OP_TYPES.DELETE_RANGE &&
+      anchors.has(planned)
+    ) {
+      const paragraph = paragraphAt(afterDeletion, planned.from);
+      if (paragraph === undefined)
+        panic("A move anchor lost its selected paragraph.");
+      op = {
+        type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
+        story: planned.from.story,
+        blockId: planned.from.blockId,
+        expected: paragraph.content,
+        content: deleteBetween(
+          paragraph.content,
+          {
+            offset: planned.from.offset,
+            zeroWidthBefore: planned.from.zeroWidthBefore ?? 0,
+          },
+          {
+            offset: planned.to.offset,
+            zeroWidthBefore: planned.to.zeroWidthBefore ?? 0,
+          },
+        ).content,
+      };
+    }
+    const applied = applyDocumentOps(afterDeletion, [op]);
+    if (applied.isErr()) return Result.err(applied.error);
+    afterDeletion = applied.value.document;
+    deletionOps.push(op);
+    for (const inverse of applied.value.inverse) {
+      if (
+        inverse.type === DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS &&
+        (inverse.parts.footnotes !== undefined ||
+          inverse.parts.endnotes !== undefined)
+      )
+        movedNoteBodies.push({
+          type: DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS,
+          expected: {
+            ...(inverse.expected.footnotes === undefined
+              ? {}
+              : { footnotes: inverse.expected.footnotes }),
+            ...(inverse.expected.endnotes === undefined
+              ? {}
+              : { endnotes: inverse.expected.endnotes }),
+          },
+          parts: {
+            ...(inverse.parts.footnotes === undefined
+              ? {}
+              : { footnotes: inverse.parts.footnotes }),
+            ...(inverse.parts.endnotes === undefined
+              ? {}
+              : { endnotes: inverse.parts.endnotes }),
+          },
+        });
+    }
+  }
+  if (movedNoteBodies.length > 0) {
+    // Each restoration expects the note parts its own deletion left, so
+    // they undo the deletions newest first.
+    const restorations = movedNoteBodies.toReversed();
+    const restored = applyDocumentOps(afterDeletion, restorations);
+    if (restored.isErr()) return Result.err(restored.error);
+    afterDeletion = restored.value.document;
+    deletionOps.push(...restorations);
+  }
+  let target = intent.target;
+  for (const op of logicalDeletions) {
+    if (
+      op.type === DOCUMENT_OP_TYPES.DELETE_RANGE &&
+      op.revision === undefined &&
+      idKey(target.blockId) === idKey(op.from.blockId) &&
+      target.story === op.from.story &&
+      target.offset >= op.to.offset
+    ) {
+      const source = paragraphAt(document, op.from);
+      const deletionFromGap =
+        op.from.zeroWidthBefore ??
+        zeroWidthLeavesAt(source?.content ?? [], op.from.offset).length;
+      const deletionToGap = op.to.zeroWidthBefore ?? 0;
+      const deletionTargetGap =
+        target.zeroWidthBefore ??
+        defaultInsertionGap(source?.content ?? [], target.offset)
+          .zeroWidthBefore;
+      const rebased = Object.assign({}, target, {
+        offset: target.offset - (op.to.offset - op.from.offset),
+      });
+      if (target.offset === op.to.offset)
+        rebased.zeroWidthBefore =
+          deletionFromGap + deletionTargetGap - deletionToGap;
+      target = rebased;
+    }
+    if (
+      op.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS &&
+      op.revision === undefined &&
+      idKey(target.blockId) === idKey(op.blockId) &&
+      target.story === op.story
+    )
+      target = Object.assign({}, target, { blockId: op.nextBlockId });
+    else if (
+      op.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS &&
+      op.revision === undefined &&
+      idKey(target.blockId) === idKey(op.nextBlockId) &&
+      target.story === op.story
+    ) {
+      const prefix = paragraphAt(document, {
+        story: op.story,
+        blockId: op.blockId,
+        offset: 0,
+      });
+      const remaining =
+        idKey(op.blockId) === idKey(intent.from.blockId)
+          ? intent.from.offset
+          : 0;
+      if (prefix !== undefined) {
+        const rebased = Object.assign({}, target, {
+          offset: target.offset + remaining,
+        });
+        if (
+          target.offset === 0 &&
+          idKey(op.blockId) === idKey(intent.from.blockId)
+        )
+          rebased.zeroWidthBefore = fromGap + (target.zeroWidthBefore ?? 0);
+        target = rebased;
+      }
+    }
+  }
+  const inserted = insert(
+    afterDeletion,
+    target,
+    modeAfterOps(afterDeletion, mode),
+  );
+  if (inserted.isErr()) return inserted;
+  return Result.ok({
+    ops: [...deletionOps, ...inserted.value.ops],
+    selection: inserted.value.selection,
+  });
+};
+
+/**
+ * A paragraph without the move range markers it carried: a suggested move is
+ * recorded as a deletion and an insertion, and a copied marker would pair
+ * with no range.
+ */
+const withoutParagraphMoveAnchors = (paragraph: Paragraph): Paragraph =>
+  Object.assign({}, paragraph, {
+    content: asParagraphContent(withoutMoveAnchors(paragraph.content)),
+  });
+
+/** A block without move range markers, a table's cell paragraphs among them. */
+const withoutBlockMoveAnchors = (
+  block: Paragraph | Table,
+): Paragraph | Table =>
+  block.type === "paragraph"
+    ? withoutParagraphMoveAnchors(block)
+    : {
+        ...block,
+        rows: block.rows.map((row) => ({
+          ...row,
+          cells: row.cells.map((cell) => ({
+            ...cell,
+            content: cell.content.map((inner) =>
+              inner.type === "paragraph" || inner.type === "table"
+                ? withoutBlockMoveAnchors(inner)
+                : inner,
+            ),
+          })),
+        })),
+      };
+
+type BlockMoveIntent = Extract<EditorIntent, { type: "moveBlocks" }>;
+type BlockMoveOptions = {
+  intent: BlockMoveIntent;
+  mode: EditorIntentMode;
+  firstBlockId?: number | undefined;
+};
+
+/**
+ * Blocks, tables among them, moved from a range to a target. The tables
+ * standing wholly between the range's paragraphs are removed, the latest
+ * first, or in suggesting mode recorded as deleted; the range's text is then
+ * deleted and the blocks placed at the rebased target as a paste places them.
+ * A suggestion records the move as the deletion of its source and the
+ * insertion of its copy, as a moved paragraph is recorded. A target inside
+ * the range, a moved table's cell among them, moves nothing.
+ */
+const compileBlockMove = (
+  document: Document,
+  { intent, mode, firstBlockId }: BlockMoveOptions,
+): Result<CompiledEditorIntent, DocumentOpRefusal> => {
+  const { blocks, ...range } = intent;
+  const paragraphs = blocks.filter(
+    (block): block is Paragraph => block.type === "paragraph",
+  );
+  if (paragraphs.length === blocks.length)
+    return compileEditorIntent(document, {
+      intent: { ...range, type: "moveFragment", paragraphs },
+      mode,
+      ...(firstBlockId === undefined ? {} : { firstBlockId }),
+    });
+  const story = intent.from.story;
+  const body = storyBody(document, story);
+  const locations = storyParagraphs(body);
+  const indexOf = (at: TextPosition) =>
+    locations.findIndex(
+      ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(at.blockId),
+    );
+  const first = indexOf(intent.from);
+  const last = indexOf(intent.to);
+  const start = locations[first];
+  const end = locations[last];
+  if (start === undefined || end === undefined || intent.to.story !== story)
+    return Result.err(
+      new DocumentOpRefusal({
+        reason: DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
+        message: "The moved range names a paragraph the story does not hold.",
+        opType: DOCUMENT_OP_TYPES.DELETE_RANGE,
+      }),
+    );
+  if (!sameBlockList(start.list, end.list) || last < first)
+    return Result.err(
+      new DocumentOpRefusal({
+        reason: DOCUMENT_OP_REFUSAL_REASONS.INVALID_OPERATION,
+        message: "Moved blocks start and end in one block list.",
+        opType: DOCUMENT_OP_TYPES.DELETE_RANGE,
+      }),
+    );
+  const target = indexOf(intent.target);
+  if (intent.target.story === story && target > first && target < last)
+    return Result.ok({ ops: [], selection: intent.target });
+  const covered = blockListAt(body.content, start.list)
+    .slice(start.index + 1, end.index)
+    .filter((block): block is Table => block.type === "table");
+  const reserved =
+    mode.reservedBlockIds === undefined
+      ? {}
+      : { reservedBlockIds: mode.reservedBlockIds };
+  const ops: DocumentOp[] = [];
+  let current = document;
+  let currentMode = mode;
+  // The latest table first, so that no removal moves the place of another.
+  for (const table of covered.toReversed()) {
+    const blockId = storyParagraphs({ content: [table] }).at(0)?.paragraph
+      .paraId;
+    if (blockId === undefined)
+      return Result.err(
+        new DocumentOpRefusal({
+          reason: DOCUMENT_OP_REFUSAL_REASONS.MISSING_BLOCK_ID,
+          message: "A moved table holds no paragraph that addresses it.",
+          opType: DOCUMENT_OP_TYPES.DELETE_TABLE,
+        }),
+      );
+    const removed = compileEditorIntent(current, {
+      intent: {
+        type: "tableBlock",
+        operation: { type: DOCUMENT_OP_TYPES.DELETE_TABLE, story, blockId },
+      },
+      mode: currentMode,
+    });
+    if (removed.isErr()) return removed;
+    const applied = applyDocumentOps(current, removed.value.ops);
+    if (applied.isErr()) return Result.err(applied.error);
+    ops.push(...removed.value.ops);
+    current = applied.value.document;
+    currentMode = { ...modeAfterOps(current, currentMode), ...reserved };
+  }
+  const moved = compileRangeMove(current, {
+    intent: range,
+    mode: currentMode,
+    insert: (afterDeletion, at, insertMode) =>
+      compileEditorIntent(afterDeletion, {
+        intent: {
+          type: "pasteBlocks",
+          from: at,
+          to: at,
+          blocks:
+            mode.type === "suggesting"
+              ? blocks.map(withoutBlockMoveAnchors)
+              : blocks,
+          openStart: intent.openStart,
+          openEnd: intent.openEnd,
+        },
+        mode: { ...insertMode, ...reserved },
+        ...(firstBlockId === undefined ? {} : { firstBlockId }),
+      }),
+  });
+  if (moved.isErr()) return moved;
+  // A target at the range's edge, inside it, moves nothing either.
+  if (moved.value.ops.length === 0)
+    return Result.ok({ ops: [], selection: intent.target });
+  return Result.ok({
+    ops: [...ops, ...moved.value.ops],
+    selection: moved.value.selection,
+  });
+};
+
 /** Compile one batch; the caller applies it atomically and journals its exact inverse. */
 // An intent naming paragraphs of a text box through the story drawing it is
 // compiled in the box's own story; what it hands back names the package
@@ -3655,298 +4144,40 @@ const compileInStory = (
       break;
     }
     case "moveFragment": {
-      const range = selectedParagraphRuns(document, intent.from, intent.to);
-      if (range.isErr()) return Result.err(range.error);
-      const sourceParagraph = paragraphAt(document, intent.from);
-      const fromGap =
-        intent.from.zeroWidthBefore ??
-        (sourceParagraph === undefined
-          ? 0
-          : zeroWidthLeavesAt(sourceParagraph.content, intent.from.offset)
-              .length);
-      const toGap = intent.to.zeroWidthBefore ?? 0;
-      if (
-        idKey(intent.from.blockId) === idKey(intent.to.blockId) &&
-        intent.from.offset === intent.to.offset &&
-        fromGap >= toGap
-      ) {
-        if (
-          fromGap > toGap &&
-          (intent.from.zeroWidthBefore !== undefined ||
-            intent.to.zeroWidthBefore !== undefined)
-        ) {
-          return Result.err(
-            new DocumentOpRefusal({
-              reason: DOCUMENT_OP_REFUSAL_REASONS.INVALID_OFFSET,
-              message: "The move source marker gaps are reversed.",
-              opType: DOCUMENT_OP_TYPES.DELETE_RANGE,
-            }),
-          );
-        }
-        return Result.ok({ ops: [], selection: intent.target });
-      }
-      const locations = storyParagraphs(storyBody(document, intent.from.story));
-      const indexOf = (at: TextPosition) =>
-        locations.findIndex(
-          ({ paragraph }) =>
-            idKey(paragraph.paraId ?? "") === idKey(at.blockId),
-        );
-      const first = indexOf(intent.from);
-      const last = indexOf(intent.to);
-      const targetIndex = indexOf(intent.target);
-      const targetGap =
-        intent.target.zeroWidthBefore ??
-        defaultInsertionGap(
-          paragraphAt(document, intent.target)?.content ?? [],
-          intent.target.offset,
-        ).zeroWidthBefore;
-      const targetPosition = {
-        offset: intent.target.offset,
-        zeroWidthBefore: targetGap,
-      };
-      if (
-        intent.target.story === intent.from.story &&
-        targetIndex >= first &&
-        targetIndex <= last &&
-        (targetIndex !== first ||
-          compareGaps(targetPosition, {
-            offset: intent.from.offset,
-            zeroWidthBefore: fromGap,
-          }) >= 0) &&
-        (targetIndex !== last ||
-          compareGaps(targetPosition, {
-            offset: intent.to.offset,
-            zeroWidthBefore: toGap,
-          }) <= 0)
-      ) {
-        // Moving into the selected range is an explicit no-op, including its edges.
-        return Result.ok({ ops: [], selection: intent.target });
-      }
-      const anchorDeletions: DeleteRangeOp[] = [];
-      const sourceAnchors = mode.type === "editing" ? range.value.flat() : [];
-      for (const { paragraph } of sourceAnchors) {
-        const blockId = paragraph.paraId ?? "";
-        const from =
-          idKey(blockId) === idKey(intent.from.blockId)
-            ? { offset: intent.from.offset, zeroWidthBefore: fromGap }
-            : { offset: 0, zeroWidthBefore: 0 };
-        const to =
-          idKey(blockId) === idKey(intent.to.blockId)
-            ? { offset: intent.to.offset, zeroWidthBefore: toGap }
-            : {
-                offset: paragraphLength(paragraph),
-                zeroWidthBefore: zeroWidthLeavesAt(
-                  paragraph.content,
-                  paragraphLength(paragraph),
-                ).length,
-              };
-        for (const span of leafSpans(paragraph.content)) {
-          if (
-            !isMoveAnchor(span.node) ||
-            span.ancestors.some(isRemovedRevisionNode) ||
-            compareGaps(span.before, from) < 0 ||
-            compareGaps(span.after, to) > 0
-          )
-            continue;
-          anchorDeletions.push({
-            type: DOCUMENT_OP_TYPES.DELETE_RANGE,
-            from: { story: intent.from.story, blockId, ...span.before },
-            to: { story: intent.from.story, blockId, ...span.after },
-          });
-        }
-      }
-      const deleted = compileEditorIntent(document, {
-        intent: {
-          type: "replaceText",
-          from: intent.from,
-          to: intent.to,
-          text: "",
-        },
+      const compiled = compileRangeMove(document, {
+        intent,
         mode,
+        insert: (afterDeletion, target, insertMode) =>
+          compileEditorIntent(afterDeletion, {
+            intent: {
+              type: "replaceFragment",
+              from: target,
+              to: target,
+              paragraphs:
+                mode.type === "suggesting"
+                  ? intent.paragraphs.map(withoutParagraphMoveAnchors)
+                  : intent.paragraphs,
+              openStart: intent.openStart,
+              openEnd: intent.openEnd,
+            },
+            mode: insertMode,
+            ...(firstBlockId === undefined ? {} : { firstBlockId }),
+          }),
       });
-      if (deleted.isErr()) return deleted;
-      const logicalDeletions =
-        anchorDeletions.length === 0
-          ? deleted.value.ops
-          : [
-              ...deleted.value.ops
-                .filter((op) => op.type === DOCUMENT_OP_TYPES.DELETE_RANGE)
-                .concat(anchorDeletions)
-                .sort(
-                  (left, right) =>
-                    indexOf(right.from) - indexOf(left.from) ||
-                    compareGaps(
-                      {
-                        offset: right.from.offset,
-                        zeroWidthBefore: right.from.zeroWidthBefore ?? 0,
-                      },
-                      {
-                        offset: left.from.offset,
-                        zeroWidthBefore: left.from.zeroWidthBefore ?? 0,
-                      },
-                    ),
-                ),
-              ...deleted.value.ops.filter(
-                (op) => op.type !== DOCUMENT_OP_TYPES.DELETE_RANGE,
-              ),
-            ];
-      const anchors = new Set(anchorDeletions);
-      const deletionOps: DocumentOp[] = [];
-      const movedNoteBodies: DocumentOp[] = [];
-      let afterDeletion = document;
-      for (const planned of logicalDeletions) {
-        let op = planned;
-        if (
-          planned.type === DOCUMENT_OP_TYPES.DELETE_RANGE &&
-          anchors.has(planned)
-        ) {
-          const paragraph = paragraphAt(afterDeletion, planned.from);
-          if (paragraph === undefined)
-            panic("A move anchor lost its selected paragraph.");
-          op = {
-            type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
-            story: planned.from.story,
-            blockId: planned.from.blockId,
-            expected: paragraph.content,
-            content: deleteBetween(
-              paragraph.content,
-              {
-                offset: planned.from.offset,
-                zeroWidthBefore: planned.from.zeroWidthBefore ?? 0,
-              },
-              {
-                offset: planned.to.offset,
-                zeroWidthBefore: planned.to.zeroWidthBefore ?? 0,
-              },
-            ).content,
-          };
-        }
-        const applied = applyDocumentOps(afterDeletion, [op]);
-        if (applied.isErr()) return Result.err(applied.error);
-        afterDeletion = applied.value.document;
-        deletionOps.push(op);
-        for (const inverse of applied.value.inverse) {
-          if (
-            inverse.type === DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS &&
-            (inverse.parts.footnotes !== undefined ||
-              inverse.parts.endnotes !== undefined)
-          )
-            movedNoteBodies.push({
-              type: DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS,
-              expected: {
-                ...(inverse.expected.footnotes === undefined
-                  ? {}
-                  : { footnotes: inverse.expected.footnotes }),
-                ...(inverse.expected.endnotes === undefined
-                  ? {}
-                  : { endnotes: inverse.expected.endnotes }),
-              },
-              parts: {
-                ...(inverse.parts.footnotes === undefined
-                  ? {}
-                  : { footnotes: inverse.parts.footnotes }),
-                ...(inverse.parts.endnotes === undefined
-                  ? {}
-                  : { endnotes: inverse.parts.endnotes }),
-              },
-            });
-        }
-      }
-      if (movedNoteBodies.length > 0) {
-        // Each restoration expects the note parts its own deletion left, so
-        // they undo the deletions newest first.
-        const restorations = movedNoteBodies.toReversed();
-        const restored = applyDocumentOps(afterDeletion, restorations);
-        if (restored.isErr()) return Result.err(restored.error);
-        afterDeletion = restored.value.document;
-        deletionOps.push(...restorations);
-      }
-      let target = intent.target;
-      for (const op of logicalDeletions) {
-        if (
-          op.type === DOCUMENT_OP_TYPES.DELETE_RANGE &&
-          op.revision === undefined &&
-          idKey(target.blockId) === idKey(op.from.blockId) &&
-          target.story === op.from.story &&
-          target.offset >= op.to.offset
-        ) {
-          const source = paragraphAt(document, op.from);
-          const deletionFromGap =
-            op.from.zeroWidthBefore ??
-            zeroWidthLeavesAt(source?.content ?? [], op.from.offset).length;
-          const deletionToGap = op.to.zeroWidthBefore ?? 0;
-          const deletionTargetGap =
-            target.zeroWidthBefore ??
-            defaultInsertionGap(source?.content ?? [], target.offset)
-              .zeroWidthBefore;
-          const rebased = Object.assign({}, target, {
-            offset: target.offset - (op.to.offset - op.from.offset),
-          });
-          if (target.offset === op.to.offset)
-            rebased.zeroWidthBefore =
-              deletionFromGap + deletionTargetGap - deletionToGap;
-          target = rebased;
-        }
-        if (
-          op.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS &&
-          op.revision === undefined &&
-          idKey(target.blockId) === idKey(op.blockId) &&
-          target.story === op.story
-        )
-          target = Object.assign({}, target, { blockId: op.nextBlockId });
-        else if (
-          op.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS &&
-          op.revision === undefined &&
-          idKey(target.blockId) === idKey(op.nextBlockId) &&
-          target.story === op.story
-        ) {
-          const prefix = paragraphAt(document, {
-            story: op.story,
-            blockId: op.blockId,
-            offset: 0,
-          });
-          const remaining =
-            idKey(op.blockId) === idKey(intent.from.blockId)
-              ? intent.from.offset
-              : 0;
-          if (prefix !== undefined) {
-            const rebased = Object.assign({}, target, {
-              offset: target.offset + remaining,
-            });
-            if (
-              target.offset === 0 &&
-              idKey(op.blockId) === idKey(intent.from.blockId)
-            )
-              rebased.zeroWidthBefore = fromGap + (target.zeroWidthBefore ?? 0);
-            target = rebased;
-          }
-        }
-      }
-      const paragraphs =
-        mode.type === "suggesting"
-          ? intent.paragraphs.map((paragraph) =>
-              Object.assign({}, paragraph, {
-                content: asParagraphContent(
-                  withoutMoveAnchors(paragraph.content),
-                ),
-              }),
-            )
-          : intent.paragraphs;
-      const inserted = compileEditorIntent(afterDeletion, {
-        intent: {
-          type: "replaceFragment",
-          from: target,
-          to: target,
-          paragraphs,
-          openStart: intent.openStart,
-          openEnd: intent.openEnd,
-        },
-        mode: modeAfterOps(afterDeletion, mode),
+      if (compiled.isErr()) return compiled;
+      ops = compiled.value.ops;
+      selection = compiled.value.selection;
+      break;
+    }
+    case "moveBlocks": {
+      const compiled = compileBlockMove(document, {
+        intent,
+        mode,
         ...(firstBlockId === undefined ? {} : { firstBlockId }),
       });
-      if (inserted.isErr()) return inserted;
-      ops = [...deletionOps, ...inserted.value.ops];
-      selection = inserted.value.selection;
+      if (compiled.isErr()) return compiled;
+      ops = compiled.value.ops;
+      selection = compiled.value.selection;
       break;
     }
     case "table": {

@@ -6,6 +6,7 @@ import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperation,
 } from "../document-operations";
+import { parseDocx } from "../docx/parser";
 import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 
 const SESSIONS = [
@@ -255,6 +256,109 @@ describe.each(SESSIONS)("%s session", (session) => {
         "delete-column",
         "delete-paragraph",
       ]);
+    },
+  );
+
+  // A bookmark around the whole table stands beside its rows, which no
+  // column edit changes, so a suggested column edit keeps it where it is.
+  test.each(["direct", "tracked-changes"] as const)(
+    "a %s column edit on a table a bookmark wraps keeps the bookmark",
+    async (mode) => {
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await buildTableDocx(ONE_ROW, (table) => ({
+          ...table,
+          bookmarks: [
+            {
+              index: 0,
+              marker: { type: "bookmarkStart", id: 7, name: "Whole" },
+            },
+            { index: 1, marker: { type: "bookmarkEnd", id: 7 } },
+          ],
+        })),
+        { session },
+      );
+      const result = reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode,
+          operations: [
+            {
+              id: "insert-column",
+              type: "insertTableColumn",
+              blockId: cellBlockId(reviewer, 0),
+              position: "after",
+              cellTexts: ["new"],
+            },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      );
+      expect(result.skipped).toEqual([]);
+      expect(result.applied.map(({ id }) => id)).toEqual(["insert-column"]);
+      const saved = await parseDocx(await reviewer.toBuffer(), {
+        preloadFonts: false,
+        detectVariables: false,
+      });
+      const table = saved.package.document.content.find(
+        (block) => block.type === "table",
+      );
+      if (table?.type !== "table") throw new TypeError("The table is gone.");
+      expect(
+        table.bookmarks?.map(({ index, marker }) => [marker.type, index]),
+      ).toEqual([
+        ["bookmarkStart", 0],
+        ["bookmarkEnd", 1],
+      ]);
+      expect(table.rows.at(0)?.cells).toHaveLength(3);
+    },
+  );
+
+  // A row content control wraps its row whatever cells it holds, so a
+  // suggested column edit keeps the row inside it.
+  test.each(["direct", "tracked-changes"] as const)(
+    "a %s column edit in a row a content control wraps keeps the control",
+    async (mode) => {
+      const control = { sdtType: "richText" as const, id: 41, tag: "row" };
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await buildTableDocx(ONE_ROW, (table) => ({
+          ...table,
+          rows: table.rows.map((row) => ({
+            ...row,
+            contentControls: [control],
+          })),
+        })),
+        { session },
+      );
+      const result = reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode,
+          operations: [
+            {
+              id: "insert-column",
+              type: "insertTableColumn",
+              blockId: cellBlockId(reviewer, 0),
+              position: "after",
+              cellTexts: ["new"],
+            },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      );
+      expect(result.skipped).toEqual([]);
+      expect(result.applied.map(({ id }) => id)).toEqual(["insert-column"]);
+      const saved = await parseDocx(await reviewer.toBuffer(), {
+        preloadFonts: false,
+        detectVariables: false,
+      });
+      const table = saved.package.document.content.find(
+        (block) => block.type === "table",
+      );
+      if (table?.type !== "table") throw new TypeError("The table is gone.");
+      expect(
+        table.rows.map((row) => row.contentControls?.map(({ tag }) => tag)),
+      ).toEqual([["row"]]);
+      expect(table.rows.at(0)?.cells).toHaveLength(3);
     },
   );
 });

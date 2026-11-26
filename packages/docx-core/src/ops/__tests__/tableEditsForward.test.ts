@@ -666,15 +666,17 @@ describe("independent table forward oracles", () => {
         cause === "markup"
           ? DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE
           : DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE;
-      if (cause === "markup")
-        table.bookmarks = [
-          {
-            index: 0,
-            marker: { type: "bookmarkStart", id: 42, name: "_RefWholeTable" },
+      // Markup a row keeps beside its cells, counted by the cells before it.
+      if (cause === "markup") {
+        const first = table.rows[0];
+        if (first === undefined) throw new Error("The fixture has rows.");
+        table.rows[0] = {
+          ...first,
+          preserved: {
+            children: [{ index: 1, xml: '<opaque xmlns="urn:fixture"/>' }],
           },
-          { index: table.rows.length, marker: { type: "bookmarkEnd", id: 42 } },
-        ];
-      else
+        };
+      } else
         table.propertyChanges = [
           {
             type: "tablePropertyChange",

@@ -1681,6 +1681,7 @@ const intentStory = (intent: EditorIntent): OpStory => {
     case "replaceFragment":
     case "pasteBlocks":
     case "moveFragment":
+    case "moveBlocks":
     case "replaceText":
     case "formatRun":
     case "insertAtom":
@@ -2502,6 +2503,7 @@ class CanonicalSession {
       case "replaceFragment":
       case "pasteBlocks":
       case "moveFragment":
+      case "moveBlocks":
         return true;
       case "replaceText":
       case "insertAtom":

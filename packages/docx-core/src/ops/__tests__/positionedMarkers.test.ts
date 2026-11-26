@@ -179,3 +179,84 @@ test("an accepted column deletion removes the cells, not the markers beside them
   expect(tableIn(accepted).rows.at(0)?.cells).toHaveLength(1);
   expect(rowMarkers(accepted)).toEqual([0, 0, 1, 1]);
 });
+
+/** Two rows of two cells, bookmark 1 around the whole table. */
+const aroundTable = (): Document =>
+  documentOf({
+    type: "table",
+    columnWidths: [1000, 1000],
+    bookmarks: [
+      { index: 0, marker: { type: "bookmarkStart", id: 1, name: "b1" } },
+      { index: 2, marker: { type: "bookmarkEnd", id: 1 } },
+    ],
+    rows: [
+      { type: "tableRow", cells: [cell("10000001"), cell("10000002")] },
+      { type: "tableRow", cells: [cell("10000003"), cell("10000004")] },
+    ],
+  });
+
+test("a column or cell edit, direct or suggested, keeps the bookmarks beside the rows", () => {
+  const stamp = (id: number) => ({
+    revision: { id, author: "Reviewer", date: "2026-11-21T00:00:00Z" },
+    newIds: {
+      revision: Array.from({ length: 12 }, (_, index) => id + 1 + index),
+    },
+  });
+  const edits: [string, DocumentOp, boolean][] = [
+    [
+      "column insertion",
+      {
+        type: DOCUMENT_OP_TYPES.INSERT_COLUMN,
+        ...row("10000001"),
+        column: 1,
+        width: 1000,
+        newBlockIds: ["20000001", "20000002"],
+      },
+      true,
+    ],
+    [
+      "column deletion",
+      { type: DOCUMENT_OP_TYPES.DELETE_COLUMN, ...row("10000001"), column: 1 },
+      true,
+    ],
+    [
+      "cell merge",
+      {
+        type: DOCUMENT_OP_TYPES.MERGE_CELLS,
+        ...row("10000001"),
+        top: 0,
+        bottom: 1,
+        left: 0,
+        right: 2,
+        newBlockIds: [],
+      },
+      false,
+    ],
+  ];
+  const kept = (document: Document) =>
+    expect(indices(tableIn(document).bookmarks)).toEqual([
+      ["bookmarkStart", 0],
+      ["bookmarkEnd", 2],
+    ]);
+  for (const [name, op, suggests] of edits) {
+    kept(applied(aroundTable(), op));
+    if (!suggests) continue;
+    const tracked = applied(aroundTable(), { ...op, ...stamp(70) });
+    kept(tracked);
+    const revisionIds = Array.from({ length: 13 }, (_, index) => 70 + index);
+    for (const decision of [
+      REVISION_DECISIONS.ACCEPT,
+      REVISION_DECISIONS.REJECT,
+    ]) {
+      const resolved = applyDocumentOp(tracked, {
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story: OP_STORIES.MAIN,
+        revisionIds,
+        decision,
+      });
+      if (resolved.isErr())
+        throw new Error(`${name}: ${resolved.error.message}`);
+      kept(resolved.value.document);
+    }
+  }
+});

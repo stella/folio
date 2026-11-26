@@ -1,7 +1,7 @@
 import { panic, Result } from "better-result";
-import { Fragment, Slice } from "prosemirror-model";
+import { Fragment, type Node as ProseNode, Slice } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
-import { CellSelection } from "prosemirror-tables";
+import { CellSelection, tableNodeTypes } from "prosemirror-tables";
 
 import {
   NUMBER_FORMATS,
@@ -44,6 +44,7 @@ import { canonicalSelectionRange } from "../prosemirror/canonicalSelectionRange"
 import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
 import { completeNumberingForDoc } from "../prosemirror/listInstanceReferences";
 import { marksToTextFormatting } from "../prosemirror/runFormattingFromMarks";
+import { pastedCells } from "../prosemirror/tableCellPaste";
 import {
   CANONICAL_CONDITION,
   CANONICAL_GAP,
@@ -75,20 +76,98 @@ const INVALID_CLIPBOARD: CanonicalRefusalGround = {
 };
 
 /**
- * The gap a clipboard block the paste cannot place falls under: a table's,
- * or for any other block, the story content the session cannot project.
+ * The gap a clipboard block the paste cannot place falls under: a block
+ * other than a paragraph or a table, at the top or in a cell, is story
+ * content the session cannot project.
  */
-const unplacedBlockGround = (slice: Slice): CanonicalRefusalGround => {
-  let table = false;
-  slice.content.descendants((node) => {
-    if (node.type.name === "table") table = true;
-    return !table;
-  });
-  return {
-    gap: table
-      ? CANONICAL_GAP.trackedTableStructure
-      : CANONICAL_GAP.storyContentProjection,
-  };
+const UNPLACED_BLOCK: CanonicalRefusalGround = {
+  gap: CANONICAL_GAP.storyContentProjection,
+};
+
+const tableRole = (node: ProseNode | null): unknown =>
+  node?.type.spec["tableRole"];
+
+/**
+ * A table the clipboard holds part of, opened `left` levels deep at its start
+ * and `right` at its end, as the table of the cells it holds: a first or last
+ * row cut short keeps the cells copied and is filled out with empty ones.
+ * Undefined when the part holds no cells.
+ */
+const closedTable = (
+  table: ProseNode,
+  left: number,
+  right: number,
+): ProseNode | undefined => {
+  // Opened one level, the table holds whole rows.
+  if (left <= 1 && right <= 1) return table;
+  const cells = pastedCells(new Slice(Fragment.from(table), left, right));
+  if (cells === null) return undefined;
+  const rowType = tableNodeTypes(table.type.schema).row;
+  return table.type.create(
+    table.attrs,
+    cells.rows.map((row, index) =>
+      rowType.create(
+        index < table.childCount ? table.child(index).attrs : null,
+        row,
+      ),
+    ),
+    table.marks,
+  );
+};
+
+/**
+ * A slice that opens or closes inside a table, its edges closed at the table:
+ * it pastes the table of the cells it holds, as a selection of cells pastes.
+ * Selected cells, rows or cells without their table, paste as a table
+ * of their own. The slice is returned as given when no table edge is open,
+ * and undefined when an open table edge holds no cells.
+ */
+const withClosedTableEdges = (slice: Slice): Slice | undefined => {
+  const { content } = slice;
+  const first = content.firstChild;
+  const last = content.lastChild;
+  const role = tableRole(first);
+  if (role === "row" || role === "cell" || role === "header_cell") {
+    if (first === null) return slice;
+    const cells = pastedCells(slice);
+    if (cells === null) return undefined;
+    const { table, row } = tableNodeTypes(first.type.schema);
+    return new Slice(
+      Fragment.from(
+        table.create(
+          null,
+          cells.rows.map((cellsOfRow) => row.create(null, cellsOfRow)),
+        ),
+      ),
+      0,
+      0,
+    );
+  }
+  const opensTable = slice.openStart > 1 && tableRole(first) === "table";
+  const closesTable = slice.openEnd > 1 && tableRole(last) === "table";
+  if (!opensTable && !closesTable) return slice;
+  const blocks: ProseNode[] = [];
+  content.forEach((node) => blocks.push(node));
+  const lastIndex = blocks.length - 1;
+  const edges = new Set<number>();
+  if (opensTable) edges.add(0);
+  if (closesTable) edges.add(lastIndex);
+  for (const index of edges) {
+    const node = blocks[index];
+    if (node === undefined) continue;
+    const closed = closedTable(
+      node,
+      opensTable && index === 0 ? slice.openStart : 0,
+      closesTable && index === lastIndex ? slice.openEnd : 0,
+    );
+    if (closed === undefined) return undefined;
+    blocks[index] = closed;
+  }
+  return new Slice(
+    Fragment.from(blocks),
+    opensTable ? 1 : slice.openStart,
+    closesTable ? 1 : slice.openEnd,
+  );
 };
 type ClipboardParagraphPlace = {
   paragraph: Paragraph;
@@ -540,7 +619,7 @@ type PrepareCanonicalPasteOptions = {
 export const prepareCanonicalPaste = ({
   session,
   state,
-  slice,
+  slice: copied,
   plain = false,
   moveTarget,
   pasteTarget,
@@ -555,7 +634,7 @@ export const prepareCanonicalPaste = ({
     return refuse("Composition must finish before using the clipboard.", {
       condition: CANONICAL_CONDITION.composing,
     });
-  if (slice.content.size === 0)
+  if (copied.content.size === 0)
     return Result.err(
       new CanonicalSessionError({
         ground: INVALID_CLIPBOARD,
@@ -563,10 +642,15 @@ export const prepareCanonicalPaste = ({
         reason: "noChange",
       }),
     );
+  // A copy that opens or closes inside a table pastes the table of the
+  // cells it holds.
+  const slice = withClosedTableEdges(copied);
+  if (slice === undefined)
+    return refuse("The clipboard table holds no cells.", INVALID_CLIPBOARD);
   if (slice.openStart > 1 || slice.openEnd > 1)
     return refuse(
       "Clipboard tables and nested block containers require canonical table editing.",
-      unplacedBlockGround(slice),
+      UNPLACED_BLOCK,
     );
   const paragraphType = state.schema.nodes["paragraph"];
   if (paragraphType === undefined)
@@ -583,7 +667,7 @@ export const prepareCanonicalPaste = ({
   if (!inline && !blocksOnly)
     return refuse(
       "Clipboard tables and embedded blocks require canonical table editing.",
-      unplacedBlockGround(slice),
+      UNPLACED_BLOCK,
     );
   // A same-parent document slice omits its paragraph; it still represents open inline edges.
   const importedSlice = inline
@@ -613,7 +697,7 @@ export const prepareCanonicalPaste = ({
     )
       return refuse(
         "The clipboard contains an unsupported block.",
-        unplacedBlockGround(slice),
+        UNPLACED_BLOCK,
       );
     blocks.push(cloneClipboardBlock(block));
   }
@@ -1128,23 +1212,28 @@ export const prepareCanonicalPaste = ({
       resourceOps,
       semantic: "paste",
     });
-  if (topParagraphs.length !== blocks.length)
-    return refuse(
-      "Moving a table by dragging requires a table move operation.",
-      { gap: CANONICAL_GAP.trackedTableStructure },
-    );
   const target = session.projection.addressAt(moveTarget);
   if (target.isErr()) return target;
+  // Dragged paragraphs move as a fragment; with a table, as blocks.
   return session.prepareIntents(state, {
     intents: [
-      {
-        type: "moveFragment",
-        target: target.value,
-        ...range,
-        paragraphs: topParagraphs,
-        openStart,
-        openEnd,
-      },
+      topParagraphs.length === blocks.length
+        ? {
+            type: "moveFragment",
+            target: target.value,
+            ...range,
+            paragraphs: topParagraphs,
+            openStart,
+            openEnd,
+          }
+        : {
+            type: "moveBlocks",
+            target: target.value,
+            ...range,
+            blocks,
+            openStart,
+            openEnd,
+          },
     ],
     resourceOps,
     semantic: "paste",

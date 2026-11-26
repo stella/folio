@@ -110,13 +110,20 @@ export const tableFromSpec = (spec: TableSpec): Table => {
   };
 };
 
-/** A package holding `Before.`, the table, and `After.`, every paragraph with an id. */
-export const buildTableDocx = async (spec: TableSpec): Promise<ArrayBuffer> => {
+/**
+ * A package holding `Before.`, the table, and `After.`, every paragraph with
+ * an id; `decorate` adds what the spec cannot state, such as markup beside
+ * the table's rows.
+ */
+export const buildTableDocx = async (
+  spec: TableSpec,
+  decorate: (table: Table) => Table = (table) => table,
+): Promise<ArrayBuffer> => {
   const document = fromMarkdown("Before.\n\nAfter.");
   const body = document.package.document;
   body.content = [
     body.content[0]!,
-    tableFromSpec(spec),
+    decorate(tableFromSpec(spec)),
     ...body.content.slice(1),
   ];
   const bytes = (

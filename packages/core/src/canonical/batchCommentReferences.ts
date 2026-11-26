@@ -100,6 +100,7 @@ export const mapIntentPositions = (
     case "insertHyperlink":
       return { ...intent, from: map(intent.from), to: map(intent.to) };
     case "moveFragment":
+    case "moveBlocks":
       return {
         ...intent,
         from: map(intent.from),

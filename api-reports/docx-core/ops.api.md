@@ -610,6 +610,14 @@ export type EditorIntent = HyperlinkEditorIntent | GenerateTOCIntent | {
     openStart: 0 | 1;
     openEnd: 0 | 1;
 } | {
+    type: "moveBlocks";
+    from: TextPosition;
+    to: TextPosition;
+    target: TextPosition;
+    blocks: readonly (Paragraph | Table)[];
+    openStart: 0 | 1;
+    openEnd: 0 | 1;
+} | {
     type: "replaceText";
     from: TextPosition;
     to: TextPosition;
