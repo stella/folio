@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "title": "PINNED #1842, fingerprint b6ff5169a8ac7e53: a suggested table after an emptied paragraph a pending join runs through is refused, so the joined words keep their comment",
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "directNumbered",
+  "mode": "tracked-changes",
+  "seed": 488562107,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 4087752536,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "412DDC7F",
+          "separator": " ",
+          "mergedParagraphProperties": {
+            "numbering": {
+              "kind": "none"
+            }
+          }
+        }
+      ],
+      "atomic": true
+    },
+    {
+      "action": "add_comment",
+      "seed": 168856122
+    },
+    {
+      "action": "story batch",
+      "seed": 1304645068,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "5E88C024"
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "31617F9A"
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 1804106585,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "31617F9A",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from insert+splice of 7ce03110c71f67ca"
+}

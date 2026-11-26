@@ -3250,10 +3250,23 @@ const resolveTableInsertion = ({
       PENDING_JOIN_INSERTION_REFUSAL.reason,
       PENDING_JOIN_INSERTION_REFUSAL.message,
     );
-  const followsDeletedBreak = (previous: PMNode | null) =>
-    previous?.type.name === "paragraph" &&
-    isDeletedPPrMark(previous.attrs["pPrMark"]) &&
-    !paragraphGoes(previous, "accept");
+  // Whether accepting runs words into a table put at `position`: the
+  // paragraph before it has a break pending deletion and keeps words, or goes
+  // whole and hands its place to the one before it, whose break is pending
+  // deletion too, and so on: the words of the whole join run in.
+  const followsDeletedBreak = (position: number) => {
+    const $position = projection.doc.resolve(position);
+    for (let index = $position.index() - 1; index >= 0; index--) {
+      const previous = $position.parent.child(index);
+      if (
+        previous.type.name !== "paragraph" ||
+        !isDeletedPPrMark(previous.attrs["pPrMark"])
+      )
+        return false;
+      if (!paragraphGoes(previous, "accept")) return true;
+    }
+    return false;
+  };
   const pendingBreakRefusal = () =>
     refusal(
       PENDING_BREAK_TABLE_REFUSAL.reason,
@@ -3290,8 +3303,9 @@ const resolveTableInsertion = ({
   if (stopsPendingJoin(gap)) return pendingJoinRefusal();
   // Right after a paragraph whose break is pending deletion, accepting that
   // deletion would run the paragraph's words into the table's first cell;
-  // one that goes whole leaves nothing to run in.
-  if (side === "after" && followsDeletedBreak(place.node))
+  // one that goes whole leaves nothing of its own to run in, but passes on
+  // the words of a paragraph joining into it.
+  if (side === "after" && followsDeletedBreak(gap))
     return pendingBreakRefusal();
   // A pending-deleted table is at the start of this accepted gap. Use its
   // before edge so a later insertion explicitly after it can stay there.
@@ -3305,8 +3319,7 @@ const resolveTableInsertion = ({
       });
       if (address !== undefined) {
         if (stopsPendingJoin(start)) return pendingJoinRefusal();
-        if (followsDeletedBreak(projection.doc.resolve(start).nodeBefore))
-          return pendingBreakRefusal();
+        if (followsDeletedBreak(start)) return pendingBreakRefusal();
         return besideTable(address, start);
       }
     }
