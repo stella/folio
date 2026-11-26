@@ -4,6 +4,7 @@ import { applyTemplatePlan } from "../apply";
 import {
   findInvisibleEffects,
   removeInvisibleEffects,
+  TEXT_EFFECTS,
   type TextEffect,
 } from "../effects";
 import { inspectDocxTemplate } from "../inspect";
@@ -127,7 +128,7 @@ const found = (inner: string): TextEffect[] => {
 };
 
 describe("text effects that show nothing", () => {
-  test.each(Object.entries(EFFECTS))(
+  test.each(TEXT_EFFECTS.map((effect) => [effect, EFFECTS[effect]] as const))(
     "%s: found when its values show nothing, left alone when they show",
     (effect, { nothing, shows }) => {
       for (const xml of nothing) {

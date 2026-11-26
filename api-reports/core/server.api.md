@@ -2191,6 +2191,13 @@ export type TemplatePlanBlockResult = {
     omitReason?: TemplatePlanOmitReason;
 };
 
+// @public (undocumented)
+export type TemplatePlanEffectCount = {
+    part: string;
+    effect: DocxTextEffect;
+    count: number;
+};
+
 // @public
 export class TemplatePlanError extends TemplatePlanErrorBase<{
     message: string;
@@ -2200,13 +2207,6 @@ export class TemplatePlanError extends TemplatePlanErrorBase<{
     report?: TemplatePlanReport;
     cause?: unknown;
 }> {}
-
-// @public (undocumented)
-export type TemplatePlanEffectCount = {
-    part: string;
-    effect: DocxTextEffect;
-    count: number;
-};
 
 // @public (undocumented)
 export type TemplatePlanErrorCode = (typeof TEMPLATE_PLAN_ERROR_CODES)[number];

@@ -30,7 +30,7 @@ const WORD_2010_NAMESPACE =
 export type TextEffect = DocxTextEffect;
 export type TextEffectOwner = DocxTextEffectOwner;
 
-export const TEXT_EFFECTS = [
+export const TEXT_EFFECTS: readonly TextEffect[] = [
   "glow",
   "shadow",
   "reflection",
@@ -38,7 +38,7 @@ export const TEXT_EFFECTS = [
   "textFill",
   "scene3d",
   "props3d",
-] as const satisfies readonly TextEffect[];
+];
 
 export type InvisibleEffect = {
   effect: TextEffect;
