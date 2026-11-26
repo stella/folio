@@ -1,5 +1,37 @@
 # @stll/folio-core
 
+## 0.74.0
+
+### Minor Changes
+
+- [#3585](https://github.com/stella/folio/pull/3585) [`5cc7d72`](https://github.com/stella/folio/commit/5cc7d72876fbbead484175ee0f4789667c32355d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Move the ProseMirror reference appliers into test support. Deep `./*` imports of the former applier, revision-stretch, and note-inventory modules break, and `restoreNotes` and `updateDocumentContent` are no longer exported. Use canonical document operations for editing. Canonical save diagnostics now use the `save-serialization` gap.
+
+- [#3576](https://github.com/stella/folio/pull/3576) [`d08e4cb`](https://github.com/stella/folio/commit/d08e4cbfbf44565d96510f3834865f5e8b3e1b29) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Use the canonical session for editing history, paragraph identity, change tracking, and table geometry, and deprecate the StarterKit history configuration options.
+
+- [#3594](https://github.com/stella/folio/pull/3594) [`b4aed16`](https://github.com/stella/folio/commit/b4aed16128c2e1a2ad96579ece3fd5a76f158213) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Move the ProseMirror suggestion plugin into test support and retire the `pm-suggestion-plugin` capability gap. The deep `@stll/folio-core/prosemirror/plugins/suggestionMode` import is removed.
+
+- [#3591](https://github.com/stella/folio/pull/3591) [`c725d12`](https://github.com/stella/folio/commit/c725d1221f14f9bfa95fcea25a8596d44f1f8cd5) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A template plan can write a block's automatic label as text (`labelAsText` on a source item and on a nested placement), for a label no list of the template prints. The label goes in front of the block's text with the tab or space its list puts after it, and the paragraph it leads joins no list. Only a label that reads the same wherever the file is opened is written (numbers, letters, roman numerals); a bullet or a number a language spells is refused with `label-not-writable`. The report names the label written for each block (`labelAsText`) and counts them, and `labelLost` counts only labels that are neither rendered nor written.
+
+- [#3583](https://github.com/stella/folio/pull/3583) [`105d7d3`](https://github.com/stella/folio/commit/105d7d3e40de4cd85facf9281f113dcac6c173b7) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A numbering patch of a template plan can state the level's paragraph indent (`indent: { left?, hanging?, firstLine? }`, in twentieths of a point), and the output is checked against it. `inspectDocxTemplate` reports each level's indent and each style's alignment, inheritance resolved.
+
+### Patch Changes
+
+- [#3586](https://github.com/stella/folio/pull/3586) [`8022cdb`](https://github.com/stella/folio/commit/8022cdb6d53f97dafcbe01821cb1575798883957) Thanks [@jan-kubica](https://github.com/jan-kubica)! - The canonical session holds each paragraph's source gaps in a compact table instead of per-character lists, so a long document keeps far less memory once it is open.
+
+- [#3599](https://github.com/stella/folio/pull/3599) [`00d22c2`](https://github.com/stella/folio/commit/00d22c24e1e2bca5043e5c55a952f791b4129d87) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Load DOCX writing and save serialization on first use in the editor adapters.
+
+- [#3553](https://github.com/stella/folio/pull/3553) [`d08e611`](https://github.com/stella/folio/commit/d08e61194574eacbf9a0c5a785b24d7d738eda34) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A tracked deletion before an already deleted last paragraph takes back the property change linked to the earlier deletion, preserves independent property revisions, and reads alike in either order.
+
+- [#3587](https://github.com/stella/folio/pull/3587) [`92c0299`](https://github.com/stella/folio/commit/92c0299b38fa203afb3f289d2c656e7965c4be90) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A proposed comment over no shown words (a paragraph whose text is empty or all pending deletion) is skipped as `emptyOperation` instead of staging a suggestion the reviewer cannot list or resolve.
+
+- [#3590](https://github.com/stella/folio/pull/3590) [`206e967`](https://github.com/stella/folio/commit/206e967395b085bbf1aae81e147300e7d086d20a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A paragraph whose inserted mark another author deleted reads as pending deletion, so a `replaceBlock` there is refused (`pendingDeletion`) instead of running its text into the next paragraph once accepted.
+
+- [#3589](https://github.com/stella/folio/pull/3589) [`bb4cc8e`](https://github.com/stella/folio/commit/bb4cc8e5e7628826508d1633bffd5a0cd31a9c5b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep English in the editor startup bundle and load other locales on demand.
+
+- [#3565](https://github.com/stella/folio/pull/3565) [`1b5a20f`](https://github.com/stella/folio/commit/1b5a20f688b47d28eda7d5688a9f4929bcb63b3a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep an empty paragraph between tables only when both tables survive acceptance of their tracked changes.
+- Updated dependencies [[`a11bbed`](https://github.com/stella/folio/commit/a11bbedd6d70af0ec46cc37d40fd2d1ef908fe72), [`e06f4b2`](https://github.com/stella/folio/commit/e06f4b29fbffa293c60fa9b8773400dc7d78df13), [`d08e611`](https://github.com/stella/folio/commit/d08e61194574eacbf9a0c5a785b24d7d738eda34), [`6d7ff5b`](https://github.com/stella/folio/commit/6d7ff5b265637f5db205a8cb746a9b7f32872915), [`f65c761`](https://github.com/stella/folio/commit/f65c761d13cf473d1655296d91c3d0efe0467ebc), [`c3db4cc`](https://github.com/stella/folio/commit/c3db4cc4249e266e353081f6ce2b84c04f5d43a6), [`2ba27d8`](https://github.com/stella/folio/commit/2ba27d87d8e30f26967a77cd067d8c57eb59503e)]:
+  - @stll/docx-core@0.45.1
+
 ## 0.73.0
 
 ### Minor Changes
