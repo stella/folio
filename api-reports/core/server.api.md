@@ -27,7 +27,9 @@ import { TextFormatting } from '@stll/docx-core/model';
 import { XmlResourceLimits } from '@stll/docx-core/xml/limits';
 
 // @public
-export const analyzeDocxBlocks: (docx: Uint8Array) => Promise<Result<DocxBlockManifest, TemplatePlanError>>;
+export const analyzeDocxBlocks: (docx: Uint8Array, options?: {
+    trackedChanges?: TemplatePlanTrackedView;
+}) => Promise<Result<DocxBlockManifest, TemplatePlanError>>;
 
 // @public
 export const applyDocxXmlPatchProposal: (input: ApplyDocxXmlPatchProposalArgs) => Promise<FolioDocxXmlPatchApplication>;
@@ -316,6 +318,10 @@ export type DocxBlockManifest = {
     endnotes: DocxNote[];
     comments: number;
     trackedChanges: number;
+    revisions?: DocxTrackedChanges;
+    trackedChangesResolved?: DocxTrackedChanges & {
+        view: TemplatePlanTrackedView;
+    };
     warnings: string[];
 };
 
@@ -493,6 +499,19 @@ export type DocxTextEffectOwner = {
 
 // @public
 export function docxToMarkdown(input: ArrayBuffer | Uint8Array, opts?: MarkdownOptions): Promise<string>;
+
+// @public
+export type DocxTrackedChanges = {
+    insertions: number;
+    deletions: number;
+    moves: number;
+    paragraphMarks: number;
+    tableRows: number;
+    formattingChanges: number;
+    authors: string[];
+    first: string | null;
+    last: string | null;
+};
 
 // @public
 export const endnote: (doc: import__stll_docx_core_model.Document, content: string | Paragraph[]) => Run;
@@ -2178,6 +2197,7 @@ export type TemplatePlan = {
         doNotExpandShiftReturn?: boolean;
     };
     lastSection?: TemplatePlanSection;
+    trackedChanges?: TemplatePlanTrackedView;
     textEffects?: "normalize" | "keep";
 };
 
@@ -2233,7 +2253,7 @@ export type TemplatePlanHighlight = {
 
 // @public (undocumented)
 export type TemplatePlanIssue = {
-    code: "text-mismatch" | "emphasis-mismatch" | "note-mismatch" | "block-missing" | "reference-broken" | "bookmark-dangling" | "field-unbalanced" | "relationship-dangling" | "note-dangling" | "numbering-dangling" | "style-dangling" | "style-mismatch" | "numbering-mismatch" | "page-start-mismatch" | "section-mismatch" | "template-mismatch" | "prompting-field-left" | "field-not-frozen" | "update-fields-mismatch" | "compat-mismatch" | "conformance";
+    code: "text-mismatch" | "emphasis-mismatch" | "note-mismatch" | "block-missing" | "reference-broken" | "bookmark-dangling" | "field-unbalanced" | "relationship-dangling" | "note-dangling" | "numbering-dangling" | "style-dangling" | "style-mismatch" | "numbering-mismatch" | "page-start-mismatch" | "revision-left" | "section-mismatch" | "template-mismatch" | "prompting-field-left" | "field-not-frozen" | "update-fields-mismatch" | "compat-mismatch" | "conformance";
     message: string;
     blockId?: string;
     part?: string;
@@ -2327,6 +2347,9 @@ export type TemplatePlanReport = {
     sourceSha256: string;
     templateSha256: string;
     outputSha256: string;
+    trackedChanges?: DocxTrackedChanges & {
+        view: TemplatePlanTrackedView;
+    };
     blocks: TemplatePlanBlockResult[];
     counts: {
         sourceBlocks: number;
@@ -2429,6 +2452,9 @@ export type TemplatePlanSpanCounts = {
     expected: number;
     output: number;
 };
+
+// @public
+export type TemplatePlanTrackedView = "accept" | "reject";
 
 // @public (undocumented)
 export class UnsupportedFolioDocumentOperationVersionError extends UnsupportedFolioDocumentOperationVersionErrorBase<{
