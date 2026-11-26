@@ -307,7 +307,9 @@ describe("inspectDocxTemplate", () => {
     expect(sections).toEqual([
       {
         index: 0,
+        start: "nextPage",
         orientation: "portrait",
+        columns: 1,
         size: { width: 11_906, height: 16_838 },
         margins: { top: 1417, right: 1417, bottom: 1134, left: 1417 },
         headers: [{ type: "default", part: "word/header1.xml" }],

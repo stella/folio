@@ -3,6 +3,7 @@ import { Result } from "better-result";
 
 import type { Style } from "../../../types/document";
 import { type NumberingMap, parseNumbering } from "../../numberingParser";
+import { parseSectionProperties } from "../../sectionParser";
 import { parseStylesPackage, type StyleMap } from "../../styleParser";
 import type { XmlElement } from "../../xmlParser";
 import { defaultsBaseline, type Emphasis } from "./emphasis";
@@ -30,6 +31,7 @@ import type {
   DocxBlock,
   DocxBlockManifest,
   DocxNote,
+  DocxSection,
   DocxTableCell,
 } from "./types";
 import { TemplatePlanError } from "./types";
@@ -97,6 +99,34 @@ export const styleOutlineLevel = (style: Style | undefined): number | null => {
 
 const styleNameOf = (style: Style | undefined): string | null =>
   style?.name ?? null;
+
+/** A section's page and how it begins, as its `w:sectPr` states them. */
+export const sectionOf = (sectPr: XmlElement, index: number): DocxSection => {
+  const properties = parseSectionProperties(sectPr);
+  return {
+    index,
+    start: properties.sectionStart ?? "nextPage",
+    orientation: properties.orientation ?? "portrait",
+    size: {
+      width: properties.pageWidth ?? null,
+      height: properties.pageHeight ?? null,
+    },
+    margins: {
+      top: properties.marginTop ?? null,
+      right: properties.marginRight ?? null,
+      bottom: properties.marginBottom ?? null,
+      left: properties.marginLeft ?? null,
+    },
+    columns: properties.columnCount ?? 1,
+  };
+};
+
+/** Page breaks among a paragraph's runs; a column break is not one. */
+const pageBreaksOf = ({ atoms }: ParagraphRead): number =>
+  atoms.filter(
+    ({ kind, element }) =>
+      kind === "pageBreak" && wAttr(element, "type") === "page",
+  ).length;
 
 type AnalyzeStoryOptions = {
   container: XmlElement;
@@ -172,6 +202,16 @@ export const analyzeStory = ({
         ...(read.paraId === null ? {} : { paraId: read.paraId }),
         inlineObjects: read.inlineObjects,
       };
+      const pageBreaks = pageBreaksOf(read);
+      if (pageBreaks > 0) {
+        block.pageBreaks = pageBreaks;
+      }
+      if (read.pageBreakBefore ?? style?.pPr?.pageBreakBefore === true) {
+        block.pageBreakBefore = true;
+      }
+      if (read.hasSectionBreak) {
+        block.endsSection = true;
+      }
       index += 1;
       const parent = tables.at(-1);
       const analyzed: AnalyzedBlock = {
@@ -560,6 +600,7 @@ export const analyzeDocument = async (
   const manifest: DocxBlockManifest = {
     sha256: pkg.sha256,
     blocks: story.topLevel.map(({ block }) => block),
+    sections: story.sections.map(sectionOf),
     footnotes: noteList(footnotes),
     endnotes: noteList(endnotes),
     comments: countComments(commentsXml),

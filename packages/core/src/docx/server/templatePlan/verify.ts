@@ -416,11 +416,12 @@ const CONFORMANCE_RANK = {
 
 const NUMBER_SWITCH = /\\[nrw]\b/u;
 
-/** The style and the list a paragraph states for itself. */
+/** The style, the list and the page start a paragraph states for itself. */
 type StatedProperties = {
   styleId: string | null;
   numId: number | null;
   ilvl: number | null;
+  pageBreakBefore: boolean;
 };
 
 const statedProperties = (paragraph: XmlElement): StatedProperties => {
@@ -430,6 +431,7 @@ const statedProperties = (paragraph: XmlElement): StatedProperties => {
     styleId: wChildVal(properties, "pStyle"),
     numId: integerOrNull(wChildVal(numbering, "numId")),
     ilvl: integerOrNull(wChildVal(numbering, "ilvl")),
+    pageBreakBefore: wChild(properties, "pageBreakBefore") !== null,
   };
 };
 
@@ -531,9 +533,14 @@ export const reportTemplatePlanOutput = async ({
     if (slot !== undefined) {
       return statedProperties(slot.element);
     }
-    const { styleId, numbering } = paragraph;
+    const { styleId, numbering, pageBreakBefore } = paragraph;
     if (numbering.kind === "direct") {
-      return { styleId, numId: numbering.numId, ilvl: numbering.ilvl };
+      return {
+        styleId,
+        numId: numbering.numId,
+        ilvl: numbering.ilvl,
+        pageBreakBefore,
+      };
     }
     const cancelsList =
       numbering.kind === "none" &&
@@ -542,7 +549,12 @@ export const reportTemplatePlanOutput = async ({
         template.styles,
         template.numbering,
       )?.kind === "reference";
-    return { styleId, numId: cancelsList ? 0 : null, ilvl: null };
+    return {
+      styleId,
+      numId: cancelsList ? 0 : null,
+      ilvl: null,
+      pageBreakBefore,
+    };
   };
   const checkProperties = (
     planned: StatedProperties,
@@ -560,6 +572,15 @@ export const reportTemplatePlanOutput = async ({
       issues.push({
         code: "numbering-mismatch",
         message: `Block ${blockId} is not in the list, or at the level, the plan gives it.`,
+        blockId,
+      });
+    }
+    if (stated.pageBreakBefore !== planned.pageBreakBefore) {
+      issues.push({
+        code: "page-start-mismatch",
+        message: planned.pageBreakBefore
+          ? `Block ${blockId} does not start the new page the plan gives it.`
+          : `Block ${blockId} starts a new page the plan does not give it.`,
         blockId,
       });
     }
@@ -696,6 +717,7 @@ export const reportTemplatePlanOutput = async ({
             });
             return (
               before.styleId === after.styleId &&
+              before.pageBreakBefore === after.pageBreakBefore &&
               before.numId === after.numId &&
               before.ilvl === after.ilvl &&
               sameReading(was, is) &&
@@ -1470,6 +1492,7 @@ export const reportTemplatePlanOutput = async ({
     labelChanged: 0,
     labelLost: 0,
     labelAsText: 0,
+    pageStarts: 0,
   };
   const tables = new Map<string, TemplatePlanBlockResult>();
   for (const block of source.story.order) {
@@ -1532,6 +1555,9 @@ export const reportTemplatePlanOutput = async ({
       counts.merged += 1;
     } else {
       counts.placed += 1;
+    }
+    if (leads && paragraph?.pageBreakBefore === true) {
+      counts.pageStarts += 1;
     }
     if (text === "identical") {
       counts.textIdentical += 1;

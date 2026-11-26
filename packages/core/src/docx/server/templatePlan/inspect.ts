@@ -6,6 +6,7 @@ import { parseSectionProperties } from "../../sectionParser";
 import {
   type AnalyzedDocument,
   analyzeDocument,
+  sectionOf,
   styleOutlineLevel,
 } from "./blocks";
 import { styleNumbering } from "./labels";
@@ -182,18 +183,7 @@ const inspectSections = ({
         : pkg.resolveDocumentTarget(relationship.target);
     };
     return {
-      index,
-      orientation: properties.orientation ?? "portrait",
-      size: {
-        width: properties.pageWidth ?? null,
-        height: properties.pageHeight ?? null,
-      },
-      margins: {
-        top: properties.marginTop ?? null,
-        right: properties.marginRight ?? null,
-        bottom: properties.marginBottom ?? null,
-        left: properties.marginLeft ?? null,
-      },
+      ...sectionOf(sectPr, index),
       headers: (properties.headerReferences ?? []).map(({ type, rId }) => ({
         type,
         part: partOf(rId),

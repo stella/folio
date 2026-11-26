@@ -620,6 +620,11 @@ export const paragraphXml = (
   if (styleId !== null) {
     properties.push(`<${w}:pStyle ${w}:val="${escapeXmlAttribute(styleId)}"/>`);
   }
+  // `w:pPr` keeps its children in schema order: the page start stands
+  // between the style and the list.
+  if (emit.paragraph.pageBreakBefore) {
+    properties.push(`<${w}:pageBreakBefore/>`);
+  }
   if (numbering.kind === "direct") {
     properties.push(
       `<${w}:numPr><${w}:ilvl ${w}:val="${numbering.ilvl}"/><${w}:numId ${w}:val="${numbering.numId}"/></${w}:numPr>`,

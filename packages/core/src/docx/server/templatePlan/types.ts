@@ -101,6 +101,23 @@ export type DocxBlock = {
   paraId?: string;
   /** Drawings, pictures, embedded objects and equations anchored in the block. */
   inlineObjects: number;
+  /**
+   * Page breaks among the paragraph's runs, when it holds any. A paragraph
+   * without text can hold one: it is then all that starts the next page.
+   */
+  pageBreaks?: number;
+  /**
+   * The paragraph starts on a new page by its own formatting or its
+   * style's (`w:pageBreakBefore`). A plan carries it over with an item's
+   * `pageBreakBefore`; no other direct formatting of a paragraph comes along.
+   */
+  pageBreakBefore?: true;
+  /**
+   * The paragraph is the last of its section: the block after it opens
+   * `sections[sectionIndex + 1]` of the manifest, whose `start` says whether
+   * on a new page.
+   */
+  endsSection?: true;
   /** Table only: its cells in row order. */
   cells?: DocxTableCell[];
   /** Table only: every block inside the table in document order. */
@@ -109,10 +126,34 @@ export type DocxBlock = {
 
 export type DocxNote = { id: string; text: string };
 
+/** One section of a document's main story: its page, and how it begins. */
+export type DocxSection = {
+  index: number;
+  /**
+   * How the section begins after the one before it: on the next page, an
+   * even or odd one, in the next column, or on the same page. The first
+   * section's value says nothing.
+   */
+  start: "nextPage" | "evenPage" | "oddPage" | "nextColumn" | "continuous";
+  orientation: "portrait" | "landscape";
+  /** Page size and margins in twentieths of a point; null where unstated. */
+  size: { width: number | null; height: number | null };
+  margins: {
+    top: number | null;
+    right: number | null;
+    bottom: number | null;
+    left: number | null;
+  };
+  /** Text columns of the section. */
+  columns: number;
+};
+
 export type DocxBlockManifest = {
   sha256: string;
   /** Top-level blocks of the main story in document order; a table is one block. */
   blocks: DocxBlock[];
+  /** The sections of the main story in order; a block names its own by `sectionIndex`. */
+  sections: DocxSection[];
   footnotes: DocxNote[];
   endnotes: DocxNote[];
   comments: number;
@@ -181,17 +222,8 @@ export type DocxTemplateField = {
   endBlockId?: string;
 };
 
-export type DocxTemplateSection = {
-  index: number;
-  orientation: "portrait" | "landscape";
-  /** Page size and margins in twentieths of a point. */
-  size: { width: number | null; height: number | null };
-  margins: {
-    top: number | null;
-    right: number | null;
-    bottom: number | null;
-    left: number | null;
-  };
+/** A section of a template, with the header and footer parts it names. */
+export type DocxTemplateSection = DocxSection & {
   headers: { type: string; part: string | null }[];
   footers: { type: string; part: string | null }[];
 };
@@ -202,7 +234,7 @@ export type DocxTemplateBookmark = {
   part: string;
 };
 
-export type DocxTemplateInspection = DocxBlockManifest & {
+export type DocxTemplateInspection = Omit<DocxBlockManifest, "sections"> & {
   styles: DocxTemplateStyle[];
   numbering: DocxTemplateNumbering;
   fields: DocxTemplateField[];
@@ -261,6 +293,13 @@ export type TemplatePlanSourceItem = {
   labelAsText?: boolean;
   /** Join the next item of the plan, a source paragraph, into this paragraph. */
   mergeNext?: TemplatePlanMerge;
+  /**
+   * Start the paragraph on a new page (`w:pageBreakBefore`): for a page the
+   * source began by a break the plan does not place, by the paragraph's own
+   * formatting, or by a section. Not for a table, and not for a block that
+   * joins the paragraph before it.
+   */
+  pageBreakBefore?: boolean;
   /** Table only: the paragraph style of its cells. */
   cellStyleId?: string;
   /** Table only: placement of single paragraphs inside it. */
@@ -400,6 +439,7 @@ export type TemplatePlanIssue = {
     | "style-dangling"
     | "style-mismatch"
     | "numbering-mismatch"
+    | "page-start-mismatch"
     | "template-mismatch"
     | "prompting-field-left"
     | "field-not-frozen"
@@ -434,6 +474,8 @@ export type TemplatePlanReport = {
     labelLost: number;
     /** Placed blocks whose automatic label is written as text. */
     labelAsText: number;
+    /** Placed paragraphs the plan starts on a new page. */
+    pageStarts: number;
   };
   footnotes: TemplatePlanNoteCounts;
   endnotes: TemplatePlanNoteCounts;

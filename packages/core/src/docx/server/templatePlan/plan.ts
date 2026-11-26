@@ -104,6 +104,8 @@ export type ResolvedParagraph = {
   signatures: string[];
   inlineObjects: number;
   placement: "body" | "nested" | "slot";
+  /** Whether the paragraph starts on a new page. */
+  pageBreakBefore: boolean;
 };
 
 export type ResolvedItem =
@@ -674,6 +676,7 @@ type ParagraphRequest = {
   placement: ResolvedParagraph["placement"];
   /** Where a `"new"` list without a group gets its own key. */
   ordinal: number;
+  pageBreakBefore?: boolean;
 };
 
 const SHA256 = /^[0-9a-f]{64}$/u;
@@ -929,6 +932,7 @@ export const resolvePlan = (
     numbering,
     placement,
     ordinal,
+    pageBreakBefore = false,
   }: ParagraphRequest): Result<ResolvedParagraph, TemplatePlanError> => {
     const first = parts.at(0);
     if (first === undefined) {
@@ -1083,6 +1087,7 @@ export const resolvePlan = (
       ...piecesContent(pieces),
       inlineObjects: pieces.filter(({ kind }) => kind === "object").length,
       placement,
+      pageBreakBefore,
     };
     for (const { block } of resolvedParts) {
       byBlockId.set(block.block.id, paragraph);
@@ -1119,6 +1124,7 @@ export const resolvePlan = (
       item.mergeNext !== undefined ||
       item.stripLabel !== undefined ||
       item.labelAsText !== undefined ||
+      item.pageBreakBefore !== undefined ||
       item.numbering !== undefined
     ) {
       return invalid(`Table ${id} takes a style and nested placements only.`);
@@ -1298,12 +1304,13 @@ export const resolvePlan = (
             next.styleId !== undefined ||
             next.numbering !== undefined ||
             next.cellStyleId !== undefined ||
-            next.nested !== undefined
+            next.nested !== undefined ||
+            next.pageBreakBefore !== undefined
           ) {
             return Result.err(
               refuse({
                 code: "merge-invalid",
-                message: `Block ${next.blockId} joins the paragraph before it and cannot carry a style or list of its own.`,
+                message: `Block ${next.blockId} joins the paragraph before it and cannot carry a style, a list or a page start of its own.`,
                 blockId: next.blockId,
               }),
             );
@@ -1324,6 +1331,7 @@ export const resolvePlan = (
           numbering: item.numbering,
           placement: "body",
           ordinal,
+          pageBreakBefore: item.pageBreakBefore === true,
         });
         if (Result.isError(paragraph)) {
           return paragraph;

@@ -136,9 +136,17 @@ export type ParagraphRead = {
   /** Names of content the reader has no text for and the transfer cannot carry. */
   unsupported: string[];
   hasSectionBreak: boolean;
+  /** `w:pageBreakBefore` as the paragraph itself states it; null when it does not. */
+  pageBreakBefore: boolean | null;
   /** Whether the paragraph mark is a tracked insertion or deletion. */
   hasTrackedMark: boolean;
 };
+
+const TOGGLE_OFF = new Set(["0", "false", "off"]);
+
+/** An on/off property as its element states it; null without the element. */
+const toggleOf = (element: XmlElement | null): boolean | null =>
+  element === null ? null : !TOGGLE_OFF.has(wAttr(element, "val") ?? "1");
 
 const REVISION_INCLUDED = new Set(["ins", "moveTo"]);
 const REVISION_EXCLUDED = new Set(["del", "moveFrom"]);
@@ -538,6 +546,7 @@ export const readParagraph = (
     inlineObjects: 0,
     unsupported: [],
     hasSectionBreak: wChild(properties, "sectPr") !== null,
+    pageBreakBefore: toggleOf(wChild(properties, "pageBreakBefore")),
     hasTrackedMark,
   };
   state.paragraphOrdinal += 1;

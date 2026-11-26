@@ -298,6 +298,9 @@ export type DocxBlock = {
     hash: string;
     paraId?: string;
     inlineObjects: number;
+    pageBreaks?: number;
+    pageBreakBefore?: true;
+    endsSection?: true;
     cells?: DocxTableCell[];
     nested?: DocxBlock[];
 };
@@ -306,6 +309,7 @@ export type DocxBlock = {
 export type DocxBlockManifest = {
     sha256: string;
     blocks: DocxBlock[];
+    sections: DocxSection[];
     footnotes: DocxNote[];
     endnotes: DocxNote[];
     comments: number;
@@ -328,6 +332,24 @@ export type DocxNote = {
 
 // @public
 export type DocxParagraphSource = "header" | "body" | "footer";
+
+// @public
+export type DocxSection = {
+    index: number;
+    start: "nextPage" | "evenPage" | "oddPage" | "nextColumn" | "continuous";
+    orientation: "portrait" | "landscape";
+    size: {
+        width: number | null;
+        height: number | null;
+    };
+    margins: {
+        top: number | null;
+        right: number | null;
+        bottom: number | null;
+        left: number | null;
+    };
+    columns: number;
+};
 
 // @public (undocumented)
 export type DocxTableCell = {
@@ -367,7 +389,7 @@ export type DocxTemplateField = {
 };
 
 // @public (undocumented)
-export type DocxTemplateInspection = DocxBlockManifest & {
+export type DocxTemplateInspection = Omit<DocxBlockManifest, "sections"> & {
     styles: DocxTemplateStyle[];
     numbering: DocxTemplateNumbering;
     fields: DocxTemplateField[];
@@ -406,20 +428,8 @@ export type DocxTemplateNumberingLevel = {
     };
 };
 
-// @public (undocumented)
-export type DocxTemplateSection = {
-    index: number;
-    orientation: "portrait" | "landscape";
-    size: {
-        width: number | null;
-        height: number | null;
-    };
-    margins: {
-        top: number | null;
-        right: number | null;
-        bottom: number | null;
-        left: number | null;
-    };
+// @public
+export type DocxTemplateSection = DocxSection & {
     headers: {
         type: string;
         part: string | null;
@@ -2175,7 +2185,7 @@ export type TemplatePlanHighlight = {
 
 // @public (undocumented)
 export type TemplatePlanIssue = {
-    code: "text-mismatch" | "emphasis-mismatch" | "note-mismatch" | "block-missing" | "reference-broken" | "bookmark-dangling" | "field-unbalanced" | "relationship-dangling" | "note-dangling" | "numbering-dangling" | "style-dangling" | "style-mismatch" | "numbering-mismatch" | "template-mismatch" | "prompting-field-left" | "field-not-frozen" | "update-fields-mismatch" | "conformance";
+    code: "text-mismatch" | "emphasis-mismatch" | "note-mismatch" | "block-missing" | "reference-broken" | "bookmark-dangling" | "field-unbalanced" | "relationship-dangling" | "note-dangling" | "numbering-dangling" | "style-dangling" | "style-mismatch" | "numbering-mismatch" | "page-start-mismatch" | "template-mismatch" | "prompting-field-left" | "field-not-frozen" | "update-fields-mismatch" | "conformance";
     message: string;
     blockId?: string;
     part?: string;
@@ -2282,6 +2292,7 @@ export type TemplatePlanReport = {
         labelChanged: number;
         labelLost: number;
         labelAsText: number;
+        pageStarts: number;
     };
     footnotes: TemplatePlanNoteCounts;
     endnotes: TemplatePlanNoteCounts;
@@ -2333,6 +2344,7 @@ export type TemplatePlanSourceItem = {
     stripLabel?: string;
     labelAsText?: boolean;
     mergeNext?: TemplatePlanMerge;
+    pageBreakBefore?: boolean;
     cellStyleId?: string;
     nested?: TemplatePlanNestedParagraph[];
 };

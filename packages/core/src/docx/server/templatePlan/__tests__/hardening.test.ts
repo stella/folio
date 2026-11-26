@@ -1379,6 +1379,198 @@ describe("ordinal labels by the paragraph's language", () => {
   });
 });
 
+describe("page starts", () => {
+  const PAGE_BREAK = '<w:r><w:br w:type="page"/></w:r>';
+  const LANDSCAPE =
+    '<w:sectPr><w:type w:val="continuous"/><w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/><w:pgMar w:top="1000" w:right="1100" w:bottom="1200" w:left="1300"/><w:cols w:num="2"/></w:sectPr>';
+
+  test("the manifest says where the source starts a page or ends a section", async () => {
+    const source = await buildSourceWith({
+      body: [
+        p(r("First.")),
+        p(PAGE_BREAK),
+        p(r("Annex"), "<w:pageBreakBefore/>"),
+        p(r("By its style."), style("NewPage")),
+        p(
+          r("Switched off."),
+          `${style("NewPage")}<w:pageBreakBefore w:val="0"/>`,
+        ),
+        p(
+          `${r("Mid")}<w:r><w:br w:type="column"/></w:r>${PAGE_BREAK}`,
+          LANDSCAPE,
+        ),
+        p(r("Last.")),
+      ].join(""),
+      styles:
+        '<w:style w:type="paragraph" w:styleId="NewPage"><w:name w:val="New Page"/><w:pPr><w:pageBreakBefore/></w:pPr></w:style>',
+    });
+    const { blocks, sections } = unwrap(await analyzeDocxBlocks(source));
+
+    expect(
+      blocks.map(
+        ({ pageBreaks, pageBreakBefore, endsSection, sectionIndex }) => ({
+          pageBreaks,
+          pageBreakBefore,
+          endsSection,
+          sectionIndex,
+        }),
+      ),
+    ).toEqual([
+      { sectionIndex: 0 },
+      { pageBreaks: 1, sectionIndex: 0 },
+      { pageBreakBefore: true, sectionIndex: 0 },
+      { pageBreakBefore: true, sectionIndex: 0 },
+      { sectionIndex: 0 },
+      { pageBreaks: 1, endsSection: true, sectionIndex: 0 },
+      { sectionIndex: 1 },
+    ]);
+    expect(sections).toEqual([
+      {
+        index: 0,
+        start: "continuous",
+        orientation: "landscape",
+        size: { width: 16_838, height: 11_906 },
+        margins: { top: 1000, right: 1100, bottom: 1200, left: 1300 },
+        columns: 2,
+      },
+      {
+        index: 1,
+        start: "nextPage",
+        orientation: "portrait",
+        size: { width: null, height: null },
+        margins: { top: null, right: null, bottom: null, left: null },
+        columns: 1,
+      },
+    ]);
+  });
+
+  const twoParagraphs = async (): Promise<Uint8Array> =>
+    await buildMinimalDocx(`${p(r("Body."))}${p(r("Annex"))}`);
+
+  test("an item starts its paragraph on a new page, between style and list", async () => {
+    const { docx, report } = unwrap(
+      await applyFor({
+        source: await twoParagraphs(),
+        template,
+        items: (blocks) =>
+          blocks.map(({ id, hash }, index) => ({
+            kind: "source",
+            blockId: id,
+            hash,
+            styleId: "HouseBody",
+            ...(index === 1
+              ? { pageBreakBefore: true, numbering: { numId: 1, ilvl: 0 } }
+              : {}),
+          })),
+      }),
+    );
+    const document = await documentOf(docx);
+
+    expect(report.ok).toBe(true);
+    expect(report.counts.pageStarts).toBe(1);
+    expect(document.split("<w:pageBreakBefore/>")).toHaveLength(2);
+    expect(document).toContain(
+      '<w:pPr><w:pStyle w:val="HouseBody"/><w:pageBreakBefore/><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr>',
+    );
+    expect(
+      unwrap(await analyzeDocxBlocks(docx)).blocks.filter(
+        ({ pageBreakBefore }) => pageBreakBefore === true,
+      ),
+    ).toHaveLength(1);
+  });
+
+  test("verification notices a page start the plan does not give, and a missing one", async () => {
+    const source = await twoParagraphs();
+    const items = (pageBreakBefore: boolean) => (blocks: PlannedBlock[]) =>
+      blocks.map(({ id, hash }, index): TemplatePlanItem => ({
+        kind: "source",
+        blockId: id,
+        hash,
+        styleId: "HouseBody",
+        ...(index === 1 && pageBreakBefore ? { pageBreakBefore } : {}),
+      }));
+    const withStart = await planFor({ source, template, items: items(true) });
+    const without = await planFor({ source, template, items: items(false) });
+    const { docx } = unwrap(
+      await applyTemplatePlan({ source, template, plan: withStart }),
+    );
+
+    expect(
+      (
+        await verifyFor({ source, template, output: docx, plan: without })
+      ).issues.map(({ code, blockId }) => [code, blockId]),
+    ).toEqual([["page-start-mismatch", "p1"]]);
+    const plain = unwrap(
+      await applyTemplatePlan({ source, template, plan: without }),
+    );
+    expect(
+      (
+        await verifyFor({
+          source,
+          template,
+          output: plain.docx,
+          plan: withStart,
+        })
+      ).issues.map(({ code, blockId }) => [code, blockId]),
+    ).toEqual([["page-start-mismatch", "p1"]]);
+  });
+
+  test("a table, a joined block and a malformed value cannot take a page start", async () => {
+    const table = await buildMinimalDocx(
+      `<w:tbl><w:tr><w:tc>${p(r("cell"))}</w:tc></w:tr></w:tbl>${p(r("after"))}`,
+    );
+    expect(
+      codeOf(
+        await applyFor({
+          source: table,
+          template,
+          items: (blocks) =>
+            blocks.map(({ id, hash }, index) => ({
+              kind: "source",
+              blockId: id,
+              hash,
+              ...(index === 0 ? { pageBreakBefore: true } : {}),
+            })),
+        }),
+      ),
+    ).toBe("plan-invalid");
+    expect(
+      codeOf(
+        await applyFor({
+          source: await twoParagraphs(),
+          template,
+          items: (blocks) =>
+            blocks.map(({ id, hash }, index) => ({
+              kind: "source",
+              blockId: id,
+              hash,
+              ...(index === 0
+                ? { mergeNext: "space" }
+                : { pageBreakBefore: true }),
+            })),
+        }),
+      ),
+    ).toBe("merge-invalid");
+    const malformed: TemplatePlan = JSON.parse(
+      JSON.stringify(
+        await planFor({ source: await twoParagraphs(), template }),
+      ).replaceAll(
+        '"kind":"source"',
+        '"kind":"source","pageBreakBefore":"yes"',
+      ),
+    );
+    expect(
+      codeOf(
+        await applyTemplatePlan({
+          source: await twoParagraphs(),
+          template,
+          plan: malformed,
+        }),
+      ),
+    ).toBe("plan-invalid");
+  });
+});
+
 describe("omitted blocks", () => {
   const NUMBERING =
     '<w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/></w:lvl></w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>';
