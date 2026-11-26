@@ -4,30 +4,31 @@ import type { Document, TrackedChangeInfo } from "../model/document";
 import { applyDocumentOp } from "./apply";
 import type { DocumentOpRefusal } from "./refusal";
 import { documentStories, storyBody } from "./stories";
-import type { OpStory } from "./types";
+import type { OpStory, ParagraphAbsorption } from "./types";
 import { DOCUMENT_OP_TYPES, REVISION_DECISIONS } from "./types";
 
-/**
- * The ids of the revisions in a value that belong to a pending suggestion:
- * tracked insertions and deletions, moves, property changes and paragraph
- * mark revisions, at any depth.
- */
-const suggestedRevisionIdsIn = (value: unknown, out: Set<number>): void => {
+type SuggestionRevision = TrackedChangeInfo & { suggestionId: string };
+
+const visitSuggestionRevisions = (
+  value: unknown,
+  visit: (info: SuggestionRevision) => void,
+): void => {
   if (typeof value !== "object" || value === null) return;
   if (Array.isArray(value)) {
-    for (const item of value) suggestedRevisionIdsIn(item, out);
+    for (const item of value) visitSuggestionRevisions(item, visit);
     return;
   }
   const record = value as Record<string, unknown>;
-  const info = record["info"];
+  const info = record["info"] as Partial<SuggestionRevision> | undefined;
   if (
     typeof info === "object" &&
     info !== null &&
-    typeof (info as Record<string, unknown>)["suggestionId"] === "string" &&
-    typeof (info as Record<string, unknown>)["id"] === "number"
+    typeof info.suggestionId === "string" &&
+    typeof info.id === "number"
   )
-    out.add((info as { id: number }).id);
-  for (const child of Object.values(record)) suggestedRevisionIdsIn(child, out);
+    visit(info as SuggestionRevision);
+  for (const child of Object.values(record))
+    visitSuggestionRevisions(child, visit);
 };
 
 /**
@@ -63,6 +64,15 @@ export const withoutSuggestedComments = (
   return Result.ok(current);
 };
 
+type PendingSuggestionProjectionOptions = {
+  /** Host receipts also identify comments belonging to a pending proposal. */
+  commentIds?: ReadonlySet<number>;
+  onAbsorptions?: (
+    story: OpStory,
+    absorptions: readonly ParagraphAbsorption[],
+  ) => void;
+};
+
 /**
  * The document as a save writes it: every pending suggestion rejected. A
  * suggestion is a proposal the host holds, not a change in the file, so the
@@ -71,16 +81,26 @@ export const withoutSuggestedComments = (
  */
 export const withoutPendingSuggestions = (
   document: Document,
+  { commentIds, onAbsorptions }: PendingSuggestionProjectionOptions = {},
 ): Result<Document, DocumentOpRefusal> => {
-  const uncommented = withoutSuggestedComments(
-    document,
-    suggestedCommentIds(document),
-  );
+  const proposedComments = new Set(suggestedCommentIds(document));
+  if (commentIds !== undefined) {
+    for (const { id } of document.package.document.comments ?? []) {
+      if (commentIds.has(id)) proposedComments.add(id);
+    }
+  }
+  const uncommented = withoutSuggestedComments(document, [...proposedComments]);
   if (uncommented.isErr()) return uncommented;
   let current = uncommented.value;
+  const receipts: {
+    story: OpStory;
+    absorbed: readonly ParagraphAbsorption[];
+  }[] = [];
   for (const story of documentStories(current)) {
     const ids = new Set<number>();
-    suggestedRevisionIdsIn(storyBody(current, story), ids);
+    visitSuggestionRevisions(storyBody(current, story), ({ id }) =>
+      ids.add(id),
+    );
     if (ids.size === 0) continue;
     const rejected = applyDocumentOp(current, {
       type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
@@ -89,8 +109,16 @@ export const withoutPendingSuggestions = (
       decision: REVISION_DECISIONS.REJECT,
     });
     if (rejected.isErr()) return Result.err(rejected.error);
+    const absorbed = rejected.value.touched.absorbed;
+    if (
+      onAbsorptions !== undefined &&
+      absorbed !== undefined &&
+      absorbed.length > 0
+    )
+      receipts.push({ story, absorbed });
     current = rejected.value.document;
   }
+  for (const { story, absorbed } of receipts) onAbsorptions?.(story, absorbed);
   return Result.ok(current);
 };
 
@@ -104,29 +132,14 @@ export const suggestionRevisionInfos = (
   suggestionId: string,
 ): TrackedChangeInfo[] => {
   const out = new Map<number, TrackedChangeInfo>();
-  const visit = (value: unknown): void => {
-    if (typeof value !== "object" || value === null) return;
-    if (Array.isArray(value)) {
-      for (const item of value) visit(item);
-      return;
-    }
-    const record = value as Record<string, unknown>;
-    const info = record["info"] as Partial<TrackedChangeInfo> | undefined;
-    if (
-      typeof info === "object" &&
-      info !== null &&
-      info.suggestionId === suggestionId &&
-      typeof info.id === "number" &&
-      !out.has(info.id)
-    )
-      out.set(info.id, info as TrackedChangeInfo);
-    for (const child of Object.values(record)) visit(child);
-  };
   const body = storyBody(document, story);
-  visit(body.content);
-  for (const { info } of body.finalSectionProperties?.propertyChanges ?? [])
+  const add = (info: TrackedChangeInfo) => {
     if (info.suggestionId === suggestionId && !out.has(info.id))
       out.set(info.id, info);
+  };
+  visitSuggestionRevisions(body.content, add);
+  for (const { info } of body.finalSectionProperties?.propertyChanges ?? [])
+    add(info);
   return [...out.values()];
 };
 
@@ -138,25 +151,11 @@ export const pendingSuggestionIdsIn = (document: Document): Set<string> => {
   const out = new Set<string>();
   for (const comment of document.package.document.comments ?? [])
     if (comment.suggestionId !== undefined) out.add(comment.suggestionId);
-  const visit = (value: unknown): void => {
-    if (typeof value !== "object" || value === null) return;
-    if (Array.isArray(value)) {
-      for (const item of value) visit(item);
-      return;
-    }
-    const record = value as Record<string, unknown>;
-    const info = record["info"] as { suggestionId?: unknown } | undefined;
-    if (
-      typeof info === "object" &&
-      info !== null &&
-      typeof info.suggestionId === "string"
-    )
-      out.add(info.suggestionId);
-    for (const child of Object.values(record)) visit(child);
-  };
   for (const story of documentStories(document)) {
     const body = storyBody(document, story);
-    visit(body.content);
+    visitSuggestionRevisions(body.content, ({ suggestionId }) =>
+      out.add(suggestionId),
+    );
     for (const { info } of body.finalSectionProperties?.propertyChanges ?? [])
       if (info.suggestionId !== undefined) out.add(info.suggestionId);
   }

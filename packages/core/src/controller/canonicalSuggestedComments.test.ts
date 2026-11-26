@@ -132,14 +132,20 @@ const canonicalHost = async (bytes: ArrayBuffer) => {
       registry.exportPendingSuggestions({
         activeSuggestionIds: active(),
         snapshotForStory: (_story, commentIds) =>
-          createPendingSuggestionSourceSnapshot(state, commentIds),
+          createPendingSuggestionSourceSnapshot(
+            session.captureSaveSnapshot().document,
+            commentIds,
+          ),
       }),
     loadPending: (records: readonly unknown[]) =>
       registry.loadPendingSuggestions({
         records,
         snapshotForStory: () => createFolioAIEditSnapshot(state.doc),
         sourceSnapshotForStory: (_story, commentIds) =>
-          createPendingSuggestionSourceSnapshot(state, commentIds),
+          createPendingSuggestionSourceSnapshot(
+            session.captureSaveSnapshot().document,
+            commentIds,
+          ),
         apply: (record) => run(record.operation, record.author),
         activeSuggestionIds: active,
       }),

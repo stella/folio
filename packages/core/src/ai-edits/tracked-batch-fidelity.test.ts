@@ -1,14 +1,18 @@
 import { expect, test } from "bun:test";
 
 import {
+  OperationSession,
   paragraphsDocx,
   reviewComment,
+  reviewerSessionState,
   textRun,
 } from "../__tests__/operationBatchDocuments";
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperationBatch,
 } from "../document-operations";
+import { resolveAllChangesInHeadlessState } from "../prosemirror/commands/comments";
+import { anchoredCommentIdsInProseDoc } from "./comment-lifecycle";
 import { FolioDocxReviewer } from "./headless";
 
 const commentedBlockId = "10000000";
@@ -43,6 +47,14 @@ const edit = {
   replace: replacementText,
 } as const;
 
+const deleteCommentedText = {
+  id: "delete-heading",
+  type: "replaceInBlock",
+  blockId: commentedBlockId,
+  find: commentQuote,
+  replace: "",
+} as const;
+
 test.each(["canonical"] as const)(
   "%s admits a tracked deletion that identifies its retired comment",
   async (session) => {
@@ -52,15 +64,7 @@ test.each(["canonical"] as const)(
     const batch = {
       version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
       mode: "tracked-changes",
-      operations: [
-        {
-          id: "delete-heading",
-          type: "replaceInBlock",
-          blockId: commentedBlockId,
-          find: commentQuote,
-          replace: "",
-        },
-      ],
+      operations: [deleteCommentedText],
     } as const satisfies FolioDocumentOperationBatch;
     const before = reviewer.toDocument();
     for (const dryRun of [true, false]) {
@@ -84,6 +88,24 @@ test.each(["canonical"] as const)(
     ).toEqual([commentQuote]);
   },
 );
+
+test("the reference batch reports the same retired comment and keeps it on rejection", async () => {
+  const reference = new OperationSession(
+    await reviewerSessionState(await source()),
+  );
+  const before = reference.state.doc;
+  const result = reference.apply("tracked-changes", [deleteCommentedText]);
+  expect(result.skipped).toEqual([]);
+  expect(result.applied).toHaveLength(1);
+  expect(result.receipts.at(0)?.retiredCommentIds).toEqual([1]);
+
+  const rejected = resolveAllChangesInHeadlessState(reference.state, "reject");
+  expect(rejected.doc.textContent).toBe(before.textContent);
+  expect(anchoredCommentIdsInProseDoc(rejected.doc)).toEqual(new Set([1]));
+
+  reference.acceptAll();
+  expect(anchoredCommentIdsInProseDoc(reference.state.doc)).toEqual(new Set());
+});
 
 test("refuses a tracked batch whose combined deletions remove an unreported comment", async () => {
   const reviewer = await FolioDocxReviewer.fromBuffer(await source());
