@@ -2,8 +2,8 @@ import { expect, test } from "bun:test";
 import { EditorState, NodeSelection, TextSelection } from "prosemirror-state";
 
 import { HeadlessEditorView } from "../../__tests__/editorHarness";
+import { acceptAllChanges } from "../../__tests__/reference-editor/comments";
 import { createSuggestionModePlugin } from "../../__tests__/reference-editor/suggestionMode";
-import { acceptAllChanges } from "../commands/comments";
 import { schema } from "../schema";
 
 const bookmark = (type: "start" | "end", id: number) =>

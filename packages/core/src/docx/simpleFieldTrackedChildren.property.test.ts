@@ -7,13 +7,13 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
-import { toMarkdown } from "../markdown/index";
-import { expectTrackedChangeMarkAttrs } from "../prosemirror/attrs";
 import {
   acceptAIEditRevision,
   rejectAIEditRevision,
   resolveAllChangesInHeadlessState,
-} from "../prosemirror/commands/comments";
+} from "../__tests__/reference-editor/comments";
+import { toMarkdown } from "../markdown/index";
+import { expectTrackedChangeMarkAttrs } from "../prosemirror/attrs";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type {

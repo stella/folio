@@ -3,14 +3,14 @@ import { Window } from "happy-dom";
 import { DOMParser, DOMSerializer, type Mark } from "prosemirror-model";
 import { EditorState, type Transaction } from "prosemirror-state";
 
+import {
+  acceptAIEditRevision,
+  rejectAIEditRevision,
+} from "../../__tests__/reference-editor/comments";
 import { parseParagraph } from "../../docx/paragraphParser";
 import { serializeParagraph } from "../../docx/serializer/paragraphSerializer";
 import { parseXmlDocument } from "../../docx/xmlParser";
 import type { Paragraph } from "../../types/document";
-import {
-  acceptAIEditRevision,
-  rejectAIEditRevision,
-} from "../commands/comments";
 import { schema } from "../schema";
 import { extractTrackedChanges } from "../utils/extractTrackedChanges";
 import { fromProseDoc } from "./fromProseDoc";

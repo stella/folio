@@ -13,16 +13,16 @@ import {
   EDIT_VARIANTS,
 } from "../../../../benchmarks/compare/variants";
 import {
-  type FolioDocumentStoryHandle,
-  FolioDocxReviewer,
-} from "../ai-edits/headless";
-import { parseDocx } from "../docx/parser";
-import {
   acceptAllChanges,
   acceptChange,
   rejectAllChanges,
   rejectChange,
-} from "../prosemirror/commands/comments";
+} from "../__tests__/reference-editor/comments";
+import {
+  type FolioDocumentStoryHandle,
+  FolioDocxReviewer,
+} from "../ai-edits/headless";
+import { parseDocx } from "../docx/parser";
 import {
   footnoteToProseDoc,
   headerFooterToProseDoc,

@@ -4,19 +4,19 @@ import { EditorState } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 
 import {
+  acceptAIEditRevision,
+  acceptAllChanges,
+  acceptChange,
+  rejectAllChanges,
+  rejectChange,
+} from "../../__tests__/reference-editor/comments";
+import {
   getTrackedSectionEndpointRemoval,
   ParagraphChangeTrackerExtension,
 } from "../../__tests__/reference-editor/ParagraphChangeTrackerExtension";
 import { paragraphRemainsOf } from "../keptRangeBoundaries";
 import { schema as documentSchema } from "../schema";
 import { paragraphContentOf } from "../zeroWidthAnchors";
-import {
-  acceptAIEditRevision,
-  acceptAllChanges,
-  acceptChange,
-  rejectAllChanges,
-  rejectChange,
-} from "./comments";
 
 const BOOKMARK_ATTRS = {
   type: { default: "start" },

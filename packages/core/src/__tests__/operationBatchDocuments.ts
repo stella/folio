@@ -19,8 +19,6 @@ import {
 } from "../document-operations";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
-import { pluginsForHeadlessRevisionResolution } from "../internal/headlessRevisionResolutionGuard";
-import { resolveAllChangesInHeadlessState } from "../prosemirror/commands/comments";
 import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { ensureBaseDirectionInState } from "../prosemirror/extensions/features/AutoBidiDetectionExtension";
@@ -37,7 +35,9 @@ import type {
   TextFormatting,
 } from "../types/document";
 import { createReferenceEditorRuntime } from "./createReferenceEditorKit";
+import { resolveAllChangesInHeadlessState } from "./reference-editor/comments";
 import { applyFolioDocumentOperations } from "./reference-editor/document-operations-apply";
+import { pluginsForHeadlessRevisionResolution } from "./reference-editor/headlessRevisionResolutionGuard";
 
 export const textRun = (
   text: string,

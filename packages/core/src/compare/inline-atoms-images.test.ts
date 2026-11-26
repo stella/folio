@@ -2,12 +2,12 @@ import { describe, expect, test } from "bun:test";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 
-import { matchInlineAtoms } from "../__tests__/reference-editor/compare-inline-atoms";
-import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
 import {
   acceptAllChanges,
   rejectAllChanges,
-} from "../prosemirror/commands/comments";
+} from "../__tests__/reference-editor/comments";
+import { matchInlineAtoms } from "../__tests__/reference-editor/compare-inline-atoms";
+import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
 import { schema } from "../prosemirror/schema";
 import { prepareTargetInlineAtom } from "./inline-atom-resources";
 import { sameInlineAtoms } from "./inline-atoms";

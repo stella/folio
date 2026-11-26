@@ -14,16 +14,16 @@ import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
 
 import { createHarnessState, findTextblock } from "../__tests__/editorHarness";
+import {
+  findChangeAtPosition,
+  rejectChange,
+} from "../__tests__/reference-editor/comments";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import { paragraph, table } from "../docx/server/build";
 import { fromMarkdown } from "../markdown/fromMarkdown";
-import {
-  findChangeAtPosition,
-  rejectChange,
-} from "../prosemirror/commands/comments";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import { FolioDocxReviewer } from "./headless";

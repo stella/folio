@@ -14,14 +14,14 @@ import { EditorState } from "prosemirror-state";
 
 import { ZipArchive } from "@stll/docx-core/zip";
 
-import { parseDocx } from "../docx/parser";
-import { RELATIONSHIP_TYPES } from "../docx/relsParser";
 import {
   acceptChange,
   changeResolutionLockViolation,
   findChangeAtPosition,
   rejectChange,
-} from "../prosemirror/commands/comments";
+} from "../__tests__/reference-editor/comments";
+import { parseDocx } from "../docx/parser";
+import { RELATIONSHIP_TYPES } from "../docx/relsParser";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import { FolioDocxReviewer } from "./headless";

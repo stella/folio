@@ -15,8 +15,8 @@ import { EditorView } from "prosemirror-view";
 // settles the import cycle between the two before the kit below is built.
 import "../../schema";
 import { createReferenceEditorKit } from "../../../__tests__/createReferenceEditorKit";
+import { resolveAllChangesInHeadlessState } from "../../../__tests__/reference-editor/comments";
 import { createSuggestionModePlugin } from "../../../__tests__/reference-editor/suggestionMode";
-import { resolveAllChangesInHeadlessState } from "../../commands/comments";
 import { ExtensionManager } from "../ExtensionManager";
 import type { HistoryShortcutOwner } from "./historyCommands";
 

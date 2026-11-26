@@ -10,13 +10,13 @@ import {
   createHarnessState,
   HeadlessEditorView,
 } from "../__tests__/editorHarness";
-import { applyFolioDocumentOperations } from "../__tests__/reference-editor/document-operations-apply";
-import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
-import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import {
   acceptAllSuggestions,
   rejectAllSuggestions,
-} from "../prosemirror/commands/comments";
+} from "../__tests__/reference-editor/comments";
+import { applyFolioDocumentOperations } from "../__tests__/reference-editor/document-operations-apply";
+import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
+import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import {
   commentIdsNamedIn,
   commentRecordsOf,

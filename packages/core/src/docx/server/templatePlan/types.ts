@@ -265,6 +265,34 @@ export type DocxTemplateSection = DocxSection & {
   footers: { type: string; part: string | null }[];
 };
 
+/**
+ * A text effect of the `w14` extension. One whose values show nothing can still change
+ * how a consumer treats the text: a run with a 3-D scene, even the default
+ * one, is drawn as a picture.
+ */
+export type DocxTextEffect =
+  | "glow"
+  | "shadow"
+  | "reflection"
+  | "textOutline"
+  | "textFill"
+  | "scene3d"
+  | "props3d";
+
+/** What the run properties an effect stands in belong to. */
+export type DocxTextEffectOwner =
+  | { kind: "level"; abstractNumId: number | null; ilvl: number | null }
+  | { kind: "style"; styleId: string | null }
+  | { kind: "defaults" }
+  | { kind: "text" };
+
+/** A text effect of a template whose values show nothing. */
+export type DocxTemplateInvisibleEffect = {
+  part: string;
+  effect: DocxTextEffect;
+  owner: DocxTextEffectOwner;
+};
+
 export type DocxTemplateBookmark = {
   name: string;
   id: string;
@@ -277,6 +305,12 @@ export type DocxTemplateInspection = Omit<DocxBlockManifest, "sections"> & {
   fields: DocxTemplateField[];
   sections: DocxTemplateSection[];
   bookmarks: DocxTemplateBookmark[];
+  /**
+   * Text effects that show nothing, in the document, its numbering, its
+   * styles, its headers and its footers. A plan's output is written without
+   * them unless the plan says otherwise.
+   */
+  invisibleEffects: DocxTemplateInvisibleEffect[];
 };
 
 export type TemplatePlanOmitReason =
@@ -445,6 +479,20 @@ export type TemplatePlan = {
    * stands.
    */
   lastSection?: TemplatePlanSection;
+  /**
+   * What becomes of text effects whose values show nothing, in the parts
+   * the output takes from the template: its document, numbering, styles,
+   * headers and footers. `normalize`, the default, leaves them out, so text
+   * that looked plain is written as text everywhere; an effect that shows
+   * anything is never touched. `keep` writes those parts as they are.
+   */
+  textEffects?: "normalize" | "keep";
+};
+
+export type TemplatePlanEffectCount = {
+  part: string;
+  effect: DocxTextEffect;
+  count: number;
 };
 
 export type TemplatePlanBlockResult = {
@@ -602,6 +650,14 @@ export type TemplatePlanReport = {
     sourceFields: { kind: string; count: number }[];
     internalHyperlinks: number;
     sectionBreaks: number;
+  };
+  /**
+   * Text effects that show nothing: those of the template the output does
+   * not carry, and those it still does.
+   */
+  textEffects: {
+    removed: TemplatePlanEffectCount[];
+    left: TemplatePlanEffectCount[];
   };
   updateFields: "set" | "cleared" | "unchanged";
   conformance: {

@@ -7,11 +7,11 @@ import {
   reviewerSessionState,
   textRun,
 } from "../__tests__/operationBatchDocuments";
+import { resolveAllChangesInHeadlessState } from "../__tests__/reference-editor/comments";
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperationBatch,
 } from "../document-operations";
-import { resolveAllChangesInHeadlessState } from "../prosemirror/commands/comments";
 import { anchoredCommentIdsInProseDoc } from "./comment-lifecycle";
 import { FolioDocxReviewer } from "./headless";
 

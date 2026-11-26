@@ -1,5 +1,4 @@
 {
-  "packages/core/src/prosemirror/commands/comments.ts": 1,
   "packages/core/src/prosemirror/extensions/features/BidiShortcutExtension.ts": 1,
   "packages/core/src/prosemirror/plugins/autocompleteSuggestion.ts": 2,
   "packages/react/src/components/DocxEditor.tsx": 2,

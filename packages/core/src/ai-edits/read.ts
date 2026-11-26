@@ -29,6 +29,7 @@ import {
   runFormattingInlineAtomResultText,
 } from "../prosemirror/runFormattingInlineCarriers";
 import { getTableCellMergeChange } from "../prosemirror/tableCellMergeRevision";
+import { isTableRowRevisionCompanion } from "../prosemirror/tableRowRevisionOwnership";
 import {
   enclosingInsertionAncestors,
   trackedRevisionLayerOf,
@@ -218,14 +219,6 @@ type RowRevisionScope = {
   key: string;
 };
 
-/**
- * Whether a run's revision inside a marked row is that row's own. Folio writes
- * both halves under one revision id; Word mints a fresh `w:id` per element, so
- * an author + timestamp match counts too. A third party's edit inside the row
- * matches neither and keeps its own entry.
- */
-type RevisionInfo = { id: number; author: string; date: string | null };
-
 type InlineBoundary = {
   hyperlink: string | null;
   /**
@@ -244,14 +237,6 @@ type InlineChangeRange = {
 };
 
 type TrackedChangeGroup = { change: FolioReviewChange; ids: number[] };
-
-const belongsToRowRevision = (
-  scope: RowRevisionScope,
-  revision: RevisionInfo,
-): boolean =>
-  revision.id === scope.change.id ||
-  (revision.author === scope.change.author &&
-    revision.date === scope.change.date);
 
 /**
  * The paragraph-mark revision a marked row writes on its cells' paragraphs:
@@ -454,7 +439,10 @@ const getTrackedChangeGroupsFromProjectedDoc = (
         if (
           rowScope !== undefined &&
           ROW_PARAGRAPH_MARK_CARRIERS[rowScope.kind] === carrier.type &&
-          belongsToRowRevision(rowScope, carrier)
+          isTableRowRevisionCompanion({
+            row: rowScope.change,
+            candidate: carrier,
+          })
         ) {
           fold(rowScope.key, [carrier.id]);
           return;
@@ -781,7 +769,10 @@ const getTrackedChangeGroupsFromProjectedDoc = (
       const rowScope = rowRevisionScopes.at(-1);
       if (
         rowScope?.kind === layerKind &&
-        belongsToRowRevision(rowScope, revision)
+        isTableRowRevisionCompanion({
+          row: rowScope.change,
+          candidate: revision,
+        })
       ) {
         // The row's entry stands for this run's revision too, so its ids
         // reach a run mark minted under another id.

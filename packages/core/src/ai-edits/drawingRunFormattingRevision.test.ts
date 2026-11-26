@@ -22,7 +22,10 @@ import {
   resolveAllChanges,
   saveHarnessState,
 } from "../__tests__/editorHarness";
-import { acceptChange, rejectChange } from "../prosemirror/commands/comments";
+import {
+  acceptChange,
+  rejectChange,
+} from "../__tests__/reference-editor/comments";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document, Run, TextFormatting } from "../types/document";
 import { FolioDocxReviewer } from "./headless";

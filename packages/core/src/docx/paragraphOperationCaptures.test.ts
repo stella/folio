@@ -7,7 +7,7 @@ import {
   combineEdits,
 } from "@stll/docx-core/ops";
 
-import { rejectAIEditRevision } from "../prosemirror/commands/comments";
+import { rejectAIEditRevision } from "../__tests__/reference-editor/comments";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { schema } from "../prosemirror/schema";

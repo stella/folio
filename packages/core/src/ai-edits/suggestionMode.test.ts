@@ -18,16 +18,17 @@ import { EditorState } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 
 import { applyFolioAIEditOperations } from "../__tests__/reference-editor/apply";
-import { serializeParagraph } from "../docx/serializer/paragraphSerializer";
 import {
   acceptAllChanges,
   acceptSuggestion,
   getSuggestions,
   rejectSuggestion,
   resolveAllChangesInHeadlessState,
-} from "../prosemirror/commands/comments";
+} from "../__tests__/reference-editor/comments";
+import { serializeParagraph } from "../docx/serializer/paragraphSerializer";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { schema } from "../prosemirror/schema";
+import type { TrackedRevisionAncestor } from "../prosemirror/schema/marks";
 import type { Document, Paragraph } from "../types/document";
 import {
   createFolioAIEditSnapshot,
@@ -567,6 +568,90 @@ describe("suggestion commands", () => {
     expect(xml).toContain("swift");
     expect(xml).toContain('w:author="Alice"');
   });
+
+  test.each([false, true])(
+    "accepts a suggestion stored in an outer revision (also on a direct mark: %s)",
+    (hasDirectMark) => {
+      const suggestionId = "accept-outer";
+      const pendingId = "keep-outer";
+      const authoredAncestor = {
+        type: "moveTo",
+        revisionId: 4,
+        author: "Proposer",
+        date: "2026-07-16T12:00:00.000Z",
+        outerWrapperCount: 1,
+      } as const satisfies TrackedRevisionAncestor;
+      const otherAncestor = {
+        type: "deletion",
+        revisionId: 5,
+        author: "Other proposer",
+        outerWrapperCount: 1,
+        suggestionId: pendingId,
+      } as const satisfies TrackedRevisionAncestor;
+      const inner = schema.mark("deletion", {
+        revisionId: 6,
+        author: "Original",
+        provenance: "user",
+        _docxRevisionAncestors: [
+          { ...authoredAncestor, suggestionId },
+          otherAncestor,
+        ],
+      });
+      const direct = schema.mark("insertion", {
+        revisionId: 7,
+        author: "Proposer",
+        provenance: "suggested",
+        suggestionId,
+      });
+      const content = [schema.text("Nested", [inner])];
+      if (hasDirectMark) content.push(schema.text("Direct", [direct]));
+      let state = EditorState.create({
+        schema,
+        doc: schema.node("doc", null, [
+          schema.node("paragraph", null, content),
+        ]),
+      });
+      const pending = () =>
+        getSuggestions(state)
+          .map((suggestion) => suggestion.suggestionId)
+          .toSorted();
+      expect(pending()).toEqual([suggestionId, pendingId]);
+
+      const author = "Reviewer";
+      const date = "2026-07-17T12:00:00.000Z";
+      expect(
+        acceptSuggestion(suggestionId, { author, date })(state, (tr) => {
+          state = state.apply(tr);
+        }),
+      ).toBe(true);
+      expect(pending()).toEqual([pendingId]);
+      expect(state.doc.textContent).toBe(
+        hasDirectMark ? "NestedDirect" : "Nested",
+      );
+      const expected = [
+        inner.type.create({
+          ...inner.attrs,
+          _docxRevisionAncestors: [
+            { ...authoredAncestor, author, date },
+            otherAncestor,
+          ],
+        }),
+      ];
+      if (hasDirectMark)
+        expected.push(
+          direct.type.create({
+            ...direct.attrs,
+            author,
+            date,
+            provenance: "user",
+            suggestionId: null,
+          }),
+        );
+      expect(marksInDoc(state).map((mark) => mark.toJSON())).toEqual(
+        expected.map((mark) => mark.toJSON()),
+      );
+    },
+  );
 
   test("replacement writes the new value without its highlight and rejection restores it", () => {
     const applyAmountReplacement = () => {

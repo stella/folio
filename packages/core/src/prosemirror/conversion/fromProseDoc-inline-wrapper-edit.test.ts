@@ -11,6 +11,7 @@
 import { describe, expect, test } from "bun:test";
 import { EditorState, TextSelection } from "prosemirror-state";
 
+import { rejectAllChanges } from "../../__tests__/reference-editor/comments";
 import { createSuggestionModePlugin } from "../../__tests__/reference-editor/suggestionMode";
 import type {
   Document,
@@ -20,7 +21,6 @@ import type {
   Run,
 } from "../../types/document";
 import { createEmptyDocument } from "../../utils/createDocument";
-import { rejectAllChanges } from "../commands/comments";
 import { fromProseDoc } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
 

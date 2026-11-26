@@ -10,12 +10,12 @@ import {
   type RevisionDecision,
 } from "@stll/docx-core/ops";
 
-import { revisionIdsIn } from "../ai-edits/read";
-import { expectParagraphAttrs } from "../prosemirror/attrs";
 import {
   acceptAllChanges,
   rejectAllChanges,
-} from "../prosemirror/commands/comments";
+} from "../__tests__/reference-editor/comments";
+import { revisionIdsIn } from "../ai-edits/read";
+import { expectParagraphAttrs } from "../prosemirror/attrs";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { schema } from "../prosemirror/schema";

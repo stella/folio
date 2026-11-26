@@ -1307,7 +1307,7 @@ const {
 // core's extractTrackedChanges, re-running whenever a transaction bumps
 // stateTick. `entries` is core's TrackedChangeEntry, which the sidebar's
 // (re-exported) type now matches exactly, so no reconciliation is needed.
-const trackedChangesResult = useTrackedChanges(editorView, stateTick);
+const trackedChangesResult = useTrackedChanges(editorView, stateTick, editor);
 const trackedChanges = computed<TrackedChangeEntry[]>(
   () => trackedChangesResult.value.entries,
 );

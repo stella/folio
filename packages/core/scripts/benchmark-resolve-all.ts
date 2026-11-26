@@ -3,14 +3,14 @@ import { loadavg } from "node:os";
 import { history } from "prosemirror-history";
 import { type Command, EditorState } from "prosemirror-state";
 
+import { schema } from "@stll/folio-core/prosemirror/schema";
+
 import {
   acceptAllChanges,
   acceptChange,
   rejectAllChanges,
   rejectChange,
-} from "@stll/folio-core/prosemirror/commands/comments";
-import { schema } from "@stll/folio-core/prosemirror/schema";
-
+} from "../src/__tests__/reference-editor/comments";
 import { ParagraphChangeTrackerExtension } from "../src/__tests__/reference-editor/ParagraphChangeTrackerExtension";
 
 const sampleCommand = (state: EditorState, command: Command) => {

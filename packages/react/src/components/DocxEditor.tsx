@@ -61,16 +61,24 @@ import {
   resolveFolioAITextRange,
   resolvePassageRange,
 } from "@stll/folio-core/ai-edits/blockRange";
-import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
+import {
+  type ActiveEditorStoryTarget,
+  resolveActiveEditorStory,
+} from "@stll/folio-core/controller/activeEditorStory";
 import { NO_ANONYMIZATION_HIGHLIGHTS } from "@stll/folio-core/controller/anonymizationHighlights";
 import { afterCanonicalCompositionSettles } from "@stll/folio-core/controller/canonicalInputTimer";
-import { resolveCanonicalReviewRange } from "@stll/folio-core/controller/canonicalReview";
+import {
+  canonicalReviewHeldRevisionIds,
+  resolveCanonicalReviewRange,
+  type ReviewRange,
+} from "@stll/folio-core/controller/canonicalReview";
 import { DOCUMENT_CHANGE_NOTIFY_DELAY_MS } from "@stll/folio-core/controller/documentChangeNotification";
 import {
   FOLIO_DOCX_SERIALIZATION_MODE,
   type FolioGetDocxOptions,
   type FolioSaveOptions,
   OP_STORIES,
+  type OpStory,
 } from "@stll/folio-core/controller/folioEditor";
 import {
   delegateAutocomplete,
@@ -1391,6 +1399,27 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       () => getActiveEditorStory().view,
       [getActiveEditorStory],
     );
+    const readStoryReviewLocks = useCallback(
+      (activeStory: ActiveEditorStoryTarget, { from, to }: ReviewRange) => {
+        if (!activeStory.view) return;
+        let story: OpStory = OP_STORIES.MAIN;
+        if (activeStory.type === "note") {
+          if (!activeNoteStory) return;
+          story = { kind: activeNoteStory.kind, id: activeNoteStory.noteId };
+        } else if (activeStory.type === "headerFooter") {
+          if (!hfEditPosition || !activeHfRId) return;
+          story = { kind: hfEditPosition, rId: activeHfRId };
+        }
+        const held = canonicalReviewHeldRevisionIds({
+          editor: getCanonicalApi(),
+          state: activeStory.view.state,
+          story,
+          target: { type: "range", from, to },
+        });
+        return { accept: held.accept.size > 0, reject: held.reject.size > 0 };
+      },
+      [activeHfRId, activeNoteStory, getCanonicalApi, hfEditPosition],
+    );
 
     // Helper to focus the active editor
     const focusCurrentEditor = useCallback(() => {
@@ -1891,7 +1920,8 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
     const handleSelectionChange = useCallback(
       (selectionState: SelectionState | null) => {
         // Save selection for restoring after toolbar interactions
-        const view = getActiveEditorView();
+        const activeStory = getActiveEditorStory();
+        const { view } = activeStory;
         if (view) {
           const { from, to } = view.state.selection;
           lastSelectionRef.current = { from, to };
@@ -1926,7 +1956,9 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         // logic is unit-tested without spinning up a real component.
         const pmImageCtx = view ? detectImageContext(view.state) : null;
         const detectedChange = view
-          ? detectActiveTrackedChange(view.state)
+          ? detectActiveTrackedChange(view.state, (range) =>
+              readStoryReviewLocks(activeStory, range),
+            )
           : null;
         const trackedChange: EditorState["activeTrackedChange"] =
           detectedChange === null
@@ -2119,11 +2151,12 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         onSelectionChange?.(selectionState);
       },
       [
-        getActiveEditorView,
+        getActiveEditorStory,
         getCachedStyleResolver,
         isAddingComment,
         onSelectionChange,
         readOnly,
+        readStoryReviewLocks,
         setFloatingCommentBtn,
         theme,
       ],
@@ -2957,19 +2990,25 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         hasSelection: boolean;
         position: number | null;
       }) => {
-        const view = getActiveEditorView();
+        const activeStory = getActiveEditorStory();
+        const { view } = activeStory;
         openContextMenu(
           { x: data.x, y: data.y },
           {
             hasSelectionOverride: data.hasSelection,
             pointer:
               view && data.position !== null
-                ? { state: view.state, position: data.position }
+                ? {
+                    state: view.state,
+                    position: data.position,
+                    readLocks: (range) =>
+                      readStoryReviewLocks(activeStory, range),
+                  }
                 : null,
           },
         );
       },
-      [getActiveEditorView, openContextMenu],
+      [getActiveEditorStory, openContextMenu, readStoryReviewLocks],
     );
 
     const handleContextMenuClose = closeContextMenu;

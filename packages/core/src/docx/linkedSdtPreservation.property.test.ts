@@ -6,7 +6,7 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
-import { resolveAllChangesInHeadlessState } from "../prosemirror/commands/comments";
+import { resolveAllChangesInHeadlessState } from "../__tests__/reference-editor/comments";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document, ParagraphContent } from "../types/document";

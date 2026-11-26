@@ -39,6 +39,7 @@ import {
   propertyTestTimeout,
 } from "../../../../../../test/property-testing";
 import { createReferenceEditorKit } from "../../../__tests__/createReferenceEditorKit";
+import { rejectAllChanges } from "../../../__tests__/reference-editor/comments";
 import { getChangeTrackerState } from "../../../__tests__/reference-editor/ParagraphChangeTrackerExtension";
 import { createSuggestionModePlugin } from "../../../__tests__/reference-editor/suggestionMode";
 import { FolioDocxReviewer } from "../../../ai-edits/headless";
@@ -55,7 +56,6 @@ import type {
   Paragraph,
 } from "../../../types/document";
 import { expectParagraphAttrs } from "../../attrs";
-import { rejectAllChanges } from "../../commands/comments";
 import { fromProseDoc } from "../../conversion/fromProseDoc";
 import { toProseDoc } from "../../conversion/toProseDoc";
 import {

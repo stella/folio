@@ -10,6 +10,10 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../../test/property-testing";
+import {
+  acceptAllChanges,
+  rejectAllChanges,
+} from "../../__tests__/reference-editor/comments";
 import { createSuggestionModePlugin } from "../../__tests__/reference-editor/suggestionMode";
 import { FolioDocxReviewer } from "../../ai-edits/headless";
 import { ensureParaIds } from "../../docx/ensureParaIds";
@@ -39,7 +43,6 @@ import {
   getDocumentStyleResolver,
 } from "../plugins/documentStyles";
 import { schema } from "../schema";
-import { acceptAllChanges, rejectAllChanges } from "./comments";
 
 type NumberingSource = "style" | "paragraph" | "style-level";
 

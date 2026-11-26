@@ -11,7 +11,10 @@
 import { describe, expect, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
 
-import { acceptAIEditRevision, acceptChange } from "./commands/comments";
+import {
+  acceptAIEditRevision,
+  acceptChange,
+} from "../__tests__/reference-editor/comments";
 import { readRangeAnchorAttrs } from "./rangeAnchorAttrs";
 import {
   hasReplacedAnnotations,

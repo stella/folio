@@ -4,12 +4,12 @@ import { EditorState, type Transaction } from "prosemirror-state";
 import { ZipArchive } from "@stll/docx-core/zip";
 
 import { canonicalReviewModel } from "../../../../test/consumer-scenarios/support/review-comparison";
-import { parseDocx } from "../docx/parser";
-import { createDocx, repackDocx } from "../docx/rezip";
 import {
   acceptAIEditRevision,
   rejectAIEditRevision,
-} from "../prosemirror/commands/comments";
+} from "../__tests__/reference-editor/comments";
+import { parseDocx } from "../docx/parser";
+import { createDocx, repackDocx } from "../docx/rezip";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { schema } from "../prosemirror/schema";
 import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";

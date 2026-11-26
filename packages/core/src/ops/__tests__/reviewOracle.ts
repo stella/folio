@@ -15,10 +15,10 @@ import {
 import type { PackageDifferences } from "../../../../../scripts/lib/corpus-invariants/model-equality";
 import { reviewDifferences } from "../../../../../test/reviewDifferences";
 import { storyRevisionIds } from "../../../../../test/reviewProjection";
+import { resolveAllChangesInHeadlessState } from "../../__tests__/reference-editor/comments";
 import { projectReferenceDocument } from "../../__tests__/reference-editor/projectReferenceDocument";
 import { parseDocx } from "../../docx/parser";
 import { repackDocx } from "../../docx/rezip";
-import { resolveAllChangesInHeadlessState } from "../../prosemirror/commands/comments";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import { createDocumentNumberingPlugin } from "../../prosemirror/plugins/documentNumbering";
 import { createDocumentStylesPlugin } from "../../prosemirror/plugins/documentStyles";

@@ -15,17 +15,17 @@ import {
   propertyTestTimeout,
 } from "../../../../../test/property-testing";
 import {
+  acceptAllChanges,
+  acceptChange,
+  rejectAllChanges,
+  rejectChange,
+} from "../../__tests__/reference-editor/comments";
+import {
   getChangeTrackerState,
   ParagraphChangeTrackerExtension,
 } from "../../__tests__/reference-editor/ParagraphChangeTrackerExtension";
 import { RevisionResolutionStep } from "../../internal/revisionResolutionStep";
 import { schema } from "../schema";
-import {
-  acceptAllChanges,
-  acceptChange,
-  rejectAllChanges,
-  rejectChange,
-} from "./comments";
 
 const AUTHOR = "Reviewer";
 const DATE = "2026-09-09T00:00:00.000Z";

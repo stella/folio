@@ -1,11 +1,11 @@
 import { expect, spyOn, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
 
+import * as comments from "../__tests__/reference-editor/comments";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { createDocx } from "../docx/rezip";
 import { paragraph, run } from "../docx/server/build";
 import { fromMarkdown } from "../markdown/fromMarkdown";
-import * as comments from "../prosemirror/commands/comments";
 import { schema } from "../prosemirror/schema";
 import { FolioDocxReviewer } from "./headless";
 import * as read from "./read";

@@ -18,15 +18,15 @@ import {
   sameOriginalBlocks,
 } from "../../ai-edits/tracked-batch-fidelity";
 import { visitCommentMarkers } from "../../docx/commentAnchorIndex";
-import { pluginsForHeadlessRevisionResolution } from "../../internal/headlessRevisionResolutionGuard";
+import { proseDocToBlocks } from "../../prosemirror/conversion/fromProseDoc";
+import { isBlockBoundaryNode } from "../../prosemirror/keptRangeBoundaries";
+import { readRangeAnchorAttrs } from "../../prosemirror/rangeAnchorAttrs";
 import {
   getSuggestions,
   projectAllChangesInHeadlessState,
   rejectEverySuggestion,
-} from "../../prosemirror/commands/comments";
-import { proseDocToBlocks } from "../../prosemirror/conversion/fromProseDoc";
-import { isBlockBoundaryNode } from "../../prosemirror/keptRangeBoundaries";
-import { readRangeAnchorAttrs } from "../../prosemirror/rangeAnchorAttrs";
+} from "./comments";
+import { pluginsForHeadlessRevisionResolution } from "./headlessRevisionResolutionGuard";
 
 type TrackedBatchFidelityOptions = {
   before: EditorState;
