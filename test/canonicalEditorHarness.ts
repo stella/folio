@@ -26,7 +26,10 @@ import { cloneDocumentWithParagraphPropertySources } from "../packages/core/src/
 import { executeEditorCommand } from "../packages/core/src/prosemirror/executeEditorCommand";
 import { expectRangeAnchorAttrs } from "../packages/core/src/prosemirror/rangeAnchorAttrs";
 import { selectionBounds } from "../packages/core/src/prosemirror/selectionBounds";
-import { CANONICAL_GAP } from "../packages/core/src/types/canonicalCapabilities";
+import {
+  CANONICAL_GAP,
+  type CanonicalRefusalGround,
+} from "../packages/core/src/types/canonicalCapabilities";
 import type { CanonicalSaveSnapshot } from "../packages/core/src/types/canonicalSave";
 import type { Document } from "../packages/core/src/types/document";
 import {
@@ -213,19 +216,20 @@ export const createCanonicalEditorHarness = (
       }
     }
     dispose();
-    if (refusal)
+    if (refusal) {
+      let ground: CanonicalRefusalGround;
+      if (refusal.rule !== undefined) ground = { rule: refusal.rule };
+      else if (refusal.condition !== undefined)
+        ground = { condition: refusal.condition };
+      else
+        ground = {
+          gap: refusal.gap ?? panic("A gap refusal lost its ledger gap."),
+        };
       throw new CanonicalSessionRefusalError({
-        ground:
-          refusal.rule !== undefined
-            ? { rule: refusal.rule }
-            : refusal.condition !== undefined
-              ? { condition: refusal.condition }
-              : {
-                  gap:
-                    refusal.gap ?? panic("A gap refusal lost its ledger gap."),
-                },
+        ground,
         message: refusal.message,
       });
+    }
     panic("The canonical conformance controller did not create its view.");
   }
   if (activationRow) {
