@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "title": "PINNED #1757, fingerprint e206647ee271e8ea: a second join continues the paragraph a text box's holder joined into, not the box paragraph",
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "stories",
+  "mode": "direct",
+  "seed": 334731905,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 3046321876,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "79D25458",
+          "separator": " "
+        },
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "7B806329",
+          "separator": " "
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from collisions flow seed 334731905"
+}
