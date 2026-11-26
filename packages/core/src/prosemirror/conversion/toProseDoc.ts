@@ -664,6 +664,7 @@ const CONVERSION_CONTEXT_DEPENDENCY = {
   warnPageBreakProjection: "package",
   createMark: "package",
   nextTextBoxGroupId: "story",
+  placedTextBoxGroup: "story",
   nextHyperlinkInstanceIndex: "story",
   nextNoteReferenceOccurrenceId: "story",
   pairedBookmarkIds: "story",
@@ -940,7 +941,11 @@ export class ProjectionBlockCache {
     }
     const context =
       this.context ?? panic("A block cache converts after its package context");
-    const textBoxGroups = { start: state.textBoxGroups.value, taken: 0 };
+    const textBoxGroups = {
+      start: state.textBoxGroups.value,
+      taken: 0,
+      used: false,
+    };
     const hyperlinks = { start: state.hyperlinks.value, taken: 0 };
     const noteOccurrences = { start: state.noteOccurrences.value, taken: 0 };
     const pairedBookmarkIds = new RecordedMembership(state.pairedBookmarkIds);
@@ -952,6 +957,11 @@ export class ProjectionBlockCache {
       nextTextBoxGroupId: () => {
         textBoxGroups.taken += 1;
         return `${this.salt}:${state.textBoxGroups.value++}`;
+      },
+      // A placed group id reads where its group number falls; a block whose
+      // paragraphs placed none reads the same anywhere.
+      placedTextBoxGroup: () => {
+        textBoxGroups.used = true;
       },
       nextHyperlinkInstanceIndex: () => {
         hyperlinks.taken += 1;
@@ -975,16 +985,8 @@ export class ProjectionBlockCache {
       ...story,
     };
     const nodes = convert(blockContext);
-    // A minted text-box id carries the salt; a block holding none of them
-    // reads the same wherever its group number falls.
-    const saltMark = `"${this.salt}:`;
     const reads: StoryReads = {
-      textBoxGroups: {
-        ...textBoxGroups,
-        used: nodes.some((node) =>
-          JSON.stringify(node.toJSON()).includes(saltMark),
-        ),
-      },
+      textBoxGroups: { ...textBoxGroups },
       hyperlinks,
       noteOccurrences,
       pairedBookmarkIds: setReadsOf(pairedBookmarkIds),
@@ -2729,6 +2731,8 @@ type TableConversionContext = {
   numbering: NumberingMap | undefined;
   theme: DeepReadonly<Theme> | null | undefined;
   nextTextBoxGroupId: () => string;
+  /** Told when a paragraph puts the group id it drew on what it converts. */
+  placedTextBoxGroup?: () => void;
   nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator;
   nextNoteReferenceOccurrenceId: () => string;
   pairedBookmarkIds: IdMembership;
@@ -6111,6 +6115,8 @@ function convertParagraphWithTextBoxes(
     block,
     textBoxGroupId,
   );
+  // The group id reaches the nodes only through the boxes and their anchors.
+  if (textBoxes.length > 0) context.placedTextBoxGroup?.();
   const pmParagraph = convertParagraph(
     block,
     styleResolver,
