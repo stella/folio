@@ -402,6 +402,14 @@ export type DocxTemplateInspection = Omit<DocxBlockManifest, "sections"> & {
     fields: DocxTemplateField[];
     sections: DocxTemplateSection[];
     bookmarks: DocxTemplateBookmark[];
+    invisibleEffects: DocxTemplateInvisibleEffect[];
+};
+
+// @public
+export type DocxTemplateInvisibleEffect = {
+    part: string;
+    effect: DocxTextEffect;
+    owner: DocxTextEffectOwner;
 };
 
 // @public (undocumented)
@@ -460,6 +468,23 @@ export type DocxTemplateStyle = {
     outlineLvl: number | null;
     alignment: string | null;
     isDefault: boolean;
+};
+
+// @public
+export type DocxTextEffect = "glow" | "shadow" | "reflection" | "textOutline" | "textFill" | "scene3d" | "props3d";
+
+// @public
+export type DocxTextEffectOwner = {
+    kind: "level";
+    abstractNumId: number | null;
+    ilvl: number | null;
+} | {
+    kind: "style";
+    styleId: string | null;
+} | {
+    kind: "defaults";
+} | {
+    kind: "text";
 };
 
 // @public
@@ -2149,6 +2174,7 @@ export type TemplatePlan = {
         doNotExpandShiftReturn?: boolean;
     };
     lastSection?: TemplatePlanSection;
+    textEffects?: "normalize" | "keep";
 };
 
 // @public (undocumented)
@@ -2163,6 +2189,13 @@ export type TemplatePlanBlockResult = {
     sourceLabel: string | null;
     outputLabel: string | null;
     omitReason?: TemplatePlanOmitReason;
+};
+
+// @public (undocumented)
+export type TemplatePlanEffectCount = {
+    part: string;
+    effect: DocxTextEffect;
+    count: number;
 };
 
 // @public
@@ -2336,6 +2369,10 @@ export type TemplatePlanReport = {
         }[];
         internalHyperlinks: number;
         sectionBreaks: number;
+    };
+    textEffects: {
+        removed: TemplatePlanEffectCount[];
+        left: TemplatePlanEffectCount[];
     };
     updateFields: "set" | "cleared" | "unchanged";
     conformance: {

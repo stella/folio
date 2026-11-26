@@ -38,6 +38,11 @@ import {
   refCaseFormat,
 } from "./builders";
 import {
+  countEffects,
+  findInvisibleEffects,
+  type InvisibleEffect,
+} from "./effects";
+import {
   linkAddress,
   linkAddressKey,
   type TemplateCharacterStyles,
@@ -100,6 +105,7 @@ import type {
 import {
   integerOrNull,
   isW,
+  rangeOf,
   type RawPart,
   readRawPart,
   twipsOrNull,
@@ -1544,6 +1550,77 @@ export const reportTemplatePlanOutput = async ({
     }
   }
 
+  // Text effects that show nothing: what the parts taken from the template
+  // held, and what the output still holds. In the document only the blocks
+  // the plan keeps count; the rest of the template's body is not written.
+  const effectsOf = (path: string | null, xml: string | null) => {
+    const part = path === null || xml === null ? null : readRawPart(path, xml);
+    return part === null ? [] : findInvisibleEffects(part);
+  };
+  const keptRanges = [
+    ...resolved.keptTemplateBlocks.map(({ element }) => element),
+    ...resolved.items.flatMap((item) =>
+      item.kind === "slot" ? [item.templateBlock.element] : [],
+    ),
+  ].flatMap((element) => {
+    const range = rangeOf(element);
+    return range === null ? [] : [range];
+  });
+  const templateHeaderFooterParts = await readHeaderFooterParts(template);
+  if (Result.isError(templateHeaderFooterParts)) {
+    return templateHeaderFooterParts;
+  }
+  const effectParts: {
+    part: string | null;
+    before: InvisibleEffect[];
+    after: InvisibleEffect[];
+  }[] = [
+    {
+      part: out.pkg.documentPath,
+      before: findInvisibleEffects(template.document).filter(({ range }) =>
+        keptRanges.some(
+          (kept) => range.start >= kept.start && range.end <= kept.end,
+        ),
+      ),
+      after: findInvisibleEffects(out.document),
+    },
+    {
+      part: template.numberingPath,
+      before: effectsOf(template.numberingPath, template.numberingXml),
+      after: effectsOf(out.numberingPath, out.numberingXml),
+    },
+    {
+      part: template.stylesPath,
+      before: effectsOf(template.stylesPath, template.stylesXml),
+      after: effectsOf(out.stylesPath, out.stylesXml),
+    },
+    ...templateHeaderFooterParts.value.map((part) => ({
+      part: part.path,
+      before: findInvisibleEffects(part),
+      after: findInvisibleEffects(
+        outputHeadersAndFooters.value.find(({ path }) => path === part.path) ??
+          part,
+      ),
+    })),
+  ];
+  const textEffects: TemplatePlanReport["textEffects"] = {
+    removed: [],
+    left: [],
+  };
+  for (const { part, before, after } of effectParts) {
+    if (part === null) {
+      continue;
+    }
+    const left = countEffects(part, after);
+    textEffects.left.push(...left);
+    for (const { effect, count } of countEffects(part, before)) {
+      const kept = left.find((entry) => entry.effect === effect)?.count ?? 0;
+      if (count > kept) {
+        textEffects.removed.push({ part, effect, count: count - kept });
+      }
+    }
+  }
+
   const filler: TemplatePlanReport["leftovers"]["filler"] = [];
   const documentText = out.story.order
     .flatMap(({ read }) => (read === null ? [] : [read.text]))
@@ -1875,6 +1952,7 @@ export const reportTemplatePlanOutput = async ({
       internalHyperlinks,
       sectionBreaks,
     },
+    textEffects,
     updateFields,
     conformance: {
       status: conformance.status,

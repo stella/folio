@@ -23,6 +23,7 @@ import {
   setUpdateFieldsOnOpen,
   withoutContained,
 } from "./builders";
+import { removeInvisibleEffects } from "./effects";
 import {
   createRelationshipsEditor,
   type EmitContext,
@@ -1160,6 +1161,37 @@ const writeOutput = async ({
     }
     if (settings !== settingsXml.value) {
       parts.set(settingsPath, settings);
+    }
+  }
+
+  // Text effects that show nothing are left out of every part the output
+  // takes from the template; a part without one keeps its bytes.
+  if (plan.textEffects !== "keep") {
+    const kept: [path: string | null, xml: string | null][] = [
+      [pkg.documentPath, documentXml],
+      [template.numberingPath, template.numberingXml],
+      [template.stylesPath, template.stylesXml],
+      ...headerFooterParts.map(({ path, xml }): [string, string] => [
+        path,
+        xml,
+      ]),
+    ];
+    for (const [path, original] of kept) {
+      const written = path === null ? undefined : parts.get(path);
+      const xml = typeof written === "string" ? written : original;
+      if (path === null || xml === null) {
+        continue;
+      }
+      const part = readRawPart(path, xml);
+      const plain = part === null ? null : removeInvisibleEffects(part);
+      if (plain === null) {
+        return Result.err(
+          unreadable(path, "A part could not be read for its text effects."),
+        );
+      }
+      if (plain.removed.length > 0) {
+        parts.set(path, plain.xml);
+      }
     }
   }
 

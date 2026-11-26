@@ -410,6 +410,11 @@ export const planShapeIssue = (plan: unknown): string | null => {
     spansIssue(plan) ??
     fieldsIssue(plan["fields"]) ??
     compatIssue(plan["compat"]) ??
-    sectionIssue(plan["lastSection"], "The plan's last section")
+    sectionIssue(plan["lastSection"], "The plan's last section") ??
+    (plan["textEffects"] === undefined ||
+    plan["textEffects"] === "normalize" ||
+    plan["textEffects"] === "keep"
+      ? null
+      : "The plan's choice for text effects is unknown.")
   );
 };
