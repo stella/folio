@@ -562,29 +562,35 @@ test.each(["ins", "del"] as const)(
         const resolved = reviewer.toResolvedDocument(
           view === "final" ? "accept" : "reject",
         );
+        // Rejecting the added mark of the empty paragraph takes it whole:
+        // the block after it stays, so the story ends as it did before the
+        // insertion. Accepting it, or resolving a deletion, keeps it unmarked.
+        const goes = kind === "ins" && view !== "final";
         const assertSourceStructure = (read: Document) => {
           const blocks = read.package.document.content;
-          expect(blocks.map(({ type }) => type)).toEqual([
-            "paragraph",
-            "paragraph",
-            "preservedBlock",
-          ]);
+          expect(blocks.map(({ type }) => type)).toEqual(
+            goes
+              ? ["paragraph", "preservedBlock"]
+              : ["paragraph", "paragraph", "preservedBlock"],
+          );
           expect(blocks.at(0)).toMatchObject({
             type: "paragraph",
             paraId: "00000001",
             content: [],
             sectionProperties: { pageWidth: 11906 },
           });
-          expect(blocks.at(1)).toMatchObject({
-            type: "paragraph",
-            paraId: "00000002",
-            content: [],
-          });
-          const target = blocks.at(1);
-          expect(
-            target?.type === "paragraph" ? target.pPrMark : "missing",
-          ).toBeUndefined();
-          expect(blocks.at(2)).toEqual(atomic);
+          if (!goes) {
+            expect(blocks.at(1)).toMatchObject({
+              type: "paragraph",
+              paraId: "00000002",
+              content: [],
+            });
+            const target = blocks.at(1);
+            expect(
+              target?.type === "paragraph" ? target.pPrMark : "missing",
+            ).toBeUndefined();
+          }
+          expect(blocks.at(-1)).toEqual(atomic);
           expect(read.package.document.finalSectionProperties).toMatchObject({
             pageWidth: 12240,
             pageHeight: 15840,

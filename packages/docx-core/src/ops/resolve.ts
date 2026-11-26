@@ -7572,16 +7572,14 @@ const joinOps = (
           ...paragraph,
           content: [...joining, paragraph].flatMap(({ content }) => content),
         };
-  // A rejected added mark before a block takes its emptied paragraph where
-  // the container still ends with a paragraph, range boundaries standing after
-  // that paragraph included, and a paragraph stays to anchor the removal: one
-  // this resolution joins into it goes with it.
+  // A rejected added mark before a block takes its emptied paragraph where a
+  // paragraph stays to anchor the removal: one this resolution joins into it
+  // goes with it. The block after it stays, so the container ends as it did
+  // before the insertion, whether in a paragraph or in a block such as an
+  // altChunk ending the story.
   const goesBeforeBlock =
     follows === "block" &&
     added &&
-    blockListEndsInParagraph(
-      blocks.filter((block) => !isBlockBoundary(block)),
-    ) &&
     blocks.some(
       (block) =>
         block.type === "paragraph" &&
@@ -7984,10 +7982,10 @@ const removeEmptiedHolder = ({
     index === blocks.length - 1 &&
     list.at(-1)?.kind === "blockSdt" &&
     !endsItsContainer(body, location);
+  // As a rejected added mark before a block goes (see `goesBeforeBlock`).
   const standsBeforeBlock =
     anchor !== undefined &&
-    isOpaqueFollower(blockFollower(blocks, index).block) &&
-    blockListEndsInParagraph(blocks.filter((block) => !isBlockBoundary(block)));
+    isOpaqueFollower(blockFollower(blocks, index).block);
   if (
     !endsControl &&
     !standsBeforeBlock &&

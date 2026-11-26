@@ -147,7 +147,8 @@ for (const session of ["canonical"] as const)
           });
           const before = reviewer.toDocument().package.document;
           // The added mark's section never stood in the original: it goes
-          // with the mark, and the paragraph before keeps its own.
+          // with the mark, and the paragraph before keeps its own. The
+          // emptied paragraph goes too where another paragraph stays.
           const expectedContent = before.content.flatMap((block) => {
             if (block.type !== "paragraph" || block.paraId !== "10000002")
               return [block];
@@ -156,7 +157,7 @@ for (const session of ["canonical"] as const)
               sectionProperties: _added,
               ...unmarked
             } = block;
-            return tail ? [] : [unmarked];
+            return tail || owner !== "unavailable" ? [] : [unmarked];
           });
           // Parse the independently stated resolved OOXML, including its
           // section grouping, rather than retaining the source's cached view.
