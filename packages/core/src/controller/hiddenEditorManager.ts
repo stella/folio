@@ -131,7 +131,7 @@ import {
 } from "../types/documentModel";
 import type { FolioDerivedFields, FolioFieldInsertion } from "../types/fields";
 import type { RemoteSelection } from "../types/remote-selection";
-import { INTERNAL_CLIPBOARD_TYPE } from "../utils/clipboard";
+import { INTERNAL_CLIPBOARD_TYPE } from "../utils/clipboardFiles";
 import {
   type AnonymizationStorySource,
   createAnonymizationHighlights,

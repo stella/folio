@@ -130,6 +130,10 @@ const measure = async (adapter: Adapter): Promise<Metrics> => {
           `${packageName} loaded the package attribute schema eagerly`,
         );
       }
+      // Only the clipboard paste sanitizer uses DOMPurify; opening a
+      // document must not load it.
+      if (source.includes("node_modules/dompurify/") && input.bytesInOutput > 0)
+        throw new Error(`${packageName} loaded DOMPurify eagerly`);
       if (source.startsWith("packages/docx-core/src/ops/"))
         metrics.docxOps += input.bytesInOutput;
     }
