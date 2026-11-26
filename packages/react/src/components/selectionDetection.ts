@@ -5,7 +5,7 @@ import type { ReviewRange } from "@stll/folio-core/controller/canonicalReview";
 import {
   findChangeAtPosition,
   findParagraphBoundaryChangeAtPosition,
-} from "@stll/folio-core/prosemirror/commands/comments";
+} from "@stll/folio-core/prosemirror/projectionReview";
 
 import type {
   ActiveTrackedChangeInfo,

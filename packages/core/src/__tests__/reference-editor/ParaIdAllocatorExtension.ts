@@ -57,7 +57,6 @@ import type {
  */
 import { ignoreTrackedChanges } from "../../prosemirror/paragraphChangeTrackerMeta";
 import {
-  deterministicParaIdSeedKey,
   isUsableParaId,
   type ParagraphPropertySourceSeed,
   paraIdAllocatorKey,
@@ -68,6 +67,7 @@ import {
   sweepPositions,
 } from "../../prosemirror/positionSweep";
 import { deterministicHexId, generateHexId } from "../../utils/hexId";
+import { deterministicParaIdSeedKey } from "./paragraphRevision";
 
 const deterministicSeedOf = (transaction: Transaction): string | undefined => {
   const seed: unknown = transaction.getMeta(deterministicParaIdSeedKey);

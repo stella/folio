@@ -24,7 +24,7 @@ import {
   getChangeTrackerState,
   ParagraphChangeTrackerExtension,
 } from "../../__tests__/reference-editor/ParagraphChangeTrackerExtension";
-import { RevisionResolutionStep } from "../../internal/revisionResolutionStep";
+import { RevisionResolutionStep } from "../../__tests__/reference-editor/revisionResolutionStep";
 import { schema } from "../schema";
 
 const AUTHOR = "Reviewer";
