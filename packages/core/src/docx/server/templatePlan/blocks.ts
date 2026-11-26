@@ -149,8 +149,8 @@ const modelIndent = (
 };
 
 /**
- * The indent in effect: each side from the paragraph itself, else from its
- * list level, else from its style. Null when none of them states a side.
+ * The indent in effect: each side from the first of `sources` that states
+ * it. Null when none of them states a side.
  */
 const indentInEffect = (
   ...sources: readonly IndentSides[]
@@ -433,11 +433,15 @@ export const analyzeStory = ({
               label.numbering.numId,
               label.numbering.ilvl,
             ) ?? null);
-      const indent = indentInEffect(
-        read.indent,
-        modelIndent(level?.pPr),
-        modelIndent(style?.pPr),
-      );
+      // A list the paragraph names itself gives its level's indent over
+      // the style's; a list the style brings is part of the style, whose
+      // own indent then stands over the level's.
+      const ofLevel = modelIndent(level?.pPr);
+      const ofStyle = modelIndent(style?.pPr);
+      const indent =
+        read.numPr === undefined
+          ? indentInEffect(read.indent, ofStyle, ofLevel)
+          : indentInEffect(read.indent, ofLevel, ofStyle);
       if (indent !== null) {
         block.indent = indent;
       }

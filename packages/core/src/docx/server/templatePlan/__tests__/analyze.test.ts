@@ -177,7 +177,7 @@ describe("analyzeDocxBlocks", () => {
 
   test("a block says where its lines start: by itself, by its list level, by its style", async () => {
     const numbering = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="lowerRoman"/><w:lvlText w:val="%1."/><w:pPr><w:ind w:left="1506" w:hanging="360"/></w:pPr></w:lvl></w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num></w:numbering>`;
-    const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style><w:style w:type="paragraph" w:styleId="Inset"><w:name w:val="Inset"/><w:basedOn w:val="Normal"/><w:pPr><w:ind w:left="851"/></w:pPr></w:style></w:styles>`;
+    const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style><w:style w:type="paragraph" w:styleId="Inset"><w:name w:val="Inset"/><w:basedOn w:val="Normal"/><w:pPr><w:ind w:left="851"/></w:pPr></w:style><w:style w:type="paragraph" w:styleId="Listed"><w:name w:val="Listed"/><w:basedOn w:val="Normal"/><w:pPr><w:numPr><w:numId w:val="1"/></w:numPr><w:ind w:left="924" w:hanging="360"/></w:pPr></w:style></w:styles>`;
     const { blocks } = unwrap(
       await analyzeDocxBlocks(
         await buildMinimalDocx(
@@ -186,6 +186,7 @@ describe("analyzeDocxBlocks", () => {
             p(r("a line under it"), '<w:ind w:left="786" w:firstLine="774"/>'),
             p(r("an item moved out"), `${numPr(1, 0)}<w:ind w:left="2000"/>`),
             p(r("inset by its style"), '<w:pStyle w:val="Inset"/>'),
+            p(r("listed by its style"), '<w:pStyle w:val="Listed"/>'),
             p(r("plain")),
           ].join(""),
           {
@@ -206,6 +207,8 @@ describe("analyzeDocxBlocks", () => {
       // Its own left over the level's, the level's hanging first line kept.
       { left: 2000, firstLine: -360 },
       { left: 851, firstLine: 0 },
+      // A list the style brings: the style's own indent over the level's.
+      { left: 924, firstLine: -360 },
       undefined,
     ]);
   });
