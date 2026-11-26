@@ -485,16 +485,16 @@ const withOmission = (
   return { ...row, formatting };
 };
 
+/**
+ * Markup a column or cell edit would have to relocate: what a row keeps
+ * beside its cells, counted by the cells before it. A column or cell edit
+ * keeps every row, so what stands beside or around rows keeps its place as
+ * it stands: bookmarks and captured markup beside a table's rows count the
+ * rows before them, and a row content control or another wrapper around the
+ * table or its rows wraps them whatever cells they hold.
+ */
 const hasStructuralMarkup = (table: Table) =>
-  table.preserved !== undefined ||
-  table.bookmarks !== undefined ||
-  table.carrierStack !== undefined ||
-  table.rows.some(
-    (row) =>
-      row.preserved !== undefined ||
-      row.carrierStack !== undefined ||
-      row.contentControls !== undefined,
-  );
+  table.rows.some((row) => row.preserved !== undefined);
 /** A cell holding one paragraph with nothing in it. */
 const isEmptyCell = (cell: TableCell) =>
   cell.content.length === 1 &&
