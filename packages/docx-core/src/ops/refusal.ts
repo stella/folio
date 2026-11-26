@@ -452,6 +452,10 @@ export class DocumentOpRefusal extends DocumentOpRefusalBase<{
   message: string;
   reason: DocumentOpRefusalReason;
   opType: DocumentOpType | undefined;
-  /** Paragraph-mark revision that would move text across a standing range boundary. */
+  /**
+   * Paragraph-mark revision whose resolution the document blocks: it would
+   * move text across a standing range boundary, or leave its container
+   * without a final paragraph.
+   */
   blockedParagraphMarkRevisionId?: number;
 }> {}

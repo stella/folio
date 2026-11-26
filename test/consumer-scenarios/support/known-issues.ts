@@ -146,6 +146,10 @@ export const VACUOUS_CHECKED_IN_FLOWS: Readonly<
   // The rewrite of an inserted paragraph another author deleted is refused
   // (pendingDeletion): the refusal, not a joined paragraph, is what it guards.
   "issue-1757-rewrite-of-inserted-paragraph-deleted-by-another.json": [4],
+  // The suggested table after an emptied paragraph a pending join runs
+  // through is refused (pendingParagraphMarkDeletion): the refusal, and the
+  // comment keeping its joined words, is what it guards.
+  "issue-1842-b6ff5169a8ac7e53.json": [3],
   // The recorded reply step finds no unresolved comment; the later list edits
   // and rejection are the behavior this flow guards.
   "issue-1770-list-review-sequence.json": [4],

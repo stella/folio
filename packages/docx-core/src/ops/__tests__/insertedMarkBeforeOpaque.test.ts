@@ -74,14 +74,12 @@ for (const [kind, follower] of Object.entries(followers))
             } satisfies Document;
             // An added mark's section never stood in the original: it goes
             // with the mark, and no other paragraph receives it.
-            // An emptied paragraph goes where its container ends with a
-            // paragraph, in the trailing control too, as it did before the
-            // insertion, and another paragraph stays to anchor the inverse.
-            const endsInParagraph = tail || follower.type !== "preservedBlock";
+            // An emptied paragraph goes where another paragraph stays to
+            // anchor the inverse: the block after it stays, so its container
+            // ends as it did before the insertion, in a paragraph or in an
+            // opaque block ending the story.
             const removable =
-              content === "" &&
-              endsInParagraph &&
-              (tail || owner !== "unavailable");
+              content === "" && (tail || owner !== "unavailable");
             const { pPrMark: _resolved, ...unmarked } = target;
             const { sectionProperties: _added, ...rejected } = unmarked;
             const expected = {
