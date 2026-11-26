@@ -70,6 +70,7 @@ import {
   FOLIO_DOCX_SERIALIZATION_MODE,
   type FolioGetDocxOptions,
   type FolioSaveOptions,
+  OP_STORIES,
 } from "@stll/folio-core/controller/folioEditor";
 import {
   delegateAutocomplete,
@@ -3929,16 +3930,29 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
           return view ? getSuggestions(view.state) : [];
         },
         exportPendingSuggestions: () => {
-          const view = pagedEditorRef.current?.getView();
+          const editor = getCanonicalApi();
+          const view = editor?.getView();
+          if (
+            !editor ||
+            !view ||
+            !editor.getCanonicalStoryProjection(OP_STORIES.MAIN)
+          )
+            return [];
           const activeIds = new Set(
-            view ? getSuggestions(view.state).map((s) => s.suggestionId) : [],
+            getSuggestions(view.state).map((s) => s.suggestionId),
           );
           return pendingSuggestionRegistryRef.current.exportPendingSuggestions({
             activeSuggestionIds: activeIds,
-            snapshotForStory: (story, commentIds) =>
-              story.type === "main" && view
-                ? createPendingSuggestionSourceSnapshot(view.state, commentIds)
-                : null,
+            snapshotForStory: (story, commentIds) => {
+              if (story.type !== "main") return null;
+              const saved = editor.captureCanonicalSave();
+              return saved
+                ? createPendingSuggestionSourceSnapshot(
+                    saved.document,
+                    commentIds,
+                  )
+                : null;
+            },
           });
         },
         loadPendingSuggestions: (records) =>
@@ -3951,9 +3965,18 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                 : null;
             },
             sourceSnapshotForStory: (story, commentIds) => {
-              const view = pagedEditorRef.current?.getView();
-              return story.type === "main" && view
-                ? createPendingSuggestionSourceSnapshot(view.state, commentIds)
+              const editor = getCanonicalApi();
+              if (
+                story.type !== "main" ||
+                !editor?.getCanonicalStoryProjection(OP_STORIES.MAIN)
+              )
+                return null;
+              const saved = editor.captureCanonicalSave();
+              return saved
+                ? createPendingSuggestionSourceSnapshot(
+                    saved.document,
+                    commentIds,
+                  )
                 : null;
             },
             apply: (record, snapshot) => {

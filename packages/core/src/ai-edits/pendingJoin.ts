@@ -449,11 +449,17 @@ export type PendingMarkEditOptions = {
   cleanText: string;
 };
 
-/** The shared property boundary, independent of the paragraph's representation. */
+/**
+ * The shared property boundary, independent of the paragraph's
+ * representation: any mark accepting removes, including one added and then
+ * deleted by another author, takes the edited properties with it.
+ */
 export const pendingParagraphPropertiesRefusal = (
   mark: unknown,
 ): PendingRefusal | undefined =>
-  isDeletedPPrMark(mark) ? PENDING_PARAGRAPH_MARK_PROPERTY_REFUSAL : undefined;
+  markGoesWhenAccepted(mark)
+    ? PENDING_PARAGRAPH_MARK_PROPERTY_REFUSAL
+    : undefined;
 
 /**
  * The refusal an operation that places no block meets on a paragraph whose

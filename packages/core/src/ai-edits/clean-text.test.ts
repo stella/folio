@@ -22,6 +22,52 @@ const paragraph = (content: PMNode | readonly PMNode[]) =>
   schema.node("paragraph", null, content);
 
 describe("buildCleanBlockText", () => {
+  test("saved suggestion offsets retain ordinary revision ownership", () => {
+    const added = folioSchema.mark("insertion", {
+      revisionId: 2,
+      author: "Editor",
+      _docxRevisionAncestors: [
+        {
+          type: "insertion",
+          revisionId: 1,
+          author: "Reviewer",
+          outerWrapperCount: 0,
+          suggestionId: "proposal",
+        },
+      ],
+    });
+    const restored = folioSchema.mark("deletion", {
+      revisionId: 3,
+      author: "Reviewer",
+      suggestionId: "proposal",
+    });
+    const stillDeleted = folioSchema.mark("deletion", {
+      revisionId: 5,
+      author: "Reviewer",
+      suggestionId: "proposal",
+      _docxRevisionAncestors: [
+        {
+          type: "deletion",
+          revisionId: 4,
+          author: "Editor",
+          outerWrapperCount: 0,
+        },
+      ],
+    });
+    const node = folioSchema.node("paragraph", null, [
+      folioSchema.text("A", [added]),
+      folioSchema.text("A"),
+      folioSchema.text("A", [restored]),
+      folioSchema.text("A", [stillDeleted]),
+    ]);
+    const saved = buildCleanBlockText(node, 0, {
+      fieldResults: "text",
+      view: "saved-without-suggestions",
+    });
+    expect(saved.text).toBe("AA");
+    expect(saved.offsets).toEqual([2, 3, 4]);
+  });
+
   test("shares one frozen empty boundary projection across ordinary blocks", () => {
     const first = buildCleanBlockText(paragraph(schema.text("first")), 0);
     const second = buildCleanBlockText(paragraph(schema.text("second")), 10);

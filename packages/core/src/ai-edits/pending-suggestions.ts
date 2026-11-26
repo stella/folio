@@ -2,6 +2,11 @@ import { panic } from "better-result";
 import type { EditorState } from "prosemirror-state";
 
 import {
+  type ParagraphAbsorption,
+  withoutPendingSuggestions,
+} from "@stll/docx-core/ops";
+
+import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   parseFolioDocumentOperationBatch,
 } from "../document-operations";
@@ -9,16 +14,19 @@ import {
   expectParagraphAttrs,
   expectTrackedChangeMarkAttrs,
 } from "../prosemirror/attrs";
-import {
-  getSuggestions,
-  rejectEverySuggestion,
-  rejectEverySuggestionMapped,
-} from "../prosemirror/commands/comments";
+import { getSuggestions } from "../prosemirror/commands/comments";
+import { storyConversionOptions } from "../prosemirror/conversion/storyConversionOptions";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { getDocumentStyleResolver } from "../prosemirror/plugins/documentStyleState";
+import { createStyleResolver } from "../prosemirror/styles/styleResolver";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
+import type { Document } from "../types/document";
 import { canonicalJson } from "../utils/canonicalJson";
 import { persistedBlock } from "./block-identity";
-import { buildCleanBlockText, isOmittedFromCleanView } from "./clean-text";
+import {
+  buildCleanBlockText,
+  isOmittedFromSavedSuggestionText,
+} from "./clean-text";
 import type { FolioDocumentStoryHandle } from "./headless";
 import { noteReferenceOf } from "./note-references";
 import {
@@ -144,54 +152,36 @@ type AbsorptionStep = (options: AbsorptionStepOptions) => void;
 type PlaceRemovedAnchorsOptions = {
   activeSuggestionIds: ReadonlySet<string>;
   stateForStory: (story: FolioDocumentStoryHandle) => EditorState | null;
-  savedSource?: (story: FolioDocumentStoryHandle) => FolioAIEditSnapshot | null;
+  savedSource: (story: FolioDocumentStoryHandle) => FolioAIEditSnapshot | null;
+  absorptionsForStory?: (
+    story: FolioDocumentStoryHandle,
+  ) => readonly ParagraphAbsorption[];
 };
 
 type ExportPendingSuggestionsOptions = {
   activeSuggestionIds: ReadonlySet<string>;
   stateForStory?: PlaceRemovedAnchorsOptions["stateForStory"];
+  absorptionsForStory?: PlaceRemovedAnchorsOptions["absorptionsForStory"];
   snapshotForStory: (
     story: FolioDocumentStoryHandle,
     commentIds: ReadonlySet<number>,
   ) => FolioAIEditSnapshot | null;
 };
 
-/** Drop only comments attached to proposals that have not been accepted. */
-export const withoutPendingSuggestionCommentMarks = (
-  state: EditorState,
-  commentIds: ReadonlySet<number>,
-): EditorState => {
-  if (commentIds.size === 0) return state;
-  let transaction = state.tr;
-  state.doc.descendants((node, position) => {
-    for (const mark of node.marks) {
-      if (
-        mark.type.name === "comment" &&
-        commentIds.has(mark.attrs["commentId"])
-      ) {
-        transaction = transaction.removeMark(
-          position,
-          position + node.nodeSize,
-          mark,
-        );
-      }
-    }
-  });
-  return transaction.docChanged ? state.apply(transaction) : state;
-};
-
-/** The saved package's story, with all pending proposals removed. */
+/** The main story a save writes, with pending proposals and their comments removed. */
 export const createPendingSuggestionSourceSnapshot = (
-  state: EditorState,
+  document: Document,
   commentIds: ReadonlySet<number>,
 ): FolioAIEditSnapshot => {
-  const source = withoutPendingSuggestionCommentMarks(
-    rejectEverySuggestion(state),
-    commentIds,
+  const saved = withoutPendingSuggestions(document, { commentIds }).unwrap();
+  const { styles, theme, numbering } = saved.package;
+  const doc = toProseDoc(
+    saved,
+    storyConversionOptions({ styles, theme, numbering }),
   );
   return createFolioAIEditSnapshotWithStyleResolver(
-    source.doc,
-    getDocumentStyleResolver(source),
+    doc,
+    styles === undefined ? null : createStyleResolver(styles),
   );
 };
 
@@ -359,61 +349,99 @@ const suggestionSnapshot = (state: EditorState) =>
     getDocumentStyleResolver(state),
   );
 
-type RejectedStory = ReturnType<typeof rejectEverySuggestionMapped>;
-
-/** `rejected` read as a snapshot, its paragraphs in the order a save lists them. */
-const settledSnapshot = ({ state }: RejectedStory): FolioAIEditSnapshot =>
-  createFolioAIEditSnapshotWithStyleResolver(
-    state.doc,
-    getDocumentStyleResolver(state),
-  );
-
-type SavedParagraphOptions = {
-  rejected: RejectedStory;
-  settled: FolioAIEditSnapshot;
-  /** The story as a save writes it. */
-  saved: FolioAIEditSnapshot;
-  /** Where the paragraph starts in `rejected`. */
-  paragraphStart: number;
-};
-
 type SavedParagraph = {
   block: FolioAIEditSnapshot["blocks"][number];
   anchor: FolioAIEditSnapshot["anchors"][string];
-  /** The text offset a position of `rejected` stands at in the paragraph. */
-  offsetAt: (position: number) => number;
+};
+
+type SavedPosition = SavedParagraph & { offset: number };
+
+type PositionMapOptions = {
+  state: EditorState;
+  saved: FolioAIEditSnapshot;
+  absorptions: readonly ParagraphAbsorption[];
 };
 
 /**
- * The paragraph at `paragraphStart` of the rejected story, as a save names
- * it: the saved package may name the paragraphs otherwise, and both read
- * alike. `null` when the save reads other text there.
+ * Native review names each surviving paragraph. Read its source segments in
+ * authored order and count what the saved story keeps. Verify the complete
+ * text against the saved projection before using offsets from any segment.
  */
-const savedParagraphAt = ({
-  rejected,
-  settled,
+const savedPositionMap = ({
+  state,
   saved,
-  paragraphStart,
-}: SavedParagraphOptions): SavedParagraph | null => {
-  const paragraph = rejected.state.doc.nodeAt(paragraphStart);
-  const index = settled.blocks.findIndex(
-    ({ id }) => settled.anchors[id]?.from === paragraphStart,
+  absorptions,
+}: PositionMapOptions): ((position: number) => SavedPosition | null) => {
+  const savedDoc = sourceDocumentOf(saved);
+  const owners = new Map<string, SavedParagraph | null>();
+  for (const block of saved.blocks) {
+    const anchor = saved.anchors[block.id];
+    if (anchor === undefined) continue;
+    const node = savedDoc.nodeAt(anchor.from);
+    if (node?.type.name !== "paragraph") continue;
+    const paraId = expectParagraphAttrs(node).paraId?.toUpperCase();
+    if (paraId)
+      owners.set(paraId, owners.has(paraId) ? null : { block, anchor });
+  }
+  const survivors = new Map(
+    absorptions.map(({ absorbed, survivor }) => [
+      absorbed.toUpperCase(),
+      survivor.toUpperCase(),
+    ]),
   );
-  const block = index < 0 ? undefined : saved.blocks[index];
-  const anchor = block === undefined ? undefined : saved.anchors[block.id];
-  if (paragraph === null || block === undefined || anchor === undefined)
-    return null;
-  const clean = buildCleanBlockText(paragraph, paragraphStart, {
-    fieldResults: "text",
+  type Segment = { start: number; text: string; offsets: readonly number[] };
+  const segments = new Map<string, Segment[]>();
+  state.doc.descendants((node, start) => {
+    if (node.type.name !== "paragraph") return true;
+    const paraId = expectParagraphAttrs(node).paraId?.toUpperCase();
+    if (!paraId) return true;
+    const survivor = finalSurvivor(survivors, paraId);
+    if (!owners.get(survivor)) return true;
+    const { text, offsets } = buildCleanBlockText(node, start, {
+      fieldResults: "text",
+      view: "saved-without-suggestions",
+    });
+    const segment = { start, text, offsets };
+    const group = segments.get(survivor);
+    if (group === undefined) segments.set(survivor, [segment]);
+    else group.push(segment);
+    return true;
   });
-  if (anchor.text !== clean.text) return null;
-  return {
-    block,
-    anchor,
-    offsetAt: (position) => {
-      const offset = clean.offsets.findIndex((at) => at >= position);
-      return offset < 0 ? clean.text.length : offset;
-    },
+  const verified = new Map<
+    number,
+    SavedParagraph & {
+      offset: number;
+      segment: Segment;
+    }
+  >();
+  for (const [id, group] of segments) {
+    const paragraph = owners.get(id);
+    if (
+      !paragraph ||
+      group.map(({ text }) => text).join("") !== paragraph.anchor.text
+    )
+      continue;
+    let offset = 0;
+    for (const segment of group) {
+      verified.set(segment.start, { ...paragraph, offset, segment });
+      offset += segment.text.length;
+    }
+  }
+  return (position) => {
+    const at = state.doc.resolve(position);
+    for (let depth = at.depth; depth > 0; depth--) {
+      if (at.node(depth).type.name !== "paragraph") continue;
+      const mapped = verified.get(at.before(depth));
+      if (mapped === undefined) return null;
+      const { segment, offset, block, anchor } = mapped;
+      const index = segment.offsets.findIndex((source) => source >= position);
+      return {
+        block,
+        anchor,
+        offset: offset + (index < 0 ? segment.text.length : index),
+      };
+    }
+    return null;
   };
 };
 
@@ -421,8 +449,7 @@ type CurrentSplitOptions = {
   record: StoredSuggestion;
   /** The record's story as it is, every proposal shown. */
   state: EditorState;
-  /** The same story as a save writes it, every proposal rejected. */
-  saved: FolioAIEditSnapshot;
+  savedPosition: ReturnType<typeof savedPositionMap>;
 };
 
 /**
@@ -436,7 +463,7 @@ type CurrentSplitOptions = {
 const currentSplitRecord = ({
   record,
   state,
-  saved,
+  savedPosition,
 }: CurrentSplitOptions): StoredSuggestion | null => {
   const { operation, suggestionId, splitRevisionId } = record;
   if (operation.type !== "splitBlock" || splitRevisionId === undefined)
@@ -456,19 +483,9 @@ const currentSplitRecord = ({
   });
   const end = ends.at(0);
   if (end === undefined) return null;
-  const rejected = rejectEverySuggestionMapped(state);
-  const at = rejected.mapping.map(end, -1);
-  const $at = rejected.state.doc.resolve(at);
-  if ($at.parent.type.name !== "paragraph") return null;
-  const paragraph = savedParagraphAt({
-    rejected,
-    settled: settledSnapshot(rejected),
-    saved,
-    paragraphStart: $at.before(),
-  });
+  const paragraph = savedPosition(end);
   if (paragraph === null) return null;
-  const { block, anchor, offsetAt } = paragraph;
-  const offset = offsetAt(at);
+  const { block, anchor, offset } = paragraph;
   // At either end of the saved paragraph it splits no saved words: no split
   // restages there.
   if (offset === 0 || offset >= anchor.text.length) return null;
@@ -569,7 +586,7 @@ type CurrentTextOptions = {
   /** The records' story as it is, every proposal shown. */
   state: EditorState;
   /** The same story as a save writes it, every proposal rejected. */
-  saved: FolioAIEditSnapshot;
+  savedPosition: ReturnType<typeof savedPositionMap>;
 };
 
 /** Whether an operation proposes other text for text that stands. */
@@ -599,7 +616,7 @@ const proposedComment = (
 const currentTextRecords = ({
   records,
   state,
-  saved,
+  savedPosition,
 }: CurrentTextOptions): StoredSuggestion[] | null => {
   const [record] = records;
   if (
@@ -608,14 +625,6 @@ const currentTextRecords = ({
   )
     return null;
   const { suggestionId } = record;
-  const rejected = rejectEverySuggestionMapped(state);
-  /** What a saved package holds of the node at `from` to `to`. */
-  const savedNode = (from: number, to: number) => {
-    const at = rejected.mapping.map(from, 1);
-    return at < rejected.mapping.map(to, -1)
-      ? rejected.state.doc.nodeAt(at)
-      : null;
-  };
   const pieces: {
     from: number;
     to: number;
@@ -644,21 +653,17 @@ const currentTextRecords = ({
     });
     return false;
   });
-  /** Where a piece starts once every proposal is rejected. */
-  const savedStart = ({ from, owner }: (typeof pieces)[number]) =>
-    rejected.mapping.map(from, owner === "insertion" ? -1 : 1);
   /** The first and last of the suggestion's pieces in each saved paragraph. */
-  const spans = new Map<number, { first: number; last: number }>();
+  const spans = new Map<string, { first: number; last: number }>();
   for (const [index, piece] of pieces.entries()) {
     if (piece.owner === null) continue;
-    const $at = rejected.state.doc.resolve(savedStart(piece));
-    if ($at.parent.type.name !== "paragraph") return null;
-    const span = spans.get($at.before());
+    const at = savedPosition(piece.from);
+    if (at === null) return null;
+    const span = spans.get(at.block.id);
     if (span === undefined)
-      spans.set($at.before(), { first: index, last: index });
+      spans.set(at.block.id, { first: index, last: index });
     else span.last = index;
   }
-  const settled = settledSnapshot(rejected);
   const ids = records.map(({ operation }) => operation.id);
   const nextId = (position: number): string => {
     const known = ids[position];
@@ -671,26 +676,27 @@ const currentTextRecords = ({
     return id;
   };
   const current: StoredSuggestion[] = [];
-  for (const [paragraphStart, { first, last }] of spans) {
+  for (const { first, last } of spans.values()) {
     const start = pieces[first];
     const end = pieces[last];
-    const paragraph = savedParagraphAt({
-      rejected,
-      settled,
-      saved,
-      paragraphStart,
-    });
-    if (start === undefined || end === undefined || paragraph === null)
+    if (start === undefined || end === undefined) return null;
+    const fromPosition = savedPosition(start.from);
+    const toPosition = savedPosition(end.to);
+    if (
+      fromPosition === null ||
+      toPosition === null ||
+      fromPosition.block.id !== toPosition.block.id
+    )
       return null;
-    const { block, anchor, offsetAt } = paragraph;
-    const from = offsetAt(savedStart(start));
-    const to = Math.max(from, offsetAt(rejected.mapping.map(end.to, -1)));
+    const { block, anchor, offset: from } = fromPosition;
+    const to = Math.max(from, toPosition.offset);
     let replace = "";
     for (const piece of pieces.slice(first, last + 1)) {
       if (piece.owner === "insertion") replace += piece.text;
       if (piece.owner !== null) continue;
-      const kept = savedNode(piece.from, piece.to);
-      if (kept === null || isOmittedFromCleanView(kept)) continue;
+      const kept = state.doc.nodeAt(piece.from);
+      if (kept === null || isOmittedFromSavedSuggestionText(kept)) continue;
+      if (savedPosition(piece.from)?.block.id !== block.id) continue;
       // Only text can be written back by a text proposal.
       if (!kept.isText || noteReferenceOf(kept) !== null) return null;
       replace += piece.text;
@@ -1005,6 +1011,7 @@ export class FolioPendingSuggestionRegistry {
     activeSuggestionIds,
     stateForStory,
     savedSource,
+    absorptionsForStory,
   }: PlaceRemovedAnchorsOptions): void {
     const views = new Map<
       string,
@@ -1012,6 +1019,7 @@ export class FolioPendingSuggestionRegistry {
         state: EditorState;
         live: FolioAIEditSnapshot;
         saved?: FolioAIEditSnapshot | null;
+        savedPosition?: ReturnType<typeof savedPositionMap>;
       } | null
     >();
     for (const [key, record] of Array.from(this.records)) {
@@ -1038,13 +1046,22 @@ export class FolioPendingSuggestionRegistry {
       }
       if (view === null || view.live.anchors[anchor.paraId] !== undefined)
         continue;
-      if (view.saved === undefined) view.saved = savedSource?.(story) ?? null;
+      if (view.saved === undefined) view.saved = savedSource(story);
       const saved = view.saved;
       if (
         saved !== null &&
         (record.splitRevisionId !== undefined || proposesText(record.operation))
       ) {
-        const split = currentSplitRecord({ record, state: view.state, saved });
+        const savedPosition = (view.savedPosition ??= savedPositionMap({
+          state: view.state,
+          saved,
+          absorptions: absorptionsForStory?.(story) ?? [],
+        }));
+        const split = currentSplitRecord({
+          record,
+          state: view.state,
+          savedPosition,
+        });
         if (split !== null) {
           this.records.set(key, split);
           continue;
@@ -1057,7 +1074,7 @@ export class FolioPendingSuggestionRegistry {
         const texts = currentTextRecords({
           records: entries.map(([, other]) => other),
           state: view.state,
-          saved,
+          savedPosition,
         });
         if (texts !== null) {
           for (const [other] of entries) this.records.delete(other);
@@ -1069,13 +1086,10 @@ export class FolioPendingSuggestionRegistry {
         getSuggestions(view.state).find(
           (entry) => entry.suggestionId === suggestionId,
         )?.ranges ?? [];
-      const placed = placedRecord({
-        record,
-        live: view.live,
-        saved:
-          saved ?? createPendingSuggestionSourceSnapshot(view.state, new Set()),
-        ranges,
-      });
+      const placed =
+        saved === null
+          ? null
+          : placedRecord({ record, live: view.live, saved, ranges });
       this.records.set(key, placed ?? retiredRecord(record));
     }
   }
@@ -1240,6 +1254,7 @@ export class FolioPendingSuggestionRegistry {
     activeSuggestionIds,
     snapshotForStory,
     stateForStory,
+    absorptionsForStory,
   }: ExportPendingSuggestionsOptions): FolioPendingSuggestionRecord[] {
     const pending: FolioPendingSuggestionRecord[] = [];
     const savedStories = new Map<
@@ -1247,6 +1262,10 @@ export class FolioPendingSuggestionRegistry {
       { snapshot: FolioAIEditSnapshot; fingerprint: string } | null
     >();
     const liveStories = new Map<string, EditorState | null>();
+    const savedPositions = new Map<
+      string,
+      ReturnType<typeof savedPositionMap>
+    >();
     const commentIdsByStory = new Map<string, Set<number>>();
     for (const record of this.records.values()) {
       if (
@@ -1289,6 +1308,7 @@ export class FolioPendingSuggestionRegistry {
         activeSuggestionIds,
         stateForStory: liveStateOf,
         savedSource: (story) => savedStoryOf(story)?.snapshot ?? null,
+        ...(absorptionsForStory === undefined ? {} : { absorptionsForStory }),
       });
 
     for (const [key, record] of this.records) {
@@ -1298,10 +1318,20 @@ export class FolioPendingSuggestionRegistry {
         let updated = record;
         if (record.splitRevisionId !== undefined) {
           const state = liveStateOf(record.story);
-          if (state !== null)
+          if (state !== null) {
+            const storyKey = canonicalJson(record.story);
+            let savedPosition = savedPositions.get(storyKey);
+            if (savedPosition === undefined) {
+              savedPosition = savedPositionMap({
+                state,
+                saved: saved.snapshot,
+                absorptions: absorptionsForStory?.(record.story) ?? [],
+              });
+              savedPositions.set(storyKey, savedPosition);
+            }
             updated =
-              currentSplitRecord({ record, state, saved: saved.snapshot }) ??
-              record;
+              currentSplitRecord({ record, state, savedPosition }) ?? record;
+          }
         }
         const current = {
           ...updated,

@@ -48,9 +48,10 @@ import {
   resolvePassageRange,
 } from "@stll/folio-core/ai-edits/blockRange";
 import type { OpStory } from "@stll/folio-core/canonical/canonicalOperations";
-import type {
-  FolioEditor,
-  FolioSaveOptions,
+import {
+  type FolioEditor,
+  type FolioSaveOptions,
+  OP_STORIES,
 } from "@stll/folio-core/controller/folioEditor";
 import type { Layout } from "@stll/folio-core/layout-engine";
 import { findPageIndexContainingPmPos } from "@stll/folio-core/layout-engine";
@@ -776,15 +777,20 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
     },
     exportPendingSuggestions: () => {
       const view = opts.editorView.value;
+      if (!view || !opts.editor.getCanonicalStoryProjection(OP_STORIES.MAIN))
+        return [];
       const activeIds = new Set(
-        view ? getSuggestions(view.state).map((s) => s.suggestionId) : [],
+        getSuggestions(view.state).map((s) => s.suggestionId),
       );
       return pendingSuggestionRegistry.exportPendingSuggestions({
         activeSuggestionIds: activeIds,
-        snapshotForStory: (story, commentIds) =>
-          story.type === "main" && view
-            ? createPendingSuggestionSourceSnapshot(view.state, commentIds)
-            : null,
+        snapshotForStory: (story, commentIds) => {
+          if (story.type !== "main") return null;
+          const saved = opts.editor.captureCanonicalSave();
+          return saved
+            ? createPendingSuggestionSourceSnapshot(saved.document, commentIds)
+            : null;
+        },
       });
     },
     loadPendingSuggestions: (records) =>
@@ -797,9 +803,14 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
             : null;
         },
         sourceSnapshotForStory: (story, commentIds) => {
-          const view = opts.editorView.value;
-          return story.type === "main" && view
-            ? createPendingSuggestionSourceSnapshot(view.state, commentIds)
+          if (
+            story.type !== "main" ||
+            !opts.editor.getCanonicalStoryProjection(OP_STORIES.MAIN)
+          )
+            return null;
+          const saved = opts.editor.captureCanonicalSave();
+          return saved
+            ? createPendingSuggestionSourceSnapshot(saved.document, commentIds)
             : null;
         },
         apply: (record, snapshot) =>

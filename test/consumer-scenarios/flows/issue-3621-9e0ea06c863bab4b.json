@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "title": "PINNED #3621, fingerprint 9e0ea06c863bab4b: a property edit of an inserted paragraph another author joins to the next waits for the join, as one of a plain paragraph does",
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "emoji",
+  "mode": "tracked-changes",
+  "seed": 14232056,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 2981586815,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "3CEFFC83",
+          "text": "Second added clause."
+        }
+      ]
+    },
+    { "action": "new reviewer", "seed": 1717915475 },
+    {
+      "action": "suggest_changes",
+      "seed": 3549481288,
+      "operations": [
+        { "type": "mergeBlockWithNext", "blockId": "@1", "separator": " " },
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "@1",
+          "properties": { "spacing": { "spaceBefore": 120, "spaceAfter": 120 } }
+        }
+      ]
+    }
+  ],
+  "weights": { "version": 1, "cells": {}, "operations": [] },
+  "origin": "shrunk from collisions flow seed 14232056"
+}
