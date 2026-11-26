@@ -1406,16 +1406,15 @@ describe("page starts", () => {
     });
     const { blocks, sections } = unwrap(await analyzeDocxBlocks(source));
 
-    expect(
-      blocks.map(
-        ({ pageBreaks, pageBreakBefore, endsSection, sectionIndex }) => ({
-          pageBreaks,
-          pageBreakBefore,
-          endsSection,
-          sectionIndex,
-        }),
-      ),
-    ).toEqual([
+    const facts: unknown = blocks.map(
+      ({ pageBreaks, pageBreakBefore, endsSection, sectionIndex }) => ({
+        pageBreaks,
+        pageBreakBefore,
+        endsSection,
+        sectionIndex,
+      }),
+    );
+    expect(facts).toEqual([
       { sectionIndex: 0 },
       { pageBreaks: 1, sectionIndex: 0 },
       { pageBreakBefore: true, sectionIndex: 0 },
