@@ -7,8 +7,10 @@ import {
   type AnalyzedDocument,
   analyzeDocument,
   statedAlignments,
+  statedLooks,
   storySections,
   styleAlignment,
+  styleLook,
   styleOutlineLevel,
 } from "./blocks";
 import { styleNumbering } from "./labels";
@@ -84,8 +86,10 @@ const NO_INDENT: LevelIndent = {
 const inspectStyles = (analyzed: AnalyzedDocument): DocxTemplateStyle[] => {
   const { styles, numbering } = analyzed;
   const stated = statedAlignments(analyzed.stylesPath, analyzed.stylesXml);
+  const looks = statedLooks(analyzed.stylesPath, analyzed.stylesXml);
   return [...styles.values()].map((style) => {
     const bound = styleNumbering(style.styleId, styles, numbering);
+    const { bold, size, keepNext } = styleLook(style.styleId, styles, looks);
     return {
       styleId: style.styleId,
       name: style.name ?? null,
@@ -97,6 +101,9 @@ const inspectStyles = (analyzed: AnalyzedDocument): DocxTemplateStyle[] => {
           : null,
       outlineLvl: styleOutlineLevel(style),
       alignment: styleAlignment(style.styleId, styles, stated),
+      bold,
+      size,
+      keepNext,
       isDefault: style.default === true,
     };
   });

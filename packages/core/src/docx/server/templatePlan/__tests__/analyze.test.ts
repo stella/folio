@@ -184,9 +184,18 @@ describe("inspectDocxTemplate", () => {
       numPr: { numId: 1, ilvl: 0 },
       outlineLvl: 0,
       alignment: null,
+      bold: true,
+      size: 22,
+      keepNext: true,
       isDefault: false,
     });
     expect(style("HouseTitle")?.alignment).toBe("center");
+    expect(style("HouseTitle")).toMatchObject({ bold: true, keepNext: false });
+    expect(style("HouseClause")).toMatchObject({
+      bold: false,
+      size: 22,
+      keepNext: false,
+    });
     expect(style("HouseClause")?.numPr).toEqual({ numId: 1, ilvl: 1 });
     // The style names the list only; the level that names the style back decides.
     expect(style("HouseSubClause")?.numPr).toEqual({ numId: 1, ilvl: 2 });
