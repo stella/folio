@@ -5921,6 +5921,7 @@ export class CanonicalPublicOperations {
             other.blockId === operation.blockId
           : // One moved past the deletion names the paragraph it deletes.
             other.type === "deleteBlock" &&
+            "blockId" in item.operation &&
             other.blockId === item.operation.blockId,
       );
       if (partnered) continue;

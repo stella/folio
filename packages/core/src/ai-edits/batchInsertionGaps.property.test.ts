@@ -510,11 +510,8 @@ const examples: [Case][] = [
   ],
 ];
 
-const PROPERTY =
-  "a batch puts blocks in the gaps they land in one at a time, in batch order, tracked and direct alike";
-
 test(
-  PROPERTY,
+  "a batch puts blocks in the gaps they land in one at a time, in batch order, tracked and direct alike",
   async () => {
     await assertProperty(
       fc.asyncProperty(caseArbitrary, async (setup) => {
@@ -529,7 +526,11 @@ test(
         expect(reviewed.directAccepted).toEqual(reviewed.accepted);
         expect(reviewed.accepted).toEqual(reviewed.expected);
       }),
-      { id: PROPERTY, numRuns: 60, examples },
+      {
+        id: "a batch puts blocks in the gaps they land in one at a time, in batch order, tracked and direct alike",
+        numRuns: 60,
+        examples,
+      },
     );
   },
   propertyTestTimeout(120_000),
