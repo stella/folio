@@ -20,6 +20,7 @@ import {
   readPartText,
   sha256Hex,
 } from "./package";
+import { resolveTrackedChanges } from "./revisions";
 import {
   createStoryState,
   endStory,
@@ -34,6 +35,7 @@ import type {
   DocxNote,
   DocxSection,
   DocxTableCell,
+  TemplatePlanTrackedView,
 } from "./types";
 import { TemplatePlanError } from "./types";
 import {
@@ -720,13 +722,76 @@ export const analyzeDocument = async (
   });
 };
 
+/** The view a plan states, when what was handed in is shaped like a plan
+ *  at all; its shape is checked where the plan is resolved. */
+export const viewOf = (plan: unknown): TemplatePlanTrackedView | undefined => {
+  const view =
+    typeof plan === "object" && plan !== null && "trackedChanges" in plan
+      ? plan.trackedChanges
+      : undefined;
+  return view === "accept" || view === "reject" ? view : undefined;
+};
+
+/**
+ * Analyse a source in the view a caller chose of its tracked changes, or
+ * as it stands. In a view, the package that is analysed is the resolved
+ * one, while the manifest keeps the hash of the bytes that were given: a
+ * plan pins the file, not a rewriting of it. Without a view, a document
+ * that tracks changes says what it tracks.
+ */
+export const analyzeSource = async (
+  bytes: Uint8Array,
+  view: TemplatePlanTrackedView | undefined,
+): Promise<Result<AnalyzedDocument, TemplatePlanError>> => {
+  if (view === undefined) {
+    const analyzed = await analyzeDocument(bytes);
+    if (
+      Result.isError(analyzed) ||
+      analyzed.value.manifest.trackedChanges === 0
+    ) {
+      return analyzed;
+    }
+    const tracked = await resolveTrackedChanges(bytes, "accept");
+    return Result.isError(tracked)
+      ? analyzed
+      : Result.ok({
+          ...analyzed.value,
+          manifest: {
+            ...analyzed.value.manifest,
+            revisions: tracked.value.resolved,
+          },
+        });
+  }
+  const resolved = await resolveTrackedChanges(bytes, view);
+  if (Result.isError(resolved)) {
+    return resolved;
+  }
+  const analyzed = await analyzeDocument(resolved.value.docx);
+  if (Result.isError(analyzed)) {
+    return analyzed;
+  }
+  return Result.ok({
+    ...analyzed.value,
+    manifest: {
+      ...analyzed.value.manifest,
+      sha256: sha256Hex(bytes),
+      trackedChangesResolved: { view, ...resolved.value.resolved },
+    },
+  });
+};
+
 /**
  * Read a DOCX into the blocks a template plan addresses: ids, visible text,
- * rendered list labels, styles and a hash per block, plus its notes.
+ * rendered list labels, styles and a hash per block, plus its notes. With
+ * `trackedChanges`, the blocks are those of that view of a document with
+ * tracked changes.
  */
 export const analyzeDocxBlocks = async (
   docx: Uint8Array,
+  options: { trackedChanges?: TemplatePlanTrackedView } = {},
 ): Promise<Result<DocxBlockManifest, TemplatePlanError>> =>
   await guarded(async () =>
-    (await analyzeDocument(docx)).map(({ manifest }) => manifest),
+    (await analyzeSource(docx, options.trackedChanges)).map(
+      ({ manifest }) => manifest,
+    ),
   );
