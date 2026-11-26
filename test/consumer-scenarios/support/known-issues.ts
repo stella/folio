@@ -146,6 +146,9 @@ export const VACUOUS_CHECKED_IN_FLOWS: Readonly<
   // The rewrite of an inserted paragraph another author deleted is refused
   // (pendingDeletion): the refusal, not a joined paragraph, is what it guards.
   "issue-1757-rewrite-of-inserted-paragraph-deleted-by-another.json": [4],
+  // The recorded last batch is atomic and refused; the heading the earlier
+  // tracked split-and-delete keeps, accepted as directly, is what it guards.
+  "issue-1350-d80a95b0a90f4835.json": [6],
   // The recorded reply step finds no unresolved comment; the later list edits
   // and rejection are the behavior this flow guards.
   "issue-1770-list-review-sequence.json": [4],

@@ -57,6 +57,7 @@ import {
   foldedParagraphPropertyChange,
   isRemovedRevisionNode,
   paragraphPropertiesOf,
+  paragraphPropertyChange,
   paragraphPropertyFoldConflict,
   reviewFieldsOf,
   sameParagraphProperties,
@@ -1061,18 +1062,32 @@ export const deleteBlocks = ({
     if (rejected.isErr())
       return refuse(rejected.error.reason, rejected.error.message);
     const { document: retracted, inverse, touched } = rejected.value;
-    // Its own pending property changes are no part of the insertion: they
-    // stay on `broken`, over the properties its mark gets back, as deleting
-    // the paragraphs directly leaves its properties.
-    if ((broken.propertyChanges?.length ?? 0) === 0)
-      return Result.ok({ document: retracted, inverse, touched });
     const survivor =
       storyParagraphs(storyBody(retracted, op.story)).find(
         ({ paragraph }) =>
           idKey(paragraph.paraId ?? "") === idKey(broken.paraId ?? ""),
       )?.paragraph ??
       panic("A taken-back insertion lost the paragraph it broke.");
+    // Its own pending property changes are no part of the insertion: they
+    // stay on `broken`, over the properties its mark gets back, as deleting
+    // the paragraphs directly leaves its properties. Without any, the mark
+    // it gets back reads as it stood before every change taken back, its
+    // own pending change from the properties it had included (one the
+    // paragraph `broken` was inserted after took over the story's last
+    // mark): `broken` keeps its properties over that, as a pending change.
     const { pPrMark: _addedMark, ...restyle } = reviewFieldsOf(broken);
+    if ((broken.propertyChanges?.length ?? 0) === 0) {
+      if (sameParagraphProperties(survivor.formatting, broken.formatting))
+        return Result.ok({ document: retracted, inverse, touched });
+      const recorded = found.at(-1)?.paragraph.propertyChanges?.at(0)?.info;
+      restyle.propertyChanges = [
+        paragraphPropertyChange(
+          recorded ?? stampInfo(owner),
+          survivor,
+          restyle.formatting,
+        ),
+      ];
+    }
     const kept = applyOps(retracted, [
       {
         type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
