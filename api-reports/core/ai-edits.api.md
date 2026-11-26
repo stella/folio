@@ -939,6 +939,10 @@ export class FolioPendingSuggestionRegistry {
     clone(): FolioPendingSuggestionRegistry;
     // (undocumented)
     exportPendingSuggestions(input: ExportPendingSuggestionsOptions): FolioPendingSuggestionRecord[];
+    forgetStoryRecords(input: {
+        story: FolioDocumentStoryHandle;
+        suggestionIds: ReadonlySet<string>;
+    }): void;
     // (undocumented)
     loadPendingSuggestions(input: LoadPendingSuggestionsOptions): FolioPendingSuggestionLoadResult[];
     placeRemovedAnchors(input: PlaceRemovedAnchorsOptions): void;
