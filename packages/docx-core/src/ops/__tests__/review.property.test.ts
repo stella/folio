@@ -58,6 +58,7 @@ import type {
   Hyperlink,
   InlineSdt,
   InlineWrapper,
+  Insertion,
   ParagraphContent,
   Run,
 } from "../../model/content";
@@ -1795,6 +1796,77 @@ describe("tracked operations and their resolution", () => {
       },
     ]);
     const atOnce = resolved(tracked, [1, 2, 3, 4], REVISION_DECISIONS.REJECT);
+    assertExactModel(projectedWithCuts(atOnce), projectedWithCuts(oneByOne));
+  });
+
+  test("L3: a paragraph join's deferred seam names the piece a rejoined piece merged into", () => {
+    // An insertion split by an inserted paragraph mark. Rejecting the mark
+    // first rejoins the insertion's pieces and defers the seam on the piece
+    // that stays, so rejecting the insertion then gives what rejecting it
+    // all at once does.
+    const text = (value: string): Run => ({
+      type: "run",
+      content: [{ type: "text", text: value }],
+    });
+    const piece = (id: number, before: number): Insertion => ({
+      type: "insertion",
+      info: { id, author: "C", date: "2026-03-04T05:00:00Z" },
+      content: [text("x")],
+      resolutionJoins: { before, after: 2, remove: 2 },
+    });
+    const tracked: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              paraId: "10000000",
+              content: [text("a"), piece(1, 2)],
+              pPrMark: {
+                kind: "ins",
+                info: { id: 2, author: "C", date: "2026-03-04T05:00:01Z" },
+                resolutionJoin: 3,
+              },
+            },
+            {
+              type: "paragraph",
+              paraId: "00000001",
+              content: [piece(3, 0), text("a")],
+            },
+          ],
+        },
+      },
+    };
+    const markRejected = resolved(tracked, [2], REVISION_DECISIONS.REJECT);
+    expect(markRejected.package.document.content).toStrictEqual([
+      {
+        type: "paragraph",
+        paraId: "00000001",
+        content: [
+          text("a"),
+          {
+            ...piece(1, 2),
+            content: [text("xx")],
+            resolutionJoins: {
+              before: 2,
+              after: 2,
+              remove: 2,
+              deferredRemove: [{ depth: 3, blockers: [1] }],
+            },
+          },
+          text("a"),
+        ],
+      },
+    ]);
+    const atOnce = resolved(tracked, [1, 2, 3], REVISION_DECISIONS.REJECT);
+    expect(atOnce.package.document.content).toStrictEqual([
+      { type: "paragraph", paraId: "00000001", content: [text("aa")] },
+    ]);
+    const oneByOne = resolvedInTurn(
+      tracked,
+      [[2], [1, 3]],
+      REVISION_DECISIONS.REJECT,
+    );
     assertExactModel(projectedWithCuts(atOnce), projectedWithCuts(oneByOne));
   });
 

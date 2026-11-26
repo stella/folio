@@ -2371,7 +2371,7 @@ const withRejoinedBlockers = ({
 }: {
   nodes: readonly InlineNode[];
   retired: ReadonlyMap<number, number>;
-  resolution: Resolution;
+  resolution?: Resolution;
 }): InlineNode[] => {
   const successor = (id: number): number => {
     let current = id;
@@ -2416,7 +2416,8 @@ const withRejoinedBlockers = ({
     }
     if (children === undefined)
       next = withKeptCutHoldersRenamed(next, successor);
-    if (next !== node) carryResolutionState(resolution, node, next);
+    if (next !== node && resolution !== undefined)
+      carryResolutionState(resolution, node, next);
     return next;
   };
   return nodes.map(rewrite);
@@ -7464,7 +7465,11 @@ const joinOps = (
       keepsFirst ? idKey(paraId) : nextId,
       emptiedEndsOf(merged, emptied),
     );
-    const mergedContent = asParagraphContent(merged);
+    // A deferred seam naming a piece the join merged away names the piece
+    // it merged into, as after an inline seam join.
+    const mergedContent = asParagraphContent(
+      withRejoinedBlockers({ nodes: merged, retired: rejoined }),
+    );
     // The joined paragraph ends with the staying mark and its section break;
     // the one the resolved mark ended goes with it.
     let survivor: Paragraph;
