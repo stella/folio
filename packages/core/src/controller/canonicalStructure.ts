@@ -354,18 +354,25 @@ type TextReplacementCommand = Extract<
 const placeInSelectedCells = (
   state: EditorState,
   commands: readonly CanonicalCommandIntent[],
-): readonly CanonicalCommandIntent[] => {
+): readonly CanonicalCommandIntent[] | null => {
   const { selection } = state;
   if (!(selection instanceof CellSelection)) return commands;
   const ranges = canonicalCellSelectionRanges(selection);
-  const first = ranges.at(0) ?? panic("A selected cell holds a paragraph.");
-  const last = ranges.at(-1) ?? first;
+  const first = ranges.at(0);
+  const last = ranges.at(-1);
+  // Cells holding no text (only preserved blocks) give a note or a table of
+  // contents nowhere to go; other commands pass through.
+  if (
+    (first === undefined || last === undefined) &&
+    commands.some(({ type }) => type === "insertNote" || type === "generateTOC")
+  )
+    return null;
   return commands.flatMap((command): CanonicalCommandIntent[] => {
     switch (command.type) {
       case "insertNote":
-        return [{ ...command, at: last.to }];
+        return last === undefined ? [] : [{ ...command, at: last.to }];
       case "generateTOC":
-        return [{ ...command, at: first.from }];
+        return first === undefined ? [] : [{ ...command, at: first.from }];
       case "deleteNote":
         return ranges.some(
           ({ from, to }) => from <= command.from && command.from <= to,
@@ -410,6 +417,11 @@ export const prepareCanonicalCommands = (
   if (projected.isErr()) return projected;
   const projection = projected.value;
   const commands = placeInSelectedCells(state, requested);
+  if (commands === null)
+    return refuse(
+      "The selected cells hold no text for a note or a table of contents.",
+      CANONICAL_CONDITION.invalidRequest,
+    );
   // A text replacement is the session's own text input; several ranges,
   // the last first, are one replacement.
   const replacements = commands.filter(

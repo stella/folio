@@ -157,3 +157,53 @@ describe("notes and contents over selected cells", () => {
     },
   );
 });
+
+describe("notes and contents over selected cells holding no text", () => {
+  /** B1 and C1 hold only a preserved block, so they give text nowhere to go. */
+  const textless = (): Document => {
+    const document = prepare();
+    const [first] = table(document).rows;
+    for (const cell of first?.cells.slice(1) ?? [])
+      cell.content = [{ type: "preservedBlock", xml: "<w:altChunk/>" }];
+    return document;
+  };
+
+  const selectTextless = (
+    driver: ReturnType<typeof createCanonicalEditorHarness>,
+  ) => {
+    const cells: number[] = [];
+    driver.state.doc.descendants((node, position) => {
+      if (node.type.name === "tableCell") cells.push(position);
+    });
+    driver.dispatch(
+      driver.state.tr.setSelection(
+        CellSelection.create(driver.state.doc, cells[1] ?? -1, cells[2] ?? -1),
+      ),
+    );
+  };
+
+  test.each(
+    MODES.flatMap((mode) =>
+      (["insertFootnote", "generateTOC"] as const).map(
+        (command) => [`${command}, ${mode}`, command, mode] as const,
+      ),
+    ),
+  )("%s is refused, leaving the document as it was", (_name, command, mode) => {
+    const driver = createCanonicalEditorHarness(textless(), mode);
+    try {
+      selectTextless(driver);
+      const before = driver.snapshot();
+      const run =
+        command === "insertFootnote"
+          ? driver.commandManager.requireCommand(command)(1)
+          : driver.commandManager.requireCommand(command)({
+              title: "Contents",
+            });
+      expect(driver.execute(run)).toBe(false);
+      expect(driver.refusals.at(-1)?.condition).toBe("invalidRequest");
+      expect(driver.snapshot()).toStrictEqual(before);
+    } finally {
+      driver.dispose();
+    }
+  });
+});

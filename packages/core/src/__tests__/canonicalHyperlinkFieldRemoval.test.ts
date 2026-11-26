@@ -51,6 +51,26 @@ const hasLink = (document: Document) =>
     '"type":"hyperlink"',
   );
 
+const FIELD = '"type":"complexField"';
+const ENTRY_TEXT = '"text":"Overview "';
+
+/** Whether some hyperlink in the body holds `needle` in its content. */
+const linkHolds = (document: Document, needle: string): boolean => {
+  let held = false;
+  JSON.stringify(document.package.document.content, (_key, value: unknown) => {
+    if (
+      typeof value === "object" &&
+      value !== null &&
+      "type" in value &&
+      value.type === "hyperlink" &&
+      JSON.stringify(value).includes(needle)
+    )
+      held = true;
+    return value;
+  });
+  return held;
+};
+
 describe("link removal over a field the link holds", () => {
   test.each(
     MODES.flatMap((mode) =>
@@ -87,6 +107,11 @@ describe("link removal over a field the link holds", () => {
         // The field holds no link; the caret's whole link leaves the text too.
         expect(JSON.stringify(paragraph.content)).toContain('"complexField"');
         expect(hasLink(after)).toBe(selection === "field selected");
+        expect(linkHolds(after, FIELD)).toBe(false);
+        // Taking the link off the field leaves the entry text linked.
+        expect(linkHolds(after, ENTRY_TEXT)).toBe(
+          selection === "field selected",
+        );
         // The field stands as one unit in the paragraph text.
         expect(paragraphLogicalText(paragraph)).toBe("Overview \uFFFC tail");
       } else {
@@ -106,6 +131,11 @@ describe("link removal over a field the link holds", () => {
           throw new TypeError("Expected the entry paragraph.");
         expect(paragraphLogicalText(accepted)).toBe("Overview ￼ tail");
         expect(JSON.stringify(accepted.content)).toContain('"complexField"');
+        const acceptedDocument = driver.snapshot();
+        expect(linkHolds(acceptedDocument, FIELD)).toBe(false);
+        expect(linkHolds(acceptedDocument, ENTRY_TEXT)).toBe(
+          selection === "field selected",
+        );
         expect(driver.history.undo()).toBe(true);
       }
       expect(driver.history.undo()).toBe(true);
