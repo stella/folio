@@ -2,7 +2,7 @@
   "core": {
     "reportBytes": 300,
     "reportLines": 6,
-    "declarationBytes": 1600,
-    "declarationLines": 30
+    "declarationBytes": 4000,
+    "declarationLines": 90
   }
 }
