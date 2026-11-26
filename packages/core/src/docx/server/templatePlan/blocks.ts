@@ -39,7 +39,7 @@ import type {
 import { TemplatePlanError } from "./types";
 import {
   elementChildren,
-  integerOrNull,
+  halfPointsOrNull,
   isW,
   type RawPart,
   readRawPart,
@@ -183,7 +183,7 @@ const statedLook = (
   run: XmlElement | null,
 ): StatedLook => ({
   bold: toggleOf(wChild(run, "b")),
-  size: integerOrNull(wChildVal(run, "sz")),
+  size: halfPointsOrNull(wChildVal(run, "sz")),
   keepNext: toggleOf(wChild(paragraph, "keepNext")),
 });
 
