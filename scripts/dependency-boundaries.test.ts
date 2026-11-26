@@ -282,6 +282,52 @@ describe("workspace dependency boundaries", () => {
     }
   });
 
+  test("core review reaches the comments command path only through public re-exports or tests", () => {
+    const fixtureRoot = createFixture();
+    addWorkspace({ fixtureRoot, workspace: "core" });
+    writeSource(
+      fixtureRoot,
+      "core",
+      "prosemirror/commands/comments.ts",
+      "export const review = 1;\n",
+    );
+    const forbiddenSources = {
+      "ai-edits/headless.ts":
+        'import { review } from "../prosemirror/commands/comments";\nexport const value = review;\n',
+      "canonical/canonicalBatchReview.ts":
+        'export const load = () => import("../prosemirror/commands/comments");\n',
+      "controller/canonicalReview.ts":
+        'export { review } from "../prosemirror/commands/comments";\n',
+    };
+    for (const [file, contents] of Object.entries(forbiddenSources)) {
+      writeSource(fixtureRoot, "core", file, contents);
+    }
+    const allowedSources = {
+      "prosemirror/commands/index.ts": "./comments",
+      "prosemirror/commands/comments.test.ts": "./comments",
+      "prosemirror/commands/__tests__/consumer.ts": "../comments",
+    };
+    for (const [file, specifier] of Object.entries(allowedSources)) {
+      writeSource(
+        fixtureRoot,
+        "core",
+        file,
+        `export { review } from "${specifier}";\n`,
+      );
+    }
+
+    const result = cruise(fixtureRoot);
+
+    expect(result.exitCode, result.output).not.toBe(0);
+    expect(
+      result.output.match(/core-review-uses-dedicated-readers/gu),
+      result.output,
+    ).toHaveLength(Object.keys(forbiddenSources).length);
+    for (const file of Object.keys(forbiddenSources)) {
+      expect(result.output).toContain(`packages/core/src/${file}`);
+    }
+  });
+
   test("accepts an allowed declared package edge", () => {
     const fixtureRoot = createFixture();
     addWorkspace({ fixtureRoot, workspace: "docx-core" });

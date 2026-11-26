@@ -12,6 +12,7 @@ import { normalizeForOps } from "../contract";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import {
   pendingSuggestionIdsIn,
+  suggestionOwnersInStory,
   suggestionRevisionInfos,
   withoutPendingSuggestions,
 } from "../suggestions";
@@ -64,6 +65,33 @@ describe("a save without pending suggestions", () => {
     ]);
     expect(withoutPendingSuggestions(document).unwrap()).toBe(document);
   });
+});
+
+test("proposal ownership is story-local and includes nested revision owners", () => {
+  const body = documentOf([
+    {
+      type: "insertion",
+      info: info(1, "outer"),
+      content: [
+        { type: "deletion", info: info(2, "inner"), content: [run("body")] },
+      ],
+    },
+    { type: "insertion", info: info(3), content: [run("ordinary")] },
+  ]);
+  const { document: header } = documentOf([
+    { type: "insertion", info: info(1, "header"), content: [run("header")] },
+  ]).package;
+  const document = {
+    package: { ...body.package, headers: new Map([["rId1", header]]) },
+  };
+
+  expect([...suggestionOwnersInStory(document, OP_STORIES.MAIN)]).toEqual([
+    [1, "outer"],
+    [2, "inner"],
+  ]);
+  expect([
+    ...suggestionOwnersInStory(document, { kind: "header", rId: "rId1" }),
+  ]).toEqual([[1, "header"]]);
 });
 
 describe("setting revision info", () => {
@@ -223,6 +251,10 @@ describe("final section suggestion boundaries", () => {
   test("finds both source revisions of a proposal made by section operations", () => {
     const document = sectionChange("proposal");
     expect([...pendingSuggestionIdsIn(document)]).toEqual(["proposal"]);
+    expect([...suggestionOwnersInStory(document, OP_STORIES.MAIN)]).toEqual([
+      [1, "proposal"],
+      [100, "proposal"],
+    ]);
     expect(
       suggestionRevisionInfos(document, OP_STORIES.MAIN, "proposal"),
     ).toEqual([info(1, "proposal"), info(100, "proposal")]);

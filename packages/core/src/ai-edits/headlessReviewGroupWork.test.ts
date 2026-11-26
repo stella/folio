@@ -1,39 +1,63 @@
+import { Result } from "better-result";
 import { expect, spyOn, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
 
+import * as ops from "@stll/docx-core/ops";
+
 import * as comments from "../__tests__/reference-editor/comments";
+import * as canonicalRoom from "../canonical/canonicalRoomBase";
+import { createCanonicalSession } from "../canonical/canonicalSession";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { createDocx } from "../docx/rezip";
-import { paragraph, run } from "../docx/server/build";
+import { hyperlink, paragraph, run } from "../docx/server/build";
 import { fromMarkdown } from "../markdown/fromMarkdown";
-import { schema } from "../prosemirror/schema";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import type { Insertion } from "../types/document";
 import { FolioDocxReviewer } from "./headless";
 import * as read from "./read";
 
 const date = "2026-01-02T03:04:05Z";
 
 test("bulk membership preserves folded ids, duplicate listed ids and first suggestion ownership", () => {
-  const mark = (revisionId: number, suggestionId?: string) =>
-    schema.mark("insertion", {
-      revisionId,
-      author: "Writer",
+  const insertion = ({
+    id,
+    content,
+    suggestionId,
+  }: {
+    id: number;
+    content: Insertion["content"];
+    suggestionId?: string;
+  }): Insertion => ({
+    type: "insertion",
+    info: {
+      id,
+      author: "Reviewer",
       date,
-      provenance: suggestionId ? "suggested" : "user",
-      suggestionId,
-    });
-  const doc = schema.node("doc", null, [
-    schema.node("paragraph", null, [
-      schema.text("one", [mark(7, "first")]),
-      schema.text("two", [
-        mark(4, "first"),
-        schema.mark("hyperlink", { href: "https://example.test/" }),
-      ]),
+      ...(suggestionId === undefined ? {} : { suggestionId }),
+    },
+    content,
+  });
+  const model = fromMarkdown("Body.");
+  model.package.document.content = [
+    paragraph([
+      insertion({ id: 7, content: [run("one")], suggestionId: "first" }),
+      insertion({
+        id: 4,
+        content: [hyperlink({ text: "two", href: "https://example.test/" })],
+        suggestionId: "first",
+      }),
     ]),
-    schema.node("paragraph", null, [schema.text("three", [mark(7, "second")])]),
-    schema.node("paragraph", null, [schema.text("ordinary", [mark(11)])]),
-  ]);
+    paragraph([
+      insertion({ id: 7, content: [run("three")], suggestionId: "second" }),
+    ]),
+    paragraph([insertion({ id: 11, content: [run("ordinary")] })]),
+  ];
+  const doc = toProseDoc(model);
   const state = EditorState.create({ doc });
   const owners = comments.suggestionOwnersByRevision(state);
+  expect(ops.suggestionOwnersInStory(model, ops.OP_STORIES.MAIN)).toEqual(
+    owners,
+  );
   expect(owners.get(7)).toBe("first");
   for (const id of [7, 4, 11])
     expect(owners.get(id) ?? null).toBe(
@@ -50,6 +74,47 @@ test("bulk membership preserves folded ids, duplicate listed ids and first sugge
     [999],
     [11],
   ]);
+});
+
+test("headless review adopts a proposal carried by one of several run property changes", async () => {
+  const document = fromMarkdown("Body.");
+  const suggestionId = "proposed-emphasis";
+  document.package.document.content = [
+    {
+      ...paragraph([
+        {
+          ...run("Body", { italic: true, bold: true }),
+          propertyChanges: [
+            {
+              type: "runPropertyChange",
+              info: { id: 11, author: "Reviewer", date, suggestionId },
+              previousFormatting: { bold: true },
+            },
+            {
+              type: "runPropertyChange",
+              info: { id: 12, author: "Author", date },
+              previousFormatting: {},
+            },
+          ],
+        },
+      ]),
+      paraId: "10000001",
+    },
+  ];
+  const session = createCanonicalSession(document).unwrap();
+  using open = spyOn(
+    canonicalRoom,
+    "openCanonicalDocxSession",
+  ).mockResolvedValue(
+    Result.ok({ document, session, mintedParaIds: new Set() }),
+  );
+  const reviewer = await FolioDocxReviewer.fromBuffer(new ArrayBuffer(0));
+
+  expect(open).toHaveBeenCalledTimes(1);
+  expect(ops.pendingSuggestionIdsIn(document)).toEqual(new Set([suggestionId]));
+  expect(reviewer.acceptSuggestion(suggestionId)).toBe(true);
+  expect(reviewer.acceptSuggestion(suggestionId)).toBe(false);
+  expect(reviewer.getChanges().map(({ id }) => id)).toEqual([11, 12]);
 });
 
 for (const decision of ["accept", "reject"] as const)
@@ -77,7 +142,7 @@ for (const decision of ["accept", "reject"] as const)
         { session: "canonical" },
       );
       using groups = spyOn(read, "listedRevisionGroups");
-      using owners = spyOn(comments, "suggestionOwnersByRevision");
+      using owners = spyOn(ops, "suggestionOwnersInStory");
       using repeatedGroups = spyOn(read, "getTrackedChangeGroupIdsFromDoc");
       using repeatedOwners = spyOn(comments, "suggestionIdOfRevision");
       const result =

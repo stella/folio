@@ -2,9 +2,38 @@ import type { Node as PMNode } from "prosemirror-model";
 
 import {
   PARAGRAPH_MARK_CHANGE_KINDS,
+  type ParagraphMarkChange,
   type ParagraphMarkChangeKind,
   type PropertyRevisionKind,
 } from "@stll/docx-core/model";
+
+export function isPPrMarkAttr(value: unknown): value is ParagraphMarkChange {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !("kind" in value) ||
+    !("info" in value)
+  ) {
+    return false;
+  }
+  const { kind, info } = value;
+  if (!isParagraphMarkChangeKind(kind)) {
+    return false;
+  }
+  if (typeof info !== "object" || info === null) {
+    return false;
+  }
+  return "id" in info && typeof info.id === "number";
+}
+
+/**
+ * Whether the mark says the paragraph break was ADDED. A relocation's
+ * destination break was added exactly as an insertion's was, and its source
+ * break went exactly as a deletion's did; the kinds differ so a reader is told
+ * the two ends belong together, not because they resolve differently.
+ */
+export const paragraphMarkWasAdded = (kind: ParagraphMarkChangeKind): boolean =>
+  kind === "ins" || kind === "moveTo";
 
 /**
  * Where each tracked property revision sits in the editable document, and how

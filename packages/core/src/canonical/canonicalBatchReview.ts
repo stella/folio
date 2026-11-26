@@ -1,5 +1,4 @@
 import type { Node as PMNode } from "prosemirror-model";
-import { EditorState } from "prosemirror-state";
 
 import {
   applyDocumentOps,
@@ -8,6 +7,7 @@ import {
   findStoryBody,
   type OpStory,
   type RevisionDecision,
+  suggestionOwnersInStory,
 } from "@stll/docx-core/ops";
 
 import { anchoredCommentIdsInBlocks } from "../ai-edits/comment-lifecycle";
@@ -15,7 +15,6 @@ import {
   getTrackedChangeGroupsForIds,
   getTrackedChangeStatsFromDoc,
 } from "../ai-edits/read";
-import { pendingSuggestionRevisionIds } from "../prosemirror/commands/comments";
 import { lockedControlSpans } from "../prosemirror/lockedControls";
 import type { BlockContent, Document } from "../types/document";
 import { lockViolationBetween } from "./canonicalLockGuard";
@@ -32,11 +31,10 @@ type RevisionIds = {
   ordinary: readonly number[];
 };
 
-const revisionIdsOf = (doc: PMNode): RevisionIds => {
-  const { ids } = getTrackedChangeStatsFromDoc(doc);
+const revisionIdsOf = (version: StoryVersion, story: OpStory): RevisionIds => {
+  const { ids } = getTrackedChangeStatsFromDoc(version.projection);
   if (ids.length === 0) return { all: ids, ordinary: ids };
-  const state = EditorState.create({ doc });
-  const suggested = pendingSuggestionRevisionIds(state);
+  const suggested = suggestionOwnersInStory(version.document, story);
   return {
     all: ids,
     ordinary:
@@ -192,8 +190,8 @@ export const createCanonicalBatchReview = ({
   let afterIds: RevisionIds | undefined;
   const revisions = (side: "before" | "after") =>
     side === "before"
-      ? (beforeIds ??= revisionIdsOf(before.projection))
-      : (afterIds ??= revisionIdsOf(after.projection));
+      ? (beforeIds ??= revisionIdsOf(before, story))
+      : (afterIds ??= revisionIdsOf(after, story));
 
   let accepted: ReturnType<typeof resolveStoryPair> | null;
   const accept = () => {
