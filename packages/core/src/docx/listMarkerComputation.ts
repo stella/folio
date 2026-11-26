@@ -7,19 +7,30 @@ import { resolveListTemplate } from "./listTemplate";
 import type { NumberingMap } from "./numberingParser";
 import { isNumberingReference } from "./numberingReference";
 
-export type PreviousListState = {
-  abstractNumId: number | null;
-  fromStyle: boolean;
-  numId: number | null;
-};
-
 export type ComputeListMarkerOptions = {
   numbering: NumberingMap | null;
+  /** The counters each list instance counts on. */
   listCounters: Map<number, number[]>;
+  /**
+   * The counters of each list definition. Every instance of a definition
+   * counts on these: a list goes on where the last paragraph of its
+   * definition stands, whichever instance that paragraph named.
+   */
   abstractCounters: Map<number, number[]>;
-  restartedNumIds: Set<number>;
-  previousList: PreviousListState;
+  /**
+   * The levels of list instances a paragraph has used, as
+   * {@link startedLevelKey}. An instance's start override sets a level's
+   * number the first time the instance is used on that level, and never
+   * again.
+   */
+  startedLevels: Set<number>;
 };
+
+const LEVELS_PER_INSTANCE = 16;
+
+/** One level of one list instance, as a member of `startedLevels`. */
+export const startedLevelKey = (numId: number, level: number): number =>
+  numId * LEVELS_PER_INSTANCE + level;
 
 /**
  * What each field of the marker counters depends on: the package alone, or
@@ -31,8 +42,7 @@ const LIST_COUNTER_DEPENDENCY = {
   numbering: "package",
   listCounters: "story",
   abstractCounters: "story",
-  restartedNumIds: "story",
-  previousList: "story",
+  startedLevels: "story",
 } as const satisfies Record<
   keyof ComputeListMarkerOptions,
   "package" | "story"
@@ -75,8 +85,7 @@ export type ListCounterSnapshot = {
   readonly cells: ReadonlyMap<number, readonly number[]>;
   readonly listCounters: readonly (readonly [number, number])[];
   readonly abstractCounters: readonly (readonly [number, number])[];
-  readonly restartedNumIds: readonly number[];
-  readonly previousList: Readonly<PreviousListState>;
+  readonly startedLevels: readonly number[];
 } & Record<StoryCounterField, unknown>;
 
 export const snapshotListCounters = (
@@ -96,8 +105,7 @@ export const snapshotListCounters = (
       ([abstractNumId, values]) => [abstractNumId, cellOf(values)] as const,
     ),
     cells,
-    restartedNumIds: [...counters.restartedNumIds],
-    previousList: { ...counters.previousList },
+    startedLevels: [...counters.startedLevels],
   };
 };
 
@@ -124,8 +132,7 @@ export const restoreListCounters = (
         arrayOf(cell),
       ]),
     ),
-    restartedNumIds: new Set(snapshot.restartedNumIds),
-    previousList: { ...snapshot.previousList },
+    startedLevels: new Set(snapshot.startedLevels),
   };
   Object.assign(counters, story);
 };
@@ -133,12 +140,14 @@ export const restoreListCounters = (
 /**
  * The counter arrays one paragraph advanced: the array bound to its list
  * instance and abstract list after it, and those bound to them before it.
- * Besides these the paragraph changes only the previous-list state and
- * whether its instance restarted.
+ * Besides these the paragraph changes only which level of its instance has
+ * been used.
  */
 export type ListCounterAdvance = {
   readonly numId: number;
   readonly abstractNumId: number | null;
+  /** The level the paragraph counted on. */
+  readonly level: number;
   readonly counters: number[];
   readonly listBefore: number[] | undefined;
   readonly abstractBefore: number[] | undefined;
@@ -146,33 +155,30 @@ export type ListCounterAdvance = {
 
 /** What one paragraph's marker computation left in the story half of the counters. */
 export type ListCounterStep = {
-  readonly previousList: Readonly<PreviousListState>;
   readonly advanced:
     | {
         readonly numId: number;
         readonly abstractNumId: number | null;
+        readonly level: number;
         readonly cell: number;
         readonly values: readonly number[];
-        readonly restarted: boolean;
       }
     | undefined;
 };
 
 /** The step a paragraph just took, `advance` being what its computation returned. */
 export const listCounterStep = (
-  counters: ComputeListMarkerOptions,
   advance: ListCounterAdvance | null,
 ): ListCounterStep => ({
-  previousList: { ...counters.previousList },
   advanced:
     advance === null
       ? undefined
       : {
           numId: advance.numId,
           abstractNumId: advance.abstractNumId,
+          level: advance.level,
           cell: counterCellOf(advance.counters),
           values: [...advance.counters],
-          restarted: counters.restartedNumIds.has(advance.numId),
         },
 });
 
@@ -184,28 +190,34 @@ export const replayListCounterStep = (
   counters: ComputeListMarkerOptions,
   step: ListCounterStep,
 ): ListCounterAdvance | null => {
-  Object.assign(counters.previousList, step.previousList);
   const advanced = step.advanced;
   if (advanced === undefined) return null;
-  const { numId, abstractNumId, cell, values, restarted } = advanced;
+  const { numId, abstractNumId, level, cell, values } = advanced;
   const listBefore = counters.listCounters.get(numId);
   const abstractBefore =
     abstractNumId === null
       ? undefined
       : counters.abstractCounters.get(abstractNumId);
-  // The computation advances the instance's array, the abstract list's, or
-  // one it made for the instance's first paragraph.
+  // The computation advances the abstract list's array, the instance's, or
+  // one it made for the first paragraph of the list.
   const array =
-    [listBefore, abstractBefore].find(
+    [abstractBefore, listBefore].find(
       (bound) => bound !== undefined && counterCellOf(bound) === cell,
     ) ?? cellArray(cell, values);
-  for (let level = 0; level < values.length; level += 1)
-    array[level] = values[level] ?? Number.NaN;
+  for (let index = 0; index < values.length; index += 1)
+    array[index] = values[index] ?? Number.NaN;
   counters.listCounters.set(numId, array);
   if (abstractNumId !== null)
     counters.abstractCounters.set(abstractNumId, array);
-  if (restarted) counters.restartedNumIds.add(numId);
-  return { numId, abstractNumId, counters: array, listBefore, abstractBefore };
+  counters.startedLevels.add(startedLevelKey(numId, level));
+  return {
+    numId,
+    abstractNumId,
+    level,
+    counters: array,
+    listBefore,
+    abstractBefore,
+  };
 };
 
 export const computeListMarker = (
@@ -214,83 +226,48 @@ export const computeListMarker = (
     numbering,
     listCounters,
     abstractCounters,
-    restartedNumIds,
-    previousList,
+    startedLevels,
   }: ComputeListMarkerOptions,
 ): ListCounterAdvance | null => {
   const listRendering = paragraph.listRendering;
   if (!listRendering || !numbering) {
-    previousList.abstractNumId = null;
-    previousList.fromStyle = false;
-    previousList.numId = null;
     return null;
   }
 
   const { numId, level } = listRendering;
   if (!isNumberingReference(numId)) {
-    previousList.abstractNumId = null;
-    previousList.fromStyle = false;
-    previousList.numId = null;
     return null;
   }
 
   const listBefore = listCounters.get(numId);
-  const firstEncounter = listBefore === undefined;
-  let counters = listBefore ?? cellArray(numId, UNSET_COUNTERS);
-  if (firstEncounter) listCounters.set(numId, counters);
-
   const abstractNumId = numbering.getAbstractNumId(numId);
-  const styleNumbering =
-    paragraph.formatting?.numPr?.kind !== "reference" &&
-    paragraph.formatting?.numPrFromStyle?.kind === "reference";
-  const resumesRestartedInstance =
-    firstEncounter &&
-    listRendering.startOverride === undefined &&
-    abstractNumId !== null &&
-    previousList.abstractNumId === abstractNumId &&
-    previousList.numId !== null &&
-    previousList.numId !== numId &&
-    restartedNumIds.has(previousList.numId);
-  const resumesStyleInstance =
-    firstEncounter &&
-    !styleNumbering &&
-    listRendering.startOverride === undefined &&
-    abstractNumId !== null &&
-    previousList.abstractNumId === abstractNumId &&
-    previousList.fromStyle === true;
+  const abstractBefore =
+    abstractNumId === null ? undefined : abstractCounters.get(abstractNumId);
+  // The instances of one definition are one list: a paragraph counts on from
+  // the last paragraph of the definition, whichever instance that one named.
+  // Only an instance without a definition counts alone.
+  const counters =
+    abstractBefore ?? listBefore ?? cellArray(numId, UNSET_COUNTERS);
+  listCounters.set(numId, counters);
+
+  // A start override takes effect once per level: on the first paragraph
+  // that uses the instance there. Later paragraphs of the instance, also
+  // after another instance was used in between, count on.
+  const startedKey = startedLevelKey(numId, level);
+  const startsLevel = !startedLevels.has(startedKey);
+  startedLevels.add(startedKey);
+  if (startsLevel && listRendering.startOverride !== undefined) {
+    counters[level] = listRendering.startOverride - 1;
+  }
+  // A level used before any paragraph of the levels above counts those
+  // levels at their start.
   if (
     abstractNumId !== null &&
-    (styleNumbering || resumesRestartedInstance || resumesStyleInstance)
+    level > 0 &&
+    counters.slice(0, level).every(Number.isNaN)
   ) {
-    const latestAbstractCounters = abstractCounters.get(abstractNumId);
-    if (latestAbstractCounters) {
-      // A paragraph whose numbering comes only from its style resumes the
-      // latest compatible list instance. A fresh w:num with a startOverride
-      // can restart the sequence before later paragraphs fall
-      // back to the style's original w:num: the style continues the attachment
-      // sequence instead of reviving its stale counters from earlier content.
-      counters = latestAbstractCounters;
-      listCounters.set(numId, counters);
-    }
-  }
-  if (
-    listRendering.startOverride !== undefined ||
-    resumesRestartedInstance ||
-    (previousList.numId === numId && restartedNumIds.has(numId))
-  ) {
-    restartedNumIds.add(numId);
-  }
-  if (abstractNumId !== null && level > 0) {
-    const latestAbstractCounters = abstractCounters.get(abstractNumId);
-    const missingParentCounters = counters.slice(0, level).every(Number.isNaN);
-    if (missingParentCounters) {
-      for (let i = 0; i < level; i += 1) {
-        const latestCounter = latestAbstractCounters?.[i];
-        counters[i] =
-          latestCounter !== undefined && !Number.isNaN(latestCounter)
-            ? latestCounter
-            : (numbering.getLevel(numId, i)?.start ?? 1);
-      }
+    for (let i = 0; i < level; i += 1) {
+      counters[i] = numbering.getLevel(numId, i)?.start ?? 1;
     }
   }
 
@@ -317,21 +294,17 @@ export const computeListMarker = (
         : childCounter) + childAdvances;
   }
 
-  const abstractBefore =
-    abstractNumId === null ? undefined : abstractCounters.get(abstractNumId);
   if (abstractNumId !== null) {
     abstractCounters.set(abstractNumId, counters);
   }
   const advance: ListCounterAdvance = {
     numId,
     abstractNumId,
+    level,
     counters,
     listBefore,
     abstractBefore,
   };
-  previousList.abstractNumId = abstractNumId;
-  previousList.fromStyle = Boolean(styleNumbering);
-  previousList.numId = numId;
 
   const pattern = listRendering.marker;
 
@@ -340,9 +313,6 @@ export const computeListMarker = (
       pattern || "",
       bulletMarkerFontName(listRendering.markerFormatting),
     );
-    previousList.abstractNumId = null;
-    previousList.fromStyle = false;
-    previousList.numId = null;
     return advance;
   }
 

@@ -152,16 +152,7 @@ export const sameListCounterState = (
     left.counters.size !== right.counters.size ||
     left.abstractCounters.size !== right.abstractCounters.size ||
     left.lastAdvancedNumId !== right.lastAdvancedNumId ||
-    !sameMembers(left.seenLevels, right.seenLevels) ||
-    !sameMembers(left.restartedNumIds, right.restartedNumIds)
-  )
-    return false;
-  const leftList = left.previousList;
-  const rightList = right.previousList;
-  if (
-    (leftList?.abstractNumId ?? null) !== (rightList?.abstractNumId ?? null) ||
-    (leftList?.fromStyle ?? false) !== (rightList?.fromStyle ?? false) ||
-    (leftList?.numId ?? null) !== (rightList?.numId ?? null)
+    !sameMembers(left.seenLevels, right.seenLevels)
   )
     return false;
   const paired = new Map<readonly number[], readonly number[]>();
@@ -247,14 +238,6 @@ export const restoreListCounterState = (
     target.abstractCounters.set(key, copyOf(values));
   target.seenLevels.clear();
   for (const level of source.seenLevels) target.seenLevels.add(level);
-  target.restartedNumIds = new Set(source.restartedNumIds);
-  target.previousList = {
-    ...(source.previousList ?? {
-      abstractNumId: null,
-      fromStyle: false,
-      numId: null,
-    }),
-  };
   if (source.lastAdvancedNumId === undefined) delete target.lastAdvancedNumId;
   else target.lastAdvancedNumId = source.lastAdvancedNumId;
 };

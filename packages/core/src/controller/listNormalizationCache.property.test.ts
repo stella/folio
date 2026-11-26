@@ -105,8 +105,7 @@ const countersBeforeEach = (normalized: Document): string[] => {
       numbering === undefined ? null : getCachedNumberingMap(numbering),
     listCounters: new Map(),
     abstractCounters: new Map(),
-    restartedNumIds: new Set(),
-    previousList: { abstractNumId: null, fromStyle: false, numId: null },
+    startedLevels: new Set(),
   };
   const sorted = <T extends readonly [number, unknown]>(entries: Iterable<T>) =>
     [...entries].toSorted(([left], [right]) => left - right);
@@ -141,10 +140,9 @@ const countersBeforeEach = (normalized: Document): string[] => {
   return mainBlocks(normalized).map((block) => {
     const snapshot = snapshotListCounters(counters);
     const before = JSON.stringify({
-      previous: snapshot.previousList,
       list: sorted(snapshot.listCounters),
       abstract: sorted(snapshot.abstractCounters),
-      restarted: snapshot.restartedNumIds.toSorted((a, b) => a - b),
+      started: snapshot.startedLevels.toSorted((a, b) => a - b),
       cells: sorted(snapshot.cells).map(([cell, values]) => [
         cell,
         values.map(String),

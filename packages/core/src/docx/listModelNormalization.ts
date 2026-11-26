@@ -48,6 +48,7 @@ import {
   replayListCounterStep,
   restoreListCounters,
   snapshotListCounters,
+  startedLevelKey,
 } from "./listMarkerComputation";
 import { listRenderingDefinitionsMatch } from "./listRendering";
 import { computeListRendering, getCachedNumberingMap } from "./numberingParser";
@@ -159,8 +160,7 @@ const freshCounters = (
   numbering,
   listCounters: new Map(),
   abstractCounters: new Map(),
-  restartedNumIds: new Set(),
-  previousList: { abstractNumId: null, fromStyle: false, numId: null },
+  startedLevels: new Set(),
 });
 
 /**
@@ -247,10 +247,10 @@ class CounterView {
 }
 
 /**
- * One part of the counters: the previous-list state (`p`), the array bound
- * to an instance (`n`) or an abstract list (`a`), whether an instance
- * restarted (`r`), or the values of one array (`c`). Two states equal in
- * every part number every later paragraph alike.
+ * One part of the counters: the array bound to an instance (`n`) or an
+ * abstract list (`a`), whether a level of an instance has been used (`s`),
+ * or the values of one array (`c`). Two states equal in every part number
+ * every later paragraph alike.
  */
 type CounterPart = string;
 
@@ -264,12 +264,6 @@ const samePart = (
 ): boolean => {
   const l = left.counters;
   const r = right.counters;
-  if (part === "p")
-    return (
-      l.previousList.abstractNumId === r.previousList.abstractNumId &&
-      l.previousList.fromStyle === r.previousList.fromStyle &&
-      l.previousList.numId === r.previousList.numId
-    );
   const id = Number(part.slice(1));
   switch (part[0]) {
     case "n":
@@ -282,8 +276,8 @@ const samePart = (
         cellOrNone(l.abstractCounters.get(id)) ===
         cellOrNone(r.abstractCounters.get(id))
       );
-    case "r":
-      return l.restartedNumIds.has(id) === r.restartedNumIds.has(id);
+    case "s":
+      return l.startedLevels.has(id) === r.startedLevels.has(id);
     default: {
       const a = left.cell(id);
       const b = right.cell(id);
@@ -298,11 +292,10 @@ const samePart = (
 
 /** The parts a step can have changed. */
 const partsOf = (advance: ListCounterAdvance | null): CounterPart[] => {
-  if (advance === null) return ["p"];
+  if (advance === null) return [];
   const parts: CounterPart[] = [
-    "p",
     `n${String(advance.numId)}`,
-    `r${String(advance.numId)}`,
+    `s${String(startedLevelKey(advance.numId, advance.level))}`,
     `c${String(counterCellOf(advance.counters))}`,
   ];
   if (advance.abstractNumId !== null)
@@ -319,14 +312,14 @@ const differingParts = (
   left: CounterView,
   right: CounterView,
 ): Set<CounterPart> => {
-  const parts = new Set<CounterPart>(["p"]);
+  const parts = new Set<CounterPart>();
   for (const view of [left, right]) {
     for (const numId of view.counters.listCounters.keys())
       parts.add(`n${String(numId)}`);
     for (const abstractNumId of view.counters.abstractCounters.keys())
       parts.add(`a${String(abstractNumId)}`);
-    for (const numId of view.counters.restartedNumIds)
-      parts.add(`r${String(numId)}`);
+    for (const started of view.counters.startedLevels)
+      parts.add(`s${String(started)}`);
     for (const cell of view.cells()) parts.add(`c${String(cell)}`);
   }
   for (const part of parts) if (samePart(part, left, right)) parts.delete(part);
@@ -430,7 +423,7 @@ export class ListNormalizationCache {
       const steps: ListCounterStep[] = [];
       const { output, settled } = normalize(block, (advance) => {
         advances.push(advance);
-        steps.push(listCounterStep(counters, advance));
+        steps.push(listCounterStep(advance));
       });
       sinceCheckpoint += 1;
       normalized += 1;

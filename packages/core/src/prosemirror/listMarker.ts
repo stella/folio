@@ -31,13 +31,8 @@ import type { ParagraphAttrs } from "./schema/nodes";
 export type ListCounterState = {
   counters: Map<number, number[]>;
   abstractCounters: Map<number, number[]>;
+  /** The levels of list instances a paragraph has used, as `numId:level`. */
   seenLevels: Set<string>;
-  restartedNumIds?: Set<number>;
-  previousList?: {
-    abstractNumId: number | null;
-    fromStyle: boolean;
-    numId: number | null;
-  };
   lastAdvancedNumId?: number;
 };
 
@@ -112,8 +107,6 @@ export function createListCounterState(): ListCounterState {
     counters: new Map(),
     abstractCounters: new Map(),
     seenLevels: new Set(),
-    restartedNumIds: new Set(),
-    previousList: { abstractNumId: null, fromStyle: false, numId: null },
   };
 }
 
@@ -140,14 +133,6 @@ export function cloneListCounterState(
     counters,
     abstractCounters,
     seenLevels: new Set(state.seenLevels),
-    restartedNumIds: new Set(state.restartedNumIds ?? []),
-    previousList: {
-      ...(state.previousList ?? {
-        abstractNumId: null,
-        fromStyle: false,
-        numId: null,
-      }),
-    },
     ...(state.lastAdvancedNumId !== undefined
       ? { lastAdvancedNumId: state.lastAdvancedNumId }
       : {}),
@@ -310,7 +295,6 @@ export function advanceListMarker(
   state: ListCounterState,
 ): string | null {
   if (!hasListRendering(attrs)) {
-    state.previousList = { abstractNumId: null, fromStyle: false, numId: null };
     return null;
   }
   const markerTemplate = attrs.listMarkerTemplate ?? attrs.listMarker;
@@ -339,12 +323,10 @@ export function advanceListMarker(
         });
       }
     }
-    state.previousList = { abstractNumId: null, fromStyle: false, numId: null };
     return marker;
   }
 
   if (attrs.listIsBullet) {
-    state.previousList = { abstractNumId: null, fromStyle: false, numId: null };
     if (foldedMarkerSuffix !== undefined && attrs.listMarkerTemplate == null) {
       return attrs.listMarker ?? null;
     }
@@ -357,62 +339,24 @@ export function advanceListMarker(
       : `${marker}\t${foldedMarkerSuffix}`;
   }
 
-  const firstInstanceEncounter = !state.counters.has(numId);
-  let counters =
-    state.counters.get(numId) ?? Array.from({ length: 9 }, () => Number.NaN);
   const abstractNumId = attrs.listAbstractNumId;
-  const previousList = state.previousList ?? {
-    abstractNumId: null,
-    fromStyle: false,
-    numId: null,
-  };
-  const restartedNumIds = (state.restartedNumIds ??= new Set());
-  const latestAbstractCounters =
-    abstractNumId === undefined
+  // The instances of one definition are one list: a paragraph counts on from
+  // the last paragraph of the definition, whichever instance that one named.
+  // Only an instance without a definition counts alone.
+  const counters =
+    (abstractNumId === undefined
       ? undefined
-      : state.abstractCounters.get(abstractNumId);
-  const styleNumbering =
-    attrs.numPr?.kind !== "reference" &&
-    attrs.numPrFromStyle?.kind === "reference";
-  const resumesRestartedInstance =
-    firstInstanceEncounter &&
-    attrs.listStartOverride == null &&
-    abstractNumId !== undefined &&
-    previousList.abstractNumId === abstractNumId &&
-    previousList.numId !== null &&
-    previousList.numId !== numId &&
-    restartedNumIds.has(previousList.numId);
-  const resumesStyleInstance =
-    firstInstanceEncounter &&
-    !styleNumbering &&
-    attrs.listStartOverride == null &&
-    abstractNumId !== undefined &&
-    previousList.abstractNumId === abstractNumId &&
-    previousList.fromStyle;
+      : state.abstractCounters.get(abstractNumId)) ??
+    state.counters.get(numId) ??
+    Array.from({ length: 9 }, () => Number.NaN);
+  // A level used before any paragraph of the levels above counts those
+  // levels at their start.
   if (
-    latestAbstractCounters &&
-    (styleNumbering || resumesRestartedInstance || resumesStyleInstance)
+    level > 0 &&
+    counters.slice(0, level).every((counter) => !Number.isFinite(counter))
   ) {
-    counters = latestAbstractCounters;
-  }
-  if (
-    attrs.listStartOverride != null ||
-    resumesRestartedInstance ||
-    (previousList.numId === numId && restartedNumIds.has(numId))
-  ) {
-    restartedNumIds.add(numId);
-  }
-  if (level > 0) {
-    if (
-      counters.slice(0, level).every((counter) => !Number.isFinite(counter))
-    ) {
-      for (let index = 0; index < level; index += 1) {
-        const latestCounter = latestAbstractCounters?.[index];
-        counters[index] =
-          latestCounter !== undefined && Number.isFinite(latestCounter)
-            ? latestCounter
-            : (attrs.listLevelStarts?.[index] ?? 1);
-      }
+    for (let index = 0; index < level; index += 1) {
+      counters[index] = attrs.listLevelStarts?.[index] ?? 1;
     }
   }
 
@@ -445,11 +389,6 @@ export function advanceListMarker(
   if (abstractNumId !== undefined) {
     state.abstractCounters.set(abstractNumId, counters);
   }
-  state.previousList = {
-    abstractNumId: abstractNumId ?? null,
-    fromStyle: Boolean(styleNumbering),
-    numId,
-  };
 
   const levelFormats =
     attrs.listLevelNumFmts ??

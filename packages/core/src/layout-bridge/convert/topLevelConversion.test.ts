@@ -16,8 +16,6 @@ const sharedState = (): ListCounterState => {
     ]),
     abstractCounters: new Map([[7, shared]]),
     seenLevels: new Set(["1:0", "2:0", "2:1"]),
-    restartedNumIds: new Set([2]),
-    previousList: { abstractNumId: 7, fromStyle: false, numId: 1 },
     lastAdvancedNumId: 1,
   };
 };
@@ -26,8 +24,6 @@ const emptyState = (): ListCounterState => ({
   counters: new Map(),
   abstractCounters: new Map(),
   seenLevels: new Set(),
-  restartedNumIds: new Set(),
-  previousList: { abstractNumId: null, fromStyle: false, numId: null },
 });
 
 describe("top-level conversion state", () => {
