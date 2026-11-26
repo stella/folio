@@ -147,7 +147,7 @@ export type ParagraphRead = {
 const TOGGLE_OFF = new Set(["0", "false", "off"]);
 
 /** An on/off property as its element states it; null without the element. */
-const toggleOf = (element: XmlElement | null): boolean | null =>
+export const toggleOf = (element: XmlElement | null): boolean | null =>
   element === null ? null : !TOGGLE_OFF.has(wAttr(element, "val") ?? "1");
 
 const REVISION_INCLUDED = new Set(["ins", "moveTo"]);

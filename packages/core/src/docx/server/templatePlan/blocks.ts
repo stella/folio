@@ -74,6 +74,8 @@ export type AnalyzedStory = {
   state: StoryState;
   /** `w:sectPr` elements in document order, the body's own last. */
   sections: XmlElement[];
+  /** Whether the body states section properties of its own. */
+  hasBodySection: boolean;
   /** Names of block-level elements the walk has no reading for. */
   unreadBlocks: string[];
   warnings: string[];
@@ -106,7 +108,7 @@ const styleNameOf = (style: Style | undefined): string | null =>
   style?.name ?? null;
 
 /** A section's page and how it begins, as its `w:sectPr` states them. */
-export const sectionOf = (sectPr: XmlElement, index: number): DocxSection => {
+const sectionOf = (sectPr: XmlElement, index: number): DocxSection => {
   const properties = parseSectionProperties(sectPr);
   return {
     index,
@@ -165,6 +167,30 @@ export const styleAlignment = (
   return null;
 };
 
+/**
+ * The sections of a story with what each states. A body without section
+ * properties of its own still ends in a section, which states nothing.
+ */
+export const storySections = ({
+  sections,
+  hasBodySection,
+}: AnalyzedStory): DocxSection[] => {
+  const stated = sections.map(sectionOf);
+  return hasBodySection
+    ? stated
+    : [
+        ...stated,
+        {
+          index: stated.length,
+          start: "nextPage",
+          orientation: "portrait",
+          size: { width: null, height: null },
+          margins: { top: null, right: null, bottom: null, left: null },
+          columns: 1,
+        },
+      ];
+};
+
 /** Page breaks among a paragraph's runs; a column break is not one. */
 const pageBreaksOf = ({ atoms }: ParagraphRead): number =>
   atoms.filter(
@@ -192,6 +218,7 @@ export const analyzeStory = ({
     paragraphs: [],
     state,
     sections: [],
+    hasBodySection: false,
     unreadBlocks: [],
     warnings: [],
   };
@@ -369,6 +396,7 @@ export const analyzeStory = ({
   const bodySection = wChild(container, "sectPr");
   if (bodySection !== null) {
     story.sections.push(bodySection);
+    story.hasBodySection = true;
   }
   for (const [name, count] of unread) {
     story.unreadBlocks.push(name);
@@ -659,7 +687,7 @@ export const analyzeDocument = async (
   const manifest: DocxBlockManifest = {
     sha256: pkg.sha256,
     blocks: story.topLevel.map(({ block }) => block),
-    sections: story.sections.map(sectionOf),
+    sections: storySections(story),
     compat: {
       doNotExpandShiftReturn:
         settingsXml !== null && keepsShiftReturnSpacing(settingsXml),
