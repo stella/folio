@@ -82,6 +82,7 @@ import { joinParagraphSeam } from "./inline";
 import {
   changeAtEdge,
   holdsKeptCut,
+  isRevisionId,
   KEPT_CUT_EDGES,
   keptCutFrom,
   keptCutHeldBy,
@@ -9608,9 +9609,7 @@ export const resolveIndependentTextParagraphs = (
       if (
         (inline.type !== "insertion" && inline.type !== "deletion") ||
         inline.resolutionJoins !== undefined ||
-        !Number.isInteger(inline.info.id) ||
-        inline.info.id < 0 ||
-        inline.info.id > MAX_REVISION_ID ||
+        !isRevisionId(inline.info.id) ||
         inline.content.length === 0
       )
         return undefined;
