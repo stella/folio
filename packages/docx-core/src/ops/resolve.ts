@@ -2428,7 +2428,10 @@ type CutReach = {
   /** Records each side's edge goes through to the deepest level that stays. */
   before: number;
   after: number;
-  /** Set where it ends at pieces of one change the resolution removes. */
+  /**
+   * Set where it ends at pieces of one change the resolution removes, or at
+   * a removed change that was all its container held.
+   */
   gone?: true;
 };
 
@@ -2532,7 +2535,14 @@ const cutReach = ({
       index,
       side === "before" ? "end" : "start",
     );
-    if (chain === undefined) return false;
+    if (chain === undefined) {
+      // Removed as all its container held, it empties a piece that folds
+      // into the piece beyond: the cut goes on into the record it meets.
+      const parent = chains[side][index - 1];
+      if (parent !== undefined && childNodes(parent)?.length === 1)
+        reach.gone = true;
+      return false;
+    }
     chains[side] = chain;
     return true;
   };
@@ -8934,7 +8944,7 @@ const planSingleRecordResolution = (
       const firstCut = resolvedCutEdges.get(key)?.first ?? 0;
       const mark = candidate.pPrMark;
       if (
-        (resolvedContents.get(key)?.length ?? 0) !== 0 ||
+        !(resolvedContents.get(key) ?? []).every(isKeptBoundaryCarrier) ||
         mark === undefined ||
         !markWasAdded(mark.kind)
       ) {
@@ -8942,7 +8952,9 @@ const planSingleRecordResolution = (
         known.set(index, suffix);
         break;
       }
-      // An empty inserted paragraph can carry part of a cut to a later join.
+      // An inserted paragraph left empty, or with only the boundaries a
+      // rejection keeps (they hold no piece of the cut), can carry part of a
+      // cut to a later join.
       const chainCut =
         op.decision === REVISION_DECISIONS.REJECT && ids.has(mark.info.id)
           ? (mark.resolutionJoin ?? 0)

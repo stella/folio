@@ -1538,6 +1538,164 @@ describe("tracked operations and their resolution", () => {
     assertExactModel(insertionUndone.value.document, original);
   });
 
+  test("L3: a split's cut goes on through a paragraph its rejection leaves only kept boundaries", () => {
+    // A link split between its tab and its text, then split again at the
+    // tab's end, a comment start inserted in the empty paragraph between.
+    // Rejecting it all at once rejoins the link around the kept start, as
+    // rejecting each change in turn does.
+    const link = (content: InlineNode[]): InlineNode => ({
+      type: "hyperlink",
+      rId: "rId9",
+      href: "https://example.org",
+      children: [
+        { type: "inlineWrapper", kind: "bidi", control: "embedding", content },
+      ],
+    });
+    const info = (id: number) => ({
+      id,
+      author: "C",
+      date: `2026-03-04T05:00:0${String(id - 1)}Z`,
+    });
+    const tab: InlineNode = { type: "run", content: [{ type: "tab" }] };
+    const text: InlineNode = {
+      type: "run",
+      content: [{ type: "text", text: "a" }],
+    };
+    const tracked: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              paraId: "10000000",
+              content: [link([tab])],
+              pPrMark: {
+                kind: "ins",
+                info: info(2),
+                resolutionJoin: 0,
+                survivor: "first",
+                takenOverMark: 1,
+              },
+            },
+            {
+              type: "paragraph",
+              paraId: "10000001",
+              content: [
+                {
+                  type: "insertion",
+                  info: info(3),
+                  content: [link([{ type: "commentRangeStart", id: 1 }])],
+                  resolutionJoins: { before: 0, after: 0, remove: 0 },
+                },
+              ],
+              pPrMark: { kind: "ins", info: info(1), resolutionJoin: 3 },
+            },
+            { type: "paragraph", paraId: "00000001", content: [link([text])] },
+          ],
+        },
+      },
+    };
+    const atOnce = resolved(tracked, [1, 2, 3], REVISION_DECISIONS.REJECT);
+    expect(atOnce.package.document.content).toStrictEqual([
+      {
+        type: "paragraph",
+        paraId: "00000001",
+        content: [link([tab, { type: "commentRangeStart", id: 1 }, text])],
+      },
+    ]);
+    const oneByOne = resolvedInTurn(
+      tracked,
+      [[1], [2], [3]],
+      REVISION_DECISIONS.REJECT,
+    );
+    assertExactModel(projectedWithCuts(atOnce), projectedWithCuts(oneByOne));
+  });
+
+  test("L3: a cut goes on through a control piece its rejection empties", () => {
+    // Pieces of a control, the middle one holding only an insertion made at
+    // the cut and a link piece cut beside it. Rejecting both at once puts
+    // the kept bookmark start into the link the pieces rejoin, as rejecting
+    // the inner insertion first does.
+    const control = (id: number, content: InlineNode[]): InlineNode => ({
+      type: "inlineSdt",
+      properties: { sdtType: "richText", id, tag: "clause" },
+      content,
+    });
+    const link = (children: InlineNode[]): InlineNode => ({
+      type: "hyperlink",
+      rId: "rId9",
+      href: "https://example.org",
+      children,
+    });
+    const bidi = (content: InlineNode[]): InlineNode => ({
+      type: "inlineWrapper",
+      kind: "bidi",
+      control: "embedding",
+      content,
+    });
+    const text = (value: string): InlineNode => ({
+      type: "run",
+      content: [{ type: "text", text: value }],
+    });
+    const start = (id: number): InlineNode => ({
+      type: "bookmarkStart",
+      id,
+      name: "_Link",
+    });
+    const tracked: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              paraId: "00000001",
+              content: [
+                control(1, [link([bidi([text("b")])])]),
+                {
+                  type: "insertion",
+                  info: { id: 2, author: "C", date: "2026-03-04T05:00:01Z" },
+                  content: [link([start(2)])],
+                  resolutionJoins: { before: 0, after: 0, remove: 1 },
+                },
+                control(293649, [
+                  {
+                    type: "insertion",
+                    info: { id: 1, author: "A", date: "2026-03-04T05:00:00Z" },
+                    content: [
+                      link([{ ...start(1), copyOriginAncestors: [0] }]),
+                      link([bidi([text("a")])]),
+                    ],
+                    resolutionJoins: { before: 1, after: 0, remove: 1 },
+                  },
+                ]),
+                control(293648, [link([start(1)]), link([bidi([text("a")])])]),
+              ],
+            },
+          ],
+        },
+      },
+    };
+    const atOnce = resolved(tracked, [1, 2], REVISION_DECISIONS.REJECT);
+    expect(atOnce.package.document.content).toStrictEqual([
+      {
+        type: "paragraph",
+        paraId: "00000001",
+        content: [
+          control(1, [
+            link([bidi([text("b")]), start(2), start(1)]),
+            link([bidi([text("a")])]),
+          ]),
+        ],
+      },
+    ]);
+    const oneByOne = resolvedInTurn(
+      tracked,
+      [[1], [2]],
+      REVISION_DECISIONS.REJECT,
+    );
+    assertExactModel(projectedWithCuts(atOnce), projectedWithCuts(oneByOne));
+  });
+
   test("L1: accepting a tracked operation's revisions gives the direct operation's result", () => {
     const law = (tally: Tally) =>
       fc.property(
