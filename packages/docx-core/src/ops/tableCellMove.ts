@@ -3,7 +3,6 @@ import {
   MAX_REVISION_ID,
   type Paragraph,
   type ParagraphContent,
-  type Run,
   type Table,
 } from "../model/document";
 import type { TableGeometryMove, TableGridChange } from "../model/formatting";
@@ -11,7 +10,43 @@ import { idKey, packageMoveRangeCensus } from "./ids";
 import { stampInfo } from "./review";
 import type { RevisionStamp } from "./types";
 
-export type TableMoveSource = { paragraph: Paragraph; id: string; runs: Run[] };
+export type TableMoveSource = { paragraph: Paragraph; id: string };
+
+// Both sides of the move carry the inline content. Admit only records whose
+// identity and ownership stay local to the paragraph.
+const movableInlineContent = (
+  content: readonly ParagraphContent[],
+  withinLink: boolean,
+): boolean =>
+  content.length > 0 &&
+  content.every((item) => {
+    switch (item.type) {
+      case "run":
+        return (
+          item.propertyChanges === undefined &&
+          item.content.every(
+            (leaf) =>
+              leaf.type === "text" ||
+              leaf.type === "tab" ||
+              (leaf.type === "break" &&
+                (leaf.breakType === undefined ||
+                  leaf.breakType === "textWrapping")) ||
+              leaf.type === "symbol" ||
+              leaf.type === "softHyphen" ||
+              leaf.type === "noBreakHyphen",
+          )
+        );
+      case "hyperlink":
+        // A bidi wrapper can contain a link, but cannot hide a nested one.
+        return !withinLink && movableInlineContent(item.children, true);
+      case "inlineWrapper":
+        return (
+          item.kind === "bidi" && movableInlineContent(item.content, withinLink)
+        );
+      default:
+        return false;
+    }
+  });
 
 /** The run move can take the paragraph whole without duplicating an anchor. */
 export const tableMoveSource = (
@@ -19,24 +54,14 @@ export const tableMoveSource = (
 ): TableMoveSource | undefined => {
   if (
     paragraph.paraId === undefined ||
-    paragraph.content.length === 0 ||
     paragraph.pPrMark !== undefined ||
     paragraph.propertyChanges !== undefined ||
     paragraph.sectionProperties !== undefined ||
-    paragraph.reviewCarrier !== undefined
+    paragraph.reviewCarrier !== undefined ||
+    !movableInlineContent(paragraph.content, false)
   )
     return undefined;
-  const runs: Run[] = [];
-  for (const item of paragraph.content) {
-    if (
-      item.type !== "run" ||
-      item.propertyChanges !== undefined ||
-      !item.content.every((leaf) => leaf.type === "text")
-    )
-      return undefined;
-    runs.push(item);
-  }
-  return { paragraph, id: paragraph.paraId, runs };
+  return { paragraph, id: paragraph.paraId };
 };
 
 type TableMoveRanges = { fromRange: number; toRange: number; name: string };
@@ -103,7 +128,11 @@ export const markTableMove = ({
           author: from.author,
           date: from.date,
         },
-        { type: "moveFrom", info: stampInfo(from), content: source.runs },
+        {
+          type: "moveFrom",
+          info: stampInfo(from),
+          content: source.paragraph.content,
+        },
         { type: "moveFromRangeEnd", id: fromRange },
       ],
     } satisfies Paragraph,
@@ -119,7 +148,11 @@ export const markTableMove = ({
           author: to.author,
           date: to.date,
         },
-        { type: "moveTo", info: stampInfo(to), content: source.runs },
+        {
+          type: "moveTo",
+          info: stampInfo(to),
+          content: source.paragraph.content,
+        },
         { type: "moveToRangeEnd", id: toRange },
       ],
     } satisfies Paragraph,
