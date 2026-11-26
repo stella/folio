@@ -261,7 +261,6 @@ import {
   paragraphIndentationFromFormatting,
   withDirectParagraphIndentation,
 } from "../../prosemirror/paragraphIndentation";
-import { joinAtParagraphMark } from "../../prosemirror/paragraphMarkJoin";
 import {
   carryParagraphProperties,
   paragraphLeftAfter,
@@ -275,7 +274,6 @@ import {
   paragraphSpacingFromFormatting,
   withDirectParagraphSpacing,
 } from "../../prosemirror/paragraphSpacing";
-import { requestDeterministicParaIds } from "../../prosemirror/paraIds";
 import {
   getDocumentNumbering,
   getDocumentNumberingInstanceIds,
@@ -334,10 +332,7 @@ import {
   listLevelAttrPatch,
   listLevelIndentRemovalPatch,
 } from "../../prosemirror/styles/resolvedStyleAttrs";
-import {
-  removeRowsWithoutCellsAfterBatch,
-  type RowsEmptiedInBatch,
-} from "../../prosemirror/tableGridMutation";
+import type { RowsEmptiedInBatch } from "../../prosemirror/tableGridMutation";
 import { paragraphGoes, tableGoes } from "../../prosemirror/tableRunIn";
 import { isZeroWidthAnchor } from "../../prosemirror/zeroWidthAnchors";
 import { getFolioParaIdFromBlockId } from "../../types/block-id";
@@ -348,8 +343,13 @@ import type {
 } from "../../types/document";
 import type { DeepReadonly } from "../../types/documentModel";
 import { canonicalJson } from "../../utils/canonicalJson";
+import {
+  joinAtParagraphMark,
+  requestDeterministicParaIds,
+} from "./paragraphRevision";
 import { addReferenceRetiredCommentReceipts } from "./retired-comment-receipts";
 import { separateRevisionStretches } from "./revisionStretches";
+import { removeRowsWithoutCellsAfterBatch } from "./tableRevisionCleanup";
 
 type FolioAIBlockParagraphProperties =
   RequestParagraphProperties<FolioContentStatedNumbering>;

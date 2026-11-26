@@ -7,12 +7,7 @@
  * (Apache-2.0); see that module for the id lifecycle rules.
  */
 import { Fragment, type Node as PMNode } from "prosemirror-model";
-import type {
-  EditorState,
-  Plugin,
-  PluginKey,
-  Transaction,
-} from "prosemirror-state";
+import type { EditorState, Plugin, PluginKey } from "prosemirror-state";
 
 import {
   recreateProseNodeWithParagraphPropertySource,
@@ -36,25 +31,6 @@ export const paraIdAllocatorKey: Readonly<{
   get: (state: EditorState) => Plugin<ParagraphPropertySourceSeed> | undefined;
   getState: (state: EditorState) => ParagraphPropertySourceSeed | undefined;
 }> = createPluginKeyOwner<ParagraphPropertySourceSeed>("paraIdAllocator");
-
-/**
- * Transaction meta asking this plugin to derive the ids it mints from a
- * caller-supplied seed instead of `Math.random()`.
- *
- * A live editor wants random ids: two people typing must not collide. A
- * generator whose whole output has to be reproducible — the document compare —
- * cannot afford them, and it is the only party that knows its run is meant to
- * be deterministic, so it says so on its own transaction rather than leaving
- * the plugin to guess.
- */
-export const deterministicParaIdSeedKey =
-  "stll.folio.meta.deterministicParaIdSeed";
-
-/** Ask the allocator to mint reproducible ids for the paragraphs `tr` creates. */
-export const requestDeterministicParaIds = (
-  tr: Transaction,
-  seed: string,
-): Transaction => tr.setMeta(deterministicParaIdSeedKey, seed);
 
 export const isUsableParaId = (value: unknown): value is string =>
   typeof value === "string" && value.length > 0 && value !== "00000000";

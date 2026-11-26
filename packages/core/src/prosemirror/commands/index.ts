@@ -145,15 +145,15 @@ export type { GenerateTableOfContentsOptions } from "./paragraph";
 // Comments and Track Changes
 export {
   addCommentMark,
-  removeCommentMark,
-  findAIEditRevisionRange,
   findNextChange,
   findPreviousChange,
-  getSuggestions,
+  removeCommentMark,
+} from "../projectionReview";
+export { findAIEditRevisionRange } from "../revisionRangeQueries";
+export {
   findSuggestionRange,
-} from "./comments";
-export type {
-  FolioSuggestion,
-  SuggestionKind,
-  SuggestionAppliedAs,
-} from "./comments";
+  getSuggestions,
+  type FolioSuggestion,
+  type SuggestionAppliedAs,
+  type SuggestionKind,
+} from "../suggestionQueries";

@@ -27,6 +27,7 @@ import {
   getChangedParagraphIds,
   ParagraphChangeTrackerExtension,
 } from "../../../__tests__/reference-editor/ParagraphChangeTrackerExtension";
+import { requestDeterministicParaIds } from "../../../__tests__/reference-editor/paragraphRevision";
 import { ParaIdAllocatorExtension } from "../../../__tests__/reference-editor/ParaIdAllocatorExtension";
 import {
   joinProseParagraphsWithRightPropertySource,
@@ -34,11 +35,7 @@ import {
   PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR,
 } from "../../../docx/paragraphPropertySource";
 import { deterministicHexId } from "../../../utils/hexId";
-import {
-  ensureParaIdsInDoc,
-  ensureParaIdsInState,
-  requestDeterministicParaIds,
-} from "../../paraIds";
+import { ensureParaIdsInDoc, ensureParaIdsInState } from "../../paraIds";
 
 const schema = new Schema({
   nodes: {
