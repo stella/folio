@@ -77,6 +77,8 @@ export type AnalyzedStory = {
 type StoryResources = {
   styles: StyleMap;
   defaultStyleId: string | null;
+  /** The language the document defaults give every run, or null. */
+  defaultLanguage: string | null;
   numbering: NumberingMap | null;
 };
 
@@ -149,7 +151,11 @@ export const analyzeStory = ({
       const style = resources.styles.get(
         styleId ?? resources.defaultStyleId ?? "",
       );
-      const label = counter.next({ styleId, numPr: read.numPr });
+      const label = counter.next({
+        styleId,
+        numPr: read.numPr,
+        language: read.language,
+      });
       const id = `p${index}`;
       const block: DocxBlock = {
         id,
@@ -498,7 +504,14 @@ export const analyzeDocument = async (
         numberingXml === null ? null : parseNumbering(numberingXml);
       const story = analyzeStory({
         container: body,
-        resources: { styles, defaultStyleId, numbering },
+        resources: {
+          styles,
+          defaultStyleId,
+          defaultLanguage:
+            stylesPackage?.styleDefinitions.docDefaults?.rPr?.language?.val ??
+            null,
+          numbering,
+        },
       });
       const footnotes = analyzeNotes("footnotes", footnotesPath, footnotesXml);
       const endnotes = analyzeNotes("endnotes", endnotesPath, endnotesXml);
