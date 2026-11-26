@@ -491,9 +491,11 @@ export type TemplatePlanSourceItem = {
   indent?: TemplatePlanIndent;
   /**
    * The paragraph's own left tab stops, in twentieths of a point from the
-   * left margin and in ascending order (`w:tabs`), over its style's: for a
-   * line of a label, a tab and a value whose values are to start at one
-   * position. Not for a table.
+   * left margin and in ascending order (`w:tabs`): for a line of a label, a
+   * tab and a value whose values are to start at one position. They are
+   * added to the stops of the paragraph's style, as tab stops are in the
+   * format: a stop the style sets in front of them still ends a tab. Not
+   * for a table.
    */
   tabStops?: number[];
   /**

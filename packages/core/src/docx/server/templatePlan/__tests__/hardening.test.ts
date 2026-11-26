@@ -1610,6 +1610,35 @@ describe("page starts", () => {
     ).toHaveLength(1);
   });
 
+  test("keeping with the next paragraph is verified by itself", async () => {
+    const source = await twoParagraphs();
+    const items = (keepNext: boolean) => (blocks: PlannedBlock[]) =>
+      blocks.map(({ id, hash }, index): TemplatePlanItem => ({
+        kind: "source",
+        blockId: id,
+        hash,
+        styleId: "HouseBody",
+        indent: { left: 851 },
+        ...(index === 0 && keepNext ? { keepNext } : {}),
+      }));
+    const kept = await planFor({ source, template, items: items(true) });
+    const loose = await planFor({ source, template, items: items(false) });
+    // The same indent on both sides: only the keep-with-next differs.
+    for (const [plan, other] of [
+      [kept, loose],
+      [loose, kept],
+    ] as const) {
+      const { docx } = unwrap(
+        await applyTemplatePlan({ source, template, plan: other }),
+      );
+      expect(
+        (await verifyFor({ source, template, output: docx, plan })).issues.map(
+          ({ code, blockId }) => [code, blockId],
+        ),
+      ).toEqual([["paragraph-format-mismatch", "p0"]]);
+    }
+  });
+
   test("an item gives its paragraph tab stops of its own", async () => {
     const source = await twoParagraphs();
     const items =
