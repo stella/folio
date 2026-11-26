@@ -116,6 +116,7 @@ import {
   ProjectionBlockCache,
   toProseDoc,
 } from "../prosemirror/conversion/toProseDoc";
+import { COMMENT_RANGE_BOUNDARY_NODE_NAME } from "../prosemirror/extensions/nodes/CommentRangeBoundaryExtension";
 import { heldUnreferencedNotes as notesHeldWithoutReference } from "../prosemirror/noteReferenceReview";
 import {
   preservesReplacementCommentAlignment,
@@ -142,6 +143,8 @@ import { canonicalJson } from "../utils/canonicalJson";
 import { itemBefore } from "../utils/listItems";
 import { CanonicalIdLease } from "./canonicalIdLease";
 import {
+  type CanonicalInlineCommentContext,
+  type CanonicalInlineProjectionArgs,
   canonicalNativeCells,
   InlineProjectionCache,
   projectCanonicalInline,
@@ -152,6 +155,8 @@ import {
   type BlockParagraph,
   type ParagraphAddress,
   ParagraphIdIndex,
+  type ParagraphInline,
+  type ParagraphSlot,
   type ProjectedBlock,
   sameIdOrder,
   storyFactContributions,
@@ -538,24 +543,42 @@ class CanonicalProjection {
     );
   }
 
-  private addressOf(block: number, paragraph: number): ParagraphAddress {
+  /**
+   * A paragraph's address, its text and gaps aligned on the first address:
+   * refused when its source and its editor node do not align.
+   */
+  private addressOf(
+    block: number,
+    paragraph: number,
+  ): Result<ParagraphAddress, CanonicalSessionError> {
     const entry =
       this.blocks[block]?.paragraphs[paragraph] ??
       panic("Missing canonical paragraph");
     const known = this.addresses.get(entry.blockId);
-    if (known !== undefined) return known;
+    if (known !== undefined) return Result.ok(known);
+    const inline = entry.inline();
+    if (inline.isErr()) return Result.err(inlineRefusal(inline.error));
     const address: ParagraphAddress = {
       blockId: entry.blockId,
       container: entry.container ?? this.content,
       start:
         (this.starts[block] ?? panic("Missing block start")) + entry.offset,
-      text: entry.inline.text,
-      gaps: entry.inline.gaps,
+      text: inline.value.text,
+      gaps: inline.value.gaps,
       node: entry.node,
       source: entry.source,
     };
     this.addresses.set(entry.blockId, address);
-    return address;
+    return Result.ok(address);
+  }
+
+  /** {@link addressOf}, none for a paragraph it refuses. */
+  private alignedAddressOf(
+    block: number,
+    paragraph: number,
+  ): ParagraphAddress | undefined {
+    const address = this.addressOf(block, paragraph);
+    return address.isOk() ? address.value : undefined;
   }
 
   /**
@@ -564,6 +587,14 @@ class CanonicalProjection {
    * projection lists after its host as the story's own.
    */
   private paragraphAround(position: number): ParagraphAddress | undefined {
+    const slot = this.slotAround(position);
+    return slot === undefined
+      ? undefined
+      : this.alignedAddressOf(slot.block, slot.paragraph);
+  }
+
+  /** Where {@link paragraphAround}'s paragraph stands. */
+  private slotAround(position: number): ParagraphSlot | undefined {
     // The last top-level node starting before the position.
     let low = 0;
     let high = this.starts.length - 1;
@@ -594,7 +625,7 @@ class CanonicalProjection {
       relative > paragraph.offset + paragraph.node.content.size
     )
       return undefined;
-    return this.addressOf(block, found);
+    return { block, paragraph: found };
   }
 
   addressAt(
@@ -610,9 +641,12 @@ class CanonicalProjection {
     if (!Number.isInteger(position))
       return unaddressed("The input position is not an integer.");
     position = canonicalContentPosition(this.doc, position);
-    const paragraph = this.paragraphAround(position);
-    if (paragraph === undefined)
+    const slot = this.slotAround(position);
+    if (slot === undefined)
       return unaddressed("The input is outside a plain paragraph.");
+    const address = this.addressOf(slot.block, slot.paragraph);
+    if (address.isErr()) return address;
+    const paragraph = address.value;
     const relative = position - paragraph.start;
     const offset = paragraph.gaps.offsetOf(relative);
     if (offset < 0)
@@ -679,6 +713,7 @@ class CanonicalProjection {
   ): Result<TextPosition, CanonicalSessionError> {
     const address = this.addressAt(position, edge);
     if (address.isErr()) return address;
+    // Addressing the position aligned its paragraph.
     const paragraph = this.paragraph(address.value.blockId);
     if (paragraph === undefined) panic("Input lost its paragraph.");
     let destination = position;
@@ -696,7 +731,15 @@ class CanonicalProjection {
   }
 
   positionAt(address: TextPosition): Result<number, CanonicalSessionError> {
-    const paragraph = this.paragraph(address.blockId);
+    const slot = sameStory(address.story, this.story)
+      ? this.index.get(address.blockId)
+      : undefined;
+    let paragraph: ParagraphAddress | undefined;
+    if (slot !== undefined && slot.paragraph >= 0) {
+      const aligned = this.addressOf(slot.block, slot.paragraph);
+      if (aligned.isErr()) return Result.err(aligned.error);
+      paragraph = aligned.value;
+    }
     if (
       !sameStory(address.story, this.story) ||
       paragraph === undefined ||
@@ -783,13 +826,14 @@ class CanonicalProjection {
     const block = this.blocks.findIndex(
       ({ paragraphs }) => paragraphs.length > 0,
     );
-    return block < 0 ? undefined : this.addressOf(block, 0);
+    return block < 0 ? undefined : this.alignedAddressOf(block, 0);
   }
 
+  /** A paragraph's address; none for one the projection cannot align. */
   paragraph(blockId: string): ParagraphAddress | undefined {
     const slot = this.index.get(blockId);
     if (slot === undefined || slot.paragraph < 0) return undefined;
-    return this.addressOf(slot.block, slot.paragraph);
+    return this.alignedAddressOf(slot.block, slot.paragraph);
   }
 
   /** The paragraph whose node starts at `before`. */
@@ -801,7 +845,8 @@ class CanonicalProjection {
   nextParagraphInContainer(blockId: string): ParagraphAddress | undefined {
     const slot = this.index.get(blockId);
     if (slot === undefined || slot.paragraph < 0) return undefined;
-    const paragraph = this.addressOf(slot.block, slot.paragraph);
+    const paragraph = this.alignedAddressOf(slot.block, slot.paragraph);
+    if (paragraph === undefined) return undefined;
     // The block after it in its container, past the paragraphs of a text box
     // the paragraph draws, which the projection lists after it.
     const index = paragraph.container.indexOf(paragraph.source);
@@ -831,8 +876,8 @@ class CanonicalProjection {
       next = 0;
     }
     if (block >= this.blocks.length) return undefined;
-    const following = this.addressOf(block, next);
-    return paragraph.container === following.container ? following : undefined;
+    const following = this.alignedAddressOf(block, next);
+    return paragraph.container === following?.container ? following : undefined;
   }
 }
 
@@ -906,6 +951,12 @@ type ProjectStoryOptions = {
   caches?: StoryProjectionCaches;
   /** A projection of the story whose top-level blocks this one may keep. */
   previous?: CanonicalProjection;
+  /**
+   * Align each paragraph's source with its node when the paragraph is first
+   * addressed, not now, unless it holds comments: for a session opening a
+   * story, which addresses few of its paragraphs before an edit.
+   */
+  deferInline?: boolean;
 };
 
 /** Whether a paragraph anchors a text box, which converts to a block of its own. */
@@ -1168,6 +1219,78 @@ type BlockWalk = {
   passComments: (paragraph: Paragraph) => void;
   positionedComments: ReturnType<typeof positionedCommentGaps>;
   inline: InlineProjectionCache | undefined;
+  /** Whether paragraphs are aligned with their nodes only when first addressed. */
+  deferInline: boolean;
+};
+
+const NO_OPEN_COMMENTS: ReadonlySet<number> = new Set();
+
+/** The refusal of a paragraph whose source the projection cannot align with its node. */
+const inlineRefusal = (message: string): CanonicalSessionError =>
+  new CanonicalSessionError({
+    ground: { gap: CANONICAL_GAP.storyContentProjection },
+    reason: "refused",
+    message,
+  });
+
+/** Whether a paragraph's editor node shows a comment's mark or boundary. */
+const showsComments = (paragraph: PMNode): boolean => {
+  let shows = false;
+  paragraph.descendants((node) => {
+    if (
+      node.type.name === COMMENT_RANGE_BOUNDARY_NODE_NAME ||
+      node.marks.some((mark) => mark.type.name === "comment")
+    )
+      shows = true;
+    return !shows;
+  });
+  return shows;
+};
+
+/**
+ * A paragraph's text and gaps for a block walk. A walk that defers them
+ * still refuses now what the paragraph's editor node alone refuses (an
+ * inline construct canonical editing cannot place), and projects now a
+ * paragraph comments run through or mark, in its source or its node, with
+ * the ranges open at its start; any other paragraph's source is aligned
+ * with its node when it is first addressed, as it would have been now.
+ */
+const walkInline = (
+  args: CanonicalInlineProjectionArgs & {
+    commentContext: CanonicalInlineCommentContext;
+  },
+  walk: Pick<BlockWalk, "inline" | "deferInline" | "markersOf">,
+): Result<BlockParagraph["inline"], string> => {
+  const project = (
+    projected: CanonicalInlineProjectionArgs,
+  ): Result<ParagraphInline, string> => {
+    const inline =
+      walk.inline === undefined
+        ? projectCanonicalInline(projected)
+        : walk.inline.project(projected);
+    return inline.isOk()
+      ? Result.ok(inline.value)
+      : Result.err(inline.error.message);
+  };
+  if (
+    !walk.deferInline ||
+    args.commentContext.openIds.size > 0 ||
+    walk.markersOf(args.source).length > 0 ||
+    showsComments(args.paragraph)
+  ) {
+    const inline = project(args);
+    if (inline.isErr()) return inline;
+    return Result.ok(() => inline);
+  }
+  const native = canonicalNativeCells(args.paragraph);
+  if (native.isErr()) return Result.err(native.error.message);
+  // No range is open at its start, and the set the walk passes on changes.
+  const deferred = {
+    ...args,
+    commentContext: { ...args.commentContext, openIds: NO_OPEN_COMMENTS },
+  };
+  let inline: Result<ParagraphInline, string> | undefined;
+  return Result.ok(() => (inline ??= project(deferred)));
 };
 
 type TextBoxProjectionOptions = {
@@ -1208,16 +1331,15 @@ const projectTextBoxParagraphs = ({
       !walk.takeBoxed(located.source)
     )
       return false;
-    const inlineArgs = {
-      source: located.source,
-      paragraph: node,
-      pairedBookmarkIds: walk.facts.pairedBookmarkIds,
-      commentContext,
-    };
-    const inline =
-      walk.inline === undefined
-        ? projectCanonicalInline(inlineArgs)
-        : walk.inline.project(inlineArgs);
+    const inline = walkInline(
+      {
+        source: located.source,
+        paragraph: node,
+        pairedBookmarkIds: walk.facts.pairedBookmarkIds,
+        commentContext,
+      },
+      walk,
+    );
     if (inline.isOk())
       paragraphs.push({
         blockId: paraId,
@@ -1305,22 +1427,17 @@ const projectBlock = (
     }
     if (located.top !== index) local = false;
     passCommentMarkers(walk.positionedComments.before.get(source), walk.open);
-    const inlineArgs = {
-      source,
-      paragraph: node,
-      pairedBookmarkIds: walk.facts.pairedBookmarkIds,
-      commentContext,
-    };
-    const inline =
-      walk.inline === undefined
-        ? projectCanonicalInline(inlineArgs)
-        : walk.inline.project(inlineArgs);
+    const inline = walkInline(
+      {
+        source,
+        paragraph: node,
+        pairedBookmarkIds: walk.facts.pairedBookmarkIds,
+        commentContext,
+      },
+      walk,
+    );
     if (inline.isErr()) {
-      failure = new CanonicalSessionError({
-        ground: { gap: CANONICAL_GAP.storyContentProjection },
-        reason: "refused",
-        message: inline.error.message,
-      });
+      failure = inlineRefusal(inline.error);
       return false;
     }
     paragraphs.push({
@@ -1347,6 +1464,8 @@ type StoryWalkOptions = {
   story: OpStory;
   markersOf: ParagraphCommentMarkers;
   inline: InlineProjectionCache | undefined;
+  /** Whether a walk of every block aligns each paragraph only when it is first addressed. */
+  deferInline: boolean;
 };
 
 const passCommentMarkers = (
@@ -1372,6 +1491,7 @@ const projectEveryBlock = ({
   story,
   markersOf,
   inline,
+  deferInline,
 }: StoryWalkOptions): Result<CanonicalProjection, CanonicalSessionError> => {
   const pairedBookmarkIds = collectPairedBookmarkIds(content);
   const rangedIds = new Set<number>();
@@ -1459,6 +1579,7 @@ const projectEveryBlock = ({
     passComments,
     positionedComments,
     inline,
+    deferInline,
   };
   const blocks: ProjectedBlock[] = [];
   for (let index = 0; index < doc.childCount; index += 1) {
@@ -1584,6 +1705,8 @@ const projectChangedBlocks = (
       continuationSources,
     ),
     inline,
+    // The blocks an edit changed are aligned as it commits.
+    deferInline: false,
   };
   const window: ProjectedBlock[] = [];
   for (let index = start; index < newEnd; index += 1) {
@@ -1629,6 +1752,7 @@ const project = ({
   story = OP_STORIES.MAIN,
   caches,
   previous,
+  deferInline,
 }: ProjectStoryOptions): Result<CanonicalProjection, CanonicalSessionError> => {
   const body = findStoryBody(document, story);
   if (!body) return refuse("The canonical story no longer exists.", STALE);
@@ -1667,6 +1791,9 @@ const project = ({
     story,
     markersOf: caches?.comments.read ?? paragraphCommentMarkers,
     inline: caches?.inline,
+    // A projection after an edit aligns every paragraph it walks, so a
+    // commit is refused when its result does not align.
+    deferInline: deferInline === true && previous === undefined,
   };
   const kept =
     previous === undefined ? undefined : projectChangedBlocks(previous, walk);
@@ -4698,7 +4825,12 @@ export const createCanonicalSession = (
     target: normalizeCanonicalListRendering(identified, caches.lists).document,
     source: owned,
   });
-  const projected = project({ document: normalized, styles, caches });
+  const projected = project({
+    document: normalized,
+    styles,
+    caches,
+    deferInline: true,
+  });
   if (projected.isErr()) return projected;
   return Result.ok(
     new CanonicalSession({

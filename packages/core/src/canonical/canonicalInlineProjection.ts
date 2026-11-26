@@ -181,7 +181,7 @@ const nativePolicies = new Map<string, NativePolicy>(
 const InlineProjectionErrorBase: TaggedErrorClass<"InlineProjectionError"> =
   TaggedError("InlineProjectionError");
 
-class InlineProjectionError extends InlineProjectionErrorBase<{
+export class InlineProjectionError extends InlineProjectionErrorBase<{
   message: string;
 }> {}
 const refuse = (message: string) =>
@@ -502,7 +502,7 @@ export type CanonicalInlineCommentContext = {
   openIds: ReadonlySet<number>;
 };
 
-type CanonicalInlineProjectionArgs = {
+export type CanonicalInlineProjectionArgs = {
   source: Paragraph;
   paragraph: PMNode;
   pairedBookmarkIds: StoryIdMembership;
