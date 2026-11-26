@@ -5,7 +5,7 @@ import type { StepMap } from "prosemirror-transform";
 import {
   findStoryBody,
   OP_STORIES,
-  resolvedDocumentView,
+  resolvedMarkupDocumentView,
   type RevisionDecision,
   sameStory,
 } from "@stll/docx-core/ops";
@@ -74,7 +74,7 @@ export const canonicalMarkupDocument = ({
     if (detached !== undefined) return { ...detached, partial: false };
   }
   const source = authoritative ?? detachedModel(state);
-  const resolved = resolvedDocumentView(source, decision);
+  const resolved = resolvedMarkupDocumentView(source, decision);
   const story = converted?.story ?? OP_STORIES.MAIN;
   const partial = resolved.unresolved.some((unresolved) =>
     sameStory(unresolved, story),

@@ -12,7 +12,7 @@ import {
   REVIEW_CARRIERS,
 } from "../model/document";
 import { maxOf } from "../model/extremes";
-import { applyDocumentOps } from "./apply";
+import { applyDocumentOps, applyMarkupViewOps } from "./apply";
 import { withBodyContent } from "./blocks";
 import { knownToMeetContract } from "./contract";
 import { IDENTITY_SPACES, identityKeysIn, packageParagraphIds } from "./ids";
@@ -36,13 +36,17 @@ import {
 /** A document with its changes resolved one way, and what could not be. */
 export type ResolvedDocumentView = {
   document: Document;
-  /** Every changed paragraph keeps its place and only its inline content changed. */
-  independentInline?: readonly IndependentMarkupParagraph[];
   /**
    * The stories whose resolution refused, left as they were: a reader shows
    * them with their changes still in place and says so.
    */
   unresolved: readonly OpStory[];
+};
+
+/** A rendered review view with inline changes available for position mapping. */
+export type ResolvedMarkupDocumentView = ResolvedDocumentView & {
+  /** Every changed paragraph keeps its place and only its inline content changed. */
+  independentInline?: readonly IndependentMarkupParagraph[];
 };
 
 const REVISION_KEY_PREFIX = `${IDENTITY_SPACES.REVISION}:`;
@@ -347,19 +351,20 @@ const withoutParagraphIds = (
   return pkg === document.package ? document : { ...document, package: pkg };
 };
 
-/**
- * `document` with every revision resolved by `decision`, story by story. A
- * story the resolution of an earlier one removed (a note whose every
- * reference went) is not read again.
- */
-export const resolvedDocumentView = (
-  document: Document,
-  decision: RevisionDecision,
-): ResolvedDocumentView => {
+const readResolvedDocument = ({
+  document,
+  decision,
+  purpose,
+}: {
+  document: Document;
+  decision: RevisionDecision;
+  purpose: "apply" | "markup-view";
+}): ResolvedMarkupDocumentView => {
   const pkg = document.package;
   const body = pkg.document;
-  const known = knownToMeetContract(document);
+  const known = purpose === "markup-view" && knownToMeetContract(document);
   if (
+    purpose === "markup-view" &&
     (decision === REVISION_DECISIONS.ACCEPT ||
       decision === REVISION_DECISIONS.REJECT) &&
     (known || body.sections === undefined) &&
@@ -376,9 +381,7 @@ export const resolvedDocumentView = (
           view.body === body
             ? document
             : { ...document, package: { ...pkg, document: view.body } },
-        ...(view.changes.length === 0
-          ? {}
-          : { independentInline: view.changes }),
+        ...(view.changes.length > 0 ? { independentInline: view.changes } : {}),
         unresolved: [],
       };
   }
@@ -409,10 +412,12 @@ export const resolvedDocumentView = (
   const closed = withClosingParagraphs(identified.document, revised);
   let current = closed.document;
   const unresolved: OpStory[] = [];
+  const applyOps =
+    purpose === "markup-view" ? applyMarkupViewOps : applyDocumentOps;
   for (const story of stories) {
     const revisionIds = storyRevisionIds(current, story);
     if (revisionIds.length === 0) continue;
-    const resolved = applyDocumentOps(current, [
+    const resolved = applyOps(current, [
       {
         type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
         story,
@@ -446,3 +451,21 @@ export const resolvedDocumentView = (
   }
   return { document: resolvedDocument, unresolved };
 };
+
+/**
+ * `document` with every revision resolved by `decision`, story by story. A
+ * story the resolution of an earlier one removed (a note whose every
+ * reference went) is not read again.
+ */
+export const resolvedDocumentView = (
+  document: Document,
+  decision: RevisionDecision,
+): ResolvedDocumentView =>
+  readResolvedDocument({ document, decision, purpose: "apply" });
+
+/** Resolve a markup display, keeping paragraphs before pending table receivers. */
+export const resolvedMarkupDocumentView = (
+  document: Document,
+  decision: RevisionDecision,
+): ResolvedMarkupDocumentView =>
+  readResolvedDocument({ document, decision, purpose: "markup-view" });

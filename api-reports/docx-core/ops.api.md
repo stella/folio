@@ -1364,12 +1364,19 @@ export const replaceStoryBody: (input: ReplaceStoryBodyOptions) => Document_2;
 // @public
 export type ResolvedDocumentView = {
     document: Document_2;
-    independentInline?: readonly IndependentMarkupParagraph[];
     unresolved: readonly OpStory[];
 };
 
 // @public
 export const resolvedDocumentView: (document: Document_2, decision: RevisionDecision) => ResolvedDocumentView;
+
+// @public
+export type ResolvedMarkupDocumentView = ResolvedDocumentView & {
+    independentInline?: readonly IndependentMarkupParagraph[];
+};
+
+// @public
+export const resolvedMarkupDocumentView: (document: Document_2, decision: RevisionDecision) => ResolvedMarkupDocumentView;
 
 // @public
 export type ResolveRevisionOp = {

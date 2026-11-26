@@ -13,7 +13,7 @@ import type { EditorState } from "prosemirror-state";
 
 import {
   findStoryBody,
-  resolvedDocumentView,
+  resolvedMarkupDocumentView,
   type RevisionDecision,
 } from "@stll/docx-core/ops";
 
@@ -60,7 +60,7 @@ const resolvedNote = <TNote extends Footnote | Endnote>(
       ...(numbering !== undefined && { numbering }),
     },
   } satisfies Document;
-  const view = resolvedDocumentView(source, decision);
+  const view = resolvedMarkupDocumentView(source, decision);
   const body = findStoryBody(view.document, { kind: note.type, id: note.id });
   const resolved =
     body === undefined || body.content === note.content

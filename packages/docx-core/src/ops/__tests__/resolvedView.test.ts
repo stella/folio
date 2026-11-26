@@ -11,6 +11,7 @@ import { validateOpsDocument } from "../contract";
 import {
   type ResolvedDocumentView,
   resolvedDocumentView,
+  resolvedMarkupDocumentView,
 } from "../resolvedView";
 
 const info = { id: 3, author: "Reviewer", date: "2026-11-18" };
@@ -67,9 +68,12 @@ for (const decision of ["accept", "reject"] as const)
         },
       },
     };
-    const fromModel = resolvedDocumentView(structuredClone(source), decision);
+    const fromModel = resolvedMarkupDocumentView(
+      structuredClone(source),
+      decision,
+    );
     expect(validateOpsDocument(source).isOk()).toBe(true);
-    const view = resolvedDocumentView(source, decision);
+    const view = resolvedMarkupDocumentView(source, decision);
     expect(view).toEqual(fromModel);
     expect(view.unresolved).toEqual([]);
   });
@@ -81,26 +85,11 @@ for (const decision of ["accept", "reject"] as const)
     const source: Document = {
       package: { document: { content: [standing, inline] } },
     };
-    // A second story uses the ordinary model resolution path for both.
-    const withHeader: Document = {
-      package: {
-        ...source.package,
-        headers: new Map([
-          [
-            "rId1",
-            {
-              type: "header",
-              hdrFtrType: "default",
-              content: [text("00000003", "Header")],
-            },
-          ],
-        ]),
-      },
-    };
-    const independent = resolvedDocumentView(source, decision);
-    const sequential = resolvedDocumentView(withHeader, decision);
+    const independent = resolvedMarkupDocumentView(source, decision);
+    const sequential = resolvedDocumentView(source, decision);
     expect(independent.unresolved).toEqual([]);
     expect(sequential.unresolved).toEqual([]);
+    expect(independent.independentInline).toHaveLength(1);
     expect(independent.document.package.document).toEqual(
       sequential.document.package.document,
     );
@@ -126,26 +115,10 @@ test("a validated document only resolves illegal XML text when removing it", () 
       document: { content: [text("00000001", "Kept"), invalidInsertion] },
     },
   };
-  const withHeader: Document = {
-    package: {
-      ...source.package,
-      headers: new Map([
-        [
-          "rId1",
-          {
-            type: "header",
-            hdrFtrType: "default",
-            content: [text("00000003", "Header")],
-          },
-        ],
-      ]),
-    },
-  };
   expect(validateOpsDocument(source).isOk()).toBe(true);
-  expect(validateOpsDocument(withHeader).isOk()).toBe(true);
   for (const decision of ["accept", "reject"] as const) {
-    const view = resolvedDocumentView(source, decision);
-    const ordinary = resolvedDocumentView(withHeader, decision);
+    const view = resolvedMarkupDocumentView(source, decision);
+    const ordinary = resolvedDocumentView(source, decision);
     expect(view.unresolved).toEqual(ordinary.unresolved);
     expect(view.document.package.document).toEqual(
       ordinary.document.package.document,

@@ -2,8 +2,8 @@ import { Fragment, type Node as PMNode } from "prosemirror-model";
 import { StepMap } from "prosemirror-transform";
 
 import {
-  type ResolvedDocumentView,
-  resolvedDocumentView,
+  type ResolvedMarkupDocumentView,
+  resolvedMarkupDocumentView,
   type RevisionDecision,
 } from "@stll/docx-core/ops";
 
@@ -12,7 +12,9 @@ import { expectTrackedChangeMarkAttrs } from "./attrs";
 import { INLINE_WRAPPER_MARK_NAME } from "./extensions/marks/InlineWrapperExtension";
 import { getFolioNodeRevisionCarriers } from "./revisionCarriers";
 
-type InlineChanges = NonNullable<ResolvedDocumentView["independentInline"]>;
+type InlineChanges = NonNullable<
+  ResolvedMarkupDocumentView["independentInline"]
+>;
 type PositionRange = { from: number; to: number };
 
 export type IndependentMarkupProjection = {
@@ -186,7 +188,7 @@ export const projectDetachedText = (
   }
   if (changed.length === 0)
     return { doc, positionMap: StepMap.empty, changeBarRanges: [] };
-  const resolved = resolvedDocumentView(
+  const resolved = resolvedMarkupDocumentView(
     { package: { document: { content: changed } } },
     decision,
   );

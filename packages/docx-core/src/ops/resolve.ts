@@ -37,6 +37,7 @@ import type {
 } from "../model/document";
 import { getSingularRunPropertyChange } from "../model/runPropertyReview";
 import { hasIllegalXmlCharacters } from "../serialize/xmlEscape";
+import type { OperationExecutionPurpose } from "./apply";
 import {
   isOpaqueFollower,
   markBeforeTableResolves,
@@ -8384,6 +8385,7 @@ type RevisionResolutionPlanOptions = {
   document: Document;
   op: ResolveRevisionOp;
   applyOps: ApplyOps;
+  purpose?: OperationExecutionPurpose;
 };
 
 /**
@@ -8513,14 +8515,13 @@ export const planRevisionResolution = (
   const { document, applyOps } = options;
   const op = withBelongingPropertyChanges(document, options.op);
   const sections = settleSectionRecords(document, op);
-  if (sections.ops.length === 0)
-    return planMarkResolution({ document, op, applyOps });
+  if (sections.ops.length === 0) return planMarkResolution({ ...options, op });
   const settled = applyOps(document, sections.ops);
   if (settled.isErr()) return Result.err(settled.error);
   const rest = planMarkResolution({
+    ...options,
     document: settled.value.document,
     op: { ...op, revisionIds: sections.ids },
-    applyOps,
   });
   if (rest.isErr()) return Result.err(rest.error);
   return Result.ok({
@@ -8661,9 +8662,9 @@ const planMarkResolution = (
   if (marks.isErr()) return Result.err(marks.error);
   const rest = planSingleRecordResolution(
     {
+      ...options,
       document: marks.value.document,
       op: { ...op, revisionIds: settled.ids },
-      applyOps,
     },
     storyParagraphs(storyBody(marks.value.document, op.story)),
   );
@@ -8675,7 +8676,7 @@ const planMarkResolution = (
 };
 
 const planSingleRecordResolution = (
-  { document, op, applyOps }: RevisionResolutionPlanOptions,
+  { document, op, applyOps, purpose }: RevisionResolutionPlanOptions,
   paragraphs: readonly ParagraphLocation[],
 ): Result<RevisionResolutionPlan, DocumentOpRefusal> => {
   if (!Object.values(REVISION_DECISIONS).includes(op.decision)) {
@@ -9177,7 +9178,10 @@ const planSingleRecordResolution = (
     if (markResolved && !keepsBreak) {
       let depth = retiredCutDepths.get(idKey(paraId)) ?? mark.resolutionJoin;
       const blocks = blockListAt(body.content, location.list);
-      const following = blockFollower(blocks, location.index).block;
+      const following =
+        purpose === "markup-view"
+          ? blockFollower(blocks, location.index).block
+          : undefined;
       const pendingReceiverTableIds =
         following?.type === "table" &&
         authoredTableReceiverIsPending({
@@ -9651,8 +9655,6 @@ export const resolveIndependentTextParagraphs = (
 };
 
 export const resolveRevision = (
-  document: Document,
-  op: ResolveRevisionOp,
-  applyOps: ApplyOps,
+  options: RevisionResolutionPlanOptions,
 ): Result<DocumentEdit, DocumentOpRefusal> =>
-  planRevisionResolution({ document, op, applyOps }).map(({ edit }) => edit);
+  planRevisionResolution(options).map(({ edit }) => edit);

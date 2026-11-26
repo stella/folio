@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import type { Node } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 
-import { resolvedDocumentView } from "@stll/docx-core/ops";
+import { resolvedMarkupDocumentView } from "@stll/docx-core/ops";
 
 import { resolveAllChangesInHeadlessState } from "../__tests__/reference-editor/comments";
 import { projectReferenceMarkupView } from "../__tests__/reference-editor/markupViewProjection";
@@ -143,7 +143,7 @@ test.each([
   };
   const state = EditorState.create({ doc: toProseDoc(source) });
   const reference = resolveAllChangesInHeadlessState(state, decision);
-  const native = resolvedDocumentView(source, decision);
+  const native = resolvedMarkupDocumentView(source, decision);
   expect(native.unresolved).toEqual([]);
   expect(blocks(toProseDoc(native.document))).toEqual(blocks(reference.doc));
   expect(blocks(reference.doc)).toEqual([...body, "paragraph:Tail."]);
