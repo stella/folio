@@ -217,8 +217,8 @@ describe("applyTemplatePlan", () => {
     ).toEqual([
       [null, "HouseTitle", SOURCE_TEXT.title],
       [null, "HouseTitle", "Contents"],
-      [null, "TOC1", "Sample article\t2"],
-      [null, "TOC1", "Second sample\t3"],
+      // The kept contents field, without the entries the template cached.
+      [null, "TOC1", ""],
       [null, "HouseBody", "To: Recipient name"],
       ["Article I", "HouseArticle", SOURCE_TEXT.articleOneTitle],
       ["1.", "HouseClause", SOURCE_TEXT.clause],
@@ -253,7 +253,7 @@ describe("applyTemplatePlan", () => {
       placed: 14,
       merged: 2,
       omitted: 3,
-      templateBlocksKept: 5,
+      templateBlocksKept: 4,
       textIdentical: 15,
       textMismatch: 0,
       emphasisMismatch: 0,
@@ -461,14 +461,14 @@ describe("applyTemplatePlan", () => {
     ]);
     expect(report.leftovers.fields).toEqual([
       { part: "word/document.xml", kind: "TOC", count: 1 },
-      { part: "word/document.xml", kind: "PAGEREF", count: 2 },
       { part: "word/header1.xml", kind: "PAGE", count: 1 },
       { part: "word/footer1.xml", kind: "FILENAME", count: 1 },
     ]);
+    // The paragraph the contents field begins in; its entries' further
+    // paragraph is not placed.
     expect(report.leftovers.templateBlockIds).toEqual([
       TEMPLATE_IDS.tocHeading,
       TEMPLATE_IDS.tocFirst,
-      TEMPLATE_IDS.tocLast,
       TEMPLATE_IDS.fillIn,
       TEMPLATE_IDS.signatures,
     ]);
@@ -489,7 +489,13 @@ describe("applyTemplatePlan", () => {
     });
     expect(report.warnings.join("\n")).toContain("comment(s) of the source");
     expect(report.warnings.join("\n")).toContain("table of contents");
-    expect(report.warnings.join("\n")).toContain("_Toc100000001");
+    // The entries that pointed at the sample's bookmarks are gone with it.
+    expect(report.warnings.join("\n")).not.toContain("_Toc100000001");
+    expect(documentXml).toContain(
+      '<w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>',
+    );
+    expect(documentXml).not.toContain("Sample article");
+    expect(documentXml).not.toContain("PAGEREF");
     expect(documentXml).not.toContain("commentReference");
   });
 

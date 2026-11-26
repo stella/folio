@@ -49,7 +49,16 @@ import {
   type TemplatePlanSection,
   type TemplatePlanSourceItem,
 } from "./types";
-import { isW, maxOf, walkElements, wAttr, wChild, wChildVal } from "./xml";
+import {
+  elementChildren,
+  isW,
+  maxOf,
+  walkElements,
+  wAttr,
+  wChild,
+  wChildVal,
+  wName,
+} from "./xml";
 
 export type ExpectedPiece = {
   kind: AtomKind;
@@ -148,6 +157,114 @@ export type ResolvedSlot = {
   paragraph: ResolvedParagraph;
 };
 
+const fieldCharOf = (run: XmlElement): string | null =>
+  wName(run) === "r" ? wAttr(wChild(run, "fldChar"), "fldCharType") : null;
+
+/**
+ * The run of a paragraph that holds the separator of the field the
+ * paragraph begins and leaves open: what follows it is the start of a result
+ * that goes on in later paragraphs. A field the paragraph both begins and
+ * ends (a page number in front of a table of contents) is not that field.
+ * Null when no one field is left open with its result begun, in runs of the
+ * paragraph itself.
+ */
+export const fieldSeparatorRun = (paragraph: XmlElement): XmlElement | null => {
+  const open: { separator: XmlElement | null }[] = [];
+  for (const child of elementChildren(paragraph)) {
+    const mark = fieldCharOf(child);
+    if (mark === "begin") {
+      open.push({ separator: null });
+    } else if (mark === "end") {
+      open.pop();
+    } else if (mark === "separate") {
+      const top = open.at(-1);
+      if (top !== undefined && top.separator === null) {
+        top.separator = child;
+      }
+    }
+  }
+  const [left, ...others] = open;
+  return left === undefined || others.length > 0 ? null : left.separator;
+};
+
+const holdsText = (element: XmlElement): boolean => {
+  let text = false;
+  walkElements(element, (inner) => {
+    text ||= wName(inner) === "t";
+  });
+  return text;
+};
+
+/**
+ * Whether a paragraph ends the field left open in front of it and holds no
+ * more behind that end: the end of the field's result and nothing else. The
+ * end is the field's own, the first one that closes no field the paragraph
+ * began; text behind it stays, whatever field follows that text.
+ */
+const endsOpenField = (paragraph: XmlElement): boolean => {
+  const children = elementChildren(paragraph);
+  let depth = 0;
+  for (const [position, child] of children.entries()) {
+    const mark = fieldCharOf(child);
+    if (mark === "begin") {
+      depth += 1;
+    } else if (mark === "end") {
+      if (depth === 0) {
+        return !children.slice(position + 1).some(holdsText);
+      }
+      depth -= 1;
+    }
+  }
+  return false;
+};
+
+/**
+ * The kept tables of contents that show entries over several paragraphs:
+ * the paragraph each begins in, the length of the text that paragraph holds
+ * in front of the field's result, and the further paragraphs of its
+ * entries. A field that does not begin in runs of its own paragraph, that
+ * ends in a paragraph with text behind it, or whose paragraphs are not all
+ * kept top-level blocks, is not among them and stays as the template has it.
+ */
+const contentsWithEntries = (
+  template: AnalyzedDocument,
+  keptIds: ReadonlySet<string>,
+): { first: AnalyzedBlock; textKept: number; rest: AnalyzedBlock[] }[] => {
+  const found: {
+    first: AnalyzedBlock;
+    textKept: number;
+    rest: AnalyzedBlock[];
+  }[] = [];
+  for (const field of template.story.state.fields) {
+    if (
+      field.kind !== "TOC" ||
+      !field.closed ||
+      field.nestedInCode ||
+      field.endParagraphOrdinal <= field.paragraphOrdinal
+    ) {
+      continue;
+    }
+    const [first, ...rest] = template.story.paragraphs.slice(
+      field.paragraphOrdinal,
+      field.endParagraphOrdinal + 1,
+    );
+    const last = rest.at(-1);
+    if (
+      first !== undefined &&
+      last !== undefined &&
+      [first, ...rest].every(
+        ({ block, parentId }) => parentId === null && keptIds.has(block.id),
+      ) &&
+      field.resultStart >= 0 &&
+      fieldSeparatorRun(first.element) !== null &&
+      endsOpenField(last.element)
+    ) {
+      found.push({ first, textKept: field.resultStart, rest });
+    }
+  }
+  return found;
+};
+
 export type ResolvedPlan = {
   items: ResolvedItem[];
   /** Slots that sit inside a kept template table. */
@@ -169,6 +286,10 @@ export type ResolvedPlan = {
   }[];
   freezeKinds: ReadonlySet<string>;
   keptTemplateBlocks: AnalyzedBlock[];
+  /** The paragraphs kept tables of contents begin in, written without the
+   *  entries they cache: each with the length of the text it keeps in front
+   *  of the field's result. */
+  emptiedContents: Map<AnalyzedBlock, number>;
 };
 
 type Refusal = {
@@ -1647,6 +1768,36 @@ export const resolvePlan = (
     }
   }
 
+  // A kept table of contents keeps no entries: they are a cached result
+  // that names the headings and pages of the template's sample text. The
+  // field stays in the paragraph it begins in; the further paragraphs of
+  // its entries are not placed.
+  // A plan that freezes such a field keeps its result as text instead, so
+  // nothing of it is a field to empty.
+  const emptiedContents = new Map<AnalyzedBlock, number>();
+  for (const { first, textKept, rest } of freezeKinds.includes("TOC")
+    ? []
+    : contentsWithEntries(template, keptTemplateIds)) {
+    emptiedContents.set(first, textKept);
+    const gone = new Set(rest);
+    for (let position = items.length - 1; position >= 0; position -= 1) {
+      const item = items[position];
+      if (item?.kind === "template" && gone.has(item.block)) {
+        items.splice(position, 1);
+      }
+    }
+    for (
+      let position = keptTemplateBlocks.length - 1;
+      position >= 0;
+      position -= 1
+    ) {
+      const block = keptTemplateBlocks[position];
+      if (block !== undefined && gone.has(block)) {
+        keptTemplateBlocks.splice(position, 1);
+      }
+    }
+  }
+
   const omitted = new Map<string, TemplatePlanOmitReason>();
   for (const entry of plan.omit) {
     const block = sourceTopLevel(entry.blockId);
@@ -1795,5 +1946,6 @@ export const resolvePlan = (
     references: resolvedReferences,
     freezeKinds: new Set(freezeKinds),
     keptTemplateBlocks,
+    emptiedContents,
   });
 };
