@@ -1516,7 +1516,7 @@ function convertParagraph(
   // paragraph's content is the only writer, and it sets this before entering
   // the switch, so every node the switch emits gets the item's own stack.
   let wrapperStack: readonly InlineWrapperLayer[] = [];
-  let paragraphContainsInlineSdt = false;
+  let paragraphKeepsBoundaryNodes = false;
   const emitInlineNodes = (
     nodes: PMNode[],
     commentsAlreadyApplied = false,
@@ -1603,7 +1603,7 @@ function convertParagraph(
         wrapperStack,
         openCommentIds,
         {
-          preserveSdtBoundaryOccurrences: paragraphContainsInlineSdt,
+          preserveSdtBoundaryOccurrences: paragraphKeepsBoundaryNodes,
         },
       ),
       true,
@@ -1618,7 +1618,7 @@ function convertParagraph(
     withFieldWrapperCaptures(withLinkedPiecesInWrappers(paragraph.content)),
   );
   visitInlineContentSlots(paragraph, ({ item }) => {
-    if (item.type === "inlineSdt") paragraphContainsInlineSdt = true;
+    if (keepsCommentBoundaryNodes(item)) paragraphKeepsBoundaryNodes = true;
   });
   const emptyRanges = planEmptyRanges(
     stacked.map((item) => item.content),
@@ -1639,7 +1639,7 @@ function convertParagraph(
     switch (content.type) {
       case "commentRangeStart":
         openCommentIds.add(content.id);
-        if (paragraphContainsInlineSdt) {
+        if (paragraphKeepsBoundaryNodes) {
           emitInlineNodes(
             [
               schema.node(COMMENT_RANGE_BOUNDARY_NODE_NAME, {
@@ -1652,7 +1652,7 @@ function convertParagraph(
         break;
       case "commentRangeEnd":
         openCommentIds.delete(content.id);
-        if (paragraphContainsInlineSdt) {
+        if (paragraphKeepsBoundaryNodes) {
           emitInlineNodes(
             [
               schema.node(COMMENT_RANGE_BOUNDARY_NODE_NAME, {
@@ -1995,6 +1995,20 @@ const runPropertyChangeMark = (changes: readonly RunPropertyChange[]): Mark => {
 };
 
 /**
+ * A content control, or a link holding a comment boundary, writes its comment
+ * boundaries as nodes. Every comment boundary beside it does too, so a range
+ * ending outside such an item still runs between two nodes.
+ */
+const keepsCommentBoundaryNodes = (item: ParagraphContent): boolean =>
+  item.type === "inlineSdt" ||
+  (item.type === "hyperlink" &&
+    withInlineWrapperStacks(item.children).some(
+      ({ content }) =>
+        content.type === "commentRangeStart" ||
+        content.type === "commentRangeEnd",
+    ));
+
+/**
  * Convert tracked change (insertion or deletion) content to PM nodes with
  * an insertion/deletion mark applied.
  */
@@ -2049,16 +2063,16 @@ function convertTrackedChange(
   // wrapper: the caller marks what this returns, and `wrappedBy` reaches only
   // the leaves no caller can still see, those inside a content control.
   const stacked = withInlineWrapperStacks(change.content);
-  let containsInlineSdt = false;
+  let keepsBoundaryNodes = false;
   if (options.preserveSdtBoundaryOccurrences === undefined) {
     visitInlineContentSlotsInContent(change.content, ({ item }) => {
-      if (item.type === "inlineSdt") {
-        containsInlineSdt = true;
+      if (keepsCommentBoundaryNodes(item)) {
+        keepsBoundaryNodes = true;
       }
     });
   }
   const preserveBoundaryOccurrences =
-    options.preserveSdtBoundaryOccurrences ?? containsInlineSdt;
+    options.preserveSdtBoundaryOccurrences ?? keepsBoundaryNodes;
   const emptyRanges = planEmptyRanges(
     stacked.map(({ content }) => content),
     stacked.map(({ stack }) => stack),
