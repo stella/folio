@@ -4,6 +4,7 @@ import { ZipArchive } from "@stll/docx-core/zip";
 
 import { applyTemplatePlan } from "../apply";
 import { analyzeDocxBlocks } from "../blocks";
+import { inspectDocxTemplate } from "../inspect";
 import { resolvePartRevisions } from "../revisions";
 import type {
   DocxBlock,
@@ -318,6 +319,30 @@ describe("a plan that keeps the tracked changes of its source", () => {
       ).toEqual([text]);
     }
     expect(await partOf(docx, "word/settings.xml")).not.toContain(
+      "trackRevisions",
+    );
+    // Also on a template that has tracking switched on.
+    const settings = await partOf(template, "word/settings.xml");
+    const tracking = await ZipArchive.read(template);
+    tracking.set(
+      "word/settings.xml",
+      settings.replace(/(<w:settings\b[^>]*>)/u, "$1<w:trackRevisions/>"),
+    );
+    const onTracking = await tracking.generate();
+    expect(await partOf(onTracking, "word/settings.xml")).toContain(
+      "<w:trackRevisions/>",
+    );
+    const switchedOff = unwrap(
+      await applyTemplatePlan({
+        source,
+        template: onTracking,
+        plan: {
+          ...plan,
+          templateSha256: unwrap(await inspectDocxTemplate(onTracking)).sha256,
+        },
+      }),
+    );
+    expect(await partOf(switchedOff.docx, "word/settings.xml")).not.toContain(
       "trackRevisions",
     );
     // Verification holds the output to each change and to who made it.

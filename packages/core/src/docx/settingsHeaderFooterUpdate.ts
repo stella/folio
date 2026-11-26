@@ -63,7 +63,8 @@ const placeOf = (
 };
 
 /** The on/off children of `w:settings` a caller may set without re-serializing the part. */
-export type SettingsOnOffChild = "evenAndOddHeaders" | "updateFields";
+export type SettingsOnOffChild =
+  "evenAndOddHeaders" | "trackRevisions" | "updateFields";
 
 /**
  * Set (`true`), clear (`false`) or remove (`undefined`) one on/off child of
