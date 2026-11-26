@@ -1,3 +1,4 @@
+import { panic } from "better-result";
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { Fragment, type Node as ProseNode, Slice } from "prosemirror-model";
@@ -30,7 +31,7 @@ import { createDocx } from "../docx/rezip";
 import { toFlowBlocks } from "../layout-bridge/convert/toFlowBlocks";
 import { listRenderingAttrPatch } from "../prosemirror/listRenderingAttrs";
 import { schema } from "../prosemirror/schema";
-import type { Document } from "../types/document";
+import type { Document, Paragraph } from "../types/document";
 import { prepareCanonicalPaste } from "./canonicalClipboard";
 
 setDefaultTimeout(propertyTestTimeout(180_000));
@@ -2269,5 +2270,127 @@ describe("canonical clipboard", () => {
       assertClipboardModel(session.document, after);
       expect(state.selection.toJSON()).toEqual(afterSelection);
     }
+  });
+
+  test("a dragged table moves up or down in either mode as one journal entry that saves", async () => {
+    const text = (value: string, paraId: string): Paragraph => ({
+      type: "paragraph",
+      paraId,
+      content:
+        value === ""
+          ? []
+          : [{ type: "run", content: [{ type: "text", text: value }] }],
+    });
+    const tableSeed = (): Document => {
+      const document: Document = {
+        package: {
+          document: {
+            content: [
+              text("zero", "00000001"),
+              text("one", "00000002"),
+              {
+                type: "table",
+                rows: [
+                  {
+                    type: "tableRow",
+                    cells: [
+                      { type: "tableCell", content: [text("A1", "0000AA01")] },
+                      { type: "tableCell", content: [text("B1", "0000AA02")] },
+                    ],
+                  },
+                ],
+              },
+              text("two", "00000003"),
+              text("three", "00000004"),
+            ],
+          },
+        },
+      };
+      assignDocumentParagraphPropertySourceContract(document, "c".repeat(64));
+      return document;
+    };
+    const shapeOf = (document: Document) =>
+      document.package.document.content.map((block) => {
+        if (block.type === "paragraph") return paragraphLogicalText(block);
+        if (block.type !== "table") return block.type;
+        return block.rows.map((row) =>
+          row.cells.map((cell) =>
+            cell.content
+              .map((inner) =>
+                inner.type === "paragraph" ? paragraphLogicalText(inner) : "",
+              )
+              .join("|"),
+          ),
+        );
+      });
+    const cells = [["A1", "B1"]];
+    const expected = {
+      down: ["zero", "onetwo", "th", cells, "ree"],
+      up: ["ze", cells, "ro", "onetwo", "three"],
+    } as const;
+    for (const suggesting of [false, true])
+      for (const direction of ["up", "down"] as const) {
+        const session = createCanonicalSession(tableSeed()).unwrap();
+        session.setMode(
+          suggesting
+            ? { type: "suggesting", author: "Mover" }
+            : { type: "editing" },
+        );
+        let state = EditorState.create({ schema, doc: session.projection.doc });
+        const starts = new Map<string, number>();
+        state.doc.forEach((node, offset) => {
+          if (node.type.name === "paragraph")
+            starts.set(node.textContent, offset + 1);
+        });
+        const startOf = (value: string) =>
+          starts.get(value) ?? panic(`Missing paragraph ${value}.`);
+        const from = startOf("one") + 3;
+        const to = startOf("two");
+        state = state.apply(
+          state.tr.setSelection(TextSelection.create(state.doc, from, to)),
+        );
+        const target =
+          direction === "up" ? startOf("zero") + 2 : startOf("three") + 2;
+        const before = session.document;
+        state = publishCanonicalProjection({
+          session,
+          state,
+          commit: prepareCanonicalPaste({
+            session,
+            state,
+            slice: state.selection.content(),
+            moveTarget: target,
+            moveSource: { from, to },
+          }).unwrap(),
+        }).unwrap().state;
+        const after = session.document;
+        const tables = after.package.document.content.filter(
+          (block) => block.type === "table",
+        );
+        // A suggestion keeps the source table, recorded as deleted, until
+        // it is accepted.
+        expect(tables).toHaveLength(suggesting ? 2 : 1);
+        if (!suggesting)
+          expect(shapeOf(after)).toEqual([...expected[direction]]);
+        expect(state.doc.eq(session.projection.doc)).toBe(true);
+        const reopened = await parseDocx(await createDocx(after), {
+          preloadFonts: false,
+          detectVariables: false,
+        });
+        expect(shapeOf(reopened)).toEqual(shapeOf(after));
+        state = publishCanonicalProjection({
+          session,
+          state,
+          commit: session.prepareUndo(state).unwrap(),
+        }).unwrap().state;
+        assertExactModel(session.document, before);
+        expect(session.canUndo).toBe(false);
+        state = publishCanonicalProjection({
+          session,
+          state,
+          commit: session.prepareRedo(state).unwrap(),
+        }).unwrap().state;
+        assertExactModel(session.document, after);
+      }
   });
 });

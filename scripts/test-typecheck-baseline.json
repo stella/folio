@@ -708,7 +708,6 @@
     "TS2379": 3
   },
   "packages/core/src/controller/canonicalClipboard.test.ts": {
-    "TS2304": 3,
     "TS2322": 8,
     "TS2345": 1,
     "TS2375": 6,

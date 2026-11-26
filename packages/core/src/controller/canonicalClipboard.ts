@@ -1128,23 +1128,28 @@ export const prepareCanonicalPaste = ({
       resourceOps,
       semantic: "paste",
     });
-  if (topParagraphs.length !== blocks.length)
-    return refuse(
-      "Moving a table by dragging requires a table move operation.",
-      { gap: CANONICAL_GAP.trackedTableStructure },
-    );
   const target = session.projection.addressAt(moveTarget);
   if (target.isErr()) return target;
+  // Dragged paragraphs move as a fragment; with a table, as blocks.
   return session.prepareIntents(state, {
     intents: [
-      {
-        type: "moveFragment",
-        target: target.value,
-        ...range,
-        paragraphs: topParagraphs,
-        openStart,
-        openEnd,
-      },
+      topParagraphs.length === blocks.length
+        ? {
+            type: "moveFragment",
+            target: target.value,
+            ...range,
+            paragraphs: topParagraphs,
+            openStart,
+            openEnd,
+          }
+        : {
+            type: "moveBlocks",
+            target: target.value,
+            ...range,
+            blocks,
+            openStart,
+            openEnd,
+          },
     ],
     resourceOps,
     semantic: "paste",
