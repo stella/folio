@@ -382,6 +382,8 @@ export {
   type TemplatePlanReference,
   type TemplatePlanReferenceResult,
   type TemplatePlanReport,
+  type TemplatePlanSection,
+  type TemplatePlanSectionPage,
   type TemplatePlanSourceItem,
   type TemplatePlanSpanCounts,
   type VerifyTemplatePlanOutputArgs,

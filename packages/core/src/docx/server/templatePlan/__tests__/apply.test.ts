@@ -261,6 +261,7 @@ describe("applyTemplatePlan", () => {
       labelLost: 0,
       labelAsText: 0,
       pageStarts: 0,
+      sectionEnds: 0,
       tableSeparators: 1,
     });
     expect(

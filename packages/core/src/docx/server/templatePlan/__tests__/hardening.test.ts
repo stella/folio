@@ -7,6 +7,7 @@ import { applyTemplatePlan } from "../apply";
 import { analyzeDocxBlocks } from "../blocks";
 import {
   keepsShiftReturnSpacing,
+  sectionPropertiesXml,
   setKeepShiftReturnSpacing,
 } from "../builders";
 import { isManualLabel } from "../plan";
@@ -15,6 +16,7 @@ import type {
   TemplatePlanItem,
   TemplatePlanSourceItem,
 } from "../types";
+import { readRawPart } from "../xml";
 import {
   buildMinimalDocx,
   buildSource,
@@ -1805,6 +1807,209 @@ describe("tables kept apart", () => {
       plan,
     });
     expect(open.issues.map(({ code }) => code)).toContain("block-missing");
+  });
+});
+
+describe("sections a plan ends", () => {
+  const LANDSCAPE = {
+    orientation: "landscape",
+    width: 16_838,
+    height: 11_906,
+    margins: { top: 1000, right: 1100, bottom: 1200, left: 1300 },
+  } as const;
+  const three = async (): Promise<Uint8Array> =>
+    await buildMinimalDocx(
+      `${p(r("Body."))}${p(r("Wide annex."))}${p(r("After."))}`,
+    );
+  const ending =
+    (sections: Record<number, TemplatePlanSourceItem["endsSection"]>) =>
+    (blocks: PlannedBlock[]): TemplatePlanItem[] =>
+      blocks.map(({ id, hash }, index) => ({
+        kind: "source",
+        blockId: id,
+        hash,
+        ...(sections[index] === undefined
+          ? {}
+          : { endsSection: sections[index] }),
+      }));
+  const pages = async (docx: Uint8Array) =>
+    unwrap(await analyzeDocxBlocks(docx)).sections.map(
+      ({ start, orientation, size, margins }) => [
+        start,
+        orientation,
+        size.width,
+        margins.top,
+      ],
+    );
+
+  test("a section is the template's last one with the plan's page in place", async () => {
+    const { docx, report } = unwrap(
+      await applyFor({
+        source: await three(),
+        template,
+        items: ending({ 0: {}, 1: { page: LANDSCAPE } }),
+      }),
+    );
+    const document = await documentOf(docx);
+    const sections = [...document.matchAll(/<w:sectPr>.*?<\/w:sectPr>/gu)].map(
+      ([xml]) => xml,
+    );
+
+    expect(report.ok).toBe(true);
+    expect(report.counts.sectionEnds).toBe(2);
+    expect(await pages(docx)).toEqual([
+      ["nextPage", "portrait", 11_906, 1417],
+      ["nextPage", "landscape", 16_838, 1000],
+      ["nextPage", "portrait", 11_906, 1417],
+    ]);
+    // Each carries the template's header and footer.
+    expect(sections).toHaveLength(3);
+    for (const section of sections) {
+      expect(section).toContain("<w:headerReference ");
+      expect(section).toContain("<w:footerReference ");
+    }
+    expect(sections.at(1)).toContain(
+      '<w:type w:val="nextPage"/><w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/><w:pgMar w:top="1000" w:right="1100" w:bottom="1200" w:left="1300"',
+    );
+    // The section stands at the end of its paragraph's properties.
+    expect(document).toContain("</w:sectPr></w:pPr><w:r>");
+    expect(
+      unwrap(await analyzeDocxBlocks(docx))
+        .blocks.filter(({ endsSection }) => endsSection === true)
+        .map(({ text }) => text),
+    ).toEqual(["Body.", "Wide annex."]);
+  });
+
+  test("the body can end in a section of another page", async () => {
+    const { docx, report } = unwrap(
+      await applyFor({
+        source: await three(),
+        template,
+        items: ending({ 1: {} }),
+        extra: { lastSection: { page: LANDSCAPE, start: "oddPage" } },
+      }),
+    );
+
+    expect(report.ok).toBe(true);
+    expect(await pages(docx)).toEqual([
+      ["nextPage", "portrait", 11_906, 1417],
+      ["oddPage", "landscape", 16_838, 1000],
+    ]);
+  });
+
+  test("only the document's first section keeps the first-page header and the page-number start", () => {
+    const part = readRawPart(
+      "word/document.xml",
+      `<w:document ${NS}><w:body><w:sectPr w:rsidR="00AA00AA"><w:headerReference w:type="default" r:id="rId7"/><w:type w:val="continuous"/><w:pgSz w:w="11906" w:h="16838" w:code="9"/><w:pgMar w:top="1417" w:right="1417" w:bottom="1134" w:left="1417" w:header="708" w:footer="708" w:gutter="0"/><w:pgNumType w:fmt="lowerRoman" w:start="1"/><w:cols w:space="708"/><w:titlePg/><w:docGrid w:linePitch="360"/></w:sectPr></w:body></w:document>`,
+    );
+    const sectPr = part?.root.elements
+      ?.at(0)
+      ?.elements?.find(({ name }) => name === "w:sectPr");
+    if (part === null || part === undefined || sectPr === undefined) {
+      throw new Error("fixture");
+    }
+    const rest =
+      '<w:cols w:space="708"/><w:titlePg/><w:docGrid w:linePitch="360"/>';
+
+    expect(
+      sectionPropertiesXml(part.xml, sectPr, "w", {
+        first: true,
+        page: undefined,
+        start: null,
+      }),
+    ).toBe(
+      `<w:sectPr><w:headerReference w:type="default" r:id="rId7"/><w:type w:val="continuous"/><w:pgSz w:w="11906" w:h="16838" w:code="9"/><w:pgMar w:top="1417" w:right="1417" w:bottom="1134" w:left="1417" w:header="708" w:footer="708" w:gutter="0"/><w:pgNumType w:fmt="lowerRoman" w:start="1"/>${rest}</w:sectPr>`,
+    );
+    expect(
+      sectionPropertiesXml(part.xml, sectPr, "w", {
+        first: false,
+        page: LANDSCAPE,
+        start: "nextPage",
+      }),
+    ).toBe(
+      '<w:sectPr><w:headerReference w:type="default" r:id="rId7"/><w:type w:val="nextPage"/><w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/><w:pgMar w:top="1000" w:right="1100" w:bottom="1200" w:left="1300" w:header="708" w:footer="708" w:gutter="0"/><w:pgNumType w:fmt="lowerRoman"/><w:cols w:space="708"/><w:docGrid w:linePitch="360"/></w:sectPr>',
+    );
+  });
+
+  test("verification holds the output to the plan's sections", async () => {
+    const source = await three();
+    const plan = await planFor({
+      source,
+      template,
+      items: ending({ 0: {}, 1: { page: LANDSCAPE } }),
+    });
+    const { docx } = unwrap(
+      await applyTemplatePlan({ source, template, plan }),
+    );
+    const document = await documentOf(docx);
+    const portrait = await replacePart(
+      docx,
+      "word/document.xml",
+      document.replace(
+        '<w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/>',
+        '<w:pgSz w:w="11906" w:h="16838"/>',
+      ),
+    );
+    expect(
+      (
+        await verifyFor({ source, template, output: portrait, plan })
+      ).issues.map(({ code }) => code),
+    ).toEqual(["section-mismatch"]);
+
+    const plain = await planFor({ source, template });
+    expect(
+      (
+        await verifyFor({ source, template, output: docx, plan: plain })
+      ).issues.map(({ code, blockId }) => [code, blockId]),
+    ).toEqual([
+      ["section-mismatch", "p0"],
+      ["section-mismatch", "p1"],
+    ]);
+  });
+
+  test("a table, a joined block and a malformed page cannot end a section", async () => {
+    const table = await buildMinimalDocx(
+      `<w:tbl><w:tr><w:tc>${p(r("cell"))}</w:tc></w:tr></w:tbl>${p(r("after"))}`,
+    );
+    expect(
+      codeOf(
+        await applyFor({ source: table, template, items: ending({ 0: {} }) }),
+      ),
+    ).toBe("plan-invalid");
+    expect(
+      codeOf(
+        await applyFor({
+          source: await three(),
+          template,
+          items: (blocks) =>
+            blocks.map(({ id, hash }, index) => ({
+              kind: "source",
+              blockId: id,
+              hash,
+              ...(index === 0 ? { mergeNext: "space" } : {}),
+              ...(index === 1 ? { endsSection: {} } : {}),
+            })),
+        }),
+      ),
+    ).toBe("merge-invalid");
+    const malformed: TemplatePlan = JSON.parse(
+      JSON.stringify(
+        await planFor({
+          source: await three(),
+          template,
+          items: ending({ 0: { page: LANDSCAPE } }),
+        }),
+      ).replace('"width":16838', '"width":"wide"'),
+    );
+    expect(
+      codeOf(
+        await applyTemplatePlan({
+          source: await three(),
+          template,
+          plan: malformed,
+        }),
+      ),
+    ).toBe("plan-invalid");
   });
 });
 

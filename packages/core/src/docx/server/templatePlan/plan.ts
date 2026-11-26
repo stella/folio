@@ -44,9 +44,10 @@ import {
   type TemplatePlanNumbering,
   type TemplatePlanOmitReason,
   type TemplatePlanReference,
+  type TemplatePlanSection,
   type TemplatePlanSourceItem,
 } from "./types";
-import { isW, maxOf, walkElements, wAttr, wChildVal } from "./xml";
+import { isW, maxOf, walkElements, wAttr, wChild, wChildVal } from "./xml";
 
 export type ExpectedPiece = {
   kind: AtomKind;
@@ -106,6 +107,8 @@ export type ResolvedParagraph = {
   placement: "body" | "nested" | "slot";
   /** Whether the paragraph starts on a new page. */
   pageBreakBefore: boolean;
+  /** The section the paragraph is the last of, or null. */
+  endsSection: TemplatePlanSection | null;
 };
 
 export type ResolvedItem =
@@ -702,6 +705,7 @@ type ParagraphRequest = {
   /** Where a `"new"` list without a group gets its own key. */
   ordinal: number;
   pageBreakBefore?: boolean;
+  endsSection?: TemplatePlanSection | undefined;
 };
 
 const SHA256 = /^[0-9a-f]{64}$/u;
@@ -958,6 +962,7 @@ export const resolvePlan = (
     placement,
     ordinal,
     pageBreakBefore = false,
+    endsSection,
   }: ParagraphRequest): Result<ResolvedParagraph, TemplatePlanError> => {
     const first = parts.at(0);
     if (first === undefined) {
@@ -1113,6 +1118,7 @@ export const resolvePlan = (
       inlineObjects: pieces.filter(({ kind }) => kind === "object").length,
       placement,
       pageBreakBefore,
+      endsSection: endsSection ?? null,
     };
     for (const { block } of resolvedParts) {
       byBlockId.set(block.block.id, paragraph);
@@ -1150,6 +1156,7 @@ export const resolvePlan = (
       item.stripLabel !== undefined ||
       item.labelAsText !== undefined ||
       item.pageBreakBefore !== undefined ||
+      item.endsSection !== undefined ||
       item.numbering !== undefined
     ) {
       return invalid(`Table ${id} takes a style and nested placements only.`);
@@ -1330,12 +1337,13 @@ export const resolvePlan = (
             next.numbering !== undefined ||
             next.cellStyleId !== undefined ||
             next.nested !== undefined ||
-            next.pageBreakBefore !== undefined
+            next.pageBreakBefore !== undefined ||
+            next.endsSection !== undefined
           ) {
             return Result.err(
               refuse({
                 code: "merge-invalid",
-                message: `Block ${next.blockId} joins the paragraph before it and cannot carry a style, a list or a page start of its own.`,
+                message: `Block ${next.blockId} joins the paragraph before it and cannot carry a style, a list, a page start or a section end of its own.`,
                 blockId: next.blockId,
               }),
             );
@@ -1357,6 +1365,7 @@ export const resolvePlan = (
           placement: "body",
           ordinal,
           pageBreakBefore: item.pageBreakBefore === true,
+          endsSection: item.endsSection,
         });
         if (Result.isError(paragraph)) {
           return paragraph;
@@ -1442,6 +1451,17 @@ export const resolvePlan = (
   }
 
   partTables(items);
+  const splitsSections =
+    plan.lastSection !== undefined ||
+    items.some(
+      (item) =>
+        item.kind === "paragraph" && item.paragraph.endsSection !== null,
+    );
+  if (splitsSections && wChild(template.body, "sectPr") === null) {
+    return invalid(
+      "The template has no last section to build the plan's sections from.",
+    );
+  }
 
   // A template field that runs over several blocks is kept whole, in place
   // and with nothing in between, or not at all: anything placed inside it

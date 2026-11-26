@@ -9,6 +9,7 @@ import { sliceText } from "../../../utils/sliceText";
 import { updateSettingsOnOffChild } from "../../settingsHeaderFooterUpdate";
 import type { XmlElement } from "../../xmlParser";
 import { sha256Hex } from "./package";
+import type { TemplatePlanSectionPage } from "./types";
 import {
   elementChildren,
   escapeXmlAttribute,
@@ -382,6 +383,98 @@ export const setKeepShiftReturnSpacing = (
   return at === undefined
     ? null
     : spliceXml(settingsXml, [{ start: at, end: at, newXml: setting }]);
+};
+
+/** The children of `w:sectPr` the schema orders in front of `w:type`. */
+const SECTION_BEFORE_TYPE: ReadonlySet<string> = new Set([
+  "headerReference",
+  "footerReference",
+  "footnotePr",
+  "endnotePr",
+]);
+
+const PAGE_NUMBER_KEPT = ["fmt", "chapStyle", "chapSep"] as const;
+const MARGINS_KEPT = ["header", "footer", "gutter"] as const;
+
+export type SectionRewrite = {
+  /**
+   * Whether the section begins the document. Every later one loses the
+   * first-page header and a page-number start: they belong to the
+   * document's first page, not to each part of it.
+   */
+  first: boolean;
+  /** The page to put in place of the template's, or undefined. */
+  page: TemplatePlanSectionPage | undefined;
+  /** How the section begins; null keeps what the template states. */
+  start: string | null;
+};
+
+/**
+ * A `w:sectPr` built from the template's: the same children in the same
+ * order, with the page, the start and the first-section properties changed
+ * as `rewrite` says. `xml` is the part `sectPr` was read from. Null when a
+ * child cannot be read back.
+ */
+export const sectionPropertiesXml = (
+  xml: string,
+  sectPr: XmlElement,
+  w: string,
+  { first, page, start }: SectionRewrite,
+): string | null => {
+  const attributes = (element: XmlElement, names: readonly string[]): string =>
+    names
+      .map((name) => [name, wAttr(element, name)] as const)
+      .filter(([, value]) => value !== null)
+      .map(
+        ([name, value]) => ` ${w}:${name}="${escapeXmlAttribute(value ?? "")}"`,
+      )
+      .join("");
+  const type = start === null ? "" : `<${w}:type ${w}:val="${start}"/>`;
+  const out: string[] = [];
+  let typeWritten = type === "";
+  for (const child of elementChildren(sectPr)) {
+    const name = wName(child);
+    if (!typeWritten && (name === null || !SECTION_BEFORE_TYPE.has(name))) {
+      out.push(type);
+      typeWritten = true;
+    }
+    if (
+      name === "sectPrChange" ||
+      (name === "type" && start !== null) ||
+      (name === "titlePg" && !first)
+    ) {
+      continue;
+    }
+    if (name === "pgSz" && page !== undefined) {
+      out.push(
+        `<${w}:pgSz ${w}:w="${page.width}" ${w}:h="${page.height}"${page.orientation === "landscape" ? ` ${w}:orient="landscape"` : ""}/>`,
+      );
+      continue;
+    }
+    if (name === "pgMar" && page?.margins !== undefined) {
+      const { top, right, bottom, left } = page.margins;
+      out.push(
+        `<${w}:pgMar ${w}:top="${top}" ${w}:right="${right}" ${w}:bottom="${bottom}" ${w}:left="${left}"${attributes(child, MARGINS_KEPT)}/>`,
+      );
+      continue;
+    }
+    if (name === "pgNumType" && !first) {
+      const kept = attributes(child, PAGE_NUMBER_KEPT);
+      if (kept !== "") {
+        out.push(`<${w}:pgNumType${kept}/>`);
+      }
+      continue;
+    }
+    const range = rangeOf(child);
+    if (range === null) {
+      return null;
+    }
+    out.push(xml.slice(range.start, range.end));
+  }
+  if (!typeWritten) {
+    out.push(type);
+  }
+  return `<${w}:sectPr>${out.join("")}</${w}:sectPr>`;
 };
 
 export type FrozenFieldCount = { kind: string; count: number };

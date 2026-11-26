@@ -2148,6 +2148,7 @@ export type TemplatePlan = {
     compat?: {
         doNotExpandShiftReturn?: boolean;
     };
+    lastSection?: TemplatePlanSection;
 };
 
 // @public (undocumented)
@@ -2195,7 +2196,7 @@ export type TemplatePlanHighlight = {
 
 // @public (undocumented)
 export type TemplatePlanIssue = {
-    code: "text-mismatch" | "emphasis-mismatch" | "note-mismatch" | "block-missing" | "reference-broken" | "bookmark-dangling" | "field-unbalanced" | "relationship-dangling" | "note-dangling" | "numbering-dangling" | "style-dangling" | "style-mismatch" | "numbering-mismatch" | "page-start-mismatch" | "template-mismatch" | "prompting-field-left" | "field-not-frozen" | "update-fields-mismatch" | "compat-mismatch" | "conformance";
+    code: "text-mismatch" | "emphasis-mismatch" | "note-mismatch" | "block-missing" | "reference-broken" | "bookmark-dangling" | "field-unbalanced" | "relationship-dangling" | "note-dangling" | "numbering-dangling" | "style-dangling" | "style-mismatch" | "numbering-mismatch" | "page-start-mismatch" | "section-mismatch" | "template-mismatch" | "prompting-field-left" | "field-not-frozen" | "update-fields-mismatch" | "compat-mismatch" | "conformance";
     message: string;
     blockId?: string;
     part?: string;
@@ -2303,6 +2304,7 @@ export type TemplatePlanReport = {
         labelLost: number;
         labelAsText: number;
         pageStarts: number;
+        sectionEnds: number;
         tableSeparators: number;
     };
     footnotes: TemplatePlanNoteCounts;
@@ -2345,6 +2347,25 @@ export type TemplatePlanReport = {
     warnings: string[];
 };
 
+// @public
+export type TemplatePlanSection = {
+    page?: TemplatePlanSectionPage;
+    start?: "nextPage" | "evenPage" | "oddPage";
+};
+
+// @public
+export type TemplatePlanSectionPage = {
+    orientation: "portrait" | "landscape";
+    width: number;
+    height: number;
+    margins?: {
+        top: number;
+        right: number;
+        bottom: number;
+        left: number;
+    };
+};
+
 // @public (undocumented)
 export type TemplatePlanSourceItem = {
     kind: "source";
@@ -2356,6 +2377,7 @@ export type TemplatePlanSourceItem = {
     labelAsText?: boolean;
     mergeNext?: TemplatePlanMerge;
     pageBreakBefore?: boolean;
+    endsSection?: TemplatePlanSection;
     cellStyleId?: string;
     nested?: TemplatePlanNestedParagraph[];
 };

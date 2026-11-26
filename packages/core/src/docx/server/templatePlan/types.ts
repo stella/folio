@@ -289,6 +289,30 @@ export type TemplatePlanNestedParagraph = {
   labelAsText?: boolean;
 };
 
+/** A page other than the template's, in twentieths of a point. */
+export type TemplatePlanSectionPage = {
+  orientation: "portrait" | "landscape";
+  width: number;
+  height: number;
+  /** Left out, the template's margins stay. */
+  margins?: { top: number; right: number; bottom: number; left: number };
+};
+
+/**
+ * A section of the output. It is built from the template's last section:
+ * the same headers, footers and every other property, with only the page
+ * given here put in its place. The first-page header and a page-number
+ * start stay with the document's first section alone.
+ */
+export type TemplatePlanSection = {
+  page?: TemplatePlanSectionPage;
+  /**
+   * How the section begins after the one before it; `nextPage` when left
+   * out. The document's first section begins the document.
+   */
+  start?: "nextPage" | "evenPage" | "oddPage";
+};
+
 export type TemplatePlanSourceItem = {
   kind: "source";
   blockId: string;
@@ -317,6 +341,14 @@ export type TemplatePlanSourceItem = {
    * joins the paragraph before it.
    */
   pageBreakBefore?: boolean;
+  /**
+   * The paragraph is the last of a section, described here: for a part of
+   * the document whose page is another than the template's, such as a
+   * landscape annex. Not for a table, a nested paragraph, or a block that
+   * joins the paragraph before it. The template needs a last section of
+   * its own to build from.
+   */
+  endsSection?: TemplatePlanSection;
   /** Table only: the paragraph style of its cells. */
   cellStyleId?: string;
   /** Table only: placement of single paragraphs inside it. */
@@ -383,6 +415,12 @@ export type TemplatePlan = {
    * never switched off.
    */
   compat?: { doNotExpandShiftReturn?: boolean };
+  /**
+   * The section the body ends with, when its page is another than the
+   * template's. Left out, the template's last section closes the body as it
+   * stands.
+   */
+  lastSection?: TemplatePlanSection;
 };
 
 export type TemplatePlanBlockResult = {
@@ -464,6 +502,7 @@ export type TemplatePlanIssue = {
     | "style-mismatch"
     | "numbering-mismatch"
     | "page-start-mismatch"
+    | "section-mismatch"
     | "template-mismatch"
     | "prompting-field-left"
     | "field-not-frozen"
@@ -501,6 +540,8 @@ export type TemplatePlanReport = {
     labelAsText: number;
     /** Placed paragraphs the plan starts on a new page. */
     pageStarts: number;
+    /** Placed paragraphs the plan ends a section with. */
+    sectionEnds: number;
     /**
      * Empty paragraphs written between two tables the plan puts next to each
      * other, and after a table that ends the body: without one the tables
