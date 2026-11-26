@@ -107,6 +107,7 @@ import {
   identityKeysIn,
   idKey,
   isParaId,
+  type KeyMembership,
   packageIdentityKeyIndex,
   packageParagraphIdIndex,
   packageReservedKeyIndex,
@@ -3418,16 +3419,36 @@ export const combineRecordedRevisions = (
  * Newly allocated revision ids, and the existing ones whose pending property
  * changes the operation folded its edit into.
  */
-const recordedRevisions = (
-  before: Document,
-  edit: DocumentEdit,
-  stamp: RevisionStamp,
-  boxes: readonly TextBoxStory[],
-): RecordedRevisionIds => {
+type RecordedRevisionsOptions = {
+  before: Document;
+  edit: DocumentEdit;
+  stamp: RevisionStamp;
+  boxes: readonly TextBoxStory[];
+  op: DocumentOp;
+};
+const recordedRevisions = ({
+  before,
+  edit,
+  stamp,
+  boxes,
+  op,
+}: RecordedRevisionsOptions): RecordedRevisionIds => {
   const touched = new Set(
     [...edit.touched.modified, ...edit.touched.inserted].map(idKey),
   );
-  const known = packageIdentityKeyIndex(before.package);
+  const packageKeys = packageIdentityKeyIndex(before.package);
+  // Imported rows and tables may bring their own review records. Those
+  // records keep their own revision even when their author and date match.
+  let known: KeyMembership = packageKeys;
+  if (
+    op.type === DOCUMENT_OP_TYPES.INSERT_TABLE ||
+    op.type === DOCUMENT_OP_TYPES.INSERT_ROW
+  ) {
+    const imported =
+      op.type === DOCUMENT_OP_TYPES.INSERT_TABLE ? op.table : op.row;
+    const importedKeys = new Set(identityKeysIn(imported));
+    known = { has: (key) => packageKeys.has(key) || importedKeys.has(key) };
+  }
   const tableRevisions: number[] = [];
   const paragraphRevisions: number[] = [];
   const folded: number[] = [];
@@ -3769,7 +3790,7 @@ const applyAddressedOp = ({
     inverse: edit.inverse.map(captureDocumentOp),
     ...(stamp === undefined
       ? NO_RECORDED_REVISIONS
-      : recordedRevisions(document, edit, stamp, boxes)),
+      : recordedRevisions({ before: document, edit, stamp, boxes, op })),
   });
 };
 
