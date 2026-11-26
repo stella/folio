@@ -59,7 +59,9 @@ anchor's, never a field of the new comment. A comment's author and date are
 the operation's own: the sequencer and every receiver apply them as sent. `validateDocumentBatch`
 normalizes optional undefined object fields, and `validateSequencedBatch`
 checks assigned revisions and that each effect is the one its operation kind
-records.
+records. A paragraph insertion before or after a paragraph records the
+revisions it borders (`insertBlocks`); one sequenced before that effect
+existed recorded none, which still validates and replays.
 
 The position transform rebases text insertions, inline content insertions,
 inline record splits and joins, direct deletions, run and paragraph
@@ -71,7 +73,11 @@ deletion, a format, an inline record split or join, a paragraph split,
 paragraph formatting, or a paragraph join that states both halves without
 property changes and its kept half without a mark change) unchanged, and is
 refused only when that edit cut a revision record in two and gave its
-second half a new id. A concurrent tracked edit refuses it, since its records
+second half a new id. It passes a direct paragraph insertion beside a
+paragraph unless it decides a revision the insertion's effect names as
+bordering it (the marks of the anchor and of the paragraph before it, the
+rows and cells holding it), or one the inserted paragraphs hold a copy of; an
+insertion that recorded no such effect refuses it. A concurrent tracked edit refuses it, since its records
 may continue a decided revision, unless the decision is sequenced and the
 edit addresses none of the paragraphs its effect names: a sequenced decision
 moves past each operation of a pending tracked batch elsewhere. Text inherited at a paragraph's start takes the run after
