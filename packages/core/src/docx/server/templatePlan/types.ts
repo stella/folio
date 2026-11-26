@@ -92,6 +92,23 @@ export type DocxTableCell = {
  * field results are included and field instructions are not. Offsets into
  * `text` are UTF-16 code units.
  */
+/**
+ * A tracked change inside a paragraph, by where it sits in the paragraph's
+ * `text`. An insertion spans the text it added. A deletion takes no place
+ * in a text read with the changes accepted: its `start` and `end` are the
+ * one offset it was made at. A change of the paragraph mark sits at the
+ * offset the mark stands or stood at.
+ */
+export type DocxBlockRevision = {
+  kind: "insertion" | "deletion";
+  start: number;
+  end: number;
+  author: string;
+  date: string | null;
+  /** The change is of a paragraph mark, not of text. */
+  paragraphMark?: true;
+};
+
 export type DocxBlock = {
   /** `p<index>` for a paragraph, `t<index>` for a table. */
   id: string;
@@ -124,6 +141,13 @@ export type DocxBlock = {
    * offset 6 reads `Annex 1 - Summary` on the page.
    */
   selfNumbers?: number[];
+  /**
+   * The tracked changes the paragraph holds, in a manifest read with the
+   * changes kept (`trackedChanges: "keep"`), in the order they stand. A
+   * plan takes care around them: a label is not stripped across one and a
+   * reference is not placed on one.
+   */
+  revisions?: DocxBlockRevision[];
   /**
    * The paragraph starts on a new page by its own formatting or its
    * style's (`w:pageBreakBefore`). A plan carries it over with an item's

@@ -302,6 +302,7 @@ export type DocxBlock = {
     inlineObjects: number;
     pageBreaks?: number;
     selfNumbers?: number[];
+    revisions?: DocxBlockRevision[];
     pageBreakBefore?: true;
     endsSection?: true;
     alignment?: string;
@@ -338,6 +339,16 @@ export type DocxBlockNumbering = {
     abstractNumId: number;
     bullet?: true;
     bulletFont?: string;
+};
+
+// @public
+export type DocxBlockRevision = {
+    kind: "insertion" | "deletion";
+    start: number;
+    end: number;
+    author: string;
+    date: string | null;
+    paragraphMark?: true;
 };
 
 // @public

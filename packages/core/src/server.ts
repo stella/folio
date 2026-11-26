@@ -355,6 +355,7 @@ export {
   type DocxBlock,
   type DocxBlockManifest,
   type DocxBlockNumbering,
+  type DocxBlockRevision,
   type DocxCompat,
   type DocxNote,
   type DocxSection,

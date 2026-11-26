@@ -627,6 +627,74 @@ describe("a plan that keeps the tracked changes of its source", () => {
     ).toBe(false);
   });
 
+  test("the manifest says where each paragraph's changes sit", async () => {
+    const source = await buildMinimalDocx(
+      [
+        p(
+          `${r("An ")}${ins(`${r("added ")}${r("and more ")}`)}${del("old ", 7)}${r("word.")}`,
+        ),
+        marked(r("One "), "del"),
+        marked(r("two."), "ins"),
+        p(r("Plain.")),
+      ].join(""),
+    );
+    const { blocks } = unwrap(
+      await analyzeDocxBlocks(source, { trackedChanges: "keep" }),
+    );
+
+    expect(blocks.map(({ text }) => text)).toEqual([
+      "An added and more word.",
+      "One two.",
+      "Plain.",
+    ]);
+    // Neighbouring runs of one insertion are one entry; a deletion is the
+    // offset it was made at.
+    expect(blocks[0]?.revisions).toEqual([
+      {
+        kind: "insertion",
+        start: 3,
+        end: 18,
+        author: "First Author",
+        date: "2026-01-05T10:00:00Z",
+      },
+      {
+        kind: "deletion",
+        start: 18,
+        end: 18,
+        author: "Second Author",
+        date: "2026-02-07T09:30:00Z",
+      },
+    ]);
+    // The deleted mark where the first paragraph ended, the inserted one at
+    // the end of its own.
+    expect(blocks[1]?.revisions).toEqual([
+      {
+        kind: "deletion",
+        start: 4,
+        end: 4,
+        author: "First Author",
+        date: "2026-01-05T10:00:00Z",
+        paragraphMark: true,
+      },
+      {
+        kind: "insertion",
+        start: 8,
+        end: 8,
+        author: "First Author",
+        date: "2026-01-05T10:00:00Z",
+        paragraphMark: true,
+      },
+    ]);
+    expect(blocks[2]?.revisions).toBeUndefined();
+    // A reading of one view has no changes to place.
+    const accepted = unwrap(
+      await analyzeDocxBlocks(source, { trackedChanges: "accept" }),
+    );
+    expect(accepted.blocks.some((block) => block.revisions !== undefined)).toBe(
+      false,
+    );
+  });
+
   test("a label that holds a change is not stripped", async () => {
     const source = await buildMinimalDocx(
       p(`${ins(r("3."))}<w:r><w:tab/></w:r>${r("The term.")}`),

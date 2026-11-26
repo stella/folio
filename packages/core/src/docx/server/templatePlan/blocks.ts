@@ -21,6 +21,7 @@ import {
   sha256Hex,
 } from "./package";
 import {
+  DELETED_PARAGRAPH_MARK,
   keptRevisionObstacles,
   resolveTrackedChanges,
   withDeletedMarksJoined,
@@ -37,6 +38,7 @@ import {
 import type {
   DocxBlock,
   DocxBlockManifest,
+  DocxBlockRevision,
   DocxNote,
   DocxSection,
   DocxTableCell,
@@ -414,6 +416,47 @@ const selfNumbersOf = ({ atoms }: ParagraphRead): number[] => {
   return offsets;
 };
 
+/**
+ * The tracked changes a paragraph read with them kept holds, by where they
+ * sit in its text. Neighbouring pieces of one change are one entry.
+ */
+const revisionsOf = ({ atoms }: ParagraphRead): DocxBlockRevision[] => {
+  const found: DocxBlockRevision[] = [];
+  let at = 0;
+  for (const { text, revision } of atoms) {
+    const start = at;
+    at += text.length;
+    if (revision === undefined) {
+      continue;
+    }
+    const kind = revision.kind === "ins" ? "insertion" : "deletion";
+    const paragraphMark =
+      revision.mark === true || revision.deleted === DELETED_PARAGRAPH_MARK;
+    const last = found.at(-1);
+    if (
+      last !== undefined &&
+      !paragraphMark &&
+      last.paragraphMark === undefined &&
+      last.kind === kind &&
+      last.end === start &&
+      last.author === revision.author &&
+      last.date === revision.date
+    ) {
+      last.end = at;
+      continue;
+    }
+    found.push({
+      kind,
+      start,
+      end: at,
+      author: revision.author,
+      date: revision.date,
+      ...(paragraphMark ? { paragraphMark: true } : {}),
+    });
+  }
+  return found;
+};
+
 type AnalyzeStoryOptions = {
   container: XmlElement;
   resources: StoryResources;
@@ -499,6 +542,10 @@ export const analyzeStory = ({
       const selfNumbers = selfNumbersOf(read);
       if (selfNumbers.length > 0) {
         block.selfNumbers = selfNumbers;
+      }
+      const revisions = revisionsOf(read);
+      if (revisions.length > 0) {
+        block.revisions = revisions;
       }
       if (read.pageBreakBefore ?? style?.pPr?.pageBreakBefore === true) {
         block.pageBreakBefore = true;
