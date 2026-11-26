@@ -220,6 +220,8 @@ const NOTES_OF_REFERENCE: Partial<Record<AtomKind, "footnotes" | "endnotes">> =
   };
 
 const LABEL_SPACE = /^[ \t ]+/u;
+/** The blank behind a label when a line break behind it goes too. */
+const LABEL_SPACE_AND_BREAK = /^[ \t ]*(?:\n[ \t ]*)?/u;
 const LEADING_SPACE = /^[ \t ]*/u;
 
 /** Whether a block holds no text and no object. */
@@ -273,6 +275,11 @@ const NOTE_REFERENCE_KINDS: ReadonlySet<AtomKind> = new Set([
 ]);
 /** What a stripped label may consist of. */
 const STRIPPABLE_KINDS: ReadonlySet<AtomKind> = new Set(["text", "tab"]);
+/** The same when a line break behind the label goes with it. */
+const STRIPPABLE_WITH_BREAK: ReadonlySet<AtomKind> = new Set([
+  ...STRIPPABLE_KINDS,
+  "lineBreak",
+]);
 /**
  * Character styles that only give a link its look. The template supplies
  * that look; any other character style inside a link is emphasis.
@@ -421,6 +428,8 @@ type PartSegmentsOptions = {
   block: AnalyzedBlock;
   pieces: ExpectedPiece[];
   strippedLength: number;
+  /** Whether what is stripped may hold a line break. */
+  strippedBreak: boolean;
   references: readonly TemplatePlanReference[];
   highlights: readonly TemplatePlanHighlight[];
 };
@@ -429,9 +438,11 @@ const partSegments = ({
   block,
   pieces,
   strippedLength,
+  strippedBreak,
   references,
   highlights,
 }: PartSegmentsOptions): Result<ExpectedSegment[], TemplatePlanError> => {
+  const strippable = strippedBreak ? STRIPPABLE_WITH_BREAK : STRIPPABLE_KINDS;
   const blockId = block.block.id;
   const length = block.block.text.length;
   const badReference = (message: string): Result<never, TemplatePlanError> =>
@@ -500,7 +511,7 @@ const partSegments = ({
     const empty = entry.start === entry.end;
     if (entry.end <= strippedLength && !empty) {
       // A label is text and the space after it; anything else stays put.
-      if (!STRIPPABLE_KINDS.has(entry.piece.kind)) {
+      if (!strippable.has(entry.piece.kind)) {
         return Result.err(
           refuse({
             code: "strip-label-mismatch",
@@ -675,6 +686,8 @@ const partTables = (items: ResolvedItem[]): void => {
 type PlannedPart = {
   block: AnalyzedBlock;
   stripLabel: string | undefined;
+  /** Whether a line break behind the stripped label goes with it. */
+  stripLabelBreak?: boolean;
   labelAsText: boolean;
 };
 
@@ -994,7 +1007,7 @@ export const resolvePlan = (
     const segments: ExpectedSegment[] = [];
     const resolvedParts: ResolvedPart[] = [];
     for (const [index, planned] of parts.entries()) {
-      const { block, stripLabel } = planned;
+      const { block, stripLabel, stripLabelBreak } = planned;
       const { id, text } = block.block;
       if (block.read === null) {
         return invalid(
@@ -1031,9 +1044,11 @@ export const resolvePlan = (
             }),
           );
         }
+        const blank =
+          stripLabelBreak === true ? LABEL_SPACE_AND_BREAK : LABEL_SPACE;
         strippedPrefix = text.slice(
           0,
-          labelEnd + (LABEL_SPACE.exec(text.slice(labelEnd))?.[0].length ?? 0),
+          labelEnd + (blank.exec(text.slice(labelEnd))?.[0].length ?? 0),
         );
       }
       const part = partSegments({
@@ -1045,6 +1060,7 @@ export const resolvePlan = (
           fields: source.story.state.fields,
         }),
         strippedLength: strippedPrefix.length,
+        strippedBreak: stripLabelBreak === true,
         references: referencesByBlock.get(id) ?? [],
         highlights: highlightsByBlock.get(id) ?? [],
       });
@@ -1165,6 +1181,7 @@ export const resolvePlan = (
     if (
       item.mergeNext !== undefined ||
       item.stripLabel !== undefined ||
+      item.stripLabelBreak !== undefined ||
       item.labelAsText !== undefined ||
       item.pageBreakBefore !== undefined ||
       item.keepNext !== undefined ||
@@ -1314,6 +1331,7 @@ export const resolvePlan = (
           {
             block: block.value,
             stripLabel: item.stripLabel,
+            stripLabelBreak: item.stripLabelBreak === true,
             labelAsText: item.labelAsText === true,
           },
         ];
@@ -1369,6 +1387,7 @@ export const resolvePlan = (
           parts.push({
             block: nextBlock.value,
             stripLabel: next.stripLabel,
+            stripLabelBreak: next.stripLabelBreak === true,
             labelAsText: next.labelAsText === true,
           });
           merge = next.mergeNext;

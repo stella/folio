@@ -436,6 +436,14 @@ export type TemplatePlanSourceItem = {
   /** The manual label at the start of the block to remove, with the space after it. */
   stripLabel?: string;
   /**
+   * With `stripLabel`: a line break that follows the label goes with it,
+   * and the space around that break. For a heading the source breaks behind
+   * its number where the template sets number and title on one line: the
+   * list then parts the two as its level says. Left out, a line break
+   * behind the label stays the first character of the paragraph.
+   */
+  stripLabelBreak?: boolean;
+  /**
    * Write the block's automatic label as text at the start of its text, with
    * the tab or space its list puts after it: for a label no list of the
    * template prints. The paragraph it leads must join no list
