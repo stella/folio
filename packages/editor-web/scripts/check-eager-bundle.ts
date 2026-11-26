@@ -16,8 +16,8 @@ type Adapter = (typeof ADAPTERS)[number];
 type Metrics = { minified: number; gzip: number; docxOps: number };
 
 const BUDGETS = {
-  react: { minified: 4_062_000, gzip: 1_282_500, docxOps: 663_000 },
-  vue: { minified: 3_724_000, gzip: 1_155_000, docxOps: 664_000 },
+  react: { minified: 3_980_000, gzip: 1_257_000, docxOps: 663_000 },
+  vue: { minified: 3_641_000, gzip: 1_130_000, docxOps: 664_000 },
 } as const satisfies Record<Adapter, Metrics>;
 
 const HOST_PEERS = [
