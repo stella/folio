@@ -185,6 +185,17 @@ const isTabStops = (value: unknown): boolean =>
       (index === 0 || stop > value[index - 1]),
   );
 
+const ALIGNMENTS: ReadonlySet<string> = new Set([
+  "left",
+  "center",
+  "right",
+  "both",
+]);
+
+/** Whether `value` is an alignment a plan may give a paragraph. */
+const isAlignment = (value: unknown): boolean =>
+  isString(value) && ALIGNMENTS.has(value);
+
 const sourceItemIssue = (item: Json, where: string): string | null => {
   if (!isString(item["blockId"]) || !isString(item["hash"])) {
     return `${where} names no source block and hash.`;
@@ -209,6 +220,9 @@ const sourceItemIssue = (item: Json, where: string): string | null => {
   }
   if (item["tabStops"] !== undefined && !isTabStops(item["tabStops"])) {
     return `${where} carries malformed tab stops.`;
+  }
+  if (item["alignment"] !== undefined && !isAlignment(item["alignment"])) {
+    return `${where} carries an unknown alignment.`;
   }
   const merge = item["mergeNext"];
   if (merge !== undefined && !(isString(merge) && MERGES.has(merge))) {
@@ -244,7 +258,8 @@ const sourceItemIssue = (item: Json, where: string): string | null => {
       !isOptionalBoolean(entry["labelAsText"]) ||
       !isOptionalBoolean(entry["keepNext"]) ||
       (entry["indent"] !== undefined && !isIndent(entry["indent"])) ||
-      (entry["tabStops"] !== undefined && !isTabStops(entry["tabStops"]))
+      (entry["tabStops"] !== undefined && !isTabStops(entry["tabStops"])) ||
+      (entry["alignment"] !== undefined && !isAlignment(entry["alignment"]))
     ) {
       return `${where} carries a malformed nested placement.`;
     }

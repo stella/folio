@@ -37,6 +37,7 @@ import type {
 } from "./story";
 import {
   type TemplatePlan,
+  type TemplatePlanAlignment,
   TemplatePlanError,
   type TemplatePlanErrorCode,
   type TemplatePlanHighlight,
@@ -114,6 +115,8 @@ export type ResolvedParagraph = {
   indent: TemplatePlanIndent | null;
   /** The paragraph's own left tab stops, or null. */
   tabStops: readonly number[] | null;
+  /** The paragraph's own alignment, or null. */
+  alignment: TemplatePlanAlignment | null;
   /** The section the paragraph is the last of, or null. */
   endsSection: TemplatePlanSection | null;
 };
@@ -728,6 +731,7 @@ type ParagraphRequest = {
   keepNext?: boolean;
   indent?: TemplatePlanIndent | undefined;
   tabStops?: readonly number[] | undefined;
+  alignment?: TemplatePlanAlignment | undefined;
   endsSection?: TemplatePlanSection | undefined;
 };
 
@@ -988,6 +992,7 @@ export const resolvePlan = (
     keepNext = false,
     indent,
     tabStops,
+    alignment,
     endsSection,
   }: ParagraphRequest): Result<ResolvedParagraph, TemplatePlanError> => {
     const first = parts.at(0);
@@ -1150,6 +1155,7 @@ export const resolvePlan = (
       keepNext,
       indent: indent ?? null,
       tabStops: tabStops ?? null,
+      alignment: alignment ?? null,
       endsSection: endsSection ?? null,
     };
     for (const { block } of resolvedParts) {
@@ -1192,6 +1198,7 @@ export const resolvePlan = (
       item.keepNext !== undefined ||
       item.indent !== undefined ||
       item.tabStops !== undefined ||
+      item.alignment !== undefined ||
       item.endsSection !== undefined ||
       item.numbering !== undefined
     ) {
@@ -1246,6 +1253,7 @@ export const resolvePlan = (
         keepNext: override?.keepNext === true,
         indent: override?.indent,
         tabStops: override?.tabStops,
+        alignment: override?.alignment,
       });
       if (Result.isError(paragraph)) {
         return paragraph;
@@ -1381,6 +1389,7 @@ export const resolvePlan = (
             next.keepNext !== undefined ||
             next.indent !== undefined ||
             next.tabStops !== undefined ||
+            next.alignment !== undefined ||
             next.endsSection !== undefined
           ) {
             return Result.err(
@@ -1412,6 +1421,7 @@ export const resolvePlan = (
           keepNext: item.keepNext === true,
           indent: item.indent,
           tabStops: item.tabStops,
+          alignment: item.alignment,
           endsSection: item.endsSection,
         });
         if (Result.isError(paragraph)) {

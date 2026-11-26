@@ -2207,6 +2207,9 @@ export type TemplatePlan = {
     textEffects?: "normalize" | "keep";
 };
 
+// @public
+export type TemplatePlanAlignment = "left" | "center" | "right" | "both";
+
 // @public (undocumented)
 export type TemplatePlanBlockResult = {
     blockId: string;
@@ -2295,6 +2298,7 @@ export type TemplatePlanNestedParagraph = {
     keepNext?: boolean;
     indent?: TemplatePlanIndent;
     tabStops?: number[];
+    alignment?: TemplatePlanAlignment;
 };
 
 // @public (undocumented)
@@ -2461,6 +2465,7 @@ export type TemplatePlanSourceItem = {
     keepNext?: boolean;
     indent?: TemplatePlanIndent;
     tabStops?: number[];
+    alignment?: TemplatePlanAlignment;
     endsSection?: TemplatePlanSection;
     cellStyleId?: string;
     nested?: TemplatePlanNestedParagraph[];

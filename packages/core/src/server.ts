@@ -371,6 +371,7 @@ export {
   type DocxTextEffect,
   type DocxTextEffectOwner,
   type TemplatePlan,
+  type TemplatePlanAlignment,
   type TemplatePlanBlockResult,
   type TemplatePlanEffectCount,
   type TemplatePlanErrorCode,

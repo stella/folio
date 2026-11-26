@@ -425,7 +425,12 @@ export type TemplatePlanNestedParagraph = {
   indent?: TemplatePlanIndent;
   /** As on a source item. */
   tabStops?: number[];
+  /** As on a source item. */
+  alignment?: TemplatePlanAlignment;
 };
+
+/** How a paragraph's lines are set between the margins (`w:jc`). */
+export type TemplatePlanAlignment = "left" | "center" | "right" | "both";
 
 /** A page other than the template's, in twentieths of a point. */
 export type TemplatePlanSectionPage = {
@@ -513,6 +518,12 @@ export type TemplatePlanSourceItem = {
    * for a table.
    */
   tabStops?: number[];
+  /**
+   * The paragraph's own alignment (`w:jc`), over the one its style states:
+   * for a line the document sets by itself, such as the text of a table
+   * cell or a centred line under a title. Not for a table.
+   */
+  alignment?: TemplatePlanAlignment;
   /**
    * The paragraph is the last of a section, described here: for a part of
    * the document whose page is another than the template's, such as a

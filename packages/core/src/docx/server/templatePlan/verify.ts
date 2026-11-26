@@ -454,6 +454,8 @@ type StatedProperties = {
   /** The paragraph's own tab stops as `kind@position` in twentieths of a
    *  point, in the order written; null without stops of its own. */
   tabStops: string | null;
+  /** The paragraph's own alignment as written; null without one. */
+  alignment: string | null;
   endsSection: boolean;
 };
 
@@ -508,6 +510,7 @@ const statedProperties = (paragraph: XmlElement): StatedProperties => {
             twipsOrNull(wAttr(indent, "firstLine")),
           )}${characterIndentKey(indent)}`,
     tabStops: tabStopsKey(wChild(properties, "tabs")),
+    alignment: wChildVal(properties, "jc"),
     endsSection: wChild(properties, "sectPr") !== null,
   };
 };
@@ -620,7 +623,8 @@ export const reportTemplatePlanOutput = async ({
     if (slot !== undefined) {
       return statedProperties(slot.element);
     }
-    const { styleId, numbering, pageBreakBefore, keepNext } = paragraph;
+    const { styleId, numbering, pageBreakBefore, keepNext, alignment } =
+      paragraph;
     const endsSection = paragraph.endsSection !== null;
     const indent =
       paragraph.indent === null
@@ -643,6 +647,7 @@ export const reportTemplatePlanOutput = async ({
         keepNext,
         indent,
         tabStops,
+        alignment,
         endsSection,
       };
     }
@@ -661,6 +666,7 @@ export const reportTemplatePlanOutput = async ({
       keepNext,
       indent,
       tabStops,
+      alignment,
       endsSection,
     };
   };
@@ -695,11 +701,12 @@ export const reportTemplatePlanOutput = async ({
     if (
       stated.keepNext !== planned.keepNext ||
       stated.indent !== planned.indent ||
-      stated.tabStops !== planned.tabStops
+      stated.tabStops !== planned.tabStops ||
+      stated.alignment !== planned.alignment
     ) {
       issues.push({
         code: "paragraph-format-mismatch",
-        message: `Block ${blockId} does not carry the keep-with-next, the indent or the tab stops the plan gives it.`,
+        message: `Block ${blockId} does not carry the keep-with-next, the indent, the tab stops or the alignment the plan gives it.`,
         blockId,
       });
     }
@@ -849,6 +856,7 @@ export const reportTemplatePlanOutput = async ({
               before.keepNext === after.keepNext &&
               before.indent === after.indent &&
               before.tabStops === after.tabStops &&
+              before.alignment === after.alignment &&
               before.endsSection === after.endsSection &&
               before.numId === after.numId &&
               before.ilvl === after.ilvl &&

@@ -505,6 +505,13 @@ describe("malformed plans", () => {
       },
     ],
     [
+      "an alignment that is none",
+      (plan) => {
+        firstItem(plan)["alignment"] = "middle";
+        return plan;
+      },
+    ],
+    [
       "a tab stop that is no whole number",
       (plan) => {
         firstItem(plan)["tabStops"] = [851.5];
@@ -1697,6 +1704,75 @@ describe("page starts", () => {
         ),
       ).toEqual([["paragraph-format-mismatch", "p0"]]);
     }
+  });
+
+  test("an item gives its paragraph an alignment of its own, and a cell paragraph too", async () => {
+    const source = await buildMinimalDocx(
+      `${p(r("centred line"))}${p(r("plain line"))}<w:tbl><w:tr><w:tc>${p(r("amount"))}</w:tc></w:tr></w:tbl>${p(r("end"))}`,
+    );
+    const itemOf = (
+      { id, hash }: PlannedBlock,
+      aligned: boolean,
+    ): TemplatePlanItem => {
+      const item: TemplatePlanItem = { kind: "source", blockId: id, hash };
+      if (id.startsWith("t")) {
+        if (aligned) {
+          item.nested = [{ blockId: "p3", alignment: "right" }];
+        }
+        return item;
+      }
+      item.styleId = "HouseBody";
+      if (id === "p0" && aligned) {
+        item.alignment = "center";
+        item.indent = { left: 0 };
+      }
+      return item;
+    };
+    const items = (aligned: boolean) => (blocks: PlannedBlock[]) =>
+      blocks
+        .filter(({ id }) => id !== "p3")
+        .map((block) => itemOf(block, aligned));
+    const aligned = await planFor({ source, template, items: items(true) });
+    const plain = await planFor({ source, template, items: items(false) });
+    const { docx, report } = unwrap(
+      await applyTemplatePlan({ source, template, plan: aligned }),
+    );
+    const document = await documentOf(docx);
+
+    expect(report.ok).toBe(true);
+    // Behind the indent, as the schema orders them.
+    expect(document).toContain(
+      '<w:pPr><w:pStyle w:val="HouseBody"/><w:ind w:left="0"/><w:jc w:val="center"/></w:pPr>',
+    );
+    expect(document).toContain(
+      '<w:tc><w:p><w:pPr><w:jc w:val="right"/></w:pPr>',
+    );
+    expect(document.split("<w:jc ")).toHaveLength(3);
+    // Verification holds the output to the plan both ways.
+    const plainOutput = unwrap(
+      await applyTemplatePlan({ source, template, plan: plain }),
+    ).docx;
+    expect(
+      (
+        await verifyFor({ source, template, output: docx, plan: plain })
+      ).issues.map(({ code, blockId }) => [code, blockId]),
+    ).toEqual([
+      ["paragraph-format-mismatch", "p0"],
+      ["paragraph-format-mismatch", "p3"],
+    ]);
+    expect(
+      (
+        await verifyFor({
+          source,
+          template,
+          output: plainOutput,
+          plan: aligned,
+        })
+      ).issues.map(({ code, blockId }) => [code, blockId]),
+    ).toEqual([
+      ["paragraph-format-mismatch", "p0"],
+      ["paragraph-format-mismatch", "p3"],
+    ]);
   });
 
   test("an item keeps its paragraph with the next and gives it an indent of its own", async () => {
