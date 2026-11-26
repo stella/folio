@@ -8,6 +8,7 @@ import {
   tableCellVerticalMerge,
 } from "../model/tableCellVerticalMerge";
 import { MAX_TABLE_GRID_COLUMNS } from "../model/tableGridLimits";
+import { columnDeletionReviewGeometry } from "../model/tableReviewGeometry";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import type { DocumentOpType } from "./types";
 
@@ -58,35 +59,19 @@ export const tableGrid = (
   // Pending deleted cells still occupy their original slots. For a compound
   // deletion the neighboring spans and omissions have updated live values,
   // so read their recorded earlier geometry while the removed cells remain.
-  const gridSnapshot = table.formatting?.gridChange;
-  const deletion = gridSnapshot?.columnDeletionRevisionIds;
-  if (deletion !== undefined && !Array.isArray(deletion)) return refuse();
-  const members = deletion === undefined ? undefined : new Set(deletion);
-  const statedWidth =
-    members === undefined
-      ? table.columnWidths?.length
-      : gridSnapshot?.columnWidths.length;
+  const review = columnDeletionReviewGeometry(table);
+  const statedWidth = (review?.columnWidths ?? table.columnWidths)?.length;
   for (const [rowIndex, row] of table.rows.entries()) {
-    const priorRow =
-      members === undefined
-        ? undefined
-        : row.propertyChanges?.find(({ info }) => members.has(info.id));
     const rowFormatting =
-      priorRow === undefined ? row.formatting : priorRow.previousFormatting;
+      review === undefined ? row.formatting : review.rowFormatting(row);
     let position = rowFormatting?.gridBefore ?? 0;
     const after = rowFormatting?.gridAfter ?? 0;
     if (!nonnegative(position) || !nonnegative(after)) return refuse();
     const cells: GridCell[] = [];
     for (const [index, cell] of row.cells.entries()) {
-      const priorCell =
-        members === undefined
-          ? undefined
-          : cell.propertyChanges?.find(({ info }) => members.has(info.id));
       const span =
-        (priorCell === undefined
-          ? cell.formatting
-          : priorCell.previousFormatting
-        )?.gridSpan ?? 1;
+        (review === undefined ? cell.formatting : review.cellFormatting(cell))
+          ?.gridSpan ?? 1;
       if (!nonnegative(span) || span === 0 || !nonnegative(position + span))
         return refuse();
       const start = position;

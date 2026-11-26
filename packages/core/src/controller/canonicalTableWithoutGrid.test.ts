@@ -17,6 +17,8 @@ import {
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 import type { FolioDocumentOperation } from "../ai-edits";
+import { createCanonicalSession } from "../canonical/canonicalSession";
+import { parseDocx } from "../docx/parser";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import {
   type Mode,
@@ -224,6 +226,14 @@ describe("column operations on a table whose file states no widths", () => {
     expect(xml).toMatch(/<w:tcPrChange\b/u);
     expect(xml).toMatch(/<w:cellDel\b/u);
     expect(xml).toMatch(/<w:tblGridChange\b/u);
+    const pendingDocument = await parseDocx(pending.bytes, {
+      preloadFonts: false,
+      detectVariables: false,
+    });
+    const pendingTable = createCanonicalSession(pendingDocument)
+      .unwrap()
+      .projection.doc.child(1);
+    expect(pendingTable.firstChild?.lastChild?.attrs["rowspan"]).toBe(2);
     const reviewed = await reviewedInSession(pending.bytes);
     expect(reviewed.accepted).toEqual((await outcomes(direct.bytes)).accepted);
     expect(reviewed.rejected).toEqual((await outcomes(source)).rejected);

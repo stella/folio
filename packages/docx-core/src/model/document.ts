@@ -14,6 +14,7 @@
 
 export { getSingularRunPropertyChange } from "./runPropertyReview";
 export { gridColumnsInRows, MAX_TABLE_GRID_COLUMNS } from "./tableGridLimits";
+export { tableWithPhysicalColumns } from "./tableReviewGeometry";
 export {
   CONTENT_CONTROL_LOCK,
   contentControlLockAllows,

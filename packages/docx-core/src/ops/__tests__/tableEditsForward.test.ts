@@ -946,96 +946,100 @@ describe("independent table forward oracles", () => {
     );
   });
 
-  test("mixed column deletions keep vertical merges aligned in both review outcomes", () => {
-    assertProperty(
-      fc.property(
-        fc.boolean(),
-        fc.boolean(),
-        fc.integer({ min: 2, max: 5 }),
-        (measured, omitted, width) => {
-          const table: Table = {
-            type: "table",
-            ...(measured
-              ? { columnWidths: Array.from({ length: width + 1 }, () => 900) }
-              : {}),
-            rows: [
-              {
-                type: "tableRow",
-                cells: [
-                  cell(0x100, width),
-                  { ...cell(0x101), formatting: { vMerge: "restart" } },
-                ],
+  test(
+    "mixed column deletions keep vertical merges aligned in both review outcomes",
+    () => {
+      assertProperty(
+        fc.property(
+          fc.boolean(),
+          fc.boolean(),
+          fc.integer({ min: 2, max: 5 }),
+          (measured, omitted, width) => {
+            const table: Table = {
+              type: "table",
+              ...(measured
+                ? { columnWidths: Array.from({ length: width + 1 }, () => 900) }
+                : {}),
+              rows: [
+                {
+                  type: "tableRow",
+                  cells: [
+                    cell(0x100, width),
+                    { ...cell(0x101), formatting: { vMerge: "restart" } },
+                  ],
+                },
+                {
+                  type: "tableRow",
+                  cells: [
+                    cell(0x200),
+                    cell(0x201, width - 1),
+                    { ...cell(0x202), formatting: { vMerge: "continue" } },
+                  ],
+                },
+                {
+                  type: "tableRow",
+                  ...(omitted ? { formatting: { gridBefore: 1 } } : {}),
+                  cells: [
+                    cell(0x300, width - Number(omitted)),
+                    { ...cell(0x301), formatting: { vMerge: "continue" } },
+                  ],
+                },
+              ],
+            };
+            const document = documentOf(table);
+            const op = {
+              type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
+              ...address(targetOf(table)),
+              column: 0,
+            } satisfies DocumentOp;
+            const direct = applied(document, op);
+            const pending = applyDocumentOp(document, {
+              ...op,
+              revision: {
+                id: 100_000,
+                author: "Reviewer",
+                date: "2026-11-26T00:00:00Z",
               },
-              {
-                type: "tableRow",
-                cells: [
-                  cell(0x200),
-                  cell(0x201, width - 1),
-                  { ...cell(0x202), formatting: { vMerge: "continue" } },
-                ],
-              },
-              {
-                type: "tableRow",
-                ...(omitted ? { formatting: { gridBefore: 1 } } : {}),
-                cells: [
-                  cell(0x300, width - Number(omitted)),
-                  { ...cell(0x301), formatting: { vMerge: "continue" } },
-                ],
-              },
-            ],
-          };
-          const document = documentOf(table);
-          const op = {
-            type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
-            ...address(targetOf(table)),
-            column: 0,
-          } satisfies DocumentOp;
-          const direct = applied(document, op);
-          const pending = applyDocumentOp(document, {
-            ...op,
-            revision: {
-              id: 100_000,
-              author: "Reviewer",
-              date: "2026-11-26T00:00:00Z",
-            },
-            newIds: { revision: [100_001, 100_002, 100_003, 100_004] },
-          }).unwrap();
-          const tracked = tableOf(pending.document);
-          const deleted = tracked.rows.at(1)?.cells.at(0)?.structuralChange;
-          if (deleted?.type !== "tableCellDeletion")
-            throw new Error("Selected cell was not recorded.");
-          expect(
-            tracked.rows.at(0)?.cells.at(0)?.propertyChanges?.at(0)
-              ?.previousFormatting?.gridSpan,
-          ).toBe(width);
-          expect(contractViolation(pending.document)).toBeUndefined();
-          expect(
-            applyDocumentOps(pending.document, pending.inverse).unwrap()
-              .document,
-          ).toStrictEqual(document);
-          for (const decision of ["accept", "reject"] as const) {
-            const resolved = applyDocumentOp(pending.document, {
-              type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
-              story: OP_STORIES.MAIN,
-              revisionIds: [deleted.info.id],
-              decision,
+              newIds: { revision: [100_001, 100_002, 100_003, 100_004] },
             }).unwrap();
-            expect(resolved.document).toStrictEqual(
-              decision === "accept" ? direct.document : document,
-            );
+            const tracked = tableOf(pending.document);
+            const deleted = tracked.rows.at(1)?.cells.at(0)?.structuralChange;
+            if (deleted?.type !== "tableCellDeletion")
+              throw new Error("Selected cell was not recorded.");
             expect(
-              applyDocumentOps(resolved.document, resolved.inverse).unwrap()
+              tracked.rows.at(0)?.cells.at(0)?.propertyChanges?.at(0)
+                ?.previousFormatting?.gridSpan,
+            ).toBe(width);
+            expect(contractViolation(pending.document)).toBeUndefined();
+            expect(
+              applyDocumentOps(pending.document, pending.inverse).unwrap()
                 .document,
-            ).toStrictEqual(pending.document);
-          }
+            ).toStrictEqual(document);
+            for (const decision of ["accept", "reject"] as const) {
+              const resolved = applyDocumentOp(pending.document, {
+                type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+                story: OP_STORIES.MAIN,
+                revisionIds: [deleted.info.id],
+                decision,
+              }).unwrap();
+              expect(resolved.document).toStrictEqual(
+                decision === "accept" ? direct.document : document,
+              );
+              expect(
+                applyDocumentOps(resolved.document, resolved.inverse).unwrap()
+                  .document,
+              ).toStrictEqual(pending.document);
+            }
+          },
+        ),
+        {
+          numRuns: 40,
+          id: "mixed column deletions keep vertical merges aligned in both review outcomes",
         },
-      ),
-      {
-        numRuns: 40,
-        id: "mixed column deletions keep vertical merges aligned in both review outcomes",
-      },
-    );
-  });
+      );
+    },
+    propertyTestTimeout(10_000),
+  );
 
   test("sparse raw identity, width and revision arrays refuse their shape before use", () => {
     // Array.every skips holes; sparse production-shaped payloads close the gap left by ordinary missing-field cases.

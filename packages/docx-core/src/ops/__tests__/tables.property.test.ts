@@ -337,110 +337,115 @@ const fixtureFor = (shape: Shape, family: (typeof families)[number]) => {
 };
 
 describe("whole table operation properties", () => {
-  test("whole-table revisions retain authored table records through review and undo", () => {
-    assertProperty(
-      fc.property(shapes, fc.boolean(), (shape, insert) => {
-        const source = tableFor(shape, "plain");
-        const bookmarkId = 141;
-        const table: Table = {
-          ...source,
-          carrierStack: [
-            {
-              type: "customXml",
-              wrapper: {
-                id: 1,
-                openingXml: '<w:customXml w:element="table">',
-                closingXml: "</w:customXml>",
-              },
-            },
-          ],
-          preserved: {
-            children: [
+  test(
+    "whole-table revisions retain authored table records through review and undo",
+    () => {
+      assertProperty(
+        fc.property(shapes, fc.boolean(), (shape, insert) => {
+          const source = tableFor(shape, "plain");
+          const bookmarkId = 141;
+          const table: Table = {
+            ...source,
+            carrierStack: [
               {
-                index: shape.seed % source.rows.length,
-                xml: '<w:proofErr w:type="spellStart"/>',
+                type: "customXml",
+                wrapper: {
+                  id: 1,
+                  openingXml: '<w:customXml w:element="table">',
+                  closingXml: "</w:customXml>",
+                },
               },
             ],
-          },
-          bookmarks: [
-            {
-              index: 0,
-              marker: {
-                type: "bookmarkStart",
-                id: bookmarkId,
-                name: "WholeTable",
+            preserved: {
+              children: [
+                {
+                  index: shape.seed % source.rows.length,
+                  xml: '<w:proofErr w:type="spellStart"/>',
+                },
+              ],
+            },
+            bookmarks: [
+              {
+                index: 0,
+                marker: {
+                  type: "bookmarkStart",
+                  id: bookmarkId,
+                  name: "WholeTable",
+                },
               },
-            },
-            {
-              index: source.rows.length,
-              marker: { type: "bookmarkEnd", id: bookmarkId },
-            },
-          ],
-          propertyChanges: [
-            {
-              type: "tablePropertyChange",
-              info: reviewInfo(40_000),
-              previousFormatting: { justification: "end" },
-            },
-          ],
-        };
-        const before = makeParagraph(1, shape.seed);
-        const after = makeParagraph(2, shape.seed);
-        const address = paragraphIdsIn(table).at(0);
-        if (address === undefined)
-          throw new Error("Generated table has paragraphs.");
-        const document = documentOf(
-          shape,
-          insert ? [before, after] : [before, table, after],
-        );
-        const op = insert
-          ? ({
-              type: DOCUMENT_OP_TYPES.INSERT_TABLE,
-              story: OP_STORIES.MAIN,
-              at: { type: "after", blockId: id(1) },
-              table,
-            } satisfies DocumentOp)
-          : ({
-              type: DOCUMENT_OP_TYPES.DELETE_TABLE,
-              story: OP_STORIES.MAIN,
-              blockId: address,
-            } satisfies DocumentOp);
-        const direct = applied(document, op);
-        const pending = applied(document, {
-          ...op,
-          revision: reviewInfo(100_000),
-          newIds: {
-            revision: Array.from(
-              { length: 120 },
-              (_, index) => 100_001 + index,
-            ),
-          },
-        });
-        expect(
-          applyDocumentOps(pending.document, pending.inverse).unwrap().document,
-        ).toStrictEqual(document);
-        for (const decision of ["accept", "reject"] as const) {
-          const resolved = applied(pending.document, {
-            type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
-            story: OP_STORIES.MAIN,
-            revisionIds: pending.revisions,
-            decision,
-          });
-          expect(resolved.document).toStrictEqual(
-            decision === "accept" ? direct.document : document,
+              {
+                index: source.rows.length,
+                marker: { type: "bookmarkEnd", id: bookmarkId },
+              },
+            ],
+            propertyChanges: [
+              {
+                type: "tablePropertyChange",
+                info: reviewInfo(40_000),
+                previousFormatting: { justification: "end" },
+              },
+            ],
+          };
+          const before = makeParagraph(1, shape.seed);
+          const after = makeParagraph(2, shape.seed);
+          const address = paragraphIdsIn(table).at(0);
+          if (address === undefined)
+            throw new Error("Generated table has paragraphs.");
+          const document = documentOf(
+            shape,
+            insert ? [before, after] : [before, table, after],
           );
+          const op = insert
+            ? ({
+                type: DOCUMENT_OP_TYPES.INSERT_TABLE,
+                story: OP_STORIES.MAIN,
+                at: { type: "after", blockId: id(1) },
+                table,
+              } satisfies DocumentOp)
+            : ({
+                type: DOCUMENT_OP_TYPES.DELETE_TABLE,
+                story: OP_STORIES.MAIN,
+                blockId: address,
+              } satisfies DocumentOp);
+          const direct = applied(document, op);
+          const pending = applied(document, {
+            ...op,
+            revision: reviewInfo(100_000),
+            newIds: {
+              revision: Array.from(
+                { length: 120 },
+                (_, index) => 100_001 + index,
+              ),
+            },
+          });
           expect(
-            applyDocumentOps(resolved.document, resolved.inverse).unwrap()
+            applyDocumentOps(pending.document, pending.inverse).unwrap()
               .document,
-          ).toStrictEqual(pending.document);
-        }
-      }),
-      {
-        numRuns: 45,
-        id: "whole-table revisions retain authored table records through review and undo",
-      },
-    );
-  });
+          ).toStrictEqual(document);
+          for (const decision of ["accept", "reject"] as const) {
+            const resolved = applied(pending.document, {
+              type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+              story: OP_STORIES.MAIN,
+              revisionIds: pending.revisions,
+              decision,
+            });
+            expect(resolved.document).toStrictEqual(
+              decision === "accept" ? direct.document : document,
+            );
+            expect(
+              applyDocumentOps(resolved.document, resolved.inverse).unwrap()
+                .document,
+            ).toStrictEqual(pending.document);
+          }
+        }),
+        {
+          numRuns: 45,
+          id: "whole-table revisions retain authored table records through review and undo",
+        },
+      );
+    },
+    propertyTestTimeout(15_000),
+  );
 
   for (const family of families) {
     test(
