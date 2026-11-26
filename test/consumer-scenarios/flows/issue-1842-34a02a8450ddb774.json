@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "title": "PINNED #1842, fingerprint 34a02a8450ddb774: a tracked replacement of the paragraph a pending join runs into takes the comment on the words it replaces once accepted",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "emoji",
+  "mode": "tracked-changes",
+  "seed": 1658078430,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 1842325721,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "31617F9A",
+          "separator": " ",
+          "mergedParagraphProperties": { "alignment": "center" }
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 322889593,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "commentOnRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "5E88C024",
+            "startOffset": 9,
+            "endOffset": 12,
+            "selectedTextHash": "h377iue"
+          },
+          "comment": {
+            "text": "Schedule period payment buyer notice schedule."
+          }
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 4150615330,
+      "operations": [
+        {
+          "type": "replaceBlock",
+          "blockId": "5E88C024",
+          "text": "Invoice schedule written invoice buyer delivery clause."
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from reseed+swap+unpin of 8f5cc729aa7ebae6"
+}

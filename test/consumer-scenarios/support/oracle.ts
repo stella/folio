@@ -4152,14 +4152,18 @@ const anchorDisposition = (
       ? view
       : undefined;
   const located = mapped?.row ?? row;
-  // A pending join's source paragraph is no modelled row of its own, so a
-  // replaceBlock of it is not in any row's edits: every word of it goes on
-  // acceptance, and with them a comment anchored in them.
+  // No paragraph of a pending join, its sources or the destination they run
+  // into, is a modelled row of its own: the joined row stands for them all,
+  // so a replaceBlock of one is not in any row's edits. Its words go on
+  // acceptance as the replacement takes them, and with them a comment
+  // anchored in them.
   const replacement = model.replacedBlocks.get(entry.blockId);
-  const joinSource = [...model.pendingJoins.values()].some(({ sources }) =>
-    sources.some(({ id }) => id === entry.blockId),
+  const inJoin = [...model.pendingJoins.values()].some(
+    ({ sources, destination }) =>
+      destination.id === entry.blockId ||
+      sources.some(({ id }) => id === entry.blockId),
   );
-  if (joinSource && replacement !== undefined && entry.anchor !== "") {
+  if (inJoin && replacement !== undefined && entry.anchor !== "") {
     const text = model.liveTextById.get(entry.blockId) ?? "";
     const whole = [{ start: 0, end: text.length, replace: replacement }];
     const fates = quotePlacements({
