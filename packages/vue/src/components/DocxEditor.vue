@@ -406,6 +406,7 @@
             </aside>
 
             <ImageSelectionOverlay
+              v-if="imageOverlayRequested"
               :image-info="selectedImage"
               :zoom="zoom"
               :view="activeEditorView"
@@ -543,7 +544,9 @@
 <script setup lang="ts">
 import {
   computed,
+  defineAsyncComponent,
   type FunctionalComponent,
+  h,
   onBeforeUnmount,
   onMounted,
   ref,
@@ -614,6 +617,7 @@ import {
 } from "@stll/folio-core/utils/outlineDepth";
 import type { OutlineDepth } from "@stll/folio-core/utils/outlineDepth";
 import { readPaintedStart } from "@stll/folio-core/utils/paintedPositions";
+import { HORIZONTAL_RULER_HEIGHT_PX } from "@stll/folio-core/utils/rulerControl";
 import type { TablePropertiesCommand } from "@stll/folio-core/utils/tableOperations";
 import type { Watermark } from "@stll/folio-core/watermark";
 
@@ -656,19 +660,34 @@ import DocxEditorMenuBar from "./DocxEditor/DocxEditorMenuBar.vue";
 import DocxEditorOverlays from "./DocxEditor/DocxEditorOverlays.vue";
 import type { DocxEditorProps, EditorMode } from "./DocxEditor/types";
 import HeaderFooterSelectionOverlay from "./HeaderFooterSelectionOverlay.vue";
-import ImageSelectionOverlay from "./ImageSelectionOverlay.vue";
 import InlineHeaderFooterEditor from "./InlineHeaderFooterEditor.vue";
 import PageIndicator from "./PageIndicator.vue";
 import PassageHighlightOverlay from "./PassageHighlightOverlay.vue";
 import type { TrackedChangeEntry } from "./sidebar/sidebarUtils";
 import TemplateDirectivesOverlay from "./TemplateDirectivesOverlay.vue";
 import Toolbar from "./Toolbar.vue";
-import HorizontalRuler from "./ui/HorizontalRuler.vue";
 import HyperlinkPopup from "./ui/HyperlinkPopup.vue";
 import MaterialSymbol from "./ui/MaterialSymbol.vue";
 import TableToolbar from "./ui/TableToolbar.vue";
-import VerticalRuler from "./ui/VerticalRuler.vue";
 import UnifiedSidebar from "./UnifiedSidebar.vue";
+
+const HorizontalRuler = defineAsyncComponent({
+  loader: () => import("./ui/HorizontalRuler.vue"),
+  delay: 0,
+  loadingComponent: {
+    render: () =>
+      h("div", {
+        "aria-hidden": "true",
+        style: { height: `${HORIZONTAL_RULER_HEIGHT_PX}px` },
+      }),
+  },
+});
+const VerticalRuler = defineAsyncComponent(
+  () => import("./ui/VerticalRuler.vue"),
+);
+const ImageSelectionOverlay = defineAsyncComponent(
+  () => import("./ImageSelectionOverlay.vue"),
+);
 
 const props = withDefaults(defineProps<DocxEditorProps>(), {
   documentBuffer: null,
@@ -1106,6 +1125,14 @@ const {
   stateTick,
   getCommands,
 });
+const imageOverlayRequested = ref(false);
+watch(
+  selectedImage,
+  (image) => {
+    if (image) imageOverlayRequested.value = true;
+  },
+  { flush: "sync" },
+);
 
 const selectionSync = useSelectionSync({
   editorView,
