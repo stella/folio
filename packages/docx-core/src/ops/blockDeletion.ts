@@ -1050,7 +1050,7 @@ export const deleteBlocks = ({
           held,
         })
       : undefined;
-  if (takenOver !== undefined && broken !== undefined) {
+  if (takenOver !== undefined && broken !== undefined && owner !== undefined) {
     const rejected = applyOps(document, [
       {
         type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
