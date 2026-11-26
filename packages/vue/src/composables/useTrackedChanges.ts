@@ -52,7 +52,8 @@ export function useTrackedChanges(
       if (held.accept.size === 0 && held.reject.size === 0) return result;
       // A card resolves every revision it stands for, so one held revision
       // holds the card. The entries are this reading's own.
-      for (const entry of result.entries) {
+      const entries: TrackedChangeEntry[] = result.entries;
+      for (const entry of entries) {
         const ids = trackedChangeEntryRevisionIds(entry);
         entry.heldByLock = {
           accept: ids.some((id) => held.accept.has(id)),
