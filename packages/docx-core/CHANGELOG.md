@@ -1,5 +1,23 @@
 # @stll/docx-core
 
+## 0.47.0
+
+### Minor Changes
+
+- [#3642](https://github.com/stella/folio/pull/3642) [`fe93f4f`](https://github.com/stella/folio/commit/fe93f4ff698ea0c0556a3a10a3a745c995614027) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Use story-local proposal ownership for canonical review and keep editor selection ranges in projection readers.
+
+- [#3624](https://github.com/stella/folio/pull/3624) [`4a2ff4b`](https://github.com/stella/folio/commit/4a2ff4b44568a9833ab7e9c5e79ea29d247b64ad) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Dragging a selection that holds a table now moves the table, in Editing and Suggesting modes, as one undo step. A suggested move records the source as deleted and the copy as inserted. `@stll/docx-core` adds the `moveBlocks` editor intent, which moves blocks, tables among them, from a range to a target.
+
+- [#3624](https://github.com/stella/folio/pull/3624) [`4a2ff4b`](https://github.com/stella/folio/commit/4a2ff4b44568a9833ab7e9c5e79ea29d247b64ad) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Column insertions and deletions, cell merges and cell splits, direct or suggested, now apply to tables wrapped by a bookmark, a content control or another wrapper around the table or its rows, which keep their places. Only markup a row keeps between its cells still refuses such an edit.
+
+### Patch Changes
+
+- [#3654](https://github.com/stella/folio/pull/3654) [`51ebce7`](https://github.com/stella/folio/commit/51ebce7ee702ec90cb9e0114fe23132f5a17f403) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A package's id indexes hold less memory: what each record contributes is remembered in one weak map per context instead of a map per record, and a record whose ids are those of the one record it holds shares that record's list.
+
+- [#3639](https://github.com/stella/folio/pull/3639) [`c668dfb`](https://github.com/stella/folio/commit/c668dfb00b697063b165436a040c42144f1c7ff2) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Rejecting tracked changes now rejoins a split link, control or wrapper around the range markers it keeps the same way whether they are rejected at once or one at a time, including when a piece between them is left empty an insertion inside a pending deletion is rejected first, or an inserted paragraph mark is rejected before the insertion it split.
+
+- [#3628](https://github.com/stella/folio/pull/3628) [`6a778d4`](https://github.com/stella/folio/commit/6a778d40f1ec74fc317e4b0fec961e2ad607cdc5) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Removing a table row or a whole table keeps the end of a bookmark or move range that reaches past it where the row or table was, so the document still saves with every range whole.
+
 ## 0.46.0
 
 ### Minor Changes
