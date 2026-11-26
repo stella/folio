@@ -33,7 +33,7 @@ import { textsIn } from "./leaves";
 /** Row edits and their exact inverse, addressed through a paragraph in the row. */
 import { cloneModel } from "./modelClone";
 import {
-  holdsPositionedMarkers,
+  holdsPositionedMarkup,
   relocatePositionedMarkers,
 } from "./positionedMarkers";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
@@ -79,13 +79,10 @@ const paragraphsIn = (rows: readonly TableRow[]): Paragraph[] =>
   );
 
 /**
- * Indexed markup and shared row wrappers need a structural table operation.
- * Bookmark markers beside the rows move with them
- * ({@link relocatePositionedMarkers}).
+ * Shared row wrappers need a structural table operation. Indexed markup
+ * beside rows moves with them ({@link relocatePositionedMarkers}).
  */
 const needsTableEdit = (table: Table): boolean =>
-  table.preserved !== undefined ||
-  table.carrierStack !== undefined ||
   table.rows.some(
     (row) =>
       row.contentControls !== undefined || row.carrierStack !== undefined,
@@ -304,7 +301,7 @@ const commitRows = ({
     // Rows put back by themselves would not put the markers beside them back
     // where they stood: the whole table restores them.
     inverse: [
-      holdsPositionedMarkers(location.table)
+      holdsPositionedMarkup(location.table)
         ? {
             type: DOCUMENT_OP_TYPES.SET_TABLE,
             story: op.story,
@@ -358,8 +355,7 @@ export const applyRowOp = (
         return refused({
           op: op,
           reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-          message:
-            "Indexed table markup or shared row wrappers require a table operation.",
+          message: "Shared row wrappers require a table operation.",
         });
       }
       const incoming = cloneModel(op.row);
@@ -420,8 +416,7 @@ export const applyRowOp = (
         return refused({
           op: op,
           reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-          message:
-            "Indexed table markup or shared row wrappers require a table operation.",
+          message: "Shared row wrappers require a table operation.",
         });
       }
       if (removesOutright || op.revision === undefined) {
@@ -470,8 +465,7 @@ export const applyRowOp = (
         return refused({
           op: op,
           reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-          message:
-            "Indexed table markup or shared row wrappers require a table operation.",
+          message: "Shared row wrappers require a table operation.",
         });
       }
       const replacement = op.rows.map(

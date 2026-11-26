@@ -4,15 +4,18 @@
  * and go. A marker's index counts the siblings before it, so an edit that
  * adds or removes siblings moves it: a start stays before the sibling that
  * followed it, as the bookmark it opens selects that sibling, and an end
- * stays after the sibling that preceded it. Where that sibling is gone, the
- * marker stands where it was, among the siblings that remain.
+ * stays after the sibling that preceded it. Captured XML stays before the
+ * next surviving sibling. Where a marker's sibling is gone, the marker
+ * stands where it was, among the siblings that remain.
  */
 import type {
   PositionedBookmarkMarker,
   Table,
   TableCell,
+  TablePreservedMarkup,
   TableRow,
 } from "../model/document";
+import { structurallyEqual } from "./equality";
 import { idKey, paragraphIdsIn } from "./ids";
 
 /**
@@ -39,35 +42,57 @@ const originsOf = (
   });
 };
 
+const beforeFollowingSibling = (
+  index: number,
+  origins: readonly (number | null)[],
+): number => {
+  const following = origins.findIndex(
+    (origin) => origin !== null && origin >= index,
+  );
+  return following === -1 ? origins.length : following;
+};
+
 /** `markers`, indexed among the siblings `origins` describes. */
 const relocated = (
-  markers: readonly PositionedBookmarkMarker[],
+  markers: PositionedBookmarkMarker[],
   origins: readonly (number | null)[],
-): PositionedBookmarkMarker[] =>
-  markers.map((positioned) => {
+): PositionedBookmarkMarker[] => {
+  let changed = false;
+  const nextMarkers = markers.map((positioned) => {
     const { index } = positioned;
     let next: number;
     if (positioned.marker.type === "bookmarkStart") {
-      const following = origins.findIndex(
-        (origin) => origin !== null && origin >= index,
-      );
-      next = following === -1 ? origins.length : following;
+      next = beforeFollowingSibling(index, origins);
     } else
       next =
         origins.findLastIndex((origin) => origin !== null && origin < index) +
         1;
-    return next === index ? positioned : { ...positioned, index: next };
+    if (next === index) return positioned;
+    changed = true;
+    return { ...positioned, index: next };
   });
+  return changed ? nextMarkers : markers;
+};
 
-const sameIndices = (
-  markers: readonly PositionedBookmarkMarker[],
-  next: readonly PositionedBookmarkMarker[],
-): boolean => markers.every((marker, index) => marker === next[index]);
+/** Preserve a captured child's gap before the next surviving sibling. */
+const relocateCaptured = (
+  preserved: TablePreservedMarkup,
+  origins: readonly (number | null)[],
+): TablePreservedMarkup => {
+  if (preserved.children === undefined) return preserved;
+  let changed = false;
+  const children = preserved.children.map((child) => {
+    const index = beforeFollowingSibling(child.index, origins);
+    if (index === child.index) return child;
+    changed = true;
+    return { ...child, index };
+  });
+  return changed ? { ...preserved, children } : preserved;
+};
 
 /**
- * `after`, the table an edit made of `before`, with the markers `before`
- * holds beside its rows, and those each continuing row holds beside its
- * cells, moved to where the edit leaves them.
+ * `after`, with its bookmark markers and captured XML moved to the gaps
+ * where the edit leaves them beside table rows and row cells.
  */
 export const relocatePositionedMarkers = (
   before: Table,
@@ -78,32 +103,59 @@ export const relocatePositionedMarkers = (
   const rows = after.rows.map((row, index) => {
     const origin = rowOrigins[index] ?? null;
     const source = origin === null ? undefined : before.rows[origin];
-    if (row.bookmarks === undefined || source === undefined) return row;
-    const markers = relocated(
-      row.bookmarks,
-      originsOf(source.cells, row.cells),
-    );
-    if (sameIndices(row.bookmarks, markers)) return row;
+    if (
+      source === undefined ||
+      (row.bookmarks === undefined && row.preserved === undefined)
+    )
+      return row;
+    const cellOrigins = originsOf(source.cells, row.cells);
+    // Exact row replacements can state their own gaps. Re-address inherited
+    // captures against the cells they originally stood beside.
+    const markers =
+      row.bookmarks !== undefined &&
+      structurallyEqual(row.bookmarks, source.bookmarks)
+        ? relocated(row.bookmarks, cellOrigins)
+        : row.bookmarks;
+    const preserved =
+      row.preserved !== undefined &&
+      structurallyEqual(row.preserved, source.preserved)
+        ? relocateCaptured(row.preserved, cellOrigins)
+        : row.preserved;
+    if (preserved === row.preserved && markers === row.bookmarks) return row;
     rowsChanged = true;
-    return { ...row, bookmarks: markers };
+    return {
+      ...row,
+      ...(markers === undefined ? {} : { bookmarks: markers }),
+      ...(preserved === undefined ? {} : { preserved }),
+    };
   });
   const tableMarkers =
     after.bookmarks === undefined
       ? undefined
       : relocated(after.bookmarks, rowOrigins);
-  const tableChanged =
-    after.bookmarks !== undefined &&
-    tableMarkers !== undefined &&
-    !sameIndices(after.bookmarks, tableMarkers);
-  if (!rowsChanged && !tableChanged) return after;
+  const preserved =
+    after.preserved === undefined
+      ? undefined
+      : relocateCaptured(after.preserved, rowOrigins);
+  if (
+    !rowsChanged &&
+    tableMarkers === after.bookmarks &&
+    preserved === after.preserved
+  )
+    return after;
   return {
     ...after,
     rows,
     ...(tableMarkers === undefined ? {} : { bookmarks: tableMarkers }),
+    ...(preserved === undefined ? {} : { preserved }),
   };
 };
 
-/** Whether `table` holds a marker beside its rows or beside a row's cells. */
-export const holdsPositionedMarkers = (table: Table): boolean =>
+/** Whether the inverse needs the original row and cell gaps. */
+export const holdsPositionedMarkup = (table: Table): boolean =>
+  table.preserved?.children !== undefined ||
   table.bookmarks !== undefined ||
-  table.rows.some((row) => row.bookmarks !== undefined);
+  table.rows.some(
+    (row) =>
+      row.bookmarks !== undefined || row.preserved?.children !== undefined,
+  );

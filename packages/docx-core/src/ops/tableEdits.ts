@@ -485,16 +485,20 @@ const withOmission = (
   return { ...row, formatting };
 };
 
-/**
- * Markup a column or cell edit would have to relocate: what a row keeps
- * beside its cells, counted by the cells before it. A column or cell edit
- * keeps every row, so what stands beside or around rows keeps its place as
- * it stands: bookmarks and captured markup beside a table's rows count the
- * rows before them, and a row content control or another wrapper around the
- * table or its rows wraps them whatever cells they hold.
- */
-const hasStructuralMarkup = (table: Table) =>
-  table.rows.some((row) => row.preserved !== undefined);
+/** Captures and cells inside the same wrapper must move as one group. */
+const hasWrappedCellMarkup = (table: Table): boolean => {
+  const wrapped = ({
+    contentControls,
+    carrierStack,
+  }: Pick<TableCell, "contentControls" | "carrierStack">) =>
+    contentControls !== undefined || carrierStack !== undefined;
+  return table.rows.some(
+    (row) =>
+      row.preserved?.children !== undefined &&
+      (row.preserved.children.some(wrapped) || row.cells.some(wrapped)),
+  );
+};
+
 /** A cell holding one paragraph with nothing in it. */
 const isEmptyCell = (cell: TableCell) =>
   cell.content.length === 1 &&
@@ -1489,12 +1493,11 @@ const columnEdit = ({
     );
   if (insert && (!Number.isSafeInteger(op.width) || op.width <= 0))
     return mismatch(op, "A column width must be a positive twip count.");
-  if (hasStructuralMarkup(table))
+  if (hasWrappedCellMarkup(table))
     return refuse({
       op,
       reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      message:
-        "Indexed table markup must be relocated before changing columns.",
+      message: "Captures inside cell wrappers need a shared destination.",
     });
   // A table records one previous grid (`w:tblGridChange`). A second tracked
   // insertion would have to share the pending one's record, and rejecting
@@ -2412,11 +2415,11 @@ const merge = ({
   table,
   grid,
 }: MergeOptions): Result<Table, DocumentOpRefusal> => {
-  if (hasStructuralMarkup(table))
+  if (hasWrappedCellMarkup(table))
     return refuse({
       op,
       reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      message: "Indexed table markup must be relocated before changing cells.",
+      message: "Captures inside cell wrappers need a shared destination.",
     });
   if (
     op.revision !== undefined &&
@@ -2623,11 +2626,11 @@ const split = ({
       op,
       "A vertical merge continuation must be addressed through its owner cell.",
     );
-  if (hasStructuralMarkup(table))
+  if (hasWrappedCellMarkup(table))
     return refuse({
       op,
       reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      message: "Indexed table markup must be relocated before changing cells.",
+      message: "Captures inside cell wrappers need a shared destination.",
     });
   if (op.revision !== undefined && hasReview(table))
     return refuse({
