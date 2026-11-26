@@ -7,19 +7,19 @@ import { ZipArchive } from "@stll/docx-core/zip";
 
 import { propertyTestTimeout } from "../../../../../test/property-testing";
 import {
+  acceptAIEditRevision,
+  acceptAllChanges,
+  rejectAIEditRevision,
+  rejectAllChanges,
+  rejectChange,
+} from "../../__tests__/reference-editor/comments";
+import {
   createSuggestionModePlugin,
   handleSuggestionPaste,
   suggestionModeKey,
 } from "../../__tests__/reference-editor/suggestionMode";
 import { parseDocx } from "../../docx/parser";
 import { createEmptyDocx, repackDocx } from "../../docx/rezip";
-import {
-  acceptAIEditRevision,
-  acceptAllChanges,
-  rejectAIEditRevision,
-  rejectAllChanges,
-  rejectChange,
-} from "../commands/comments";
 import { copyOriginBoundaryAfterRemovingAddedAncestors } from "../copyOriginResolution";
 import { removeUnpairedBookmarkBoundaries } from "../extensions/features/pasteCleanup";
 import {

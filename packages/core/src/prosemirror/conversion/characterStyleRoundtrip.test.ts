@@ -13,6 +13,10 @@ import { EditorState, TextSelection } from "prosemirror-state";
 
 import { ZipArchive } from "@stll/docx-core/zip";
 
+import {
+  acceptAllChanges,
+  rejectAllChanges,
+} from "../../__tests__/reference-editor/comments";
 import { createFolioAIEditSnapshot } from "../../ai-edits/snapshot";
 import { parseDocumentBody } from "../../docx/documentParser";
 import {
@@ -30,7 +34,6 @@ import type {
   Run,
   StyleDefinitions,
 } from "../../types/document";
-import { acceptAllChanges, rejectAllChanges } from "../commands/comments";
 import {
   applyFormatMarks,
   captureFormatMarks,

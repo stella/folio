@@ -10,6 +10,14 @@ import { Step } from "prosemirror-transform";
 
 import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 
+import {
+  acceptAllChanges,
+  acceptChange,
+  rejectAIEditRevision,
+  rejectAllChanges,
+  rejectChange,
+  resolveAllChangesInHeadlessState,
+} from "../../__tests__/reference-editor/comments";
 import { pluginsForHeadlessRevisionResolution } from "../../__tests__/reference-editor/headlessRevisionResolutionGuard";
 import { parseDocx } from "../../docx/parser";
 import { createDocx } from "../../docx/rezip";
@@ -26,14 +34,6 @@ import type {
 } from "../../types/document";
 import { pixelsToEmu } from "../../utils/units";
 import { expectHardBreakAttrs, expectParagraphAttrs } from "../attrs";
-import {
-  acceptAllChanges,
-  acceptChange,
-  rejectAIEditRevision,
-  rejectAllChanges,
-  rejectChange,
-  resolveAllChangesInHeadlessState,
-} from "../commands/comments";
 import { toggleBold } from "../commands/formatting";
 import { directParagraphSpacing } from "../paragraphSpacing";
 import { schema } from "../schema";

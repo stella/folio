@@ -12,11 +12,14 @@ import {
   textblocks,
 } from "../../__tests__/editorHarness";
 import {
+  acceptAllChanges,
+  rejectAllChanges,
+} from "../../__tests__/reference-editor/comments";
+import {
   createSuggestionModePlugin,
   suggestionModeKey,
 } from "../../__tests__/reference-editor/suggestionMode";
 import { FolioDocxReviewer } from "../../ai-edits/headless";
-import { acceptAllChanges, rejectAllChanges } from "../commands/comments";
 import { paragraphPropertiesSnapshot } from "../commands/propertyChangeScope";
 import { schema } from "../schema";
 

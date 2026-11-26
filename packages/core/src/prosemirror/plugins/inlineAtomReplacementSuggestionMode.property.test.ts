@@ -16,8 +16,11 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../../test/property-testing";
+import {
+  acceptAllChanges,
+  rejectAllChanges,
+} from "../../__tests__/reference-editor/comments";
 import { createSuggestionModePlugin } from "../../__tests__/reference-editor/suggestionMode";
-import { acceptAllChanges, rejectAllChanges } from "../commands/comments";
 import { canonicalFieldNode } from "../fieldRepresentation";
 import { schema } from "../schema";
 import { dispatchEditorTextInput } from "../textInput";

@@ -16,8 +16,11 @@ import {
   saveHarnessState,
   summarizeState,
 } from "../__tests__/editorHarness";
+import {
+  acceptChange,
+  rejectChange,
+} from "../__tests__/reference-editor/comments";
 import { buildTableDocx } from "../__tests__/tableOperationDocument";
-import { acceptChange, rejectChange } from "./commands/comments";
 
 const assertTableGrids = (doc: PMNode): void => {
   doc.descendants((node) => {
