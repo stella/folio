@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 
 import {
   diagnoseImportedIdCollisions,
@@ -6,6 +6,7 @@ import {
 } from "./importedIdCollisions";
 import { PARA_ID_NAMESPACE_URIS } from "./paraIdAttribute";
 import { createParseWarningCollector } from "./parseContext";
+import * as xmlParser from "./xmlParser";
 
 test("every registered definition site diagnoses repetitions and ignores part boundaries", () => {
   const exercised = new Set<string>();
@@ -132,4 +133,27 @@ test("Strict namespace aliases and decimal spellings identify the same source de
   expect(warnings.at(0)?.detail).toBe(
     `numId identity repeats the definition at offset ${xml.indexOf('="007"') + 2} in word/numbering.xml.`,
   );
+});
+
+test("only the elements a rule names have their namespace resolved", () => {
+  const w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+  // 20 paragraphs, each with 50 runs no rule names.
+  const runs = "<w:r><w:t>x</w:t></w:r>".repeat(50);
+  const body = Array.from(
+    { length: 20 },
+    (_, index) => `<w:p w:rsidR="00${index}">${runs}</w:p>`,
+  ).join("");
+  const resolved = spyOn(xmlParser, "getNamespaceUri");
+  try {
+    diagnoseImportedIdCollisions(
+      new Map([
+        ["word/document.xml", `<w:body xmlns:w="${w}">${body}</w:body>`],
+      ]),
+      createParseWarningCollector().context,
+    );
+    // Matching every element against every rule resolved all 2,021.
+    expect(resolved.mock.calls.length).toBeLessThanOrEqual(20);
+  } finally {
+    resolved.mockRestore();
+  }
 });
