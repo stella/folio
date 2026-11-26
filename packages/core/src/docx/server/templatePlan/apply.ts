@@ -884,6 +884,18 @@ const writeOutput = async ({
     templateSplices.push({ start, end: inner.end, newXml: content.value });
     replaced.push({ start, end: inner.end });
   }
+  // A paragraph the plan empties keeps its properties and loses its runs.
+  for (const { element } of resolved.emptied) {
+    const inner = innerRangeOf(template.document.xml, element);
+    if (inner === null) {
+      continue;
+    }
+    const properties = wChild(element, "pPr");
+    const start =
+      (properties === null ? null : rangeOf(properties)?.end) ?? inner.start;
+    templateSplices.push({ start, end: inner.end, newXml: "" });
+    replaced.push({ start, end: inner.end });
+  }
   // A kept table of contents is closed right behind its separator: the
   // first update fills it from the document it is in.
   for (const { element } of resolved.emptiedContents) {

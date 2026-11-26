@@ -241,6 +241,8 @@ export type ResolvedPlan = {
   items: ResolvedItem[];
   /** Slots that sit inside a kept template table. */
   nestedSlots: ResolvedSlot[];
+  /** Paragraphs of kept template tables written without their text. */
+  emptied: AnalyzedBlock[];
   /** The output paragraph each placed source block ends up in. */
   byBlockId: Map<string, ResolvedParagraph>;
   omitted: Map<string, TemplatePlanOmitReason>;
@@ -1601,6 +1603,27 @@ export const resolvePlan = (
     }
     nestedSlots.push(slot);
   }
+  const emptied: AnalyzedBlock[] = [];
+  for (const id of plan.emptyTemplateBlockIds ?? []) {
+    const block = template.story.byId.get(id);
+    if (
+      block === undefined ||
+      block.read === null ||
+      block.parentId === null ||
+      !keptTemplateIds.has(block.topLevelId) ||
+      slottedTemplateIds.has(id) ||
+      emptied.includes(block)
+    ) {
+      return Result.err(
+        refuse({
+          code: "unknown-block",
+          message: `Template block ${id} is no paragraph of a kept template table that the plan may empty once.`,
+          blockId: id,
+        }),
+      );
+    }
+    emptied.push(block);
+  }
 
   partTables(items);
   const splitsSections =
@@ -1628,6 +1651,7 @@ export const resolvePlan = (
   const slots = [
     ...nestedSlots,
     ...items.flatMap((item) => (item.kind === "slot" ? [item] : [])),
+    ...emptied.map((templateBlock) => ({ templateBlock })),
   ];
   for (const field of template.story.state.fields) {
     const lastOrdinal = field.closed
@@ -1851,6 +1875,7 @@ export const resolvePlan = (
   return Result.ok({
     items,
     nestedSlots,
+    emptied,
     byBlockId,
     omitted,
     mints: [...mints.values()],

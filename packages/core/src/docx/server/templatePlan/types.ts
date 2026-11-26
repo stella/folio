@@ -616,6 +616,14 @@ export type TemplatePlan = {
    */
   lastSection?: TemplatePlanSection;
   /**
+   * Paragraphs inside kept template tables that are written without their
+   * text: a sample line of a header cell the document has nothing for (the
+   * third line of an address). The paragraph keeps its place and its
+   * properties. Each is a paragraph nested in a table the plan keeps, and
+   * none is filled by a slot.
+   */
+  emptyTemplateBlockIds?: string[];
+  /**
    * The view of a source with tracked changes the plan is made for: its
    * text with every change accepted, or with every change rejected. The
    * blocks and hashes the plan names are that view's, the output carries

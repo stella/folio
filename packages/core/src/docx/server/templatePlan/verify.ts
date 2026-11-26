@@ -616,6 +616,7 @@ export const reportTemplatePlanOutput = async ({
     slotBlocks.set(slot.paragraph, slot.templateBlock);
   }
   const slottedTemplateBlocks = new Set(slotBlocks.values());
+  const emptiedTemplateBlocks = new Set(resolved.emptied);
   const emptiedContents = new Set(resolved.emptiedContents);
   const plannedProperties = (
     paragraph: ResolvedParagraph,
@@ -836,6 +837,13 @@ export const reportTemplatePlanOutput = async ({
             }
             if (slottedTemplateBlocks.has(templateParagraph)) {
               return true;
+            }
+            // A paragraph the plan empties shows nothing.
+            if (emptiedTemplateBlocks.has(templateParagraph)) {
+              return (
+                outputParagraph.read.text === "" &&
+                outputParagraph.read.inlineObjects === 0
+              );
             }
             // A table of contents is kept without its cached entries.
             if (emptiedContents.has(templateParagraph)) {
