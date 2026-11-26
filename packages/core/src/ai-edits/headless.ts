@@ -29,6 +29,7 @@ import {
   sectionResolutionPatch,
   type SequencedBatch,
   type StoryParts,
+  suggestionOwnersInStory,
   withoutPendingSuggestions,
 } from "@stll/docx-core/ops";
 import { ZipArchive } from "@stll/docx-core/zip";
@@ -112,11 +113,6 @@ import {
 } from "../docx/storyPlainText";
 import { expectCharacterStyleMarkAttrs } from "../prosemirror/attrs";
 import {
-  getSuggestions,
-  suggestionIdOfRevision,
-  suggestionOwnersByRevision,
-} from "../prosemirror/commands/comments";
-import {
   type CommentIdAllocator,
   createCommentIdAllocator,
   seedCommentAllocator,
@@ -140,6 +136,7 @@ import {
 import { getFolioNodeRevisionCarriers } from "../prosemirror/revisionCarriers";
 import { schema } from "../prosemirror/schema";
 import { sectionPropertiesOf } from "../prosemirror/sectionCarrier";
+import { getSuggestions } from "../prosemirror/suggestionQueries";
 import {
   CANONICAL_GAP,
   CANONICAL_RULE,
@@ -1898,7 +1895,7 @@ export class FolioDocxReviewer {
       for (const handle of handles) {
         const state = copy.getEditableStoryState(handle);
         if (!state) continue;
-        if (getSuggestions(state).length > 0)
+        if (copy.pendingSuggestionIdsForStory(handle, state).size > 0)
           throw canonicalReviewerRefusal(
             "project a story holding a suggestion the session will not accept",
           );
@@ -2112,7 +2109,7 @@ export class FolioDocxReviewer {
         const story = canonicalOpStory(handle);
         const listed = listedRevisionGroups(state.doc);
         if (listed.length === 0) return [];
-        const owners = suggestionOwnersByRevision(state);
+        const owners = suggestionOwnersInStory(this.baseDocument, story);
         // Bulk acceptance leaves pending proposals staged.
         const changes = listed.flatMap(({ id, groupIds }) => {
           const suggestionId = owners.get(id) ?? null;
@@ -2275,16 +2272,34 @@ export class FolioDocxReviewer {
     return this.snapshotOf(this.state);
   }
 
-  /** Every suggestion id the document's stories still carry. */
-  private activeSuggestionIds(): Set<string> {
-    const active = new Set(
-      getSuggestions(this.state).map(({ suggestionId }) => suggestionId),
+  private pendingSuggestionIdsForStory(
+    story: FolioEditableDocumentStoryHandle,
+    state: EditorState,
+  ): Set<string> {
+    // The projection gives visible proposals their existing order and locates
+    // proposed comment anchors. The model also owns revision records a mark
+    // shared by several formatting changes cannot represent as one proposal.
+    const ids = new Set(
+      getSuggestions(state).map(({ suggestionId }) => suggestionId),
     );
+    for (const suggestionId of suggestionOwnersInStory(
+      this.baseDocument,
+      canonicalOpStory(story),
+    ).values())
+      ids.add(suggestionId);
+    return ids;
+  }
+
+  /** Every suggestion id the document's editable stories still carry. */
+  private activeSuggestionIds(): Set<string> {
+    const active = new Set<string>();
+    if (pendingSuggestionIdsIn(this.baseDocument).size === 0) return active;
+    // Parts retired by section review remain in the model until save.
     for (const handle of this.listStoryHandlesInternal()) {
-      if (handle.type === "main") continue;
       const state = this.getEditableStoryState(handle);
-      for (const { suggestionId } of state ? getSuggestions(state) : [])
-        active.add(suggestionId);
+      if (state === null) continue;
+      for (const id of this.pendingSuggestionIdsForStory(handle, state))
+        active.add(id);
     }
     return active;
   }
@@ -3187,7 +3202,9 @@ export class FolioDocxReviewer {
     const id = revisionIdOf(target);
     // A suggested change is rejected whole; accepting it first adopts it as
     // an ordinary tracked change, then accepts that change.
-    const suggestionId = suggestionIdOfRevision(this.state, id);
+    const suggestionId =
+      suggestionOwnersInStory(this.baseDocument, OP_STORIES.MAIN).get(id) ??
+      null;
     if (suggestionId !== null) {
       const adopted = this.resolveSuggestionOnSession(
         session,
@@ -3431,8 +3448,8 @@ export class FolioDocxReviewer {
       const other = this.getEditableStoryState(handle);
       if (
         other &&
-        getSuggestions(other).some(({ suggestionId }) =>
-          staged.has(suggestionId),
+        [...this.pendingSuggestionIdsForStory(handle, other)].some(
+          (suggestionId) => staged.has(suggestionId),
         )
       )
         throw canonicalReviewerRefusal(
@@ -3455,7 +3472,7 @@ export class FolioDocxReviewer {
           this.author,
         );
       const after = copy.getEditableStoryState(story);
-      if (after && getSuggestions(after).length > 0)
+      if (after && copy.pendingSuggestionIdsForStory(story, after).size > 0)
         throw canonicalReviewerRefusal(
           "resolve a story holding a suggestion the session will not resolve",
         );
@@ -3486,9 +3503,7 @@ export class FolioDocxReviewer {
     // to the view, `false` for one that does not.
     const state = this.getEditableStoryState(story);
     if (!state) return false;
-    const staged = new Set(
-      getSuggestions(state).map(({ suggestionId }) => suggestionId),
-    );
+    const staged = this.pendingSuggestionIdsForStory(story, state);
     if (staged.size > 0)
       return this.resolveStoryWithSuggestions({ story, view, staged });
     const resolution = view === "final" ? "accept" : "reject";

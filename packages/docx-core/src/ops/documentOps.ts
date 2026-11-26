@@ -79,6 +79,7 @@ export { captureDocumentOp } from "./wire";
 export {
   pendingSuggestionIdsIn,
   suggestedCommentIds,
+  suggestionOwnersInStory,
   suggestionRevisionInfos,
   withoutPendingSuggestions,
 } from "./suggestions";

@@ -148,6 +148,12 @@ const documentModelRules = [
 ];
 
 const testSupportPath = "(^|/)__tests__(?:/|$)";
+// Match the test and fixture exclusions in check-package-dependencies.ts.
+const nonProductionSources = [
+  testSupportPath,
+  "(^|/)(?:__fixtures__|fixtures|__snapshots__)(?:/|$)",
+  "\\.(?:test|spec)\\.[^/]+$",
+];
 const noProductionTestSupportRule = {
   name: "production-editor-source-does-not-import-test-support",
   comment:
@@ -155,14 +161,29 @@ const noProductionTestSupportRule = {
   severity: "error",
   from: {
     path: "^packages/(?:core|react|vue)/src/",
-    // Match the test and fixture exclusions in check-package-dependencies.ts.
-    pathNot: [
-      testSupportPath,
-      "(^|/)(?:__fixtures__|fixtures|__snapshots__)(?:/|$)",
-      "\\.(?:test|spec)\\.[^/]+$",
-    ],
+    pathNot: nonProductionSources,
   },
   to: { path: testSupportPath },
+};
+
+const noCoreReviewThroughCommentsRule = {
+  name: "core-review-uses-dedicated-readers",
+  comment:
+    "Core source must use the dedicated review readers. The commands barrel keeps its public re-exports.",
+  severity: "error",
+  from: {
+    path: "^packages/core/src/",
+    pathNot: [
+      ...nonProductionSources,
+      "^packages/core/src/prosemirror/commands/index\\.ts$",
+    ],
+  },
+  to: {
+    path: [
+      "^packages/core/src/prosemirror/commands/comments\\.ts$",
+      "^@stll/folio-core/prosemirror/commands/comments(?:\\.ts)?$",
+    ],
+  },
 };
 
 /**
@@ -200,6 +221,7 @@ module.exports = {
     ...paintBackendRules,
     ...documentModelRules,
     noProductionTestSupportRule,
+    noCoreReviewThroughCommentsRule,
     noCircularRuntimeImportsRule,
   ],
   options: {

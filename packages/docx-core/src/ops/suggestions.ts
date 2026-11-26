@@ -1,9 +1,13 @@
 import { Result } from "better-result";
 
-import type { Document, TrackedChangeInfo } from "../model/document";
+import type {
+  Document,
+  DocumentBody,
+  TrackedChangeInfo,
+} from "../model/document";
 import { applyDocumentOp } from "./apply";
 import type { DocumentOpRefusal } from "./refusal";
-import { documentStories, storyBody } from "./stories";
+import { documentStories, findStoryBody, storyBody } from "./stories";
 import type { OpStory, ParagraphAbsorption } from "./types";
 import { DOCUMENT_OP_TYPES, REVISION_DECISIONS } from "./types";
 
@@ -122,25 +126,42 @@ export const withoutPendingSuggestions = (
   return Result.ok(current);
 };
 
-/**
- * The revisions of one pending suggestion in a story, one info per revision
- * id, in document order.
- */
+const visitStorySuggestionRevisions = (
+  body: DocumentBody,
+  visit: (info: TrackedChangeInfo, suggestionId: string) => void,
+): void => {
+  visitSuggestionRevisions(body.content, (info) =>
+    visit(info, info.suggestionId),
+  );
+  for (const { info } of body.finalSectionProperties?.propertyChanges ?? [])
+    if (info.suggestionId !== undefined) visit(info, info.suggestionId);
+};
+
+/** Revisions of one pending suggestion, one info per ID in document order. */
 export const suggestionRevisionInfos = (
   document: Document,
   story: OpStory,
   suggestionId: string,
 ): TrackedChangeInfo[] => {
   const out = new Map<number, TrackedChangeInfo>();
-  const body = storyBody(document, story);
-  const add = (info: TrackedChangeInfo) => {
-    if (info.suggestionId === suggestionId && !out.has(info.id))
-      out.set(info.id, info);
-  };
-  visitSuggestionRevisions(body.content, add);
-  for (const { info } of body.finalSectionProperties?.propertyChanges ?? [])
-    add(info);
+  visitStorySuggestionRevisions(storyBody(document, story), (info, owner) => {
+    if (owner === suggestionId && !out.has(info.id)) out.set(info.id, info);
+  });
   return [...out.values()];
+};
+
+/** The first proposal owning each physical revision ID in this story. */
+export const suggestionOwnersInStory = (
+  document: Document,
+  story: OpStory,
+): ReadonlyMap<number, string> => {
+  const owners = new Map<number, string>();
+  const body = findStoryBody(document, story);
+  if (body === undefined) return owners;
+  visitStorySuggestionRevisions(body, ({ id }, suggestionId) => {
+    if (!owners.has(id)) owners.set(id, suggestionId);
+  });
+  return owners;
 };
 
 /**
@@ -152,12 +173,10 @@ export const pendingSuggestionIdsIn = (document: Document): Set<string> => {
   for (const comment of document.package.document.comments ?? [])
     if (comment.suggestionId !== undefined) out.add(comment.suggestionId);
   for (const story of documentStories(document)) {
-    const body = storyBody(document, story);
-    visitSuggestionRevisions(body.content, ({ suggestionId }) =>
-      out.add(suggestionId),
+    visitStorySuggestionRevisions(
+      storyBody(document, story),
+      (_info, suggestionId) => out.add(suggestionId),
     );
-    for (const { info } of body.finalSectionProperties?.propertyChanges ?? [])
-      if (info.suggestionId !== undefined) out.add(info.suggestionId);
   }
   return out;
 };
