@@ -25,21 +25,8 @@ export type {
 // outside DocxEditor. Both are controlled — they own no editor view.
 export { default as FormattingBar } from "./components/FormattingBar.vue";
 export type { FormattingBarProps } from "./components/FormattingBar.types";
-export {
-  FindReplaceDialog,
-  FootnotePropertiesDialog,
-  HyperlinkDialog,
-  ImagePositionDialog,
-  ImagePropertiesDialog,
-  InsertImageDialog,
-  InsertSymbolDialog,
-  InsertTableDialog,
-  PageSetupDialog,
-  PasteSpecialDialog,
-  SplitCellDialog,
-  TablePropertiesDialog,
-  WatermarkDialog,
-} from "./components/dialogs";
+// Dialogs are public from the `./dialogs` subpath only. A root re-export would
+// keep the editor's lazily loaded dialogs in a bundler's startup chunk.
 export { default as ZoomControl } from "./components/ui/ZoomControl.vue";
 export type {
   ZoomControlProps,

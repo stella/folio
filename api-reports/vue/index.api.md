@@ -48,7 +48,6 @@ import { DeriveBlockIdInput } from '@stll/folio-core/types/block-id';
 import { diffWordSegments } from '@stll/folio-core/ai-edits';
 import { DirectiveKind } from '@stll/folio-core/prosemirror/plugins/templateDirectives';
 import { DirectiveRange } from '@stll/folio-core/prosemirror/plugins/templateDirectives';
-import { DisplayMode } from '@stll/folio-core/managers/EditorModeManager';
 import { Document as Document_2 } from '@stll/folio-core/types/document';
 import { DOCUMENT_PRESET_VERSION } from '@stll/folio-core/style-sets/types';
 import { DOCUMENT_STYLE_SET_VERSION } from '@stll/folio-core/style-sets/types';
@@ -62,7 +61,6 @@ import { EditorMode } from '@stll/folio-core/managers/EditorModeManager';
 import { EditorReadOnlyReason } from '@stll/folio-core/managers/EditorModeManager';
 import { EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
-import { EndnoteProperties } from '@stll/folio-core/types/content';
 import { extractDocumentStyleSet } from '@stll/folio-core/style-sets/extract';
 import { extractDocumentStyleSetFromDocx } from '@stll/folio-core/style-sets/extract';
 import { ExtractDocumentStyleSetOptions } from '@stll/folio-core/style-sets/extract';
@@ -107,7 +105,6 @@ import { FolioSaveOptions } from '@stll/folio-core/controller/folioEditor';
 import { FolioSelectiveSaveFlags } from '@stll/folio-core/docx/selectiveSaveFlags';
 import { FolioSuggestion } from '@stll/folio-core/prosemirror/commands/comments';
 import { FolioUndefinedReferencePolicy } from '@stll/folio-core/ai-edits';
-import { FootnoteProperties } from '@stll/folio-core/types/content';
 import { fromMarkdown } from '@stll/folio-core/markdown';
 import { getDocumentWatermark } from '@stll/folio-core/watermark';
 import { getFolioCaretViewportRect } from '@stll/folio-core/paged-layout/selectionViewportRect';
@@ -155,7 +152,6 @@ import { scanDirectives } from '@stll/folio-core/prosemirror/plugins/templateDir
 import { scrollFolioPositionIntoView } from '@stll/folio-core/paged-layout/scrollToPmPosition';
 import { ScrollToParaIdOptions } from '@stll/folio-core/paged-layout/paragraphFlash';
 import { SdtProperties } from '@stll/folio-core/types/document';
-import { SectionProperties } from '@stll/folio-core/types/document';
 import { SelectionState } from '@stll/folio-core/prosemirror';
 import { setActiveCitationMeta } from '@stll/folio-core/prosemirror/plugins/aiCitationDecorations';
 import { setAICitationsMeta } from '@stll/folio-core/prosemirror/plugins/aiCitationDecorations';
@@ -165,11 +161,9 @@ import { SetContentControlValueInput } from '@stll/folio-core/content-controls';
 import { setDocumentWatermark } from '@stll/folio-core/watermark';
 import { setFocusedSuggestionMeta } from '@stll/folio-core/prosemirror/plugins/aiSuggestionDecorations';
 import { setTemplatePreviewValues } from '@stll/folio-core/prosemirror/plugins/templatePreviewValues';
-import { ShallowRef } from 'vue';
 import { STELLA_STYLE_SET_NAME } from '@stll/folio-core/style-sets/stellaStyle';
 import { SuggestionAppliedAs } from '@stll/folio-core/prosemirror/commands/comments';
 import { SuggestionKind } from '@stll/folio-core/prosemirror/commands/comments';
-import { TablePropertiesCommand } from '@stll/folio-core/utils/tableOperations';
 import { TemplatePreviewHiddenRange } from '@stll/folio-core/prosemirror/plugins/templatePreviewValues';
 import { TemplatePreviewSpan } from '@stll/folio-core/prosemirror/plugins/templatePreviewValues';
 import { TemplatePreviewValue } from '@stll/folio-core/prosemirror/plugins/templatePreviewValues';
@@ -531,9 +525,6 @@ export { FindMatch }
 
 export { FindOptions }
 
-// @public (undocumented)
-export const FindReplaceDialog: typeof __VLS_export_4;
-
 export { FindResult }
 
 export { FolioAIBlock }
@@ -638,9 +629,6 @@ export type FontOption = {
 };
 
 // @public (undocumented)
-export const FootnotePropertiesDialog: typeof __VLS_export_5;
-
-// @public (undocumented)
 export const FormattingBar: typeof __VLS_export_3;
 
 // @public (undocumented)
@@ -684,9 +672,6 @@ export type HighlightPassageOptions = {
 // @public
 export type HighlightPassageResult = "passage" | "block" | "none";
 
-// @public (undocumented)
-export const HyperlinkDialog: typeof __VLS_export_6;
-
 // @public
 export const i18nPlugin: {
     install(app: App, locale?: MaybeRefOrGetter<string>): void;
@@ -694,26 +679,11 @@ export const i18nPlugin: {
 
 export { ImageMeta }
 
-// @public (undocumented)
-export const ImagePositionDialog: typeof __VLS_export_7;
-
-// @public (undocumented)
-export const ImagePropertiesDialog: typeof __VLS_export_8;
-
 export { ImageRef }
-
-// @public (undocumented)
-export const InsertImageDialog: typeof __VLS_export_9;
 
 export { insertImageFromFile }
 
 export { insertPageBreakInView }
-
-// @public (undocumented)
-export const InsertSymbolDialog: typeof __VLS_export_10;
-
-// @public (undocumented)
-export const InsertTableDialog: typeof __VLS_export_11;
 
 export { insertTableInView }
 
@@ -747,12 +717,6 @@ export type OutlineItem = {
     meta?: string;
     color?: string;
 };
-
-// @public (undocumented)
-export const PageSetupDialog: typeof __VLS_export_12;
-
-// @public (undocumented)
-export const PasteSpecialDialog: typeof __VLS_export_13;
 
 export { PictureWatermark }
 
@@ -803,17 +767,11 @@ export { setFocusedSuggestionMeta }
 
 export { setTemplatePreviewValues }
 
-// @public (undocumented)
-export const SplitCellDialog: typeof __VLS_export_14;
-
 export { STELLA_STYLE_SET_NAME }
 
 export { SuggestionAppliedAs }
 
 export { SuggestionKind }
-
-// @public (undocumented)
-export const TablePropertiesDialog: typeof __VLS_export_15;
 
 export { TemplatePreviewHiddenRange }
 
@@ -848,13 +806,10 @@ export function useWheelZoom(initialZoom?: number): UseZoomReturn;
 
 export { Watermark }
 
-// @public (undocumented)
-export const WatermarkDialog: typeof __VLS_export_16;
-
 export { WordDiffSegment }
 
 // @public (undocumented)
-export const ZoomControl: typeof __VLS_export_17;
+export const ZoomControl: typeof __VLS_export_4;
 
 // @public (undocumented)
 export type ZoomControlProps = {
