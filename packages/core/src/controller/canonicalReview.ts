@@ -9,7 +9,7 @@ import {
 } from "../ai-edits/read";
 import { hasLockedControls } from "../canonical/canonicalLockGuard";
 import { canonicalRevisionLocks } from "../canonical/canonicalRevisionLocks";
-import { findAIEditRevisionRange } from "../prosemirror/commands/comments";
+import { findAIEditRevisionRange } from "../prosemirror/revisionRangeQueries";
 import { readModel } from "../types/documentModel";
 import type { FolioEditor } from "./folioEditor";
 

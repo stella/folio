@@ -22,7 +22,11 @@ const isZeroWidthMarker = (type: string): boolean =>
   type === "bookmarkEnd" ||
   type === "commentRangeStart" ||
   type === "commentRangeEnd" ||
-  type === "commentReference";
+  type === "commentReference" ||
+  type === "moveFromRangeStart" ||
+  type === "moveFromRangeEnd" ||
+  type === "moveToRangeStart" ||
+  type === "moveToRangeEnd";
 
 export type LinkedBlock = { text: string; targets: readonly (string | null)[] };
 export type LinkSnapshot = ReadonlyMap<string, LinkedBlock>;

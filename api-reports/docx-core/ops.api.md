@@ -1695,6 +1695,9 @@ export const storyPartsOpOf: (input: StoryPartsOpOptions) => RestoreStoryPartsOp
 export const suggestedCommentIds: (document: Document_2, suggestionId?: string) => number[];
 
 // @public
+export const suggestionOwnersInStory: (document: Document_2, story: OpStory) => ReadonlyMap<number, string>;
+
+// @public
 export const suggestionRevisionInfos: (document: Document_2, story: OpStory, suggestionId: string) => TrackedChangeInfo[];
 
 // @public

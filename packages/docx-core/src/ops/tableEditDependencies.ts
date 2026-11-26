@@ -1,8 +1,8 @@
 /**
  * Records a removed column cell cannot take with it: comments and moves pair
- * with records outside the cell, and captured markup is opaque. Bookmark
- * boundaries, content controls and the review records of the cell's own
- * words go with the cell, as they go with a removed row.
+ * with records outside the cell, and captured markup is opaque. Bookmarks
+ * wholly in the cell, content controls and the review records of the cell's
+ * own words go with the cell.
  */
 const REACHING_TYPES = new Set([
   "commentRangeStart",
