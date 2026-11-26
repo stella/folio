@@ -15,6 +15,7 @@ import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
+import { paragraphNumberingReference } from "@stll/docx-core/model";
 import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
@@ -55,7 +56,7 @@ const TARGETS = [0, 1, 2, 3];
  * A heading, two clauses numbered directly from instance 7 with body text
  * between, and a closing paragraph.
  */
-const source = async (): Promise<Uint8Array> => {
+const source = async (): Promise<ArrayBuffer> => {
   const document = fromMarkdown(TEXTS.join("\n\n"));
   document.package.numbering = {
     abstractNums: [
@@ -85,15 +86,15 @@ const source = async (): Promise<Uint8Array> => {
         numPr: paragraphNumberingFromSlots({ numId: 7, ilvl: 0 }),
       };
   }
-  return new Uint8Array(await createDocx(document));
+  return createDocx(document);
 };
 
-const PROPERTIES = [
-  { numbering: { kind: "reference", numId: 7, ilvl: 0 } },
+const PROPERTIES: readonly FolioAIBlockParagraphProperties[] = [
+  { numbering: paragraphNumberingReference({ numId: 7, ilvl: 0 }) },
   { styleId: null, numbering: { kind: "levelOnly", ilvl: 1 } },
   { alignment: "center" },
   { styleId: "Heading1" },
-] as const satisfies readonly FolioAIBlockParagraphProperties[];
+];
 
 type Properties = (typeof PROPERTIES)[number];
 

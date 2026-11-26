@@ -4307,6 +4307,14 @@ type CompilePublicIntentsOptions = {
   story: OpStory;
 };
 
+const PROPERTY_FOLDING_INTENTS: ReadonlySet<EditorIntent["type"]> = new Set([
+  "joinParagraphs",
+  "splitParagraph",
+  "formatParagraph",
+  "setList",
+  "deleteParagraphs",
+]);
+
 /** Each paragraph property change of the story, by revision id. */
 const propertyChangesById = (document: Document, story: OpStory) =>
   new Map(
@@ -4430,9 +4438,11 @@ const compilePublicIntents = ({
   // The changes pending joins of earlier operations of the batch own, under
   // this operation's stamp. The compiler refuses a fold into a join's change
   // from another stamp, as one at a time; stamped alike, it would take these
-  // over, so an intent that changes or drops one is refused here.
+  // over, so an intent that changes or drops one is refused here. Only
+  // intents that set, join, split or delete paragraphs reach those changes.
   const standing =
-    mode === "direct"
+    mode === "direct" ||
+    !intents.some((intent) => PROPERTY_FOLDING_INTENTS.has(intent.type))
       ? []
       : [...propertyChangesById(source, story)].flatMap(([id, change]) =>
           change.resolvesWith !== undefined &&
