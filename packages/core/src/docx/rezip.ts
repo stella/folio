@@ -1077,7 +1077,7 @@ const publishCanonicalMediaReplacements = async ({
   document,
   zip,
   compressionLevel,
-}: PublishCanonicalImageResourcesOptions): Promise<void> => {
+}: Omit<PublishCanonicalImageResourcesOptions, "rebind">): Promise<void> => {
   const baseline = getDocumentSourceBaseline(document);
   if (baseline.type !== "captured") return;
   const contentTypes: { partName: string; contentType: string | undefined }[] =
@@ -1166,7 +1166,10 @@ export const publishCanonicalImageResources = async ({
     const partPath = relsPath.replace("/_rels/", "/").replace(/\.rels$/u, "");
     let changed = false;
     // Each copied picture id this part rebinds, to the part's own fresh id.
-    const rebound = new Map<string, string>();
+    const rebound = new Map<
+      NonNullable<Image["rId"]>,
+      NonNullable<Image["rId"]>
+    >();
     for (const image of images) {
       const rootId = image.rId;
       if (rootId === undefined) continue;
@@ -1271,7 +1274,7 @@ export const publishCanonicalImageResources = async ({
           }
           let index = 1;
           while (local.has(`rId${index}`)) index += 1;
-          id = `rId${index}`;
+          id = mintRelationshipId(index);
           rebound.set(rootId, id);
           image.rId = id;
           source = undefined;
