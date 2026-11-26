@@ -39,12 +39,6 @@
       "path": "3:6:5:5:6:5:5:6:6:6:6:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:11",
       "note": "A submitted package-resources batch that no longer rebases over a numbering change is withheld, not dropped: the authority sequences it once the change is undone, and it comes back as a foreign batch.",
       "date": "2026-11-20"
-    },
-    {
-      "seed": 2027546520,
-      "path": "59:2:20:22:22:1:18:18:20:19:19:19:19:38:38:38:38:38:40:40:40:40:40:40:40:40:40:40:40",
-      "note": "#2787: a decision passes a concurrent direct paragraph insertion whose sequenced effect names none of its revisions as bordering it.",
-      "date": "2026-11-26"
     }
   ],
   "canonical sequencing same-paragraph convergence": [

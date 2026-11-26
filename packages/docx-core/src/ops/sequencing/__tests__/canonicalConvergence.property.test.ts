@@ -1922,6 +1922,27 @@ const typingInRefusedParagraph = [
 ] satisfies Scenario;
 
 /** The pinned scenarios, which the fixed coverage sample starts with. */
+/**
+ * Peer 0 inserts a paragraph directly, sequenced, while peer 1 decides the
+ * base's suggestion (saved flow 2027546520): the decision names no revision
+ * the insertion borders, so it passes the insertion rather than being
+ * dropped.
+ */
+const decisionOverInsertion: Scenario = [
+  3,
+  [
+    edit(0, { kind: "insertParagraph", a: 45_945, b: 0 }),
+    { type: "submit", peer: 0 },
+    { type: "deliver", seed: 0 },
+    edit(1, { kind: "type", a: 0, b: 0 }),
+    edit(1, { kind: "paragraphFormat", a: 91_269, b: 0 }),
+    { type: "submit", peer: 0 },
+    edit(1, { kind: "decide", a: 0, b: 0 }),
+    edit(0, { kind: "type", a: 0, b: 0 }),
+    edit(0, { kind: "type", a: 0, b: 0 }),
+  ],
+];
+
 const PINNED: readonly Scenario[] = [
   concurrentRows,
   commentOverErase,
@@ -1935,6 +1956,7 @@ const PINNED: readonly Scenario[] = [
   independentAfterDropped,
   formatInsideErase,
   concurrentNotes,
+  decisionOverInsertion,
 ];
 
 describe("canonical sequencing", () => {
