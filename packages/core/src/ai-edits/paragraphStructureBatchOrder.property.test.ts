@@ -316,7 +316,9 @@ const examples: [Case][] = (["direct", "tracked-changes"] as const).flatMap(
         prior: undefined,
         steps: [
           merge(0, LEVEL_ONLY),
-          merge(1, { numbering: { kind: "reference", numId: 7, ilvl: 0 } }),
+          merge(1, {
+            numbering: paragraphNumberingReference({ numId: 7, ilvl: 0 }),
+          }),
         ],
       },
     ],
@@ -331,7 +333,9 @@ const examples: [Case][] = (["direct", "tracked-changes"] as const).flatMap(
           {
             type: "properties",
             block: 0,
-            properties: { numbering: { kind: "reference", numId: 7, ilvl: 0 } },
+            properties: {
+              numbering: paragraphNumberingReference({ numId: 7, ilvl: 0 }),
+            },
           },
         ],
       },
@@ -357,7 +361,9 @@ describe("a merge whose merged paragraph a later merge of the batch joins on", (
   test("tracked: is refused, as it is after that merge alone", async () => {
     const operations = [
       merge(0, LEVEL_ONLY),
-      merge(1, { numbering: { kind: "reference", numId: 7, ilvl: 0 } }),
+      merge(1, {
+        numbering: paragraphNumberingReference({ numId: 7, ilvl: 0 }),
+      }),
     ].map(operationOf);
     const batch = await run({
       mode: "tracked-changes",
