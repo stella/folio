@@ -189,16 +189,16 @@ const renderLabel = ({
     levelFormats,
     forceDecimal,
   });
-  const ordinals = rendered.components.filter(
-    ({ level }) => !forceDecimal && levelFormats?.[level] === "ordinal",
-  );
+  const isOrdinal = (level: number): boolean =>
+    !forceDecimal && levelFormats?.[level] === "ordinal";
+  const hasOrdinal = rendered.components.some(({ level }) => isOrdinal(level));
   const primary = primaryLanguage(language);
   const ordinal = primary === null ? undefined : ORDINALS[primary];
-  if (ordinals.length === 0 || ordinal === undefined) {
+  if (!hasOrdinal || ordinal === undefined) {
     return {
       ...rendered,
-      byLanguage: ordinals.length > 0,
-      known: ordinals.length === 0 || primary === "en",
+      byLanguage: hasOrdinal,
+      known: !hasOrdinal || primary === "en",
     };
   }
   let value = "";
@@ -207,7 +207,7 @@ const renderLabel = ({
     const { level, start, end } = component;
     value += rendered.value.slice(cursor, start);
     cursor = end;
-    const written = ordinals.includes(component)
+    const written = isOrdinal(level)
       ? ordinal(counters[level] ?? 0)
       : rendered.value.slice(start, end);
     const moved = { ...component, start: value.length };
@@ -254,28 +254,42 @@ type LabelCounterOptions = {
   defaultLanguage?: string | null;
 };
 
-/** The language of a paragraph mark: its own, its style's, the default. */
-const markLanguage = (
-  stated: string | null,
-  styleId: string | null,
+/**
+ * The language each style gives a paragraph mark: its own, or the one of
+ * the nearest style it is based on. Resolved once per style, so a long
+ * `basedOn` chain is walked once however many paragraphs use it.
+ */
+const createStyleLanguages = (
   styles: StyleMap,
-  defaultLanguage: string | null,
-): string | null => {
-  if (stated !== null) {
-    return stated;
-  }
-  let cursor = styleId ?? undefined;
-  const seen = new Set<string>();
-  while (cursor !== undefined && !seen.has(cursor)) {
-    seen.add(cursor);
-    const style = styles.get(cursor);
-    const language = style?.rPr?.language?.val;
-    if (language !== undefined) {
-      return language;
+): ((styleId: string | null) => string | null) => {
+  const resolved = new Map<string, string | null>();
+  return (styleId) => {
+    if (styleId === null) {
+      return null;
     }
-    cursor = style?.basedOn;
-  }
-  return defaultLanguage;
+    const walked = new Set<string>();
+    let language: string | null = null;
+    let cursor: string | undefined = styleId;
+    while (cursor !== undefined && !walked.has(cursor)) {
+      const known = resolved.get(cursor);
+      if (known !== undefined) {
+        language = known;
+        break;
+      }
+      walked.add(cursor);
+      const style = styles.get(cursor);
+      const stated = style?.rPr?.language?.val;
+      if (stated !== undefined) {
+        language = stated;
+        break;
+      }
+      cursor = style?.basedOn;
+    }
+    for (const id of walked) {
+      resolved.set(id, language);
+    }
+    return language;
+  };
 };
 
 /** A counter over one story; call `next` for every paragraph in document order. */
@@ -292,6 +306,7 @@ export const createLabelCounter = ({
     restartedNumIds: new Set(),
     previousList: { abstractNumId: null, fromStyle: false, numId: null },
   };
+  const styleLanguage = createStyleLanguages(styles);
   return {
     next: ({ styleId, numPr, language = null }) => {
       const fromStyle = styleNumbering(
@@ -339,12 +354,11 @@ export const createLabelCounter = ({
         counters: advance.counters,
         levelFormats: listRendering.levelNumFmts,
         forceDecimal: listRendering.isLegal === true,
-        language: markLanguage(
-          language,
-          styleId ?? defaultStyleId,
-          styles,
+        // The mark's own language, its style's, or the document default.
+        language:
+          language ??
+          styleLanguage(styleId ?? defaultStyleId) ??
           defaultLanguage,
-        ),
       });
       // The shared marker code writes every ordinal the English way.
       const label =
