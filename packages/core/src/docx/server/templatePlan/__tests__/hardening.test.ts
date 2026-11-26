@@ -1240,6 +1240,54 @@ describe("labels written as text", () => {
   });
 });
 
+describe("number-only field predictions", () => {
+  test("keep the punctuation after the counter and drop the blanks", async () => {
+    const text = "See part A- above.";
+    const { report } = unwrap(
+      await applyFor({
+        source: await buildSourceWith({
+          body: [p(r("Heading")), p(r(text))].join(""),
+        }),
+        template,
+        items: (blocks) =>
+          blocks.map(({ id, hash }, index) => ({
+            kind: "source",
+            blockId: id,
+            hash,
+            numbering: index === 0 ? { numId: 1, ilvl: 0 } : null,
+          })),
+        extra: {
+          numberingPatches: [
+            {
+              abstractNumId: 0,
+              ilvl: 0,
+              numFmt: "upperLetter",
+              lvlText: "Part %1 -",
+            },
+          ],
+          references: [
+            {
+              blockId: "p1",
+              start: text.indexOf("A-"),
+              end: text.indexOf("A-") + 2,
+              targetBlockId: "p0",
+              instruction: "\\n \\t \\h",
+              expectedText: "A-",
+            },
+          ],
+        },
+      }),
+    );
+
+    // The words of `Part %1 -` go, and with them the blank before the dash.
+    expect(report.references.results.at(0)).toMatchObject({
+      status: "ok",
+      predictedText: "A-",
+    });
+    expect(report.references.predictionMismatch).toBe(0);
+  });
+});
+
 describe("ordinal labels by the paragraph's language", () => {
   const level = (ilvl: number, numFmt: string, lvlText: string): string =>
     `<w:lvl w:ilvl="${ilvl}"><w:start w:val="1"/><w:numFmt w:val="${numFmt}"/><w:lvlText w:val="${lvlText}"/></w:lvl>`;

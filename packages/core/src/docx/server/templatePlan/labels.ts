@@ -218,11 +218,16 @@ const renderLabel = ({
   return { value, components, byLanguage: true, known: true };
 };
 
-/** Drop the literal runs of a level text that hold a letter; keep delimiters. */
+/**
+ * Drop the literal runs of a level text that hold a letter. Of the others
+ * a `\t` field keeps the delimiters and drops the blanks: `Part %1 -` gives
+ * `B-`.
+ */
 const numberOnlyLabel = ({ value, components }: RenderedLabel): string => {
   let out = "";
   let cursor = 0;
-  const literal = (text: string): string => (/\p{L}/u.test(text) ? "" : text);
+  const literal = (text: string): string =>
+    /\p{L}/u.test(text) ? "" : text.replaceAll(/\s+/gu, "");
   for (const { start, end } of components) {
     out += literal(value.slice(cursor, start)) + value.slice(start, end);
     cursor = end;
