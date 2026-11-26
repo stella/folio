@@ -1,11 +1,18 @@
 /**
- * Taking a row out of a table, directly or by resolving a suggestion. A row
- * that starts a vertical merge the next row continues does not take the
- * merged cell with it: the merge starts in the next row instead, with the
- * removed cell's properties and content, so the merged cell keeps its words.
- * Every path that removes a row goes through {@link rowsWithoutRow}.
+ * Taking a row out of a table, directly or by resolving a suggestion, and
+ * putting one in. A row that starts a vertical merge the next row continues
+ * does not take the merged cell with it: the merge starts in the next row
+ * instead, with the removed cell's properties and content, so the merged
+ * cell keeps its words. Every path that removes a row goes through
+ * {@link rowsWithoutRow}, and every row insertion through {@link rowsWithRow}.
  */
-import type { Paragraph, Table, TableCell, TableRow } from "../model/document";
+import type {
+  Paragraph,
+  Table,
+  TableCell,
+  TableCellFormatting,
+  TableRow,
+} from "../model/document";
 import {
   TABLE_CELL_VERTICAL_MERGES,
   tableCellVerticalMerge,
@@ -243,10 +250,85 @@ export const rowsWithoutRow = (table: Table, rowIndex: number): TableRow[] => {
     : withRangeEndsKept(removed, rows, rowIndex);
 };
 
+const VERTICAL = TABLE_CELL_VERTICAL_MERGES;
+const spansOf = (row: TableRow | undefined) => {
+  let at = row?.formatting?.gridBefore ?? 0;
+  return (row?.cells ?? []).map((cell) => {
+    const start = at;
+    at += cell.formatting?.gridSpan ?? 1;
+    return { cell, key: `${start}:${at}` };
+  });
+};
+const withVerticalMerge = (
+  cell: TableCell,
+  vMerge: TableCellFormatting["vMerge"],
+): TableCell => {
+  // The captured properties stated the merge.
+  const {
+    vMerge: _vMerge,
+    sourceXml: _sourceXml,
+    ...formatting
+  } = cell.formatting ?? {};
+  if (vMerge !== undefined)
+    return { ...cell, formatting: { ...formatting, vMerge } };
+  if (Object.keys(formatting).length > 0) return { ...cell, formatting };
+  const { formatting: _formatting, ...plain } = cell;
+  return plain;
+};
+
 /**
- * Whether taking rows out left a vertical merge without the cell that starts
- * it: rows that covered one grid before must still cover one after, or a
- * merged cell's content went with a row that only continued elsewhere.
+ * The table's rows with `row` put in at `at`, its vertical merges matched to
+ * the rows it lands between, which the batch may have changed since the row
+ * was built. A cell under a merge the row below continues continues it too; a
+ * continuation goes on a merge of its span above, making the cell above start
+ * one when the removal of the merge's last row ended it; with no cell of its
+ * span above, it is a cell of its own.
+ */
+export const rowsWithRow = (
+  rows: readonly TableRow[],
+  at: number,
+  row: TableRow,
+): TableRow[] => {
+  const above = spansOf(rows[at - 1]);
+  const below = spansOf(rows[at]);
+  const restarted = new Set<TableCell>();
+  const cells = spansOf(row).map(({ cell, key }) => {
+    const over = above.find((entry) => entry.key === key)?.cell;
+    const merge = tableCellVerticalMerge(cell.formatting?.vMerge);
+    if (
+      over !== undefined &&
+      below.some(
+        (entry) =>
+          entry.key === key &&
+          tableCellVerticalMerge(entry.cell.formatting?.vMerge) ===
+            VERTICAL.CONTINUE,
+      )
+    )
+      return withVerticalMerge(cell, VERTICAL.CONTINUE);
+    if (merge !== VERTICAL.CONTINUE) return cell;
+    if (over === undefined) return withVerticalMerge(cell, undefined);
+    if (tableCellVerticalMerge(over.formatting?.vMerge) === VERTICAL.NONE)
+      restarted.add(over);
+    return cell;
+  });
+  const out = [...rows];
+  const previous = rows[at - 1];
+  if (previous !== undefined && restarted.size > 0)
+    out[at - 1] = {
+      ...previous,
+      cells: previous.cells.map((cell) =>
+        restarted.has(cell) ? withVerticalMerge(cell, VERTICAL.RESTART) : cell,
+      ),
+    };
+  out.splice(at, 0, { ...row, cells });
+  return out;
+};
+
+/**
+ * Whether a row edit left a vertical merge without the cell that starts it:
+ * rows that covered one grid before must still cover one after, or a merged
+ * cell's content went with a row that only continued elsewhere, or an
+ * inserted row continues a merge that is not there.
  */
 export const removalOrphansAMerge = (
   before: Table,

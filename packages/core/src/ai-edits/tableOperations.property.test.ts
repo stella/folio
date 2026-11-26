@@ -195,6 +195,85 @@ const planArbitrary: fc.Arbitrary<OperationPlan> = fc.record({
 });
 
 /**
+ * A table built around vertical merges, top-level or as the only cell of an
+ * outer table, so every anchor but one lands in it.
+ */
+const mergedDocumentArbitrary: fc.Arbitrary<TableSpec> = fc
+  .record({
+    table: fc
+      .record({
+        rows: fc.integer({ min: 2, max: 3 }),
+        columns: fc.integer({ min: 1, max: 3 }),
+        sizes: fc.array(
+          fc.record({
+            rowSpan: fc.integer({ min: 1, max: 3 }),
+            columnSpan: fc.oneof(
+              { weight: 3, arbitrary: fc.constant(1) },
+              { weight: 1, arbitrary: fc.constant(2) },
+            ),
+            blank: fc.boolean(),
+          }),
+          { minLength: 1, maxLength: 8 },
+        ),
+      })
+      .map(({ rows, columns, sizes }) => partition(rows, columns, sizes, "n"))
+      .filter(
+        (spec): spec is TableSpec =>
+          spec?.cells.some((cell) => cell.rowSpan > 1) === true,
+      ),
+    nested: fc.boolean(),
+  })
+  .map(({ table, nested }) =>
+    nested
+      ? {
+          rows: 1,
+          columns: 1,
+          cells: [
+            {
+              row: 0,
+              column: 0,
+              rowSpan: 1,
+              columnSpan: 1,
+              text: "",
+              nested: table,
+            },
+          ],
+        }
+      : table,
+  );
+
+/** Two or three edits of one merged table, mostly of its rows. */
+const mergedBatchArbitrary = fc.array(
+  fc.record({
+    anchor: fc.nat(),
+    other: fc.nat(),
+    kind: fc.oneof(
+      {
+        weight: 4,
+        arbitrary: fc.constantFrom<OperationKind>(
+          "insertTableRow",
+          "deleteTableRow",
+        ),
+      },
+      {
+        weight: 1,
+        arbitrary: fc.constantFrom<OperationKind>(
+          "insertTableColumn",
+          "deleteTableColumn",
+          "mergeTableCells",
+          "splitTableCell",
+          "replaceBlock",
+          "deleteBlock",
+        ),
+      },
+    ),
+    position: fc.constantFrom("before", "after"),
+    valueCount: fc.option(fc.integer({ min: 0, max: 3 }), { nil: undefined }),
+  }),
+  { minLength: 2, maxLength: 3 },
+);
+
+/**
  * One operation, or two in one batch: each is resolved against the document
  * as it was read, and the batch applies them from the end backwards, so a
  * second operation at the first one's boundary checks that neither lands on
@@ -616,6 +695,26 @@ describe.each(SESSIONS)("%s session", (session) => {
           {
             numRuns: 150,
             id: "keep every value, agree across modes and readers, and reject cleanly",
+          },
+        );
+      },
+      propertyTestTimeout(120_000),
+    );
+
+    // Row edits beside, inside and at the ends of vertical merges, batched so
+    // one edit lands where another changed a merge.
+    test(
+      "keep vertical merges whole across batched row edits",
+      async () => {
+        await assertProperty(
+          fc.asyncProperty(
+            mergedDocumentArbitrary,
+            mergedBatchArbitrary,
+            checkCase,
+          ),
+          {
+            numRuns: 100,
+            id: "keep vertical merges whole across batched row edits",
           },
         );
       },
