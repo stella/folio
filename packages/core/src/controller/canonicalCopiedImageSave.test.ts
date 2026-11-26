@@ -5,6 +5,7 @@ import path from "node:path";
 import { Fragment, type Node as PMNode, Slice } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 
+import { relationshipIdOf } from "@stll/docx-core/model";
 import {
   DOCUMENT_OP_TYPES,
   OP_STORIES,
@@ -556,6 +557,8 @@ test.each(Object.values(FOLIO_DOCX_SERIALIZATION_MODE))(
   async (mode) => {
     const story = STORIES.header;
     const source = await destination({ story, conflictingBinding: "present" });
+    const conflictId =
+      relationshipIdOf(source.conflictId) ?? panic("Missing conflicting id");
     const driver = await copyImage({
       source: source.document,
       story,
@@ -563,7 +566,7 @@ test.each(Object.values(FOLIO_DOCX_SERIALIZATION_MODE))(
       resource: "dataUrl",
       offset: 0,
     });
-    expect(driver.allocated.image.rId).toBe(source.conflictId);
+    expect(driver.allocated.image.rId).toBe(conflictId);
     const snapshot = driver.session.captureSaveSnapshot();
     const before = snapshot.document;
     const saved = await serializeCanonicalSave({
@@ -579,7 +582,7 @@ test.each(Object.values(FOLIO_DOCX_SERIALIZATION_MODE))(
       (await zip.entry(relationshipPath(part))?.text()) ?? "",
     );
     // The owner's own binding keeps its id and target.
-    expect(local.get(source.conflictId)).toMatchObject({
+    expect(local.get(conflictId)).toMatchObject({
       type: RELATIONSHIP_TYPES.image,
       target: "https://example.com/original.png",
       targetMode: "External",
@@ -588,9 +591,9 @@ test.each(Object.values(FOLIO_DOCX_SERIALIZATION_MODE))(
     expect(bindings).toHaveLength(1);
     const fresh =
       bindings.at(0) ?? panic("The copied picture lost its binding");
-    expect(fresh).not.toBe(source.conflictId);
+    expect(fresh).not.toBe(conflictId);
     const allocated =
-      before.package.relationships?.get(source.conflictId) ??
+      before.package.relationships?.get(conflictId) ??
       panic("Allocated relationship missing");
     const expectedPath = resolveRelativePath(
       "word/_rels/document.xml.rels",
@@ -609,7 +612,7 @@ test.each(Object.values(FOLIO_DOCX_SERIALIZATION_MODE))(
     );
     // The session's document keeps the picture's own id.
     assertExactModel(driver.session.captureSaveSnapshot().document, before);
-    expect(drawings(before, story).at(0)?.image.rId).toBe(source.conflictId);
+    expect(drawings(before, story).at(0)?.image.rId).toBe(conflictId);
   },
 );
 
