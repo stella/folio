@@ -669,6 +669,11 @@ export const paragraphXml = (
       .join("");
     properties.push(`<${w}:ind${sides}/>`);
   }
+  // The alignment follows the indent.
+  const { alignment } = emit.paragraph;
+  if (alignment !== null) {
+    properties.push(`<${w}:jc ${w}:val="${alignment}"/>`);
+  }
   // A section's properties close the paragraph's.
   if (emit.sectionXml !== null) {
     properties.push(emit.sectionXml);
