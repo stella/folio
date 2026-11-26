@@ -6,6 +6,7 @@ import { parseSectionProperties } from "../../sectionParser";
 import {
   type AnalyzedDocument,
   analyzeDocument,
+  storySections,
   styleOutlineLevel,
 } from "./blocks";
 import { styleNumbering } from "./labels";
@@ -172,28 +173,19 @@ const inspectNumbering = (
 const inspectSections = ({
   story,
   pkg,
-}: AnalyzedDocument): DocxTemplateSection[] =>
-  story.sections.map((sectPr, index) => {
-    const properties = parseSectionProperties(sectPr);
-    const partOf = (rId: string): string | null => {
-      const relationship = pkg.documentRelationships.get(rId);
-      return relationship === undefined
-        ? null
-        : pkg.resolveDocumentTarget(relationship.target);
-    };
-    return {
-      index,
-      orientation: properties.orientation ?? "portrait",
-      size: {
-        width: properties.pageWidth ?? null,
-        height: properties.pageHeight ?? null,
-      },
-      margins: {
-        top: properties.marginTop ?? null,
-        right: properties.marginRight ?? null,
-        bottom: properties.marginBottom ?? null,
-        left: properties.marginLeft ?? null,
-      },
+}: AnalyzedDocument): DocxTemplateSection[] => {
+  const partOf = (rId: string): string | null => {
+    const relationship = pkg.documentRelationships.get(rId);
+    return relationship === undefined
+      ? null
+      : pkg.resolveDocumentTarget(relationship.target);
+  };
+  // A section the body only implies names no header or footer.
+  return storySections(story).map((section) => {
+    const properties = parseSectionProperties(
+      story.sections[section.index] ?? null,
+    );
+    return Object.assign(section, {
       headers: (properties.headerReferences ?? []).map(({ type, rId }) => ({
         type,
         part: partOf(rId),
@@ -202,8 +194,9 @@ const inspectSections = ({
         type,
         part: partOf(rId),
       })),
-    };
+    });
   });
+};
 
 const fieldOf = (
   part: string,

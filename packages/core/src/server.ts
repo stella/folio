@@ -356,6 +356,7 @@ export {
   type DocxBlockManifest,
   type DocxBlockNumbering,
   type DocxNote,
+  type DocxSection,
   type DocxTableCell,
   type DocxTemplateBookmark,
   type DocxTemplateField,

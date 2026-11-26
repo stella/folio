@@ -107,8 +107,10 @@ const sourceItemIssue = (item: Json, where: string): string | null => {
       return `${where} carries a malformed ${key}.`;
     }
   }
-  if (!isOptionalBoolean(item["labelAsText"])) {
-    return `${where} carries a malformed labelAsText.`;
+  for (const key of ["labelAsText", "pageBreakBefore"] as const) {
+    if (!isOptionalBoolean(item[key])) {
+      return `${where} carries a malformed ${key}.`;
+    }
   }
   const merge = item["mergeNext"];
   if (merge !== undefined && !(isString(merge) && MERGES.has(merge))) {

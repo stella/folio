@@ -258,6 +258,7 @@ describe("applyTemplatePlan", () => {
       labelChanged: 0,
       labelLost: 0,
       labelAsText: 0,
+      pageStarts: 0,
     });
     expect(
       report.blocks.map(({ blockId, disposition, text }) => [
