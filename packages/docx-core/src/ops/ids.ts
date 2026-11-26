@@ -318,21 +318,25 @@ const censusWalker = (
   ownKeys: OwnKeys,
   sharing: "shared" | "full",
 ): CensusOf => {
-  const known = new WeakMap<object, Map<string, readonly string[]>>();
+  // By context, then by record: the contexts are few, the records many, so a
+  // record costs one weak entry, not a map of its own.
+  const known = new Map<string, WeakMap<object, readonly string[]>>();
   const remembered = (
     value: object,
     key: string | undefined,
     census: Census,
   ): Census => {
     if (key === undefined || !census.shareable) return census;
-    const keys =
-      census.keys.length === 0 ? NO_KEYS : Object.freeze([...census.keys]);
-    let byContext = known.get(value);
-    if (byContext === undefined) {
-      byContext = new Map();
-      known.set(value, byContext);
+    // A frozen list is one a record below already holds (or none): share it.
+    const keys = Object.isFrozen(census.keys)
+      ? census.keys
+      : Object.freeze([...census.keys]);
+    let byRecord = known.get(key);
+    if (byRecord === undefined) {
+      byRecord = new WeakMap();
+      known.set(key, byRecord);
     }
-    byContext.set(key, keys);
+    byRecord.set(value, keys);
     return { keys, shareable: true };
   };
   const censusOf: CensusOf = (value, context) => {
@@ -340,7 +344,7 @@ const censusWalker = (
     const isList = Array.isArray(value) || value instanceof Map;
     if (!isList && !isPlainRecord(value)) return EMPTY_CENSUS;
     const key = sharing === "full" ? undefined : contextKey(context);
-    const cached = key === undefined ? undefined : known.get(value)?.get(key);
+    const cached = key === undefined ? undefined : known.get(key)?.get(value);
     if (cached !== undefined) return { keys: cached, shareable: true };
     let shareable = true;
     const parts: (readonly string[])[] = [];
