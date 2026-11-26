@@ -24,7 +24,8 @@ const source = async (): Promise<ArrayBuffer> => {
     "Terms\n\nClause one\n\nBody text.\n\nClause two",
   );
   document.package.document.content.forEach((block, index) => {
-    if (block.type === "paragraph") block.paraId = IDS[index];
+    const id = IDS[index];
+    if (block.type === "paragraph" && id !== undefined) block.paraId = id;
   });
   const prepared = await prepareCanonicalDocxInput(await createDocx(document));
   if (prepared.isErr()) throw prepared.error;
