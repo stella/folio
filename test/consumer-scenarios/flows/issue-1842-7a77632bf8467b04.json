@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "title": "PINNED #1842, fingerprint 7a77632bf8467b04: deleting the paragraph a pending join runs into over a deleted paragraph takes the comment on the joined words once accepted",
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "directNumbered",
+  "mode": "tracked-changes",
+  "seed": 1482786199,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 787009332,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "3CEFFC83"
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 4087752536,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "412DDC7F",
+          "separator": " ",
+          "mergedParagraphProperties": {
+            "numbering": {
+              "kind": "none"
+            }
+          }
+        }
+      ],
+      "atomic": true
+    },
+    {
+      "action": "add_comment",
+      "seed": 168856122
+    },
+    {
+      "action": "story batch",
+      "seed": 1304645068,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "31617F9A"
+        }
+      ]
+    }
+  ],
+  "weights": {
+    "version": 1,
+    "cells": {},
+    "operations": []
+  },
+  "origin": "shrunk from insert+splice of 047a527dc1595279"
+}

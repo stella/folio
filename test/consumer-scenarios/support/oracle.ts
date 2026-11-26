@@ -4135,6 +4135,16 @@ const anchorDisposition = (
   const row = model.rows.find(
     (candidate) => candidate.pre?.id === entry.blockId,
   );
+  // Deleting the paragraph a pending join's sources run into deletes the
+  // paragraph they read as once accepted, and the words they carry with it.
+  if (
+    [...model.pendingJoins.values()].some(
+      ({ sources, destination }) =>
+        model.deletedBlockIds.has(destination.id) &&
+        sources.some(({ id }) => id === entry.blockId),
+    )
+  )
+    return "removed";
   const explicitlyDeleted = model.deletedBlockIds.has(entry.blockId);
   if (explicitlyDeleted || (row?.removed && !row.pendingJoin)) {
     const removed = removedLiveRun(model, entry.blockId);
