@@ -301,6 +301,7 @@ export type DocxBlock = {
     paraId?: string;
     inlineObjects: number;
     pageBreaks?: number;
+    selfNumbers?: number[];
     pageBreakBefore?: true;
     endsSection?: true;
     alignment?: string;

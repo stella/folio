@@ -449,6 +449,21 @@ const pieceRunXml = (
           : `<${w}:r><${w}:rPr><${w}:rStyle ${w}:val="${escapeXmlAttribute(style)}"/></${w}:rPr>${mark}</${w}:r>`,
       );
     }
+    case "selfNumber": {
+      const instruction = piece.atom?.instruction;
+      // The field is written whole: it holds no result to write in its place.
+      return Result.ok(
+        instruction === undefined
+          ? ""
+          : [
+              `<${w}:fldChar ${w}:fldCharType="begin"/>`,
+              `<${w}:instrText xml:space="preserve"> ${escapeXmlText(instruction)} </${w}:instrText>`,
+              `<${w}:fldChar ${w}:fldCharType="end"/>`,
+            ]
+              .map((content) => run(content))
+              .join(""),
+      );
+    }
     case "object": {
       const transferred = transferObject(piece, context);
       if (Result.isError(transferred)) {

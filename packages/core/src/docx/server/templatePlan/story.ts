@@ -34,6 +34,7 @@ export type AtomKind =
   | "symbol"
   | "footnoteReference"
   | "endnoteReference"
+  | "selfNumber"
   | "object";
 
 export type AtomLink =
@@ -54,7 +55,24 @@ export type InlineAtom = {
   element: XmlElement | null;
   /** Fields whose result the atom is part of, outermost first. */
   fields: readonly number[];
+  /** The code of the field a `selfNumber` atom stands for. */
+  instruction?: string;
 };
+
+/**
+ * Fields that print a number counted when the document is laid out and
+ * that hold no result: the number is text of the document that no cached
+ * text stands for, so the field itself is the content.
+ */
+const SELF_NUMBERING_FIELDS: ReadonlySet<string> = new Set([
+  "AUTONUM",
+  "AUTONUMLGL",
+  "AUTONUMOUT",
+]);
+
+/** Whether a field kind prints a number of its own and caches no text. */
+export const isSelfNumberingField = (kind: string): boolean =>
+  SELF_NUMBERING_FIELDS.has(kind);
 
 export type StoryField = {
   /** Position among the fields of the story, in begin order. */
@@ -437,6 +455,16 @@ const readRun = (
             top.field.kind = fieldKindOf(top.field.instruction);
             top.field.endParagraphOrdinal = read.ordinal;
             top.field.closed = true;
+            if (top.phase === "code" && isSelfNumberingField(top.field.kind)) {
+              pushAtom(walk, {
+                kind: "selfNumber",
+                text: "",
+                runProperties,
+                link,
+                element: null,
+                instruction: top.field.instruction.trim(),
+              });
+            }
           }
         }
         break;
@@ -509,6 +537,16 @@ const readInline = (
       readInline(child, walk, context);
       state.open.pop();
       field.closed = true;
+      if (field.result === "" && isSelfNumberingField(field.kind)) {
+        pushAtom(walk, {
+          kind: "selfNumber",
+          text: "",
+          runProperties: null,
+          link: context.link,
+          element: null,
+          instruction: field.instruction.trim(),
+        });
+      }
     } else if (REVISION_INCLUDED.has(name)) {
       state.trackedChanges += 1;
       readInline(child, walk, context);
