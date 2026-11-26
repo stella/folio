@@ -289,3 +289,32 @@ test("a document rule refusal is recorded as its own status, never as a ledger r
     globalThis.__folioCanonicalFuzzPhase = previousPhase;
   }
 });
+
+test("a condition refusal is recorded as its own status, never as a ledger refusal", () => {
+  const previousErrors = globalThis.__folioCanonicalFuzzErrors;
+  const previousPhase = globalThis.__folioCanonicalFuzzPhase;
+  try {
+    const errors: CanonicalFuzzError[] = [];
+    globalThis.__folioCanonicalFuzzErrors = errors;
+    globalThis.__folioCanonicalFuzzPhase = undefined;
+    recordCanonicalFuzzError(
+      new CanonicalSessionRefusalError({
+        message: "The document is not editable.",
+        ground: { condition: "notEditable" },
+      }),
+    );
+    expect(errors).toEqual([
+      {
+        status: "conditionRefusal",
+        type: "CanonicalSessionRefusalError",
+        condition: "notEditable",
+        message: "The document is not editable.",
+        phase: null,
+      },
+    ]);
+    expect(errors.some(isCanonicalSaveFallback)).toBe(false);
+  } finally {
+    globalThis.__folioCanonicalFuzzErrors = previousErrors;
+    globalThis.__folioCanonicalFuzzPhase = previousPhase;
+  }
+});

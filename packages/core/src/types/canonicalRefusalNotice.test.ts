@@ -3,6 +3,8 @@ import { expect, test } from "bun:test";
 import en from "../i18n/messages/en.json";
 import { FOLIO_LOCALES } from "../i18n/messages/locales";
 import {
+  CANONICAL_CONDITION,
+  CANONICAL_CONDITION_MESSAGE_KEY,
   CANONICAL_GAP,
   CANONICAL_GAP_MESSAGE_KEY,
   CANONICAL_RULE,
@@ -46,6 +48,19 @@ test("a rule refusal shows the editor's own message for the rule", () => {
   expect(asked).toEqual(["editor.contentLocked"]);
 });
 
+test("a refusal under any condition says the change was not made", () => {
+  for (const condition of Object.values(CANONICAL_CONDITION)) {
+    const asked: string[] = [];
+    expect(
+      canonicalRefusalNotice({ condition }, (key) => {
+        asked.push(key);
+        return String(lookup(en, key));
+      }),
+    ).toBe("This change couldn't be made.");
+    expect(asked).toEqual([CANONICAL_CONDITION_MESSAGE_KEY]);
+  }
+});
+
 test("every refusal message exists in every locale", async () => {
   for (const locale of FOLIO_LOCALES) {
     // oxlint-disable-next-line no-await-in-loop -- one catalog at a time
@@ -54,6 +69,7 @@ test("every refusal message exists in every locale", async () => {
     for (const key of [
       ...Object.values(CANONICAL_RULE_MESSAGE_KEYS),
       CANONICAL_GAP_MESSAGE_KEY,
+      CANONICAL_CONDITION_MESSAGE_KEY,
     ]) {
       const text = lookup(messages, key);
       expect([locale, key, typeof text]).toEqual([locale, key, "string"]);

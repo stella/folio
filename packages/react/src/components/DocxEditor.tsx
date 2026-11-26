@@ -186,9 +186,7 @@ import { templateSlashMenuPlugin } from "@stll/folio-core/prosemirror/plugins/te
 import { selectionBounds } from "@stll/folio-core/prosemirror/selectionBounds";
 import { getFolioParaIdFromBlockId } from "@stll/folio-core/types/block-id";
 import {
-  CANONICAL_GAP,
-  type CanonicalGap,
-  canonicalRefusalMessage,
+  CANONICAL_CONDITION,
   canonicalRefusalNotice,
 } from "@stll/folio-core/types/canonicalCapabilities";
 import type { CanonicalCommentRequest } from "@stll/folio-core/types/canonicalComments";
@@ -821,18 +819,15 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       },
     );
 
-    const refuseCanonicalModelEdit = useCallback(
-      (gap: CanonicalGap, message: string) => {
-        const error = new CanonicalSessionRefusalError({
-          ground: { gap },
-          message: canonicalRefusalMessage(gap, message),
-        });
-        toast(error.message);
-        onError?.(error);
-        return true;
-      },
-      [onError],
-    );
+    // Before the editor holds a session, a section change has nowhere to go.
+    const refuseSectionChangeBeforeReady = useCallback(() => {
+      const error = new CanonicalSessionRefusalError({
+        ground: { condition: CANONICAL_CONDITION.notReady },
+        message: "The editor is not ready for section changes.",
+      });
+      toast(canonicalRefusalNotice(error.ground, t));
+      onError?.(error);
+    }, [onError, t]);
 
     // Extension manager — built once, provides schema + plugins + commands
     const extensionManager = useMemo(() => {
@@ -2276,23 +2271,16 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       (footnotePr: FootnoteProperties, endnotePr: EndnoteProperties) => {
         const api = getCanonicalApi();
         if (!api) {
-          refuseCanonicalModelEdit(
-            CANONICAL_GAP.sectionProperties,
-            "The editor is not ready for section changes.",
-          );
+          refuseSectionChangeBeforeReady();
           return;
         }
         const result = api.applyCanonicalSectionProperties({
           footnotePr,
           endnotePr,
         });
-        if (result === null)
-          refuseCanonicalModelEdit(
-            CANONICAL_GAP.sectionProperties,
-            "The editor is not ready for section changes.",
-          );
+        if (result === null) refuseSectionChangeBeforeReady();
       },
-      [getCanonicalApi, refuseCanonicalModelEdit],
+      [getCanonicalApi, refuseSectionChangeBeforeReady],
     );
 
     // Handle table action from Toolbar - use ProseMirror commands
@@ -3376,20 +3364,13 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         if (readOnly) return;
         const api = getCanonicalApi();
         if (!api) {
-          refuseCanonicalModelEdit(
-            CANONICAL_GAP.sectionProperties,
-            "The editor is not ready for section changes.",
-          );
+          refuseSectionChangeBeforeReady();
           return;
         }
         const result = api.applyCanonicalSectionProperties(props);
-        if (result === null)
-          refuseCanonicalModelEdit(
-            CANONICAL_GAP.sectionProperties,
-            "The editor is not ready for section changes.",
-          );
+        if (result === null) refuseSectionChangeBeforeReady();
       },
-      [readOnly, getCanonicalApi, refuseCanonicalModelEdit],
+      [readOnly, getCanonicalApi, refuseSectionChangeBeforeReady],
     );
 
     // Ruler drag handlers. Page-margin drags go through the section-properties

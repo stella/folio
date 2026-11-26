@@ -15,8 +15,7 @@ import {
   publishCanonicalProjection,
 } from "../canonical/canonicalSession";
 import {
-  CANONICAL_GAP,
-  type CanonicalGap,
+  CANONICAL_CONDITION,
   type CanonicalRefusalGround,
 } from "../types/canonicalCapabilities";
 import type { Document, Paragraph, SectionProperties } from "../types/document";
@@ -267,13 +266,13 @@ test("manager section patches refuse read-only and composition without changing 
             notePresence: "present",
           });
           let readOnly = false;
-          const refused: (CanonicalGap | undefined)[] = [];
+          const refused: CanonicalRefusalGround[] = [];
           const manager = createHiddenEditorManager(
             managerDeps({
               host,
               source,
               readOnly: () => readOnly,
-              onRefusal: (_message, ground) => refused.push(ground.gap),
+              onRefusal: (_message, ground) => refused.push(ground),
             }),
           );
           try {
@@ -286,7 +285,9 @@ test("manager section patches refuse read-only and composition without changing 
             );
             expect(readonlyResult?.status).toBe("refused");
             if (readonlyResult?.status === "refused")
-              expect(readonlyResult.gap).toBe(CANONICAL_GAP.sectionProperties);
+              expect(readonlyResult.ground).toEqual({
+                condition: CANONICAL_CONDITION.notEditable,
+              });
             expect(manager.api.getCanonicalDocument()).toStrictEqual(initial);
             expect(manager.api.canUndo()).toBe(false);
             readOnly = false;
@@ -310,8 +311,8 @@ test("manager section patches refuse read-only and composition without changing 
             expect(manager.api.redo()).toBe(true);
             expect(manager.api.getCanonicalDocument()).toStrictEqual(edited);
             expect(refused).toEqual([
-              CANONICAL_GAP.sectionProperties,
-              CANONICAL_GAP.sectionProperties,
+              { condition: CANONICAL_CONDITION.notEditable },
+              { condition: CANONICAL_CONDITION.composing },
             ]);
           } finally {
             manager.destroyView();
@@ -335,7 +336,7 @@ test("section API refuses teardown reentry with one typed refusal and no model m
   const host = document.createElement("div");
   document.body.append(host);
   let invokeDuringDestroy: (() => void) | undefined;
-  const refused: (CanonicalGap | undefined)[] = [];
+  const refused: CanonicalRefusalGround[] = [];
   const manager = createHiddenEditorManager(
     managerDeps({
       host,
@@ -345,7 +346,7 @@ test("section API refuses teardown reentry with one typed refusal and no model m
         notePresence: "present",
       }),
       readOnly: () => false,
-      onRefusal: (_message, ground) => refused.push(ground.gap),
+      onRefusal: (_message, ground) => refused.push(ground),
       onDestroy: () => invokeDuringDestroy?.(),
     }),
   );
@@ -361,13 +362,15 @@ test("section API refuses teardown reentry with one typed refusal and no model m
       });
       expect(result?.status).toBe("refused");
       if (result?.status === "refused")
-        expect(result.gap).toBe(CANONICAL_GAP.sectionProperties);
+        expect(result.ground).toEqual({
+          condition: CANONICAL_CONDITION.notEditable,
+        });
       expect(manager.api.getCanonicalDocument()).toStrictEqual(initial);
       expect(manager.api.canUndo()).toBe(false);
     };
     manager.destroyView();
     expect(attempts).toBe(1);
-    expect(refused).toEqual([CANONICAL_GAP.sectionProperties]);
+    expect(refused).toEqual([{ condition: CANONICAL_CONDITION.notEditable }]);
   } finally {
     manager.destroyView();
     host.remove();

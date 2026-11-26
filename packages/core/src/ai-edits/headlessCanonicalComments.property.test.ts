@@ -29,6 +29,7 @@ import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
 import {
+  CANONICAL_CONDITION,
   CANONICAL_GAP,
   type HeadlessReviewerSession,
 } from "../types/canonicalCapabilities";
@@ -105,7 +106,8 @@ type CommentOutcome =
  * preserved read-only.
  */
 const isCommentRefusal = (error: unknown): boolean =>
-  CanonicalCommentError.is(error) && error.gap === CANONICAL_GAP.comments;
+  CanonicalCommentError.is(error) &&
+  error.ground.condition === CANONICAL_CONDITION.invalidRequest;
 
 const commentLaws = async (buffer: ArrayBuffer): Promise<CommentOutcome> => {
   let canonical: FolioDocxReviewer;

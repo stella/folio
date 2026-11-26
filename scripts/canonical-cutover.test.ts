@@ -44,7 +44,6 @@ describe("canonical cutover guard", () => {
 
   test("rejects unknown and missing gate/refusal ids", () => {
     for (const fixture of [
-      "refuseCanonicalModelEdit('free-text');",
       "handleSessionRefusal('Note story unavailable');",
       "new CanonicalSessionRefusalError({ message: 'refused' });",
       "new CanonicalSessionError({ reason: 'refused', message: 'refused' });",

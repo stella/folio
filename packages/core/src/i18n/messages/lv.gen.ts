@@ -341,6 +341,7 @@ export const messages: FolioMessages = {
     "editSessionTakenOver": "Šo rediģēšanas sesiju pārņēma citur.",
     "editor": {
       "accessibleName": "Dokumentu redaktors",
+      "changeNotApplied": "Šīs izmaiņas neizdevās veikt.",
       "changeUnavailable": "Šīs izmaiņas šeit vēl nevar veikt.",
       "contentLocked": "Šī dokumenta daļa ir bloķēta.",
       "editing": "Rediģēšana",

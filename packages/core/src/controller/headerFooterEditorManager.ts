@@ -20,6 +20,7 @@ import { noteReferenceTransactionIssue } from "../prosemirror/noteReferenceOccur
 import { createDocumentNumberingPlugin } from "../prosemirror/plugins/documentNumbering";
 import { createDocumentStyleContextPlugin } from "../prosemirror/plugins/documentStyles";
 import {
+  CANONICAL_CONDITION,
   CANONICAL_GAP,
   type CanonicalRefusalGround,
 } from "../types/canonicalCapabilities";
@@ -299,7 +300,7 @@ export const createHeaderFooterEditorManager = (
       const canonical = deps.getCanonicalApi?.()?.getCanonicalDocument();
       if (canonical) return canonical;
       throw new CanonicalSessionError({
-        ground: { gap: CANONICAL_GAP.authorityRouting },
+        ground: { condition: CANONICAL_CONDITION.notReady },
         reason: "refused",
         message: "Canonical story snapshot is unavailable.",
       });

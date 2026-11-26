@@ -144,11 +144,6 @@ import type {
 } from "@stll/folio-core/prosemirror/plugins/templateSlashMenu";
 import { templateSlashMenuPlugin } from "@stll/folio-core/prosemirror/plugins/templateSlashMenu";
 import type { FolioAutocompleteState } from "@stll/folio-core/types/autocomplete";
-import {
-  CANONICAL_GAP,
-  type CanonicalGap,
-  canonicalRefusalMessage,
-} from "@stll/folio-core/types/canonicalCapabilities";
 import type { Footnote } from "@stll/folio-core/types/content";
 import type {
   Document,
@@ -536,7 +531,10 @@ export type UseDocxEditorReturn = {
    * it, never write it or hand it on.
    */
   readDocument: () => ReadonlyDocument | null;
-  /** Publish a fresh Document object (e.g. after HF materialisation). */
+  /**
+   * Replace the document with `doc`, as `loadDocument` does: the editor opens
+   * it in a new session, so its undo history starts over.
+   */
   setDocument: (doc: Document) => void;
   /** Resolve a persistent header/footer EditorView by relationship id. */
   getHeaderFooterView: (rId: string) => EditorView | null;
@@ -651,15 +649,6 @@ export function useDocxEditor(
     onChange?.(forHosts);
     emitter.emit("docChange", forHosts);
   };
-  const refuseCanonicalModelEdit = (gap: CanonicalGap, message: string) => {
-    const error = new CanonicalSessionRefusalError({
-      ground: { gap },
-      message: canonicalRefusalMessage(gap, message),
-    });
-    onError?.(error);
-    return true;
-  };
-
   // ---- Long-lived controller singletons -----------------------------------
   // One ExtensionManager owns the schema + plugins + commands for the body view.
   const extensionManager = new ExtensionManager(
@@ -1454,24 +1443,7 @@ export function useDocxEditor(
   }
 
   function setDocument(doc: Document): void {
-    if (
-      refuseCanonicalModelEdit(
-        CANONICAL_GAP.modelEdits,
-        "Direct document model changes are unavailable in this session.",
-      )
-    ) {
-      return;
-    }
-    docModel.value = rawDocument(doc);
-    cancelNoteChangeNotification();
-    sourceBuffer.value = doc.originalBuffer ?? null;
-    syncSecondaryStoryEditors();
-    if (
-      activeNoteStory.value &&
-      !noteEditorManager.getView(activeNoteStory.value)
-    ) {
-      activeNoteStory.value = null;
-    }
+    loadDocument(doc);
   }
 
   function getHeaderFooterView(rId: string): EditorView | null {

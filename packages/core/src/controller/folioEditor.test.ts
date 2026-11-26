@@ -3,7 +3,7 @@ import type { Command, EditorState, Transaction } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
 import type { Layout } from "../layout-engine/types";
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
+import { CANONICAL_CONDITION } from "../types/canonicalCapabilities";
 import type { Document } from "../types/document";
 import { NO_ANONYMIZATION_HIGHLIGHTS } from "./anonymizationHighlights";
 import { createFolioEditor, type FolioEditorDocumentIO } from "./folioEditor";
@@ -207,7 +207,7 @@ describe("createFolioEditor", () => {
     expect(editor.applyCanonicalSectionProperties({ marginLeft: 900 })).toEqual(
       {
         status: "refused",
-        gap: CANONICAL_GAP.sectionProperties,
+        ground: { condition: CANONICAL_CONDITION.notReady },
         message: "The editor is not ready for section changes.",
       },
     );
