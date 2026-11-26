@@ -778,7 +778,11 @@ describe("independent table forward oracles", () => {
           }
           const tracked = applyDocumentOp(document, {
             ...op,
-            revision: { id: 100_000, author: "Reviewer" },
+            revision: {
+              id: 100_000,
+              author: "Reviewer",
+              date: "2026-11-26T00:00:00Z",
+            },
             newIds: {
               revision: Array.from(
                 { length: 16 },
