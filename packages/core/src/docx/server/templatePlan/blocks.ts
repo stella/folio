@@ -42,6 +42,7 @@ import { TemplatePlanError } from "./types";
 import {
   elementChildren,
   halfPointsOrNull,
+  integerOrNull,
   isW,
   type RawPart,
   readRawPart,
@@ -94,6 +95,10 @@ type StoryResources = {
   numbering: NumberingMap | null;
   /** The alignment each paragraph style states for itself (`w:jc`). */
   alignments?: ReadonlyMap<string, string>;
+  /** The indent each list level states, by definition and level. */
+  levelIndents?: ReadonlyMap<string, IndentSides>;
+  /** The indent the document's defaults give every paragraph. */
+  defaultIndent?: IndentSides;
 };
 
 type OpenTable = {
@@ -131,6 +136,99 @@ const sectionOf = (sectPr: XmlElement, index: number): DocxSection => {
     },
     columns: properties.columnCount ?? 1,
   };
+};
+
+type IndentSides = { left: number | null; firstLine: number | null };
+
+const NO_INDENT: IndentSides = { left: null, firstLine: null };
+
+const levelKey = (abstractNumId: number, ilvl: number): string =>
+  `${String(abstractNumId)}:${String(ilvl)}`;
+
+/** The sides a `w:ind` states; a hanging indent is a negative first line. */
+const statedIndent = (indent: XmlElement | null): IndentSides => {
+  const hanging = twipsOrNull(wAttr(indent, "hanging"));
+  return {
+    left: twipsOrNull(wAttr(indent, "left") ?? wAttr(indent, "start")),
+    firstLine:
+      hanging === null ? twipsOrNull(wAttr(indent, "firstLine")) : -hanging,
+  };
+};
+
+/**
+ * The indent each level of a numbering part states, by list definition and
+ * level, read off the part itself. An override a list instance makes of a
+ * level is not followed.
+ */
+const statedLevelIndents = (
+  numberingPath: string | null,
+  numberingXml: string | null,
+): Map<string, IndentSides> => {
+  const indents = new Map<string, IndentSides>();
+  const part =
+    numberingPath === null || numberingXml === null
+      ? null
+      : readRawPart(numberingPath, numberingXml);
+  for (const definition of wChildren(part?.root, "abstractNum")) {
+    const abstractNumId = integerOrNull(wAttr(definition, "abstractNumId"));
+    for (const level of wChildren(definition, "lvl")) {
+      const ilvl = integerOrNull(wAttr(level, "ilvl"));
+      if (abstractNumId !== null && ilvl !== null) {
+        indents.set(
+          levelKey(abstractNumId, ilvl),
+          statedIndent(wChild(wChild(level, "pPr"), "ind")),
+        );
+      }
+    }
+  }
+  return indents;
+};
+
+/** The indent the document's defaults give every paragraph. */
+const statedDefaultIndent = (
+  stylesPath: string | null,
+  stylesXml: string | null,
+): IndentSides => {
+  const part =
+    stylesPath === null || stylesXml === null
+      ? null
+      : readRawPart(stylesPath, stylesXml);
+  const defaults = wChild(wChild(part?.root, "docDefaults"), "pPrDefault");
+  return statedIndent(wChild(wChild(defaults, "pPr"), "ind"));
+};
+
+/** The sides a style states, as the document model holds them: a hanging
+ *  indent is a negative first line. */
+const modelIndent = (
+  formatting:
+    | {
+        indentLeft?: number | undefined;
+        indentFirstLine?: number | undefined;
+        hangingIndent?: boolean | undefined;
+      }
+    | undefined,
+): IndentSides => {
+  const first = formatting?.indentFirstLine;
+  let firstLine: number | null = null;
+  if (first !== undefined) {
+    firstLine = formatting?.hangingIndent === true ? -Math.abs(first) : first;
+  }
+  return { left: formatting?.indentLeft ?? null, firstLine };
+};
+
+/**
+ * The indent in effect: each side from the first of `sources` that states
+ * it. Null when none of them states a side.
+ */
+const indentInEffect = (
+  ...sources: readonly IndentSides[]
+): { left: number; firstLine: number } | null => {
+  const left = sources.find((source) => source.left !== null)?.left ?? null;
+  const firstLine =
+    sources.find((source) => source.firstLine !== null)?.firstLine ?? null;
+  return left === null && firstLine === null
+    ? null
+    : { left: left ?? 0, firstLine: firstLine ?? 0 };
 };
 
 /** The alignment each style of a styles part states for itself (`w:jc`). */
@@ -395,6 +493,25 @@ export const analyzeStory = ({
             ));
       if (alignment !== null) {
         block.alignment = alignment;
+      }
+      // A list the paragraph names itself gives its level's indent over
+      // the style's; a list the style brings is part of the style, whose
+      // own indent then stands over the level's.
+      const ofLevel =
+        (label.numbering === null
+          ? undefined
+          : resources.levelIndents?.get(
+              levelKey(label.numbering.abstractNumId, label.numbering.ilvl),
+            )) ?? NO_INDENT;
+      const ofStyle = modelIndent(style?.pPr);
+      const ofDefaults = resources.defaultIndent ?? NO_INDENT;
+      const indent =
+        read.numPr === undefined
+          ? indentInEffect(read.indent, ofStyle, ofLevel, ofDefaults)
+          : indentInEffect(read.indent, ofLevel, ofStyle, ofDefaults);
+      // An indent counted in characters cannot be said in this unit.
+      if (indent !== null && !read.indentInCharacters) {
+        block.indent = indent;
       }
       index += 1;
       const parent = tables.at(-1);
@@ -739,6 +856,8 @@ export const analyzeDocument = async (
             null,
           numbering,
           alignments: statedAlignments(stylesPath, stylesXml),
+          levelIndents: statedLevelIndents(numberingPath, numberingXml),
+          defaultIndent: statedDefaultIndent(stylesPath, stylesXml),
         },
       });
       const footnotes = analyzeNotes("footnotes", footnotesPath, footnotesXml);

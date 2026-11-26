@@ -14,6 +14,7 @@ import {
   MARKUP_COMPATIBILITY_NAMESPACE,
   MATH_NAMESPACE,
   relationshipAttr,
+  twipsOrNull,
   wAttr,
   wChild,
   wChildVal,
@@ -115,6 +116,26 @@ export type ParagraphBookmark = { name: string; id: string; atomIndex: number };
 /** A bookmark end, with how many atoms of its paragraph come before it. */
 export type ParagraphBookmarkEnd = { id: string; atomIndex: number };
 
+/** The sides of `w:ind` that count in characters of the document grid. */
+const CHARACTER_INDENTS = [
+  "leftChars",
+  "startChars",
+  "hangingChars",
+  "firstLineChars",
+] as const;
+
+/** The sides a `w:ind` states; a hanging indent is a negative first line. */
+const ownIndent = (
+  indent: XmlElement | null,
+): { left: number | null; firstLine: number | null } => {
+  const hanging = twipsOrNull(wAttr(indent, "hanging"));
+  return {
+    left: twipsOrNull(wAttr(indent, "left") ?? wAttr(indent, "start")),
+    firstLine:
+      hanging === null ? twipsOrNull(wAttr(indent, "firstLine")) : -hanging,
+  };
+};
+
 export type ParagraphRead = {
   element: XmlElement;
   ordinal: number;
@@ -140,6 +161,13 @@ export type ParagraphRead = {
   pageBreakBefore: boolean | null;
   /** `w:jc` as the paragraph itself states it, or null. */
   alignment: string | null;
+  /** The sides of `w:ind` the paragraph itself states, in twentieths of a
+   *  point: where its lines start, and what its first line adds to that
+   *  (negative for a hanging indent). Null for a side it does not state. */
+  indent: { left: number | null; firstLine: number | null };
+  /** Whether the paragraph states an indent in characters, which stands
+   *  over the measured one and cannot be given in twentieths of a point. */
+  indentInCharacters: boolean;
   /** Whether the paragraph mark is a tracked insertion or deletion. */
   hasTrackedMark: boolean;
 };
@@ -550,6 +578,11 @@ export const readParagraph = (
     hasSectionBreak: wChild(properties, "sectPr") !== null,
     pageBreakBefore: toggleOf(wChild(properties, "pageBreakBefore")),
     alignment: wChildVal(properties, "jc"),
+    indent: ownIndent(wChild(properties, "ind")),
+    indentInCharacters: CHARACTER_INDENTS.some((name) => {
+      const value = wAttr(wChild(properties, "ind"), name);
+      return value !== null && !/^[+-]?0*$/u.test(value.trim());
+    }),
     hasTrackedMark,
   };
   state.paragraphOrdinal += 1;
