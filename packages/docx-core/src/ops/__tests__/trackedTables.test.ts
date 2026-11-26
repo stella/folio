@@ -714,7 +714,7 @@ describe("tracked table refusals", () => {
               },
             ],
           },
-          reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+          reason: DOCUMENT_OP_REFUSAL_REASONS.DEPENDENT_RECORDS,
         })),
       ] as const satisfies readonly { value: Table; reason: string }[];
       for (const { value, reason } of cases) {
