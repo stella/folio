@@ -43,6 +43,7 @@ import {
   isW,
   type RawPart,
   readRawPart,
+  twipsOrNull,
   wAttr,
   wChild,
   wChildren,
@@ -176,6 +177,8 @@ type StatedLook = {
   /** In half-points. */
   size: number | null;
   keepNext: boolean | null;
+  /** In twentieths of a point. */
+  indentLeft: number | null;
 };
 
 const statedLook = (
@@ -185,6 +188,10 @@ const statedLook = (
   bold: toggleOf(wChild(run, "b")),
   size: halfPointsOrNull(wChildVal(run, "sz")),
   keepNext: toggleOf(wChild(paragraph, "keepNext")),
+  indentLeft: twipsOrNull(
+    wAttr(wChild(paragraph, "ind"), "left") ??
+      wAttr(wChild(paragraph, "ind"), "start"),
+  ),
 });
 
 /** The look each style of the styles part states itself, by style id, and
@@ -221,14 +228,25 @@ export const statedLooks = (
  * The look a style gives its text: each property from the nearest style in
  * the `basedOn` chain that states it, then from the document's defaults.
  * Without a statement text is not bold and a paragraph is not kept with the
- * next; the size stays null, which leaves it to the application.
+ * next; the size and the left indent stay null, which leaves the size to
+ * the application and the indent to a list level, if the style has one.
  */
 export const styleLook = (
   styleId: string | null,
   styles: StyleMap,
   { styles: stated, defaults }: ReturnType<typeof statedLooks>,
-): { bold: boolean; size: number | null; keepNext: boolean } => {
-  const look: StatedLook = { bold: null, size: null, keepNext: null };
+): {
+  bold: boolean;
+  size: number | null;
+  keepNext: boolean;
+  indentLeft: number | null;
+} => {
+  const look: StatedLook = {
+    bold: null,
+    size: null,
+    keepNext: null,
+    indentLeft: null,
+  };
   const seen = new Set<string>();
   let cursor: string | undefined = styleId ?? undefined;
   while (cursor !== undefined && !seen.has(cursor)) {
@@ -237,12 +255,14 @@ export const styleLook = (
     look.bold ??= own?.bold ?? null;
     look.size ??= own?.size ?? null;
     look.keepNext ??= own?.keepNext ?? null;
+    look.indentLeft ??= own?.indentLeft ?? null;
     cursor = styles.get(cursor)?.basedOn;
   }
   return {
     bold: look.bold ?? defaults.bold ?? false,
     size: look.size ?? defaults.size,
     keepNext: look.keepNext ?? defaults.keepNext ?? false,
+    indentLeft: look.indentLeft ?? defaults.indentLeft,
   };
 };
 

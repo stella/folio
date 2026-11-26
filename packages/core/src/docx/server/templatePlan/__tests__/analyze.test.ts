@@ -211,6 +211,7 @@ describe("inspectDocxTemplate", () => {
       bold: true,
       size: 22,
       keepNext: true,
+      indentLeft: null,
       isDefault: false,
     });
     expect(style("HouseTitle")?.alignment).toBe("center");
@@ -220,8 +221,10 @@ describe("inspectDocxTemplate", () => {
       size: 22,
       keepNext: false,
     });
-    // A size given with its unit is read in half-points.
+    // A size given with its unit is read in half-points, an indent in
+    // twentieths of a point.
     expect(style("TOC1")?.size).toBe(24);
+    expect(style("TOC1")?.indentLeft).toBe(283);
     expect(style("HouseClause")?.numPr).toEqual({ numId: 1, ilvl: 1 });
     // The style names the list only; the level that names the style back decides.
     expect(style("HouseSubClause")?.numPr).toEqual({ numId: 1, ilvl: 2 });

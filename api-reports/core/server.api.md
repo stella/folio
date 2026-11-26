@@ -471,6 +471,7 @@ export type DocxTemplateStyle = {
     bold: boolean;
     size: number | null;
     keepNext: boolean;
+    indentLeft: number | null;
     isDefault: boolean;
 };
 

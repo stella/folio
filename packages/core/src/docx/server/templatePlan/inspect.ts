@@ -90,7 +90,11 @@ const inspectStyles = (analyzed: AnalyzedDocument): DocxTemplateStyle[] => {
   const looks = statedLooks(analyzed.stylesPath, analyzed.stylesXml);
   return [...styles.values()].map((style) => {
     const bound = styleNumbering(style.styleId, styles, numbering);
-    const { bold, size, keepNext } = styleLook(style.styleId, styles, looks);
+    const { bold, size, keepNext, indentLeft } = styleLook(
+      style.styleId,
+      styles,
+      looks,
+    );
     return {
       styleId: style.styleId,
       name: style.name ?? null,
@@ -105,6 +109,7 @@ const inspectStyles = (analyzed: AnalyzedDocument): DocxTemplateStyle[] => {
       bold,
       size,
       keepNext,
+      indentLeft,
       isDefault: style.default === true,
     };
   });

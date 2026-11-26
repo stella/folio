@@ -217,6 +217,13 @@ export type DocxTemplateStyle = {
    * (`w:keepNext`), inheritance and the document's defaults resolved.
    */
   keepNext: boolean;
+  /**
+   * The left indent the style gives its paragraphs, in twentieths of a
+   * point (`w:ind`), inheritance and the document's defaults resolved; null
+   * when none of them states one. A style bound to a list takes the indent
+   * of its level where it states none itself.
+   */
+  indentLeft: number | null;
   isDefault: boolean;
 };
 

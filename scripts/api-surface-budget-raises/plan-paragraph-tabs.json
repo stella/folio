@@ -1,8 +1,8 @@
 {
   "core": {
-    "reportBytes": 80,
-    "reportLines": 2,
-    "declarationBytes": 900,
-    "declarationLines": 20
+    "reportBytes": 140,
+    "reportLines": 3,
+    "declarationBytes": 1400,
+    "declarationLines": 30
   }
 }
