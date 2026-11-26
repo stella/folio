@@ -59,7 +59,6 @@ test(
               globalThis.__folioCanonicalFuzzPhase = phase;
               const error = new CanonicalSaveDiagnosticError({
                 message,
-                gap: CANONICAL_GAP.saveSerialization,
                 diagnostic,
               });
               recordCanonicalFuzzError(error);
@@ -68,7 +67,6 @@ test(
               expect(errors.at(0)).toEqual({
                 status: "saveDiagnostic",
                 type: "CanonicalSaveDiagnosticError",
-                gap: CANONICAL_GAP.saveSerialization,
                 diagnostic,
                 message,
                 phase,
@@ -85,7 +83,6 @@ test(
                     diagnostic: { ...diagnostic, part: "word/styles.xml" },
                     status: "saveDiagnostic",
                     type: "CanonicalSaveDiagnosticError",
-                    gap: CANONICAL_GAP.saveSerialization,
                   }),
                 ).toBe(false);
               }
@@ -198,7 +195,6 @@ test("failure capture retains pending diagnostics and records an unavailable bro
   const pending = {
     status: "saveDiagnostic",
     type: "CanonicalSaveDiagnosticError",
-    gap: CANONICAL_GAP.saveSerialization,
     diagnostic: DIAGNOSTICS.sourceReplayMismatch,
     message: "pending diagnostic",
     phase,

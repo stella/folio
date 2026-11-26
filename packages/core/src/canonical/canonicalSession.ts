@@ -2572,7 +2572,7 @@ class CanonicalSession {
   captureSaveSnapshot(): CanonicalSaveSnapshot {
     if (this.isComposing)
       throw new CanonicalSessionError({
-        ground: { gap: CANONICAL_GAP.saveSerialization },
+        ground: { condition: CANONICAL_CONDITION.composing },
         reason: "refused",
         message:
           "Composition must finish before saving the canonical document.",
