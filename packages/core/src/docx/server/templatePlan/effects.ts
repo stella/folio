@@ -75,6 +75,24 @@ const zeroOrAbsent = (element: XmlElement, name: string): boolean => {
   return value === null || Number(value) === 0;
 };
 
+const FULLY_TRANSPARENT = 100_000;
+
+/**
+ * Whether the colour an effect is drawn in is fully transparent. `alpha`
+ * states transparency here, in thousandths of a percent: the whole of it
+ * leaves nothing of the effect.
+ */
+const drawnTransparent = (element: XmlElement): boolean =>
+  elementChildren(element).some((colour) => {
+    const alpha =
+      isEffect(colour, "srgbClr") || isEffect(colour, "schemeClr")
+        ? effectChild(colour, "alpha")
+        : null;
+    return (
+      alpha !== null && Number(effectAttr(alpha, "val")) === FULLY_TRANSPARENT
+    );
+  });
+
 /** Blur, distance and both scales at zero: nothing is drawn, whatever the
  *  colour, the direction or the skew. */
 const ZERO_SIZE = ["blurRad", "dist", "sx", "sy"] as const;
@@ -126,11 +144,15 @@ const fillIsRunColour = (
 /**
  * Whether an effect of `runProperties` shows nothing. One rule per effect:
  *
- * - `glow`: radius zero.
- * - `shadow`, `reflection`: blur, distance and both scales zero.
- * - `textOutline`: no fill. A width of zero is not enough: a line of no
- *   width is drawn as a hairline.
- * - `textFill`: a plain solid fill in the colour the run states.
+ * - `glow`: radius zero, or a fully transparent colour.
+ * - `shadow`: blur, distance and both scales zero, or a fully transparent
+ *   colour. A shadow of full size straight under the text is not one: its
+ *   edge shows around the glyphs.
+ * - `reflection`: blur, distance and both scales zero.
+ * - `textOutline`: no fill, a width of zero, or a fully transparent solid
+ *   fill.
+ * - `textFill`: a plain solid fill in the colour the run states. A
+ *   transparent fill is the opposite of nothing: it hides the text.
  * - `props3d`: no extrusion, no contour, no bevel.
  * - `scene3d`: the default camera, not turned, and nothing 3-D beside it.
  */
@@ -141,16 +163,21 @@ const showsNothing = (
 ): boolean => {
   switch (effect) {
     case "glow":
-      return allZero(element, ["rad"]);
+      return allZero(element, ["rad"]) || drawnTransparent(element);
     case "shadow":
+      return allZero(element, ZERO_SIZE) || drawnTransparent(element);
     case "reflection":
       return allZero(element, ZERO_SIZE);
-    case "textOutline":
+    case "textOutline": {
+      const solid = effectChild(element, "solidFill");
       return (
-        effectChild(element, "noFill") !== null &&
-        effectChild(element, "solidFill") === null &&
-        effectChild(element, "gradFill") === null
+        allZero(element, ["w"]) ||
+        (solid !== null && drawnTransparent(solid)) ||
+        (effectChild(element, "noFill") !== null &&
+          solid === null &&
+          effectChild(element, "gradFill") === null)
       );
+    }
     case "textFill":
       return fillIsRunColour(element, runProperties);
     case "props3d":

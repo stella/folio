@@ -23,6 +23,11 @@ import { applyFor, planFor, unwrap, verifyFor } from "./planning";
 const W14 = 'xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"';
 
 const COLOUR = '<w14:srgbClr w14:val="000000"/>';
+/** `alpha` states transparency: all of it, and half of it. */
+const TRANSPARENT =
+  '<w14:srgbClr w14:val="000000"><w14:alpha w14:val="100000"/></w14:srgbClr>';
+const HALF =
+  '<w14:srgbClr w14:val="000000"><w14:alpha w14:val="50000"/></w14:srgbClr>';
 const CAMERA = '<w14:camera w14:prst="orthographicFront"/>';
 const RIG =
   '<w14:lightRig w14:rig="threePt" w14:dir="t"><w14:rot w14:lat="0" w14:lon="0" w14:rev="0"/></w14:lightRig>';
@@ -30,9 +35,13 @@ const RIG =
 /** An effect whose values show nothing, and the same effect showing. */
 const EFFECTS: Record<TextEffect, { nothing: string[]; shows: string[] }> = {
   glow: {
-    nothing: [`<w14:glow w14:rad="0">${COLOUR}</w14:glow>`],
+    nothing: [
+      `<w14:glow w14:rad="0">${COLOUR}</w14:glow>`,
+      `<w14:glow w14:rad="63500">${TRANSPARENT}</w14:glow>`,
+    ],
     shows: [
       `<w14:glow w14:rad="63500">${COLOUR}</w14:glow>`,
+      `<w14:glow w14:rad="63500">${HALF}</w14:glow>`,
       // A radius that is not stated is not known to be zero.
       `<w14:glow>${COLOUR}</w14:glow>`,
     ],
@@ -40,10 +49,11 @@ const EFFECTS: Record<TextEffect, { nothing: string[]; shows: string[] }> = {
   shadow: {
     nothing: [
       `<w14:shadow w14:blurRad="0" w14:dist="0" w14:dir="0" w14:sx="0" w14:sy="0" w14:kx="0" w14:ky="0" w14:algn="none">${COLOUR}</w14:shadow>`,
+      `<w14:shadow w14:blurRad="38100" w14:dist="19050" w14:dir="2700000" w14:sx="100000" w14:sy="100000" w14:kx="0" w14:ky="0" w14:algn="tl">${TRANSPARENT}</w14:shadow>`,
     ],
     shows: [
       `<w14:shadow w14:blurRad="38100" w14:dist="19050" w14:dir="2700000" w14:sx="100000" w14:sy="100000" w14:kx="0" w14:ky="0" w14:algn="tl">${COLOUR}</w14:shadow>`,
-      // Full size straight under the text: hidden only by opaque glyphs.
+      // Full size straight under the text: its edge shows around the glyphs.
       `<w14:shadow w14:blurRad="0" w14:dist="0" w14:dir="0" w14:sx="100000" w14:sy="100000" w14:kx="0" w14:ky="0" w14:algn="none">${COLOUR}</w14:shadow>`,
     ],
   },
@@ -59,11 +69,12 @@ const EFFECTS: Record<TextEffect, { nothing: string[]; shows: string[] }> = {
     nothing: [
       '<w14:textOutline w14:w="0" w14:cap="rnd" w14:cmpd="sng" w14:algn="ctr"><w14:noFill/><w14:prstDash w14:val="solid"/><w14:bevel/></w14:textOutline>',
       '<w14:textOutline w14:w="9525"><w14:noFill/></w14:textOutline>',
+      `<w14:textOutline w14:w="0"><w14:solidFill>${COLOUR}</w14:solidFill></w14:textOutline>`,
+      `<w14:textOutline w14:w="9525"><w14:solidFill>${TRANSPARENT}</w14:solidFill></w14:textOutline>`,
     ],
     shows: [
       `<w14:textOutline w14:w="9525"><w14:solidFill>${COLOUR}</w14:solidFill></w14:textOutline>`,
-      // No width is a hairline, not nothing.
-      `<w14:textOutline w14:w="0"><w14:solidFill>${COLOUR}</w14:solidFill></w14:textOutline>`,
+      `<w14:textOutline w14:w="9525"><w14:solidFill>${HALF}</w14:solidFill></w14:textOutline>`,
     ],
   },
   textFill: {
@@ -73,6 +84,8 @@ const EFFECTS: Record<TextEffect, { nothing: string[]; shows: string[] }> = {
     shows: [
       '<w14:textFill><w14:solidFill><w14:srgbClr w14:val="FF0000"/></w14:solidFill></w14:textFill>',
       '<w14:textFill><w14:solidFill><w14:srgbClr w14:val="1F3864"><w14:alpha w14:val="50000"/></w14:srgbClr></w14:solidFill></w14:textFill>',
+      // A transparent fill hides the text: the opposite of nothing.
+      '<w14:textFill><w14:solidFill><w14:srgbClr w14:val="1F3864"><w14:alpha w14:val="100000"/></w14:srgbClr></w14:solidFill></w14:textFill>',
       "<w14:textFill><w14:gradFill><w14:gsLst/></w14:gradFill></w14:textFill>",
     ],
   },
