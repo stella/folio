@@ -37,7 +37,7 @@ import {
   type ResolvedParagraph,
   type SignatureContext,
 } from "./plan";
-import type { AtomLink, StoryField } from "./story";
+import type { AtomLink, AtomRevision, StoryField } from "./story";
 import { TemplatePlanError } from "./types";
 import {
   elementChildren,
@@ -174,6 +174,8 @@ export type EmitShared = {
   /** Register a media part of the output and return its absolute target. */
   addMedia: (sourcePath: string, media: SourceMedia) => string;
   nextDrawingId: () => number;
+  /** A fresh id for a tracked change the output carries. */
+  nextRevisionId: () => number;
 };
 
 export type EmitContext = EmitShared & {
@@ -384,7 +386,65 @@ export const wSubtreeXml = (element: XmlElement, prefix: string): string => {
 
 type RunsResult = Result<string, TemplatePlanError>;
 
+/** The attributes a kept tracked change is written with: its own author and
+ *  date, and an id of the output's. */
+const revisionAttributesXml = (
+  { author, date }: AtomRevision,
+  { prefixes: { w }, nextRevisionId }: EmitContext,
+): string =>
+  ` ${w}:id="${String(nextRevisionId())}" ${w}:author="${escapeXmlAttribute(author)}"${date === null ? "" : ` ${w}:date="${escapeXmlAttribute(date)}"`}`;
+
+/** Deleted text as the content of a deleted run: tabs and line breaks are
+ *  elements, the rest is `w:delText`. */
+const deletedContentXml = (deleted: string, w: string): string =>
+  deleted
+    .split(/(\t|\n)/u)
+    .map((part) => {
+      if (part === "\t") {
+        return `<${w}:tab/>`;
+      }
+      if (part === "\n") {
+        return `<${w}:br/>`;
+      }
+      return part === ""
+        ? ""
+        : `<${w}:delText xml:space="preserve">${escapeXmlText(part)}</${w}:delText>`;
+    })
+    .join("");
+
+/**
+ * The runs of one piece. A piece of a kept tracked change is written inside
+ * its insertion or deletion; a deletion holds the text that was deleted and
+ * takes no place in the text around it.
+ */
 const pieceRunXml = (
+  piece: ExpectedPiece,
+  context: EmitContext,
+  linked: boolean,
+): RunsResult => {
+  const revision = piece.atom?.revision;
+  if (revision === undefined) {
+    return plainPieceRunXml(piece, context, linked);
+  }
+  const { w } = context.prefixes;
+  const attributes = revisionAttributesXml(revision, context);
+  if (revision.kind === "del") {
+    const properties = runPropertiesXml({
+      prefix: w,
+      signature: piece.signature,
+      rStyle: linked ? context.styles.hyperlink : null,
+      escapeAttribute: escapeXmlAttribute,
+    });
+    return Result.ok(
+      `<${w}:del${attributes}><${w}:r>${properties}${deletedContentXml(revision.deleted ?? "", w)}</${w}:r></${w}:del>`,
+    );
+  }
+  return plainPieceRunXml(piece, context, linked).map((runs) =>
+    runs === "" ? "" : `<${w}:ins${attributes}>${runs}</${w}:ins>`,
+  );
+};
+
+const plainPieceRunXml = (
   piece: ExpectedPiece,
   context: EmitContext,
   linked: boolean,
@@ -492,6 +552,9 @@ const mergedPieces = (pieces: readonly ExpectedPiece[]): ExpectedPiece[] => {
       piece.kind === "text" &&
       last.signature === piece.signature &&
       last.origin === piece.origin &&
+      // A tracked change is a run of its own, and so is the text beside it.
+      last.atom?.revision === undefined &&
+      piece.atom?.revision === undefined &&
       sameLink(last.link, piece.link)
     ) {
       merged[merged.length - 1] = { ...last, text: last.text + piece.text };

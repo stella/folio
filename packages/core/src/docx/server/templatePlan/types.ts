@@ -221,6 +221,11 @@ export type DocxBlockManifest = {
   trackedChangesResolved?: DocxTrackedChanges & {
     view: TemplatePlanTrackedView;
   };
+  /**
+   * What the document tracks, on a manifest read for a plan that keeps its
+   * tracked changes: the blocks are the accepted view's.
+   */
+  trackedChangesKept?: DocxTrackedChanges;
   warnings: string[];
 };
 
@@ -229,6 +234,17 @@ export type DocxBlockManifest = {
  * change accepted, or with every change rejected.
  */
 export type TemplatePlanTrackedView = "accept" | "reject";
+
+/**
+ * What a plan does with the tracked changes of its source: formats one view
+ * of them, or keeps them (`keep`). A plan that keeps them is made for the
+ * accepted view's blocks; the output shows the same insertions and
+ * deletions, by the same authors, and tracks nothing new. So far only
+ * changes inside paragraphs are kept: a source with an inserted or deleted
+ * paragraph mark, table row or cell, or a move, is refused as
+ * `tracked-changes`.
+ */
+export type TemplatePlanTrackedChanges = TemplatePlanTrackedView | "keep";
 
 /** The tracked changes of a document's main story and notes, by kind. */
 export type DocxTrackedChanges = {
@@ -630,7 +646,7 @@ export type TemplatePlan = {
    * no revision, and verification holds it to that view. Left out, a
    * source with tracked changes is refused.
    */
-  trackedChanges?: TemplatePlanTrackedView;
+  trackedChanges?: TemplatePlanTrackedChanges;
   /**
    * What becomes of text effects whose values show nothing, in the parts
    * the output takes from the template: its document, numbering, styles,
@@ -750,6 +766,11 @@ export type TemplatePlanReport = {
   /** The view the plan chose of a source with tracked changes, and what
    *  was resolved for it. */
   trackedChanges?: DocxTrackedChanges & { view: TemplatePlanTrackedView };
+  /**
+   * What the source tracks, when the plan kept its tracked changes: the
+   * output shows the same insertions and deletions by the same authors.
+   */
+  trackedChangesKept?: DocxTrackedChanges;
   /** One entry per block of the source, nested ones included, in document order. */
   blocks: TemplatePlanBlockResult[];
   counts: {

@@ -57,6 +57,22 @@ export type InlineAtom = {
   fields: readonly number[];
   /** The code of the field a `selfNumber` atom stands for. */
   instruction?: string;
+  /** The tracked change the atom is part of, in a reading that keeps them. */
+  revision?: AtomRevision;
+};
+
+/**
+ * A tracked change an atom is part of, as a reading that keeps revisions
+ * reports it. An inserted atom is content like any other with this tag. A
+ * deleted one is a text atom without text: it takes no place in the text
+ * the document reads with its changes accepted, and holds what was deleted
+ * in `deleted` (a tab as `\t`, a line break as `\n`).
+ */
+export type AtomRevision = {
+  kind: "ins" | "del";
+  author: string;
+  date: string | null;
+  deleted?: string;
 };
 
 /**
@@ -107,9 +123,21 @@ export type StoryState = {
   formattingRevisions: number;
   /** Field separators and ends met with no field open to take them. */
   strayFieldEnds: number;
+  /**
+   * Whether inline insertions and deletions are read as tagged atoms. Left
+   * out, an insertion reads as plain content and a deletion is skipped.
+   */
+  keepsRevisions: boolean;
+  /**
+   * Revisions a keeping reading could not tag: one inside another, deleted
+   * content that is no text, a change inside a drawing or an equation.
+   */
+  untaggedRevisions: number;
 };
 
-export const createStoryState = (): StoryState => ({
+export const createStoryState = (
+  options: { keepsRevisions?: boolean } = {},
+): StoryState => ({
   fields: [],
   open: [],
   paragraphOrdinal: 0,
@@ -117,6 +145,8 @@ export const createStoryState = (): StoryState => ({
   trackedChanges: 0,
   formattingRevisions: 0,
   strayFieldEnds: 0,
+  keepsRevisions: options.keepsRevisions === true,
+  untaggedRevisions: 0,
 });
 
 /** A bookmark start, with how many atoms of its paragraph come before it. */
@@ -354,24 +384,84 @@ const beginField = (walk: ParagraphWalk, instruction: string): StoryField => {
   return field;
 };
 
-type RunContext = { link: AtomLink | null };
+type RunContext = {
+  link: AtomLink | null;
+  /** The insertion or deletion the content sits in, when revisions are kept. */
+  revision?: AtomRevision | undefined;
+};
+
+/** What a deleted run holds as text; null for content that is none. */
+const deletedTextOf = (child: XmlElement): string | null => {
+  switch (wName(child)) {
+    case "delText":
+      return textOf(child);
+    case "tab":
+      return "\t";
+    case "cr":
+      return "\n";
+    case "br":
+      return wAttr(child, "type") === null ? "\n" : null;
+    default:
+      return null;
+  }
+};
+
+/** A deleted run, read as one atom that holds what was deleted. */
+const readDeletedRun = (
+  run: XmlElement,
+  walk: ParagraphWalk,
+  { link, revision }: RunContext & { revision: AtomRevision },
+): void => {
+  let deleted = "";
+  for (const child of elementChildren(run)) {
+    const name = wName(child);
+    const text = deletedTextOf(child);
+    if (text !== null) {
+      deleted += text;
+    } else if (name !== "rPr" && name !== "lastRenderedPageBreak") {
+      walk.state.untaggedRevisions += 1;
+    }
+  }
+  if (deleted !== "") {
+    pushAtom(walk, {
+      kind: "text",
+      text: "",
+      runProperties: wChild(run, "rPr"),
+      link,
+      element: null,
+      revision: { ...revision, deleted },
+    });
+  }
+};
 
 const readRun = (
   run: XmlElement,
   walk: ParagraphWalk,
-  { link }: RunContext,
+  context: RunContext,
 ): void => {
+  const { link, revision } = context;
   const { state, read } = walk;
   const runProperties = wChild(run, "rPr");
   if (wChild(runProperties, "rPrChange") !== null) {
     state.formattingRevisions += 1;
+  }
+  if (revision?.kind === "del") {
+    readDeletedRun(run, walk, { link, revision });
+    return;
   }
   const atom = (
     kind: AtomKind,
     text: string,
     element: XmlElement | null,
   ): void => {
-    pushAtom(walk, { kind, text, runProperties, link, element });
+    pushAtom(walk, {
+      kind,
+      text,
+      runProperties,
+      link,
+      element,
+      ...(revision === undefined ? {} : { revision }),
+    });
   };
   // An object travels whole, so what it holds inside is checked here.
   const object = (element: XmlElement): void => {
@@ -379,7 +469,10 @@ const readRun = (
       return;
     }
     read.inlineObjects += 1;
-    state.trackedChanges += countContentRevisions(element);
+    const inside = countContentRevisions(element);
+    state.trackedChanges += inside;
+    // A change inside an object is none this reading can carry.
+    state.untaggedRevisions += state.keepsRevisions ? inside : 0;
     atom("object", "", element);
   };
   for (const child of elementChildren(run)) {
@@ -488,6 +581,18 @@ const readRun = (
   }
 };
 
+/** The tag of an inline insertion or deletion; null for a move. */
+const revisionOf = (element: XmlElement, name: string): AtomRevision | null => {
+  if (name !== "ins" && name !== "del") {
+    return null;
+  }
+  return {
+    kind: name,
+    author: wAttr(element, "author") ?? "",
+    date: wAttr(element, "date"),
+  };
+};
+
 const readInline = (
   container: XmlElement,
   walk: ParagraphWalk,
@@ -505,13 +610,18 @@ const readInline = (
       ) {
         read.inlineObjects += 1;
         // An equation may hold tracked runs of its own.
-        state.trackedChanges += countContentRevisions(child);
+        const inside = countContentRevisions(child);
+        state.trackedChanges += inside;
+        state.untaggedRevisions += state.keepsRevisions ? inside : 0;
         pushAtom(walk, {
           kind: "object",
           text: "",
           runProperties: null,
           link: context.link,
           element: child,
+          ...(context.revision === undefined
+            ? {}
+            : { revision: context.revision }),
         });
       } else if (!inCode(state)) {
         read.unsupported.push(child.name ?? "");
@@ -547,11 +657,22 @@ const readInline = (
           instruction: field.instruction.trim(),
         });
       }
-    } else if (REVISION_INCLUDED.has(name)) {
+    } else if (REVISION_INCLUDED.has(name) || REVISION_EXCLUDED.has(name)) {
       state.trackedChanges += 1;
-      readInline(child, walk, context);
-    } else if (REVISION_EXCLUDED.has(name)) {
-      state.trackedChanges += 1;
+      const kept = state.keepsRevisions ? revisionOf(child, name) : null;
+      if (kept !== null && context.revision !== undefined) {
+        // A change inside a change: neither tag says both.
+        state.untaggedRevisions += 1;
+      }
+      if (kept !== null) {
+        readInline(child, walk, { ...context, revision: kept });
+        continue;
+      }
+      // A move is no insertion or deletion a keeping reading tags.
+      state.untaggedRevisions += state.keepsRevisions ? 1 : 0;
+      if (REVISION_INCLUDED.has(name)) {
+        readInline(child, walk, context);
+      }
     } else if (name === "sdt") {
       const content = wChild(child, "sdtContent");
       if (content !== null) {

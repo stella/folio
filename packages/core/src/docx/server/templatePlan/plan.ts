@@ -516,6 +516,34 @@ const partSegments = ({
     }
   }
 
+  // A tracked change is carried as it stands. A label that is stripped or
+  // a reference that becomes a field would take the change with it, or cut
+  // it in two, so neither may reach one.
+  for (const { piece, start, end } of split) {
+    if (piece.atom?.revision === undefined) {
+      continue;
+    }
+    if (strippedLength > 0 && start < strippedLength) {
+      return Result.err(
+        refuse({
+          code: "strip-label-mismatch",
+          message: `The label to strip from block ${blockId} holds a tracked change.`,
+          blockId,
+        }),
+      );
+    }
+    // Touching counts: a deletion at the edge of a cited span has no side
+    // of the field to stand on.
+    const cited = references.find(
+      (reference) => start <= reference.end && end >= reference.start,
+    );
+    if (cited !== undefined) {
+      return badReference(
+        `Reference span ${cited.start}-${cited.end} in block ${blockId} holds a tracked change.`,
+      );
+    }
+  }
+
   const positioned: PositionedPiece[] = [];
   for (const entry of split) {
     const empty = entry.start === entry.end;
@@ -815,7 +843,12 @@ export const resolvePlan = (
       );
     }
   }
-  if (source.manifest.trackedChanges > 0) {
+  // A source read for a plan that keeps its tracked changes carries them
+  // as tagged pieces; any other source has to be free of them.
+  if (
+    source.manifest.trackedChanges > 0 &&
+    source.manifest.trackedChangesKept === undefined
+  ) {
     return Result.err(
       refuse({
         code: "tracked-changes",

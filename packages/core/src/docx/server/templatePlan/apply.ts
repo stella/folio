@@ -19,10 +19,12 @@ import {
   viewOf,
 } from "./blocks";
 import {
+  bookmarkIdsOf,
   freezeFields,
   inheritedReferencesXml,
   sectionPropertiesXml,
   setKeepShiftReturnSpacing,
+  setTrackingOff,
   setUpdateFieldsOnOpen,
   withoutContained,
 } from "./builders";
@@ -152,6 +154,9 @@ type OrphanMarkerOptions = {
  * Splices removing range markers whose other half the output does not carry:
  * a bookmark or comment range that started in a block the plan dropped.
  */
+/** How far above the bookmarks' ids the ids of kept tracked changes start. */
+const REVISION_ID_OFFSET = 100_000;
+
 const orphanMarkerSplices = ({
   kept,
   replaced,
@@ -706,6 +711,10 @@ const writeOutput = async ({
   const media = new Map<string, { path: string; media: SourceMedia }>();
   const mediaPaths = new Set<string>();
   let unsupportedMedia: string | null = null;
+  // Ids of kept tracked changes start well above the bookmarks' ids: one
+  // id is one mark to a reader of the part.
+  let revisionId =
+    maxOf(bookmarkIdsOf(template.document.root), 0) + REVISION_ID_OFFSET;
   // Drawing ids are unique over the whole document, its notes and its
   // headers and footers; new ones start above every one in use.
   let drawingId = 0;
@@ -772,6 +781,10 @@ const writeOutput = async ({
     nextDrawingId: () => {
       drawingId += 1;
       return drawingId;
+    },
+    nextRevisionId: () => {
+      revisionId += 1;
+      return revisionId;
     },
   };
   const documentContext: EmitContext = {
@@ -1237,6 +1250,28 @@ const writeOutput = async ({
       );
     }
     if (settings !== settingsXml.value) {
+      parts.set(settingsPath, settings);
+    }
+  }
+
+  // A document that keeps its source's tracked changes tracks nothing new.
+  if (plan.trackedChanges === "keep") {
+    const settingsPath = pkg.partPath("settings");
+    const written = settingsPath === null ? undefined : parts.get(settingsPath);
+    const settingsXml =
+      typeof written === "string"
+        ? Result.ok(written)
+        : await readTemplateText(settingsPath);
+    if (Result.isError(settingsXml)) {
+      return settingsXml;
+    }
+    const settings =
+      settingsXml.value === null ? null : setTrackingOff(settingsXml.value);
+    if (
+      settingsPath !== null &&
+      settings !== null &&
+      settings !== settingsXml.value
+    ) {
       parts.set(settingsPath, settings);
     }
   }

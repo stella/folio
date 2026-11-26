@@ -250,6 +250,14 @@ export const setUpdateFieldsOnOpen = (
     enabled ? true : undefined,
   );
 
+/**
+ * `settingsXml` without `w:trackRevisions`: a document that carries tracked
+ * changes of its source records no new ones until its reader switches
+ * tracking on. Null when the part is not a settings part.
+ */
+export const setTrackingOff = (settingsXml: string): string | null =>
+  updateSettingsOnOffChild(settingsXml, "trackRevisions", undefined);
+
 const SHIFT_RETURN = "doNotExpandShiftReturn";
 
 /** The children of `w:compat` the schema orders in front of the setting. */

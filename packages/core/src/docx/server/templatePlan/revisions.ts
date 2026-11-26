@@ -464,6 +464,96 @@ const summaryOf = (tally: Tally): DocxTrackedChanges => ({
   last: tally.last,
 });
 
+/** Changes a plan that keeps tracked changes cannot carry yet, counted. */
+export type KeptRevisionObstacles = {
+  paragraphMarks: number;
+  tableRows: number;
+  tableCells: number;
+  moves: number;
+};
+
+const REVISION_WRAPPERS = new Set(["ins", "del", "moveFrom", "moveTo"]);
+
+const countObstacles = (
+  root: XmlElement,
+  into: KeptRevisionObstacles,
+): void => {
+  const visit = (
+    element: XmlElement,
+    parent: string | null,
+    grandparent: string | null,
+  ): void => {
+    const name = wName(element);
+    if (name !== null && REVISION_WRAPPERS.has(name)) {
+      if (parent === "rPr" && grandparent === "pPr") {
+        into.paragraphMarks += 1;
+      } else if (parent === "trPr") {
+        into.tableRows += 1;
+      } else if (name === "moveFrom" || name === "moveTo") {
+        into.moves += 1;
+      }
+    } else if (name !== null && CELL_MARKS.has(name)) {
+      into.tableCells += 1;
+    }
+    for (const child of elementChildren(element)) {
+      visit(child, name, parent);
+    }
+  };
+  visit(root, null, null);
+};
+
+/**
+ * What a document tracks, and which of it a plan that keeps tracked changes
+ * cannot carry: a change that makes the paragraphs of the accepted and the
+ * rejected view differ.
+ */
+export const keptRevisionObstacles = async (
+  docx: Uint8Array,
+): Promise<
+  Result<
+    { tracked: DocxTrackedChanges; obstacles: KeptRevisionObstacles },
+    TemplatePlanError
+  >
+> => {
+  const loaded = await loadPackage(docx);
+  if (loaded.isErr()) {
+    return Result.err(loaded.error);
+  }
+  const pkg = loaded.value;
+  const tally = newTally();
+  const obstacles: KeptRevisionObstacles = {
+    paragraphMarks: 0,
+    tableRows: 0,
+    tableCells: 0,
+    moves: 0,
+  };
+  const paths = [
+    pkg.documentPath,
+    pkg.partPath("footnotes"),
+    pkg.partPath("endnotes"),
+  ].filter((path): path is string => path !== null);
+  for (const path of paths) {
+    const xml =
+      path === pkg.documentPath ? pkg.documentXml : await pkg.readText(path);
+    if (xml === null || !mayHoldRevision(xml)) {
+      continue;
+    }
+    const part = readRawPart(path, xml);
+    if (part !== null) {
+      tallyPart(part.root, tally);
+      countObstacles(part.root, obstacles);
+    }
+  }
+  return Result.ok({
+    tracked: {
+      ...summaryOf(tally),
+      paragraphMarks: obstacles.paragraphMarks,
+      tableRows: obstacles.tableRows,
+    },
+    obstacles,
+  });
+};
+
 /** One part in the chosen view, or null when it cannot be read whole. */
 export const resolvePartRevisions = (
   path: string,

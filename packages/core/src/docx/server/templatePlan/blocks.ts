@@ -20,7 +20,7 @@ import {
   readPartText,
   sha256Hex,
 } from "./package";
-import { resolveTrackedChanges } from "./revisions";
+import { keptRevisionObstacles, resolveTrackedChanges } from "./revisions";
 import {
   createStoryState,
   endStory,
@@ -36,7 +36,7 @@ import type {
   DocxNote,
   DocxSection,
   DocxTableCell,
-  TemplatePlanTrackedView,
+  TemplatePlanTrackedChanges,
 } from "./types";
 import { TemplatePlanError } from "./types";
 import {
@@ -414,6 +414,8 @@ type AnalyzeStoryOptions = {
   container: XmlElement;
   resources: StoryResources;
   counter?: LabelCounter;
+  /** Read inline insertions and deletions as tagged atoms. */
+  keepsRevisions?: boolean;
 };
 
 /** Read the blocks under `container` into ids, text, labels and hashes. */
@@ -421,8 +423,9 @@ export const analyzeStory = ({
   container,
   resources,
   counter = createLabelCounter(resources),
+  keepsRevisions = false,
 }: AnalyzeStoryOptions): AnalyzedStory => {
-  const state = createStoryState();
+  const state = createStoryState({ keepsRevisions });
   const story: AnalyzedStory = {
     topLevel: [],
     order: [],
@@ -674,6 +677,7 @@ const analyzeNotes = (
   kind: "footnotes" | "endnotes",
   path: string | null,
   xml: string | null,
+  keepsRevisions = false,
 ): AnalyzedNotes => {
   const notes: AnalyzedNotes = {
     kind,
@@ -682,7 +686,7 @@ const analyzeNotes = (
     notes: [],
     byId: new Map(),
     usedIds: [],
-    state: createStoryState(),
+    state: createStoryState({ keepsRevisions }),
   };
   if (path === null || xml === null) {
     return notes;
@@ -783,6 +787,7 @@ const countComments = (xml: string | null): number => {
 /** Open a package and analyse its main story, notes, styles and numbering. */
 export const analyzeDocument = async (
   bytes: Uint8Array,
+  { keepsRevisions = false }: { keepsRevisions?: boolean } = {},
 ): Promise<Result<AnalyzedDocument, TemplatePlanError>> => {
   const loaded = await loadPackage(bytes);
   if (Result.isError(loaded)) {
@@ -876,9 +881,20 @@ export const analyzeDocument = async (
           levelIndents: statedLevelIndents(numberingPath, numberingXml),
           defaultIndent: statedDefaultIndent(stylesPath, stylesXml),
         },
+        keepsRevisions,
       });
-      const footnotes = analyzeNotes("footnotes", footnotesPath, footnotesXml);
-      const endnotes = analyzeNotes("endnotes", endnotesPath, endnotesXml);
+      const footnotes = analyzeNotes(
+        "footnotes",
+        footnotesPath,
+        footnotesXml,
+        keepsRevisions,
+      );
+      const endnotes = analyzeNotes(
+        "endnotes",
+        endnotesPath,
+        endnotesXml,
+        keepsRevisions,
+      );
       return {
         styles,
         defaultEmphasis,
@@ -959,12 +975,65 @@ export const analyzeDocument = async (
 
 /** The view a plan states, when what was handed in is shaped like a plan
  *  at all; its shape is checked where the plan is resolved. */
-export const viewOf = (plan: unknown): TemplatePlanTrackedView | undefined => {
+export const viewOf = (
+  plan: unknown,
+): TemplatePlanTrackedChanges | undefined => {
   const view =
     typeof plan === "object" && plan !== null && "trackedChanges" in plan
       ? plan.trackedChanges
       : undefined;
-  return view === "accept" || view === "reject" ? view : undefined;
+  return view === "accept" || view === "reject" || view === "keep"
+    ? view
+    : undefined;
+};
+
+/**
+ * A source read with its tracked changes kept: the blocks are those of the
+ * accepted view, and the atoms of an insertion or a deletion carry its tag.
+ * Only inline changes are carried so far. A change of another kind would
+ * make the paragraphs of the two views differ (a paragraph mark, a table
+ * row or cell, a move) or cannot be tagged, and the source is refused with
+ * what stands in the way, for the caller to offer one view instead.
+ */
+const analyzeKeeping = async (
+  bytes: Uint8Array,
+): Promise<Result<AnalyzedDocument, TemplatePlanError>> => {
+  const obstacles = await keptRevisionObstacles(bytes);
+  if (Result.isError(obstacles)) {
+    return obstacles;
+  }
+  const analyzed = await analyzeDocument(bytes, { keepsRevisions: true });
+  if (Result.isError(analyzed)) {
+    return analyzed;
+  }
+  const { story, footnotes, endnotes, manifest } = analyzed.value;
+  const untagged =
+    story.state.untaggedRevisions +
+    footnotes.state.untaggedRevisions +
+    endnotes.state.untaggedRevisions;
+  const { paragraphMarks, tableRows, tableCells, moves } =
+    obstacles.value.obstacles;
+  const found = [
+    [paragraphMarks, "inserted or deleted paragraph mark(s)"],
+    [tableRows, "inserted or deleted table row(s)"],
+    [tableCells, "table cell change(s)"],
+    [moves, "move(s)"],
+    [untagged, "change(s) inside another change, a drawing or an equation"],
+  ].flatMap(([count, what]) =>
+    typeof count === "number" && count > 0 ? [`${String(count)} ${what}`] : [],
+  );
+  if (found.length > 0) {
+    return Result.err(
+      new TemplatePlanError({
+        code: "tracked-changes",
+        message: `The tracked changes of the source cannot be kept: ${found.join(", ")}. Format one view of it instead.`,
+      }),
+    );
+  }
+  return Result.ok({
+    ...analyzed.value,
+    manifest: { ...manifest, trackedChangesKept: obstacles.value.tracked },
+  });
 };
 
 /**
@@ -976,8 +1045,11 @@ export const viewOf = (plan: unknown): TemplatePlanTrackedView | undefined => {
  */
 export const analyzeSource = async (
   bytes: Uint8Array,
-  view: TemplatePlanTrackedView | undefined,
+  view: TemplatePlanTrackedChanges | undefined,
 ): Promise<Result<AnalyzedDocument, TemplatePlanError>> => {
+  if (view === "keep") {
+    return await analyzeKeeping(bytes);
+  }
   if (view === undefined) {
     const analyzed = await analyzeDocument(bytes);
     if (
@@ -1019,11 +1091,12 @@ export const analyzeSource = async (
  * Read a DOCX into the blocks a template plan addresses: ids, visible text,
  * rendered list labels, styles and a hash per block, plus its notes. With
  * `trackedChanges`, the blocks are those of that view of a document with
- * tracked changes.
+ * tracked changes; with `keep`, those of the accepted view, read off the
+ * document as it stands, or the refusal a plan that keeps them would get.
  */
 export const analyzeDocxBlocks = async (
   docx: Uint8Array,
-  options: { trackedChanges?: TemplatePlanTrackedView } = {},
+  options: { trackedChanges?: TemplatePlanTrackedChanges } = {},
 ): Promise<Result<DocxBlockManifest, TemplatePlanError>> =>
   await guarded(async () =>
     (await analyzeSource(docx, options.trackedChanges)).map(

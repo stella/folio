@@ -81,6 +81,7 @@ import {
 import {
   type AtomKind,
   type AtomLink,
+  type AtomRevision,
   createStoryState,
   endStory,
   isSelfNumberingField,
@@ -158,12 +159,44 @@ type ContentUnit = {
   element: XmlElement | null;
   /** The code of a self-numbering field, or null. */
   instruction: string | null;
+  /** The kept tracked change the unit is part of, or null. */
+  revision: AtomRevision | null;
   origin: StoryOrigin;
+};
+
+/**
+ * A kept tracked change as marks of a content: an insertion marks every
+ * unit of its text (or its place, for content without text), a deletion its
+ * place and what was deleted; both with their author and date. Two contents
+ * that read the same then show the same changes by the same hands.
+ */
+const revisionMarks = (
+  { kind, author, date, deleted }: AtomRevision,
+  at: number,
+  length: number,
+): string[] => {
+  const by = `${author}:${date ?? ""}`;
+  if (kind === "del") {
+    return [`${at}:del:${by}:${deleted ?? ""}`];
+  }
+  return Array.from(
+    { length: Math.max(length, 1) },
+    (_unused, offset) => `${at + offset}:ins:${by}`,
+  );
 };
 
 const appendUnit = (
   content: Content,
-  { kind, text, signature, link, element, instruction, origin }: ContentUnit,
+  {
+    kind,
+    text,
+    signature,
+    link,
+    element,
+    instruction,
+    revision,
+    origin,
+  }: ContentUnit,
   resources: StoryResources,
 ): void => {
   content.text += text;
@@ -174,6 +207,9 @@ const appendUnit = (
   // A mark carries the offset it sits at: a break after the text is not the
   // break before it.
   const at = content.text.length - text.length;
+  if (revision !== null) {
+    content.marks.push(...revisionMarks(revision, at, text.length));
+  }
   if (kind === "pageBreak") {
     content.marks.push(`${at}:break:${wAttr(element, "type") ?? "page"}`);
   } else if (kind === "selfNumber") {
@@ -210,6 +246,7 @@ const expectedContent = (
         ),
         element: piece.atom?.element ?? null,
         instruction: piece.atom?.instruction ?? null,
+        revision: piece.atom?.revision ?? null,
         origin: piece.origin,
       },
       resources,
@@ -267,6 +304,7 @@ const outputContent = ({
         link,
         element: atom.element,
         instruction: atom.instruction ?? null,
+        revision: atom.revision ?? null,
         origin,
       },
       resources,
@@ -566,12 +604,30 @@ export const reportTemplatePlanOutput = async ({
   resolved,
   options,
 }: ReportArgs): Promise<Result<TemplatePlanReport, TemplatePlanError>> => {
-  const analyzedOutput = await analyzeDocument(output);
+  // An output that keeps tracked changes is read the way its source was.
+  const keepsRevisions = source.manifest.trackedChangesKept !== undefined;
+  const analyzedOutput = await analyzeDocument(output, { keepsRevisions });
   if (Result.isError(analyzedOutput)) {
     return analyzedOutput;
   }
   const out = analyzedOutput.value;
   const issues: TemplatePlanIssue[] = [];
+  // A kept change is an insertion or a deletion inside a paragraph, as the
+  // source has it: the output records no formatting change and none this
+  // reading cannot tag.
+  const leftUntagged =
+    out.story.state.formattingRevisions +
+    out.story.state.untaggedRevisions +
+    out.footnotes.state.formattingRevisions +
+    out.footnotes.state.untaggedRevisions +
+    out.endnotes.state.formattingRevisions +
+    out.endnotes.state.untaggedRevisions;
+  if (keepsRevisions && leftUntagged > 0) {
+    issues.push({
+      code: "revision-left",
+      message: `The output holds ${String(leftUntagged)} tracked change(s) the source's kept changes do not account for.`,
+    });
+  }
   // A plan made for one view of tracked changes writes none of them out.
   if (
     source.manifest.trackedChangesResolved !== undefined &&
@@ -2054,6 +2110,9 @@ export const reportTemplatePlanOutput = async ({
     ...(source.manifest.trackedChangesResolved === undefined
       ? {}
       : { trackedChanges: source.manifest.trackedChangesResolved }),
+    ...(source.manifest.trackedChangesKept === undefined
+      ? {}
+      : { trackedChangesKept: source.manifest.trackedChangesKept }),
     blocks,
     counts,
     footnotes,
