@@ -2453,6 +2453,7 @@ export type TemplatePlanSourceItem = {
     styleId?: string;
     numbering?: TemplatePlanNumbering | null;
     stripLabel?: string;
+    stripLabelBreak?: boolean;
     labelAsText?: boolean;
     mergeNext?: TemplatePlanMerge;
     pageBreakBefore?: boolean;
