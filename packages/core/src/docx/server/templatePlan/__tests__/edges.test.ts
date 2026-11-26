@@ -80,6 +80,40 @@ describe("applyTemplatePlan edge content", () => {
     expect(report.dropped.sourceFields).toEqual([]);
   });
 
+  test("strips a typed number whose parts stand apart", async () => {
+    const template = await buildTemplate();
+    const source = await buildMinimalDocx(
+      p(`${r("1. 1.")}<w:r><w:tab/></w:r>${r("The fee is due.")}`),
+    );
+    const plan = await planFor({
+      source,
+      template,
+      items: ([first]) =>
+        first === undefined
+          ? []
+          : [
+              {
+                kind: "source",
+                blockId: first.id,
+                hash: first.hash,
+                styleId: "HouseBody",
+                stripLabel: "1. 1.",
+                numbering: { numId: 1, ilvl: 1 },
+              },
+            ],
+    });
+    const { docx, report } = unwrap(
+      await applyTemplatePlan({ source, template, plan }),
+    );
+    const document = (await readPart(docx, "word/document.xml")) ?? "";
+
+    expect(report.ok).toBe(true);
+    expect(document).toContain(
+      '<w:numPr><w:ilvl w:val="1"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t xml:space="preserve">The fee is due.</w:t></w:r></w:p>',
+    );
+    expect(report.blocks.at(0)).toMatchObject({ sourceLabel: "1. 1." });
+  });
+
   test("carries symbols, hyphens and breaks, and strips a label after leading space", async () => {
     const template = await buildTemplate();
     const source = await buildMinimalDocx(
