@@ -16,7 +16,6 @@
   "packages/core/src/markdown/renderTable.ts": 3,
   "packages/core/src/prosemirror/attrs/index.ts": 1,
   "packages/core/src/prosemirror/commands/formatPainter.ts": 2,
-  "packages/core/src/prosemirror/commands/tableCellMergeResolution.ts": 1,
   "packages/core/src/prosemirror/conversion/fromProseDoc.ts": 1,
   "packages/core/src/prosemirror/conversion/runShadingMark.ts": 2,
   "packages/core/src/prosemirror/extensions/marks/RunFormattingOverrideExtension.ts": 11,

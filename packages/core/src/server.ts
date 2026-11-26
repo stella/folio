@@ -367,6 +367,7 @@ export {
   type DocxTemplateNumberingLevel,
   type DocxTemplateSection,
   type DocxTemplateStyle,
+  type DocxTrackedChanges,
   type DocxTextEffect,
   type DocxTextEffectOwner,
   type TemplatePlan,
@@ -391,5 +392,6 @@ export {
   type TemplatePlanSectionPage,
   type TemplatePlanSourceItem,
   type TemplatePlanSpanCounts,
+  type TemplatePlanTrackedView,
   type VerifyTemplatePlanOutputArgs,
 } from "./docx/server/templatePlan/types";

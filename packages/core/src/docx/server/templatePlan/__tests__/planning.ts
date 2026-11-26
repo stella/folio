@@ -38,7 +38,15 @@ export const planFor = async ({
   items,
   extra = {},
 }: PlanOptions): Promise<TemplatePlan> => {
-  const manifest = unwrap(await analyzeDocxBlocks(source));
+  // A plan for one view of tracked changes names that view's blocks.
+  const manifest = unwrap(
+    await analyzeDocxBlocks(
+      source,
+      extra.trackedChanges === undefined
+        ? {}
+        : { trackedChanges: extra.trackedChanges },
+    ),
+  );
   const inspection = unwrap(await inspectDocxTemplate(template));
   const blocks = manifest.blocks.map(({ id, hash }) => ({ id, hash }));
   return {

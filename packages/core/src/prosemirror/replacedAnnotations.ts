@@ -145,8 +145,7 @@ export const commentPoint = (schema: Schema, id: number): PMNode =>
     ],
   });
 
-type ResolvedCommentPointsOptions = {
-  doc: PMNode;
+type ResolvedCommentPointCollectorOptions = {
   removes: (node: PMNode, position: number) => boolean;
   retiresStructure: (node: PMNode, position: number) => boolean;
 };
@@ -155,7 +154,7 @@ type ResolvedCommentPointsOptions = {
 export const createResolvedCommentPointCollector = ({
   removes,
   retiresStructure,
-}: Omit<ResolvedCommentPointsOptions, "doc">): {
+}: ResolvedCommentPointCollectorOptions): {
   visit: (node: PMNode, position: number, previous?: PMNode) => boolean;
   finish: () => Map<number, number>;
 } => {
@@ -251,26 +250,6 @@ export const createResolvedCommentPointCollector = ({
     return points;
   };
   return { visit, finish };
-};
-
-/** Ranged comments whose covered non-carrier content is removed by a resolution. */
-export const resolvedCommentPoints = ({
-  doc,
-  removes,
-  retiresStructure,
-}: ResolvedCommentPointsOptions): Map<number, number> => {
-  const collector = createResolvedCommentPointCollector({
-    removes,
-    retiresStructure,
-  });
-  doc.descendants((node, position, parent, index) =>
-    collector.visit(
-      node,
-      position,
-      index > 0 ? (parent?.maybeChild(index - 1) ?? undefined) : undefined,
-    ),
-  );
-  return collector.finish();
 };
 
 /** Anchors an edit must put back, and where relative to the replacement. */

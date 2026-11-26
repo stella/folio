@@ -14,13 +14,13 @@ import {
   rejectAllChanges,
   rejectChange,
 } from "../__tests__/reference-editor/comments";
+import { RevisionResolutionStep } from "../__tests__/reference-editor/revisionResolutionStep";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { expectRangeAnchorAttrs } from "../prosemirror/rangeAnchorAttrs";
 import { schema } from "../prosemirror/schema";
 import type { Run } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
-import { RevisionResolutionStep } from "./revisionResolutionStep";
 
 const revision = (id: number) => ({
   revisionId: id,

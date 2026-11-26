@@ -15,12 +15,12 @@ import {
   acceptAIEditRevision,
   acceptChange,
 } from "../__tests__/reference-editor/comments";
+import { resolvedCommentPoints } from "../__tests__/reference-editor/resolvedCommentPoints";
 import { readRangeAnchorAttrs } from "./rangeAnchorAttrs";
 import {
   hasReplacedAnnotations,
   NON_INCLUSIVE_MARK_DISPOSITION,
   nonInclusiveMarkNames,
-  resolvedCommentPoints,
   surveyReplacedAnnotations,
 } from "./replacedAnnotations";
 import { schema } from "./schema";

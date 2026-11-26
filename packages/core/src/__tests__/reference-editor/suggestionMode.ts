@@ -60,7 +60,6 @@ import { splitBlockClearBorders } from "../../prosemirror/extensions/features/Ba
 import { JOINED_RUNS_RESTYLED_META } from "../../prosemirror/extensions/features/JoinedRunStyleExtension";
 import { expandNoteReferenceDeletionRange } from "../../prosemirror/extensions/marks/noteReferenceDeletion";
 import { isInlineAnchor } from "../../prosemirror/extensions/nodes/inlineAnchorDom";
-import { joinAtParagraphMark } from "../../prosemirror/paragraphMarkJoin";
 import {
   carryParagraphProperties,
   paragraphLeftAfter,
@@ -94,7 +93,6 @@ import {
   cellPasteRange,
   pasteTableCells,
 } from "../../prosemirror/tableCellPaste";
-import { deleteTableRowAt } from "../../prosemirror/tableGridMutation";
 import {
   afterNativeCompositionFlush,
   formattingMarksBesideLockedControl,
@@ -104,6 +102,8 @@ import {
 import { canCarryTrackedRunMark } from "../../prosemirror/trackedRunInlineAtoms";
 import type { TrackedChangeInfo } from "../../types/document";
 import { maxOf, minOf } from "../../utils/extremes";
+import { joinAtParagraphMark } from "./paragraphRevision";
+import { deleteTableRowAt } from "./tableRevisionCleanup";
 
 export { suggestionModeKey } from "../../prosemirror/suggestionCommands";
 

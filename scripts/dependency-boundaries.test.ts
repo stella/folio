@@ -282,50 +282,95 @@ describe("workspace dependency boundaries", () => {
     }
   });
 
-  test("core review reaches the comments command path only through public re-exports or tests", () => {
+  test("keeps reference revision resolution out of editor dependency graphs", () => {
     const fixtureRoot = createFixture();
-    addWorkspace({ fixtureRoot, workspace: "core" });
+    for (const workspace of ["core", "react", "vue"] as const) {
+      addWorkspace({ fixtureRoot, workspace });
+    }
+    writeFileSync(
+      path.join(fixtureRoot, "tsconfig.depcruise.json"),
+      JSON.stringify({
+        extends: "./tsconfig.base.json",
+        compilerOptions: {
+          baseUrl: ".",
+          paths: { "@stll/folio-core/*": ["packages/core/src/*"] },
+        },
+        include: ["packages"],
+      }),
+    );
     writeSource(
       fixtureRoot,
       "core",
       "prosemirror/commands/comments.ts",
-      "export const review = 1;\n",
+      'export { findSuggestionRange } from "../suggestionQueries";\n',
     );
-    const forbiddenSources = {
-      "ai-edits/headless.ts":
-        'import { review } from "../prosemirror/commands/comments";\nexport const value = review;\n',
-      "canonical/canonicalBatchReview.ts":
-        'export const load = () => import("../prosemirror/commands/comments");\n',
-      "controller/canonicalReview.ts":
-        'export { review } from "../prosemirror/commands/comments";\n',
-    };
-    for (const [file, contents] of Object.entries(forbiddenSources)) {
-      writeSource(fixtureRoot, "core", file, contents);
-    }
-    const allowedSources = {
-      "prosemirror/commands/index.ts": "./comments",
-      "prosemirror/commands/comments.test.ts": "./comments",
-      "prosemirror/commands/__tests__/consumer.ts": "../comments",
-    };
-    for (const [file, specifier] of Object.entries(allowedSources)) {
-      writeSource(
-        fixtureRoot,
-        "core",
-        file,
-        `export { review } from "${specifier}";\n`,
-      );
-    }
+    writeSource(
+      fixtureRoot,
+      "core",
+      "prosemirror/suggestionQueries.ts",
+      "export const findSuggestionRange = () => null;\n",
+    );
+    writeSource(
+      fixtureRoot,
+      "core",
+      "__tests__/reference-editor/comments.ts",
+      "export const acceptChange = () => null;\n",
+    );
+    writeSource(
+      fixtureRoot,
+      "core",
+      "__fixtures__/review.ts",
+      'export { acceptChange } from "../__tests__/reference-editor/comments";\n',
+    );
+    writeSource(
+      fixtureRoot,
+      "core",
+      "prosemirror/commands/index.ts",
+      'export { findSuggestionRange } from "./comments";\nexport { acceptChange } from "../../__tests__/reference-editor/comments";\n',
+    );
+    writeSource(
+      fixtureRoot,
+      "react",
+      "index.tsx",
+      'export { findSuggestionRange } from "@stll/folio-core/prosemirror/commands/comments";\nexport const load = () => import("@stll/folio-core/__fixtures__/review");\n',
+    );
+    writeSource(
+      fixtureRoot,
+      "vue",
+      "Editor.vue",
+      '<script setup lang="ts">\nimport { acceptChange } from "@stll/folio-core/__fixtures__/review";\nimport { findSuggestionRange } from "@stll/folio-core/prosemirror/commands/comments";\n</script>\n<template>{{ acceptChange() }}{{ findSuggestionRange() }}</template>\n',
+    );
+    writeSource(
+      fixtureRoot,
+      "core",
+      "prosemirror/commands/comments.test.ts",
+      'export { findSuggestionRange } from "./comments";\nexport { acceptChange } from "../../__tests__/reference-editor/comments";\n',
+    );
 
     const result = cruise(fixtureRoot);
 
     expect(result.exitCode, result.output).not.toBe(0);
-    expect(
-      result.output.match(/core-review-uses-dedicated-readers/gu),
-      result.output,
-    ).toHaveLength(Object.keys(forbiddenSources).length);
-    for (const file of Object.keys(forbiddenSources)) {
-      expect(result.output).toContain(`packages/core/src/${file}`);
+    const expectedSources = [
+      "packages/core/src/prosemirror/commands/index.ts",
+      "packages/react/src/index.tsx",
+      "packages/vue/src/Editor.vue",
+    ];
+    for (const rule of [
+      "production-editor-source-cannot-reach-reference-editor",
+      "editor-source-uses-dedicated-review-readers",
+    ]) {
+      const failures = result.output
+        .split("\n")
+        .filter((line) => line.includes(rule));
+      expect(failures, result.output).toHaveLength(expectedSources.length);
+      for (const source of expectedSources) {
+        expect(
+          failures.some((line) => line.includes(source)),
+          result.output,
+        ).toBe(true);
+      }
     }
+    expect(result.output).not.toContain("commands/comments.test.ts");
   });
 
   test("accepts an allowed declared package edge", () => {

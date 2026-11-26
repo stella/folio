@@ -63,13 +63,13 @@ import type {
   TableContextInfo,
 } from "@stll/folio-core/prosemirror";
 import type {
-  FolioSuggestion,
-  SuggestionAppliedAs,
-} from "@stll/folio-core/prosemirror/commands/comments";
-import type {
   TemplateSlashMenuKeyAction,
   TemplateSlashMenuState,
 } from "@stll/folio-core/prosemirror/plugins/templateSlashMenu";
+import type {
+  FolioSuggestion,
+  SuggestionAppliedAs,
+} from "@stll/folio-core/prosemirror/suggestionQueries";
 import type { Comment } from "@stll/folio-core/types/content";
 import type {
   Document,
