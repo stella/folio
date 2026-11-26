@@ -88,6 +88,14 @@ export const twipsOrNull = (value: string | null): number | null =>
   integerOrNull(value) ??
   (value === null ? null : (universalMeasureAs(value.trim(), "twips") ?? null));
 
+/** A length in half-points: a plain number, or a universal measure such as
+ *  `12pt`. */
+export const halfPointsOrNull = (value: string | null): number | null =>
+  integerOrNull(value) ??
+  (value === null
+    ? null
+    : (universalMeasureAs(value.trim(), "halfPoints") ?? null));
+
 /** The largest of `values`, or `floor` when none is larger. */
 export const maxOf = (values: Iterable<number>, floor: number): number => {
   let max = floor;
