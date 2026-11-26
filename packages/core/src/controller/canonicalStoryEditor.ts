@@ -9,7 +9,7 @@ import {
   isCompositionKeyDown,
 } from "../prosemirror/nativeSelection";
 import {
-  CANONICAL_GAP,
+  CANONICAL_CONDITION,
   type CanonicalRefusalGround,
 } from "../types/canonicalCapabilities";
 import {
@@ -22,7 +22,6 @@ type CanonicalStoryEditorOptions = {
   story: OpStory;
   getView: () => EditorView;
   getApi: () => HiddenEditorApi | null;
-  enabled: () => boolean;
   onSelectionChange: () => void;
   onRefusal:
     ((reason: string, ground: CanonicalRefusalGround) => void) | undefined;
@@ -80,12 +79,10 @@ export const createCanonicalStoryEditor = ({
   story,
   getView,
   getApi,
-  enabled,
   onRefusal,
   onSelectionChange,
 }: CanonicalStoryEditorOptions) => {
-  const refuse = (reason: string) => {
-    const ground = { gap: CANONICAL_GAP.dispatch };
+  const refuse = (reason: string, ground: CanonicalRefusalGround) => {
     const message = reason;
     if (onRefusal) onRefusal(message, ground);
     else
@@ -124,22 +121,44 @@ export const createCanonicalStoryEditor = ({
       )
         onSelectionChange();
     },
+    // Enter, Backspace at a paragraph's edge, Tab and cut make the same
+    // journalled changes in the story as in the body.
+    structure: (type) => {
+      const view = getView();
+      if (
+        getApi()?.applyCanonicalStoryStructure({ view, story, type }) &&
+        !view.isDestroyed
+      )
+        onSelectionChange();
+    },
+    cut: (view, event) => {
+      const api = getApi();
+      if (!api) {
+        event.preventDefault();
+        refuse("The document is not ready for a cut.", {
+          condition: CANONICAL_CONDITION.notReady,
+        });
+        return true;
+      }
+      const handled = api.cutCanonicalStory({ view, story, event });
+      if (!view.isDestroyed) onSelectionChange();
+      return handled;
+    },
     undo: () => history("undo"),
     redo: () => history("redo"),
     refuse,
   });
   return {
-    dispatch: (transaction: Transaction): boolean => {
-      if (!enabled()) return false;
+    dispatch: (transaction: Transaction): void => {
       const view = getView();
       // Public operations on this story work through the editor in use.
       getApi()?.noteCanonicalStoryView({ story, view });
       if (transaction.docChanged) {
-        if (boundary.acceptComposition(view, transaction)) return true;
+        if (boundary.acceptComposition(view, transaction)) return;
         if (!boundary.commitNativeProposal(view, transaction))
           boundary.refuseNativeMutation(view, transaction);
         view.updateState(view.state);
-        return true;
+        return;
       }
       if (transaction.selectionSet && !boundary.isComposing)
         getApi()?.updateCanonicalInputLifecycle("breakUndoGroup");
@@ -150,9 +169,10 @@ export const createCanonicalStoryEditor = ({
             applied.transactions,
             "A plugin attempted an unclassified canonical story mutation.",
           ),
+          { condition: CANONICAL_CONDITION.hostTransaction },
         );
         view.updateState(view.state);
-        return true;
+        return;
       }
       view.updateState(applied.state);
       if (applied.transactions.some((step) => step.selectionSet)) {
@@ -160,57 +180,54 @@ export const createCanonicalStoryEditor = ({
         getApi()?.noteCanonicalStoryView({ story, view });
         onSelectionChange();
       }
-      return true;
     },
     props: {
       handleKeyDown: (view: EditorView, event: KeyboardEvent): boolean =>
-        enabled() && boundary.handleKeyDown(view, event),
+        boundary.handleKeyDown(view, event),
       handleTextInput: (
         view: EditorView,
         from: number,
         to: number,
         text: string,
-      ): boolean => enabled() && boundary.handleTextInput(view, from, to, text),
+      ): boolean => boundary.handleTextInput(view, from, to, text),
       handleKeyPress: (view: EditorView, event: KeyboardEvent): boolean =>
-        enabled() && boundary.handleKeyPress(view, event),
+        boundary.handleKeyPress(view, event),
       handleDOMEvents: {
         keydown: (view: EditorView, event: KeyboardEvent): boolean => {
-          if (!enabled()) return false;
           if (!isCompositionKeyDown(event)) syncNativeSelection(view);
           return boundary.handleDOMEvents.keydown(view, event);
         },
         // Native navigation completes before keyup; synchronize it before typing
         // rather than waiting for the asynchronous selection observer.
         keyup: (view: EditorView, event: KeyboardEvent) => {
-          if (enabled() && /^(?:Arrow|Home$|End$|Page)/u.test(event.key))
+          if (/^(?:Arrow|Home$|End$|Page)/u.test(event.key))
             syncNativeSelection(view);
           return false;
         },
         mouseup: (view: EditorView) => {
-          if (enabled()) syncNativeSelection(view);
+          syncNativeSelection(view);
           return false;
         },
         beforeinput: (view: EditorView, event: InputEvent): boolean => {
-          if (!enabled()) return false;
           if (!event.isComposing) syncNativeSelection(view);
           return boundary.handleDOMEvents.beforeinput(view, event);
         },
         mousedown: (view: EditorView): boolean =>
-          enabled() && boundary.handleDOMEvents.mousedown(view),
+          boundary.handleDOMEvents.mousedown(view),
         compositionstart: (view: EditorView): boolean =>
-          enabled() && boundary.handleDOMEvents.compositionstart(view),
+          boundary.handleDOMEvents.compositionstart(view),
         compositionend: (view: EditorView, event: Event): boolean =>
-          enabled() && boundary.handleDOMEvents.compositionend(view, event),
+          boundary.handleDOMEvents.compositionend(view, event),
         input: (view: EditorView): boolean =>
-          enabled() && boundary.handleDOMEvents.input(view),
+          boundary.handleDOMEvents.input(view),
         blur: (view: EditorView): boolean =>
-          enabled() && boundary.handleDOMEvents.blur(view),
+          boundary.handleDOMEvents.blur(view),
         paste: (view: EditorView, event: ClipboardEvent): boolean =>
-          enabled() && boundary.handleDOMEvents.paste(view, event),
+          boundary.handleDOMEvents.paste(view, event),
         cut: (view: EditorView, event: ClipboardEvent): boolean =>
-          enabled() && boundary.handleDOMEvents.cut(view, event),
+          boundary.handleDOMEvents.cut(view, event),
         drop: (view: EditorView, event: Event): boolean =>
-          enabled() && boundary.handleDOMEvents.drop(view, event),
+          boundary.handleDOMEvents.drop(view, event),
       },
     },
   };

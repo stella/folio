@@ -14,8 +14,24 @@ import {
   getEditorInputTargetRange,
   handleEditorBeforeInput,
 } from "../prosemirror/textInput";
-import type { CanonicalRefusalGround } from "../types/canonicalCapabilities";
+import {
+  CANONICAL_CONDITION,
+  type CanonicalRefusalGround,
+} from "../types/canonicalCapabilities";
 import { createCanonicalComposition } from "./canonicalComposition";
+
+const INVALID_REQUEST: CanonicalRefusalGround = {
+  condition: CANONICAL_CONDITION.invalidRequest,
+};
+const COMPOSING: CanonicalRefusalGround = {
+  condition: CANONICAL_CONDITION.composing,
+};
+/**
+ * A boundary built without a structure or cut handler. Every editor folio
+ * builds, the body and each header, footer and note, gives it both; one built
+ * without them takes no such edit.
+ */
+const NO_HANDLER: CanonicalRefusalGround = INVALID_REQUEST;
 
 /** Deletions whose extent the browser measures: by word or by line. */
 export const WORD_AND_LINE_DELETIONS: ReadonlySet<string> = new Set([
@@ -83,6 +99,21 @@ export const unclassifiedMutationMessage = (
     : `A transaction with meta ${keys.join(", ")} changed the document outside the session's operations; express the edit as document operations.`;
 };
 
+/**
+ * The ground of such a refusal: a transaction a plugin or a host named changed
+ * the document outside document operations; native text no classifier reads
+ * is not an input the session takes.
+ */
+const unclassifiedMutationGround = (
+  transactions: readonly Transaction[],
+): CanonicalRefusalGround =>
+  transactions.some(
+    (transaction) =>
+      transaction.docChanged && transactionMetaKeys(transaction).length > 0,
+  )
+    ? { condition: CANONICAL_CONDITION.hostTransaction }
+    : INVALID_REQUEST;
+
 export const CANONICAL_COMPOSITION_INPUT_TYPES = [
   "insertCompositionText",
   "insertFromComposition",
@@ -102,20 +133,21 @@ type ReplaceTextInput = {
     }
 );
 
+/** A paragraph structure edit a key asks for. */
+export type CanonicalStructureInput =
+  | "split"
+  | "joinBackward"
+  | "joinForward"
+  | "lineBreak"
+  | "pageBreak"
+  | "tab"
+  | "indent"
+  | "outdent"
+  | "deleteTable";
+
 type CanonicalInputOptions = {
   replace: (input: ReplaceTextInput) => void;
-  structure?: (
-    type:
-      | "split"
-      | "joinBackward"
-      | "joinForward"
-      | "lineBreak"
-      | "pageBreak"
-      | "tab"
-      | "indent"
-      | "outdent"
-      | "deleteTable",
-  ) => void;
+  structure?: (type: CanonicalStructureInput) => void;
   command?: (name: "toggleBold" | "toggleItalic" | "toggleUnderline") => void;
   breakUndoGroup?: () => void;
   beginComposition?: () => boolean;
@@ -126,7 +158,7 @@ type CanonicalInputOptions = {
   cut?: (view: EditorView, event: ClipboardEvent) => boolean;
   undo: () => boolean;
   redo: () => boolean;
-  refuse: (reason: string, ground?: CanonicalRefusalGround) => void;
+  refuse: (reason: string, ground: CanonicalRefusalGround) => void;
 };
 
 type NativeProposal =
@@ -211,19 +243,24 @@ export const createCanonicalInputBoundary = (
       if (!view.isDestroyed) view.updateState(view.state);
     });
   };
-  const refuseEvent = (event: Event, reason: string) => {
+  const refuseEvent = (
+    event: Event,
+    reason: string,
+    ground: CanonicalRefusalGround,
+  ) => {
     event.preventDefault();
     closeGroup();
     if (!composition.active && proposal.type !== "refused")
-      options.refuse(reason);
+      options.refuse(reason, ground);
     if (!composition.active) proposal = { type: "refused" };
     return true;
   };
 
+  /** A clipboard gesture made while a composition is in progress. */
   const refuseClipboardGesture = (event: Event, reason: string) => {
     event.preventDefault();
     closeGroup();
-    options.refuse(reason);
+    options.refuse(reason, COMPOSING);
     return true;
   };
 
@@ -232,8 +269,10 @@ export const createCanonicalInputBoundary = (
     transaction?: Transaction,
   ): void => {
     if (!composition.active && proposal.type !== "refused") {
+      const transactions = transaction ? [transaction] : [];
       options.refuse(
-        unclassifiedMutationMessage(transaction ? [transaction] : []),
+        unclassifiedMutationMessage(transactions),
+        unclassifiedMutationGround(transactions),
       );
       proposal = { type: "refused" };
     }
@@ -415,6 +454,7 @@ export const createCanonicalInputBoundary = (
           return refuseEvent(
             event,
             "Paragraph structure edits are unavailable during composition.",
+            COMPOSING,
           );
         event.preventDefault();
         closeGroup();
@@ -422,6 +462,7 @@ export const createCanonicalInputBoundary = (
           return refuseEvent(
             event,
             "Paragraph structure edits are unavailable in this session.",
+            NO_HANDLER,
           );
         if (modifier) options.structure("pageBreak");
         else options.structure(event.shiftKey ? "lineBreak" : "split");
@@ -447,6 +488,7 @@ export const createCanonicalInputBoundary = (
         if (!composition.active)
           options.refuse(
             "Only plain character deletion is available in this session.",
+            COMPOSING,
           );
         return true;
       }
@@ -484,7 +526,7 @@ export const createCanonicalInputBoundary = (
       );
       if (range.isErr()) {
         closeGroup();
-        options.refuse(range.error.message);
+        options.refuse(range.error.message, range.error.ground);
       } else
         options.replace({
           ...range.value,
@@ -584,6 +626,7 @@ export const createCanonicalInputBoundary = (
           return refuseEvent(
             event,
             "Composition has no captured canonical baseline.",
+            { condition: CANONICAL_CONDITION.internal },
           );
         }
         // A new, non-composition event recovers an IME missing compositionend.
@@ -658,6 +701,7 @@ export const createCanonicalInputBoundary = (
               return refuseEvent(
                 event,
                 "This native replacement cannot be addressed safely.",
+                INVALID_REQUEST,
               );
             } finally {
               authorizedInput = null;
@@ -667,6 +711,7 @@ export const createCanonicalInputBoundary = (
             return refuseEvent(
               event,
               "This native replacement cannot be addressed safely.",
+              INVALID_REQUEST,
             );
           }
           proposal = {
@@ -720,7 +765,8 @@ export const createCanonicalInputBoundary = (
               ? "backward"
               : "forward",
           );
-          if (range.isErr()) return refuseEvent(event, range.error.message);
+          if (range.isErr())
+            return refuseEvent(event, range.error.message, range.error.ground);
           const input = {
             ...range.value,
             text: "",
@@ -743,9 +789,11 @@ export const createCanonicalInputBoundary = (
             return refuseEvent(
               event,
               "The browser named no range for this deletion.",
+              INVALID_REQUEST,
             );
           const range = measuredDeletionRange(view.state, measured);
-          if (range.isErr()) return refuseEvent(event, range.error.message);
+          if (range.isErr())
+            return refuseEvent(event, range.error.message, range.error.ground);
           closeGroup();
           if (range.value === null) {
             event.preventDefault();
@@ -778,6 +826,7 @@ export const createCanonicalInputBoundary = (
         return refuseEvent(
           event,
           `Input ${event.inputType} is unavailable in this session.`,
+          INVALID_REQUEST,
         );
       },
       // A native DOM proposal is valid only until this event's observer flush.
@@ -819,6 +868,7 @@ export const createCanonicalInputBoundary = (
         return refuseEvent(
           event,
           "The canonical clipboard owner is unavailable.",
+          NO_HANDLER,
         );
       },
       drop: (_view: EditorView, event: Event): boolean => {

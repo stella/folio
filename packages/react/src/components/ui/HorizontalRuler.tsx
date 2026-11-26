@@ -31,6 +31,7 @@ import {
   clampRulerValue,
   createRulerControl,
   getHorizontalRulerBounds,
+  HORIZONTAL_RULER_HEIGHT_PX,
 } from "@stll/folio-core/utils/rulerControl";
 import {
   formatPx,
@@ -79,7 +80,6 @@ const DEFAULT_MARGIN_TWIPS = 1440;
 const TWIPS_PER_INCH = 1440;
 const TWIPS_PER_CM = 567;
 
-const RULER_HEIGHT = 22;
 const RULER_TEXT_COLOR = "var(--doc-text-muted)";
 const RULER_TICK_COLOR = "var(--doc-text-subtle)";
 const MARGIN_ZONE_COLOR = "var(--doc-shadow-subtle)";
@@ -310,7 +310,7 @@ export function HorizontalRuler({
       style={{
         position: "relative",
         width: formatPx(pageWidthPx),
-        height: RULER_HEIGHT,
+        height: HORIZONTAL_RULER_HEIGHT_PX,
         backgroundColor: "transparent",
         overflow: "visible",
         userSelect: "none",
@@ -337,7 +337,7 @@ export function HorizontalRuler({
           top: 0,
           left: 0,
           width: formatPx(leftMarginPx),
-          height: RULER_HEIGHT,
+          height: HORIZONTAL_RULER_HEIGHT_PX,
           backgroundColor: MARGIN_ZONE_COLOR,
           borderRight: "1px solid var(--doc-shadow-subtle)",
           cursor: editable ? "ew-resize" : "default",
@@ -365,7 +365,7 @@ export function HorizontalRuler({
           top: 0,
           right: 0,
           width: formatPx(rightMarginPx),
-          height: RULER_HEIGHT,
+          height: HORIZONTAL_RULER_HEIGHT_PX,
           backgroundColor: MARGIN_ZONE_COLOR,
           borderLeft: "1px solid var(--doc-shadow-subtle)",
           cursor: editable ? "ew-resize" : "default",
