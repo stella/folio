@@ -1060,9 +1060,7 @@ export type FolioAIEditSeverity = "low" | "medium" | "high";
 export type FolioAIEditSkippedOperation = {
     id: string;
     reason: FolioAIEditSkipReason;
-    canonicalRefusal?: {
-        gap: CanonicalGap;
-    };
+    canonicalRefusal?: CanonicalRefusalGround;
     message?: string;
 };
 

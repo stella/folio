@@ -16,6 +16,7 @@ import type {
   FolioDocumentOperationBatch,
 } from "../document-operations";
 import type { Document, Paragraph, Run } from "../types/document";
+import type { DeepReadonly } from "../types/documentModel";
 
 const paragraphOf = (
   paraId: string,
@@ -67,6 +68,7 @@ const setup = (
     executor.apply({
       snapshot: createFolioAIEditSnapshot(state.doc),
       batch: { version: 1, mode: "direct", operations, ...extra },
+      undefinedReferences: "refuse",
     });
   const paragraph = (paraId: string): Paragraph => {
     const found = session.document.package.document.content.find(
@@ -88,7 +90,7 @@ const setup = (
 };
 
 /** Each run's text with the emphasis it states, empty runs left out. */
-const runsOf = (paragraph: Paragraph) =>
+const runsOf = (paragraph: DeepReadonly<Paragraph>) =>
   paragraph.content.flatMap((item) => {
     if (item.type !== "run") return [];
     const text = item.content
