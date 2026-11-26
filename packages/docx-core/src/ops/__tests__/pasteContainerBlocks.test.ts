@@ -67,7 +67,7 @@ const preserved = (): PastedBlock => ({
   xml: '<w:permStart w:id="1"/>',
 });
 
-const DIRECT = { type: "direct" } as const satisfies EditorIntentMode;
+const DIRECT = { type: "editing" } as const satisfies EditorIntentMode;
 
 const pasted = (blocks: readonly PastedBlock[], mode: EditorIntentMode) => {
   const document = source();

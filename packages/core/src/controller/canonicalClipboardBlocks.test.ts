@@ -86,17 +86,19 @@ const pasteInto = (copied: BlockContent) => {
       paragraph("Tail", "20000002"),
     ]),
   ).unwrap();
-  let state = EditorState.create({
-    doc: session.projection.doc,
-    selection: undefined,
-  });
+  let state = EditorState.create({ doc: session.projection.doc });
   // The caret at the end of the first paragraph.
   state = state.apply(
     state.tr.setSelection(
       TextSelection.create(state.doc, state.doc.child(0).nodeSize - 1),
     ),
   );
-  return { session, state, slice, sourceDocument: source.document };
+  return {
+    session,
+    state,
+    slice,
+    sourceDocument: readModel(source.document),
+  };
 };
 
 describe.each([
@@ -164,7 +166,7 @@ test("a copy from inside a content control pastes the text it copied", () => {
     session,
     state,
     slice,
-    sourceDocument: source.document,
+    sourceDocument: readModel(source.document),
   });
   if (prepared.isErr()) throw prepared.error;
   publishCanonicalProjection({
