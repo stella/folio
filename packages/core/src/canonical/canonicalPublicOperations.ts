@@ -88,6 +88,8 @@ import {
   EXISTING_REVISION_CONFLICT_MESSAGE,
 } from "../ai-edits/existingRevisions";
 import {
+  hasInlineEmphasis,
+  type InlineEmphasisRun,
   parseInlineEmphasisRuns,
   stripInlineEmphasisMarkers,
 } from "../ai-edits/inline-emphasis";
@@ -220,8 +222,10 @@ import {
 } from "../prosemirror/tableGridMutation";
 import { paragraphGoes, tableGoes } from "../prosemirror/tableRunIn";
 import {
+  CANONICAL_CONDITION,
   CANONICAL_GAP,
-  type CanonicalGap,
+  CANONICAL_RULE,
+  type CanonicalRefusalGround,
 } from "../types/canonicalCapabilities";
 import type {
   Document,
@@ -251,6 +255,7 @@ import {
 } from "./canonicalInsertionReplayIds";
 import { addJoinedParagraphReceipts } from "./canonicalJoinedReceipts";
 import { lockViolationBetween } from "./canonicalLockGuard";
+import { groundForDocumentOpRefusal } from "./canonicalRefusalGrounds";
 import { keepStandingRevisionReceipts } from "./canonicalRevisionReceipts";
 import {
   CANONICAL_ADMISSION,
@@ -1048,6 +1053,16 @@ type CanonicalPublicOperationRefusal = NonNullable<
   FolioAIEditSkippedOperation["canonicalRefusal"]
 >;
 
+/**
+ * A refused resolution under `reason`, with the skip's detail, and the
+ * ground the skip reports where the reason alone does not say why.
+ */
+type ResolutionRefusal = (
+  reason: FolioAIEditSkipReason,
+  message?: string,
+  ground?: CanonicalRefusalGround,
+) => Result<never, CanonicalPublicOperationResolutionError>;
+
 /** A new public kind cannot bypass a canonical compiler/refusal decision. */
 export const CANONICAL_PUBLIC_OPERATION_DISPOSITIONS: {
   readonly replaceInBlock: "compile";
@@ -1093,10 +1108,39 @@ export const CANONICAL_PUBLIC_OPERATION_DISPOSITIONS: {
   deleteTableColumn: "compile",
   mergeTableCells: "compile",
   splitTableCell: "compile",
-} as const satisfies Record<
-  FolioDocumentOperation["type"],
-  "compile" | CanonicalGap
->;
+} as const satisfies Record<FolioDocumentOperation["type"], "compile">;
+
+/**
+ * A request the operation vocabulary does not take, or names a place the
+ * document has no address for: refused as the request, not as a capability
+ * the session lacks.
+ */
+const INVALID_REQUEST: CanonicalRefusalGround = {
+  condition: CANONICAL_CONDITION.invalidRequest,
+};
+/** A place the operation named that an earlier change of its batch moved on. */
+const STALE: CanonicalRefusalGround = { condition: CANONICAL_CONDITION.stale };
+/** A shape the session built itself and then could not read back: a defect. */
+const INTERNAL: CanonicalRefusalGround = {
+  condition: CANONICAL_CONDITION.internal,
+};
+
+/**
+ * The public reason a batch the session refused to stage reports: a no-op
+ * for one that changes nothing, a content control's lock as the lock, a
+ * document that moved on as a stale range, and any other refusal as a block
+ * the session does not take, under the session's own ground.
+ */
+const stagingRefusalReason = (
+  reason: "refused" | "noChange",
+  ground: CanonicalRefusalGround,
+): FolioAIEditSkipReason => {
+  if (reason === "noChange") return "noopOperation";
+  if (ground.rule === CANONICAL_RULE.contentControlLock)
+    return "contentControlLock";
+  if (ground.condition === CANONICAL_CONDITION.stale) return "staleRange";
+  return "unsupportedBlock";
+};
 
 export type CanonicalPublicOperationOptions = Omit<
   ApplyFolioDocumentOperationsOptions,
@@ -1324,10 +1368,7 @@ type ResolveParagraphPropertiesOptions = {
   >;
   paragraph: NonNullable<ReturnType<CanonicalProjection["paragraph"]>>;
   projection: CanonicalProjection;
-  refusal: (
-    reason: FolioAIEditSkipReason,
-    message?: string,
-  ) => Result<never, CanonicalPublicOperationResolutionError>;
+  refusal: ResolutionRefusal;
 };
 
 const resolveParagraphProperties = ({
@@ -1345,7 +1386,8 @@ const resolveParagraphProperties = ({
   });
   if (Object.keys(patch).length === 0) return refusal("emptyOperation");
   const at = projection.addressAt(paragraph.start);
-  if (at.isErr()) return refusal("unsupportedBlock");
+  if (at.isErr())
+    return refusal("unsupportedBlock", undefined, at.error.ground);
   const intents: EditorIntent[] = [
     {
       type: "formatParagraph",
@@ -1545,10 +1587,7 @@ type ResolveBlockInsertionOptions = {
   projection: CanonicalProjection;
   noteReferences: NoteReferenceLabels;
   story: OpStory;
-  refusal: (
-    reason: FolioAIEditSkipReason,
-    message?: string,
-  ) => Result<never, CanonicalPublicOperationResolutionError>;
+  refusal: ResolutionRefusal;
   skipAlike: (
     reason: FolioAIEditSkipReason,
     message: string,
@@ -1956,15 +1995,18 @@ const resolveBlockInsertion = ({
   const stated = statedNumbering(requested, mintList);
   const inline = operation.lineBreakMode === "inline";
   // A comparison writes the references its paragraph brings as their
-  // markers, which it turns back into references once the batch lands.
+  // markers, which it turns back into references once the batch lands. Any
+  // other insertion has no note to give a marker it writes: the operations
+  // create no notes, so the marker would read as a reference the document
+  // does not hold.
   if (
     markdown === undefined &&
     !noteReferenceEditsAllowed() &&
     /\[\^(?:e)?\d+\]/u.test(text)
   )
     return refusal(
-      "unsupportedBlock",
-      "Canonical block insertion requires plain text.",
+      "protectedReference",
+      "An insertion writes no note marker of its own.",
     );
   // Each line its own paragraph, blank lines dropped, as the legacy engine
   // splits them; inline, line breaks stay in the one paragraph. A tab is a
@@ -2081,6 +2123,7 @@ const resolveBlockInsertion = ({
     return refusal(
       "unsupportedBlock",
       "Canonical insertion beside a table needs a paragraph on that side of it.",
+      INVALID_REQUEST,
     );
   // The anchor keeps its identity; the new paragraph takes a fresh one.
   const intents: EditorIntent[] = [
@@ -2099,7 +2142,7 @@ const resolveBlockInsertion = ({
     operation.comment !== undefined &&
     texts.every((line) => line.length === 0)
   )
-    return refusal("unsupportedBlock");
+    return refusal("unsupportedBlock", undefined, INVALID_REQUEST);
   const normalizations: FolioAIEditNormalization[] = split
     ? [
         {
@@ -2133,15 +2176,24 @@ const resolveBlockInsertion = ({
   };
   if (operation.comment === undefined)
     return Result.ok({ type: "plain" as const, operation, ...resolved });
-  // Where the inserted paragraphs are is known once they are compiled.
+  // Where the inserted paragraphs are is known once they are compiled; the
+  // place they go in, at the edge of the paragraph they go beside, is the
+  // point a comment marks where they hold no paragraph a range can name.
   const anchor = { story, blockId: place.at.blockId, offset: 0 };
+  const beside =
+    place.at.type === "after"
+      ? projection.paragraph(place.at.blockId)
+      : undefined;
   return Result.ok({
     type: "commented" as const,
     operation,
     comment: {
       text: operation.comment.text,
       from: anchor,
-      to: anchor,
+      to:
+        beside === undefined
+          ? anchor
+          : { ...anchor, offset: paragraphLength(beside.source) },
       inserted: true as const,
     },
     ...resolved,
@@ -3096,10 +3148,7 @@ type ResolveTableInsertionOptions = {
   projection: CanonicalProjection;
   story: OpStory;
   noteReferences: NoteReferenceLabels;
-  refusal: (
-    reason: FolioAIEditSkipReason,
-    message?: string,
-  ) => Result<never, CanonicalPublicOperationResolutionError>;
+  refusal: ResolutionRefusal;
   skipAlike: (
     reason: FolioAIEditSkipReason,
     message: string,
@@ -3150,7 +3199,8 @@ const resolveTableInsertion = ({
       );
     node = buildSignatureTableNode({ schema, parties: operation.parties });
   }
-  if (node === null) return refusal("unsupportedBlock");
+  if (node === null)
+    return refusal("unsupportedBlock", undefined, INVALID_REQUEST);
   const attrs = expectTableAttrs(node);
   const formatting = tableAttrsToFormatting(attrs);
   const table: Table = {
@@ -3285,7 +3335,8 @@ const resolveTableInsertion = ({
             table: outerTable,
             tableStart: outer.before + 1,
           });
-    if (blockId === undefined) return refusal("unsupportedBlock");
+    if (blockId === undefined)
+      return refusal("unsupportedBlock", undefined, INVALID_REQUEST);
     return besideTable(blockId, outer[side]);
   }
   const { place } = besidePendingJoin({
@@ -3591,10 +3642,7 @@ type ResolveTableStructureOptions = {
   paragraph: ProjectedParagraph;
   projection: CanonicalProjection;
   story: OpStory;
-  refusal: (
-    reason: FolioAIEditSkipReason,
-    message?: string,
-  ) => Result<never, CanonicalPublicOperationResolutionError>;
+  refusal: ResolutionRefusal;
   /** Whether the batch records its changes as suggestions. */
   tracked: boolean;
   /** Resolve another paragraph the operation names, in the same story. */
@@ -3770,7 +3818,7 @@ const resolveTableStructure = ({
       );
       const addressed = at === undefined ? undefined : projection.addressAt(at);
       if (addressed === undefined || addressed.isErr())
-        return refusal("unsupportedBlock");
+        return refusal("unsupportedBlock", undefined, INVALID_REQUEST);
       const address = addressed.value;
       const blockId = deleted.has(address.blockId)
         ? (keptTableAddress({
@@ -3828,7 +3876,8 @@ const resolveTableStructure = ({
           "A suggested column cannot widen a cell that spans other columns.",
         );
       const blockId = tableBlockAddress(projection, row, deleted);
-      if (blockId === undefined) return refusal("unsupportedBlock");
+      if (blockId === undefined)
+        return refusal("unsupportedBlock", undefined, INVALID_REQUEST);
       const intent: EditorIntent = {
         type: "table",
         operation: {
@@ -3917,7 +3966,8 @@ const resolveTableStructure = ({
           "A suggested merge takes one column over empty cells.",
         );
       const blockId = tableBlockAddress(projection, row, deleted);
-      if (blockId === undefined) return refusal("unsupportedBlock");
+      if (blockId === undefined)
+        return refusal("unsupportedBlock", undefined, INVALID_REQUEST);
       return resolved(
         {
           type: "table",
@@ -3984,15 +4034,17 @@ const resolveTableStructure = ({
         revision: null,
         ...(template === undefined ? {} : { template }),
       });
-      if (built.type !== "applied") return refusal("unsupportedBlock");
+      if (built.type !== "applied")
+        return refusal("unsupportedBlock", undefined, INTERNAL);
       const table = built.transaction.doc.nodeAt(
         built.transaction.mapping.map(row.tablePosition, -1),
       );
       if (table === null || table.type.name !== "table")
-        return refusal("unsupportedBlock");
+        return refusal("unsupportedBlock", undefined, INTERNAL);
       const index = side === "before" ? row.rowIndex : row.rowIndex + 1;
       const inserted = standaloneTableRowsFromProseMirror(table)[index];
-      if (inserted === undefined) return refusal("unsupportedBlock");
+      if (inserted === undefined)
+        return refusal("unsupportedBlock", undefined, INTERNAL);
       const {
         structuralChange: _structuralChange,
         propertyChanges: _propertyChanges,
@@ -4092,6 +4144,64 @@ const emphasisRuns = (line: string): Run[] =>
     ];
   });
 
+/** Words of a replacement its emphasis markers mark, by offset in the words it writes. */
+type EmphasizedSpan = { start: number; end: number; patch: RunPropsPatch };
+
+/**
+ * The spans of the words a replacement writes that its paired `**bold**` and
+ * `***bold italic***` markers mark, and the emphasis each states.
+ */
+const emphasizedSpans = (
+  emphasis: readonly InlineEmphasisRun[] | undefined,
+): EmphasizedSpan[] => {
+  const spans: EmphasizedSpan[] = [];
+  let offset = 0;
+  for (const { text, bold, italic } of emphasis ?? []) {
+    const end = offset + text.length;
+    if (end > offset && (bold || italic))
+      spans.push({
+        start: offset,
+        end,
+        patch: {
+          ...(bold ? { bold: true } : {}),
+          ...(italic ? { italic: true } : {}),
+        },
+      });
+    offset = end;
+  }
+  return spans;
+};
+
+/** A plan that replaces the whole match, its words standing together. */
+const rewriteWhole = (source: string, target: string) => [
+  { start: 0, end: source.length, text: target },
+];
+
+/**
+ * Paragraph properties kept by a replacement that drops the paragraph's
+ * formatting: the review records of its numbering, which only resolving
+ * them retires.
+ */
+const NUMBERING_REVIEW_RECORDS: ReadonlySet<string> = new Set([
+  "numberingChangeXml",
+  "numberingInsertionXml",
+]);
+
+/**
+ * The patch a replacement that drops the paragraph's formatting writes:
+ * every property the paragraph states goes, as the default engine writes a
+ * fresh paragraph, save the review records of its numbering.
+ */
+const droppedParagraphFormatting = (
+  formatting: ParagraphFormatting | undefined,
+): ParagraphPropsPatch => {
+  const patch: Record<string, null> = {};
+  for (const key of Object.keys(formatting ?? {}))
+    if (!NUMBERING_REVIEW_RECORDS.has(key)) patch[key] = null;
+  // Every key is a ParagraphFormatting field set to null.
+  return patch as ParagraphPropsPatch;
+};
+
 const inlineText = (line: string): Run["content"] =>
   line.split(/(\t|\r\n|\r|\n)/u).flatMap((part): Run["content"] => {
     if (part === "\t") return [{ type: "tab" }];
@@ -4152,10 +4262,7 @@ type ResolveBlockDeletionOptions = {
   deletedRun: DeletedRun;
   /** The paragraphs the batch deletes, by id. */
   deletedByBatch: ReadonlySet<string>;
-  refusal: (
-    reason: FolioAIEditSkipReason,
-    message?: string,
-  ) => Result<never, CanonicalPublicOperationResolutionError>;
+  refusal: ResolutionRefusal;
 };
 
 type CanonicalPublicOperationsOptions = {
@@ -4487,11 +4594,11 @@ class CanonicalPublicOperationResolutionError extends CanonicalPublicOperationRe
    */
   detail: string | undefined;
   /**
-   * The capability the refusal waits for, when it is not the compiler's
-   * inline one; `null` for an operation the legacy engine skips alike, such
-   * as a row operation whose block is in no table.
+   * Why the session refused it, reported as the skip's `canonicalRefusal`;
+   * absent for an operation the legacy engine skips alike, under the reason
+   * alone, such as a row operation whose block is in no table.
    */
-  gap?: CanonicalGap | null;
+  ground?: CanonicalRefusalGround;
   /**
    * The modes the refusal holds in: `"trackedMode"` for an operation the
    * tracked vocabulary has no record for, which applies directly. Absent, it
@@ -5254,20 +5361,12 @@ export class CanonicalPublicOperations {
         ...(message === undefined ? {} : { message }),
       });
     };
-    // A refused resolution names its gap: its own, or for a block the
-    // compiler does not support, the unsupported public payload gap.
+    // A refused resolution reports the ground it names, if any.
     const refuseResolution = (
       id: string,
       error: CanonicalPublicOperationResolutionError,
     ) => {
-      const gap =
-        error.gap === null
-          ? undefined
-          : (error.gap ??
-            (error.reason === "unsupportedBlock"
-              ? CANONICAL_GAP.publicUnsupportedInline
-              : undefined));
-      if (gap !== undefined) refusals.set(id, { gap });
+      if (error.ground !== undefined) refusals.set(id, error.ground);
       skip(id, error.reason, error.detail);
     };
     const result = (
@@ -5465,15 +5564,6 @@ export class CanonicalPublicOperations {
           undefinedReference.reason,
           undefinedReference.message,
         );
-        continue;
-      }
-      const disposition =
-        CANONICAL_PUBLIC_OPERATION_DISPOSITIONS[operation.type];
-      if (disposition !== "compile") {
-        refusals.set(operation.id, {
-          gap: disposition,
-        });
-        skip(operation.id, "unsupportedBlock");
         continue;
       }
       const compiled = this.resolve({
@@ -5969,28 +6059,35 @@ export class CanonicalPublicOperations {
               story,
               ops: compiled.value.ops,
             });
+            if (id.isErr())
+              return declined({
+                reason: "unsupportedBlock",
+                message: id.error.message,
+                refusal: groundForDocumentOpRefusal(id.error.reason),
+              });
             const commentContent =
               admittedComment?.content ??
               canonicalCommentBody(nextDocument, comment.text, commentLease);
-            const commented =
-              id.isErr() ||
-              firstAdded?.paraId === undefined ||
-              lastAdded?.paraId === undefined
-                ? undefined
-                : compileCanonicalComments({
-                    document: nextDocument,
-                    idLease: idLease,
-                    command: {
-                      type: "create",
-                      comment: {
-                        id: id.value,
-                        author: options.author ?? "AI",
-                        date,
-                        done: false,
-                        content: commentContent,
-                        ...proposedBy,
-                      },
-                      anchor: {
+            // Where the insertion added no paragraph a range can name, the
+            // comment marks the place it went in instead.
+            const commented = compileCanonicalComments({
+              document: nextDocument,
+              idLease: idLease,
+              command: {
+                type: "create",
+                comment: {
+                  id: id.value,
+                  author: options.author ?? "AI",
+                  date,
+                  done: false,
+                  content: commentContent,
+                  ...proposedBy,
+                },
+                anchor:
+                  firstAdded?.paraId === undefined ||
+                  lastAdded?.paraId === undefined
+                    ? { kind: "point", at: comment.to }
+                    : {
                         kind: "range",
                         from: {
                           story,
@@ -6003,18 +6100,14 @@ export class CanonicalPublicOperations {
                           offset: paragraphLength(lastAdded),
                         },
                       },
-                    },
-                  });
-            if (commented === undefined || commented.isErr() || id.isErr()) {
+              },
+            });
+            if (commented.isErr())
               return declined({
                 reason: "unsupportedBlock",
-                message:
-                  commented?.isErr() === true
-                    ? commented.error.message
-                    : "The inserted paragraphs cannot carry the comment.",
-                refusal: { gap: CANONICAL_GAP.publicComments },
+                message: commented.error.message,
+                refusal: commented.error.ground,
               });
-            }
             nextDocument = commented.value.document;
             operationOps.push(...commented.value.ops);
             commentId = id.value;
@@ -6031,15 +6124,20 @@ export class CanonicalPublicOperations {
             });
           const before = anchorIn(sourceDocument);
           const after = anchorIn(nextDocument);
-          if (id.isErr() || before === undefined || after === undefined) {
+          if (id.isErr())
             return declined({
               reason: "unsupportedBlock",
-              message: id.isErr()
-                ? id.error.message
-                : "The comment anchor no longer exists.",
-              refusal: { gap: CANONICAL_GAP.publicComments },
+              message: id.error.message,
+              refusal: groundForDocumentOpRefusal(id.error.reason),
             });
-          }
+          // An earlier change of the batch took the paragraph the comment
+          // was read against.
+          if (before === undefined || after === undefined)
+            return declined({
+              reason: "missingBlock",
+              message: "The comment anchor no longer exists.",
+              refusal: STALE,
+            });
           // A tracked edit's comment covers what the edit changed, from its
           // first revision to its last, as the legacy engine anchors it.
           const changed =
@@ -6090,13 +6188,12 @@ export class CanonicalPublicOperations {
                   : { kind: "range", from, to },
             },
           });
-          if (commented.isErr()) {
+          if (commented.isErr())
             return declined({
               reason: "unsupportedBlock",
               message: commented.error.message,
-              refusal: { gap: CANONICAL_GAP.publicComments },
+              refusal: commented.error.ground,
             });
-          }
           nextDocument = commented.value.document;
           operationOps.push(...commented.value.ops);
           commentId = id.value;
@@ -6697,18 +6794,13 @@ export class CanonicalPublicOperations {
           : operationStaging.prepareOps(state, ops, selection),
       );
     if (prepared.isErr()) {
-      // A batch that changes nothing is a no-op, not a capability gap.
-      const noChange = prepared.error.reason === "noChange";
+      // A batch that changes nothing is a no-op, not a refusal; any other
+      // refusal reports the session's own ground.
+      const { reason, ground, message } = prepared.error;
+      const skipReason = stagingRefusalReason(reason, ground);
       for (const { id } of appliedById.values()) {
-        if (!noChange)
-          refusals.set(id, {
-            gap: CANONICAL_GAP.publicUnsupportedInline,
-          });
-        skip(
-          id,
-          noChange ? "noopOperation" : "unsupportedBlock",
-          prepared.error.message,
-        );
+        if (reason !== "noChange") refusals.set(id, ground);
+        skip(id, skipReason, message);
       }
       return result([], null);
     }
@@ -6920,7 +7012,7 @@ export class CanonicalPublicOperations {
     // A direct deletion leaves no text for a comment to cover, as the default
     // engine finds; a tracked one covers the deleted words.
     if (operation.comment !== undefined && !tracked)
-      return refusal("unsupportedBlock");
+      return refusal("unsupportedBlock", undefined, INVALID_REQUEST);
     // A pending deletion already takes it whole, mark and words, as one of
     // the joined paragraph a deletion of the paragraph it joins took.
     if (tracked && goesWholeOnAcceptance(paragraph.node))
@@ -6942,7 +7034,7 @@ export class CanonicalPublicOperations {
     const commentFrom = projection.addressAt(paragraph.start);
     const commentTo = projection.addressAt(end);
     if (commentFrom.isErr() || commentTo.isErr())
-      return refusal("unsupportedBlock");
+      return refusal("unsupportedBlock", undefined, INVALID_REQUEST);
     const tracking = (
       resolved: Omit<
         Extract<PreparedOperation, { type: "plain" }>,
@@ -7026,7 +7118,8 @@ export class CanonicalPublicOperations {
         : (joinedWordsStart ?? paragraph.start);
       const from = projection.addressAt(start);
       const to = projection.addressAt(end);
-      if (from.isErr() || to.isErr()) return refusal("unsupportedBlock");
+      if (from.isErr() || to.isErr())
+        return refusal("unsupportedBlock", undefined, INVALID_REQUEST);
       return tracking({
         intents: [
           { type: "replaceText", from: from.value, to: to.value, text: "" },
@@ -7160,7 +7253,7 @@ export class CanonicalPublicOperations {
         const start = projection.addressAt(from);
         const stop = projection.addressAt(to);
         return start.isErr() || stop.isErr()
-          ? refusal("unsupportedBlock")
+          ? refusal("unsupportedBlock", undefined, INVALID_REQUEST)
           : Result.ok(
               from === to
                 ? []
@@ -7315,7 +7408,8 @@ export class CanonicalPublicOperations {
       if (previousGainsFollower && noDeletedRunBefore(deletedRun)) {
         const from = projection.addressAt(range.from);
         const to = projection.addressAt(end);
-        if (from.isErr() || to.isErr()) return refusal("unsupportedBlock");
+        if (from.isErr() || to.isErr())
+          return refusal("unsupportedBlock", undefined, INVALID_REQUEST);
         return tracking({
           intents: [
             { type: "replaceText", from: from.value, to: to.value, text: "" },
@@ -7337,7 +7431,8 @@ export class CanonicalPublicOperations {
       if (after === null && tableBeforeGainsFollower) {
         const from = projection.addressAt(paragraph.start);
         const to = projection.addressAt(end);
-        if (from.isErr() || to.isErr()) return refusal("unsupportedBlock");
+        if (from.isErr() || to.isErr())
+          return refusal("unsupportedBlock", undefined, INVALID_REQUEST);
         return tracking({
           intents: [
             { type: "replaceText", from: from.value, to: to.value, text: "" },
@@ -7354,7 +7449,8 @@ export class CanonicalPublicOperations {
     }
     const from = projection.addressAt(range.from);
     const to = projection.addressAt(range.to);
-    if (from.isErr() || to.isErr()) return refusal("unsupportedBlock");
+    if (from.isErr() || to.isErr())
+      return refusal("unsupportedBlock", undefined, INVALID_REQUEST);
     const intents: EditorIntent[] = [
       { type: "replaceText", from: from.value, to: to.value, text: "" },
     ];
@@ -7415,12 +7511,13 @@ export class CanonicalPublicOperations {
       return Result.ok({ operation });
     const control = emptyControlOfFiller(state.doc, blockId);
     if (control === undefined) return Result.ok({ operation });
-    const refusal = (reason: FolioAIEditSkipReason, message?: string) =>
+    const refusal: ResolutionRefusal = (reason, message, ground) =>
       Result.err(
         new CanonicalPublicOperationResolutionError({
           reason,
           message: message ?? `The operation was refused: ${reason}.`,
           detail: message,
+          ...(ground === undefined ? {} : { ground }),
         }),
       );
     const fillerHash = hashFolioAIBlockContent("");
@@ -7437,7 +7534,7 @@ export class CanonicalPublicOperations {
     });
     switch (beside.type) {
       case "refused":
-        return refusal("unsupportedBlock", beside.message);
+        return refusal("unsupportedBlock", beside.message, INVALID_REQUEST);
       case "beside":
         return Result.ok({ operation: beside.operation });
       case "listStart":
@@ -7465,12 +7562,13 @@ export class CanonicalPublicOperations {
     besideDeletions,
     batchComments,
   }: ResolveCanonicalPublicOperationOptions) {
-    const refusal = (reason: FolioAIEditSkipReason, message?: string) =>
+    const refusal: ResolutionRefusal = (reason, message, ground) =>
       Result.err(
         new CanonicalPublicOperationResolutionError({
           reason,
           message: message ?? `The operation was refused: ${reason}.`,
           detail: message,
+          ...(ground === undefined ? {} : { ground }),
         }),
       );
     const skipAlike = (reason: FolioAIEditSkipReason, message: string) =>
@@ -7479,7 +7577,6 @@ export class CanonicalPublicOperations {
           reason,
           message,
           detail: message,
-          gap: null,
         }),
       );
     const skipTracked = (message: string) =>
@@ -7488,7 +7585,6 @@ export class CanonicalPublicOperations {
           reason: "unsupportedBlock",
           message,
           detail: message,
-          gap: null,
           refusedIn: "trackedMode",
         }),
       );
@@ -7539,6 +7635,7 @@ export class CanonicalPublicOperations {
         ? refusal(
             "unsupportedBlock",
             "The canonical session holds no address in this paragraph.",
+            INVALID_REQUEST,
           )
         : refusal("missingBlock");
     if (
@@ -7590,7 +7687,7 @@ export class CanonicalPublicOperations {
           detail: pendingRefusal.message,
           ...(pendingRefusal.canonicalRefusal === undefined
             ? {}
-            : { gap: pendingRefusal.canonicalRefusal.gap }),
+            : { ground: pendingRefusal.canonicalRefusal }),
         }),
       );
     const hash = hashFolioAIBlockContent(clean.text);
@@ -7928,10 +8025,13 @@ export class CanonicalPublicOperations {
           return refusal("staleRange");
         break;
       case "mergeBlockWithNext":
-        if (/[\t\r\n]/u.test(operation.separator ?? ""))
+        // A tab or line feed in the separator is written as its element; a
+        // carriage return names no element of its own.
+        if (/\r/u.test(operation.separator ?? ""))
           return refusal(
             "unsupportedBlock",
-            "Canonical public join separators require plain text.",
+            "Canonical public join separators hold no carriage return.",
+            INVALID_REQUEST,
           );
         start = clean.text.length;
         end = start;
@@ -7981,7 +8081,6 @@ export class CanonicalPublicOperations {
           message:
             "The range begins or ends inside a field result or holds a page-break run.",
           detail: undefined,
-          gap: null,
         }),
       );
     // Inline emphasis or dropped formatting rebuilds the replaced runs whole,
@@ -7989,17 +8088,26 @@ export class CanonicalPublicOperations {
     const dropsFormatting =
       operation.type === "replaceBlock" &&
       operation.preserveFormatting === false;
+    const emphasis =
+      replacesText && hasInlineEmphasis(text)
+        ? parseInlineEmphasisRuns(text)
+        : undefined;
     if (
       replacesText &&
       references.length > 0 &&
-      (dropsFormatting || stripInlineEmphasisMarkers(text) !== text)
+      (dropsFormatting || emphasis !== undefined)
     )
       return refusal("protectedReference");
-    if (dropsFormatting)
-      return refusal(
-        "unsupportedBlock",
-        "Canonical replacements that drop the paragraph's formatting are unavailable.",
-      );
+    // The replacement writes the words its emphasis markers mark; directly,
+    // as the default engine writes them, they are bold or italic, and a
+    // replacement that drops the paragraph's formatting writes them with
+    // none of their own in a paragraph that states none. A redline is text
+    // only, as the default engine records it: it keeps the formatting and
+    // writes the words plain.
+    if (emphasis !== undefined) text = stripInlineEmphasisMarkers(text);
+    const rebuilds = !tracked && dropsFormatting;
+    const emphasized = tracked ? [] : emphasizedSpans(emphasis);
+    const rewritesWhole = rebuilds || emphasized.length > 0;
     // Only a replacement rewrites the prose between references.
     const kept = segmentsAroundNoteReferences(
       clean.text.slice(start, end),
@@ -8020,24 +8128,26 @@ export class CanonicalPublicOperations {
       : kept;
     if (segments === null) return refusal("protectedReference");
     const prose = replacesText ? segments.replacement.join("") : "";
-    if (stripInlineEmphasisMarkers(text) !== text)
+    // A marker-shaped string the replacement writes of its own would read
+    // as a reference the document does not hold; only a comparison turns
+    // markers into references.
+    if (!editsReferences && /\[\^(?:e)?\d+\]/u.test(prose))
       return refusal(
-        "unsupportedBlock",
-        "Canonical public emphasis replacements are unavailable.",
+        "protectedReference",
+        "A replacement writes no note marker of its own.",
       );
-    if (
-      (!editsReferences && /\[\^(?:e)?\d+\]/u.test(prose)) ||
-      // A tab or line feed is written as its element; a carriage return
-      // names no element of its own.
-      /\r/u.test(prose)
-    )
+    // A tab or line feed is written as its element; a carriage return names
+    // no element of its own.
+    if (/\r/u.test(prose))
       return refusal(
         "unsupportedBlock",
         "Canonical public replacements require plain text.",
+        INVALID_REQUEST,
       );
     const from = projection.value.addressAt(range.from);
     const to = projection.value.addressAt(range.to);
-    if (from.isErr() || to.isErr()) return refusal("unsupportedBlock");
+    if (from.isErr() || to.isErr())
+      return refusal("unsupportedBlock", undefined, INVALID_REQUEST);
     const resolvedComment = resolveComment({
       operation,
       from: from.value,
@@ -8081,6 +8191,7 @@ export class CanonicalPublicOperations {
       operation.type !== "formatRange" &&
       operation.type !== "mergeBlockWithNext" &&
       restyle.length === 0 &&
+      !rewritesWhole &&
       clean.text.slice(start, end) === text
     )
       return refusal("noopOperation");
@@ -8219,11 +8330,21 @@ export class CanonicalPublicOperations {
             : [],
         ),
       };
+      // Emphasis and dropped formatting rewrite the whole match, so the
+      // words they write stand together where it stood, as the default
+      // engine rebuilds them.
+      let planChanges: (
+        source: string,
+        target: string,
+      ) => readonly { start: number; end: number; text: string }[] =
+        planTextChanges;
+      if (tracked)
+        planChanges = (source, target) =>
+          changesFromSegments(diff(source, target));
+      if (rewritesWhole) planChanges = rewriteWhole;
       let planned = planReplacementChanges({
         ...replacementSource,
-        planChanges: tracked
-          ? (source, target) => changesFromSegments(diff(source, target))
-          : planTextChanges,
+        planChanges,
         ...(tracked ? { keepFieldsOf: planTextChanges } : {}),
       });
       // A comment goes with exactly the words the edit takes, so its fate
@@ -8359,7 +8480,8 @@ export class CanonicalPublicOperations {
               .isOk(),
         );
       let replacementChanges = placeChanges(changes);
-      if (replacementChanges === undefined) return refusal("unsupportedBlock");
+      if (replacementChanges === undefined)
+        return refusal("unsupportedBlock", undefined, INVALID_REQUEST);
       // A change the word diff places inside an element edited only whole,
       // such as a field whose result is in more than one format, replaces
       // each piece of prose whole instead: the replaced text holds the
@@ -8379,7 +8501,8 @@ export class CanonicalPublicOperations {
             ];
           }),
         );
-        if (whole === undefined) return refusal("unsupportedBlock");
+        if (whole === undefined)
+          return refusal("unsupportedBlock", undefined, INVALID_REQUEST);
         replacementChanges = whole;
       }
       const comments =
@@ -8412,7 +8535,7 @@ export class CanonicalPublicOperations {
         return Result.err(
           new CanonicalPublicOperationResolutionError({
             reason: "unsupportedBlock",
-            gap: CANONICAL_GAP.commentReplacementAlignment,
+            ground: { gap: CANONICAL_GAP.commentReplacementAlignment },
             message:
               "Canonical replacement cannot preserve the aligned comment ranges.",
             detail:
@@ -8488,7 +8611,7 @@ export class CanonicalPublicOperations {
             clearedFrom.isErr() ||
             clearedTo.isErr()
           )
-            return refusal("unsupportedBlock");
+            return refusal("unsupportedBlock", undefined, INVALID_REQUEST);
           intents.push({
             type: "formatRun",
             from: clearedFrom.value,
@@ -8563,6 +8686,9 @@ export class CanonicalPublicOperations {
             });
         }
       }
+      // Where the words the replacement writes begin: its first change's
+      // start, which no later change moves.
+      let wordsStart: TextPosition | undefined;
       for (const [index, change] of [
         ...replacementChanges.entries(),
       ].reverse()) {
@@ -8584,7 +8710,7 @@ export class CanonicalPublicOperations {
             );
             const tailTo = projection.value.addressAt(gap.to, "beforeMarkers");
             if (tailFrom.isErr() || tailTo.isErr())
-              return refusal("unsupportedBlock");
+              return refusal("unsupportedBlock", undefined, INVALID_REQUEST);
             intents.push({
               type: "replaceText",
               from: tailFrom.value,
@@ -8606,7 +8732,7 @@ export class CanonicalPublicOperations {
         const changeFrom = projection.value.addressAt(gap.from, edges?.start);
         const changeTo = projection.value.addressAt(gap.to, edges?.end);
         if (changeFrom.isErr() || changeTo.isErr())
-          return refusal("unsupportedBlock");
+          return refusal("unsupportedBlock", undefined, INVALID_REQUEST);
         // A replacement of exactly a content control's text goes in the
         // control, as typing over it does, tracked or not. Text added at the
         // control's edge goes in it only when the operation's range is the
@@ -8636,6 +8762,7 @@ export class CanonicalPublicOperations {
             ...(change.start === start ? { start: true } : { end: true }),
           };
         }
+        if (index === 0) wordsStart = changeFrom.value;
         intents.push({
           type: "replaceText",
           from: changeFrom.value,
@@ -8643,10 +8770,44 @@ export class CanonicalPublicOperations {
           text: change.text,
           ...(sources === undefined ? {} : { formattingSources: sources }),
           ...(Object.keys(inside).length === 0 ? {} : { inside }),
+          // Dropped formatting writes the words with none of their own.
+          ...(rebuilds ? { runProps: {} } : {}),
           ...(intent.runPropsPatch === undefined
             ? {}
             : { runPropsPatch: intent.runPropsPatch }),
         });
+      }
+      // The whole match is rewritten, so its words stand together from the
+      // first change's start: each span its markers mark takes its emphasis.
+      if (wordsStart !== undefined)
+        for (const span of emphasized) {
+          const { story: wordsStory, blockId: wordsBlockId } = wordsStart;
+          intents.push({
+            type: "formatRun",
+            from:
+              span.start === 0
+                ? wordsStart
+                : {
+                    story: wordsStory,
+                    blockId: wordsBlockId,
+                    offset: wordsStart.offset + span.start,
+                  },
+            to: {
+              story: wordsStory,
+              blockId: wordsBlockId,
+              offset: wordsStart.offset + span.end,
+            },
+            patch: span.patch,
+          });
+        }
+      if (rebuilds) {
+        const patch = droppedParagraphFormatting(paragraph.source.formatting);
+        if (Object.keys(patch).length > 0)
+          intents.push({
+            type: "formatParagraph",
+            at: { story, blockId: paragraph.blockId, offset: 0 },
+            patch,
+          });
       }
       intents.push(...restyle);
     } else if (
@@ -8661,7 +8822,8 @@ export class CanonicalPublicOperations {
         const at = projection.value.addressAt(
           paragraph.start + paragraph.node.content.size,
         );
-        if (at.isErr()) return refusal("unsupportedBlock");
+        if (at.isErr())
+          return refusal("unsupportedBlock", undefined, at.error.ground);
         intents.push({
           type: "replaceText",
           from: at.value,

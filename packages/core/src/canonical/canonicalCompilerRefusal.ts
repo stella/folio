@@ -5,38 +5,42 @@ import {
 } from "@stll/docx-core/ops";
 
 import type { FolioAIEditSkipReason } from "../ai-edits/types";
-import {
-  CANONICAL_GAP,
-  type CanonicalGap,
-} from "../types/canonicalCapabilities";
+import type { CanonicalRefusalGround } from "../types/canonicalCapabilities";
+import { groundForDocumentOpRefusal } from "./canonicalRefusalGrounds";
 
 type CompilerRefusalSkip = {
   reason: FolioAIEditSkipReason;
   message: string;
-  refusal?: { gap: CanonicalGap };
+  refusal?: CanonicalRefusalGround;
 };
 
 /**
  * How the canonical session reports a compiler refusal: `typed`, a
  * deliberate refusal the document's review records call for, under its own
- * public reason; or `unsupported`, a shape the engine cannot represent yet
- * (or a compiler output its model refuses), a capability gap.
+ * public reason and no ground, as the legacy engine reports one; or
+ * `grounded`, under the public reason that fits it and the ground its
+ * document operation reason has (`groundForDocumentOpRefusal`).
  */
 type CompilerRefusalDisposition =
-  { type: "typed"; reason: FolioAIEditSkipReason } | { type: "unsupported" };
+  | { type: "typed"; reason: FolioAIEditSkipReason }
+  | { type: "grounded"; reason: FolioAIEditSkipReason };
 
 const typed = (reason: FolioAIEditSkipReason) =>
   ({ type: "typed", reason }) as const;
-const UNSUPPORTED = { type: "unsupported" } as const;
+const grounded = (reason: FolioAIEditSkipReason) =>
+  ({ type: "grounded", reason }) as const;
+const UNSUPPORTED = grounded("unsupportedBlock");
 
 const R = DOCUMENT_OP_REFUSAL_REASONS;
 
 /**
  * Every compiler refusal reason's public disposition. A deliberate refusal
- * names its own reason, as the legacy engine reports one; `untrackable`
- * gathers shapes the engine does not record yet, and `revisionConflict` a
- * tracked split the compiler stated with records of its own, so both report
- * a gap.
+ * names its own reason, as the legacy engine reports one, and so does a
+ * change that would change nothing. A document that moved on is a stale
+ * range, and an offset inside a character splits it. Every other reason
+ * reports its ground besides: `untrackable` the shapes the tracked-change
+ * records do not express yet, `unrecordableLinkSuggestion` the rule the
+ * review records state, and the rest a request the document does not allow.
  */
 const COMPILER_REFUSAL_DISPOSITIONS = {
   [R.PENDING_RUN_PROPERTY_CHANGE]: typed("pendingRunPropertyChange"),
@@ -53,13 +57,13 @@ const COMPILER_REFUSAL_DISPOSITIONS = {
   // reason (PENDING_PARAGRAPH_MARK_PROPERTY_REFUSAL).
   [R.PENDING_PARAGRAPH_JOIN]: typed("pendingParagraphMarkDeletion"),
   [R.UNSUPPORTED_SCHEMA]: UNSUPPORTED,
-  [R.BLOCK_NOT_FOUND]: UNSUPPORTED,
+  [R.BLOCK_NOT_FOUND]: grounded("missingBlock"),
   [R.INVALID_OPERATION]: UNSUPPORTED,
-  [R.NO_CHANGE]: UNSUPPORTED,
+  [R.NO_CHANGE]: typed("noopOperation"),
   [R.DEPENDENT_RECORDS]: UNSUPPORTED,
   [R.INVALID_OFFSET]: UNSUPPORTED,
   [R.CROSS_BLOCK_RANGE]: UNSUPPORTED,
-  [R.SPLITS_SURROGATE_PAIR]: UNSUPPORTED,
+  [R.SPLITS_SURROGATE_PAIR]: grounded("splitsCharacter"),
   [R.INVALID_TEXT]: UNSUPPORTED,
   [R.INVALID_BLOCK_ID]: UNSUPPORTED,
   [R.ID_COLLISION]: UNSUPPORTED,
@@ -69,7 +73,7 @@ const COMPILER_REFUSAL_DISPOSITIONS = {
   [R.NEEDS_NEW_IDS]: UNSUPPORTED,
   [R.INVALID_NEW_ID]: UNSUPPORTED,
   [R.SHARED_ID]: UNSUPPORTED,
-  [R.STALE]: UNSUPPORTED,
+  [R.STALE]: grounded("staleRange"),
   [R.STRUCTURE_MISMATCH]: UNSUPPORTED,
   [R.EMPTY_CONTENT]: UNSUPPORTED,
   [R.EMPTY_BLOCK_LIST]: UNSUPPORTED,
@@ -81,7 +85,7 @@ const COMPILER_REFUSAL_DISPOSITIONS = {
   [R.MISSING_BLOCK_ID]: UNSUPPORTED,
   [R.DUPLICATE_BLOCK_ID]: UNSUPPORTED,
   [R.DUPLICATE_RECORD_ID]: UNSUPPORTED,
-  [R.SECTIONS_OUT_OF_STEP]: UNSUPPORTED,
+  [R.SECTIONS_OUT_OF_STEP]: grounded("staleRange"),
   [R.EMPTY_RECORD]: UNSUPPORTED,
 } as const satisfies Record<
   DocumentOpRefusalReason,
@@ -97,11 +101,11 @@ export const compilerRefusalSkip = ({
   switch (disposition.type) {
     case "typed":
       return { reason: disposition.reason, message };
-    case "unsupported":
+    case "grounded":
       return {
-        reason: "unsupportedBlock",
+        reason: disposition.reason,
         message,
-        refusal: { gap: CANONICAL_GAP.publicUnsupportedInline },
+        refusal: groundForDocumentOpRefusal(reason),
       };
     default: {
       const unreachable: never = disposition;

@@ -13,6 +13,7 @@ import {
   type CreateCommentOp,
   DOCUMENT_OP_TYPES,
   type DocumentOp,
+  type DocumentOpRefusal,
   formatParaId,
   freshLeasedIds,
   ID_KIND_LIMITS,
@@ -33,6 +34,7 @@ import {
 import type { Comment } from "../types/content";
 import type { Document } from "../types/document";
 import { canonicalJson } from "../utils/canonicalJson";
+import { groundForDocumentOpRefusal } from "./canonicalRefusalGrounds";
 
 const CanonicalCommentErrorBase: TaggedErrorClass<"CanonicalCommentError"> =
   TaggedError("CanonicalCommentError");
@@ -50,6 +52,14 @@ const refuse = (
   message: string,
   condition: CanonicalCondition = CANONICAL_CONDITION.invalidRequest,
 ) => Result.err(new CanonicalCommentError({ message, ground: { condition } }));
+/** A refusal the document operations stated, under its reason's ground. */
+const refuseOp = ({ reason, message }: DocumentOpRefusal) =>
+  Result.err(
+    new CanonicalCommentError({
+      message,
+      ground: groundForDocumentOpRefusal(reason),
+    }),
+  );
 
 export type CanonicalCommentCommand =
   | {
@@ -264,9 +274,9 @@ export const compileCanonicalComments = ({
       if (allocation.isErr()) return Result.err(allocation.error);
       return Result.ok({ ...op, newIds: allocation.value });
     })();
-    if (materialized.isErr()) return refuse(materialized.error.message);
+    if (materialized.isErr()) return refuseOp(materialized.error);
     const applied = applyDocumentOps(draft, [materialized.value]);
-    if (applied.isErr()) return refuse(applied.error.message);
+    if (applied.isErr()) return refuseOp(applied.error);
     compiled.push(materialized.value);
     draft = applied.value.document;
   }
