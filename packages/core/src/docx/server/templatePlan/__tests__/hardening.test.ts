@@ -28,6 +28,7 @@ import {
   readPart,
   replacePart,
   style,
+  TEMPLATE_IDS,
   XML,
 } from "./fixtures";
 import {
@@ -2503,6 +2504,65 @@ describe("tables", () => {
     );
     expect(document.match(/<w:shd /gu)).toHaveLength(1);
     expect(document).not.toContain("themeFill");
+  });
+
+  test("a plan empties a sample paragraph of a kept template table, and only such a one", async () => {
+    const source = await buildMinimalDocx(p(r("Body text.")));
+    const items = (blocks: PlannedBlock[]): TemplatePlanItem[] => [
+      { kind: "template", templateBlockIds: [TEMPLATE_IDS.signatures] },
+      ...blocks.map(({ id, hash }): TemplatePlanItem => ({
+        kind: "source",
+        blockId: id,
+        hash,
+        styleId: "HouseBody",
+      })),
+    ];
+    const emptying = await planFor({
+      source,
+      template,
+      items,
+      extra: { emptyTemplateBlockIds: [TEMPLATE_IDS.signatureRight] },
+    });
+    const { docx, report } = unwrap(
+      await applyTemplatePlan({ source, template, plan: emptying }),
+    );
+    const document = await documentOf(docx);
+
+    expect(report.ok).toBe(true);
+    // The left cell keeps its sample; the right one is a paragraph without runs.
+    expect(document).toContain(
+      '<w:tc><w:tcPr><w:tcW w:w="4531" w:type="dxa"/></w:tcPr><w:p></w:p></w:tc></w:tr></w:tbl>',
+    );
+    // Verification holds the output to it: the sample back in is a mismatch.
+    const plain = unwrap(
+      await applyTemplatePlan({
+        source,
+        template,
+        plan: await planFor({ source, template, items }),
+      }),
+    ).docx;
+    expect(
+      (
+        await verifyFor({ source, template, output: plain, plan: emptying })
+      ).issues.map(({ code }) => code),
+    ).toEqual(["template-mismatch"]);
+    // Not a block outside a kept table, not one a slot fills, not twice.
+    for (const ids of [
+      [TEMPLATE_IDS.title],
+      ["p999"],
+      [TEMPLATE_IDS.signatureRight, TEMPLATE_IDS.signatureRight],
+    ]) {
+      expect(
+        codeOf(
+          await applyFor({
+            source,
+            template,
+            items,
+            extra: { emptyTemplateBlockIds: ids },
+          }),
+        ),
+      ).toBe("unknown-block");
+    }
   });
 
   test("verification notices cells folded into one", async () => {

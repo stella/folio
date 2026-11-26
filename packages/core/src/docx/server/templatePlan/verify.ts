@@ -616,6 +616,7 @@ export const reportTemplatePlanOutput = async ({
     slotBlocks.set(slot.paragraph, slot.templateBlock);
   }
   const slottedTemplateBlocks = new Set(slotBlocks.values());
+  const emptiedTemplateBlocks = new Set(resolved.emptied);
   const plannedProperties = (
     paragraph: ResolvedParagraph,
   ): StatedProperties => {
@@ -835,6 +836,13 @@ export const reportTemplatePlanOutput = async ({
             }
             if (slottedTemplateBlocks.has(templateParagraph)) {
               return true;
+            }
+            // A paragraph the plan empties shows nothing.
+            if (emptiedTemplateBlocks.has(templateParagraph)) {
+              return (
+                outputParagraph.read.text === "" &&
+                outputParagraph.read.inlineObjects === 0
+              );
             }
             const before = statedProperties(templateParagraph.element);
             const after = statedProperties(outputParagraph.element);
