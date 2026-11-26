@@ -3,9 +3,9 @@ import { EditorState, type Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
 
 import { applyFolioAIEditOperations } from "../../__tests__/reference-editor/apply";
+import { rejectAIEditRevision } from "../../__tests__/reference-editor/comments";
 import { createFolioAIEditSnapshot } from "../../ai-edits/snapshot";
 import { schema } from "../schema";
-import { rejectAIEditRevision } from "./comments";
 import {
   createRestoredTableCell,
   tableCellContinuationFromNode,

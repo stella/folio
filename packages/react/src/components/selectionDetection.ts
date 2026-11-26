@@ -1,8 +1,8 @@
 import { NodeSelection } from "prosemirror-state";
 import type { EditorState } from "prosemirror-state";
 
+import type { ReviewRange } from "@stll/folio-core/controller/canonicalReview";
 import {
-  changeResolutionLockViolation,
   findChangeAtPosition,
   findParagraphBoundaryChangeAtPosition,
 } from "@stll/folio-core/prosemirror/commands/comments";
@@ -11,6 +11,15 @@ import type {
   ActiveTrackedChangeInfo,
   ImageContextInfo,
 } from "./DocxEditor.props";
+
+export type ReadReviewLocks = (
+  range: ReviewRange,
+) => ActiveTrackedChangeInfo["heldByLock"] | undefined;
+
+const REVIEW_UNLOCKED: ActiveTrackedChangeInfo["heldByLock"] = {
+  accept: false,
+  reject: false,
+};
 
 /**
  * If the editor's current selection is a `NodeSelection` of an `image`
@@ -64,8 +73,9 @@ export function detectImageContext(
  */
 export function detectActiveTrackedChange(
   state: EditorState,
+  readLocks?: ReadReviewLocks,
 ): ActiveTrackedChangeInfo | null {
-  return detectTrackedChangeAt(state, state.selection.from);
+  return detectTrackedChangeAt(state, state.selection.from, readLocks);
 }
 
 /**
@@ -75,6 +85,7 @@ export function detectActiveTrackedChange(
 export function detectTrackedChangeAt(
   state: EditorState,
   from: number,
+  readLocks?: ReadReviewLocks,
 ): ActiveTrackedChangeInfo | null {
   if (from < 0 || from > state.doc.content.size) return null;
   const $pos = state.doc.resolve(from);
@@ -93,7 +104,7 @@ export function detectTrackedChangeAt(
         date: (mark.attrs["date"] as string) || null,
         from: range.from,
         to: range.to,
-        heldByLock: heldByLock(state, range),
+        heldByLock: readLocks?.(range) ?? REVIEW_UNLOCKED,
       };
     }
   }
@@ -108,17 +119,8 @@ export function detectTrackedChangeAt(
     date: paragraphChange.date || null,
     from: paragraphChange.from,
     to: paragraphChange.to,
-    heldByLock: heldByLock(state, paragraphChange),
+    heldByLock:
+      readLocks?.({ from: paragraphChange.from, to: paragraphChange.to }) ??
+      REVIEW_UNLOCKED,
   };
 }
-
-/** What the content-control locks say about resolving the changes in `range`. */
-export const heldByLock = (
-  state: EditorState,
-  range: { from: number; to: number },
-): ActiveTrackedChangeInfo["heldByLock"] => ({
-  accept:
-    changeResolutionLockViolation(state, { ...range, mode: "accept" }) !== null,
-  reject:
-    changeResolutionLockViolation(state, { ...range, mode: "reject" }) !== null,
-});

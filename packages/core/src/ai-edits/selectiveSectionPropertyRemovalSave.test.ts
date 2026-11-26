@@ -1,13 +1,13 @@
 import { expect, test } from "bun:test";
 import { EditorState, type Transaction } from "prosemirror-state";
 
+import { rejectAIEditRevision } from "../__tests__/reference-editor/comments";
 import {
   ParagraphChangeTrackerExtension,
   repackWithEditorSectionRemovals,
 } from "../__tests__/reference-editor/ParagraphChangeTrackerExtension";
 import { parseDocx } from "../docx/parser";
 import { createDocx, repackDocx } from "../docx/rezip";
-import { rejectAIEditRevision } from "../prosemirror/commands/comments";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { schema } from "../prosemirror/schema";

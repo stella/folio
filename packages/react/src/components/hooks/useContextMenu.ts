@@ -11,7 +11,10 @@ import type {
 } from "@stll/folio-core/managers/types";
 
 import type { PagedEditorRef } from "../../paged-editor/PagedEditor";
-import { detectTrackedChangeAt } from "../selectionDetection";
+import {
+  detectTrackedChangeAt,
+  type ReadReviewLocks,
+} from "../selectionDetection";
 
 export type { ContextMenuAnchor } from "@stll/folio-core/managers/types";
 export type ContextMenuState = ContextMenuSnapshot;
@@ -21,7 +24,11 @@ export type UseContextMenuArgs = {
 };
 
 /** The story state and position under the pointer that opened the menu. */
-export type ContextMenuPointer = { state: EditorState; position: number };
+export type ContextMenuPointer = {
+  state: EditorState;
+  position: number;
+  readLocks?: ReadReviewLocks;
+};
 
 type OpenMenuOptions = {
   hasSelectionOverride?: boolean | undefined;
@@ -40,7 +47,11 @@ export const contextMenuTrackedChangeAt = (
   const change =
     pointer === null
       ? null
-      : detectTrackedChangeAt(pointer.state, pointer.position);
+      : detectTrackedChangeAt(
+          pointer.state,
+          pointer.position,
+          pointer.readLocks,
+        );
   return (
     change && {
       from: change.from,

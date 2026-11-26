@@ -12,17 +12,17 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../../test/property-testing";
-import { parseDocx } from "../../docx/parser";
-import { createDocx, repackDocx } from "../../docx/rezip";
-import type { Document, Paragraph, TableCell } from "../../types/document";
-import { fromProseDoc } from "../conversion/fromProseDoc";
-import { toProseDoc } from "../conversion/toProseDoc";
 import {
   acceptAIEditRevision,
   acceptAllChanges,
   rejectAIEditRevision,
   rejectAllChanges,
-} from "./comments";
+} from "../../__tests__/reference-editor/comments";
+import { parseDocx } from "../../docx/parser";
+import { createDocx, repackDocx } from "../../docx/rezip";
+import type { Document, Paragraph, TableCell } from "../../types/document";
+import { fromProseDoc } from "../conversion/fromProseDoc";
+import { toProseDoc } from "../conversion/toProseDoc";
 
 const INFO = { id: 91, author: "Reviewer", date: "2026-09-01T00:00:00Z" };
 type CellCase = { continuation: boolean; text: boolean };

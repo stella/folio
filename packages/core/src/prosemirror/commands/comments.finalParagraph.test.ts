@@ -3,8 +3,8 @@ import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 
+import { rejectChange } from "../../__tests__/reference-editor/comments";
 import { schema } from "../schema";
-import { rejectChange } from "./comments";
 
 const insertedParagraphMark = {
   kind: "ins",
@@ -55,4 +55,21 @@ test("rejecting an empty inserted final paragraph after a paragraph removes it",
 
   expect(resolved.childCount).toBe(1);
   expect(resolved.lastChild?.textContent).toBe("before");
+});
+
+test("rejecting an added mark keeps the sole paragraph in a block control", () => {
+  const original = schema.node("paragraph", { paraId: "ABCDEF01" });
+  const control = schema.node("blockSdt", null, [
+    schema.node("paragraph", {
+      ...original.attrs,
+      pPrMark: insertedParagraphMark,
+    }),
+  ]);
+  const doc = schema.node("doc", null, [paragraph("before"), control]);
+
+  const resolved = rejectFinalParagraph(doc);
+
+  expect(resolved.lastChild?.type.name).toBe("blockSdt");
+  expect(resolved.lastChild?.childCount).toBe(1);
+  expect(resolved.lastChild?.firstChild?.eq(original)).toBe(true);
 });

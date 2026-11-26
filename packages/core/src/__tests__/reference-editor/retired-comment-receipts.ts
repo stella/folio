@@ -4,15 +4,12 @@ import { EditorState } from "prosemirror-state";
 import { anchoredCommentIdsInProseDoc } from "../../ai-edits/comment-lifecycle";
 import { addRetiredCommentReceipts } from "../../ai-edits/retired-comment-receipts";
 import {
-  acceptAllChanges,
-  rejectEverySuggestion,
-} from "../../prosemirror/commands/comments";
-import {
   createDocumentNumberingPlugin,
   getStatedDocumentNumbering,
 } from "../../prosemirror/plugins/documentNumbering";
 import { createDocumentStyleContextPlugin } from "../../prosemirror/plugins/documentStyles";
 import { getDocumentStyleResolver } from "../../prosemirror/plugins/documentStyleState";
+import { acceptAllChanges, rejectEverySuggestion } from "./comments";
 
 const acceptedComments = (
   before: EditorState,

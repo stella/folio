@@ -10,16 +10,16 @@ import {
 import { ZipArchive } from "@stll/docx-core/zip";
 
 import { propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  acceptAllChanges,
+  rejectAIEditRevision,
+  rejectAllChanges,
+} from "../__tests__/reference-editor/comments";
 import { createCanonicalSession } from "../canonical/canonicalSession";
 import { serializeCanonicalSave } from "../docx/canonicalSave";
 import { parseDocx } from "../docx/parser";
 import { createDocx, repackDocx } from "../docx/rezip";
 import { createSimpleDocument } from "../docx/serializer/documentSerializer";
-import {
-  acceptAllChanges,
-  rejectAIEditRevision,
-  rejectAllChanges,
-} from "../prosemirror/commands/comments";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { schema } from "../prosemirror/schema";

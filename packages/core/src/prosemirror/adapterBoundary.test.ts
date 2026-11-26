@@ -24,6 +24,7 @@ const ADAPTER_BOUNDARY_FILES = [
 
 const PROPERTY_CHANGE_CONSUMER_FILES = [
   "src/prosemirror/commands/comments.ts",
+  "src/__tests__/reference-editor/comments.ts",
   "src/prosemirror/extensions/features/ListExtension.ts",
   "src/prosemirror/revisionCarriers.ts",
 ] as const;

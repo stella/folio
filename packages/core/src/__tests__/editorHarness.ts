@@ -35,10 +35,6 @@ import { parseDocx } from "../docx/parser";
 import { repackDocx } from "../docx/rezip";
 import { docxToMarkdown } from "../docx/server/docxToMarkdown";
 import { toMarkdown } from "../markdown";
-import {
-  acceptAllChanges,
-  rejectAllChanges,
-} from "../prosemirror/commands/comments";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { ExtensionManager } from "../prosemirror/extensions/ExtensionManager";
@@ -59,6 +55,10 @@ import {
   createReferenceEditorKit,
   createReferenceEditorRuntime,
 } from "./createReferenceEditorKit";
+import {
+  acceptAllChanges,
+  rejectAllChanges,
+} from "./reference-editor/comments";
 import { repackWithEditorSectionRemovals } from "./reference-editor/ParagraphChangeTrackerExtension";
 import { createSuggestionModePlugin } from "./reference-editor/suggestionMode";
 

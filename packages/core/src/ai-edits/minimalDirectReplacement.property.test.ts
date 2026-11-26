@@ -40,14 +40,14 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
-import { RELATIONSHIP_TYPES } from "../docx/relsParser";
-import { FOLIO_REVIEW_HISTORY_NAMESPACE } from "../docx/reviewHistoryNamespace";
-import { serializeParagraph } from "../docx/serializer/paragraphSerializer";
 import {
   acceptAllSuggestions,
   rejectAllSuggestions,
   resolveAllChangesInHeadlessState,
-} from "../prosemirror/commands/comments";
+} from "../__tests__/reference-editor/comments";
+import { RELATIONSHIP_TYPES } from "../docx/relsParser";
+import { FOLIO_REVIEW_HISTORY_NAMESPACE } from "../docx/reviewHistoryNamespace";
+import { serializeParagraph } from "../docx/serializer/paragraphSerializer";
 import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
 import { runFormattingInlineAtomCleanText } from "../prosemirror/runFormattingInlineCarriers";
 import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";

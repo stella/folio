@@ -11,11 +11,11 @@ import {
   HARNESS_AUTHOR,
   HeadlessEditorView,
 } from "../__tests__/editorHarness";
+import { resolveAllChangesInHeadlessState } from "../__tests__/reference-editor/comments";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import { createEmptyDocument } from "../utils/createDocument";
 import { expectTrackedChangeMarkAttrs } from "./attrs";
-import { resolveAllChangesInHeadlessState } from "./commands/comments";
 import { fromProseDoc } from "./conversion/fromProseDoc";
 import { toProseDoc } from "./conversion/toProseDoc";
 import { schema } from "./schema/index";

@@ -207,7 +207,7 @@ const CONFORMANCE_PRODUCTION_IMPORTS = new Map<string, readonly string[]>([
   ["packages/core/src/prosemirror/conversion/toProseDoc", ["toProseDoc"]],
   ["packages/core/src/docx/numberingParser", ["getCachedNumberingMap"]],
   [
-    "packages/core/src/prosemirror/commands/comments",
+    "packages/core/src/__tests__/reference-editor/comments",
     [
       "acceptAllChanges",
       "acceptChange",

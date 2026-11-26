@@ -47,13 +47,6 @@ import { listedChangeCoverageProblem } from "../../../../test/listedChangeCovera
 import { assertValidFolioDocumentModel } from "../docx/modelValidation";
 import { createNote } from "../docx/noteReferenceMark";
 import { getCachedNumberingMap } from "../docx/numberingParser";
-import {
-  acceptAllChanges,
-  acceptChange,
-  addCommentMark,
-  rejectAllChanges,
-  rejectChange,
-} from "../prosemirror/commands/comments";
 import { clearFormatting } from "../prosemirror/commands/formatting";
 import { insertPageBreak } from "../prosemirror/commands/pageBreak";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
@@ -82,6 +75,13 @@ import type {
   EditorMode,
   SelectionPlacement,
 } from "./editorHarness";
+import {
+  acceptAllChanges,
+  acceptChange,
+  addCommentMark,
+  rejectAllChanges,
+  rejectChange,
+} from "./reference-editor/comments";
 import { deleteSelectionAsSuggestion } from "./reference-editor/suggestionMode";
 
 // ============================================================================

@@ -7,7 +7,7 @@ import { Step, Transform } from "prosemirror-transform";
 import {
   acceptAIEditRevision,
   rejectAIEditRevision,
-} from "../prosemirror/commands/comments";
+} from "../__tests__/reference-editor/comments";
 import { readRangeAnchorAttrs } from "../prosemirror/rangeAnchorAttrs";
 import { schema } from "../prosemirror/schema";
 import { runParagraphIntoTable } from "../prosemirror/tableRunIn";

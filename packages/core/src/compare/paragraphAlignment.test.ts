@@ -7,6 +7,15 @@ import { ZipArchive } from "@stll/docx-core/zip";
 
 import { expectParagraphBlock } from "../../../../test/paragraphBlock";
 import { applyFolioAIEditOperations } from "../__tests__/reference-editor/apply";
+import {
+  acceptAllChanges,
+  acceptAllSuggestions,
+  acceptSuggestion,
+  getSuggestions,
+  rejectAllChanges,
+  rejectAllSuggestions,
+  rejectSuggestion,
+} from "../__tests__/reference-editor/comments";
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
 import {
@@ -16,15 +25,6 @@ import {
 import { serializeParagraphMarkResolutionJoin } from "../docx/reviewResolutionProvenance";
 import { createDocx } from "../docx/rezip";
 import { expectParagraphAttrs } from "../prosemirror/attrs";
-import {
-  acceptAllChanges,
-  acceptAllSuggestions,
-  acceptSuggestion,
-  getSuggestions,
-  rejectAllChanges,
-  rejectAllSuggestions,
-  rejectSuggestion,
-} from "../prosemirror/commands/comments";
 import { applyStyle, setAlignment } from "../prosemirror/commands/paragraph";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";

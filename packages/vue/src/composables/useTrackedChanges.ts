@@ -7,9 +7,11 @@ import type { EditorView } from "prosemirror-view";
 import { computed, type Ref } from "vue";
 
 import {
-  lockHeldRevisions,
-  trackedChangeEntryRevisionIds,
-} from "@stll/folio-core/prosemirror/commands/comments";
+  type CanonicalReviewEditor,
+  canonicalReviewHeldRevisionIds,
+} from "@stll/folio-core/controller/canonicalReview";
+import { OP_STORIES } from "@stll/folio-core/controller/folioEditor";
+import { trackedChangeEntryRevisionIds } from "@stll/folio-core/prosemirror/commands/comments";
 import {
   extractTrackedChanges,
   type TrackedChangesResult,
@@ -24,22 +26,30 @@ export type { TrackedChangeEntry } from "../utils/comments";
 /**
  * Pass the editor view ref + a stateTick that bumps on every PM
  * transaction (the same tick the Toolbar listens to). The computed
- * re-runs whenever the tick advances.
+ * re-runs whenever the tick advances. Lock verdicts require the canonical
+ * editor as the third argument. Two-argument calls return the change list
+ * without lock verdicts.
  */
 export function useTrackedChanges(
   view: Ref<EditorView | null>,
   stateTick: Ref<number>,
+  editor?: CanonicalReviewEditor,
 ) {
   return computed<TrackedChangesResult & { entries: TrackedChangeEntry[] }>(
     () => {
       void stateTick.value;
       const state = view.value?.state ?? null;
       const result = extractTrackedChanges(state);
-      if (state === null) return result;
-      const held = {
-        accept: lockHeldRevisions(state, "accept"),
-        reject: lockHeldRevisions(state, "reject"),
-      };
+      if (state === null || !editor) return result;
+      const held = canonicalReviewHeldRevisionIds({
+        editor,
+        state,
+        story: OP_STORIES.MAIN,
+        target: {
+          type: "revisions",
+          ids: result.entries.flatMap(trackedChangeEntryRevisionIds),
+        },
+      });
       if (held.accept.size === 0 && held.reject.size === 0) return result;
       // A card resolves every revision it stands for, so one held revision
       // holds the card. The entries are this reading's own.
@@ -51,7 +61,7 @@ export function useTrackedChanges(
           reject: ids.some((id) => held.reject.has(id)),
         };
       }
-      return { ...result, entries };
+      return result;
     },
   );
 }

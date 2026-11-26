@@ -10,14 +10,14 @@ import {
   applyFolioAIEditOperations,
   previewFolioAIEditOperationsWithResult,
 } from "../__tests__/reference-editor/apply";
-import { applyFolioDocumentOperations } from "../__tests__/reference-editor/document-operations-apply";
-import { NO_NUMBERING_IDS_IN_USE } from "../docx/numberingIds";
 import {
   acceptAIEditRevision,
   acceptAllChanges,
   rejectAIEditRevision,
   rejectAllChanges,
-} from "../prosemirror/commands/comments";
+} from "../__tests__/reference-editor/comments";
+import { applyFolioDocumentOperations } from "../__tests__/reference-editor/document-operations-apply";
+import { NO_NUMBERING_IDS_IN_USE } from "../docx/numberingIds";
 import { RUN_FORMATTING_MARK_NAMES } from "../prosemirror/runFormattingMarkNames";
 import { schema as editorSchema } from "../prosemirror/schema";
 import { createStyleResolver } from "../prosemirror/styles/styleResolver";

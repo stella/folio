@@ -5,15 +5,6 @@ import { EditorState, type Transaction } from "prosemirror-state";
 
 import { ZipArchive } from "@stll/docx-core/zip";
 
-import { FolioDocxReviewer } from "../../ai-edits/headless";
-import { getTrackedChangesFromDoc } from "../../ai-edits/read";
-import { revisedFinalParagraphMarks } from "../../compare/verification";
-import { createDocx } from "../../docx/rezip";
-import type { Document, StyleDefinitions } from "../../types/document";
-import { expectParagraphAttrs } from "../attrs";
-import { fromProseDoc } from "../conversion/fromProseDoc";
-import { toProseDoc } from "../conversion/toProseDoc";
-import { schema } from "../schema";
 import {
   acceptAIEditRevision,
   acceptAllChanges,
@@ -24,7 +15,16 @@ import {
   rejectAllChanges,
   rejectAllSuggestions,
   rejectSuggestion,
-} from "./comments";
+} from "../../__tests__/reference-editor/comments";
+import { FolioDocxReviewer } from "../../ai-edits/headless";
+import { getTrackedChangesFromDoc } from "../../ai-edits/read";
+import { revisedFinalParagraphMarks } from "../../compare/verification";
+import { createDocx } from "../../docx/rezip";
+import type { Document, StyleDefinitions } from "../../types/document";
+import { expectParagraphAttrs } from "../attrs";
+import { fromProseDoc } from "../conversion/fromProseDoc";
+import { toProseDoc } from "../conversion/toProseDoc";
+import { schema } from "../schema";
 
 const DATE = "2026-09-08T00:00:00.000Z";
 const TAIL_REVISION_ID = 701;

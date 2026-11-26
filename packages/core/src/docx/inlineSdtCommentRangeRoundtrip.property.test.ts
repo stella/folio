@@ -11,7 +11,7 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
-import { resolveAllChangesInHeadlessState } from "../prosemirror/commands/comments";
+import { resolveAllChangesInHeadlessState } from "../__tests__/reference-editor/comments";
 import { expectCommentRangeBoundaryAttrs } from "../prosemirror/commentRangeBoundaryAttrs";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";

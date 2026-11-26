@@ -146,25 +146,14 @@ export type { GenerateTableOfContentsOptions } from "./paragraph";
 export {
   addCommentMark,
   removeCommentMark,
-  acceptChange,
-  rejectChange,
-  acceptAllChanges,
-  rejectAllChanges,
-  acceptAIEditRevision,
-  rejectAIEditRevision,
   findAIEditRevisionRange,
   findNextChange,
   findPreviousChange,
   getSuggestions,
   findSuggestionRange,
-  acceptSuggestion,
-  acceptAllSuggestions,
-  rejectSuggestion,
-  rejectAllSuggestions,
 } from "./comments";
 export type {
   FolioSuggestion,
   SuggestionKind,
   SuggestionAppliedAs,
-  AcceptSuggestionOptions,
 } from "./comments";

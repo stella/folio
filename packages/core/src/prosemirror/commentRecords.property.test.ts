@@ -8,10 +8,13 @@ import {
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 import { createHarnessState } from "../__tests__/editorHarness";
+import {
+  acceptAllChanges,
+  rejectAllChanges,
+} from "../__tests__/reference-editor/comments";
 import { withHostCommentThreads } from "../docx/hostCommentThreads";
 import type { Comment, Paragraph, ParagraphContent } from "../types/content";
 import type { Document } from "../types/document";
-import { acceptAllChanges, rejectAllChanges } from "./commands/comments";
 import {
   addCommentThread,
   appendCommentRecords,

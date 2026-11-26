@@ -2,8 +2,8 @@ import { expect, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
 
 import { applyFolioAIEditOperations } from "../__tests__/reference-editor/apply";
+import { acceptAllChanges } from "../__tests__/reference-editor/comments";
 import { FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE } from "../document-operations";
-import { acceptAllChanges } from "../prosemirror/commands/comments";
 import { schema } from "../prosemirror/schema";
 import { createFolioAIEditSnapshot } from "./snapshot";
 

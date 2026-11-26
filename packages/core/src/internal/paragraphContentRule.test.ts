@@ -8,7 +8,7 @@ import {
 } from "@stll/docx-core/ops";
 
 import { createHarnessState } from "../__tests__/editorHarness";
-import { acceptAllChanges } from "../prosemirror/commands/comments";
+import { acceptAllChanges } from "../__tests__/reference-editor/comments";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import type { BlockContent, Document, Paragraph } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
