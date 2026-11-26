@@ -101,6 +101,29 @@ describe("authored positions of resolved markup views", () => {
     expect(map.invert().map(left.length + 1, 1)).toBe(left.length + 3);
   });
 
+  test("preserves long standing text when a join retires an exhausted comment", () => {
+    const standing = "standing text ".repeat(32);
+    const keptReference = schema.node("commentReference", { commentId: 0 });
+    const before = doc([
+      paragraph([schema.text(standing), keptReference], "00000001"),
+      paragraph(
+        [
+          schema.text("removed text ".repeat(32), [revision("insertion", 1)]),
+          schema.node("commentReference", { commentId: 1 }),
+        ],
+        "00000002",
+      ),
+    ]);
+    const after = doc([
+      paragraph([schema.text(standing), keptReference], "00000002"),
+    ]);
+    const map = markupViewPositionMap({ before, after, decision: "reject" });
+    const afterText = standing.length + 1;
+    expect(map.invert().map(1, 1)).toBe(1);
+    expect(map.invert().map(afterText, -1)).toBe(afterText);
+    expect(map.invert().map(afterText + 1, -1)).toBe(afterText + 1);
+  });
+
   test("maps each invisible gap in a long paragraph", () => {
     const standing = "x".repeat(40_000);
     const before = doc([

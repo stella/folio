@@ -1189,9 +1189,11 @@ export function toProseDoc(
   markupViewSources.set(pmDoc, {
     document,
     options: {
-      styles: packageInputs.styles,
+      ...(packageInputs.styles === undefined
+        ? {}
+        : { styles: packageInputs.styles }),
       theme: packageInputs.theme,
-      blockCache: cache,
+      ...(cache === undefined ? {} : { blockCache: cache }),
       textBoxGroupSalt: salt,
     },
   });

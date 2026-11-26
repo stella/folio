@@ -236,20 +236,35 @@ const runParagraphIntoTable = (
   return replacement;
 };
 
-/** Whether the authored receiver path passes through a pending row or cell. */
-const authoredTableReceiverIsPending = (table: Table): boolean => {
+/** A rejected deletion keeps its receiver. Other pending structures block it. */
+const authoredTableReceiverIsPending = ({
+  table,
+  decision,
+  selected,
+}: {
+  table: Table;
+  decision: RevisionDecision;
+  selected: ReadonlySet<number>;
+}): boolean => {
+  const deletionStays = (id: number) =>
+    decision === REVISION_DECISIONS.REJECT && selected.has(id);
   let current = table;
   for (;;) {
     const row = current.rows.at(0);
-    const rowKind = row?.structuralChange?.type;
-    if (rowKind === "tableRowInsertion" || rowKind === "tableRowDeletion")
+    const rowChange = row?.structuralChange;
+    if (
+      rowChange?.type === "tableRowInsertion" ||
+      (rowChange?.type === "tableRowDeletion" &&
+        !deletionStays(rowChange.info.id))
+    )
       return true;
     const cell = row?.cells.at(0);
-    const cellKind = cell?.structuralChange?.type;
+    const cellChange = cell?.structuralChange;
     if (
-      cellKind === "tableCellInsertion" ||
-      cellKind === "tableCellDeletion" ||
-      cellKind === "tableCellMerge"
+      cellChange?.type === "tableCellInsertion" ||
+      cellChange?.type === "tableCellMerge" ||
+      (cellChange?.type === "tableCellDeletion" &&
+        !deletionStays(cellChange.info.id))
     )
       return true;
     const first = cell?.content.at(0);
@@ -9164,7 +9179,12 @@ const planSingleRecordResolution = (
       const blocks = blockListAt(body.content, location.list);
       const following = blockFollower(blocks, location.index).block;
       const pendingReceiverTableIds =
-        following?.type === "table" && authoredTableReceiverIsPending(following)
+        following?.type === "table" &&
+        authoredTableReceiverIsPending({
+          table: following,
+          decision: op.decision,
+          selected: ids,
+        })
           ? new Set(
               storyParagraphs({ content: [following] }).flatMap(
                 ({ paragraph: { paraId: receiverId } }) =>

@@ -3,6 +3,7 @@ import { StepMap } from "prosemirror-transform";
 
 import type { RevisionDecision } from "@stll/docx-core/ops";
 
+import { COMMENT_REFERENCE_NODE_NAME } from "./commentReferenceIntegrity";
 import { BLOCK_MOVE_RANGE_BOUNDARY_NODE_NAME } from "./extensions/nodes/BlockMoveRangeBoundaryExtension";
 import { MOVE_RANGE_BOUNDARY_NODE_NAME } from "./extensions/nodes/MoveRangeBoundaryExtension";
 import { RANGE_ANCHOR_NODE_NAME } from "./extensions/nodes/RangeAnchorExtension";
@@ -291,6 +292,7 @@ const matchStandingEdges = ({ before, after }: Region, match: Match): void => {
 const isAddressEdge = (span: Span): boolean =>
   span.key.startsWith("open:") ||
   span.key.startsWith("close:") ||
+  span.key.startsWith(`leaf:${COMMENT_REFERENCE_NODE_NAME}:`) ||
   span.key.startsWith(`leaf:${MOVE_RANGE_BOUNDARY_NODE_NAME}`) ||
   span.key.startsWith(`leaf:${BLOCK_MOVE_RANGE_BOUNDARY_NODE_NAME}`) ||
   span.key.startsWith(`leaf:${RANGE_ANCHOR_NODE_NAME}`);
@@ -309,7 +311,7 @@ const addressGap = (spans: readonly Span[]) => {
   };
 };
 
-/** A structural change can join long runs without changing their contents. */
+/** Resolution can join long runs while retiring orphaned comment references. */
 const matchContent = ({ before, after }: Region, match: Match): boolean => {
   const content = {
     before: before.filter((span) => !isAddressEdge(span)),

@@ -42,6 +42,14 @@ const addedRow = {
   ...row(pending),
   structuralChange: { type: "tableRowInsertion", info: receiverInfo },
 } as const satisfies TableRow;
+const deletedRow = {
+  ...row(pending),
+  structuralChange: { type: "tableRowDeletion", info: receiverInfo },
+} as const satisfies TableRow;
+const deletedCell = {
+  ...pending,
+  structuralChange: { type: "tableCellDeletion", info: receiverInfo },
+} as const satisfies TableCell;
 
 test.each([
   {
@@ -66,14 +74,14 @@ test.each([
   {
     description: "accepts a deleted receiver row",
     decision: "accept",
-    rows: [
-      {
-        ...row(pending),
-        structuralChange: { type: "tableRowDeletion", info: receiverInfo },
-      },
-      row(standing),
-    ],
+    rows: [deletedRow, row(standing)],
     body: ["paragraph:Outside. ", "table:Standing."],
+  },
+  {
+    description: "rejects a deleted receiver row",
+    decision: "reject",
+    rows: [deletedRow],
+    body: ["table:Outside. Pending. "],
   },
   {
     description: "rejects an inserted receiver cell",
@@ -92,16 +100,14 @@ test.each([
   {
     description: "accepts a deleted receiver cell",
     decision: "accept",
-    rows: [
-      row(
-        {
-          ...pending,
-          structuralChange: { type: "tableCellDeletion", info: receiverInfo },
-        },
-        standing,
-      ),
-    ],
+    rows: [row(deletedCell, standing)],
     body: ["paragraph:Outside. ", "table:Standing."],
+  },
+  {
+    description: "rejects a deleted receiver cell",
+    decision: "reject",
+    rows: [row(deletedCell, standing)],
+    body: ["table:Outside. Pending. Standing."],
   },
 ] satisfies {
   description: string;
