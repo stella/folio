@@ -349,13 +349,11 @@ export function advanceListMarker(
       : state.abstractCounters.get(abstractNumId)) ??
     state.counters.get(numId) ??
     Array.from({ length: 9 }, () => Number.NaN);
-  // A level used before any paragraph of the levels above counts those
-  // levels at their start.
-  if (
-    level > 0 &&
-    counters.slice(0, level).every((counter) => !Number.isFinite(counter))
-  ) {
-    for (let index = 0; index < level; index += 1) {
+  // A level used before a paragraph of a level above it counts that level
+  // at its start: every level above that no paragraph has counted yet, also
+  // one skipped between two that have.
+  for (let index = 0; index < level; index += 1) {
+    if (!Number.isFinite(counters[index])) {
       counters[index] = attrs.listLevelStarts?.[index] ?? 1;
     }
   }

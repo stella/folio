@@ -259,15 +259,14 @@ export const computeListMarker = (
   if (startsLevel && listRendering.startOverride !== undefined) {
     counters[level] = listRendering.startOverride - 1;
   }
-  // A level used before any paragraph of the levels above counts those
-  // levels at their start.
-  if (
-    abstractNumId !== null &&
-    level > 0 &&
-    counters.slice(0, level).every(Number.isNaN)
-  ) {
+  // A level used before a paragraph of a level above it counts that level
+  // at its start: every level above that no paragraph has counted yet, also
+  // one skipped between two that have.
+  if (abstractNumId !== null) {
     for (let i = 0; i < level; i += 1) {
-      counters[i] = numbering.getLevel(numId, i)?.start ?? 1;
+      if (Number.isNaN(counters[i])) {
+        counters[i] = numbering.getLevel(numId, i)?.start ?? 1;
+      }
     }
   }
 

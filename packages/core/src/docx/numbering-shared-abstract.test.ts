@@ -113,6 +113,38 @@ test("nested numbering starts from authored levels when no parent paragraph exis
   ).toBe("3.4.");
 });
 
+test("a level skipped on the way down shows its start", () => {
+  const numbering =
+    parseNumbering(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:abstractNum w:abstractNumId="8">
+    <w:lvl w:ilvl="0"><w:start w:val="3"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/></w:lvl>
+    <w:lvl w:ilvl="1"><w:start w:val="5"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1.%2."/></w:lvl>
+    <w:lvl w:ilvl="2"><w:start w:val="7"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1.%2.%3."/></w:lvl>
+  </w:abstractNum>
+  <w:num w:numId="3"><w:abstractNumId w:val="8"/></w:num>
+</w:numbering>`);
+  const item = (ilvl: number): string =>
+    `<w:p><w:pPr><w:numPr><w:ilvl w:val="${ilvl}"/><w:numId w:val="3"/></w:numPr></w:pPr><w:r><w:t>Item</w:t></w:r></w:p>`;
+  const root = parseXmlDocument(
+    `<w:body xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">${item(0)}${item(2)}${item(2)}</w:body>`,
+  ) as XmlElement | null;
+  if (!root) {
+    throw new Error("Failed to parse body XML");
+  }
+
+  const paragraphs = parseBlockContent(root, null, null, numbering, null, null);
+
+  // The level between the two is counted at its start, not left empty.
+  expect(
+    paragraphs.map((paragraph) =>
+      paragraph.type === "paragraph"
+        ? paragraph.listRendering?.marker
+        : undefined,
+    ),
+  ).toEqual(["3.", "3.5.7.", "3.5.8."]);
+});
+
 test("zero-based numbering advances instead of repeatedly reinitializing", () => {
   const numbering =
     parseNumbering(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
