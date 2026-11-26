@@ -65,7 +65,7 @@ describe("a session opening a story", () => {
     const document = story(40);
     const session = createCanonicalSession(document).unwrap();
     const eager = projectCanonicalStory({
-      document: session.document,
+      document,
       styles: undefined,
     }).unwrap();
     for (let index = 0; index < 40; index += 1) {
