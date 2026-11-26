@@ -34,10 +34,6 @@ import { preservedCommentRangeMarker } from "../xml/preservedCommentRangeMarkers
 import { readXml, type XmlElement } from "../xml/streamingXmlParser";
 import { ZipArchive, type ZipEntry, ZipError } from "../zip/archive";
 import { packageGraphIssues, validatePackageGraph } from "./packageGraph";
-import {
-  schemaAttributeIssues,
-  validateSchemaAttributes,
-} from "./schemaAttributes";
 
 export const DOCX_PACKAGE_ISSUE_CODES = {
   ArchiveBoundsExceeded: "archive_bounds_exceeded",
@@ -358,6 +354,7 @@ export const validateDocxPackage = async (
       };
     }
 
+    const { validateSchemaAttributes } = await import("./schemaAttributes");
     const parts = new Map<string, string>();
     if (documentXml) parts.set("word/document.xml", documentXml);
     if (documentRelsXml)
@@ -428,6 +425,7 @@ export const listDocxPackageIssues = async (
     buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
   const opened = await openArchive(archiveBytes);
   if (!opened.ok) return [first.error];
+  const { schemaAttributeIssues } = await import("./schemaAttributes");
   const issues: string[] = [];
   const parts = new Map<string, string>();
   const paths = new Set<string>();

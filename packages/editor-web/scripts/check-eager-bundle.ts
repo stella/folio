@@ -16,8 +16,8 @@ type Adapter = (typeof ADAPTERS)[number];
 type Metrics = { minified: number; gzip: number; docxOps: number };
 
 const BUDGETS = {
-  react: { minified: 4_158_000, gzip: 1_296_500, docxOps: 663_000 },
-  vue: { minified: 3_820_000, gzip: 1_168_500, docxOps: 664_000 },
+  react: { minified: 4_062_000, gzip: 1_282_500, docxOps: 663_000 },
+  vue: { minified: 3_724_000, gzip: 1_155_000, docxOps: 664_000 },
 } as const satisfies Record<Adapter, Metrics>;
 
 const HOST_PEERS = [
@@ -122,6 +122,14 @@ const measure = async (adapter: Adapter): Promise<Metrics> => {
     metrics.minified += contents.byteLength;
     metrics.gzip += gzipSync(contents, { level: 9 }).byteLength;
     for (const [source, input] of Object.entries(output.inputs)) {
+      if (
+        source === "packages/docx-core/src/validate/schemaAttributes.gen.ts" &&
+        input.bytesInOutput > 0
+      ) {
+        throw new Error(
+          `${packageName} loaded the package attribute schema eagerly`,
+        );
+      }
       if (source.startsWith("packages/docx-core/src/ops/"))
         metrics.docxOps += input.bytesInOutput;
     }
