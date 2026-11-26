@@ -87,12 +87,6 @@ export type DocxTableCell = {
 };
 
 /**
- * One block of the main story. `text` is the visible text: `\t` for a tab,
- * `\n` for a line break, U+FFFC for a footnote or endnote reference mark;
- * field results are included and field instructions are not. Offsets into
- * `text` are UTF-16 code units.
- */
-/**
  * A tracked change inside a paragraph, by where it sits in the paragraph's
  * `text`. An insertion spans the text it added. A deletion takes no place
  * in a text read with the changes accepted: its `start` and `end` are the
@@ -109,6 +103,12 @@ export type DocxBlockRevision = {
   paragraphMark?: true;
 };
 
+/**
+ * One block of the main story. `text` is the visible text: `\t` for a tab,
+ * `\n` for a line break, U+FFFC for a footnote or endnote reference mark;
+ * field results are included and field instructions are not. Offsets into
+ * `text` are UTF-16 code units.
+ */
 export type DocxBlock = {
   /** `p<index>` for a paragraph, `t<index>` for a table. */
   id: string;
