@@ -14,6 +14,7 @@ import {
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import type { BlockContent, Document, Paragraph } from "../types/document";
+import { type DeepReadonly, readModel } from "../types/documentModel";
 import { prepareCanonicalPaste } from "./canonicalClipboard";
 
 const paragraph = (text: string, paraId: string): Paragraph => ({
@@ -44,8 +45,8 @@ const preserved = (): BlockContent => ({
 });
 
 /** The text of each block, a container's paragraphs as one entry. */
-const shapeOf = (blocks: readonly BlockContent[]): unknown[] =>
-  blocks.flatMap((block) => {
+const shapeOf = (blocks: readonly DeepReadonly<BlockContent>[]): unknown[] =>
+  blocks.flatMap((block): unknown[] => {
     switch (block.type) {
       case "paragraph":
         return [
@@ -122,9 +123,12 @@ describe.each([
     expect(pasted).toContainEqual(shapeOf([block()])[0]);
     expect(pasted.at(0)).toBe("Target");
     expect(pasted.at(-1)).toBe("Tail");
-    const reopened = await parseDocx(await createDocx(session.document), {
-      preloadFonts: false,
-    });
+    const reopened = await parseDocx(
+      await createDocx(readModel(session.document)),
+      {
+        preloadFonts: false,
+      },
+    );
     expect(shapeOf(reopened.package.document.content)).toEqual(pasted);
     next = publishCanonicalProjection({
       session,
