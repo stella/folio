@@ -46,6 +46,7 @@ import { styleNumbering } from "./labels";
 import { guarded, readPartText, relationshipsPathFor } from "./package";
 import {
   type ExpectedSegment,
+  fieldSeparatorRun,
   type PieceOrigin,
   type ResolvedParagraph,
   type ResolvedPlan,
@@ -882,6 +883,21 @@ const writeOutput = async ({
       (properties === null ? null : rangeOf(properties)?.end) ?? inner.start;
     templateSplices.push({ start, end: inner.end, newXml: content.value });
     replaced.push({ start, end: inner.end });
+  }
+  // A kept table of contents is closed right behind its separator: the
+  // first update fills it from the document it is in.
+  for (const { element } of resolved.emptiedContents) {
+    const start = rangeOf(fieldSeparatorRun(element) ?? element)?.end;
+    const inner = innerRangeOf(template.document.xml, element);
+    if (start === undefined || inner === null) {
+      continue;
+    }
+    const { w } = documentContext.prefixes;
+    templateSplices.push({
+      start,
+      end: inner.end,
+      newXml: `<${w}:r><${w}:fldChar ${w}:fldCharType="end"/></${w}:r>`,
+    });
   }
   const keptElements = [
     ...resolved.keptTemplateBlocks.map(({ element }) => element),

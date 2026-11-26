@@ -49,7 +49,16 @@ import {
   type TemplatePlanSection,
   type TemplatePlanSourceItem,
 } from "./types";
-import { isW, maxOf, walkElements, wAttr, wChild, wChildVal } from "./xml";
+import {
+  elementChildren,
+  isW,
+  maxOf,
+  walkElements,
+  wAttr,
+  wChild,
+  wChildVal,
+  wName,
+} from "./xml";
 
 export type ExpectedPiece = {
   kind: AtomKind;
@@ -148,6 +157,86 @@ export type ResolvedSlot = {
   paragraph: ResolvedParagraph;
 };
 
+const fieldCharOf = (run: XmlElement): string | null =>
+  wName(run) === "r" ? wAttr(wChild(run, "fldChar"), "fldCharType") : null;
+
+/**
+ * The run of a paragraph that holds the separator of the first field the
+ * paragraph begins: what follows it is the field's result. Null when the
+ * field does not begin and reach its result in runs of the paragraph itself.
+ */
+export const fieldSeparatorRun = (paragraph: XmlElement): XmlElement | null => {
+  let depth = 0;
+  for (const child of elementChildren(paragraph)) {
+    const mark = fieldCharOf(child);
+    if (mark === "begin") {
+      depth += 1;
+    } else if (mark === "end") {
+      depth -= 1;
+    } else if (mark === "separate" && depth === 1) {
+      return child;
+    }
+  }
+  return null;
+};
+
+/** Whether nothing with text follows the last field end among the runs of
+ *  a paragraph: it holds the end of a field's result and no more. */
+const holdsText = (element: XmlElement): boolean => {
+  let text = false;
+  walkElements(element, (inner) => {
+    text ||= wName(inner) === "t";
+  });
+  return text;
+};
+
+const endsWithFieldEnd = (paragraph: XmlElement): boolean => {
+  const children = elementChildren(paragraph);
+  const last = children.findLastIndex((child) => fieldCharOf(child) === "end");
+  return last !== -1 && !children.slice(last + 1).some(holdsText);
+};
+
+/**
+ * The kept tables of contents that show entries over several paragraphs:
+ * the paragraph each begins in and the further paragraphs of its entries.
+ * A field that does not begin in runs of its own paragraph, that ends in a
+ * paragraph with text behind it, or whose paragraphs are not all kept
+ * top-level blocks, is not among them and stays as the template has it.
+ */
+const contentsWithEntries = (
+  template: AnalyzedDocument,
+  keptIds: ReadonlySet<string>,
+): { first: AnalyzedBlock; rest: AnalyzedBlock[] }[] => {
+  const found: { first: AnalyzedBlock; rest: AnalyzedBlock[] }[] = [];
+  for (const field of template.story.state.fields) {
+    if (
+      field.kind !== "TOC" ||
+      !field.closed ||
+      field.nestedInCode ||
+      field.endParagraphOrdinal <= field.paragraphOrdinal
+    ) {
+      continue;
+    }
+    const [first, ...rest] = template.story.paragraphs.slice(
+      field.paragraphOrdinal,
+      field.endParagraphOrdinal + 1,
+    );
+    const last = rest.at(-1);
+    if (
+      first !== undefined &&
+      last !== undefined &&
+      [first, ...rest].every(
+        ({ block, parentId }) => parentId === null && keptIds.has(block.id),
+      ) &&
+      fieldSeparatorRun(first.element) !== null &&
+      endsWithFieldEnd(last.element)
+    ) {
+      found.push({ first, rest });
+    }
+  }
+  return found;
+};
+
 export type ResolvedPlan = {
   items: ResolvedItem[];
   /** Slots that sit inside a kept template table. */
@@ -167,6 +256,9 @@ export type ResolvedPlan = {
   }[];
   freezeKinds: ReadonlySet<string>;
   keptTemplateBlocks: AnalyzedBlock[];
+  /** The paragraphs kept tables of contents begin in, written without the
+   *  entries they cache. */
+  emptiedContents: AnalyzedBlock[];
 };
 
 type Refusal = {
@@ -1590,6 +1682,35 @@ export const resolvePlan = (
     }
   }
 
+  // A kept table of contents keeps no entries: they are a cached result
+  // that names the headings and pages of the template's sample text. The
+  // field stays in the paragraph it begins in; the further paragraphs of
+  // its entries are not placed.
+  const emptiedContents: AnalyzedBlock[] = [];
+  for (const { first, rest } of contentsWithEntries(
+    template,
+    keptTemplateIds,
+  )) {
+    emptiedContents.push(first);
+    const gone = new Set(rest);
+    for (let position = items.length - 1; position >= 0; position -= 1) {
+      const item = items[position];
+      if (item?.kind === "template" && gone.has(item.block)) {
+        items.splice(position, 1);
+      }
+    }
+    for (
+      let position = keptTemplateBlocks.length - 1;
+      position >= 0;
+      position -= 1
+    ) {
+      const block = keptTemplateBlocks[position];
+      if (block !== undefined && gone.has(block)) {
+        keptTemplateBlocks.splice(position, 1);
+      }
+    }
+  }
+
   const omitted = new Map<string, TemplatePlanOmitReason>();
   for (const entry of plan.omit) {
     const block = sourceTopLevel(entry.blockId);
@@ -1737,5 +1858,6 @@ export const resolvePlan = (
     references: resolvedReferences,
     freezeKinds: new Set(freezeKinds),
     keptTemplateBlocks,
+    emptiedContents,
   });
 };

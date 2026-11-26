@@ -616,6 +616,7 @@ export const reportTemplatePlanOutput = async ({
     slotBlocks.set(slot.paragraph, slot.templateBlock);
   }
   const slottedTemplateBlocks = new Set(slotBlocks.values());
+  const emptiedContents = new Set(resolved.emptiedContents);
   const plannedProperties = (
     paragraph: ResolvedParagraph,
   ): StatedProperties => {
@@ -835,6 +836,10 @@ export const reportTemplatePlanOutput = async ({
             }
             if (slottedTemplateBlocks.has(templateParagraph)) {
               return true;
+            }
+            // A table of contents is kept without its cached entries.
+            if (emptiedContents.has(templateParagraph)) {
+              return outputParagraph.read.text === "";
             }
             const before = statedProperties(templateParagraph.element);
             const after = statedProperties(outputParagraph.element);
@@ -1623,9 +1628,15 @@ export const reportTemplatePlanOutput = async ({
     }
   }
   const keptToc = templateFields.filter(({ kind }) => kind === "TOC").length;
-  if (keptToc > 0) {
+  const emptiedToc = Math.min(keptToc, resolved.emptiedContents.length);
+  if (emptiedToc > 0) {
     warnings.push(
-      `${keptToc} table of contents field(s) keep the template's cached entries until fields update.`,
+      `${emptiedToc} table of contents field(s) show no entries until fields update: the template's cached entries were taken out.`,
+    );
+  }
+  if (keptToc > emptiedToc) {
+    warnings.push(
+      `${keptToc - emptiedToc} table of contents field(s) keep the template's cached entries until fields update.`,
     );
   }
 
