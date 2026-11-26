@@ -1,5 +1,23 @@
 # @stll/docx-core
 
+## 0.45.1
+
+### Patch Changes
+
+- [#3574](https://github.com/stella/folio/pull/3574) [`a11bbed`](https://github.com/stella/folio/commit/a11bbedd6d70af0ec46cc37d40fd2d1ef908fe72) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Use the preceding paragraph's properties when tracking a closing paragraph deletion after a table already pending deletion.
+
+- [#3596](https://github.com/stella/folio/pull/3596) [`e06f4b2`](https://github.com/stella/folio/commit/e06f4b29fbffa293c60fa9b8773400dc7d78df13) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Load the Open XML attribute schema when a caller validates DOCX package attributes.
+
+- [#3553](https://github.com/stella/folio/pull/3553) [`d08e611`](https://github.com/stella/folio/commit/d08e61194574eacbf9a0c5a785b24d7d738eda34) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A tracked deletion before an already deleted last paragraph takes back the property change linked to the earlier deletion, preserves independent property revisions, and reads alike in either order.
+
+- [#3580](https://github.com/stella/folio/pull/3580) [`6d7ff5b`](https://github.com/stella/folio/commit/6d7ff5b265637f5db205a8cb746a9b7f32872915) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Carry nested review joins across enclosing cuts so batch resolution preserves bookmark placement.
+
+- [#3577](https://github.com/stella/folio/pull/3577) [`f65c761`](https://github.com/stella/folio/commit/f65c761d13cf473d1655296d91c3d0efe0467ebc) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve trailing range boundaries when rejecting an inserted paragraph after a section break.
+
+- [#3581](https://github.com/stella/folio/pull/3581) [`c3db4cc`](https://github.com/stella/folio/commit/c3db4cc4249e266e353081f6ce2b84c04f5d43a6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Retire comments whose full range is consumed when a tracked replacement retracts the author's own inserted text.
+
+- [#3592](https://github.com/stella/folio/pull/3592) [`2ba27d8`](https://github.com/stella/folio/commit/2ba27d87d8e30f26967a77cd067d8c57eb59503e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Opening a document in a browser checks each zip entry's CRC-32 eight bytes at a time, so the check no longer costs tens of milliseconds per open.
+
 ## 0.45.0
 
 ### Minor Changes

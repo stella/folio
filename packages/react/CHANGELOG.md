@@ -1,5 +1,19 @@
 # @stll/folio-react
 
+## 0.38.1
+
+### Patch Changes
+
+- [#3599](https://github.com/stella/folio/pull/3599) [`00d22c2`](https://github.com/stella/folio/commit/00d22c24e1e2bca5043e5c55a952f791b4129d87) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Load DOCX writing and save serialization on first use in the editor adapters.
+
+- [#3588](https://github.com/stella/folio/pull/3588) [`a0204f8`](https://github.com/stella/folio/commit/a0204f8b6d749b1d7ec5471e59e930bab9b36e31) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Check the eager JavaScript bundle size of the React and Vue editors in CI, including a separate budget for docx-core operations.
+
+- [#3589](https://github.com/stella/folio/pull/3589) [`bb4cc8e`](https://github.com/stella/folio/commit/bb4cc8e5e7628826508d1633bffd5a0cd31a9c5b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep English in the editor startup bundle and load other locales on demand.
+
+- [#3585](https://github.com/stella/folio/pull/3585) [`5cc7d72`](https://github.com/stella/folio/commit/5cc7d72876fbbead484175ee0f4789667c32355d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Move the ProseMirror reference appliers into test support. Deep `./*` imports of the former applier, revision-stretch, and note-inventory modules break, and `restoreNotes` and `updateDocumentContent` are no longer exported. Use canonical document operations for editing. Canonical save diagnostics now use the `save-serialization` gap.
+- Updated dependencies [[`8022cdb`](https://github.com/stella/folio/commit/8022cdb6d53f97dafcbe01821cb1575798883957), [`00d22c2`](https://github.com/stella/folio/commit/00d22c24e1e2bca5043e5c55a952f791b4129d87), [`d08e611`](https://github.com/stella/folio/commit/d08e61194574eacbf9a0c5a785b24d7d738eda34), [`92c0299`](https://github.com/stella/folio/commit/92c0299b38fa203afb3f289d2c656e7965c4be90), [`206e967`](https://github.com/stella/folio/commit/206e967395b085bbf1aae81e147300e7d086d20a), [`bb4cc8e`](https://github.com/stella/folio/commit/bb4cc8e5e7628826508d1633bffd5a0cd31a9c5b), [`5cc7d72`](https://github.com/stella/folio/commit/5cc7d72876fbbead484175ee0f4789667c32355d), [`d08e4cb`](https://github.com/stella/folio/commit/d08e4cbfbf44565d96510f3834865f5e8b3e1b29), [`b4aed16`](https://github.com/stella/folio/commit/b4aed16128c2e1a2ad96579ece3fd5a76f158213), [`1b5a20f`](https://github.com/stella/folio/commit/1b5a20f688b47d28eda7d5688a9f4929bcb63b3a), [`c725d12`](https://github.com/stella/folio/commit/c725d1221f14f9bfa95fcea25a8596d44f1f8cd5), [`105d7d3`](https://github.com/stella/folio/commit/105d7d3e40de4cd85facf9281f113dcac6c173b7)]:
+  - @stll/folio-core@0.74.0
+
 ## 0.38.0
 
 ### Minor Changes
