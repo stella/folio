@@ -8,12 +8,15 @@ import { parseSourceModule, walkAst } from "./lib/oxc-ast";
 setDefaultTimeout(scanTestTimeout(10_000));
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
+const reader = "packages/core/src/prosemirror/commands/comments.ts";
+const reference = "packages/core/src/__tests__/reference-editor/comments.ts";
 const EXPECTED_CALLS = new Map([
   ["packages/docx-core/src/ops/resolve.ts", 2],
   ["packages/docx-core/src/ops/blockDeletion.ts", 1],
   ["packages/core/src/internal/wholeStoryRevisionResolution.ts", 1],
   ["packages/core/src/prosemirror/tableRunIn.ts", 1],
-  ["packages/core/src/__tests__/reference-editor/comments.ts", 1],
+  [reader, 0],
+  [reference, 1],
 ]);
 
 const readSource = (file: string): string =>
@@ -52,8 +55,8 @@ test("every paragraph-mark resolver delegates its structural decision to the own
   expect(violations(sources)).toEqual([]);
 });
 
-test("a caller that replaces the shared decision is rejected", () => {
-  const sources = new Map(
+const syntheticSources = () =>
+  new Map(
     [...EXPECTED_CALLS].map(([file, count]) => [
       file,
       Array.from({ length: count }, () => "paragraphMarkOutcome({});").join(
@@ -61,11 +64,15 @@ test("a caller that replaces the shared decision is rejected", () => {
       ),
     ]),
   );
-  sources.set(
-    "packages/core/src/__tests__/reference-editor/comments.ts",
-    "const remove = true;",
-  );
-  expect(violations(sources)).toEqual([
-    "packages/core/src/__tests__/reference-editor/comments.ts",
-  ]);
+
+test("a caller that replaces the shared decision is rejected", () => {
+  const sources = syntheticSources();
+  sources.set(reference, "const remove = true;");
+  expect(violations(sources)).toEqual([reference]);
+});
+
+test("the shipped review reader cannot resolve paragraph marks", () => {
+  const sources = syntheticSources();
+  sources.set(reader, "paragraphMarkOutcome({});");
+  expect(violations(sources)).toEqual([reader]);
 });

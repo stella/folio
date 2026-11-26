@@ -26,8 +26,9 @@ export type { TrackedChangeEntry } from "../utils/comments";
 /**
  * Pass the editor view ref + a stateTick that bumps on every PM
  * transaction (the same tick the Toolbar listens to). The computed
- * re-runs whenever the tick advances. Pass the canonical editor to annotate
- * the cards with the lock verdict for accepting or rejecting their changes.
+ * re-runs whenever the tick advances. Lock verdicts require the canonical
+ * editor as the third argument. Two-argument calls return the change list
+ * without lock verdicts.
  */
 export function useTrackedChanges(
   view: Ref<EditorView | null>,
