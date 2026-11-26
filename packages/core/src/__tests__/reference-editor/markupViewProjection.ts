@@ -1,9 +1,6 @@
-import type { Node as PMNode } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
-import type { Mapping, Step, StepMap } from "prosemirror-transform";
 
 import { indexedPositionMap } from "../../internal/indexedPositionMap";
-import type { RemovedSectionReference } from "../../internal/sectionEndpointResolution";
 import type { DisplayMode } from "../../managers/EditorModeManager";
 import {
   type MarkupViewProjection,
@@ -19,47 +16,7 @@ import { resolveWholeStory } from "./wholeStoryRevisionResolution";
 export const resolveStateStory = (
   state: EditorState,
   mode: RevisionResolutionMode,
-): {
-  resolved: PMNode;
-  mapping: Mapping;
-  positionMap: StepMap;
-  steps: Step[];
-  changedRanges: {
-    from: number;
-    to: number;
-  }[];
-  preStructureMap: StepMap;
-  tableRanges: {
-    node: PMNode;
-    inputNode: PMNode;
-    sourceNodeSize: number;
-    position: number;
-    inputMap: StepMap;
-    positionMap: StepMap;
-    ranges: readonly {
-      from: number;
-      to: number;
-    }[];
-    paragraphOffsets: readonly {
-      source: number;
-      final: number;
-    }[];
-  }[];
-  transfers: {
-    displacedToken: string | null;
-    selectedToken: string | null;
-  }[];
-  structuralRanges: {
-    from: number;
-    to: number;
-  }[];
-  structuralMap: StepMap;
-  structural: boolean;
-  failed: boolean;
-  removedEndpointCount: number;
-  removedReferences: RemovedSectionReference[];
-  keptBoundaries: Set<PMNode>;
-} =>
+) =>
   resolveWholeStory({
     doc: state.doc,
     mode,

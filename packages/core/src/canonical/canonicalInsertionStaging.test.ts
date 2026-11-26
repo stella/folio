@@ -9,6 +9,10 @@ import {
 } from "@stll/docx-core/ops";
 
 import { canonicalOperationStagingAccess } from "../internal/canonicalOperationStaging";
+import {
+  markupViewSources,
+  markupViewStateSources,
+} from "../prosemirror/conversion/markupViewSource";
 import { readModel } from "../types/documentModel";
 import {
   CANONICAL_ADMISSION,
@@ -29,6 +33,8 @@ test("insertion staging owns the verified operation and rejects foreign or stale
     session.projection.firstParagraph?.blockId ??
     panic("The fixture has no paragraph anchor.");
   const state = EditorState.create({ doc: session.projection.doc });
+  const conversion = markupViewSources.get(state.doc)?.options;
+  expect(conversion?.blockCache).toBeDefined();
   const selection = session.projection.selectionAt(state).unwrap();
   const text = { type: "text" as const, text: "Verified." };
   const block = {
@@ -72,7 +78,18 @@ test("insertion staging owns the verified operation and rejects foreign or stale
     },
   ]);
   expect(commit.touched.inserted).toEqual(["001ABCDE"]);
-  publishCanonicalProjection({ session, state, commit }).unwrap();
+  const published = publishCanonicalProjection({
+    session,
+    state,
+    commit,
+  }).unwrap();
+  const publishedConversion = markupViewStateSources.get(
+    published.state,
+  )?.options;
+  expect(publishedConversion?.blockCache === conversion?.blockCache).toBe(true);
+  expect(publishedConversion?.textBoxGroupSalt).toBe(
+    conversion?.textBoxGroupSalt,
+  );
   const stale = staging.prepare(state, selection);
   if (stale.isOk()) panic("The previous version's staging should be stale.");
   expect(stale.error.message).toContain("stale canonical document");

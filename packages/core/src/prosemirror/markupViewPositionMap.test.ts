@@ -57,6 +57,45 @@ describe("authored positions of resolved markup views", () => {
     expect(map.invert().map(8, 1)).toBe(12);
   });
 
+  test("keeps long standing text before a retained pending suffix", () => {
+    const standing = schema.text("a".repeat(2_049));
+    const pending = schema.text("tail", [revision("deletion", 2)]);
+    const before = doc([
+      paragraph([
+        schema.text("gone", [revision("deletion", 1)]),
+        standing,
+        pending,
+      ]),
+    ]);
+    const after = doc([paragraph([standing, pending])]);
+    const map = markupViewPositionMap({ before, after, decision: "accept" });
+    expect(rangesOf(map)).toEqual([[1, 5, 1, 1]]);
+    expect(map.invert().map(1, 1)).toBe(5);
+    expect(map.invert().map(2_051, 1)).toBe(2_055);
+  });
+
+  test("keeps long standing text around a retained pending run between cuts", () => {
+    const standing = schema.text("a".repeat(2_049));
+    const pending = schema.text("retained", [revision("deletion", 2)]);
+    const afterContent = [standing, pending, schema.text("standing")];
+    const before = doc([
+      paragraph([
+        schema.text("gone", [revision("deletion", 1)]),
+        ...afterContent,
+        schema.text("also gone", [revision("deletion", 3)]),
+      ]),
+    ]);
+    const after = doc([paragraph(afterContent)]);
+    const map = markupViewPositionMap({ before, after, decision: "accept" });
+    const end = after.content.size - 1;
+    expect(rangesOf(map)).toEqual([
+      [1, 5, 1, 1],
+      [end + 4, end + 4 + "also gone".length, end, end],
+    ]);
+    expect(map.invert().map(1, 1)).toBe(5);
+    expect(map.invert().map(end, -1)).toBe(end + 4);
+  });
+
   test("anchors a paragraph join at the surviving paragraph's end", () => {
     const before = doc([
       paragraph([schema.text("one")], "00000001"),

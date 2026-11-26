@@ -138,35 +138,18 @@ const storySpans = (doc: PMNode, decision?: RevisionDecision): StorySpans => {
   return { spans, ends };
 };
 
-type Match = (before: number, after: number, width: number) => void;
+type ContiguousMatch = { before: number; after: number; width: number };
+type Match = (span: Readonly<ContiguousMatch>) => void;
 
 type Region = {
   before: readonly Span[];
   after: readonly Span[];
 };
 
-type ContiguousMatch = { before: number; after: number; width: number };
-
-const appendMatch = (
-  matches: ContiguousMatch[],
-  before: number,
-  after: number,
-  width: number,
-): void => {
-  const last = matches.at(-1);
-  if (
-    last &&
-    last.before + last.width === before &&
-    last.after + last.width === after
-  )
-    last.width += width;
-  else matches.push({ before, after, width });
-};
-
 /**
- * Match by span, across text node seams. Most view changes are explained by
- * all or none of the pending spans disappearing. Keep the candidate only
- * when it accounts for the entire resolved region.
+ * Match by span, across text node seams. A pending span can disappear unless
+ * the result still names its provenance. Keep the candidate only when it
+ * accounts for the entire resolved region.
  */
 const matchStream = (
   { before, after }: Region,
@@ -178,9 +161,15 @@ const matchStream = (
   let leftOffset = 0;
   let rightOffset = 0;
   for (;;) {
-    let left = before[leftIndex];
-    while (skipPending && left?.pending === true) left = before[++leftIndex];
     const right = after[rightIndex];
+    let left = before[leftIndex];
+    while (
+      skipPending &&
+      leftOffset === 0 &&
+      left?.pending === true &&
+      (left.provenance === undefined || left.provenance !== right?.provenance)
+    )
+      left = before[++leftIndex];
     if (!left || !right) return left || right ? undefined : matches;
     const width = Math.min(left.width - leftOffset, right.width - rightOffset);
     if (
@@ -191,12 +180,16 @@ const matchStream = (
         right.text?.slice(rightOffset, rightOffset + width)
     )
       return undefined;
-    appendMatch(
-      matches,
-      left.start + leftOffset,
-      right.start + rightOffset,
-      width,
-    );
+    const leftStart = left.start + leftOffset;
+    const rightStart = right.start + rightOffset;
+    const previous = matches.at(-1);
+    if (
+      previous &&
+      previous.before + previous.width === leftStart &&
+      previous.after + previous.width === rightStart
+    )
+      previous.width += width;
+    else matches.push({ before: leftStart, after: rightStart, width });
     leftOffset += width;
     rightOffset += width;
     if (leftOffset === left.width) {
@@ -270,7 +263,7 @@ const matchStandingEdges = ({ before, after }: Region, match: Match): void => {
   for (const span of before) {
     const target = after[start];
     if (!target || !sameSpan(span, target)) break;
-    match(span.start, target.start, span.width);
+    match({ before: span.start, after: target.start, width: span.width });
     start++;
   }
   let oldEnd = before.length;
@@ -285,7 +278,8 @@ const matchStandingEdges = ({ before, after }: Region, match: Match): void => {
   }
   for (const span of before.slice(oldEnd)) {
     const target = after[newEnd++];
-    if (target) match(span.start, target.start, span.width);
+    if (target)
+      match({ before: span.start, after: target.start, width: span.width });
   }
 };
 
@@ -326,11 +320,14 @@ const matchContent = ({ before, after }: Region, match: Match): boolean => {
   if (aligned === undefined || aligned.length === 0) return false;
   const leftGap = addressGap(before);
   const rightGap = addressGap(after);
-  for (const { before: left, after: right, width } of aligned) {
+  for (const span of aligned) {
     // A surviving opening edge can sit behind discarded table wrappers
     // and ahead of a synthesized range marker in the same gap.
-    matchBounded({ before: leftGap(left), after: rightGap(right) }, match);
-    match(left, right, width);
+    matchBounded(
+      { before: leftGap(span.before), after: rightGap(span.after) },
+      match,
+    );
+    match(span);
   }
   matchBounded(
     {
@@ -386,6 +383,7 @@ const matchBounded = ({ before, after }: Region, match: Match): void => {
   }
   let i = 0;
   let j = 0;
+  const span = { before: 0, after: 0, width: 1 };
   for (;;) {
     const l = left[i];
     const r = right[j];
@@ -395,7 +393,9 @@ const matchBounded = ({ before, after }: Region, match: Match): void => {
       sameUnit(l, r) &&
       scores[at] === (scores[at + rowSize + 1] ?? 0) + weight(l, r)
     ) {
-      match(l.position, r.position, 1);
+      span.before = l.position;
+      span.after = r.position;
+      match(span);
       i++;
       j++;
     } else if (scores[at] === scores[at + rowSize]) i++;
@@ -409,7 +409,7 @@ const matchRegion = (region: Region, match: Match): void => {
     if (!matchContent(region, match)) matchBounded(region, match);
     return;
   }
-  for (const { before, after, width } of aligned) match(before, after, width);
+  for (const span of aligned) match(span);
 };
 
 type MarkupViewPositionMapOptions = {
@@ -435,7 +435,7 @@ export const markupViewPositionMap = ({
   const ranges: number[] = [];
   let oldEnd = 0;
   let newEnd = 0;
-  const match: Match = (oldStart, newStart, width) => {
+  const match: Match = ({ before: oldStart, after: newStart, width }) => {
     if (oldStart !== oldEnd || newStart !== newEnd)
       ranges.push(oldEnd, oldStart - oldEnd, newStart - newEnd);
     oldEnd = oldStart + width;
@@ -443,6 +443,7 @@ export const markupViewPositionMap = ({
   };
   let oldIndex = 0;
   let newIndex = 0;
+  const anchor = { before: 0, after: 0, width: 1 };
   for (const [id, leftIndex] of left.ends) {
     const rightIndex = right.ends.get(id);
     if (
@@ -462,7 +463,9 @@ export const markupViewPositionMap = ({
       },
       match,
     );
-    match(l.start, r.start, 1);
+    anchor.before = l.start;
+    anchor.after = r.start;
+    match(anchor);
     oldIndex = leftIndex + 1;
     newIndex = rightIndex + 1;
   }
@@ -470,6 +473,6 @@ export const markupViewPositionMap = ({
     { before: left.spans.slice(oldIndex), after: right.spans.slice(newIndex) },
     match,
   );
-  match(before.content.size, after.content.size, 0);
+  match({ before: before.content.size, after: after.content.size, width: 0 });
   return ranges.length > 0 ? new StepMap(ranges) : StepMap.empty;
 };
