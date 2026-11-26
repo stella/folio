@@ -154,30 +154,37 @@ const nonProductionSources = [
   "(^|/)(?:__fixtures__|fixtures|__snapshots__)(?:/|$)",
   "\\.(?:test|spec)\\.[^/]+$",
 ];
+const productionEditorSource = {
+  path: "^packages/(?:core|react|vue)/src/",
+  pathNot: nonProductionSources,
+};
 const noProductionTestSupportRule = {
   name: "production-editor-source-does-not-import-test-support",
   comment:
     "Published core, React, and Vue source must not depend on test support.",
   severity: "error",
-  from: {
-    path: "^packages/(?:core|react|vue)/src/",
-    pathNot: nonProductionSources,
-  },
+  from: productionEditorSource,
   to: { path: testSupportPath },
 };
 
-const noCoreReviewThroughCommentsRule = {
-  name: "core-review-uses-dedicated-readers",
+const noProductionReferenceEditorRule = {
+  name: "production-editor-source-cannot-reach-reference-editor",
   comment:
-    "Core source must use the dedicated review readers. The commands barrel keeps its public re-exports.",
+    "Reference revision resolution must stay outside the production editor dependency graph, including behind intermediary modules.",
   severity: "error",
-  from: {
-    path: "^packages/core/src/",
-    pathNot: [
-      ...nonProductionSources,
-      "^packages/core/src/prosemirror/commands/index\\.ts$",
-    ],
+  from: productionEditorSource,
+  to: {
+    path: "^packages/core/src/__tests__/reference-editor(?:/|$)",
+    reachable: true,
   },
+};
+
+const useDedicatedReviewReadersRule = {
+  name: "editor-source-uses-dedicated-review-readers",
+  comment:
+    "Editor source uses the dedicated readers. The comments command path is kept for existing consumers.",
+  severity: "error",
+  from: productionEditorSource,
   to: {
     path: [
       "^packages/core/src/prosemirror/commands/comments\\.ts$",
@@ -221,7 +228,8 @@ module.exports = {
     ...paintBackendRules,
     ...documentModelRules,
     noProductionTestSupportRule,
-    noCoreReviewThroughCommentsRule,
+    noProductionReferenceEditorRule,
+    useDedicatedReviewReadersRule,
     noCircularRuntimeImportsRule,
   ],
   options: {

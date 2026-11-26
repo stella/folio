@@ -3,12 +3,13 @@ import { expect, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
 import { Step, Transform } from "prosemirror-transform";
 
+import { joinAtParagraphMark } from "../__tests__/reference-editor/paragraphRevision";
 import { resolveWholeStory } from "../internal/wholeStoryRevisionResolution";
 import { createStyleEngine } from "../style-engine/styleEngine";
 import type { Document, ParagraphContent } from "../types/document";
 import { expectParagraphAttrs } from "./attrs";
 import { toProseDoc } from "./conversion/toProseDoc";
-import { joinAtParagraphMark, joinedParagraphAttrs } from "./paragraphMarkJoin";
+import { joinedParagraphAttrs } from "./paragraphMarkJoin";
 
 const payloads = {
   run: { type: "run", content: [{ type: "text", text: "a" }] },

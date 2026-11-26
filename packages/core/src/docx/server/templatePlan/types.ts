@@ -191,7 +191,45 @@ export type DocxBlockManifest = {
   comments: number;
   /** Tracked insertions, deletions and moves in the main story and its notes. */
   trackedChanges: number;
+  /**
+   * What the document tracks, when it tracks anything: for a caller that
+   * has to choose a view. Absent from a manifest read in a chosen view,
+   * which tracks nothing any more.
+   */
+  revisions?: DocxTrackedChanges;
+  /**
+   * The view the manifest was read in and what was resolved for it, when
+   * the caller chose one: every block, label and hash is that view's.
+   */
+  trackedChangesResolved?: DocxTrackedChanges & {
+    view: TemplatePlanTrackedView;
+  };
   warnings: string[];
+};
+
+/**
+ * One of the two texts a document with tracked changes holds: with every
+ * change accepted, or with every change rejected.
+ */
+export type TemplatePlanTrackedView = "accept" | "reject";
+
+/** The tracked changes of a document's main story and notes, by kind. */
+export type DocxTrackedChanges = {
+  insertions: number;
+  deletions: number;
+  /** Move sources and destinations. */
+  moves: number;
+  /** Paragraph marks the chosen view removes, each joining two paragraphs;
+   *  counted for the accepted view where none was chosen. */
+  paragraphMarks: number;
+  /** Table rows the view removes. */
+  tableRows: number;
+  /** Recorded changes of formatting. */
+  formattingChanges: number;
+  authors: string[];
+  /** The earliest and the latest date a change states, as written. */
+  first: string | null;
+  last: string | null;
 };
 
 export type DocxTemplateStyle = {
@@ -496,6 +534,14 @@ export type TemplatePlan = {
    */
   lastSection?: TemplatePlanSection;
   /**
+   * The view of a source with tracked changes the plan is made for: its
+   * text with every change accepted, or with every change rejected. The
+   * blocks and hashes the plan names are that view's, the output carries
+   * no revision, and verification holds it to that view. Left out, a
+   * source with tracked changes is refused.
+   */
+  trackedChanges?: TemplatePlanTrackedView;
+  /**
    * What becomes of text effects whose values show nothing, in the parts
    * the output takes from the template: its document, numbering, styles,
    * headers and footers. `normalize`, the default, leaves them out, so text
@@ -590,6 +636,7 @@ export type TemplatePlanIssue = {
     | "style-mismatch"
     | "numbering-mismatch"
     | "page-start-mismatch"
+    | "revision-left"
     | "section-mismatch"
     | "template-mismatch"
     | "prompting-field-left"
@@ -609,6 +656,9 @@ export type TemplatePlanReport = {
   sourceSha256: string;
   templateSha256: string;
   outputSha256: string;
+  /** The view the plan chose of a source with tracked changes, and what
+   *  was resolved for it. */
+  trackedChanges?: DocxTrackedChanges & { view: TemplatePlanTrackedView };
   /** One entry per block of the source, nested ones included, in document order. */
   blocks: TemplatePlanBlockResult[];
   counts: {

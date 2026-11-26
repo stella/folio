@@ -428,19 +428,11 @@ export const censusUndescribedCanonicalCommands = (
     .sort();
 };
 
-/** Compare registration occurrences, so a duplicate cannot increase the count under an old id. */
-export const checkCanonicalCommandBaseline = (
-  current: readonly string[],
-  baseline: readonly string[],
-) => {
-  const available = new Map<string, number>();
-  for (const command of baseline)
-    available.set(command, (available.get(command) ?? 0) + 1);
-  const additions: string[] = [];
-  for (const command of current) {
-    const count = available.get(command) ?? 0;
-    if (count === 0) additions.push(command);
-    else available.set(command, count - 1);
-  }
-  return additions;
-};
+/**
+ * Every built-in extension command carries a canonical descriptor: one the
+ * census cannot prove is a failure, with no baseline to grow.
+ */
+export const undescribedCanonicalCommandFailures = (
+  commands: readonly string[],
+): string[] =>
+  commands.map((command) => `${command} needs a canonical descriptor`);

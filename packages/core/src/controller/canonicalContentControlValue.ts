@@ -33,17 +33,14 @@ import {
   ContentControlTypeError,
 } from "../content-controls/errors";
 import {
-  CANONICAL_GAP,
+  CANONICAL_CONDITION,
   CANONICAL_RULE,
   type CanonicalRefusalGround,
 } from "../types/canonicalCapabilities";
 import type { BlockContent } from "../types/document";
 import { readModel } from "../types/documentModel";
 
-const refuse = (
-  message: string,
-  ground: CanonicalRefusalGround = { gap: CANONICAL_GAP.commands },
-) =>
+const refuse = (message: string, ground: CanonicalRefusalGround) =>
   Result.err(new CanonicalSessionError({ ground, message, reason: "refused" }));
 
 export const prepareContentControlValue = (
@@ -53,13 +50,17 @@ export const prepareContentControlValue = (
 ): Result<CanonicalCommit, CanonicalSessionError> => {
   const node = session.projection.doc.nodeAt(command.at);
   if (node?.type.name !== "blockSdt")
-    return refuse("The content control is no longer there.");
+    return refuse("The content control is no longer there.", {
+      condition: CANONICAL_CONDITION.stale,
+    });
   let paragraphsOnly = node.childCount > 0;
   node.forEach((child) => {
     if (child.type.name !== "paragraph") paragraphsOnly = false;
   });
   if (!paragraphsOnly)
-    return refuse("A control that holds more than paragraphs has no value.");
+    return refuse("A control that holds more than paragraphs has no value.", {
+      condition: CANONICAL_CONDITION.invalidRequest,
+    });
   // From the start of its first paragraph to the end of its last.
   const from = session.projection.addressAt(command.at + 2);
   if (from.isErr()) return from;
@@ -71,11 +72,15 @@ export const prepareContentControlValue = (
     from.value.blockId,
   );
   if (held === undefined)
-    return refuse("The content control is no longer there.");
+    return refuse("The content control is no longer there.", {
+      condition: CANONICAL_CONDITION.stale,
+    });
   const { control } = held;
   const controlId = control.properties.id;
   if (controlId === undefined)
-    return refuse("A content control without an id cannot be set.");
+    return refuse("A content control without an id cannot be set.", {
+      condition: CANONICAL_CONDITION.invalidRequest,
+    });
   let next: BlockContent | undefined;
   try {
     next = setContentControlValue(
@@ -92,7 +97,9 @@ export const prepareContentControlValue = (
       error instanceof ContentControlTypeError ||
       error instanceof ContentControlBoundError
     )
-      return refuse(error.message);
+      return refuse(error.message, {
+        condition: CANONICAL_CONDITION.invalidRequest,
+      });
     throw error;
   }
   if (next?.type !== "blockSdt")

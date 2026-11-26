@@ -101,25 +101,10 @@ export const createCanonicalEditorHarness = (
     };
     try {
       const result = action();
-      if (
-        rows.some(({ id }) => id !== CANONICAL_GAP.commands) &&
-        refusals.length === before.refusals
-      )
+      if (rows.length > 0 && refusals.length === before.refusals)
         panic(
           `Canonical refusal rows must become strict: ${rows.map(({ id }) => id).join(", ")}`,
         );
-      if (rows.length > 0 && refusals.length === before.refusals) {
-        // Explicit descriptor-gap cases may be inapplicable, but gaining
-        // mutation support retires their refusal contract.
-        if (!editorView.state.doc.eq(before.state.doc))
-          panic(
-            `Canonical refusal rows must become strict: ${rows.map(({ id }) => id).join(", ")}`,
-          );
-        const after = manager.api.getCanonicalDocument();
-        if (!after || !before.document)
-          panic("Refusal contract lost canonical authority");
-        assertExactModel(after, before.document);
-      }
       if (refusals.length > before.refusals) {
         const after = manager.api.getCanonicalDocument();
         if (!after || !before.document)

@@ -11,7 +11,7 @@ import {
   canonicalReviewHeldRevisionIds,
 } from "@stll/folio-core/controller/canonicalReview";
 import { OP_STORIES } from "@stll/folio-core/controller/folioEditor";
-import { trackedChangeEntryRevisionIds } from "@stll/folio-core/prosemirror/commands/comments";
+import { trackedChangeEntryRevisionIds } from "@stll/folio-core/prosemirror/projectionReview";
 import {
   extractTrackedChanges,
   type TrackedChangesResult,

@@ -1,6 +1,5 @@
 import { panic } from "better-result";
 import { Mark, type Node as PMNode } from "prosemirror-model";
-import type { Transaction } from "prosemirror-state";
 import type { Transform } from "prosemirror-transform";
 
 import { sameRunStyleContext } from "./rebaseParagraphRuns";
@@ -19,15 +18,10 @@ import {
   type RunStyleResolver,
 } from "./runStyleFormatting";
 
-type RebaseParagraphRunFormattingOptions = {
-  nextAttrs: Record<string, unknown>;
-  paragraphPosition: number;
-  shouldRebase?: (node: PMNode) => boolean;
-  styleResolver: RunStyleResolver;
-  tr: Transaction;
-};
-
-const paragraphAt = (tr: Transform, paragraphPosition: number): PMNode => {
+export const paragraphAt = (
+  tr: Transform,
+  paragraphPosition: number,
+): PMNode => {
   const paragraph = tr.doc.nodeAt(paragraphPosition);
   if (!paragraph || paragraph.type.name !== "paragraph") {
     return panic("Cannot rebase run formatting outside a paragraph", {
@@ -166,29 +160,4 @@ export const rebaseParagraphRuns = <T extends Transform>({
     }
   }
   return tr;
-};
-
-/**
- * Change paragraph attrs and re-resolve inherited run marks in the new style
- * context without turning the old rendered style into direct run formatting.
- */
-export const setParagraphAttrsWithRebasedRunFormatting = ({
-  nextAttrs,
-  paragraphPosition,
-  shouldRebase,
-  styleResolver,
-  tr,
-}: RebaseParagraphRunFormattingOptions): Transaction => {
-  const previousContext = paragraphRunStyleContext(
-    paragraphAt(tr, paragraphPosition),
-    styleResolver,
-  );
-  tr = tr.setNodeMarkup(paragraphPosition, undefined, nextAttrs);
-  return rebaseParagraphRuns({
-    previousContext,
-    paragraphPosition,
-    ...(shouldRebase ? { shouldRebase } : {}),
-    styleResolver,
-    tr,
-  });
 };
