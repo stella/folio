@@ -1231,10 +1231,10 @@ export const reportTemplatePlanOutput = async ({
     const fonts = wChild(wChild(level, "rPr"), "rFonts");
     if (
       patch.font !== undefined &&
-      (["ascii", "hAnsi", "cs"].some(
+      (["ascii", "hAnsi", "eastAsia", "cs"].some(
         (name) => wAttr(fonts, name) !== patch.font,
       ) ||
-        ["asciiTheme", "hAnsiTheme", "cstheme"].some(
+        ["asciiTheme", "hAnsiTheme", "eastAsiaTheme", "cstheme"].some(
           (name) => wAttr(fonts, name) !== null,
         ))
     ) {

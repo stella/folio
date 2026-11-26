@@ -322,7 +322,7 @@ const levelRunPropertiesXml = ({
   font,
 }: LevelFontOptions): string | null => {
   const face = escapeXmlAttribute(font);
-  const fontsXml = `<${w}:rFonts ${w}:ascii="${face}" ${w}:hAnsi="${face}" ${w}:cs="${face}" ${w}:hint="default"/>`;
+  const fontsXml = `<${w}:rFonts ${w}:ascii="${face}" ${w}:hAnsi="${face}" ${w}:eastAsia="${face}" ${w}:cs="${face}" ${w}:hint="default"/>`;
   const properties = wChild(level, "rPr");
   const range = properties === null ? null : rangeOf(properties);
   if (properties === null || range === null) {

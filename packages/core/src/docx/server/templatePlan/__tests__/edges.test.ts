@@ -397,7 +397,7 @@ describe("applyTemplatePlan edge content", () => {
     );
     const patched = (await readPart(docx, "word/numbering.xml")) ?? "";
     const face =
-      '<w:rFonts w:ascii="Courier New" w:hAnsi="Courier New" w:cs="Courier New" w:hint="default"/>';
+      '<w:rFonts w:ascii="Courier New" w:hAnsi="Courier New" w:eastAsia="Courier New" w:cs="Courier New" w:hint="default"/>';
 
     expect(report.ok).toBe(true);
     // The face follows the character style; the weight stays.
@@ -419,6 +419,23 @@ describe("applyTemplatePlan edge content", () => {
       ["o", "Courier New"],
       ["o", "Courier New"],
     ]);
+
+    // A face for one script only is not the planned face.
+    const mixed = patched.replace(
+      `${indentOf(2)}<w:rPr>${face}</w:rPr>`,
+      `${indentOf(2)}<w:rPr>${face.replace('w:eastAsia="Courier New"', 'w:eastAsia="Serif"')}</w:rPr>`,
+    );
+    expect(mixed).not.toBe(patched);
+    expect(
+      (
+        await verifyFor({
+          source,
+          template,
+          plan,
+          output: await replacePart(docx, "word/numbering.xml", mixed),
+        })
+      ).issues.map(({ code, part }) => [code, part]),
+    ).toContainEqual(["numbering-mismatch", "word/numbering.xml"]);
 
     // An output whose level lost the face is not what was planned.
     const reverted = patched.replace(
