@@ -20,9 +20,14 @@ import {
   detectDocxContainerType,
   DOCX_CONTAINER_TYPES,
 } from "./encryption/containerFormat";
-import { ensureParaIds } from "./ensureParaIds";
-import { ensureUniqueControlIds } from "./ensureUniqueControlIds";
-import { ensureUniqueRevisionIds } from "./ensureUniqueRevisionIds";
+import {
+  isDigitallySignedPackage,
+  planPackageParaIds,
+  signedPackageMutationError,
+  writePackageParts,
+} from "./ensureParaIds";
+import { uniqueControlIdUpdates } from "./ensureUniqueControlIds";
+import { uniqueRevisionIdUpdates } from "./ensureUniqueRevisionIds";
 import { keepNormalizedSourceParts } from "./normalizedSourceParts";
 import { MalformedPackageRelationshipsError } from "./packageRelationshipsRoot";
 import { parseDocx, type ParseOptions } from "./parser";
@@ -91,6 +96,36 @@ export type CanonicalDocxSource = {
   mintedParaIds: ReadonlySet<string>;
 };
 
+/**
+ * Every id normalization of a package over one read of its parts: paragraph
+ * ids, then content control ids, then revision ids, each pass reading the
+ * texts the one before wrote. The package is written once, if at all.
+ */
+const normalizeCanonicalPackage = async (
+  bytes: ArrayBuffer,
+): Promise<CanonicalDocxSource> => {
+  const paragraphs = await planPackageParaIds(bytes);
+  const signed = isDigitallySignedPackage(paragraphs.entries);
+  if (signed && paragraphs.updates.size > 0) throw signedPackageMutationError();
+  const texts = new Map(paragraphs.partTexts);
+  const updates = new Map(paragraphs.updates);
+  for (const [path, text] of updates) texts.set(path, text);
+  // A signed package keeps its control and revision ids as it holds them.
+  if (!signed)
+    for (const pass of [uniqueControlIdUpdates, uniqueRevisionIdUpdates])
+      for (const [path, text] of pass(texts)?.updates ?? []) {
+        texts.set(path, text);
+        updates.set(path, text);
+      }
+  return {
+    docx:
+      updates.size === 0
+        ? new Uint8Array(bytes)
+        : await writePackageParts(bytes, updates),
+    mintedParaIds: new Set(paragraphs.mintedParaIds),
+  };
+};
+
 /** {@link prepareCanonicalDocxInput}, with the paragraph ids it minted. */
 export const prepareCanonicalDocxSource = async (
   input: DocxInput,
@@ -115,13 +150,7 @@ export const prepareCanonicalDocxSource = async (
   return Result.tryPromise({
     // Paragraph ids, content control ids and revision ids, each unique in
     // the package as the model holds them.
-    try: async () => {
-      const paragraphs = await ensureParaIds(bytes.value);
-      const { docx } = await ensureUniqueRevisionIds(
-        (await ensureUniqueControlIds(paragraphs.docx)).docx,
-      );
-      return { docx, mintedParaIds: new Set(paragraphs.mintedParaIds) };
-    },
+    try: () => normalizeCanonicalPackage(bytes.value),
     catch: (cause): CanonicalDocxInputFailure =>
       malformedPartCause(cause) ??
       new CanonicalDocxInputError({

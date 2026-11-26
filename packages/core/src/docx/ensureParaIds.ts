@@ -848,12 +848,11 @@ const matchesTargetPattern = (path: string): boolean =>
 const toUint8Array = (docx: Uint8Array | ArrayBuffer): Uint8Array =>
   docx instanceof Uint8Array ? docx : new Uint8Array(docx);
 
-const hasDigitalSignatureParts = (zip: ZipArchive): boolean =>
-  zip
-    .entries()
-    .some(({ path }) =>
-      path.toLowerCase().startsWith(DIGITAL_SIGNATURE_PART_PREFIX),
-    );
+/** Whether a package with these part paths carries a digital signature. */
+export const isDigitallySignedPackage = (entries: readonly string[]): boolean =>
+  entries.some((path) =>
+    path.toLowerCase().startsWith(DIGITAL_SIGNATURE_PART_PREFIX),
+  );
 
 type PackageStoryPartsOptions = {
   documentPartName: string;
@@ -1025,14 +1024,25 @@ const packageParaIdUpdates = (
 };
 
 /**
- * Backfill `w14:paraId` on every paragraph of a `.docx` buffer. See the
- * module doc for the exact contract. Throws {@link EnsureParaIdsError} when
- * the buffer is not a WordprocessingML package or a part is malformed.
+ * A package's XML parts as one bounded read decoded them, and the texts that
+ * write the paragraph ids {@link ensureParaIds} would write.
  */
-const ensureParaIdsInternal = async (
+export type PackageParaIdPlan = {
+  /** The package's part paths. */
+  entries: readonly string[];
+  /** Each XML part the read decoded, by path, as the package holds it. */
+  partTexts: ReadonlyMap<string, string>;
+  /** The part texts that write the ids, by path. */
+  updates: ReadonlyMap<string, string>;
+  /** Every id the texts write, in scan order. */
+  mintedParaIds: readonly string[];
+  assigned: number;
+  deduplicated: number;
+};
+
+const planPackageParaIdsInternal = async (
   docx: Uint8Array | ArrayBuffer,
-  options: EnsureParaIdsOptions,
-): Promise<EnsureParaIdsResult> => {
+): Promise<PackageParaIdPlan> => {
   // Bounded read: entry count, per-entry size, and cumulative uncompressed
   // size are all capped before any part's XML is materialized as a string.
   // `docx` here is untrusted ingest input (see the module doc comment), so
@@ -1080,69 +1090,22 @@ const ensureParaIdsInternal = async (
     }
   }
 
-  const { updates, mintedParaIds, assigned, deduplicated } =
-    packageParaIdUpdates(
+  return {
+    entries: archive.entries,
+    partTexts,
+    ...packageParaIdUpdates(
       partTexts,
       scanPackageParaIds({ partTexts, documentPartName, isTargetPart }),
-    );
-
-  if (updates.size === 0) {
-    return {
-      docx: toUint8Array(docx),
-      assigned: 0,
-      deduplicated: 0,
-      alreadyComplete: true,
-      mintedParaIds: [],
-    };
-  }
-
-  // Only the write-back path needs a raw ZipArchive (signature detection, writing
-  // new part bytes, and repackaging). `docx` was already validated against
-  // the entry-count/size caps above, so this second parse runs on a
-  // buffer whose shape is already bounded.
-  const zip = await ZipArchive.read(docx);
-
-  if (
-    hasDigitalSignatureParts(zip) &&
-    options.allowSignedPackageMutation !== true
-  ) {
-    throw new EnsureParaIdsError({
-      reason: ENSURE_PARA_IDS_REASONS.SIGNED_PACKAGE,
-      message:
-        "Refusing to normalize a digitally signed package because rewriting OOXML invalidates its signatures. Warn the user and pass allowSignedPackageMutation only if invalidation is acceptable.",
-    });
-  }
-
-  for (const [partPath, content] of updates) {
-    const sourceEntry = zip.entry(partPath);
-    if (sourceEntry === undefined) {
-      throw createEnsureParaIdsError(
-        `Package part disappeared during normalization: ${partPath}`,
-      );
-    }
-    zip.set(partPath, content, { modified: sourceEntry.modified });
-  }
-  const output = await zip.generate({ level: 6 });
-
-  return {
-    docx: output,
-    assigned,
-    deduplicated,
-    alreadyComplete: false,
-    mintedParaIds,
+    ),
   };
 };
 
-/**
- * Backfill `w14:paraId` on every paragraph of a `.docx` buffer. All package,
- * XML, and compression failures are surfaced as {@link EnsureParaIdsError}.
- */
-export const ensureParaIds = async (
-  docx: Uint8Array | ArrayBuffer,
-  options: EnsureParaIdsOptions = {},
-): Promise<EnsureParaIdsResult> => {
+/** Run `normalize`, surfacing every failure as an {@link EnsureParaIdsError}. */
+const withEnsureParaIdsErrors = async <T>(
+  normalize: () => Promise<T>,
+): Promise<T> => {
   try {
-    return await ensureParaIdsInternal(docx, options);
+    return await normalize();
   } catch (error) {
     if (error instanceof EnsureParaIdsError) {
       throw error;
@@ -1154,3 +1117,93 @@ export const ensureParaIds = async (
     );
   }
 };
+
+/**
+ * Read a `.docx` buffer's XML parts once and plan the paragraph ids
+ * {@link ensureParaIds} writes, without writing them. Failures are surfaced
+ * as {@link EnsureParaIdsError}, as {@link ensureParaIds} surfaces them.
+ */
+export const planPackageParaIds = (
+  docx: Uint8Array | ArrayBuffer,
+): Promise<PackageParaIdPlan> =>
+  withEnsureParaIdsErrors(() => planPackageParaIdsInternal(docx));
+
+/** The error for a normalization that would invalidate a package's signatures. */
+export const signedPackageMutationError = (): EnsureParaIdsError =>
+  new EnsureParaIdsError({
+    reason: ENSURE_PARA_IDS_REASONS.SIGNED_PACKAGE,
+    message:
+      "Refusing to normalize a digitally signed package because rewriting OOXML invalidates its signatures. Warn the user and pass allowSignedPackageMutation only if invalidation is acceptable.",
+  });
+
+/**
+ * `docx` with each part of `updates` written as its text, in one write of the
+ * package. Every other entry keeps its stored bytes.
+ */
+export const writePackageParts = async (
+  docx: Uint8Array | ArrayBuffer,
+  updates: ReadonlyMap<string, string>,
+): Promise<Uint8Array> => {
+  // The bounded read that planned `updates` already validated `docx`
+  // against the entry-count/size caps, so this parse runs on a buffer whose
+  // shape is already bounded.
+  const zip = await ZipArchive.read(docx);
+  for (const [partPath, content] of updates) {
+    const sourceEntry = zip.entry(partPath);
+    if (sourceEntry === undefined) {
+      throw createEnsureParaIdsError(
+        `Package part disappeared during normalization: ${partPath}`,
+      );
+    }
+    zip.set(partPath, content, { modified: sourceEntry.modified });
+  }
+  return await zip.generate({ level: 6 });
+};
+
+/**
+ * Backfill `w14:paraId` on every paragraph of a `.docx` buffer. See the
+ * module doc for the exact contract. Throws {@link EnsureParaIdsError} when
+ * the buffer is not a WordprocessingML package or a part is malformed.
+ */
+const ensureParaIdsInternal = async (
+  docx: Uint8Array | ArrayBuffer,
+  options: EnsureParaIdsOptions,
+): Promise<EnsureParaIdsResult> => {
+  const { entries, updates, mintedParaIds, assigned, deduplicated } =
+    await planPackageParaIdsInternal(docx);
+
+  if (updates.size === 0) {
+    return {
+      docx: toUint8Array(docx),
+      assigned: 0,
+      deduplicated: 0,
+      alreadyComplete: true,
+      mintedParaIds: [],
+    };
+  }
+
+  if (
+    isDigitallySignedPackage(entries) &&
+    options.allowSignedPackageMutation !== true
+  ) {
+    throw signedPackageMutationError();
+  }
+
+  return {
+    docx: await writePackageParts(docx, updates),
+    assigned,
+    deduplicated,
+    alreadyComplete: false,
+    mintedParaIds,
+  };
+};
+
+/**
+ * Backfill `w14:paraId` on every paragraph of a `.docx` buffer. All package,
+ * XML, and compression failures are surfaced as {@link EnsureParaIdsError}.
+ */
+export const ensureParaIds = (
+  docx: Uint8Array | ArrayBuffer,
+  options: EnsureParaIdsOptions = {},
+): Promise<EnsureParaIdsResult> =>
+  withEnsureParaIdsErrors(() => ensureParaIdsInternal(docx, options));
