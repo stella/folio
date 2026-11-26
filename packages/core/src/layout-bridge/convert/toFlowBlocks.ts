@@ -131,8 +131,6 @@ export function toFlowBlocks(
     abstractCounters:
       options.listAbstractCounters ?? new Map<number, number[]>(),
     seenLevels: options.listSeenNumIds ?? new Set<string>(),
-    restartedNumIds: new Set(),
-    previousList: { abstractNumId: null, fromStyle: false, numId: null },
     ...(lastAdvancedNumId !== undefined ? { lastAdvancedNumId } : {}),
   };
   const originalListCounterState: ListCounterState = {
@@ -140,8 +138,6 @@ export function toFlowBlocks(
     abstractCounters:
       options.originalListAbstractCounters ?? new Map<number, number[]>(),
     seenLevels: options.originalListSeenNumIds ?? new Set<string>(),
-    restartedNumIds: new Set(),
-    previousList: { abstractNumId: null, fromStyle: false, numId: null },
     ...(lastAdvancedOriginalNumId !== undefined
       ? { lastAdvancedNumId: lastAdvancedOriginalNumId }
       : {}),

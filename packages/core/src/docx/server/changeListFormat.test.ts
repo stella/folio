@@ -117,14 +117,16 @@ test("restarts only explicitly selected list members", () => {
     ...options,
     paragraphIds: ["10000002"],
   }).unwrap();
-  expect(labels(applied.document)).toEqual(["1.", "c.", "1.", "1."]);
+  // The last paragraph names another instance of the first one's definition
+  // and counts on from it.
+  expect(labels(applied.document)).toEqual(["1.", "c.", "1.", "2."]);
   const mixed = changeListFormat(document, {
     ...options,
     paragraphIds: ["10000002", "10000004"],
   });
   if (mixed.isOk()) throw new Error("Expected an invalid selection refusal");
   expect(mixed.error.reason).toBe("blockNotFound");
-  expect(labels(document)).toEqual(["1.", "2.", "1.", "1."]);
+  expect(labels(document)).toEqual(["1.", "2.", "1.", "3."]);
 });
 
 const MODES = {

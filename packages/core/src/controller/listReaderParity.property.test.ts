@@ -26,6 +26,7 @@ import { normalizeCanonicalListRendering } from "../canonical/canonicalListRende
 import {
   computeListMarker,
   type ComputeListMarkerOptions,
+  startedLevelKey,
 } from "../docx/listMarkerComputation";
 import {
   computeListRendering,
@@ -625,12 +626,7 @@ const assertSparseReaders = async ({
     numbering,
     listCounters: new Map<number, number[]>(),
     abstractCounters: new Map<number, number[]>(),
-    restartedNumIds: new Set<number>(),
-    previousList: {
-      abstractNumId: null,
-      fromStyle: false,
-      numId: null,
-    },
+    startedLevels: new Set<number>(),
   };
   const reader = streams();
   const next = createListLabelCounter(reader);
@@ -664,8 +660,13 @@ const assertSparseReaders = async ({
         for (const stream of [reader.final, reader.original]) {
           expect(stream.counters).toEqual(parser.listCounters);
           expect(stream.abstractCounters).toEqual(parser.abstractCounters);
-          expect(stream.previousList).toEqual(parser.previousList);
-          expect(stream.restartedNumIds).toEqual(parser.restartedNumIds);
+          // Both keep which levels of which instances have been used.
+          expect(
+            [...stream.seenLevels].map((seen) => {
+              const [instance, level] = seen.split(":").map(Number);
+              return startedLevelKey(instance ?? 0, level ?? 0);
+            }),
+          ).toEqual([...parser.startedLevels]);
         }
         content.push(para);
         expected.push(label);

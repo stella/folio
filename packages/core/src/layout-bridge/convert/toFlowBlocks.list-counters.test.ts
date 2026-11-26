@@ -123,17 +123,18 @@ describe("toFlowBlocks counter sharing by abstractNumId", () => {
     }
   });
 
-  test("top-level numIds with the same abstractNum keep independent counters", () => {
+  test("the instances of one abstractNum count as one list", () => {
     const doc = documentWith([
       listParagraph({ numId: 1, abstractNumId: 4, text: "a" }),
       listParagraph({ numId: 2, abstractNumId: 4, text: "b" }),
       listParagraph({ numId: 1, abstractNumId: 4, text: "c" }),
     ]);
 
+    // An instance without a start override goes on where the list stands.
     expect(markersOf(toFlowBlocks(toProseDoc(doc), {}))).toEqual([
       "(1)",
-      "(1)",
       "(2)",
+      "(3)",
     ]);
   });
 
@@ -176,7 +177,7 @@ describe("toFlowBlocks counter sharing by abstractNumId", () => {
     ).toBe("(2)");
   });
 
-  test("startOverride resets only the concrete numId on first encounter", () => {
+  test("a startOverride restarts the list once, on the first paragraph of its instance", () => {
     const doc = documentWith([
       listParagraph({ numId: 1, abstractNumId: 4, text: "a" }),
       listParagraph({ numId: 1, abstractNumId: 4, text: "b" }),
@@ -195,12 +196,14 @@ describe("toFlowBlocks counter sharing by abstractNumId", () => {
       }),
     ]);
 
+    // The paragraphs after the restart count on from it, whichever instance
+    // they name: the earlier one again, or the restarted one a second time.
     expect(markersOf(toFlowBlocks(toProseDoc(doc), {}))).toEqual([
       "(1)",
       "(2)",
       "(1)",
-      "(3)",
       "(2)",
+      "(3)",
     ]);
   });
 

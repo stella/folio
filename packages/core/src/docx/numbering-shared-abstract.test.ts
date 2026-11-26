@@ -113,6 +113,38 @@ test("nested numbering starts from authored levels when no parent paragraph exis
   ).toBe("3.4.");
 });
 
+test("a level skipped on the way down shows its start", () => {
+  const numbering =
+    parseNumbering(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:abstractNum w:abstractNumId="8">
+    <w:lvl w:ilvl="0"><w:start w:val="3"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/></w:lvl>
+    <w:lvl w:ilvl="1"><w:start w:val="5"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1.%2."/></w:lvl>
+    <w:lvl w:ilvl="2"><w:start w:val="7"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1.%2.%3."/></w:lvl>
+  </w:abstractNum>
+  <w:num w:numId="3"><w:abstractNumId w:val="8"/></w:num>
+</w:numbering>`);
+  const item = (ilvl: number): string =>
+    `<w:p><w:pPr><w:numPr><w:ilvl w:val="${ilvl}"/><w:numId w:val="3"/></w:numPr></w:pPr><w:r><w:t>Item</w:t></w:r></w:p>`;
+  const root = parseXmlDocument(
+    `<w:body xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">${item(0)}${item(2)}${item(2)}</w:body>`,
+  ) as XmlElement | null;
+  if (!root) {
+    throw new Error("Failed to parse body XML");
+  }
+
+  const paragraphs = parseBlockContent(root, null, null, numbering, null, null);
+
+  // The level between the two is counted at its start, not left empty.
+  expect(
+    paragraphs.map((paragraph) =>
+      paragraph.type === "paragraph"
+        ? paragraph.listRendering?.marker
+        : undefined,
+    ),
+  ).toEqual(["3.", "3.5.7.", "3.5.8."]);
+});
+
 test("zero-based numbering advances instead of repeatedly reinitializing", () => {
   const numbering =
     parseNumbering(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -240,13 +272,13 @@ test("an adjacent base instance continues an explicit restart instance", () => {
   ).toEqual(["(1)", "(2)", "(3)"]);
 });
 
-test("a non-list paragraph ends an explicit restart handoff", () => {
+test("a non-list paragraph does not part the instances of one list", () => {
   const numbering = parseNumbering(NUMBERING_SHARED);
   const root = parseXmlDocument(
     `<w:body xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
       <w:p><w:pPr><w:numPr><w:numId w:val="2"/></w:numPr></w:pPr><w:r><w:t>First</w:t></w:r></w:p>
       <w:p><w:r><w:t>Interruption</w:t></w:r></w:p>
-      <w:p><w:pPr><w:numPr><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>Separate</w:t></w:r></w:p>
+      <w:p><w:pPr><w:numPr><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>Second</w:t></w:r></w:p>
     </w:body>`,
   ) as XmlElement | null;
   if (!root) {
@@ -261,7 +293,38 @@ test("a non-list paragraph ends an explicit restart handoff", () => {
         ? paragraph.listRendering?.marker
         : undefined,
     ),
-  ).toEqual(["(1)", undefined, "(1)"]);
+  ).toEqual(["(1)", undefined, "(2)"]);
+});
+
+test("a list returns to an earlier instance after a restarted one and counts on", () => {
+  const numbering = parseNumbering(NUMBERING_SHARED);
+  const item = (numId: number, text: string): string =>
+    `<w:p><w:pPr><w:numPr><w:numId w:val="${numId}"/></w:numPr></w:pPr><w:r><w:t>${text}</w:t></w:r></w:p>`;
+  const root = parseXmlDocument(
+    `<w:body xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      ${item(1, "One")}${item(1, "Two")}
+      <w:p><w:r><w:t>Interruption</w:t></w:r></w:p>
+      ${item(2, "Restarted")}${item(1, "Back on the first")}${item(1, "Again")}
+      <w:p><w:r><w:t>Interruption</w:t></w:r></w:p>
+      ${item(2, "The restarted one a second time")}
+    </w:body>`,
+  ) as XmlElement | null;
+  if (!root) {
+    throw new Error("Failed to parse body XML");
+  }
+
+  const paragraphs = parseBlockContent(root, null, null, numbering, null, null);
+
+  // The restart is the restarted instance's first paragraph only. Every
+  // paragraph after it counts on from the one before, whichever of the two
+  // instances it names.
+  expect(
+    paragraphs.flatMap((paragraph) =>
+      paragraph.type === "paragraph" && paragraph.listRendering
+        ? [paragraph.listRendering.marker]
+        : [],
+    ),
+  ).toEqual(["(1)", "(2)", "(1)", "(2)", "(3)", "(4)"]);
 });
 
 test("a direct instance continues an adjacent style-derived sequence", () => {

@@ -31,7 +31,6 @@ import {
 import {
   computeListMarker,
   type ComputeListMarkerOptions,
-  type PreviousListState,
 } from "./listMarkerComputation";
 import {
   BLOCK_COMMENT_RANGE_MARKER_HANDLERS,
@@ -73,8 +72,7 @@ type BlockContentScope = ParseBlockContentOptions & { previews: PreviewLedger };
 type ParseBlockContentState = {
   listCounters: Map<number, number[]>;
   abstractCounters: Map<number, number[]>;
-  restartedNumIds: Set<number>;
-  previousList: PreviousListState;
+  startedLevels: Set<number>;
   options: BlockContentScope;
 };
 
@@ -147,8 +145,7 @@ export const parseBlockContent = (
   parseBlockContentWithState(parent, styles, theme, numbering, rels, media, {
     listCounters: new Map(),
     abstractCounters: new Map(),
-    restartedNumIds: new Set(),
-    previousList: { abstractNumId: null, fromStyle: false, numId: null },
+    startedLevels: new Set(),
     // Accumulate the container's own xmlns onto the inherited in-scope set so a
     // captured VML `w:pict` replay resolves prefixes scoped on this level too.
     options: {
@@ -360,8 +357,7 @@ export const BLOCK_CONTENT_HANDLERS: {
       numbering,
       listCounters: state.listCounters,
       abstractCounters: state.abstractCounters,
-      restartedNumIds: state.restartedNumIds,
-      previousList: state.previousList,
+      startedLevels: state.startedLevels,
     });
     modelled.push(paragraph);
   },
@@ -394,8 +390,7 @@ export const BLOCK_CONTENT_HANDLERS: {
       numbering,
       listCounters: state.listCounters,
       abstractCounters: state.abstractCounters,
-      restartedNumIds: state.restartedNumIds,
-      previousList: state.previousList,
+      startedLevels: state.startedLevels,
     });
     modelled.push(table);
     return undefined;

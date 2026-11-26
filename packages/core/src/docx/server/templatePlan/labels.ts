@@ -303,8 +303,7 @@ export const createLabelCounter = ({
     numbering,
     listCounters: new Map(),
     abstractCounters: new Map(),
-    restartedNumIds: new Set(),
-    previousList: { abstractNumId: null, fromStyle: false, numId: null },
+    startedLevels: new Set(),
   };
   const styleLanguage = createStyleLanguages(styles);
   return {
