@@ -504,7 +504,7 @@ describe("published Node minimum", () => {
     ).toEqual(["HAWK_VERSION", "HAWK_CRATE_SHA256"]);
   });
 
-  test("the minimum consumer run owns a scoped floor and reuses default-runtime tarballs", () => {
+  test("the minimum consumer run owns a scoped floor and shares the default-runtime tarballs", () => {
     expect(configuration.engineFloors).toEqual([
       {
         package: "packages/cli",
@@ -514,33 +514,43 @@ describe("published Node minimum", () => {
     ]);
     const minimum = workflow.jobs[floor.job];
     const current = workflow.jobs["consumer-scenarios"];
-    expect(minimum.needs).toEqual(["ci-plan", "consumer-scenarios"]);
-    expect(minimum.if).toBe(current.if);
+    const pack = workflow.jobs["consumer-tarballs"];
+    // Both runtimes install the tarballs one job packs with the shared runtime.
+    for (const job of [current, minimum]) {
+      expect(job.needs).toEqual(["ci-plan", "consumer-tarballs"]);
+      expect(job.if).toBe(pack.if);
+    }
+    for (const job of [pack, current])
+      expect(
+        job.steps.find((step) => step.uses?.startsWith("actions/setup-node@"))
+          .with,
+      ).toEqual({ "node-version-file": ".node-version" });
     expect(
-      current.steps.find((step) => step.uses?.startsWith("actions/setup-node@"))
-        .with,
-    ).toEqual({ "node-version-file": ".node-version" });
-    expect(
-      current.steps.filter((step) => step.run?.includes("--pack-only")),
+      pack.steps.filter((step) => step.run?.includes("--pack-only")),
     ).toEqual([
       {
         name: "Build consumer tarballs with the shared runtime",
         run: "bun scripts/consumer-scenarios.ts --pack-only test-results/consumer-tarballs",
       },
     ]);
-    const upload = current.steps.find(
+    const upload = pack.steps.find(
       (step) => step.with?.name === "consumer-scenarios-tarballs",
     );
-    const download = minimum.steps.find(
-      (step) => step.with?.name === upload.with.name,
-    );
-    expect(download.with.path).toBe(upload.with.path);
+    for (const job of [current, minimum]) {
+      expect(
+        job.steps.filter((step) => step.run?.includes("--pack-only")),
+      ).toEqual([]);
+      const download = job.steps.find(
+        (step) => step.with?.name === upload.with.name,
+      );
+      expect(download.with.path).toBe(upload.with.path);
+    }
     expect(
       minimum.steps
         .filter((step) => step.run?.includes("consumer-scenarios.ts"))
         .map((step) => step.run),
     ).toEqual([
-      `bun scripts/consumer-scenarios.ts --typecheck --tarballs ${download.with.path}`,
+      `bun scripts/consumer-scenarios.ts --typecheck --tarballs ${upload.with.path}`,
     ]);
     expect(
       JSON.parse(evaluationForMinimum().env.JOB_SCOPES)[floor.job],
