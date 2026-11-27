@@ -250,5 +250,13 @@
       "note": "#3726: a merge below the deletion of a row whose first cell starts a vertical merge is refused in either mode (path at factor 4).",
       "date": "2026-11-27"
     }
+  ],
+  "keep merges whole across mixed batches on nested merged tables": [
+    {
+      "seed": 99,
+      "path": "920:4:7:13:14:13:13:13:13:13:13:13:13:13:13:13:24:16:16:23:16:16:17:17:17:18:18:19:19:19:19:19:19:19:19:36:19:19:19:19:19:23:24:24",
+      "note": "Deleting both columns a wide cell spans removes it, so a later edit of it is refused (path at factor 10).",
+      "date": "2026-11-27"
+    }
   ]
 }

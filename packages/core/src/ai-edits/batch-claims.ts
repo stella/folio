@@ -28,6 +28,8 @@ export const compareBatchTieOrder = (
 ): number => rightIndex - leftIndex;
 
 type PositionRange = { from: number; to: number };
+/** A table cell's range and the grid columns it spans, `left` to `right`. */
+export type SpannedCell = PositionRange & { left: number; right: number };
 
 /** A paragraph before a deleted one that ends its container; see `paragraphsBefore`. */
 type ParagraphBefore = {
@@ -100,7 +102,9 @@ export type BatchClaim =
   /**
    * A table, a row or a column's cells, removed. A removed row or column
    * leaves the table to the other structural operations of the batch; a
-   * removed table leaves nothing to them.
+   * removed table leaves nothing to them. A removed column also names the
+   * wider cells it runs through (`spanned`, by grid columns), which go once
+   * the batch removes every column they span.
    */
   | {
       type: "tableRemoval";
@@ -108,6 +112,7 @@ export type BatchClaim =
       wholeTable: boolean;
       axis: "row" | "column" | "table";
       ranges: readonly PositionRange[];
+      column?: { index: number; spanned: readonly SpannedCell[] };
     }
   /**
    * Any other change to a table's grid: rows or columns added, cells merged or
@@ -375,6 +380,29 @@ const strictlyInsideAny = (
 type TableRemovalClaim = Extract<BatchClaim, { type: "tableRemoval" }>;
 
 /**
+ * What a removal takes, given the removals accepted before it: a column's
+ * own cells, and the wider cells whose every column it and the earlier
+ * column removals of its table take between them.
+ */
+const removedRanges = (
+  claim: TableRemovalClaim,
+  earlier: readonly { claim: TableRemovalClaim }[],
+): readonly PositionRange[] => {
+  const { column } = claim;
+  if (column === undefined || column.spanned.length === 0) return claim.ranges;
+  const removed = new Set([column.index]);
+  for (const { claim: other } of earlier)
+    if (other.table === claim.table && other.column !== undefined)
+      removed.add(other.column.index);
+  const emptied = column.spanned.filter(({ left, right }) =>
+    Array.from({ length: right - left }, (_, at) => left + at).every((at) =>
+      removed.has(at),
+    ),
+  );
+  return emptied.length === 0 ? claim.ranges : [...claim.ranges, ...emptied];
+};
+
+/**
  * The claims of the operations a batch has accepted so far, indexed so a
  * batch of thousands of operations checks each one against its neighbours
  * rather than against every other operation.
@@ -536,6 +564,7 @@ export class BatchClaims {
           null
         );
       case "tableRemoval": {
+        const ranges = removedRanges(claim, this.removals);
         if (claim.axis === "row") {
           const columnInsertion = this.columnInsertions.get(claim.table);
           if (columnInsertion !== undefined) return columnInsertion;
@@ -553,7 +582,7 @@ export class BatchClaims {
         for (const removal of this.removals) {
           if (
             insideAny(removal.claim.ranges, claim.table) ||
-            insideAny(claim.ranges, removal.claim.table) ||
+            insideAny(ranges, removal.claim.table) ||
             (removal.claim.table === claim.table &&
               (removal.claim.wholeTable ||
                 claim.wholeTable ||
@@ -563,7 +592,7 @@ export class BatchClaims {
           }
         }
         for (const [table, operationId] of this.tables) {
-          if (strictlyInsideAny(claim.ranges, table)) {
+          if (strictlyInsideAny(ranges, table)) {
             return operationId;
           }
         }
@@ -571,12 +600,12 @@ export class BatchClaims {
           const editor = entries.find(
             ({ role }) => role.kind !== "deleteBlock",
           );
-          if (editor !== undefined && insideAny(claim.ranges, block)) {
+          if (editor !== undefined && insideAny(ranges, block)) {
             return editor.operationId;
           }
         }
         for (const [at, operationId] of this.insertions) {
-          if (strictlyInsideAny(claim.ranges, at)) {
+          if (strictlyInsideAny(ranges, at)) {
             return operationId;
           }
         }
@@ -670,7 +699,10 @@ export class BatchClaims {
         }
         break;
       case "tableRemoval":
-        this.removals.push({ operationId, claim });
+        this.removals.push({
+          operationId,
+          claim: { ...claim, ranges: removedRanges(claim, this.removals) },
+        });
         if (!this.tables.has(claim.table)) {
           this.tables.set(claim.table, operationId);
         }

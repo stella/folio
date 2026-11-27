@@ -3,7 +3,7 @@ import type { Node as PMNode, ResolvedPos } from "prosemirror-model";
 import { TableMap } from "prosemirror-tables";
 
 import { paragraphEndsItsContainer } from "../prosemirror/containerFinalParagraph";
-import type { BatchClaim } from "./batch-claims";
+import type { BatchClaim, SpannedCell } from "./batch-claims";
 import { holdsOnlyDeletedContent } from "./pendingJoin";
 import { isEmptyTableCell } from "./table-cell-mutations";
 import type {
@@ -14,6 +14,8 @@ import type {
   TableColumnDeletion,
   TableRowDeletion,
 } from "./table-row-column-mutations";
+
+type PositionRange = { from: number; to: number };
 
 /** Required snapshot facts shared by the native and canonical batch planners. */
 export type SnapshotBatchOperation =
@@ -78,18 +80,23 @@ export const followedOnlyByDeletedParagraphs = (
   return deletes;
 };
 
-/** The cells a column deletion removes: every cell standing in that column alone. */
-const deletedColumnCellRanges = (
+/**
+ * The cells a column deletion removes, every cell standing in that column
+ * alone, and the wider cells it runs through (`spanned`), which go only with
+ * every column they span.
+ */
+const deletedColumnCells = (
   doc: PMNode,
   { tablePosition, columnIndex }: TableColumnDeletion,
-): { from: number; to: number }[] => {
+): { ranges: PositionRange[]; spanned: SpannedCell[] } => {
+  const ranges: PositionRange[] = [];
+  const spanned: SpannedCell[] = [];
   const table = doc.nodeAt(tablePosition);
   if (!table || table.type.spec["tableRole"] !== "table") {
-    return [];
+    return { ranges, spanned };
   }
   const map = TableMap.get(table);
   const tableStart = tablePosition + 1;
-  const ranges: { from: number; to: number }[] = [];
   const seen = new Set<number>();
   for (let row = 0; row < map.height; row++) {
     const relative = map.map[row * map.width + columnIndex];
@@ -97,21 +104,19 @@ const deletedColumnCellRanges = (
       continue;
     }
     seen.add(relative);
-    const rectangle = map.findCell(relative);
+    const { left, right } = map.findCell(relative);
     const cell = table.nodeAt(relative);
-    if (
-      !cell ||
-      rectangle.left !== columnIndex ||
-      rectangle.right !== columnIndex + 1
-    ) {
+    if (!cell) {
       continue;
     }
-    ranges.push({
+    const range = {
       from: tableStart + relative,
       to: tableStart + relative + cell.nodeSize,
-    });
+    };
+    if (left === columnIndex && right === columnIndex + 1) ranges.push(range);
+    else spanned.push({ ...range, left, right });
   }
-  return ranges;
+  return { ranges, spanned };
 };
 
 type DeletedRowAffectedRangesOptions = {
@@ -280,14 +285,17 @@ export const snapshotBatchClaim = ({
                 row: item.row,
               }),
       };
-    case "deleteTableColumn":
+    case "deleteTableColumn": {
+      const { ranges, spanned } = deletedColumnCells(doc, item.deletion);
       return {
         type: "tableRemoval",
         table: item.deletion.tablePosition,
         wholeTable: false,
         axis: "column",
-        ranges: deletedColumnCellRanges(doc, item.deletion),
+        ranges,
+        column: { index: item.deletion.columnIndex, spanned },
       };
+    }
     case "tableStructure":
       return {
         type: "tableStructure",
