@@ -194,83 +194,132 @@ const planArbitrary: fc.Arbitrary<OperationPlan> = fc.record({
   valueCount: fc.option(fc.integer({ min: 0, max: 5 }), { nil: undefined }),
 });
 
+/** A document whose only table cell holds `table`. */
+const onlyCellOf = (table: TableSpec): TableSpec => ({
+  rows: 1,
+  columns: 1,
+  cells: [
+    { row: 0, column: 0, rowSpan: 1, columnSpan: 1, text: "", nested: table },
+  ],
+});
+
+/** A table of two to `maxRows` rows with at least one vertical merge. */
+const verticallyMergedTableArbitrary = (
+  label: string,
+  maxRows: number,
+): fc.Arbitrary<TableSpec> =>
+  fc
+    .record({
+      rows: fc.integer({ min: 2, max: maxRows }),
+      columns: fc.integer({ min: 1, max: 3 }),
+      sizes: fc.array(
+        fc.record({
+          rowSpan: fc.integer({ min: 1, max: 3 }),
+          columnSpan: fc.oneof(
+            { weight: 3, arbitrary: fc.constant(1) },
+            { weight: 1, arbitrary: fc.constant(2) },
+          ),
+          blank: fc.boolean(),
+        }),
+        { minLength: 1, maxLength: 8 },
+      ),
+    })
+    .map(({ rows, columns, sizes }) => partition(rows, columns, sizes, label))
+    .filter(
+      (spec): spec is TableSpec =>
+        spec?.cells.some((cell) => cell.rowSpan > 1) === true,
+    );
+
 /**
  * A table built around vertical merges, top-level or as the only cell of an
  * outer table, so every anchor but one lands in it.
  */
 const mergedDocumentArbitrary: fc.Arbitrary<TableSpec> = fc
   .record({
-    table: fc
-      .record({
-        rows: fc.integer({ min: 2, max: 3 }),
-        columns: fc.integer({ min: 1, max: 3 }),
-        sizes: fc.array(
-          fc.record({
-            rowSpan: fc.integer({ min: 1, max: 3 }),
-            columnSpan: fc.oneof(
-              { weight: 3, arbitrary: fc.constant(1) },
-              { weight: 1, arbitrary: fc.constant(2) },
-            ),
-            blank: fc.boolean(),
-          }),
-          { minLength: 1, maxLength: 8 },
-        ),
-      })
-      .map(({ rows, columns, sizes }) => partition(rows, columns, sizes, "n"))
-      .filter(
-        (spec): spec is TableSpec =>
-          spec?.cells.some((cell) => cell.rowSpan > 1) === true,
-      ),
+    table: verticallyMergedTableArbitrary("n", 3),
     nested: fc.boolean(),
   })
-  .map(({ table, nested }) =>
-    nested
-      ? {
-          rows: 1,
-          columns: 1,
-          cells: [
-            {
-              row: 0,
-              column: 0,
-              rowSpan: 1,
-              columnSpan: 1,
-              text: "",
-              nested: table,
-            },
-          ],
-        }
-      : table,
+  .map(({ table, nested }) => (nested ? onlyCellOf(table) : table));
+
+/**
+ * As {@link mergedDocumentArbitrary}, with taller tables, and also nested in
+ * a cell of an outer table with vertical merges of its own.
+ */
+const nestedMergedDocumentArbitrary: fc.Arbitrary<TableSpec> = fc
+  .record({
+    table: verticallyMergedTableArbitrary("n", 4),
+    outer: verticallyMergedTableArbitrary("c", 3),
+    nesting: fc.constantFrom("none", "only", "beside"),
+    host: fc.nat(),
+  })
+  .map(({ table, outer, nesting, host }): TableSpec => {
+    if (nesting === "none") return table;
+    if (nesting === "only") return onlyCellOf(table);
+    const cells = [...outer.cells];
+    const index = host % cells.length;
+    const hostCell = cells[index];
+    if (hostCell) cells[index] = { ...hostCell, nested: table };
+    return { rows: outer.rows, columns: outer.columns, cells };
+  });
+
+const batchPlanArbitrary = (
+  kinds: readonly { weight: number; kinds: OperationKind[] }[],
+  maxLength: number,
+): fc.Arbitrary<OperationPlan[]> =>
+  fc.array(
+    fc.record({
+      anchor: fc.nat(),
+      other: fc.nat(),
+      kind: fc.oneof(
+        ...kinds.map(({ weight, kinds: choices }) => ({
+          weight,
+          arbitrary: fc.constantFrom(...choices),
+        })),
+      ),
+      position: fc.constantFrom("before", "after"),
+      valueCount: fc.option(fc.integer({ min: 0, max: 3 }), {
+        nil: undefined,
+      }),
+    }),
+    { minLength: 2, maxLength },
   );
 
 /** Two or three edits of one merged table, mostly of its rows. */
-const mergedBatchArbitrary = fc.array(
-  fc.record({
-    anchor: fc.nat(),
-    other: fc.nat(),
-    kind: fc.oneof(
-      {
-        weight: 4,
-        arbitrary: fc.constantFrom<OperationKind>(
-          "insertTableRow",
-          "deleteTableRow",
-        ),
-      },
-      {
-        weight: 1,
-        arbitrary: fc.constantFrom<OperationKind>(
-          "insertTableColumn",
-          "deleteTableColumn",
-          "mergeTableCells",
-          "splitTableCell",
-          "replaceBlock",
-          "deleteBlock",
-        ),
-      },
-    ),
-    position: fc.constantFrom("before", "after"),
-    valueCount: fc.option(fc.integer({ min: 0, max: 3 }), { nil: undefined }),
-  }),
-  { minLength: 2, maxLength: 3 },
+const mergedBatchArbitrary = batchPlanArbitrary(
+  [
+    { weight: 4, kinds: ["insertTableRow", "deleteTableRow"] },
+    {
+      weight: 1,
+      kinds: [
+        "insertTableColumn",
+        "deleteTableColumn",
+        "mergeTableCells",
+        "splitTableCell",
+        "replaceBlock",
+        "deleteBlock",
+      ],
+    },
+  ],
+  3,
+);
+
+/** Two to four edits of merged tables, rows, columns and cells mixed. */
+const mixedBatchArbitrary = batchPlanArbitrary(
+  [
+    { weight: 3, kinds: ["insertTableRow", "deleteTableRow"] },
+    { weight: 2, kinds: ["insertTableColumn", "deleteTableColumn"] },
+    {
+      weight: 2,
+      kinds: [
+        "mergeTableCells",
+        "splitTableCell",
+        "replaceBlock",
+        "insertAfterBlock",
+        "deleteBlock",
+      ],
+    },
+  ],
+  4,
 );
 
 /**
@@ -713,6 +762,26 @@ describe.each(SESSIONS)("%s session", (session) => {
           {
             numRuns: 100,
             id: "keep vertical merges whole across batched row edits",
+          },
+        );
+      },
+      propertyTestTimeout(120_000),
+    );
+
+    // Row, column and cell edits batched across merged tables at both
+    // levels, so an edit lands where another changed a merge of either.
+    test(
+      "keep merges whole across mixed batches on nested merged tables",
+      async () => {
+        await assertProperty(
+          fc.asyncProperty(
+            nestedMergedDocumentArbitrary,
+            mixedBatchArbitrary,
+            checkCase,
+          ),
+          {
+            numRuns: 100,
+            id: "keep merges whole across mixed batches on nested merged tables",
           },
         );
       },
