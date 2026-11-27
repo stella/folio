@@ -5700,6 +5700,31 @@ export class CanonicalPublicOperations {
           : insertionGap(projected.value.doc, place.start - 1, "before"),
       ];
     };
+    // A block its own paragraph refuses (gone, changed since the snapshot,
+    // or not as its precondition read it) lands nowhere: the batch's
+    // deletions read only the blocks that land beside them.
+    const landsAsRequested = (operation: FolioDocumentOperation): boolean => {
+      if (!placesBlock(operation) || !state || projected.isErr()) return true;
+      const anchor = Object.hasOwn(options.snapshot.anchors, operation.blockId)
+        ? options.snapshot.anchors[operation.blockId]
+        : undefined;
+      const paragraph = projected.value.paragraph(operation.blockId);
+      if (anchor === undefined || paragraph === undefined) return false;
+      const hash = hashFolioAIBlockContent(
+        buildCleanBlockText(paragraph.node, paragraph.start - 1, {
+          fieldResults: "text",
+          noteReferences: (batchNoteReferences ??= collectNoteReferenceLabels(
+            state.doc,
+          )),
+        }).text,
+      );
+      return (
+        hash === anchor.textHash &&
+        (operation.precondition === undefined ||
+          hash === operation.precondition.blockTextHash)
+      );
+    };
+    const landing = batch.operations.filter(landsAsRequested);
     const besideDeletions: BesideDeletions = {
       deleted: new Set(
         batch.operations.flatMap((operation) =>
@@ -5707,13 +5732,13 @@ export class CanonicalPublicOperations {
         ),
       ),
       insertedBeside: new Set(
-        batch.operations.flatMap((operation) =>
+        landing.flatMap((operation) =>
           isBlockInsertion(operation) ? [landsBeside(operation)] : [],
         ),
       ),
       tables: {
-        after: tableAnchors(batch.operations, "after", landsBeside),
-        before: tableAnchors(batch.operations, "before", landsBeside),
+        after: tableAnchors(landing, "after", landsBeside),
+        before: tableAnchors(landing, "before", landsBeside),
         deleted: new Set(
           batch.operations.flatMap((operation) =>
             operation.type === "deleteTable" ? [operation.blockId] : [],
@@ -5721,7 +5746,7 @@ export class CanonicalPublicOperations {
         ),
       },
       paragraphsAfter: new Set(
-        batch.operations.flatMap((operation) =>
+        landing.flatMap((operation) =>
           operation.type === "insertAfterBlock" ? [landsBeside(operation)] : [],
         ),
       ),
@@ -5730,11 +5755,14 @@ export class CanonicalPublicOperations {
           ({ id }) => id === operationId,
         );
         return new Set(
-          batch.operations.slice(0, Math.max(index, 0)).flatMap(landingOf),
+          batch.operations
+            .slice(0, Math.max(index, 0))
+            .filter((operation) => landing.includes(operation))
+            .flatMap(landingOf),
         );
       },
       placedBeside: (blockId) =>
-        batch.operations.filter(
+        landing.filter(
           (operation): operation is BlockInsertion | TableInsertion =>
             placesBlock(operation) && landsBeside(operation) === blockId,
         ),
@@ -7001,17 +7029,20 @@ export class CanonicalPublicOperations {
           ...(paragraphAllocationLease === undefined
             ? {}
             : { paragraphAllocationLease }),
-          allocations: member.allocations,
           ...(reuseStaging ? { verifyOperation: operationStaging.apply } : {}),
           ...(member.commentAllocation === undefined
             ? {}
             : { commentAllocation: member.commentAllocation }),
           ...(idLease === undefined ? {} : { idLease }),
         };
-        let prepared = prepareOperation(replayOptions);
+        let prepared = prepareOperation({
+          ...replayOptions,
+          allocations: member.allocations,
+        });
         // Replayed where it lands beside the others of its gap, a member may
-        // need more revision ids than it was admitted with: it takes them
-        // past every admitted member's.
+        // need other ids than it was admitted with: it allocates them afresh,
+        // from its own lease when the session holds one, and takes revision
+        // ids past every admitted member's.
         if (prepared.type === "declined")
           prepared = prepareOperation({
             ...replayOptions,
@@ -8263,7 +8294,10 @@ export class CanonicalPublicOperations {
         landedEarlier,
       };
       let placed: BesidePendingJoin;
-      if (movedPast !== undefined) placed = besideAsItStands(movedPast);
+      // Moved past a deletion, it lands after the deleted paragraph but
+      // copies the one it was put after, as it would there.
+      if (movedPast !== undefined && after !== undefined)
+        placed = { place: movedPast, formattingSource: after.formattingSource };
       else if (insertion.type === "insertAfterBlock")
         placed = after ?? placeAfter(placing);
       else placed = besidePendingJoin({ ...placing, side: "before" });
