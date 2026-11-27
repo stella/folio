@@ -120,10 +120,11 @@ type StoryPairOptions = {
 
 /**
  * Both sides of a batch resolved the same way. A revision the document held
- * before the batch that blocks its own resolution, alone and the same way on
- * both sides, stays pending on both: the proof is about what the batch
- * changes, and a blocker the batch did not make must not refuse every edit
- * of a document that holds one.
+ * before the batch that blocks its own resolution alone there, and blocks it
+ * the same way after the batch or no longer does, stays pending on both: the
+ * proof is about what the batch changes, and a blocker the batch did not make
+ * must not refuse every edit of a document that holds one, such as a
+ * paragraph the batch puts beside it.
  */
 const resolveStoryPair = ({
   before,
@@ -150,17 +151,16 @@ const resolveStoryPair = ({
     });
     if (original?.type === "resolved" && edited?.type === "resolved")
       return { original: original.content, edited: edited.content };
-    if (original?.type !== "refused" || edited?.type !== "refused")
-      return undefined;
+    if (original?.type !== "refused" || edited === undefined) return undefined;
 
-    // Keep identical, pre-existing standalone blockers pending on both sides.
-    // Each retry removes an ID from both selections before resolving again.
+    // Keep pre-existing standalone blockers pending on both sides. Each
+    // retry removes an ID from both selections before resolving again.
     const id = original.error.blockedParagraphMarkRevisionId;
     if (
       id === undefined ||
-      edited.error.blockedParagraphMarkRevisionId !== id ||
-      edited.error.reason !== original.error.reason ||
-      edited.error.message !== original.error.message ||
+      (edited.type === "refused" &&
+        (edited.error.blockedParagraphMarkRevisionId !== id ||
+          edited.error.reason !== original.error.reason)) ||
       !beforeIds.includes(id) ||
       !afterIds.includes(id) ||
       getTrackedChangeGroupsForIds(before.version.projection, [id]).at(0)

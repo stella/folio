@@ -130,3 +130,78 @@ for (const [kind, follower] of Object.entries(followers))
             });
           }
   });
+
+test("rejecting an added paragraph joining one before a block resolves as if it had never been added", () => {
+  const reject = (content: BlockContent[], revisionIds: number[]) =>
+    applyDocumentOp(
+      {
+        package: {
+          document: { content, finalSectionProperties: { pageWidth: 15840 } },
+        },
+      },
+      {
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story: OP_STORIES.MAIN,
+        revisionIds,
+        decision: "reject",
+      },
+    ).unwrap().document;
+  // It holds only range boundaries, under its own added mark and a property
+  // change: rejected, it goes where a paragraph before it takes the
+  // boundaries, and stays with its properties restored where none can.
+  const target = {
+    type: "paragraph",
+    paraId: "10000002",
+    content: [
+      { type: "bookmarkStart", id: 4, name: "kept" },
+      { type: "bookmarkEnd", id: 4 },
+    ],
+    propertyChanges: [
+      {
+        type: "paragraphPropertyChange",
+        info: { id: 10, author: "A" },
+        previousFormatting: { alignment: "end" },
+      },
+    ],
+    pPrMark: { kind: "ins", info: { id: 7, author: "A" } },
+  } satisfies Paragraph;
+  const added = {
+    type: "paragraph",
+    paraId: "10000005",
+    content: [
+      {
+        type: "insertion",
+        info: { id: 8, author: "Reviewer" },
+        content: [{ type: "run", content: [{ type: "text", text: "new" }] }],
+      },
+    ],
+    pPrMark: { kind: "ins", info: { id: 9, author: "Reviewer" } },
+  } satisfies Paragraph;
+  const bookmark = {
+    type: "bookmarkStart",
+    id: 90,
+    name: "_GoBack",
+  } satisfies BlockContent;
+  const paragraph = {
+    type: "paragraph",
+    paraId: "10000001",
+    content: [],
+  } satisfies Paragraph;
+  const preceding: Record<string, BlockContent[]> = {
+    nothing: [],
+    bookmark: [bookmark],
+    paragraph: [paragraph],
+    "paragraph and bookmark": [paragraph, bookmark],
+  };
+  for (const [kind, follower] of Object.entries(followers))
+    for (const [before, blocks] of Object.entries(preceding))
+      expect({
+        kind,
+        before,
+        rejected: reject([...blocks, added, target, follower], [7, 8, 9, 10]),
+      }).toEqual({
+        kind,
+        before,
+        rejected: reject([...blocks, target, follower], [7, 10]),
+      });
+});
