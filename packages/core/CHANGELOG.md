@@ -1,5 +1,25 @@
 # @stll/folio-core
 
+## 0.78.0
+
+### Minor Changes
+
+- [#3696](https://github.com/stella/folio/pull/3696) [`cdbc86b`](https://github.com/stella/folio/commit/cdbc86be001507a3efb9c5ee4b79cfce8c392454) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A template plan can write a paragraph without its drawn shapes that are fixed to the page (`dropPageShapes` on a source item and on a nested paragraph): single floating shapes without a picture and without text of their own whose horizontal place is counted from the page or a margin, as a conversion from a fixed layout leaves them behind. The block manifest counts them (`pageShapes`), verification holds the output to what the plan names, and the report counts what was left out.
+
+- [#3695](https://github.com/stella/folio/pull/3695) [`c7458fc`](https://github.com/stella/folio/commit/c7458fc0da34ea5e929d61b763142ac0dcfe7e53) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A template plan can give a paragraph a space of its own in front of it and behind it (`spacing` on a source item and on a nested paragraph), over what its style states: for a line the document sets tight or apart by itself, such as the rows of a table. The block manifest reports the space a paragraph states for itself (`spacing` on a block), and verification holds the output to the plan.
+
+- [#3698](https://github.com/stella/folio/pull/3698) [`be4852e`](https://github.com/stella/folio/commit/be4852e7ba4a87e39cf54aa59187ce8795491c28) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Deleting a paragraph whose hyperlink, content control or smart tag holds a comment anchor now works as a suggestion: the anchor stays where the content was, and rejecting restores the link whole. A pending change to the final section's properties can be accepted, rejected and re-attributed with the rest of a document's changes. A suggested paragraph that ends a section carries its break with its inserted mark, and a table of contents can be generated over headings and text that hold pending changes.
+
+### Patch Changes
+
+- [#3699](https://github.com/stella/folio/pull/3699) [`f63500e`](https://github.com/stella/folio/commit/f63500eafc3b2a0c0e59ca99fa1ac5e78286ea04) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A tracked paragraph inserted beside paragraphs whose marks are pending, across a bookmark between paragraphs or before a block or table, now applies as its suggestion does, and rejecting it gives back the original paragraph with its properties.
+
+- [#3682](https://github.com/stella/folio/pull/3682) [`718daa0`](https://github.com/stella/folio/commit/718daa0e28ee9ba3a5289b5b5b1b351bd08577df) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Suggest mixed column deletions, horizontal splits, and horizontal merges that absorb empty cells, with native grid and cell records.
+
+- [#3681](https://github.com/stella/folio/pull/3681) [`4380b16`](https://github.com/stella/folio/commit/4380b161ead24318e22f8c147efc439399c3c850) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Record prior table grids, cell spans, and row omissions when suggesting column edits, and use the serializer's grid width limit for edits and snapshots.
+- Updated dependencies [[`f63500e`](https://github.com/stella/folio/commit/f63500eafc3b2a0c0e59ca99fa1ac5e78286ea04), [`f63500e`](https://github.com/stella/folio/commit/f63500eafc3b2a0c0e59ca99fa1ac5e78286ea04), [`3a38524`](https://github.com/stella/folio/commit/3a38524dd57e61c79ec38a1ac881b3b22f6a5ed1), [`718daa0`](https://github.com/stella/folio/commit/718daa0e28ee9ba3a5289b5b5b1b351bd08577df), [`4380b16`](https://github.com/stella/folio/commit/4380b161ead24318e22f8c147efc439399c3c850), [`4380b16`](https://github.com/stella/folio/commit/4380b161ead24318e22f8c147efc439399c3c850), [`718daa0`](https://github.com/stella/folio/commit/718daa0e28ee9ba3a5289b5b5b1b351bd08577df)]:
+  - @stll/docx-core@0.48.1
+
 ## 0.77.0
 
 ### Minor Changes
