@@ -23,6 +23,7 @@ import type {
   Run,
   Table,
 } from "../types/document";
+import { withParagraphIds } from "./__tests__/paragraphIds";
 import { parseDocx, parseDocxWithPreviewBudget } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import { repackDocx, validateDocx } from "./rezip";
@@ -425,14 +426,18 @@ describe("VML w:pict inline images", () => {
   });
 
   test("stabilizes a cached page-break hint when later inline content is omitted", async () => {
+    // Its paragraph holds an id, so a save adds none and the reopened
+    // paragraph is the one read.
     const doc = await parseDocx(
-      await pictDocx({
-        // An empty w:pict carries no shape to preserve, so the run really does
-        // lose its inline content here.
-        runXml: `<w:lastRenderedPageBreak/><w:pict/>`,
-        imageRel: false,
-        media: false,
-      }),
+      await withParagraphIds(
+        await pictDocx({
+          // An empty w:pict carries no shape to preserve, so the run really does
+          // lose its inline content here.
+          runXml: `<w:lastRenderedPageBreak/><w:pict/>`,
+          imageRel: false,
+          media: false,
+        }),
+      ),
       { preloadFonts: false },
     );
     const paragraph = doc.package.document.content.at(0);
@@ -450,9 +455,11 @@ describe("VML w:pict inline images", () => {
 
   test("keeps a cached page-break hint when the following VML content is retained", async () => {
     const doc = await parseDocx(
-      await pictDocx({
-        runXml: `<w:lastRenderedPageBreak/>${PICT_WITH_IMAGE}`,
-      }),
+      await withParagraphIds(
+        await pictDocx({
+          runXml: `<w:lastRenderedPageBreak/>${PICT_WITH_IMAGE}`,
+        }),
+      ),
       { preloadFonts: false },
     );
     const paragraph = doc.package.document.content.at(0);

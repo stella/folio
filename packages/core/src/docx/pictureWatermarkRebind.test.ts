@@ -16,6 +16,7 @@ import { ZipArchive } from "@stll/docx-core/zip";
 import { base64ToBytes } from "@stll/utf8-boundaries";
 
 import { getDocumentWatermark, setDocumentWatermark } from "../watermark";
+import { withParagraphIds } from "./__tests__/paragraphIds";
 import {
   canReplayHeaderFooterVerbatim,
   getHeaderFooterVerbatimXml,
@@ -107,9 +108,12 @@ const countMediaImages = async (zip: ZipArchive): Promise<number> =>
 
 describe("picture watermark relationship rebinding (eigenpal #684)", () => {
   test("keeps an untouched picture watermark header byte-stable after save and reopen", async () => {
-    const doc = await parseDocx(await twoHeaderPictureWatermarkDocx(), {
-      preloadFonts: false,
-    });
+    // Every paragraph holds an id, as the editor's ingest reads it, so a save
+    // adds none to a header it leaves alone.
+    const doc = await parseDocx(
+      await withParagraphIds(await twoHeaderPictureWatermarkDocx()),
+      { preloadFonts: false },
+    );
     const header = doc.package.headers?.get("rId10");
     expect(header).toBeDefined();
     if (!header) {

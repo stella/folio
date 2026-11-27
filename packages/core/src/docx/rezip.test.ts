@@ -8,6 +8,7 @@ import {
   withTrackedSectionEndpointRemoval,
 } from "../internal/sectionEndpointResolution";
 import type { Document, Image } from "../types/document";
+import { withParagraphIds } from "./__tests__/paragraphIds";
 import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import {
@@ -398,9 +399,11 @@ describe("repackDocx", () => {
   });
 
   test("preserves clickable image hyperlinks across full save and reopen", async () => {
-    const parsed = await parseDocx(await createHyperlinkedImageFixture(), {
-      preloadFonts: false,
-    });
+    // Its paragraphs hold ids, so a save adds none and reopens what it read.
+    const parsed = await parseDocx(
+      await withParagraphIds(await createHyperlinkedImageFixture()),
+      { preloadFonts: false },
+    );
     expect(getFirstImage(parsed)).toMatchObject({
       hlinkHref: "https://example.test/guide",
       hlinkRId: "rId6",

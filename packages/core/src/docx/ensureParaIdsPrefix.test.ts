@@ -22,6 +22,7 @@ import {
   type PrefixVariant,
   rewritePackagePrefixes,
 } from "./__tests__/namespacePrefixVariants";
+import { withoutParagraphIds } from "./__tests__/paragraphIds";
 import { ensureParaIds, EnsureParaIdsError } from "./ensureParaIds";
 import { createDocx } from "./rezip";
 import {
@@ -52,11 +53,6 @@ const toArrayBuffer = (bytes: Uint8Array): ArrayBuffer =>
     bytes.byteOffset + bytes.byteLength,
   ) as ArrayBuffer;
 
-const twoParagraphs = async (): Promise<Uint8Array> =>
-  new Uint8Array(
-    await createDocx(fromMarkdown("Alpha clause.\n\nBeta clause.")),
-  );
-
 const documentPart = async (docx: Uint8Array): Promise<string> => {
   const text = await (
     await ZipArchive.read(docx)
@@ -74,6 +70,17 @@ const withDocumentPart = async (
   const zip = await ZipArchive.read(docx);
   zip.set("word/document.xml", xml);
   return zip.generate({ compression: "store" });
+};
+
+/** Two paragraphs without ids: a save gives them ids, so they are taken off. */
+const twoParagraphs = async (): Promise<Uint8Array> => {
+  const saved = new Uint8Array(
+    await createDocx(fromMarkdown("Alpha clause.\n\nBeta clause.")),
+  );
+  return withDocumentPart(
+    saved,
+    withoutParagraphIds(await documentPart(saved)),
+  );
 };
 
 const respelled = async (
