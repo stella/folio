@@ -898,12 +898,20 @@ const isNestedTableMove = (value: unknown): value is NestedTableMove => {
   if (!record(value)) return false;
   const rows = value["rows"];
   const paragraphs = value["paragraphs"];
+  const omittedTable = value["omittedTable"];
   return (
     Array.isArray(rows) &&
     rows.every(isRevisionId) &&
     new Set(rows).size === rows.length &&
     Array.isArray(paragraphs) &&
-    (rows.length > 0 || paragraphs.length > 0) &&
+    (omittedTable === undefined
+      ? rows.length > 0 || paragraphs.length > 0
+      : rows.length === 0 &&
+        paragraphs.length === 0 &&
+        Array.isArray(omittedTable) &&
+        omittedTable.length === 2 &&
+        omittedTable.every(isRevisionId) &&
+        omittedTable[0] !== omittedTable[1]) &&
     paragraphs.every(
       (pair) =>
         Array.isArray(pair) &&

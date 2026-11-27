@@ -127,6 +127,11 @@ export const withBelongingTableGeometry = (
     const members = geometry?.revisionIds;
     if (grid === undefined || !Array.isArray(members)) continue;
     const local = reachableOnTable(table);
+    let identities: Set<string> | undefined;
+    const hasRevision = (id: number): boolean =>
+      (identities ??= new Set(identityKeysIn(table))).has(
+        slotKey({ space: IDENTITY_SPACES.REVISION, id }),
+      );
     const moves =
       geometry?.type === "mergeCells"
         ? [
@@ -134,7 +139,10 @@ export const withBelongingTableGeometry = (
               ? tableMoveRevisionIds(geometry.moves)
               : []),
             ...(Array.isArray(geometry.nestedMoves)
-              ? geometry.nestedMoves.flatMap((move) => move.rows)
+              ? geometry.nestedMoves.flatMap((move) => [
+                  ...move.rows,
+                  ...(move.omittedTable?.filter(hasRevision) ?? []),
+                ])
               : []),
           ]
         : [];
@@ -146,15 +154,7 @@ export const withBelongingTableGeometry = (
       !tableMoveOwnershipMatches(table, geometry)
     ) {
       if (!selectsGeometry) {
-        const physical = new Set(identityKeysIn(table));
-        if (
-          !moves.some(
-            (id) =>
-              ids.has(id) &&
-              physical.has(slotKey({ space: IDENTITY_SPACES.REVISION, id })),
-          )
-        )
-          continue;
+        if (!moves.some((id) => ids.has(id) && hasRevision(id))) continue;
       }
       return Result.err(
         new DocumentOpRefusal({

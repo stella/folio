@@ -2487,7 +2487,10 @@ const suggestMerge = ({
   let moveCount = 0;
   for (const move of moves) {
     if (move.type === "table")
-      moveCount += move.source.insertedRows + move.source.revisions.length;
+      moveCount +=
+        move.source.insertedRows +
+        move.source.revisions.length +
+        move.source.omittedAnchorCount;
     else moveCount += move.source.paragraph.content.length === 0 ? 1 : 3;
   }
   const stamps = stampsFor(op, structuralCount + 3 + moveCount);
@@ -2536,6 +2539,7 @@ const suggestMerge = ({
     ReturnType<typeof markTableMove> | ReturnType<typeof markEmptyTableMove>
   >();
   const nestedMoves: TableGeometryNestedMove[] = [];
+  const markedTables = new Map<Table, Table>();
   const destinationBlocks: BlockContent[] = [];
   const wrappers = new Map<MergeWrapper, MergeWrapper>();
   const copiedControls = new Map<BlockSdt, number>();
@@ -2606,11 +2610,13 @@ const suggestMerge = ({
       const endBlockId = nextBlockId + source.paragraphs.length;
       const endStamp = nextStamp + source.insertedRows;
       const endRevisions = endStamp + source.revisions.length;
+      const endAnchors = endRevisions + source.omittedAnchorCount;
       const nested = markNestedTableMove({
         source,
         destinations: op.newBlockIds.slice(nextBlockId, endBlockId),
         rowStamps: moveStamps.slice(nextStamp, endStamp),
         recordStamps: moveStamps.slice(endStamp, endRevisions),
+        anchorStamps: moveStamps.slice(endRevisions, endAnchors),
         controls,
         pictures,
       });
@@ -2620,8 +2626,10 @@ const suggestMerge = ({
           "A moved table needs its row stamps and destination paragraph ids.",
         );
       nextBlockId = endBlockId;
-      nextStamp = endRevisions;
+      nextStamp = endAnchors;
       nestedMoves.push(nested.record);
+      if (nested.original !== source.table)
+        markedTables.set(source.table, nested.original);
       appendDestination(move.wrappers, nested.destination);
       continue;
     }
@@ -2696,6 +2704,7 @@ const suggestMerge = ({
     ],
   };
   const markBlock = (block: BlockContent): BlockContent => {
+    if (block.type === "table") return markedTables.get(block) ?? block;
     if (block.type === "blockCustomXml" || block.type === "blockSdt")
       return { ...block, content: block.content.map(markBlock) };
     return block.type === "paragraph" && block.paraId !== undefined
@@ -3234,7 +3243,10 @@ export const tableEditCopyIdentityDemand = (
     controls: mergeMoveBlockControls(moves).size + mergeMoveControlCount(moves),
     revisions: moves.reduce(
       (total, move) =>
-        total + (move.type === "table" ? move.source.revisions.length : 0),
+        total +
+        (move.type === "table"
+          ? move.source.revisions.length + move.source.omittedAnchorCount
+          : 0),
       0,
     ),
   };
