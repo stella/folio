@@ -2797,7 +2797,6 @@
   },
   "packages/docx-core/src/ops/__tests__/wireFormat.test.ts": {
     "TS2339": 1,
-    "TS2741": 1,
     "TS2769": 1
   },
   "packages/docx-core/src/ops/__tests__/wirePresence.test.ts": {
