@@ -1,9 +1,13 @@
+import { isNoteReferenceId } from "../model/content";
 import {
   type BlockContent,
   type DocxPackage,
+  type InlineSdt,
   MAX_REVISION_ID,
   type Paragraph,
   type ParagraphContent,
+  type Run,
+  type RunContent,
   type Table,
 } from "../model/document";
 import type {
@@ -11,50 +15,183 @@ import type {
   TableGeometryNestedMove,
   TableGridChange,
 } from "../model/formatting";
+import { readXml } from "../xml/streamingXmlParser";
+import {
+  OOXML_NAMESPACE_SCOPE,
+  OOXML_NS,
+  resolveNamespaceUri,
+} from "../xml/xmlNamespaceContext";
 import {
   identityKeysIn,
   idKey,
   packageMoveRangeCensus,
   paragraphIdsIn,
 } from "./ids";
+import {
+  asParagraphContent,
+  childNodes,
+  type InlineNode,
+  rebuildNode,
+} from "./leaves";
 import { stampInfo } from "./review";
 import { reachesPastRemovedCell } from "./tableEditDependencies";
 import type { RevisionStamp } from "./types";
 
-export type TableMoveSource = { paragraph: Paragraph; id: string };
+export type TableMoveSource = {
+  paragraph: Paragraph;
+  id: string;
+  controls: number[];
+};
 export type NestedTableMoveSource = { table: Table; paragraphs: string[] };
+
+const movableAtom = (leaf: RunContent): boolean =>
+  leaf.type === "text" ||
+  leaf.type === "tab" ||
+  (leaf.type === "break" &&
+    (leaf.breakType === undefined || leaf.breakType === "textWrapping")) ||
+  leaf.type === "symbol" ||
+  leaf.type === "softHyphen" ||
+  leaf.type === "noBreakHyphen" ||
+  ((leaf.type === "footnoteRef" || leaf.type === "endnoteRef") &&
+    Number.isInteger(leaf.id) &&
+    isNoteReferenceId(leaf.id));
+
+const movableRun = (run: Run): boolean =>
+  run.propertyChanges === undefined && run.content.every(movableAtom);
+
+const wordNamespace = (uri: string | undefined): boolean =>
+  uri === OOXML_NS.w ||
+  uri === "http://purl.oclc.org/ooxml/wordprocessingml/main";
+
+const emptyControlElement = (xml: string) => {
+  const parsed = readXml(xml, {
+    conformance: "ooxml",
+    inheritedNamespaceScope: OOXML_NAMESPACE_SCOPE,
+  });
+  if (parsed.status !== "parsed" || parsed.value.elements?.length !== 1)
+    return undefined;
+  const element = parsed.value.elements.at(0);
+  if (element?.type !== "element" || (element.elements?.length ?? 0) > 0)
+    return undefined;
+  const attributes = Object.entries(element.attributes ?? {}).filter(
+    ([name]) => name !== "xmlns" && !name.startsWith("xmlns:"),
+  );
+  const localName = element.name?.slice(element.name.indexOf(":") + 1);
+  return { element, localName, attributes };
+};
+
+const controlPropertyKind = (
+  xml: string,
+): "richText" | "binding" | undefined => {
+  const parsed = emptyControlElement(xml);
+  if (parsed === undefined) return undefined;
+  const { element, localName, attributes } = parsed;
+  if (
+    localName === "richText" &&
+    wordNamespace(element.namespaceUri) &&
+    attributes.length === 0
+  )
+    return "richText";
+  if (
+    localName !== "dataBinding" ||
+    !(
+      wordNamespace(element.namespaceUri) ||
+      element.namespaceUri === OOXML_NS.w15
+    )
+  )
+    return undefined;
+  // Both review halves refer to the same package part and XPath. The
+  // control IDs stay distinct while the move is pending.
+  const names = new Set<string>();
+  for (const [name, value] of attributes) {
+    const colon = name.indexOf(":");
+    if (colon < 0) return undefined;
+    const namespace = resolveNamespaceUri(
+      element.namespaceScope,
+      name.slice(0, colon),
+    );
+    if (!wordNamespace(namespace) && namespace !== OOXML_NS.w15)
+      return undefined;
+    const local = name.slice(colon + 1);
+    if (
+      (local !== "storeItemID" &&
+        local !== "xpath" &&
+        local !== "prefixMappings") ||
+      names.has(local) ||
+      typeof value !== "string" ||
+      (local !== "prefixMappings" && value === "")
+    )
+      return undefined;
+    names.add(local);
+  }
+  return names.has("storeItemID") && names.has("xpath") ? "binding" : undefined;
+};
+
+const emptyControlEndProperties = (xml: string): boolean => {
+  const parsed = emptyControlElement(xml);
+  return (
+    parsed?.localName === "sdtEndPr" &&
+    wordNamespace(parsed.element.namespaceUri) &&
+    parsed.attributes.length === 0
+  );
+};
+
+/** Captured properties must keep their meaning in both halves of the move. */
+const movableControlId = (
+  properties: InlineSdt["properties"],
+): number | undefined => {
+  const { id, preserved, rawEndPropertiesXml } = properties;
+  if (
+    properties.sdtType !== "richText" ||
+    id === undefined ||
+    !Number.isInteger(id) ||
+    id < -MAX_REVISION_ID - 1 ||
+    id > MAX_REVISION_ID ||
+    properties.rawSdtChildrenBeforeContent !== undefined ||
+    properties.rawSdtChildrenAfterContent !== undefined ||
+    properties.endProperties?.runProperties !== undefined ||
+    (rawEndPropertiesXml !== undefined &&
+      !emptyControlEndProperties(rawEndPropertiesXml))
+  )
+    return undefined;
+  const kinds = new Set<string>();
+  for (const { xml } of preserved?.children ?? []) {
+    const kind = controlPropertyKind(xml);
+    if (kind === undefined || kinds.has(kind)) return undefined;
+    kinds.add(kind);
+  }
+  return id;
+};
+
+type MoveContentContext = { withinLink: boolean; controls: number[] };
 
 // Both sides of the move carry the inline content. Admit only records whose
 // identity and ownership stay local to the paragraph.
 const movableInlineContent = (
   content: readonly ParagraphContent[],
-  withinLink: boolean,
+  context: MoveContentContext,
 ): boolean =>
   content.length > 0 &&
   content.every((item) => {
     switch (item.type) {
       case "run":
-        return (
-          item.propertyChanges === undefined &&
-          item.content.every(
-            (leaf) =>
-              leaf.type === "text" ||
-              leaf.type === "tab" ||
-              (leaf.type === "break" &&
-                (leaf.breakType === undefined ||
-                  leaf.breakType === "textWrapping")) ||
-              leaf.type === "symbol" ||
-              leaf.type === "softHyphen" ||
-              leaf.type === "noBreakHyphen",
-          )
-        );
+        return movableRun(item);
       case "hyperlink":
         // A bidi wrapper can contain a link, but cannot hide a nested one.
-        return !withinLink && movableInlineContent(item.children, true);
+        return (
+          !context.withinLink &&
+          movableInlineContent(item.children, { ...context, withinLink: true })
+        );
       case "inlineWrapper":
         return (
-          item.kind === "bidi" && movableInlineContent(item.content, withinLink)
+          item.kind === "bidi" && movableInlineContent(item.content, context)
         );
+      case "inlineSdt": {
+        const id = movableControlId(item.properties);
+        if (id === undefined) return false;
+        context.controls.push(id);
+        return movableInlineContent(item.content, context);
+      }
       default:
         return false;
     }
@@ -64,6 +201,7 @@ const movableInlineContent = (
 export const tableMoveSource = (
   paragraph: Paragraph,
 ): TableMoveSource | undefined => {
+  const controls: number[] = [];
   if (
     paragraph.paraId === undefined ||
     paragraph.pPrMark !== undefined ||
@@ -71,10 +209,10 @@ export const tableMoveSource = (
     paragraph.sectionProperties !== undefined ||
     paragraph.reviewCarrier !== undefined ||
     (paragraph.content.length !== 0 &&
-      !movableInlineContent(paragraph.content, false))
+      !movableInlineContent(paragraph.content, { withinLink: false, controls }))
   )
     return undefined;
-  return { paragraph, id: paragraph.paraId };
+  return { paragraph, id: paragraph.paraId, controls };
 };
 
 /** A structural copy may carry only records whose package identities stay unique. */
@@ -195,6 +333,29 @@ type MarkTableMoveOptions = {
   to: RevisionStamp;
   mark: RevisionStamp;
   ranges: TableMoveRanges;
+  controls: readonly (readonly [number, number])[];
+};
+
+const withControlIds = (
+  content: ParagraphContent[],
+  ids: ReadonlyMap<number, number>,
+): ParagraphContent[] => {
+  if (ids.size === 0) return content;
+  const rewrite = (node: InlineNode): InlineNode => {
+    const children = childNodes(node);
+    const rewritten = children?.map(rewrite);
+    const next =
+      rewritten?.some((child, index) => child !== children?.[index]) === true
+        ? rebuildNode(node, rewritten)
+        : node;
+    if (next.type !== "inlineSdt" || next.properties.id === undefined)
+      return next;
+    const id = ids.get(next.properties.id);
+    return id === undefined
+      ? next
+      : { ...next, properties: { ...next.properties, id } };
+  };
+  return asParagraphContent(content.map(rewrite));
 };
 export const moveRangeAllocator = (
   pkg: DocxPackage,
@@ -228,6 +389,7 @@ export const markTableMove = ({
   to,
   mark,
   ranges,
+  controls,
 }: MarkTableMoveOptions): MarkedTableMove => {
   const { fromRange, toRange, name } = ranges;
   const record = {
@@ -238,6 +400,7 @@ export const markTableMove = ({
     fromRange,
     toRange,
     destinationMark: mark.id,
+    ...(controls.length === 0 ? {} : { controls }),
   } satisfies TableGeometryMove;
   return {
     record,
@@ -274,7 +437,7 @@ export const markTableMove = ({
         {
           type: "moveTo",
           info: stampInfo(to),
-          content: source.paragraph.content,
+          content: withControlIds(source.paragraph.content, new Map(controls)),
         },
         { type: "moveToRangeEnd", id: toRange },
       ],
@@ -570,7 +733,20 @@ export const resolveTableMoves = (table: Table, reject: boolean): Table => {
                 }
               },
             );
-            const paragraph = { ...block, paraId: move.source, content };
+            const restored =
+              reject || move.kind === "empty" || move.controls === undefined
+                ? content
+                : withControlIds(
+                    content,
+                    new Map(
+                      move.controls.map(([old, temporary]) => [temporary, old]),
+                    ),
+                  );
+            const paragraph = {
+              ...block,
+              paraId: move.source,
+              content: restored,
+            };
             if (paragraph.pPrMark?.info.id === move.destinationMark)
               delete paragraph.pPrMark;
             return [paragraph];

@@ -5,6 +5,7 @@ import type {
   BlockContent,
   Document,
   DocumentBody,
+  Paragraph,
   Table,
   TableRow,
 } from "../model/document";
@@ -20,6 +21,7 @@ import {
 import { idKey } from "./ids";
 import { itemBefore } from "./listItems";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
+import { OP_STORIES } from "./types";
 import type {
   DeleteRowOp,
   DeleteTableOp,
@@ -60,19 +62,42 @@ export type TableRowLocation = {
   table: Table;
 };
 
+type TableRemovalAddressOptions = {
+  body: DocumentBody;
+  story: OpStory;
+  location: TableRowLocation;
+};
+type TableRemovalAddress = { anchor: BlockListAnchor; terminal?: Paragraph };
+
 /** The stable paragraph a table's removal can address in the surrounding tree. */
-export const tableRemovalAnchor = (
-  body: DocumentBody,
-  { list, index }: Pick<TableRowLocation, "list" | "index">,
-): BlockListAnchor | undefined => {
+export const tableRemovalAddress = ({
+  body,
+  story,
+  location: { list, index, table },
+}: TableRemovalAddressOptions): TableRemovalAddress | undefined => {
   const remaining = blockListAt(body.content, list).filter(
     (_, position) => position !== index,
   );
   // Keep the first direct paragraph used by existing structural inverses.
   const direct = remaining.find((block) => block.type === "paragraph")?.paraId;
-  if (direct !== undefined) return { list, blockId: direct };
+  if (direct !== undefined) return { anchor: { list, blockId: direct } };
+  if (
+    remaining.length === 0 &&
+    list.length === 0 &&
+    story === OP_STORIES.MAIN
+  ) {
+    // A table-only story leaves its final cell's paragraph identity on the empty story paragraph.
+    const paraId = storyParagraphs({ content: [table] }).at(-1)?.paragraph
+      .paraId;
+    if (paraId !== undefined)
+      return {
+        anchor: { list, blockId: paraId },
+        terminal: { type: "paragraph", paraId, content: [] },
+      };
+  }
   const content = updateBlockList(body.content, list, () => remaining);
-  return survivingBlockListAnchor({ ...body, content }, list);
+  const anchor = survivingBlockListAnchor({ ...body, content }, list);
+  return anchor === undefined ? undefined : { anchor };
 };
 
 /** A paragraph selects its innermost table, even through block wrappers. */

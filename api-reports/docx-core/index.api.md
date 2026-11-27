@@ -447,6 +447,7 @@ export type Table = WritableRecord & {
     propertyChanges?: TablePropertyChange[];
     columnWidths?: number[];
     omittedColumnWidthIndices?: number[];
+    unmeasuredColumnCount?: number;
     rows: TableRow[];
     preserved?: TablePreservedMarkup;
     bookmarks?: PositionedBookmarkMarker[];

@@ -51,7 +51,7 @@ import { replaceStoryBody } from "./stories";
 import {
   locateBlockInsertion,
   locateTableRow,
-  tableRemovalAnchor,
+  tableRemovalAddress,
 } from "./tableLocation";
 import { rangeEndsReachingPast } from "./tableRowRemoval";
 import { permitsRestoredCellFinalMark, trackTableRows } from "./tableTracking";
@@ -194,13 +194,12 @@ const commitBlocks = ({
       reason: DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
       message: "The structural inverse anchor must survive the edit.",
     });
+  // A structural inverse can restore an authored main story ending in a table.
   const restoresMainTable =
     op.type === DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS &&
     op.story === OP_STORIES.MAIN &&
     anchor.list.length === 0 &&
     blockListEndsInTable(blocks);
-  // A table at a container's end needs a terminal carrier, constructed by a
-  // separate operation; this direct primitive never invents a paragraph id.
   if (
     blocks.length === 0 ||
     !validStructure(before) ||
@@ -723,16 +722,21 @@ export const applyTableOp = (
           message: "The table to remove has changed.",
         });
       const blocks = [...blockListAt(body.content, location.list)];
-      const anchor = tableRemovalAnchor(body, location);
-      if (anchor === undefined)
+      const removal = tableRemovalAddress({ body, story: op.story, location });
+      if (removal === undefined)
         return refuse({
           op,
           reason: DOCUMENT_OP_REFUSAL_REASONS.EMPTY_BLOCK_LIST,
           message:
             "Removing the table must leave a surviving paragraph in its container.",
         });
+      const { anchor, terminal } = removal;
       if (op.revision === undefined) {
-        blocks.splice(location.index, 1);
+        blocks.splice(
+          location.index,
+          1,
+          ...(terminal === undefined ? [] : [terminal]),
+        );
         // The table's ends of ranges reaching past it stay where it was: at
         // the end of the paragraph before it, else at the start of the next.
         const ends = rangeEndsReachingPast(location.table);

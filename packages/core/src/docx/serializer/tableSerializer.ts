@@ -51,7 +51,7 @@ import { isValidHexColor } from "../../utils/colorResolver";
 import { serializePreservedAttributes } from "../attributeRemainder";
 import { withPreservedChildren } from "../containerChildren";
 import { TRANSITIONAL_NAME_BY_STRICT_NAME } from "../strictNames.gen";
-import { gridColumnCount, modelTableGrid } from "../tableGridXml";
+import { liveGridColumnCount, modelTableGrid } from "../tableGridXml";
 import { TABLE_LOOK_FLAGS } from "../tableLook";
 import {
   parseTableCellProperties,
@@ -1075,7 +1075,7 @@ function serializeTableGrid(table: Table): string {
         canonicalJson(columnWidths) &&
       canonicalJson(parsedWidths.omittedColumnWidthIndices) ===
         canonicalJson(table.omittedColumnWidthIndices) &&
-      declared === (columnWidths?.length || gridColumnCount(table)) &&
+      declared === liveGridColumnCount(table) &&
       canonicalJson(
         element === null ? undefined : parseTableGridChange(element),
       ) === canonicalJson(table.formatting?.gridChange)

@@ -7,6 +7,7 @@ import {
   TABLE_CELL_VERTICAL_MERGES,
   tableCellVerticalMerge,
 } from "../model/tableCellVerticalMerge";
+import { declaredUnmeasuredColumnCount } from "../model/tableColumnWidths";
 import { MAX_TABLE_GRID_COLUMNS } from "../model/tableGridLimits";
 import { tableReviewGeometry } from "../model/tableReviewGeometry";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
@@ -60,7 +61,9 @@ export const tableGrid = (
   // deletion the neighboring spans and omissions have updated live values,
   // so read their recorded earlier geometry while the removed cells remain.
   const review = tableReviewGeometry(table);
-  const statedWidth = (review?.columnWidths ?? table.columnWidths)?.length;
+  const statedWidth =
+    (review?.columnWidths ?? table.columnWidths)?.length ??
+    declaredUnmeasuredColumnCount(table.unmeasuredColumnCount);
   for (const [rowIndex, row] of table.rows.entries()) {
     const rowFormatting =
       review === undefined ? row.formatting : review.rowFormatting(row);

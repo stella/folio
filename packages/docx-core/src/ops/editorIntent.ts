@@ -166,12 +166,13 @@ import { identitySlots } from "./slots";
 import { findStoryBody, type StoryAddress, textBoxStoriesIn } from "./stories";
 import {
   columnDeletionTakesTable,
+  tableEditControlDemand,
   tableEditParagraphDemand,
 } from "./tableEdits";
 import { tableGrid } from "./tableGrid";
 import {
   locateTableRow,
-  tableRemovalAnchor,
+  tableRemovalAddress,
   tableRowAnchor,
   type TableRowLocation,
 } from "./tableLocation";
@@ -749,6 +750,7 @@ export const createEditorIntentIdAllocator = ({
     // at both endpoints. Table and whole-paragraph insertion demand is
     // computed below from the table or inserted paragraphs.
     let demand = 1;
+    let tableControlDemand = 0;
     const selected =
       intent.type === "table" || intent.type === "insertParagraphs"
         ? []
@@ -943,6 +945,7 @@ export const createEditorIntentIdAllocator = ({
       const located = locateTableRow(document, op);
       demand = 1;
       if (located.isOk()) {
+        tableControlDemand = tableEditControlDemand(located.value, op);
         switch (op.type) {
           case DOCUMENT_OP_TYPES.INSERT_COLUMN:
             demand = located.value.table.rows.length * (op.count ?? 1) + 2;
@@ -1058,7 +1061,7 @@ export const createEditorIntentIdAllocator = ({
         revision: revision.slice(1),
         control: fresh(
           census.controls,
-          intent.type === "table" ? 0 : demand,
+          intent.type === "table" ? tableControlDemand : demand,
           ID_LEASE_KINDS.CONTROL,
         ),
       },
@@ -4554,7 +4557,11 @@ const compileInStory = (
           storyParagraphs(body).find((paragraph) =>
             sameBlockList(paragraph.list, located.value.list),
           )?.paragraph.paraId ??
-          tableRemovalAnchor(body, located.value)?.blockId;
+          tableRemovalAddress({
+            body,
+            story: op.story,
+            location: located.value,
+          })?.anchor.blockId;
         if (survivor === undefined)
           return Result.err(
             new DocumentOpRefusal({
@@ -4673,8 +4680,11 @@ const compileInStory = (
               ? rowsWithoutRow(table, rowIndex)
               : table.rows.filter((_row, index) => index !== rowIndex),
           ) ??
-          tableRemovalAnchor(storyBody(document, op.story), located.value)
-            ?.blockId;
+          tableRemovalAddress({
+            body: storyBody(document, op.story),
+            story: op.story,
+            location: located.value,
+          })?.anchor.blockId;
       }
       if (blockId === undefined)
         return Result.err(
@@ -4885,7 +4895,8 @@ const compileInStory = (
       );
       const anchor =
         (beside[position] ?? beside.at(-1))?.paragraph.paraId ??
-        tableRemovalAnchor(body, located.value)?.blockId;
+        tableRemovalAddress({ body, story: op.story, location: located.value })
+          ?.anchor.blockId;
       if (anchor === undefined)
         return Result.err(
           new DocumentOpRefusal({

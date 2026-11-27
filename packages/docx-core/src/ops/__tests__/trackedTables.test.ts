@@ -1063,3 +1063,37 @@ test.each(["insert", "delete"] as const)(
     ).toStrictEqual(original);
   },
 );
+
+test("deleting the only table leaves an empty paragraph with a stable identity", () => {
+  const original = documentOf([makeTable()]);
+  const op = {
+    type: DOCUMENT_OP_TYPES.DELETE_TABLE,
+    story: OP_STORIES.MAIN,
+    blockId: "00000010",
+  } as const;
+  const direct = applied(original, op);
+  expect(direct.document).toStrictEqual(
+    documentOf([{ type: "paragraph", paraId: "00000020", content: [] }]),
+  );
+  const compiled = compileEditorIntent(original, {
+    intent: { type: "tableBlock", operation: op },
+    mode: { type: "editing" },
+  }).unwrap();
+  expect(compiled.selection).toEqual({
+    story: OP_STORIES.MAIN,
+    blockId: "00000020",
+    offset: 0,
+  });
+  expect(
+    applyDocumentOps(original, compiled.ops).unwrap().document,
+  ).toStrictEqual(direct.document);
+  const pending = applied(original, { ...op, revision, newIds });
+  expect(
+    resolve(pending.document, pending.revisions, REVISION_DECISIONS.ACCEPT)
+      .document,
+  ).toStrictEqual(direct.document);
+  expect(
+    resolve(pending.document, pending.revisions, REVISION_DECISIONS.REJECT)
+      .document,
+  ).toStrictEqual(original);
+});
