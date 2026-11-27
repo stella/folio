@@ -216,10 +216,7 @@ import { ensureParaIdsInDoc } from "../prosemirror/paraIds";
 import { forEachAnnotationIdInDoc } from "../prosemirror/plugins/revisionIds";
 import { surveyAcceptedReplacedAnnotations } from "../prosemirror/replacedAnnotations";
 import { createStyleResolver } from "../prosemirror/styles/styleResolver";
-import {
-  insertedColumnWidth,
-  omittedSlotTakingColumn,
-} from "../prosemirror/tableGridMutation";
+import { insertedColumnWidth } from "../prosemirror/tableGridMutation";
 import { paragraphGoes, tableGoes } from "../prosemirror/tableRunIn";
 import {
   CANONICAL_CONDITION,
@@ -3617,25 +3614,6 @@ const holdsOmittedSlot = (
   return false;
 };
 
-/**
- * Whether a column inserted at the grid index runs through a cell spanning
- * both its sides, so that the cell would widen; a slot a row omits grows
- * instead, as the legacy engine grows it.
- */
-const columnInsertionWidensCell = (table: PMNode, columnIndex: number) => {
-  const map = TableMap.get(table);
-  if (columnIndex <= 0 || columnIndex >= map.width) return false;
-  for (let row = 0; row < map.height; row += 1) {
-    const index = row * map.width + columnIndex;
-    if (
-      omittedSlotTakingColumn(map, table, row, columnIndex) === null &&
-      map.map[index - 1] === map.map[index]
-    )
-      return true;
-  }
-  return false;
-};
-
 type TableStructureOperation = Extract<
   FolioDocumentOperation,
   {
@@ -3667,8 +3645,6 @@ type ResolveTableStructureOptions = {
   projection: CanonicalProjection;
   story: OpStory;
   refusal: ResolutionRefusal;
-  /** Whether the batch records its changes as suggestions. */
-  tracked: boolean;
   /** Resolve another paragraph the operation names, in the same story. */
   paragraphOf: (blockId: string) => ProjectedParagraph | undefined;
   /** The legacy engine skips an operation whose block is in no table alike. */
@@ -3676,10 +3652,6 @@ type ResolveTableStructureOptions = {
   /** A skip the legacy engine gives alike: no capability is missing. */
   skipAlike: (
     reason: FolioAIEditSkipReason,
-    message: string,
-  ) => Result<never, CanonicalPublicOperationResolutionError>;
-  /** A skip the tracked vocabulary forces: the operation applies directly. */
-  skipTracked: (
     message: string,
   ) => Result<never, CanonicalPublicOperationResolutionError>;
   /** Paragraphs the batch deletes, which no table edit may be addressed by. */
@@ -3702,11 +3674,9 @@ const resolveTableStructure = ({
   projection,
   story,
   refusal,
-  tracked,
   paragraphOf,
   notInTable,
   skipAlike,
-  skipTracked,
   deleted,
   template,
 }: ResolveTableStructureOptions) => {
@@ -3872,16 +3842,6 @@ const resolveTableStructure = ({
         target: "column",
       });
       if (overflow !== null) return refusal("payloadDoesNotFit", overflow);
-      // A suggestion records new cells; a column through a cell spanning
-      // both its sides would widen that cell, which no suggestion records
-      // in either engine.
-      if (
-        tracked &&
-        columnInsertionWidensCell(row.table, insertion.columnIndex)
-      )
-        return skipTracked(
-          "A suggested column cannot widen a cell that spans other columns.",
-        );
       const blockId = tableBlockAddress(projection, row, deleted);
       if (blockId === undefined)
         return refusal("unsupportedBlock", undefined, INVALID_REQUEST);
@@ -7633,15 +7593,6 @@ export class CanonicalPublicOperations {
           detail: message,
         }),
       );
-    const skipTracked = (message: string) =>
-      Result.err(
-        new CanonicalPublicOperationResolutionError({
-          reason: "unsupportedBlock",
-          message,
-          detail: message,
-          refusedIn: "trackedMode",
-        }),
-      );
     const notInTable = () =>
       skipAlike("unsupportedBlock", "The block is not in a table.");
     switch (operation.type) {
@@ -7819,14 +7770,12 @@ export class CanonicalPublicOperations {
         projection: projection.value,
         story,
         refusal,
-        tracked,
         paragraphOf: (id) =>
           Object.hasOwn(options.snapshot.anchors, id)
             ? projection.value.paragraph(id)
             : undefined,
         notInTable,
         skipAlike,
-        skipTracked,
         deleted: besideDeletions.deleted,
         template: options.tableTemplates?.get(operation.id),
       });
