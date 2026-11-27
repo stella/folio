@@ -2160,6 +2160,7 @@ export type SectionPropertyChange = WritableRecord & {
 export type PropertyChange =
   | RunPropertyChange
   | ParagraphPropertyChange
+  | ParagraphMarkPropertyChange
   | SectionPropertyChange
   | TablePropertyChange
   | TablePropertyExceptionChange
@@ -2180,6 +2181,7 @@ export type PropertyRevisionKind = PropertyChange["type"];
 export const PROPERTY_REVISION_KINDS: Readonly<{
   readonly runPropertyChange: "runPropertyChange";
   readonly paragraphPropertyChange: "paragraphPropertyChange";
+  readonly paragraphMarkPropertyChange: "paragraphMarkPropertyChange";
   readonly sectionPropertyChange: "sectionPropertyChange";
   readonly tablePropertyChange: "tablePropertyChange";
   readonly tablePropertyExceptionChange: "tablePropertyExceptionChange";
@@ -2188,6 +2190,7 @@ export const PROPERTY_REVISION_KINDS: Readonly<{
 }> = Object.freeze({
   runPropertyChange: "runPropertyChange",
   paragraphPropertyChange: "paragraphPropertyChange",
+  paragraphMarkPropertyChange: "paragraphMarkPropertyChange",
   sectionPropertyChange: "sectionPropertyChange",
   tablePropertyChange: "tablePropertyChange",
   tablePropertyExceptionChange: "tablePropertyExceptionChange",
@@ -2567,6 +2570,7 @@ export type ParagraphMarkFormatting = WritableRecord &
 
 /** Previous run properties of a paragraph mark (`w:pPr/w:rPr/w:rPrChange`). */
 export type ParagraphMarkPropertyChange = WritableRecord & {
+  type: "paragraphMarkPropertyChange";
   info: PropertyChangeInfo;
   previousFormatting?: ParagraphMarkFormatting;
 };

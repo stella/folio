@@ -19,6 +19,7 @@ import {
   type ParagraphMarkFormatting,
   type ParagraphMarkPropertyChange,
   type ParagraphPropertyChange,
+  PROPERTY_REVISION_KINDS,
   type RunPropertyChange,
   type TrackedChangeInfo,
   type TrackedRunContent,
@@ -293,9 +294,10 @@ export const paragraphMarkPropertyChange = (
   const previousFormatting = markFormattingOf(
     getParagraphPropertySnapshot(paragraph),
   );
+  const type = PROPERTY_REVISION_KINDS.paragraphMarkPropertyChange;
   return previousFormatting === undefined
-    ? { info }
-    : { info, previousFormatting };
+    ? { type, info }
+    : { type, info, previousFormatting };
 };
 
 /** Whether two property sets state the same paragraph properties. */

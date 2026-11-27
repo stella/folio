@@ -256,6 +256,7 @@ export const paragraphPropertyChange: Validator = object({
 } satisfies RecordFields<ParagraphPropertyChange>);
 
 const paragraphMarkPropertyChange: Validator = object({
+  type: literal("paragraphMarkPropertyChange"),
   info: present,
   previousFormatting: optional(
     properties({ runProperties, runInWithNext: boolean }),

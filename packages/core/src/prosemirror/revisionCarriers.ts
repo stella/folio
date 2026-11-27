@@ -80,7 +80,7 @@ type PropertyRevisionSite =
       resolution: "paragraph-pass";
       kind: PropertyRevisionKind;
       nodeTypes: readonly ["paragraph"];
-      /** Path from the paragraph's attrs down to the record array. */
+      /** Path from the paragraph's attrs down to the record array, or the one record. */
       path: readonly [string, ...string[]];
       carrier: string;
       /**
@@ -100,6 +100,14 @@ export const PROPERTY_REVISION_SITES: {
     readonly resolution: "paragraph-pass";
     readonly nodeTypes: readonly ["paragraph"];
     readonly path: readonly ["_propertyChanges"];
+    readonly carrier: "paragraphPropertiesChanged";
+    readonly range: "paragraph-boundary";
+  };
+  readonly paragraphMarkPropertyChange: {
+    readonly kind: "paragraphMarkPropertyChange";
+    readonly resolution: "paragraph-pass";
+    readonly nodeTypes: readonly ["paragraph"];
+    readonly path: readonly ["_markPropertyChange"];
     readonly carrier: "paragraphPropertiesChanged";
     readonly range: "paragraph-boundary";
   };
@@ -150,6 +158,16 @@ export const PROPERTY_REVISION_SITES: {
     resolution: "paragraph-pass",
     nodeTypes: ["paragraph"],
     path: ["_propertyChanges"],
+    carrier: "paragraphPropertiesChanged",
+    range: "paragraph-boundary",
+  },
+  // The paragraph mark's own run properties (`w:pPr/w:rPr/w:rPrChange`): one
+  // record, reviewed as the paragraph's formatting is.
+  paragraphMarkPropertyChange: {
+    kind: "paragraphMarkPropertyChange",
+    resolution: "paragraph-pass",
+    nodeTypes: ["paragraph"],
+    path: ["_markPropertyChange"],
     carrier: "paragraphPropertiesChanged",
     range: "paragraph-boundary",
   },
@@ -299,7 +317,7 @@ export type StoredPropertyRevision = {
   previousFormatting?: unknown;
 };
 
-/** The record array a site names, walked from a node's attrs. */
+/** The records a site names, walked from a node's attrs: its array, or its one record. */
 export const propertyRevisionRecords = (
   node: PMNode,
   site: NodePropertyRevisionSite,
@@ -312,7 +330,8 @@ export const propertyRevisionRecords = (
     }
     value = value[key];
   }
-  return Array.isArray(value) ? value.filter(isObjectRecord) : [];
+  if (Array.isArray(value)) return value.filter(isObjectRecord);
+  return isObjectRecord(value) ? [value] : [];
 };
 
 type AppendPropertyCarriersOptions = {
@@ -357,17 +376,6 @@ export const getFolioNodeRevisionCarriers = (
   const carriers: FolioNodeRevisionCarrier[] = [];
 
   if (node.type.name === "paragraph") {
-    const markProperties: unknown = node.attrs["_markPropertyChange"];
-    if (markProperties !== undefined) {
-      appendPropertyCarriers({
-        carriers,
-        changes: [markProperties],
-        type: "paragraphPropertiesChanged",
-        node,
-        from: nodePos + node.nodeSize - 1,
-        to: nodePos + node.nodeSize,
-      });
-    }
     const paragraphMark = node.attrs["pPrMark"];
     const paragraphMarkKind =
       isObjectRecord(paragraphMark) &&

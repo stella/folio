@@ -978,6 +978,7 @@ describe("a paragraph mark's run properties", () => {
     const changed = blockAt(suggested.document, 0);
     expect(changed.propertyChanges).toBeUndefined();
     expect(changed.markPropertyChange).toEqual({
+      type: "paragraphMarkPropertyChange",
       info: expect.objectContaining({ author: STAMP.author }),
       previousFormatting: { runProperties: { bold: true } },
     });
@@ -1030,6 +1031,7 @@ describe("a paragraph mark's run properties", () => {
       setMark({ bold: true, italic: true }, later),
     ]);
     expect(blockAt(folded.document, 0).markPropertyChange).toStrictEqual({
+      type: "paragraphMarkPropertyChange",
       info: { ...later, id: STAMP.id },
       previousFormatting: { runProperties: { bold: true } },
     });
@@ -1082,6 +1084,7 @@ describe("a paragraph mark's run properties", () => {
     const taker = blockAt(suggested.document, 1);
     expect(taker.propertyChanges).toBeUndefined();
     expect(taker.markPropertyChange).toEqual({
+      type: "paragraphMarkPropertyChange",
       info: expect.objectContaining({ author: STAMP.author }),
       previousFormatting: { runProperties: { bold: true } },
     });
@@ -1093,6 +1096,7 @@ describe("a paragraph mark's run properties", () => {
       paraId: "0000000C",
       formatting: { runProperties: { italic: true } },
       markPropertyChange: {
+        type: "paragraphMarkPropertyChange",
         info: { id: 92, author: "Earlier", date: "2026-01-01T00:00:00Z" },
         previousFormatting: { runProperties: { bold: true } },
       },

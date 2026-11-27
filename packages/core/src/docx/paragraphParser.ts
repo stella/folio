@@ -514,7 +514,7 @@ function parseParagraphMarkChange(
   return undefined;
 }
 
-const parseParagraphMarkPropertyChange = (
+export const parseParagraphMarkPropertyChange = (
   pPr: XmlElement,
   theme: DeepReadonly<Theme> | null,
 ): ParagraphMarkPropertyChange | undefined => {
@@ -534,9 +534,11 @@ const parseParagraphMarkPropertyChange = (
     runProperties = undefined;
   const runInWithNext = parseOnOffChild(previous, "w", "specVanish");
   const info = parsePropertyChangeInfo(change);
+  const type = "paragraphMarkPropertyChange";
   if (runProperties === undefined && runInWithNext === undefined)
-    return { info };
+    return { type, info };
   return {
+    type,
     info,
     previousFormatting: {
       ...(runProperties === undefined ? {} : { runProperties }),

@@ -1033,6 +1033,7 @@ describe("C8: tracked formatting is recorded, not applied directly", () => {
     if (marked?.type !== "paragraph") throw new Error("Expected paragraph.");
     expect(marked.propertyChanges?.at(0)?.info.id).toBe(1);
     expect(marked.markPropertyChange).toStrictEqual({
+      type: "paragraphMarkPropertyChange",
       info: stamp(2),
       previousFormatting: { runProperties: { bold: true } },
     });
@@ -1082,6 +1083,7 @@ describe("C8: tracked formatting is recorded, not applied directly", () => {
       const first = blocks(tracked.document).at(0);
       if (first?.type !== "paragraph") throw new Error("Expected paragraph.");
       expect(first.markPropertyChange).toStrictEqual({
+        type: "paragraphMarkPropertyChange",
         info: stamp(1),
         ...(Object.keys(mark).length === 0 ? {} : { previousFormatting: mark }),
       });
@@ -1442,6 +1444,7 @@ describe("a tracked split records the new half's changed paragraph mark formatti
         if (half?.type !== "paragraph")
           throw new Error("Expected second half.");
         expect(half.markPropertyChange).toStrictEqual({
+          type: "paragraphMarkPropertyChange",
           info: stamp(3),
           previousFormatting: { runProperties: { bold: true } },
         });

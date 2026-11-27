@@ -1251,6 +1251,7 @@ export type ParagraphMarkFormatting = WritableRecord & Pick<ParagraphFormatting,
 
 // @public
 export type ParagraphMarkPropertyChange = WritableRecord & {
+    type: "paragraphMarkPropertyChange";
     info: PropertyChangeInfo;
     previousFormatting?: ParagraphMarkFormatting;
 };
@@ -1485,6 +1486,7 @@ export type PreviewShape = {
 export const PROPERTY_REVISION_KINDS: Readonly<{
     readonly runPropertyChange: "runPropertyChange";
     readonly paragraphPropertyChange: "paragraphPropertyChange";
+    readonly paragraphMarkPropertyChange: "paragraphMarkPropertyChange";
     readonly sectionPropertyChange: "sectionPropertyChange";
     readonly tablePropertyChange: "tablePropertyChange";
     readonly tablePropertyExceptionChange: "tablePropertyExceptionChange";
@@ -1493,7 +1495,7 @@ export const PROPERTY_REVISION_KINDS: Readonly<{
 }>;
 
 // @public
-export type PropertyChange = RunPropertyChange | ParagraphPropertyChange | SectionPropertyChange | TablePropertyChange | TablePropertyExceptionChange | TableRowPropertyChange | TableCellPropertyChange;
+export type PropertyChange = RunPropertyChange | ParagraphPropertyChange | ParagraphMarkPropertyChange | SectionPropertyChange | TablePropertyChange | TablePropertyExceptionChange | TableRowPropertyChange | TableCellPropertyChange;
 
 // @public
 export type PropertyChangeInfo = WritableRecord & {

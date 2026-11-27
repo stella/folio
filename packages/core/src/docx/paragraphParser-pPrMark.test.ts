@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { getTrackedChangesFromDoc } from "../ai-edits/read";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import type { ParagraphMarkPropertyChange } from "../types/document";
 import { parseParagraph } from "./paragraphParser";
 import { FOLIO_REVIEW_HISTORY_NAMESPACE } from "./reviewHistoryNamespace";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
@@ -24,6 +25,7 @@ describe("parseParagraph — paragraph-mark tracked change (ECMA-376 §17.13.5)"
     const source = `<w:p ${namespace}><w:pPr><w:rPr><w:ins w:id="1" w:author="A"/><w:i/><w:rPrChange w:id="2" w:author="B"><w:rPr><w:b/><w:specVanish/></w:rPr></w:rPrChange></w:rPr></w:pPr></w:p>`;
     const paragraph = parseParagraphXml(source);
     expect(paragraph.markPropertyChange).toStrictEqual({
+      type: "paragraphMarkPropertyChange",
       info: { id: 2, author: "B" },
       previousFormatting: {
         runProperties: { bold: true },
@@ -78,7 +80,10 @@ describe("parseParagraph — paragraph-mark tracked change (ECMA-376 §17.13.5)"
   });
 
   test("reopens a written mark property revision whose original formatting was absent", () => {
-    const change = { info: { id: 2, author: "Reviewer" } };
+    const change: ParagraphMarkPropertyChange = {
+      type: "paragraphMarkPropertyChange",
+      info: { id: 2, author: "Reviewer" },
+    };
     const xml = serializeParagraph({
       type: "paragraph",
       content: [],

@@ -47,6 +47,7 @@ import type {
   Paragraph,
   ParagraphMarkChange,
   ParagraphMarkDeletion,
+  ParagraphMarkPropertyChange,
   ParagraphPropertyChange,
   PictureWatermark,
   PositionalTab,
@@ -1126,6 +1127,20 @@ export const PARAGRAPH_PROPERTY_CHANGE_RESERVED = {
 export type ExhaustiveParagraphPropertyChangeReserved = ExhaustiveFields<
   ParagraphPropertyChange,
   keyof typeof PARAGRAPH_PROPERTY_CHANGE_RESERVED
+>;
+
+export const PARAGRAPH_MARK_PROPERTY_CHANGE_RESERVED = {
+  type: NO_RESERVED_VALUE,
+  info: NO_RESERVED_VALUE,
+  previousFormatting: NO_RESERVED_VALUE,
+} satisfies Record<
+  RecordField<ParagraphMarkPropertyChange>,
+  ReservedValueDisposition
+>;
+
+export type ExhaustiveParagraphMarkPropertyChangeReserved = ExhaustiveFields<
+  ParagraphMarkPropertyChange,
+  keyof typeof PARAGRAPH_MARK_PROPERTY_CHANGE_RESERVED
 >;
 
 export const TABLE_PROPERTY_CHANGE_RESERVED = {
