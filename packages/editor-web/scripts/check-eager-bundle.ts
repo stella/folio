@@ -161,6 +161,19 @@ const measure = async (adapter: Adapter): Promise<Metrics> => {
         metrics.docxOps += input.bytesInOutput;
     }
   }
+  // Hyphenation patterns are data files fetched when a document needs them;
+  // no chunk, eager or lazy, may carry a pattern set.
+  for (const output of Object.values(buildResult.metafile.outputs)) {
+    for (const [source, input] of Object.entries(output.inputs)) {
+      if (
+        source.includes("node_modules/hyphen/patterns/") &&
+        input.bytesInOutput > 0
+      )
+        throw new Error(
+          `${packageName} bundled hyphenation patterns (${source})`,
+        );
+    }
+  }
   if (metrics.docxOps === 0)
     throw new Error(`${packageName} did not include docx-core ops`);
   return metrics;

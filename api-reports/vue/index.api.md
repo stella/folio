@@ -30,6 +30,7 @@ import { Component } from 'vue';
 import { ComponentOptionsMixin } from 'vue';
 import { ComponentProvideOptions } from 'vue';
 import { ComputedRef } from 'vue';
+import { configureHyphenationAssets } from '@stll/folio-core/hyphenation';
 import { consumeTemplateSlashQuery } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
 import { ContentControlFilter } from '@stll/folio-core/content-controls';
 import { createAICitationDecorationsPlugin } from '@stll/folio-core/prosemirror/plugins/aiCitationDecorations';
@@ -114,6 +115,11 @@ import { getTemplateDirectives } from '@stll/folio-core/prosemirror/plugins/temp
 import { getTemplateSlashMenu } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
 import { hashFolioAIBlockText } from '@stll/folio-core/ai-edits';
 import { HostShortcut } from '@stll/folio-core/managers/editorShortcuts';
+import { HYPHENATION_DICTIONARY_IDS } from '@stll/folio-core/hyphenation';
+import { HyphenationAssetOptions } from '@stll/folio-core/hyphenation';
+import { HyphenationDictionaryError } from '@stll/folio-core/hyphenation';
+import { HyphenationDictionaryId } from '@stll/folio-core/hyphenation';
+import { HyphenationPatterns } from '@stll/folio-core/hyphenation';
 import { ImageMeta } from '@stll/folio-core/markdown';
 import { ImageRef } from '@stll/folio-core/markdown';
 import { insertImageFromFile } from '@stll/folio-core/prosemirror';
@@ -137,6 +143,7 @@ import { PageRendererName } from '@stll/folio-core/display-list/editor/pageRende
 import { PictureWatermark } from '@stll/folio-core/watermark';
 import { Plugin as Plugin_2 } from 'prosemirror-state';
 import { PositionalText } from '@stll/folio-core/ai-suggestions/text-positions';
+import { preloadHyphenationDictionaries } from '@stll/folio-core/hyphenation';
 import { PublicProps } from 'vue';
 import { ReadonlyDocument } from '@stll/folio-core/types/documentModel';
 import { Ref } from 'vue';
@@ -247,6 +254,8 @@ export type ColorPreset = {
     value: string;
     color?: string;
 };
+
+export { configureHyphenationAssets }
 
 export { consumeTemplateSlashQuery }
 
@@ -672,6 +681,16 @@ export type HighlightPassageOptions = {
 // @public
 export type HighlightPassageResult = "passage" | "block" | "none";
 
+export { HYPHENATION_DICTIONARY_IDS }
+
+export { HyphenationAssetOptions }
+
+export { HyphenationDictionaryError }
+
+export { HyphenationDictionaryId }
+
+export { HyphenationPatterns }
+
 // @public
 export const i18nPlugin: {
     install(app: App, locale?: MaybeRefOrGetter<string>): void;
@@ -721,6 +740,8 @@ export type OutlineItem = {
 export { PictureWatermark }
 
 export { PositionalText }
+
+export { preloadHyphenationDictionaries }
 
 // @public
 export const provideColorMode: (colorMode?: MaybeRefOrGetter<ColorMode>) => void;

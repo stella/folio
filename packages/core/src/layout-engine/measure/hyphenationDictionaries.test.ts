@@ -1,4 +1,6 @@
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
+import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 
 import type { ParagraphBlock } from "../types";
 import {
@@ -8,6 +10,8 @@ import {
 import { hashParagraphBlock } from "./cache";
 import {
   collectRequestedHyphenationDictionaries,
+  configureHyphenationAssets,
+  HYPHENATION_DICTIONARY_IDS,
   hyphenationDictionaryFor,
   type HyphenationDictionaryId,
   hyphenationDictionaryStatus,
@@ -179,5 +183,53 @@ describe("hyphenation dictionaries", () => {
       }),
     ).toEqual([3, 5, 7, 10, 12, 14, 16, 18, 20, 23, 26]);
     expect(hyphenationDictionaryStatus("en-us")).toBe("unloaded");
+  });
+});
+
+describe("hyphenation dictionary assets", () => {
+  const require = createRequire(import.meta.url);
+  const nowhere = new URL("file:///nonexistent-folio-hyphenation/");
+  const packaged = (id: HyphenationDictionaryId): Promise<unknown> =>
+    readFile(
+      new URL(`../../../assets/hyphenation/${id}.json`, import.meta.url),
+      "utf8",
+    ).then((json): unknown => JSON.parse(json));
+
+  test("the packaged files are the pinned patterns", async () => {
+    for (const id of HYPHENATION_DICTIONARY_IDS) {
+      expect(await packaged(id)).toEqual(
+        require(`hyphen/patterns/${id}.js`) as unknown,
+      );
+    }
+  });
+
+  test("a dictionary handed over is used without reading anything", async () => {
+    configureHyphenationAssets({
+      baseUrl: nowhere,
+      dictionaries: { cs: await packaged("cs") },
+    });
+
+    expect((await preloadHyphenationDictionaries(["cs-CZ"])).isOk()).toBe(true);
+    expect(
+      findHyphenationBreaks("nejneobhospodářovávatelnější", {
+        locale: "cs-CZ",
+      }),
+    ).toEqual([3, 5, 7, 10, 12, 14, 16, 18, 20, 23, 26]);
+  });
+
+  test("an unreadable or malformed dictionary fails, and new options retry it", async () => {
+    configureHyphenationAssets({ baseUrl: nowhere, dictionaries: { sk: 42 } });
+
+    const unreadable = await preloadHyphenationDictionaries(["en-US"]);
+    const malformed = await preloadHyphenationDictionaries(["sk-SK"]);
+    expect(unreadable.isErr() && unreadable.error.dictionary).toBe("en-us");
+    expect(malformed.isErr() && malformed.error.dictionary).toBe("sk");
+    expect(findHyphenationBreaks("hyphenation", { locale: "en-US" })).toEqual(
+      [],
+    );
+
+    configureHyphenationAssets({});
+    expect(hyphenationDictionaryStatus("en-us")).toBe("unloaded");
+    expect((await preloadHyphenationDictionaries(["en-US"])).isOk()).toBe(true);
   });
 });

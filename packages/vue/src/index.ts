@@ -246,6 +246,18 @@ export type {
   FolioAutocompleteState,
 } from "@stll/folio-core/controller/autocompleteSuggestion";
 
+// Where automatic hyphenation gets its dictionaries (offline hosts, a strict
+// Content Security Policy, single-file bundles).
+export {
+  configureHyphenationAssets,
+  HYPHENATION_DICTIONARY_IDS,
+  HyphenationDictionaryError,
+  preloadHyphenationDictionaries,
+  type HyphenationAssetOptions,
+  type HyphenationDictionaryId,
+  type HyphenationPatterns,
+} from "@stll/folio-core/hyphenation";
+
 // DOCX-document ↔ Markdown bridge (also available at `@stll/folio-vue/markdown`).
 export {
   fromMarkdown,
