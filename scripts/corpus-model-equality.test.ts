@@ -144,6 +144,86 @@ describe("describePackageDifferences", () => {
     ).not.toEqual([]);
   });
 
+  test("a header part keeps the picture and link relationships its kept markup names; a save may reallocate the model's own", () => {
+    const keptPicture =
+      '<w:object xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" ' +
+      'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" ' +
+      'xmlns:v="urn:schemas-microsoft-com:vml"><v:shape><v:imagedata r:id="rIdKept"/></v:shape></w:object>';
+    const withHeaderTargets = (kept: string, link: string): Document => ({
+      package: {
+        document: { content: [] },
+        headers: new Map([
+          [
+            "rIdHeader",
+            {
+              type: "header",
+              hdrFtrType: "default",
+              content: [
+                {
+                  type: "paragraph",
+                  content: [
+                    {
+                      type: "run",
+                      content: [
+                        { type: "preservedXml", xml: keptPicture, text: "" },
+                      ],
+                    },
+                    {
+                      type: "hyperlink",
+                      rId: "rIdLink",
+                      children: [
+                        { type: "run", content: [{ type: "text", text: "a" }] },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        ]),
+        annotationRelationships: new Map([
+          [
+            "header:rIdHeader",
+            new Map([
+              [
+                "rIdKept",
+                {
+                  id: "rIdKept",
+                  type: RELATIONSHIP_TYPES.image,
+                  target: kept,
+                },
+              ],
+              [
+                "rIdLink",
+                {
+                  id: "rIdLink",
+                  type: RELATIONSHIP_TYPES.hyperlink,
+                  target: link,
+                  targetMode: "External",
+                },
+              ],
+            ]),
+          ],
+        ]),
+      },
+    });
+    const saved = withHeaderTargets("media/image1.png", "https://a.test/");
+    // The link the model holds is written afresh by a save.
+    expect(
+      describePackageDifferences(
+        saved,
+        withHeaderTargets("media/image1.png", "https://b.test/"),
+      ),
+    ).toEqual({ messages: [], omitted: 0 });
+    // The picture only the kept markup names must keep its target.
+    expect(
+      describePackageDifferences(
+        saved,
+        withHeaderTargets("media/image2.png", "https://a.test/"),
+      ).messages,
+    ).not.toEqual([]);
+  });
+
   test("internal OPC target casing is equivalent while different parts and URLs remain distinct", () => {
     const withTarget = (
       target: string,

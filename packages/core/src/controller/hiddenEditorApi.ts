@@ -7,7 +7,7 @@ import { redo, undo } from "prosemirror-history";
  * destruction guard, so the same imperative handle can be driven from the
  * React component or a headless controller without depending on React.
  */
-import type { Node as PMNode } from "prosemirror-model";
+import type { Node as PMNode, Slice } from "prosemirror-model";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
 import { NodeSelection, Selection, TextSelection } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
@@ -113,6 +113,11 @@ type CanonicalStoryCutOptions = {
   event: ClipboardEvent;
 };
 
+type CanonicalStoryPasteOptions = CanonicalStoryCutOptions & {
+  /** The content the editor read from the clipboard. */
+  slice: Slice;
+};
+
 /** The package a canonical save wrote, and whether it patched its baseline. */
 export type CanonicalSavedPackage = {
   buffer: ArrayBuffer;
@@ -207,6 +212,12 @@ export type HiddenEditorApi = {
    * handled the event.
    */
   cutCanonicalStory: (options: CanonicalStoryCutOptions) => boolean;
+  /**
+   * Paste into a header, footer or note editor as the body's editor pastes:
+   * one journalled change, carrying the package parts the pasted markup
+   * names into the story's own part. True when the editor handled the event.
+   */
+  pasteCanonicalStory: (options: CanonicalStoryPasteOptions) => boolean;
   /**
    * The editor a person is working in for `story`: public operations on that
    * story read its state, so its selection maps through them, and publish to
@@ -307,6 +318,7 @@ export type HiddenEditorApiDeps = {
     | "replaceCanonicalStoryText"
     | "applyCanonicalStoryStructure"
     | "cutCanonicalStory"
+    | "pasteCanonicalStory"
     | "noteCanonicalStoryView"
     | "applyCanonicalStoryHistory"
     | "getCanonicalStorySelection"
@@ -428,6 +440,8 @@ export const createHiddenEditorApi = (
       deps.canonicalOperations?.applyCanonicalStoryStructure(options) ?? false,
     cutCanonicalStory: (options) =>
       deps.canonicalOperations?.cutCanonicalStory(options) ?? false,
+    pasteCanonicalStory: (options) =>
+      deps.canonicalOperations?.pasteCanonicalStory(options) ?? false,
     noteCanonicalStoryView: (options) => {
       deps.canonicalOperations?.noteCanonicalStoryView(options);
     },

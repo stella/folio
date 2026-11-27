@@ -590,6 +590,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       onEditorViewReady,
       onCanonicalHistory,
       onCanonicalHistoryDrop,
+      onCanonicalPasteWarnings,
       anonymizationTerms,
       onAnonymizationMatchesChange,
       onAnonymizationTermClick,
@@ -5549,6 +5550,9 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                             {...(onCanonicalHistoryDrop === undefined
                               ? {}
                               : { onCanonicalHistoryDrop })}
+                            {...(onCanonicalPasteWarnings === undefined
+                              ? {}
+                              : { onCanonicalPasteWarnings })}
                             documentIO={documentIO}
                             documentIdentity={loadedDocumentIdentity}
                             markupView={displayMode}

@@ -566,9 +566,11 @@ export type DocxPackage = WritableRecord & {
   copiedParts?: Map<string, CopiedPackagePart> | undefined;
   /**
    * The relationships of the footnotes, endnotes and comments parts, keyed
-   * `footnotes`, `endnotes` and `comments`: the ids kept markup in a note or
-   * a comment (an opaque drawing, an embedded object, kept block markup)
-   * names its parts by.
+   * `footnotes`, `endnotes` and `comments`, and of each header and footer
+   * part, keyed `header:<rId>` or `footer:<rId>` by the main document
+   * relationship naming it: the ids kept markup in a note, a comment, a
+   * header or a footer (an opaque drawing, an embedded object, kept block
+   * markup) names its parts by.
    */
   annotationRelationships?: Map<string, RelationshipMap> | undefined;
   /** Document properties */

@@ -236,7 +236,7 @@ test("repeated session refusals retain their typed gap and phase without permitt
       globalThis.__folioCanonicalFuzzPhase = phase;
       const error = new CanonicalSessionRefusalError({
         message: "Command refused",
-        ground: { gap: CANONICAL_GAP.storyContentProjection },
+        ground: { gap: CANONICAL_GAP.trackedChangeRecords },
       });
       recordCanonicalFuzzError(error);
       recordCanonicalFuzzError(error);
@@ -244,7 +244,7 @@ test("repeated session refusals retain their typed gap and phase without permitt
         Array.from({ length: 2 }, () => ({
           status: "refusal",
           type: "CanonicalSessionRefusalError",
-          gap: CANONICAL_GAP.storyContentProjection,
+          gap: CANONICAL_GAP.trackedChangeRecords,
           message: error.message,
           phase,
         })),

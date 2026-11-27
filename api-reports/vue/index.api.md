@@ -22,6 +22,7 @@ import { BlockRect } from '@stll/folio-core/paged-layout/blockGeometry';
 import { buildPositionalText } from '@stll/folio-core/ai-suggestions/text-positions';
 import { CanonicalHistoryDrop } from '@stll/folio-core/canonical/canonicalSession';
 import { CanonicalHistoryEffect } from '@stll/folio-core/canonical/canonicalSession';
+import { CanonicalPasteWarning } from '@stll/folio-core/controller/canonicalClipboard';
 import { CanonicalRoomCollaboration } from '@stll/folio-core/controller/canonicalRoomEditor';
 import { clearTemplateSlashMenu } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
 import { ColorValue } from '@stll/folio-core/types/document';
@@ -401,6 +402,7 @@ export type DocxEditorProps = {
     onCompatibilityChange?: (compatibility: DocxCompatibility) => void;
     onCanonicalHistory?: (effect: CanonicalHistoryEffect) => void;
     onCanonicalHistoryDrop?: (drop: CanonicalHistoryDrop) => void;
+    onCanonicalPasteWarnings?: (warnings: readonly CanonicalPasteWarning[]) => void;
     onEditorViewReady?: (view: EditorView | null) => void;
     collaboration?: DocxEditorCollaboration | undefined;
     anonymizationTerms?: readonly FolioAnonymizationTerm[] | undefined;

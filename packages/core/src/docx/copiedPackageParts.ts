@@ -1,14 +1,15 @@
 /**
  * Package parts a paste copied in from another package: the parts kept markup
  * names (a chart, an embedding, a diagram's parts) and the relationships that
- * name them, in the main document's relationships or in those of the note or
- * comment part holding the markup. The model carries such a part as bytes
+ * name them, in the main document's relationships or in those of the note,
+ * comment, header or footer part holding the markup. The model carries such a part as bytes
  * until a save writes it.
  */
 
 import { panic, Result } from "better-result";
 
 import { escapeXmlAttribute } from "@stll/docx-core";
+import { OP_STORIES, type OpStory } from "@stll/docx-core/ops";
 import type { ZipArchive } from "@stll/docx-core/zip";
 
 import type { Document, Relationship } from "../types/document";
@@ -28,7 +29,8 @@ import {
 } from "./xmlParser";
 import { appendToXmlRoot } from "./xmlRootInsertion";
 
-/** The main document part's relationships. */
+/** The main document part, and its relationships. */
+export const MAIN_DOCUMENT_PART = "word/document.xml";
 export const MAIN_RELATIONSHIPS_PART = "word/_rels/document.xml.rels";
 
 /** The content type of every relationships part. */
@@ -158,8 +160,9 @@ type PublishCopiedPackagePartsOptions = {
 /**
  * Write the parts a paste copied in, each under its content type, and the
  * relationships its kept markup names that the package does not hold yet:
- * the main document's for the body, and a note or comment part's own for the
- * notes and comments in it. A part the package already holds stays as it is.
+ * the main document's for the body, and a note, comment, header or footer
+ * part's own for the content in it. A part the package already holds stays
+ * as it is.
  */
 export const publishCopiedPackageParts = async ({
   document,
@@ -192,15 +195,16 @@ export const publishCopiedPackageParts = async ({
     content: document.package.document.content,
     compressionLevel,
   });
-  for (const { key, content } of annotationParts(document)) {
+  for (const { key, partPath, content } of storyParts(document)) {
     const relationships = document.package.annotationRelationships?.get(key);
     if (relationships === undefined || content.length === 0) continue;
-    // The part the save writes the notes or comments into, and its
-    // relationships, in the casing the package already uses for them.
-    const conventional = `word/${key}.xml`;
+    // The part the save writes the story into, and its relationships, in
+    // the casing the package already uses for them.
     const relsPath = relationshipsPartOf(
-      zip.paths().find((path) => path.toLowerCase() === conventional) ??
-        conventional,
+      zip
+        .paths()
+        .find((path) => path.toLowerCase() === partPath.toLowerCase()) ??
+        partPath,
     );
     // oxlint-disable-next-line no-await-in-loop -- each part owns its relationships
     await appendNamedRelationships({
@@ -217,12 +221,102 @@ export const publishCopiedPackageParts = async ({
   }
 };
 
-/** The notes and comments of each part whose relationships the model keeps. */
-const annotationParts = (document: Document) => [
-  { key: "footnotes", content: document.package.footnotes ?? [] },
-  { key: "endnotes", content: document.package.endnotes ?? [] },
-  { key: "comments", content: document.package.document.comments ?? [] },
-];
+/**
+ * Each part besides the main document whose relationships the model keeps,
+ * with the content it holds: the notes, the comments, each header and footer.
+ */
+const storyParts = (document: Document) => {
+  const parts: { key: string; partPath: string; content: unknown[] }[] = [
+    {
+      key: "footnotes",
+      partPath: "word/footnotes.xml",
+      content: document.package.footnotes ?? [],
+    },
+    {
+      key: "endnotes",
+      partPath: "word/endnotes.xml",
+      content: document.package.endnotes ?? [],
+    },
+    {
+      key: "comments",
+      partPath: "word/comments.xml",
+      content: document.package.document.comments ?? [],
+    },
+  ];
+  for (const [kind, stories] of [
+    ["header", document.package.headers],
+    ["footer", document.package.footers],
+  ] as const)
+    for (const [rId, story] of stories ?? []) {
+      const partPath = storyPartPath(document, { kind, rId });
+      if (partPath !== undefined)
+        parts.push({
+          key: headerFooterRelationshipsKey(kind, rId),
+          partPath,
+          content: story.content,
+        });
+    }
+  return parts;
+};
+
+/** The key a header's or footer's part relationships are kept under. */
+export const headerFooterRelationshipsKey = (
+  kind: "header" | "footer",
+  rId: string,
+): string => `${kind}:${rId}`;
+
+/**
+ * The relationships the ids of the story part kept under `key` resolve
+ * through, as the parser reads them: the part's own, or, for a note or
+ * comment part without its own, the main document's. A header or footer
+ * part without its own has none: its ids restart in every part.
+ */
+export const partRelationshipsOf = (
+  document: Document,
+  key: string,
+): ReadonlyMap<string, Relationship> | undefined =>
+  document.package.annotationRelationships?.get(key) ??
+  (isHeaderFooterRelationshipsKey(key)
+    ? undefined
+    : document.package.relationships);
+
+/** Whether `key` names a header's or a footer's part relationships. */
+export const isHeaderFooterRelationshipsKey = (key: string): boolean =>
+  key.startsWith("header:") || key.startsWith("footer:");
+
+/**
+ * The key the model keeps a story part's own relationships under, in
+ * `annotationRelationships`; undefined for the body, whose relationships are
+ * the main document's.
+ */
+export const storyRelationshipsKey = (story: OpStory): string | undefined => {
+  if (story === OP_STORIES.MAIN) return undefined;
+  switch (story.kind) {
+    case "footnote":
+      return "footnotes";
+    case "endnote":
+      return "endnotes";
+    case "header":
+    case "footer":
+      return headerFooterRelationshipsKey(story.kind, story.rId);
+  }
+};
+
+/**
+ * The path of the part holding `story`: a header's or a footer's as the main
+ * document's relationships name it, undefined when they name none.
+ */
+export const storyPartPath = (
+  document: Document,
+  story: OpStory,
+): string | undefined => {
+  if (story === OP_STORIES.MAIN) return MAIN_DOCUMENT_PART;
+  if (!("rId" in story)) return `word/${story.kind}s.xml`;
+  const relationship = document.package.relationships?.get(story.rId);
+  return relationship === undefined || relationship.targetMode === "External"
+    ? undefined
+    : mainRelationshipTarget(relationship.target);
+};
 
 type AppendNamedRelationshipsOptions = {
   zip: ZipArchive;

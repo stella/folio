@@ -57,6 +57,7 @@ import {
   type FolioAutocompleteState,
   IDLE_AUTOCOMPLETE,
 } from "@stll/folio-core/controller/autocompleteSuggestion";
+import type { CanonicalPasteWarning } from "@stll/folio-core/controller/canonicalClipboard";
 import { afterCanonicalCompositionSettles } from "@stll/folio-core/controller/canonicalInputTimer";
 import type { CanonicalRoomCollaboration } from "@stll/folio-core/controller/canonicalRoomEditor";
 import { createDisplayListPainterLoader } from "@stll/folio-core/controller/deferredDisplayListPainter";
@@ -429,6 +430,10 @@ export type PagedEditorProps = {
   onCanonicalHistory?: (effect: CanonicalHistoryEffect) => void;
   /** A peer's edit dropped local history steps. */
   onCanonicalHistoryDrop?: (drop: CanonicalHistoryDrop) => void;
+  /** A paste put something else in place of content it could not keep. */
+  onCanonicalPasteWarnings?: (
+    warnings: readonly CanonicalPasteWarning[],
+  ) => void;
   /** External ProseMirror plugins. */
   externalPlugins?: Plugin[];
   /** Paint the template-directive overlay. Toggling this hides the chips even
@@ -1608,6 +1613,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       onEditorViewReady,
       onCanonicalHistory,
       onCanonicalHistoryDrop,
+      onCanonicalPasteWarnings,
       externalPlugins = EMPTY_PLUGINS,
       showTemplateDirectives = true,
       canonicalRoom,
@@ -6701,6 +6707,9 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           {...(onCanonicalHistoryDrop === undefined
             ? {}
             : { onCanonicalHistoryDrop })}
+          {...(onCanonicalPasteWarnings === undefined
+            ? {}
+            : { onCanonicalPasteWarnings })}
           onSessionRefusal={handleSessionRefusal}
           {...(suggestionAuthor !== undefined ? { suggestionAuthor } : {})}
           suggestionModeActive={suggestionModeActive}

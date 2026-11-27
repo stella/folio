@@ -552,6 +552,26 @@ test.each(CASES)(
   },
 );
 
+test("a pasted picture takes no id the header part's own relationships hold", async () => {
+  const story = STORIES.header;
+  const source = await destination({ story, conflictingBinding: "present" });
+  const conflictId =
+    relationshipIdOf(source.conflictId) ?? panic("Missing conflicting id");
+  expect(
+    source.document.package.annotationRelationships
+      ?.get(`header:${story.rId}`)
+      ?.has(conflictId),
+  ).toBe(true);
+  const driver = await copyImage({
+    source: source.document,
+    story,
+    mode: "editing",
+    resource: "dataUrl",
+    offset: 0,
+  });
+  expect(driver.allocated.image.rId).not.toBe(conflictId);
+});
+
 test.each(Object.values(FOLIO_DOCX_SERIALIZATION_MODE))(
   "copied image whose id its owner already binds saves under a fresh id in %s",
   async (mode) => {
@@ -559,6 +579,12 @@ test.each(Object.values(FOLIO_DOCX_SERIALIZATION_MODE))(
     const source = await destination({ story, conflictingBinding: "present" });
     const conflictId =
       relationshipIdOf(source.conflictId) ?? panic("Missing conflicting id");
+    // A model that does not hold the header part's own relationships (one
+    // built rather than parsed) lets the paste take an id the part binds;
+    // the save must still give the picture a fresh one there.
+    const tables = new Map(source.document.package.annotationRelationships);
+    tables.delete(`header:${story.rId}`);
+    source.document.package.annotationRelationships = tables;
     const driver = await copyImage({
       source: source.document,
       story,

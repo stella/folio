@@ -505,4 +505,76 @@ test("a note or comment part's relationships change as one entry, survive JSON a
         },
       }).isErr(),
     ).toBe(true);
+  // A header's or a footer's part is keyed by the relationship naming it.
+  for (const key of ["header:rIdHeader1", "footer:rIdFooter1"])
+    expect(
+      applyDocumentOp(seeded, {
+        ...op,
+        annotationRelationships: {
+          expected: "present",
+          next: "present",
+          entries: [{ ...entry, key }],
+        },
+      })
+        .unwrap()
+        .document.package.annotationRelationships?.get(key)
+        ?.get(relationship.id),
+    ).toEqual(relationship);
+});
+
+test("removing a header removes its part's relationships, undo restores them, and a header reusing its id starts with none", () => {
+  const chart: Relationship = {
+    id: "rId1",
+    type: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart",
+    target: "charts/chart1.xml",
+  };
+  const created = applyDocumentOp(document, {
+    type: DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER,
+    sectionIndex: 0,
+    story: { kind: "header", rId: "rIdHeader" },
+    referenceType: "default",
+    content: [{ type: "paragraph", paraId: "00000002", content: [] }],
+  }).unwrap().document;
+  const held: Document = {
+    ...created,
+    package: {
+      ...created.package,
+      annotationRelationships: new Map([
+        ["header:rIdHeader", new Map([["rId1", chart]])],
+        ["footnotes", new Map([["rId1", chart]])],
+      ]),
+    },
+  };
+  const removed = applyDocumentOp(held, {
+    type: DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER,
+    sectionIndex: 0,
+    story: { kind: "header", rId: "rIdHeader" },
+    referenceType: "default",
+  }).unwrap();
+  // The header's table goes with it; another part's stays.
+  expect([
+    ...(removed.document.package.annotationRelationships?.keys() ?? []),
+  ]).toEqual(["footnotes"]);
+  const undone = applyDocumentOps(
+    removed.document,
+    jsonTransport(removed.inverse.map(captureDocumentOp)),
+  ).unwrap();
+  assertExactModel(undone.document, held);
+  // Redone, the table goes again.
+  const redone = applyDocumentOps(
+    undone.document,
+    jsonTransport(undone.inverse.map(captureDocumentOp)),
+  ).unwrap();
+  assertExactModel(redone.document, removed.document);
+  const reused = applyDocumentOp(redone.document, {
+    type: DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER,
+    sectionIndex: 0,
+    story: { kind: "header", rId: "rIdHeader" },
+    referenceType: "default",
+    content: [{ type: "paragraph", paraId: "00000003", content: [] }],
+  }).unwrap().document;
+  expect(reused.package.headers?.has("rIdHeader")).toBe(true);
+  expect(reused.package.annotationRelationships?.has("header:rIdHeader")).toBe(
+    false,
+  );
 });

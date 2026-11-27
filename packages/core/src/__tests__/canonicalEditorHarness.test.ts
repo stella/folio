@@ -40,7 +40,7 @@ import {
 test("canonical refusal rows cannot survive a retired ledger id", () => {
   const row = {
     id: "clipboard-table",
-    gap: CANONICAL_GAP.storyContentProjection,
+    gap: CANONICAL_GAP.trackedChangeRecords,
     message: "refused",
   };
   expect(() => validateHarnessRefusalRows([row])).not.toThrow();

@@ -39,6 +39,7 @@ import {
   type FolioAnonymizationTerm,
   NO_ANONYMIZATION_TERMS,
 } from "@stll/folio-core/controller/anonymizationHighlights";
+import type { CanonicalPasteWarning } from "@stll/folio-core/controller/canonicalClipboard";
 import type { CanonicalRoomCollaboration } from "@stll/folio-core/controller/canonicalRoomEditor";
 import type { HiddenEditorApi } from "@stll/folio-core/controller/hiddenEditorApi";
 import {
@@ -125,6 +126,10 @@ export type HiddenProseMirrorProps = {
   onCanonicalHistory?: (effect: CanonicalHistoryEffect) => void;
   /** A peer's edit dropped local history steps. */
   onCanonicalHistoryDrop?: (drop: CanonicalHistoryDrop) => void;
+  /** A paste put something else in place of content it could not keep. */
+  onCanonicalPasteWarnings?: (
+    warnings: readonly CanonicalPasteWarning[],
+  ) => void;
   /** Callback when EditorView is destroyed */
   onEditorViewDestroy?: () => void;
   /** Intercept key events before ProseMirror processes them. Return true to prevent PM handling. */
@@ -221,6 +226,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
     onEditorViewReady,
     onCanonicalHistory,
     onCanonicalHistoryDrop,
+    onCanonicalPasteWarnings,
     onEditorViewDestroy,
     onKeyDown,
     onCopy,
@@ -257,6 +263,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
   const onEditorViewReadyRef = useRef(onEditorViewReady);
   const onCanonicalHistoryRef = useRef(onCanonicalHistory);
   const onCanonicalHistoryDropRef = useRef(onCanonicalHistoryDrop);
+  const onCanonicalPasteWarningsRef = useRef(onCanonicalPasteWarnings);
   const onEditorViewDestroyRef = useRef(onEditorViewDestroy);
   const onKeyDownRef = useRef(onKeyDown);
   const onCopyRef = useRef(onCopy);
@@ -290,6 +297,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
     onEditorViewReadyRef.current = onEditorViewReady;
     onCanonicalHistoryRef.current = onCanonicalHistory;
     onCanonicalHistoryDropRef.current = onCanonicalHistoryDrop;
+    onCanonicalPasteWarningsRef.current = onCanonicalPasteWarnings;
     onEditorViewDestroyRef.current = onEditorViewDestroy;
     onKeyDownRef.current = onKeyDown;
     onCopyRef.current = onCopy;
@@ -318,6 +326,8 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
         onCanonicalHistory: (effect) => onCanonicalHistoryRef.current?.(effect),
         onCanonicalHistoryDrop: (drop) =>
           onCanonicalHistoryDropRef.current?.(drop),
+        onCanonicalPasteWarnings: (warnings) =>
+          onCanonicalPasteWarningsRef.current?.(warnings),
         getEditingMode: () =>
           suggestionModeActiveRef.current ? "suggesting" : "editing",
         getSuggestionAuthor: () => suggestionAuthorRef.current,

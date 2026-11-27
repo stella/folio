@@ -85,6 +85,7 @@ import {
   UNPAIRED_COMMENT_RANGE_BOUNDARY_WARNING,
 } from "./commentReferenceNormalization";
 import { detectDocxConformanceClass } from "./conformance";
+import { headerFooterRelationshipsKey } from "./copiedPackageParts";
 import { parseCoreProperties } from "./corePropertiesParser";
 import { countDanglingRelationshipReferences } from "./danglingRelationshipReferences";
 import {
@@ -1026,6 +1027,28 @@ export async function parseDocxWithPreviewBudget(
       );
       if (xml) annotationRelationships.set(part, parseRelationships(xml));
     }
+    // Each header's and footer's part relationships, which its kept markup
+    // names its parts by.
+    for (const [kind, stories] of [
+      ["header", headers],
+      ["footer", footers],
+    ] as const)
+      for (const rId of stories?.keys() ?? []) {
+        const relationship = rels.get(rId);
+        if (!relationship?.target || relationship.targetMode === "External")
+          continue;
+        const xml = getMapCaseInsensitive(
+          raw.allXml,
+          getRelationshipsPathForPart(
+            getRelationshipPartPath(relationship.target),
+          ),
+        );
+        if (xml)
+          annotationRelationships.set(
+            headerFooterRelationshipsKey(kind, rId),
+            parseRelationships(xml),
+          );
+      }
 
     const pkg: DocxPackage = {
       conformanceClass: detectDocxConformanceClass(raw.documentXml),

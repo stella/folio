@@ -36,6 +36,7 @@ import {
   type FolioAnonymizationTerm,
   NO_ANONYMIZATION_TERMS,
 } from "@stll/folio-core/controller/anonymizationHighlights";
+import type { CanonicalPasteWarning } from "@stll/folio-core/controller/canonicalClipboard";
 import type { CanonicalRoomCollaboration } from "@stll/folio-core/controller/canonicalRoomEditor";
 import { createDisplayListPainterLoader } from "@stll/folio-core/controller/deferredDisplayListPainter";
 import { DOCUMENT_CHANGE_NOTIFY_DELAY_MS } from "@stll/folio-core/controller/documentChangeNotification";
@@ -397,6 +398,10 @@ export type UseDocxEditorOptions = {
   onCanonicalHistory?: (effect: CanonicalHistoryEffect) => void;
   /** A peer's edit dropped local history steps, counted from the bottom. */
   onCanonicalHistoryDrop?: (drop: CanonicalHistoryDrop) => void;
+  /** A paste put something else in place of content it could not keep. */
+  onCanonicalPasteWarnings?: (
+    warnings: readonly CanonicalPasteWarning[],
+  ) => void;
   /** Reactive collaboration: the room the session joins. */
   collaboration?: MaybeRefOrGetter<CanonicalRoomCollaboration | undefined>;
   /** The terms the editor highlights in the shown text; none when unset. */
@@ -579,6 +584,7 @@ export function useDocxEditor(
     historyShortcuts = "editor",
     onCanonicalHistory,
     onCanonicalHistoryDrop,
+    onCanonicalPasteWarnings,
     collaboration,
     getAnonymizationTerms,
     getDerivedFields,
@@ -1005,6 +1011,8 @@ export function useDocxEditor(
     getHistoryShortcuts: () => historyShortcuts,
     onCanonicalHistory: (effect) => onCanonicalHistory?.(effect),
     onCanonicalHistoryDrop: (drop) => onCanonicalHistoryDrop?.(drop),
+    onCanonicalPasteWarnings: (warnings) =>
+      onCanonicalPasteWarnings?.(warnings),
     getEditingMode: () => toValue(editorMode) ?? "editing",
     getSuggestionAuthor,
     onSessionRefusal: (message, ground, error) => {

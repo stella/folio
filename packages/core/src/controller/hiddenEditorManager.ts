@@ -146,7 +146,12 @@ import {
   createAutocompleteSuggestion,
   nextAutocompleteWord,
 } from "./autocompleteSuggestion";
-import { prepareCanonicalPaste } from "./canonicalClipboard";
+import {
+  type CanonicalPasteCommit,
+  type CanonicalPasteError,
+  type CanonicalPasteWarning,
+  prepareCanonicalPaste,
+} from "./canonicalClipboard";
 import {
   type ClipboardPackageParts,
   readClipboardPackageParts,
@@ -407,6 +412,14 @@ export type HiddenEditorManagerDeps = {
   onCopy?: () => void;
   onCut?: () => void;
   onPaste?: () => void;
+  /**
+   * A paste in any story put something else in place of kept markup whose
+   * package parts could not come with it: its preview picture, the text it
+   * holds, or nothing.
+   */
+  onCanonicalPasteWarnings?: (
+    warnings: readonly CanonicalPasteWarning[],
+  ) => void;
   onReadOnlyEditAttempt: () => void;
   onEditorViewReady: (view: EditorView) => void;
   onEditorViewDestroy: () => void;
@@ -1002,10 +1015,14 @@ export const createHiddenEditorManager = (
     | {
         type: "copied";
         document: Document;
+        /** The story the copy was taken from. */
+        story: OpStory;
         html: string;
         token: string;
         /** The package parts the copied markup names, once they are read. */
         parts?: ClipboardPackageParts;
+        /** The read of those parts while it runs; a paste waits for it. */
+        reading?: Promise<void>;
       };
   let clipboardCopy: ClipboardCopy = { type: "none" };
   /**
@@ -1017,10 +1034,12 @@ export const createHiddenEditorManager = (
     pmView: EditorView,
     document: Document,
     written: { html: string; token: string },
+    story: OpStory = OP_STORIES.MAIN,
   ) => {
     const copy: Extract<ClipboardCopy, { type: "copied" }> = {
       type: "copied",
       document,
+      story,
       ...written,
     };
     clipboardCopy = copy;
@@ -1028,14 +1047,24 @@ export const createHiddenEditorManager = (
     const markup = sliceKeptMarkup(slice);
     const annotationMarkup = sliceAnnotationMarkup(slice, document);
     if (markup.length === 0 && annotationMarkup.size === 0) return;
-    void readClipboardPackageParts({ document, markup, annotationMarkup }).then(
-      (parts) => {
-        if (parts !== undefined) copy.parts = parts;
+    copy.reading = readClipboardPackageParts({
+      document,
+      markup,
+      annotationMarkup,
+      story,
+    })
+      .then(
+        (parts) => {
+          if (parts !== undefined) copy.parts = parts;
+          return undefined;
+        },
+        // An unreadable package leaves the copy without parts to copy.
+        () => undefined,
+      )
+      .then(() => {
+        delete copy.reading;
         return undefined;
-      },
-      // An unreadable package leaves the copy without parts to copy.
-      () => undefined,
-    );
+      });
   };
   /**
    * Write the selection to the clipboard once, under a token minted for this
@@ -1105,26 +1134,114 @@ export const createHiddenEditorManager = (
       refuse(copied.error.message, copied.error.ground);
       return true;
     }
-    rememberCopy(pmView, source, copied.value);
+    rememberCopy(pmView, source, copied.value, story);
     if (story === OP_STORIES.MAIN) publishCommit(prepared.value);
     else publishStoryCommit(pmView, prepared.value);
     return true;
   };
-  /** The copied document, when the pasted clipboard is the editor's own copy. */
+  /** The editor's own copy, when the pasted clipboard is it. */
   const copiedSource = (event: ClipboardEvent) => {
     const data = event.clipboardData;
-    if (clipboardCopy.type !== "copied" || data === null) return {};
+    if (clipboardCopy.type !== "copied" || data === null) return undefined;
     // The token binds the paste to the one item this editor wrote; the
     // markup check refuses an item rewritten around that token.
     return data.getData(INTERNAL_CLIPBOARD_TYPE) === clipboardCopy.token &&
       data.getData("text/html").includes(clipboardCopy.html)
-      ? {
-          sourceDocument: clipboardCopy.document,
-          ...(clipboardCopy.parts === undefined
-            ? {}
-            : { sourceParts: clipboardCopy.parts }),
-        }
-      : {};
+      ? clipboardCopy
+      : undefined;
+  };
+  /** What a prepared paste left out, whether or not it changes anything. */
+  const pasteWarningsOf = (
+    prepared: Result<CanonicalPasteCommit, CanonicalPasteError>,
+  ): readonly CanonicalPasteWarning[] =>
+    prepared.isOk() ? prepared.value.warnings : (prepared.error.warnings ?? []);
+  /**
+   * Publish a prepared paste through `publishPrepared`, and tell the host
+   * what it left out: a paste that left out every piece it held changes
+   * nothing, and still reports each one.
+   */
+  const publishPaste = (
+    prepared: Result<CanonicalPasteCommit, CanonicalPasteError>,
+    publishPrepared: (commit: CanonicalPasteCommit) => boolean,
+  ): boolean => {
+    if (prepared.isErr() && prepared.error.reason !== "noChange") {
+      refuse(prepared.error.message, prepared.error.ground);
+      return false;
+    }
+    const published = prepared.isOk() && publishPrepared(prepared.value);
+    const warnings = pasteWarningsOf(prepared);
+    if ((published || prepared.isErr()) && warnings.length > 0)
+      deps.onCanonicalPasteWarnings?.(warnings);
+    return published;
+  };
+  /**
+   * Paste a clipboard slice into the editor showing `story`, as one
+   * journalled change. A paste of the editor's own copy that needs the
+   * package parts its markup names while they are still being read waits for
+   * them, and pastes once they are in, while the document and the editor
+   * still show what they showed.
+   */
+  const pasteClipboard = (
+    pmView: EditorView,
+    event: ClipboardEvent,
+    slice: Slice,
+    story: OpStory,
+  ): boolean => {
+    if (editorSession.type !== "canonical") return false;
+    const session = editorSession.session;
+    const copy = copiedSource(event);
+    const prepare = () => {
+      syncCanonicalMode();
+      return prepareCanonicalPaste({
+        session,
+        state: pmView.state,
+        slice,
+        story,
+        ...(copy === undefined
+          ? {}
+          : {
+              sourceDocument: copy.document,
+              sourceStory: copy.story,
+              ...(copy.parts === undefined ? {} : { sourceParts: copy.parts }),
+            }),
+      });
+    };
+    const publish = (prepared: ReturnType<typeof prepare>): boolean =>
+      publishPaste(prepared, (commit) =>
+        story === OP_STORIES.MAIN
+          ? publishCommit(commit)
+          : publishStoryCommit(pmView, commit),
+      );
+    const prepared = prepare();
+    const reading = copy?.reading;
+    // A paste that keeps all its markup without the parts pastes now.
+    if (
+      reading === undefined ||
+      (prepared.isErr() && prepared.error.reason !== "noChange") ||
+      pasteWarningsOf(prepared).length === 0
+    ) {
+      publish(prepared);
+      return true;
+    }
+    const version = session.version;
+    const state = pmView.state;
+    void reading.then(() => {
+      if (
+        pmView.isDestroyed ||
+        editorSession.type !== "canonical" ||
+        editorSession.session !== session ||
+        session.version !== version ||
+        pmView.state !== state
+      )
+        refuse(
+          "The document changed while the copied content was being read.",
+          { condition: CANONICAL_CONDITION.stale },
+        );
+      else if (deps.getReadOnly()) deps.onReadOnlyEditAttempt();
+      else publish(prepare());
+      return undefined;
+    });
+    return true;
   };
   let lastInputRule:
     { session: CanonicalSession; version: number; caret: number } | undefined;
@@ -1426,18 +1543,7 @@ export const createHiddenEditorManager = (
           deps.onReadOnlyEditAttempt();
           return true;
         }
-        syncCanonicalMode();
-        const prepared = prepareCanonicalPaste({
-          session: editorSession.session,
-          state: pmView.state,
-          slice,
-          ...copiedSource(event),
-        });
-        if (prepared.isErr()) {
-          if (prepared.error.reason !== "noChange")
-            refuse(prepared.error.message, prepared.error.ground);
-        } else publishCommit(prepared.value);
-        return true;
+        return pasteClipboard(pmView, event, slice, OP_STORIES.MAIN);
       },
       handleDrop: (pmView, event, slice, moved) => {
         if (editorSession.type !== "canonical") return false;
@@ -1485,10 +1591,7 @@ export const createHiddenEditorManager = (
               }
             : { pasteTarget: target }),
         });
-        if (prepared.isErr()) {
-          if (prepared.error.reason !== "noChange")
-            refuse(prepared.error.message, prepared.error.ground);
-        } else publishCommit(prepared.value);
+        publishPaste(prepared, publishCommit);
         return true;
       },
       handleScrollToSelection: suppressHiddenEditorScrollToSelection,
@@ -1615,12 +1718,7 @@ export const createHiddenEditorManager = (
           slice,
           plain,
         });
-        if (prepared.isErr()) {
-          if (prepared.error.reason !== "noChange")
-            refuse(prepared.error.message, prepared.error.ground);
-          return false;
-        }
-        return publishCommit(prepared.value);
+        return publishPaste(prepared, publishCommit);
       });
     releaseCommandOwner = registerEditorCommandOwner(
       view,
@@ -2355,6 +2453,14 @@ export const createHiddenEditorManager = (
       },
       cutCanonicalStory: ({ view: storyView, story, event }) =>
         cutCanonical(storyView, event, story),
+      pasteCanonicalStory: ({ view: storyView, story, event, slice }) => {
+        if (!view || editorSession.type !== "canonical") return false;
+        if (deps.getReadOnly()) {
+          deps.onReadOnlyEditAttempt();
+          return true;
+        }
+        return pasteClipboard(storyView, event, slice, story);
+      },
       replaceCanonicalStoryText: ({ view: storyView, story, intent }) => {
         if (!view || editorSession.type !== "canonical" || deps.getReadOnly())
           return false;
