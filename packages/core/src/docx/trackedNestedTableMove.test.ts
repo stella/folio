@@ -701,7 +701,11 @@ test.each([
       const anchors = move?.omittedTable;
       if (move === undefined || anchors === undefined)
         throw new TypeError("Expected two native table property anchors.");
+      expect(getTrackedChangeGroupsForIds(doc, [...anchors])).toHaveLength(1);
       for (const anchor of anchors) {
+        expect(getTrackedChangeGroupsForIds(doc, [anchor]).at(0)).toContain(
+          grid.id,
+        );
         expect(xml).toContain(`<w:tblPrChange w:id="${anchor}"`);
         expect(
           projection(
