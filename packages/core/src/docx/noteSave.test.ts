@@ -29,12 +29,13 @@ const XML_DECLARATION =
 
 // A footnotes part with the two separator notes Word always emits (ids -1 / 0)
 // followed by one normal note whose paragraph carries a paraId so the selective
-// patch can target it. `ORIGINAL_FOOTNOTE_TEXT` is the editable body text.
+// patch can target it. Every paragraph holds an id, as a save writes them, so a
+// save leaves a part no edit reaches as it was. `ORIGINAL_FOOTNOTE_TEXT` is the editable body text.
 const ORIGINAL_FOOTNOTE_TEXT = "Original footnote body";
 const FOOTNOTE_PARA_ID = "71000001";
 const FOOTNOTE_SEPARATORS =
-  '<w:footnote w:type="separator" w:id="-1"><w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:separator/></w:r></w:p></w:footnote>' +
-  '<w:footnote w:type="continuationSeparator" w:id="0"><w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:continuationSeparator/></w:r></w:p></w:footnote>';
+  '<w:footnote w:type="separator" w:id="-1"><w:p w14:paraId="71000010"><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:separator/></w:r></w:p></w:footnote>' +
+  '<w:footnote w:type="continuationSeparator" w:id="0"><w:p w14:paraId="71000011"><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:continuationSeparator/></w:r></w:p></w:footnote>';
 
 // The normal note carries the in-note `w:footnoteRef` auto-number mark that
 // authored documents emit; the byte-exact assertions below confirm an unedited
@@ -45,8 +46,8 @@ const footnotesXml = `${XML_DECLARATION}
 const ORIGINAL_ENDNOTE_TEXT = "Original endnote body";
 const ENDNOTE_PARA_ID = "61000001";
 const ENDNOTE_SEPARATORS =
-  '<w:endnote w:type="separator" w:id="-1"><w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:separator/></w:r></w:p></w:endnote>' +
-  '<w:endnote w:type="continuationSeparator" w:id="0"><w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:continuationSeparator/></w:r></w:p></w:endnote>';
+  '<w:endnote w:type="separator" w:id="-1"><w:p w14:paraId="61000010"><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:separator/></w:r></w:p></w:endnote>' +
+  '<w:endnote w:type="continuationSeparator" w:id="0"><w:p w14:paraId="61000011"><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:continuationSeparator/></w:r></w:p></w:endnote>';
 
 const endnotesXml = `${XML_DECLARATION}
 <w:endnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml">${ENDNOTE_SEPARATORS}<w:endnote w:id="1"><w:p w14:paraId="${ENDNOTE_PARA_ID}"><w:pPr><w:pStyle w:val="EndnoteText"/></w:pPr><w:r><w:rPr><w:rStyle w:val="EndnoteReference"/></w:rPr><w:endnoteRef/></w:r><w:r><w:t xml:space="preserve">${ORIGINAL_ENDNOTE_TEXT}</w:t></w:r></w:p></w:endnote></w:endnotes>`;
@@ -509,9 +510,11 @@ describe("footnote / endnote body write path (full repack)", () => {
     const originalEndnotesXml = await readPart(buffer, "word/endnotes.xml");
 
     const doc = await parseDocx(buffer, { preloadFonts: false });
-    const added = (text: string) => [
+    // An added paragraph holds an id, as the editor gives every paragraph one.
+    const added = (text: string, paraId: string) => [
       {
         type: "paragraph" as const,
+        paraId,
         content: [
           { type: "run" as const, content: [{ type: "text" as const, text }] },
         ],
@@ -519,11 +522,11 @@ describe("footnote / endnote body write path (full repack)", () => {
     ];
     doc.package.footnotes = [
       ...(doc.package.footnotes ?? []),
-      { type: "footnote", id: 2, content: added("Added footnote") },
+      { type: "footnote", id: 2, content: added("Added footnote", "71000002") },
     ];
     doc.package.endnotes = [
       ...(doc.package.endnotes ?? []),
-      { type: "endnote", id: 2, content: added("Added endnote") },
+      { type: "endnote", id: 2, content: added("Added endnote", "61000002") },
     ];
     const result = await repackDocx(doc);
 
