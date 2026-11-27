@@ -58,51 +58,51 @@
     },
     {
       "run": "bun run specifications:fetch --profile shaping",
-      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
+      "if": null
     },
     {
       "run": "bun run generate:joining-types:check",
-      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
+      "if": null
     },
     {
       "run": "bun run generate:strict-value-encodings:check",
-      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
+      "if": null
     },
     {
       "run": "bun run generate:strict-names:check",
-      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
+      "if": null
     },
     {
       "run": "bun run check:strict-name-tolerance",
-      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
+      "if": null
     },
     {
       "run": "bun run generate:theme-colors:check",
-      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
+      "if": null
     },
     {
       "run": "bun run generate:ooxml-enumerations:check",
-      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
+      "if": null
     },
     {
       "run": "bun run generate:container-children:check",
-      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
+      "if": null
     },
     {
       "run": "bun run generate:border-styles:check",
-      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
+      "if": null
     },
     {
       "run": "bun run generate:preset-line-dash:check",
-      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
+      "if": null
     },
     {
       "run": "bun run check:reserved-value-coverage",
-      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
+      "if": null
     },
     {
       "run": "bun run check:reserved-values",
-      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
+      "if": null
     },
     {
       "run": "bun run check:corpus-baselines",
@@ -110,7 +110,7 @@
     },
     {
       "run": "bun run generate:identity-attributes:check",
-      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
+      "if": null
     },
     {
       "run": "bun scripts/generate-fuzz-schema.ts check",
@@ -118,7 +118,7 @@
     },
     {
       "run": "bun run check:identity-attributes",
-      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
+      "if": null
     },
     {
       "run": "bun run check:parity-contract",

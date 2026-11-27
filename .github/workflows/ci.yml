@@ -437,34 +437,28 @@ jobs:
       # Only the `shaping` profile: fetching every source would pull a 43 MB
       # specification archive and a git clone for two small UCD text files.
       - name: Fetch Unicode shaping sources
-        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run specifications:fetch --profile shaping
 
       - name: Unicode joining tables up to date
-        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run generate:joining-types:check
 
       - name: Strict value encodings up to date
-        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run generate:strict-value-encodings:check
 
       # The names ECMA-376 Part 1 spells by writing direction, derived from the
       # cited rename list and the committed graph.
       - name: Strict names up to date
-        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run generate:strict-names:check
 
       # The tolerance stays in the one reader that consults the table, so a
       # parser cannot grow a second, unmeasured copy of the same equivalence.
       - name: No reader hand-lists a Strict spelling
-        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run check:strict-name-tolerance
 
       # The theme-colour vocabularies. Two enumerations spell one colour
       # differently, so a hand-written union drifts silently and the token it
       # omits is dropped at parse time.
       - name: Theme colour enumerations up to date
-        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run generate:theme-colors:check
 
       # The model enumerations that stand for an OOXML simple type. A member
@@ -472,21 +466,18 @@ jobs:
       # never reaches the writer, so the lists are generated rather than kept
       # by hand.
       - name: OOXML enumerations up to date
-        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run generate:ooxml-enumerations:check
 
       # The dispatched containers' declared-child lists, which make each
       # handler map total: a schema refresh that adds a child fails here
       # rather than letting the child be dropped without a decision.
       - name: Container child lists up to date
-        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run generate:container-children:check
 
       # `ST_Border`, which `BorderSpec.style` is typed with. A schema refresh
       # that adds a member fails here rather than widening the union silently,
       # and the CSS rendering table is total over it at compile time.
       - name: Border styles up to date
-        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run generate:border-styles:check
 
       # `ST_PresetLineDashVal`, which `ShapeOutline.dash` is typed with. Each
@@ -494,7 +485,6 @@ jobs:
       # refresh that adds a member fails here rather than leaving one table
       # short of the vocabulary it resolves.
       - name: Preset line dashes up to date
-        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run generate:preset-line-dash:check
 
       # Both halves of the reserved-value contract. The registry is total over
@@ -502,11 +492,9 @@ jobs:
       # carry a reserved value is undecided) and the reader side (no new bare
       # comparison against a sentinel).
       - name: Reserved values covered over the schema graph
-        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run check:reserved-value-coverage
 
       - name: Bare reserved-value comparisons only shrink
-        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run check:reserved-values
 
       # The corpus gate itself is nightly: it downloads a hundred megabytes and
@@ -524,14 +512,12 @@ jobs:
       # derivation (it still matches the graph) and the reader side (no new
       # attribute identity resolved through a prefix).
       - name: Identity attributes up to date
-        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run generate:identity-attributes:check
 
       - name: Fuzz attribute schema facts up to date
         run: bun scripts/generate-fuzz-schema.ts check
 
       - name: Prefix-resolved identity reads only shrink
-        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run check:identity-attributes
 
       - name: Adapter parity contract (React <-> Vue props/ref)
@@ -1287,7 +1273,6 @@ jobs:
           if-no-files-found: warn
 
       - name: Validate published artifacts
-        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run validate-dist
         env:
           FOLIO_PACKED_TARBALLS: test-results/package-tarballs
@@ -1298,7 +1283,6 @@ jobs:
       # regression (e.g. a worker `new URL(..., import.meta.url)` target the
       # dist never emits); this build consumes the published TARBALLS.
       - name: Production Vite build over packed tarballs
-        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run test:packaged-consumer
         env:
           FOLIO_PACKED_TARBALLS: test-results/package-tarballs

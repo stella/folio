@@ -1244,16 +1244,21 @@ describe("CI plan", () => {
       name: "Dependency smoke over every published tarball",
       run: "bun scripts/packaged-consumer-dependencies.ts --pack-dir test-results/package-tarballs",
     });
-    for (const name of [
-      "Validate published artifacts",
-      "Production Vite build over packed tarballs",
-      "Runtime smoke over packed tarballs",
-    ]) {
+    // Checks over the packed tarballs run with the smoke; the browser smoke
+    // waits for the full suite.
+    for (const [name, condition] of [
+      ["Validate published artifacts", undefined],
+      ["Production Vite build over packed tarballs", undefined],
+      [
+        "Runtime smoke over packed tarballs",
+        "needs.ci-plan.outputs.suite_depth == 'full'",
+      ],
+    ] as const) {
       const step = steps.find(
         (candidate) => isRecord(candidate) && candidate["name"] === name,
       );
       if (!isRecord(step)) throw new TypeError(`Missing packed step ${name}`);
-      expect(step["if"]).toBe("needs.ci-plan.outputs.suite_depth == 'full'");
+      expect(step["if"]).toBe(condition);
       expect(step["env"]).toEqual({
         FOLIO_PACKED_TARBALLS: "test-results/package-tarballs",
       });
