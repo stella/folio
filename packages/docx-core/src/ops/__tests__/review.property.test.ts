@@ -1873,6 +1873,123 @@ describe("tracked operations and their resolution", () => {
     assertExactModel(projectedWithCuts(atOnce), projectedWithCuts(oneByOne));
   });
 
+  test("L3: new content between a removed insertion's pending pieces waits on its seam", () => {
+    // A link inserted in two pieces (1 and 5) with a move range end inserted
+    // between them (2), then a link piece typed at the edge of the second
+    // piece (3) and a tab put beside the seam (4). Rejecting 2 while the
+    // pieces are pending defers its seam on 3 and 4, as it does once the
+    // pieces are accepted: accepting the tab keeps the pieces apart and the
+    // range end beside it, whichever batch goes first.
+    const text = (value: string): Run => ({
+      type: "run",
+      content: [{ type: "text", text: value }],
+    });
+    const link = (content: ParagraphContent[]): Hyperlink => ({
+      type: "hyperlink",
+      rId: "rId9",
+      href: "https://example.org",
+      children: [
+        { type: "inlineWrapper", kind: "bidi", control: "embedding", content },
+      ],
+    });
+    const insertion = (
+      id: number,
+      made: number,
+      content: ParagraphContent[],
+      joins: NonNullable<Insertion["resolutionJoins"]>,
+    ): Insertion => ({
+      type: "insertion",
+      info: { id, author: "C", date: `2026-03-04T05:00:0${String(made)}Z` },
+      content,
+      resolutionJoins: joins,
+    });
+    const none = { before: 0, after: 0, remove: 0 };
+    const tracked: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              paraId: "00000001",
+              content: [
+                insertion(1, 0, [link([text("a")])], none),
+                insertion(
+                  2,
+                  1,
+                  [
+                    { type: "moveToRangeEnd", id: 1 },
+                    {
+                      type: "hyperlink",
+                      rId: "rId9",
+                      href: "https://example.org",
+                      children: [],
+                    },
+                  ],
+                  { before: 0, after: 0, remove: 4 },
+                ),
+                insertion(
+                  4,
+                  3,
+                  [{ type: "run", content: [{ type: "tab" }] }],
+                  none,
+                ),
+                insertion(3, 2, [link([text("x")])], {
+                  before: 0,
+                  after: 5,
+                  remove: 0,
+                }),
+                insertion(5, 0, [link([text("a")])], none),
+              ],
+            },
+          ],
+        },
+      },
+    };
+    const accepted = [1, 3, 4, 5];
+    const rejectedFirst = resolved(
+      resolved(tracked, [2], REVISION_DECISIONS.REJECT),
+      accepted,
+      REVISION_DECISIONS.ACCEPT,
+    );
+    expect(rejectedFirst.package.document.content).toStrictEqual([
+      {
+        type: "paragraph",
+        paraId: "00000001",
+        content: [
+          link([text("a")]),
+          { type: "moveToRangeEnd", id: 1 },
+          { type: "run", content: [{ type: "tab" }] },
+          link([text("xa")]),
+        ],
+      },
+    ]);
+    const acceptedFirst = resolved(
+      resolved(tracked, accepted, REVISION_DECISIONS.ACCEPT),
+      [2],
+      REVISION_DECISIONS.REJECT,
+    );
+    assertExactModel(
+      projectedWithCuts(rejectedFirst),
+      projectedWithCuts(acceptedFirst),
+    );
+    // New content accepted first stands between the pending pieces too.
+    for (const first of [[3], [4], [3, 4]]) {
+      const newContentFirst = resolved(
+        resolved(
+          resolved(tracked, first, REVISION_DECISIONS.ACCEPT),
+          [2],
+          REVISION_DECISIONS.REJECT,
+        ),
+        accepted,
+        REVISION_DECISIONS.ACCEPT,
+      );
+      assertExactModel(
+        projectedWithCuts(newContentFirst),
+        projectedWithCuts(acceptedFirst),
+      );
+    }
+  });
+
   test("L1: accepting a tracked operation's revisions gives the direct operation's result", () => {
     const law = (tally: Tally) =>
       fc.property(
