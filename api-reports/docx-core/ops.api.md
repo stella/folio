@@ -361,10 +361,11 @@ export type DeleteBlocksOp = {
     newIds?: NewIds;
 };
 
-// @public (undocumented)
+// @public
 export type DeleteColumnOp = TableEditTarget & {
     type: typeof DOCUMENT_OP_TYPES.DELETE_COLUMN;
     column: number;
+    count?: number;
 };
 
 // @public (undocumented)

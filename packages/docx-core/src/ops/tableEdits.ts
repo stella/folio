@@ -1528,23 +1528,30 @@ const columnEdit = ({
     });
   // Records placing the column apart once accepted and once rejected: the
   // edit is read against both decisions.
-  if (op.revision === undefined && recordsPlaceColumnsApart(table, grid)) {
-    if (op.type === DOCUMENT_OP_TYPES.DELETE_COLUMN && count > 1) {
-      let next = table;
-      for (let column = op.column + count - 1; column >= op.column; column--) {
-        const currentGrid = statedGrid(next, op);
-        if (currentGrid.isErr()) return Result.err(currentGrid.error);
-        const changed = columnEdit({
-          document,
-          op: { ...op, column, count: 1 },
-          table: next,
-          grid: currentGrid.value,
-        });
-        if (changed.isErr()) return changed;
-        next = changed.value;
-      }
-      return Result.ok(next);
+  const differentReviewGrids =
+    op.revision === undefined && recordsPlaceColumnsApart(table, grid);
+  if (
+    op.revision === undefined &&
+    op.type === DOCUMENT_OP_TYPES.DELETE_COLUMN &&
+    count > 1 &&
+    (differentReviewGrids || table.formatting?.gridChange !== undefined)
+  ) {
+    let next = table;
+    for (let column = op.column + count - 1; column >= op.column; column--) {
+      const currentGrid = statedGrid(next, op);
+      if (currentGrid.isErr()) return Result.err(currentGrid.error);
+      const changed = columnEdit({
+        document,
+        op: { ...op, column, count: 1 },
+        table: next,
+        grid: currentGrid.value,
+      });
+      if (changed.isErr()) return changed;
+      next = changed.value;
     }
+    return Result.ok(next);
+  }
+  if (differentReviewGrids) {
     return columnEditAcrossRecords({
       document,
       op,

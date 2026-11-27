@@ -27,6 +27,28 @@ export { MAX_GRID_COLUMNS };
 export const gridColumnCount = (table: Table): number =>
   Math.min(gridColumnsInRows(table.rows), MAX_GRID_COLUMNS);
 
+const currentGridColumnCount = (
+  table: Table,
+  change: TableGridChange | undefined,
+): number => {
+  const geometry = change?.geometryChange;
+  if (change === undefined || geometry === undefined)
+    return gridColumnCount(table);
+  if (geometry.type === "mergeCells") return change.columnWidths.length;
+  // The pending physical table still has the deleted cells. Its current
+  // grid covers the surviving cells with their current spans and omissions.
+  const ids = new Set(geometry.revisionIds);
+  const rows = table.rows.map((row) => ({
+    ...row,
+    cells: row.cells.filter(
+      ({ structuralChange }) =>
+        structuralChange?.type !== "tableCellDeletion" ||
+        !ids.has(structuralChange.info.id),
+    ),
+  }));
+  return gridColumnCount({ ...table, rows });
+};
+
 /**
  * Serialize `w:tblGridChange`: the grid a reviewer replaced, from the change's
  * own record rather than from the bytes it arrived as.
@@ -69,14 +91,7 @@ export const modelTableGrid = (table: Table): string => {
       .join("");
     return `<w:tblGrid>${columns}${gridChange}</w:tblGrid>`;
   }
-  const columns =
-    change?.geometryChange === undefined
-      ? gridColumnCount(table)
-      : Math.max(
-          0,
-          change.columnWidths.length -
-            Number(change.geometryChange.type === "deleteColumn"),
-        );
+  const columns = currentGridColumnCount(table, change);
   return columns === 0 && gridChange === ""
     ? "<w:tblGrid/>"
     : `<w:tblGrid>${"<w:gridCol/>".repeat(columns)}${gridChange}</w:tblGrid>`;

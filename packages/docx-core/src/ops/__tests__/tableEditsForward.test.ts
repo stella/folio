@@ -946,6 +946,36 @@ describe("independent table forward oracles", () => {
     );
   });
 
+  test("a direct column range deletion narrows both sides of an earlier grid revision", () => {
+    const table: Table = {
+      type: "table",
+      columnWidths: [400, 500, 600, 700],
+      formatting: {
+        gridChange: { id: 81, columnWidths: [410, 510, 610, 710] },
+      },
+      rows: [
+        { type: "tableRow", cells: [cell(10), cell(11), cell(12), cell(13)] },
+      ],
+    };
+    const document = documentOf(table);
+    const changed = applied(document, {
+      ...address(targetOf(table)),
+      type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
+      column: 1,
+      count: 2,
+    });
+    const edited = tableOf(changed.document);
+    expect(edited.columnWidths).toEqual([400, 700]);
+    expect(edited.formatting?.gridChange?.columnWidths).toEqual([410, 710]);
+    const rejected = applied(changed.document, {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: [81],
+      decision: "reject",
+    });
+    expect(tableOf(rejected.document).columnWidths).toEqual([410, 710]);
+  });
+
   test(
     "mixed column deletions keep vertical merges aligned in both review outcomes",
     () => {
