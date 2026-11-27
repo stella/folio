@@ -1887,6 +1887,74 @@ describe("ordinal labels by the paragraph's language", () => {
   });
 });
 
+describe("counters in words by the paragraph's language", () => {
+  const level = (numFmt: string, start: number): string =>
+    `<w:lvl w:ilvl="0"><w:start w:val="${start}"/><w:numFmt w:val="${numFmt}"/><w:suff w:val="nothing"/><w:lvlText w:val="%1"/></w:lvl>`;
+  const NUMBERING = [
+    `<w:abstractNum w:abstractNumId="0">${level("ordinalText", 1)}</w:abstractNum>`,
+    `<w:abstractNum w:abstractNumId="1">${level("cardinalText", 20)}</w:abstractNum>`,
+    '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>',
+    '<w:num w:numId="2"><w:abstractNumId w:val="1"/></w:num>',
+  ].join("");
+  const item = (text: string, numId: number, language: string): string =>
+    p(
+      r(text),
+      `<w:numPr><w:ilvl w:val="0"/><w:numId w:val="${numId}"/></w:numPr><w:rPr><w:lang w:val="${language}"/></w:rPr>`,
+    );
+  const source = async (): Promise<Uint8Array> =>
+    await buildSourceWith({
+      body: [
+        item(": The name of the corporation.", 1, "en-US"),
+        item(": The registered office.", 1, "en-US"),
+        item(" shares", 2, "en-US"),
+        item(" shares", 2, "en-US"),
+        item(" akcií", 2, "cs-CZ"),
+      ].join(""),
+      numbering: NUMBERING,
+    });
+
+  test("an English list writes its counters as words", async () => {
+    const labels = unwrap(await analyzeDocxBlocks(await source())).blocks.map(
+      ({ label }) => label,
+    );
+    expect(labels.slice(0, 4)).toEqual([
+      "First",
+      "Second",
+      "Twenty",
+      "Twenty-one",
+    ]);
+  });
+
+  test("an English one can be written as text, one in a language whose words are not known cannot", async () => {
+    const asText =
+      (id: string) =>
+      (blocks: PlannedBlock[]): TemplatePlanItem[] =>
+        blocks.map(({ id: blockId, hash }) => ({
+          kind: "source",
+          blockId,
+          hash,
+          numbering: null,
+          ...(blockId === id ? { labelAsText: true } : {}),
+        }));
+    const english = unwrap(
+      await applyFor({ source: await source(), template, items: asText("p0") }),
+    );
+    expect(
+      english.report.blocks.find(({ blockId }) => blockId === "p0")
+        ?.labelAsText,
+    ).toBe("First");
+    expect(
+      codeOf(
+        await applyFor({
+          source: await source(),
+          template,
+          items: asText("p4"),
+        }),
+      ),
+    ).toBe("label-not-writable");
+  });
+});
+
 describe("a heading run into its text", () => {
   const HIDDEN_MARK = "<w:rPr><w:vanish/><w:specVanish/></w:rPr>";
   const source = async (): Promise<Uint8Array> =>
