@@ -8,6 +8,7 @@ import {
   type Paragraph,
   type ParagraphContent,
   type PreservedInline,
+  type PreservedXmlContent,
   type Run,
   type RunContent,
   type Table,
@@ -55,6 +56,7 @@ const movableAtom = (leaf: RunContent): boolean =>
   leaf.type === "symbol" ||
   leaf.type === "softHyphen" ||
   leaf.type === "noBreakHyphen" ||
+  (leaf.type === "preservedXml" && movableRuby(leaf)) ||
   ((leaf.type === "footnoteRef" || leaf.type === "endnoteRef") &&
     Number.isInteger(leaf.id) &&
     isNoteReferenceId(leaf.id));
@@ -65,6 +67,72 @@ const movableRun = (run: Run): boolean =>
 const wordNamespace = (uri: string | undefined): boolean =>
   uri === OOXML_NS.w ||
   uri === "http://purl.oclc.org/ooxml/wordprocessingml/main";
+
+const wordName = (node: XmlElement) =>
+  node.type === "element" && wordNamespace(node.namespaceUri)
+    ? node.name?.slice(node.name.indexOf(":") + 1)
+    : undefined;
+
+const RUBY_PROPERTIES = new Set([
+  "rubyAlign",
+  "hps",
+  "hpsRaise",
+  "hpsBaseText",
+  "lid",
+  "dirty",
+]);
+const RUBY_CHILDREN = new Map([
+  ["ruby", new Set(["rubyPr", "rt", "rubyBase"])],
+  ["rubyPr", RUBY_PROPERTIES],
+  ["rt", new Set(["r"])],
+  ["rubyBase", new Set(["r"])],
+  ["r", new Set(["t"])],
+]);
+
+/** Both halves can replay a phonetic guide made of plain text runs. */
+const movableRuby = ({ xml }: PreservedXmlContent): boolean => {
+  const parsed = readXml(xml, {
+    conformance: "ooxml",
+    inheritedNamespaceScope: OOXML_NAMESPACE_SCOPE,
+  });
+  if (parsed.status !== "parsed" || parsed.value.elements?.length !== 1)
+    return false;
+  const ruby = parsed.value.elements.at(0);
+  if (ruby === undefined || wordName(ruby) !== "ruby") return false;
+
+  const attrsAreLocal = (node: XmlElement, name: string) =>
+    Object.keys(node.attributes ?? {}).every((key) => {
+      if (key === "xmlns" || key.startsWith("xmlns:")) return true;
+      const colon = key.indexOf(":");
+      if (colon < 1) return false;
+      const local = key.slice(colon + 1);
+      const namespace = resolveNamespaceUri(
+        node.namespaceScope,
+        key.slice(0, colon),
+      );
+      return name === "t"
+        ? namespace === XML_NAMESPACE_URI && local === "space"
+        : RUBY_PROPERTIES.has(name) &&
+            wordNamespace(namespace) &&
+            local === "val";
+    });
+  const visit = (node: XmlElement, parent: string): boolean => {
+    if (node.type === "comment") return true;
+    if (node.type === "text")
+      return parent === "t" || String(node.text ?? "").trim() === "";
+    const name = wordName(node);
+    return (
+      name !== undefined &&
+      RUBY_CHILDREN.get(parent)?.has(name) === true &&
+      attrsAreLocal(node, name) &&
+      (node.elements?.every((child) => visit(child, name)) ?? true)
+    );
+  };
+  return (
+    attrsAreLocal(ruby, "ruby") &&
+    (ruby.elements?.every((child) => visit(child, "ruby")) ?? false)
+  );
+};
 
 const mathNamespace = (uri: string | undefined): boolean =>
   uri === OOXML_NS.m ||
