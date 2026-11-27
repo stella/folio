@@ -116,9 +116,12 @@ const trackedMerge = {
   newIds: { revision: [101, 102, 103, 104, 105, 106] },
 } as const;
 
-const allocateTrackedMerge = (document: Document) => {
+const allocateTrackedMerge = (document: Document, blockId = ownerId) => {
   const { newBlockIds: _fresh, ...operation } = directMerge;
-  const intent = { type: "table", operation } as const;
+  const intent = {
+    type: "table",
+    operation: { ...operation, blockId },
+  } as const;
   const { revisionId, newIds } = createEditorIntentIdAllocator()(
     document,
     intent,
@@ -200,9 +203,11 @@ const assertSavedMove = (
       if (document === pending.document) {
         expect(resolved).toEqual(expected);
       } else {
-        expect(inlineContentOf(tableOf(resolved))).toEqual(
-          inlineContentOf(tableOf(expected)),
-        );
+        const saved = (candidate: Document) =>
+          inlineContentOf(
+            readTable(serializeTable(tableOf(candidate), serializeParagraph)),
+          );
+        expect(saved(resolved)).toEqual(saved(expected));
       }
     }
   }
@@ -302,6 +307,32 @@ test("a moved nested table preserves drawing and rich-text control identities", 
   expect(xml.match(/<wp:docPr id="27"/gu)).toHaveLength(1);
   for (const id of [71, 72, ...controlIds])
     expect(xml.match(new RegExp(`<w:id w:val="${id}"`, "gu"))).toHaveLength(1);
+});
+
+test("a nested table keeps a previously tracked picture and rich-text control move", () => {
+  const innerOwner = "00000006";
+  const original = sourceWith({
+    content: `<w:sdt><w:sdtPr><w:id w:val="72"/></w:sdtPr><w:sdtContent>${inlinePicture}</w:sdtContent></w:sdt>`,
+    wrap: (paragraph) =>
+      '<w:tbl><w:tblGrid><w:gridCol w:w="500"/><w:gridCol w:w="500"/></w:tblGrid>' +
+      `<w:tr><w:tc><w:p w14:paraId="${innerOwner}">${plain}</w:p></w:tc><w:tc>${paragraph}</w:tc></w:tr>` +
+      '</w:tbl><w:p w14:paraId="00000005"/>',
+  });
+  const { merge: innerMerge } = allocateTrackedMerge(original, innerOwner);
+  const earlier = applyDocumentOp(original, innerMerge).unwrap().document;
+  const { merge, controlIds } = allocateTrackedMerge(earlier);
+  expect(controlIds).toHaveLength(2);
+  const xml = assertSavedMove(earlier, merge);
+  const pictures = [...xml.matchAll(/<wp:docPr id="(\d+)"/gu)].map(
+    ([, id]) => id,
+  );
+  expect(pictures).toHaveLength(4);
+  expect(new Set(pictures).size).toBe(4);
+  const controls = [...xml.matchAll(/<w:id w:val="(\d+)"/gu)].map(
+    ([, id]) => id,
+  );
+  expect(controls).toHaveLength(4);
+  expect(new Set(controls).size).toBe(4);
 });
 
 test("a moved nested table preserves controls shared by rows and cells", () => {

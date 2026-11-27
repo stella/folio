@@ -468,6 +468,20 @@ export const tableMoveSource = (
   return { paragraph, id: paragraph.paraId, controls, pictures };
 };
 
+type MoveResourcePairs = readonly (readonly [number, number])[];
+type MoveResourceIdsOptions = {
+  values: ReadonlySet<number>;
+  pairs: MoveResourcePairs | undefined;
+  side: 0 | 1;
+};
+const hasMoveResourceIds = ({
+  values,
+  pairs,
+  side,
+}: MoveResourceIdsOptions): boolean =>
+  values.size === (pairs?.length ?? 0) &&
+  (pairs?.every((pair) => values.has(pair[side])) ?? true);
+
 /** A structural copy may carry only records whose package identities stay unique. */
 export const nestedTableMoveSource = (
   table: Table,
@@ -521,11 +535,6 @@ export const nestedTableMoveSource = (
     }
     if (geometry?.type === "mergeCells") {
       for (const move of geometry.moves ?? []) {
-        if (
-          move.kind !== "empty" &&
-          (move.controls !== undefined || move.pictures !== undefined)
-        )
-          return false;
         earlierMoves.set(idKey(move.source), move);
         earlierMoves.set(idKey(move.destination), move);
       }
@@ -632,11 +641,22 @@ export const nestedTableMoveSource = (
     }
     const source = tableMoveSource(plain);
     if (source === undefined) return false;
-    if (
-      move !== undefined &&
-      (source.controls.length > 0 || source.pictures.size > 0)
-    )
-      return false;
+    if (move !== undefined && move.kind !== "empty") {
+      const side = idKey(source.id) === idKey(move.source) ? 0 : 1;
+      if (
+        !hasMoveResourceIds({
+          values: new Set(source.controls),
+          pairs: move.controls,
+          side,
+        }) ||
+        !hasMoveResourceIds({
+          values: source.pictures,
+          pairs: move.pictures,
+          side,
+        })
+      )
+        return false;
+    }
     paragraphs.push(source.id);
     for (const id of source.controls) controls.add(id);
     for (const id of source.pictures) {
@@ -784,6 +804,14 @@ const withNestedMoveIdentities = (
   };
   const grid = table.formatting?.gridChange;
   const gridId = grid === undefined ? undefined : ids.revisions.get(grid.id);
+  const rewriteResources = (
+    pairs: MoveResourcePairs,
+    aliases: ReadonlyMap<number, number>,
+  ) =>
+    pairs.map(
+      ([from, to]) =>
+        [aliases.get(from) ?? from, aliases.get(to) ?? to] as const,
+    );
   const rewriteMove = (move: TableGeometryMove): TableGeometryMove => {
     const addresses = {
       source: ids.paragraphs.get(idKey(move.source)) ?? move.source,
@@ -800,6 +828,12 @@ const withNestedMoveIdentities = (
       toRevision: ids.revisions.get(move.toRevision) ?? move.toRevision,
       fromRange: ids.ranges.get(move.fromRange)?.id ?? move.fromRange,
       toRange: ids.ranges.get(move.toRange)?.id ?? move.toRange,
+      ...(move.controls === undefined
+        ? {}
+        : { controls: rewriteResources(move.controls, ids.controls) }),
+      ...(move.pictures === undefined
+        ? {}
+        : { pictures: rewriteResources(move.pictures, ids.pictures) }),
     };
   };
   const geometry = grid?.geometryChange;
