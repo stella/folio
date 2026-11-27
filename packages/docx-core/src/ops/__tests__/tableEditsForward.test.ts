@@ -231,6 +231,58 @@ const insertionOracle = (table: Table, column: number, firstId: number) => {
 };
 
 describe("independent table forward oracles", () => {
+  test.each(["accept", "reject"] as const)(
+    "a geometry group ignores a revision on another table (%s)",
+    (decision) => {
+      const table: Table = {
+        type: "table",
+        columnWidths: [1200, 1200],
+        rows: [
+          { type: "tableRow", cells: [cell(10, 2)] },
+          { type: "tableRow", cells: [cell(20), cell(21)] },
+        ],
+      };
+      const pending = applyDocumentOp(documentOf(table), {
+        type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
+        ...address(targetOf(table)),
+        column: 0,
+        revision: {
+          id: 100_000,
+          author: "Reviewer",
+          date: "2026-11-26T00:00:00Z",
+        },
+        newIds: { revision: [100_001, 100_002, 100_003] },
+      }).unwrap().document;
+      const tracked = tableOf(pending);
+      const grid = tracked.formatting?.gridChange;
+      const group = grid?.geometryChange;
+      if (grid === undefined || group === undefined)
+        throw new Error("Fixture geometry missing.");
+      const foreignId = 200_000;
+      grid.geometryChange = {
+        ...group,
+        revisionIds: [...group.revisionIds, foreignId],
+      };
+      pending.package.document.content.splice(-1, 0, {
+        type: "table",
+        columnWidths: [2400],
+        formatting: { gridChange: { id: foreignId, columnWidths: [1800] } },
+        rows: [{ type: "tableRow", cells: [cell(30)] }],
+      });
+
+      const resolved = applyDocumentOp(pending, {
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story: OP_STORIES.MAIN,
+        revisionIds: [foreignId],
+        decision,
+      }).unwrap().document;
+      expect(tableOf(resolved)).toStrictEqual(tracked);
+      const foreign = resolved.package.document.content.at(-2);
+      if (foreign?.type !== "table") throw new Error("Fixture table missing.");
+      expect(foreign.formatting?.gridChange).toBeUndefined();
+    },
+  );
+
   test(
     "column edits preserve every surviving slot, including vertical owners, spans, omissions and nested contents",
     () => {
@@ -943,6 +995,278 @@ describe("independent table forward oracles", () => {
         },
       },
       DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+    );
+  });
+
+  test("a direct column range deletion narrows both sides of an earlier grid revision", () => {
+    const table: Table = {
+      type: "table",
+      columnWidths: [400, 500, 600, 700],
+      formatting: {
+        gridChange: { id: 81, columnWidths: [410, 510, 610, 710] },
+      },
+      rows: [
+        { type: "tableRow", cells: [cell(10), cell(11), cell(12), cell(13)] },
+      ],
+    };
+    const document = documentOf(table);
+    const changed = applied(document, {
+      ...address(targetOf(table)),
+      type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
+      column: 1,
+      count: 2,
+    });
+    const edited = tableOf(changed.document);
+    expect(edited.columnWidths).toEqual([400, 700]);
+    expect(edited.formatting?.gridChange?.columnWidths).toEqual([410, 710]);
+    const rejected = applied(changed.document, {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: [81],
+      decision: "reject",
+    });
+    expect(tableOf(rejected.document).columnWidths).toEqual([410, 710]);
+  });
+
+  test(
+    "mixed column deletions keep vertical merges aligned in both review outcomes",
+    () => {
+      assertProperty(
+        fc.property(
+          fc.boolean(),
+          fc.boolean(),
+          fc.integer({ min: 3, max: 6 }),
+          fc.integer({ min: 1, max: 2 }),
+          (measured, omitted, width, count) => {
+            const table: Table = {
+              type: "table",
+              ...(measured
+                ? { columnWidths: Array.from({ length: width + 1 }, () => 900) }
+                : {}),
+              rows: [
+                {
+                  type: "tableRow",
+                  cells: [
+                    cell(0x100, width),
+                    { ...cell(0x101), formatting: { vMerge: "restart" } },
+                  ],
+                },
+                {
+                  type: "tableRow",
+                  cells: [
+                    cell(0x200),
+                    cell(0x201, width - 1),
+                    { ...cell(0x202), formatting: { vMerge: "continue" } },
+                  ],
+                },
+                {
+                  type: "tableRow",
+                  ...(omitted ? { formatting: { gridBefore: 1 } } : {}),
+                  cells: [
+                    cell(0x300, width - Number(omitted)),
+                    { ...cell(0x301), formatting: { vMerge: "continue" } },
+                  ],
+                },
+              ],
+            };
+            const document = documentOf(table);
+            const op = {
+              type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
+              ...address(targetOf(table)),
+              column: 0,
+              count,
+            } satisfies DocumentOp;
+            const direct = applied(document, op);
+            const pending = applyDocumentOp(document, {
+              ...op,
+              revision: {
+                id: 100_000,
+                author: "Reviewer",
+                date: "2026-11-26T00:00:00Z",
+              },
+              newIds: {
+                revision: Array.from(
+                  { length: 6 },
+                  (_, index) => 100_001 + index,
+                ),
+              },
+            }).unwrap();
+            const tracked = tableOf(pending.document);
+            const group = tracked.formatting?.gridChange?.geometryChange;
+            const deleted = tracked.rows.at(1)?.cells.at(0)?.structuralChange;
+            if (group === undefined || deleted?.type !== "tableCellDeletion")
+              throw new Error("Selected cell was not recorded.");
+            expect(
+              tracked.rows.at(0)?.cells.at(0)?.propertyChanges?.at(0)
+                ?.previousFormatting?.gridSpan,
+            ).toBe(width);
+            expect(contractViolation(pending.document)).toBeUndefined();
+            expect(
+              applyDocumentOps(pending.document, pending.inverse).unwrap()
+                .document,
+            ).toStrictEqual(document);
+            for (const decision of ["accept", "reject"] as const) {
+              const resolved = applyDocumentOp(pending.document, {
+                type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+                story: OP_STORIES.MAIN,
+                revisionIds: Array.from(
+                  { length: group.revisionIds.length + 1 },
+                  () => deleted.info.id,
+                ),
+                decision,
+              }).unwrap();
+              expect(resolved.document).toStrictEqual(
+                decision === "accept" ? direct.document : document,
+              );
+              expect(
+                applyDocumentOps(resolved.document, resolved.inverse).unwrap()
+                  .document,
+              ).toStrictEqual(pending.document);
+            }
+          },
+        ),
+        {
+          numRuns: 40,
+          id: "mixed column deletions keep vertical merges aligned in both review outcomes",
+        },
+      );
+    },
+    propertyTestTimeout(10_000),
+  );
+
+  test(
+    "a tracked horizontal merge absorbs empty cells with property and cell records",
+    () => {
+      assertProperty(
+        fc.property(
+          fc.boolean(),
+          fc.integer({ min: 2, max: 6 }),
+          (measured, width) => {
+            const table: Table = {
+              type: "table",
+              ...(measured
+                ? { columnWidths: Array.from({ length: width + 1 }, () => 900) }
+                : {}),
+              rows: [
+                {
+                  type: "tableRow",
+                  cells: [
+                    cell(0x100),
+                    ...Array.from(
+                      { length: width - 1 },
+                      (_, index): TableCell => ({
+                        type: "tableCell",
+                        content: [
+                          {
+                            type: "paragraph",
+                            paraId: id(0x200 + index),
+                            content: [],
+                          },
+                        ],
+                      }),
+                    ),
+                    cell(0x300),
+                  ],
+                },
+              ],
+            };
+            const document = documentOf(table);
+            const op = {
+              type: DOCUMENT_OP_TYPES.MERGE_CELLS,
+              ...address(targetOf(table)),
+              top: 0,
+              bottom: 1,
+              left: 0,
+              right: width,
+              newBlockIds: [],
+            } satisfies DocumentOp;
+            const direct = applied(document, op);
+            const pending = applyDocumentOp(document, {
+              ...op,
+              revision: {
+                id: 100_000,
+                author: "Reviewer",
+                date: "2026-11-26T00:00:00Z",
+              },
+              newIds: {
+                revision: Array.from(
+                  { length: width + 1 },
+                  (_, index) => 100_001 + index,
+                ),
+              },
+            }).unwrap();
+            const pendingCells =
+              tableOf(pending.document).rows.at(0)?.cells ?? [];
+            expect(pendingCells.at(0)?.formatting?.gridSpan).toBe(width);
+            expect(
+              pendingCells
+                .slice(1, width)
+                .every(
+                  (record) =>
+                    record.structuralChange?.type === "tableCellDeletion",
+                ),
+            ).toBe(true);
+            expect(
+              applyDocumentOps(pending.document, pending.inverse).unwrap()
+                .document,
+            ).toStrictEqual(document);
+            for (const decision of ["accept", "reject"] as const) {
+              const resolved = applied(pending.document, {
+                type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+                story: OP_STORIES.MAIN,
+                revisionIds: [100_000],
+                decision,
+              });
+              expect(resolved.document).toStrictEqual(
+                decision === "accept" ? direct.document : document,
+              );
+            }
+          },
+        ),
+        {
+          numRuns: 30,
+          id: "a tracked horizontal merge absorbs empty cells with property and cell records",
+        },
+      );
+    },
+    propertyTestTimeout(10_000),
+  );
+
+  test("a tracked merge refuses before recording more history than DOCX can save", () => {
+    const width = 3300;
+    const table = {
+      type: "table",
+      rows: [
+        {
+          type: "tableRow",
+          cells: Array.from({ length: width }, (_, index) => ({
+            type: "tableCell",
+            content: [
+              { type: "paragraph", paraId: id(0x10000 + index), content: [] },
+            ],
+          })),
+        },
+      ],
+    } satisfies Table;
+    const start = 1_900_000_000;
+    const result = applyDocumentOp(documentOf(table), {
+      type: DOCUMENT_OP_TYPES.MERGE_CELLS,
+      ...address(targetOf(table)),
+      top: 0,
+      bottom: 1,
+      left: 0,
+      right: width,
+      newBlockIds: [],
+      revision: { id: start, author: "Reviewer", date: "2026-11-27T00:00:00Z" },
+      newIds: {
+        revision: Array.from(
+          { length: width + 1 },
+          (_, index) => start + index + 1,
+        ),
+      },
+    });
+    expect(result.isErr() && result.error.message).toMatch(
+      /exceeds the saved history limit/u,
     );
   });
 

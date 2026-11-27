@@ -532,7 +532,7 @@ describe("terminal table insertion carrier", () => {
 
 describe("tracked table refusals", () => {
   test.each(["insert", "delete"] as const)(
-    "%s refuses unsupported nested/cell structures and existing revisions",
+    "%s refuses unsupported cell content and conflicting revisions",
     (mode) => {
       const source = makeTable();
       const row = source.rows.at(0);
@@ -675,54 +675,6 @@ describe("tracked table refusals", () => {
     },
   );
 
-  test("a suggested table deletion records a nested table through its words", () => {
-    const source = makeTable();
-    const row = source.rows.at(0);
-    const cell = row?.cells.at(0);
-    if (row === undefined || cell === undefined)
-      throw new Error("Fixture has a row and cell.");
-    const value: Table = {
-      ...source,
-      rows: [
-        {
-          ...row,
-          cells: [
-            {
-              ...cell,
-              content: [
-                {
-                  type: "table",
-                  rows: [
-                    {
-                      type: "tableRow",
-                      cells: [
-                        {
-                          type: "tableCell",
-                          content: [makeParagraph("00000030")],
-                        },
-                      ],
-                    },
-                  ],
-                },
-                makeParagraph("00000010"),
-              ],
-            },
-          ],
-        },
-      ],
-    };
-    const result = applied(documentOf([value, makeParagraph("00000002")]), {
-      type: DOCUMENT_OP_TYPES.DELETE_TABLE,
-      story: OP_STORIES.MAIN,
-      blockId: "00000010",
-      revision,
-      newIds,
-    });
-    expect(JSON.stringify(result.document.package.document)).toContain(
-      '"tableRowDeletion"',
-    );
-  });
-
   test("exact review primitives restore cell-ending marks while story-ending mark creation remains refused", () => {
     const value = makeTable();
     const document = documentOf([value, makeParagraph("00000002")]);
@@ -750,4 +702,163 @@ describe("tracked table refusals", () => {
       DOCUMENT_OP_REFUSAL_REASONS.CONTAINER_FINAL_MARK,
     );
   });
+});
+
+describe("nested tables carried by outer row revisions", () => {
+  const outerId = "00000010";
+  const innerId = "00000030";
+  const followingId = "00000002";
+  const prior = (id: number) => ({ ...revision, id });
+  const captured = {
+    children: [{ index: 0, xml: '<w:proofErr w:type="spellStart"/>' }],
+  };
+  const tablePropertyId = 54;
+  const control = (id: number) => ({
+    contentControls: [{ sdtType: "richText" as const, id }],
+  });
+  const nestedTableOf = (document: Document) => {
+    const nested = firstTable(document).rows.at(0)?.cells.at(0)?.content.at(0);
+    if (nested?.type !== "table") throw new Error("Expected a nested table.");
+    return nested;
+  };
+
+  for (const scope of ["table", "row"] as const) {
+    test.each(["insert", "delete"] as const)(
+      `%s ${scope} keeps the nested table's captured markup and earlier review`,
+      (action) => {
+        const nested: Table = {
+          type: "table",
+          preserved: captured,
+          bookmarks: [
+            {
+              index: 0,
+              marker: { type: "bookmarkStart", id: 73, name: "inner" },
+            },
+            { index: 1, marker: { type: "bookmarkEnd", id: 73 } },
+          ],
+          columnWidths: [600],
+          formatting: {
+            justification: "center",
+            gridChange: { id: 55, columnWidths: [500] },
+          },
+          propertyChanges: [
+            {
+              type: "tablePropertyChange",
+              info: prior(tablePropertyId),
+              previousFormatting: { justification: "end" },
+            },
+          ],
+          rows: [
+            {
+              type: "tableRow",
+              ...control(71),
+              preserved: captured,
+              structuralChange: {
+                type: "tableRowInsertion",
+                info: prior(51),
+              },
+              propertyChanges: [
+                { type: "tableRowPropertyChange", info: prior(52) },
+              ],
+              cells: [
+                {
+                  type: "tableCell",
+                  ...control(72),
+                  structuralChange: {
+                    type: "tableCellInsertion",
+                    info: prior(53),
+                  },
+                  propertyChanges: [
+                    { type: "tableCellPropertyChange", info: prior(57) },
+                  ],
+                  content: [
+                    {
+                      ...makeParagraph(innerId),
+                      pPrMark: { kind: "ins", info: prior(56) },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        };
+        const source = makeTable();
+        const following = makeParagraph(followingId);
+        const row = {
+          type: "tableRow",
+          cells: [
+            {
+              type: "tableCell",
+              content: [nested, makeParagraph(outerId)],
+            },
+          ],
+        } satisfies Table["rows"][number];
+        const table = { ...source, rows: [row, ...source.rows.slice(1)] };
+        const inserting = action === "insert";
+        let blocks: BlockContent[] = [table, following];
+        if (inserting) {
+          blocks =
+            scope === "table"
+              ? [following]
+              : [{ ...source, rows: source.rows.slice(1) }, following];
+        }
+        const document = documentOf(blocks);
+        const story = OP_STORIES.MAIN;
+        let operation: DocumentOp;
+        if (scope === "table") {
+          operation = inserting
+            ? {
+                type: DOCUMENT_OP_TYPES.INSERT_TABLE,
+                story,
+                at: { type: "before", blockId: followingId },
+                table,
+              }
+            : {
+                type: DOCUMENT_OP_TYPES.DELETE_TABLE,
+                story,
+                blockId: outerId,
+              };
+        } else {
+          operation = inserting
+            ? {
+                type: DOCUMENT_OP_TYPES.INSERT_ROW,
+                story,
+                blockId: "00000020",
+                at: 0,
+                row,
+              }
+            : { type: DOCUMENT_OP_TYPES.DELETE_ROW, story, blockId: outerId };
+        }
+
+        const direct = applied(document, operation);
+        const tracked = applied(document, { ...operation, revision, newIds });
+        expect(nestedTableOf(tracked.document)).toStrictEqual(nested);
+        const ids = tracked.revisions ?? [];
+        expect(ids).toContain(revision.id);
+        expect(ids.every((id) => id >= revision.id)).toBe(true);
+        expect(
+          resolve(tracked.document, ids, REVISION_DECISIONS.ACCEPT).document,
+        ).toStrictEqual(direct.document);
+        expect(
+          resolve(tracked.document, ids, REVISION_DECISIONS.REJECT).document,
+        ).toStrictEqual(document);
+
+        const independentlyAccepted = resolve(
+          tracked.document,
+          [tablePropertyId],
+          REVISION_DECISIONS.ACCEPT,
+        ).document;
+        const { propertyChanges: _previous, ...acceptedNested } = nested;
+        expect(nestedTableOf(independentlyAccepted)).toStrictEqual(
+          acceptedNested,
+        );
+        const outerSettled = resolve(
+          independentlyAccepted,
+          ids,
+          inserting ? REVISION_DECISIONS.ACCEPT : REVISION_DECISIONS.REJECT,
+        ).document;
+        expect(nestedTableOf(outerSettled)).toStrictEqual(acceptedNested);
+      },
+    );
+  }
 });

@@ -740,6 +740,7 @@ const operationFields = {
     type: literal("deleteColumn"),
     ...tableTarget,
     column: natural,
+    count: optional(natural),
   } satisfies OperationFields<"deleteColumn">,
   mergeCells: {
     type: literal("mergeCells"),

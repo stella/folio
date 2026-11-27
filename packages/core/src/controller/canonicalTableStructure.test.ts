@@ -177,7 +177,7 @@ const CASES: readonly Case[] = [
     name: "delete two columns",
     command: "deleteColumn",
     selection: { type: "cells", from: "E", to: "F" },
-    tracked: false,
+    tracked: true,
   },
   {
     name: "merge a row's cells",

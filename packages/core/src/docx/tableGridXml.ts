@@ -9,6 +9,7 @@ import {
 } from "@stll/docx-core/model";
 
 import type { Table, TableGridChange } from "../types/document";
+import { serializeTableGeometryChange } from "./reviewResolutionProvenance";
 import { intAttr } from "./serializer/xmlUtils";
 
 /**
@@ -26,6 +27,28 @@ export { MAX_GRID_COLUMNS };
 export const gridColumnCount = (table: Table): number =>
   Math.min(gridColumnsInRows(table.rows), MAX_GRID_COLUMNS);
 
+const currentGridColumnCount = (
+  table: Table,
+  change: TableGridChange | undefined,
+): number => {
+  const geometry = change?.geometryChange;
+  if (change === undefined || geometry === undefined)
+    return gridColumnCount(table);
+  if (geometry.type === "mergeCells") return change.columnWidths.length;
+  // The pending physical table still has the deleted cells. Its current
+  // grid covers the surviving cells with their current spans and omissions.
+  const ids = new Set(geometry.revisionIds);
+  const rows = table.rows.map((row) => ({
+    ...row,
+    cells: row.cells.filter(
+      ({ structuralChange }) =>
+        structuralChange?.type !== "tableCellDeletion" ||
+        !ids.has(structuralChange.info.id),
+    ),
+  }));
+  return gridColumnCount({ ...table, rows });
+};
+
 /**
  * Serialize `w:tblGridChange`: the grid a reviewer replaced, from the change's
  * own record rather than from the bytes it arrived as.
@@ -34,10 +57,8 @@ export const gridColumnCount = (table: Table): number =>
  * measure for is written back without one; spelling it as a zero would claim a
  * width the source never stated.
  */
-const serializeTableGridChange = ({
-  id,
-  columnWidths,
-}: TableGridChange): string => {
+const serializeTableGridChange = (change: TableGridChange): string => {
+  const { id, columnWidths } = change;
   const columns = columnWidths
     .map((width) =>
       width === undefined
@@ -45,7 +66,7 @@ const serializeTableGridChange = ({
         : `<w:gridCol w:w="${intAttr(width)}"/>`,
     )
     .join("");
-  return `<w:tblGridChange w:id="${intAttr(id)}"><w:tblGrid>${columns}</w:tblGrid></w:tblGridChange>`;
+  return `<w:tblGridChange w:id="${intAttr(id)}"${serializeTableGeometryChange(change)}><w:tblGrid>${columns}</w:tblGrid></w:tblGridChange>`;
 };
 
 /**
@@ -70,7 +91,7 @@ export const modelTableGrid = (table: Table): string => {
       .join("");
     return `<w:tblGrid>${columns}${gridChange}</w:tblGrid>`;
   }
-  const columns = gridColumnCount(table);
+  const columns = currentGridColumnCount(table, change);
   return columns === 0 && gridChange === ""
     ? "<w:tblGrid/>"
     : `<w:tblGrid>${"<w:gridCol/>".repeat(columns)}${gridChange}</w:tblGrid>`;

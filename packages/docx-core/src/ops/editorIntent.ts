@@ -164,7 +164,10 @@ import { groupedDeletionStamp, ownInsertionSlice } from "./revisionGrouping";
 import { formattingEquals, runsMergeable } from "./runMerge";
 import { identitySlots } from "./slots";
 import { findStoryBody, type StoryAddress, textBoxStoriesIn } from "./stories";
-import { tableEditParagraphDemand } from "./tableEdits";
+import {
+  columnDeletionTakesTable,
+  tableEditParagraphDemand,
+} from "./tableEdits";
 import { tableGrid } from "./tableGrid";
 import {
   locateTableRow,
@@ -954,10 +957,21 @@ export const createEditorIntentIdAllocator = ({
             break;
           case DOCUMENT_OP_TYPES.DELETE_COLUMN: {
             const table = located.value.table;
-            demand = table.rows.length + 2;
             const grid = tableGrid(table, op.type);
-            if (op.column !== 0 || grid.isErr() || grid.value.width !== 1)
+            if (grid.isErr()) break;
+            const count = op.count ?? 1;
+            if (
+              !Number.isSafeInteger(count) ||
+              count < 1 ||
+              count > grid.value.width
+            )
               break;
+            // Each cell or omission record owns at least one selected slot.
+            demand = table.rows.reduce(
+              (total, row) => total + Math.min(count, row.cells.length + 1),
+              2,
+            );
+            if (!columnDeletionTakesTable(grid.value, op)) break;
             // Removing the final column tracks the whole table, including paragraph
             // marks and every inline wrapper identity, rather than just its rows.
             for (const { paragraph } of storyParagraphs({ content: [table] })) {
@@ -971,6 +985,8 @@ export const createEditorIntentIdAllocator = ({
             // The merged cell's last paragraph and the one before it, where
             // a decision removes the words it ends with.
             demand = (op.bottom - op.top + 1) * 2 + 2;
+            if (op.bottom - op.top === 1)
+              demand = Math.max(demand, op.right - op.left + 2);
             // A row the merge leaves only continuations records its
             // deletion: the row and each of its paragraphs. A direct merge
             // across rows pending insertion or deletion records it on the
@@ -4496,6 +4512,7 @@ const compileInStory = (
       if (op.type === DOCUMENT_OP_TYPES.DELETE_COLUMN) {
         const grid = tableGrid(located.value.table, op.type);
         if (grid.isErr()) return Result.err(grid.error);
+        const end = op.column + (op.count ?? 1);
         const rows = located.value.table.rows.map((row, index) => ({
           ...row,
           cells: row.cells.filter((_cell, cellIndex) => {
@@ -4504,9 +4521,7 @@ const compileInStory = (
             );
             return (
               entry !== undefined &&
-              (entry.start > op.column ||
-                entry.end <= op.column ||
-                entry.end - entry.start > 1)
+              (entry.start < op.column || entry.end > end)
             );
           }),
         }));

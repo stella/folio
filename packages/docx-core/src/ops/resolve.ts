@@ -166,7 +166,11 @@ import {
   tryMaterializeResolution,
 } from "./resolutionMaterialization";
 import { edgeChain, edgeChainPastRemoved } from "./resolvedEdges";
-import { reachableRowIds, resolveTableRows } from "./resolveTableRows";
+import {
+  reachableRowIds,
+  resolveTableRows,
+  withBelongingTableGeometry,
+} from "./resolveTableRows";
 import {
   isAddedRevision,
   isRemovedRevisionNode,
@@ -8569,7 +8573,10 @@ export const planRevisionResolution = (
   options: RevisionResolutionPlanOptions,
 ): Result<RevisionResolutionPlan, DocumentOpRefusal> => {
   const { document, applyOps } = options;
-  const op = withBelongingPropertyChanges(document, options.op);
+  const op = withBelongingTableGeometry(
+    document,
+    withBelongingPropertyChanges(document, options.op),
+  );
   const sections = settleSectionRecords(document, op);
   if (sections.ops.length === 0) return planMarkResolution({ ...options, op });
   const settled = applyOps(document, sections.ops);

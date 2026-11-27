@@ -8,6 +8,7 @@ import {
   tableCellVerticalMerge,
 } from "../model/tableCellVerticalMerge";
 import { MAX_TABLE_GRID_COLUMNS } from "../model/tableGridLimits";
+import { tableReviewGeometry } from "../model/tableReviewGeometry";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import type { DocumentOpType } from "./types";
 
@@ -55,15 +56,22 @@ export const tableGrid = (
   const rows: GridCell[][] = [];
   const covered: number[] = [];
   const previous = new Map<number, GridCell>();
+  // Pending deleted cells still occupy their original slots. For a compound
+  // deletion the neighboring spans and omissions have updated live values,
+  // so read their recorded earlier geometry while the removed cells remain.
+  const review = tableReviewGeometry(table);
+  const statedWidth = (review?.columnWidths ?? table.columnWidths)?.length;
   for (const [rowIndex, row] of table.rows.entries()) {
-    let position = row.formatting?.gridBefore ?? 0;
-    const after = row.formatting?.gridAfter ?? 0;
+    const rowFormatting =
+      review === undefined ? row.formatting : review.rowFormatting(row);
+    let position = rowFormatting?.gridBefore ?? 0;
+    const after = rowFormatting?.gridAfter ?? 0;
     if (!nonnegative(position) || !nonnegative(after)) return refuse();
     const cells: GridCell[] = [];
     for (const [index, cell] of row.cells.entries()) {
-      // A pending cell deletion still holds its columns: the grid narrows only
-      // when the deletion is accepted.
-      const span = cell.formatting?.gridSpan ?? 1;
+      const span =
+        (review === undefined ? cell.formatting : review.cellFormatting(cell))
+          ?.gridSpan ?? 1;
       if (!nonnegative(span) || span === 0 || !nonnegative(position + span))
         return refuse();
       const start = position;
@@ -106,11 +114,11 @@ export const tableGrid = (
     previous.clear();
     for (const cell of cells) previous.set(cell.start, cell);
   }
-  const width = maxOf(covered, table.columnWidths?.length ?? 0);
+  const width = maxOf(covered, statedWidth ?? 0);
   if (width === 0 || width > MAX_TABLE_GRID_COLUMNS) return refuse();
   const stated =
     covered.every((columns) => columns === width) &&
-    (table.columnWidths === undefined || table.columnWidths.length === width);
+    (statedWidth === undefined || statedWidth === width);
   return Result.ok({ width, rows, stated });
 };
 

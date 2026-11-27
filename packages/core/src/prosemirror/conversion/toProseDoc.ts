@@ -18,6 +18,7 @@ import {
   DRAWING_RAW_XML_MODES,
   PARSE_WARNING_CODES,
   type PreservedMarkup,
+  tableWithPhysicalColumns,
 } from "@stll/docx-core/model";
 import { preservedCommentRangeMarkersAt } from "@stll/docx-core/ops";
 
@@ -265,6 +266,8 @@ export type ToProseDocOptions = {
    * {@link createProjectionBlockCache}.
    */
   blockCache?: ProjectionBlockCache;
+  /** A canonical projection displays the cells that are still pending deletion. */
+  tableReviewGeometry?: "physical";
   /**
    * The salt of minted text-box anchor ids. Each conversion draws its own;
    * a block cache keeps one for every projection it serves, and a caller
@@ -662,6 +665,7 @@ const CONVERSION_CONTEXT_DEPENDENCY = {
   theme: "package",
   pageBreakRunSourceDescendants: "package",
   warnPageBreakProjection: "package",
+  tableReviewGeometry: "package",
   createMark: "package",
   nextTextBoxGroupId: "story",
   placedTextBoxGroup: "story",
@@ -828,6 +832,7 @@ type ProjectionPackageInputs = {
   theme: DeepReadonly<Theme> | null;
   numbering: NumberingDefinitions | undefined;
   warn: ParseContext["warn"] | undefined;
+  tableReviewGeometry: ToProseDocOptions["tableReviewGeometry"];
 };
 
 /** One block's bookmark boundaries, in document order, and comment range starts. */
@@ -904,7 +909,8 @@ export class ProjectionBlockCache {
       current.styles === inputs.styles &&
       current.theme === inputs.theme &&
       current.numbering === inputs.numbering &&
-      current.warn === inputs.warn
+      current.warn === inputs.warn &&
+      current.tableReviewGeometry === inputs.tableReviewGeometry
     )
       return this.context;
     this.inputs = inputs;
@@ -920,6 +926,7 @@ export class ProjectionBlockCache {
       // Answers per queried object, so one index serves every projection.
       pageBreakRunSourceDescendants: buildPageBreakRunSourceDescendantIndex([]),
       warnPageBreakProjection: pageBreakProjectionWarn(inputs.warn),
+      tableReviewGeometry: inputs.tableReviewGeometry,
       createMark: createMarkInterner(schema),
     };
     return this.context;
@@ -981,6 +988,7 @@ export class ProjectionBlockCache {
       theme: context.theme,
       pageBreakRunSourceDescendants: context.pageBreakRunSourceDescendants,
       warnPageBreakProjection: context.warnPageBreakProjection,
+      tableReviewGeometry: context.tableReviewGeometry,
       createMark: context.createMark,
       ...story,
     };
@@ -1029,6 +1037,7 @@ export function toProseDoc(
     theme: options?.theme ?? document.package.theme ?? null,
     numbering: document.package.numbering,
     warn: options?.warn,
+    tableReviewGeometry: options?.tableReviewGeometry,
   };
   const shared = cache?.packageContext(packageInputs);
   shared?.pageBreakRunSourceDescendants.include(paragraphs);
@@ -1070,6 +1079,7 @@ export function toProseDoc(
     warnPageBreakProjection:
       shared?.warnPageBreakProjection ?? pageBreakProjectionWarn(options?.warn),
     createMark: shared?.createMark ?? createMarkInterner(schema),
+    tableReviewGeometry: packageInputs.tableReviewGeometry,
   };
 
   const convertBodyBlocks = (blocks: BlockContent[]): PMNode[] => {
@@ -2740,6 +2750,7 @@ type TableConversionContext = {
   /** Comments the story opens a range for, for the point-comment question. */
   storyRangedCommentIds: IdMembership;
   warnPageBreakProjection: PageBreakProjectionWarn;
+  tableReviewGeometry: ToProseDocOptions["tableReviewGeometry"];
   /** Shares one mark instance per distinct run formatting across the conversion. */
   createMark: MarkFactory;
   /**
@@ -2754,10 +2765,14 @@ type TableConversionContext = {
 };
 
 function convertTable(
-  table: Table,
+  source: Table,
   styleResolver: StyleEngine | null,
   context: TableConversionContext,
 ): PMNode {
+  const table =
+    context.tableReviewGeometry === "physical"
+      ? tableWithPhysicalColumns(source)
+      : source;
   for (const row of table.rows) {
     for (const cell of row.cells) {
       if (
@@ -3605,6 +3620,7 @@ export function standaloneTableCellToProseMirror(
       storyRangedCommentIds: rangedCommentIds(cell.content),
       openCommentIds: new Set<number>(),
       warnPageBreakProjection: noPageBreakProjectionWarning,
+      tableReviewGeometry: undefined,
       createMark: createMarkInterner(schema),
     },
     isHeader: nodeType === "tableHeader",
@@ -6782,6 +6798,7 @@ export function headerFooterToProseDoc(
     storyRangedCommentIds: rangedCommentIds(content),
     openCommentIds: new Set<number>(),
     warnPageBreakProjection: pageBreakProjectionWarn(options?.warn),
+    tableReviewGeometry: options?.tableReviewGeometry,
     createMark: createMarkInterner(schema),
   };
 

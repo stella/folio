@@ -498,18 +498,6 @@ const insertBesideTable = ({
     blocks.splice(tableIndex, 0, op.table);
     return commitBlocks({ document, op, anchor, blocks });
   }
-  if (
-    op.table.preserved !== undefined ||
-    op.table.bookmarks !== undefined ||
-    op.table.carrierStack !== undefined ||
-    (op.table.propertyChanges?.length ?? 0) > 0
-  )
-    return refuse({
-      op,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      message:
-        "Tracked table construction does not support captured markup or table property revisions.",
-    });
   const tracked = trackTableRows({
     document,
     op,
@@ -603,19 +591,6 @@ export const applyTableOp = (
       }
       if (op.revision === undefined)
         return commitBlocks({ document, op, anchor, blocks });
-      if (
-        op.table.preserved !== undefined ||
-        op.table.bookmarks !== undefined ||
-        op.table.carrierStack !== undefined ||
-        (op.table.propertyChanges?.length ?? 0) > 0
-      ) {
-        return refuse({
-          op,
-          reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-          message:
-            "Tracked table construction does not support captured markup or table property revisions.",
-        });
-      }
       const tracked = trackTableRows({
         document,
         op,
@@ -721,19 +696,6 @@ export const applyTableOp = (
               : [...ends, ...host.content],
           };
       } else {
-        if (
-          location.table.preserved !== undefined ||
-          location.table.bookmarks !== undefined ||
-          location.table.carrierStack !== undefined ||
-          (location.table.propertyChanges?.length ?? 0) > 0
-        ) {
-          return refuse({
-            op,
-            reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-            message:
-              "Tracked table deletion does not support captured markup or table property revisions.",
-          });
-        }
         // A row already suggested for deletion keeps its own suggestion; the
         // table's deletion marks every other row.
         const pending = location.table.rows.filter(
