@@ -47,49 +47,67 @@ type ParagraphSpec = {
   paragraphStyleId?: string;
 };
 
-const buildDocxBuffer = (
+/**
+ * A package of `paragraphs`, each holding only the id its spec names: a save
+ * gives every other paragraph one, taken off again.
+ */
+const buildDocxBuffer = async (
   paragraphs: readonly ParagraphSpec[],
 ): Promise<ArrayBuffer> => {
   const template = createEmptyDocument();
-  return createDocx({
-    ...template,
-    package: {
-      ...template.package,
-      document: {
-        ...template.package.document,
-        content: paragraphs.map(
-          ({
-            text,
-            paraId,
-            formatting,
-            paragraphAlignment,
-            paragraphStyleId,
-          }) => ({
-            type: "paragraph",
-            content: [
-              {
-                type: "run",
-                ...(formatting !== undefined && { formatting }),
-                content: [{ type: "text", text }],
-              },
-            ],
-            ...((paragraphAlignment !== undefined ||
-              paragraphStyleId !== undefined) && {
-              formatting: {
-                ...(paragraphAlignment !== undefined && {
-                  alignment: paragraphAlignment,
-                }),
-                ...(paragraphStyleId !== undefined && {
-                  styleId: paragraphStyleId,
-                }),
-              },
+  const named = new Set(
+    paragraphs.flatMap(({ paraId }) => (paraId === undefined ? [] : [paraId])),
+  );
+  const zip = await ZipArchive.read(
+    await createDocx({
+      ...template,
+      package: {
+        ...template.package,
+        document: {
+          ...template.package.document,
+          content: paragraphs.map(
+            ({
+              text,
+              paraId,
+              formatting,
+              paragraphAlignment,
+              paragraphStyleId,
+            }) => ({
+              type: "paragraph",
+              content: [
+                {
+                  type: "run",
+                  ...(formatting !== undefined && { formatting }),
+                  content: [{ type: "text", text }],
+                },
+              ],
+              ...((paragraphAlignment !== undefined ||
+                paragraphStyleId !== undefined) && {
+                formatting: {
+                  ...(paragraphAlignment !== undefined && {
+                    alignment: paragraphAlignment,
+                  }),
+                  ...(paragraphStyleId !== undefined && {
+                    styleId: paragraphStyleId,
+                  }),
+                },
+              }),
+              ...(paraId !== undefined && { paraId }),
             }),
-            ...(paraId !== undefined && { paraId }),
-          }),
-        ),
+          ),
+        },
       },
-    },
-  });
+    }),
+  );
+  const xml = await zip.entry("word/document.xml")?.text();
+  if (xml === undefined) throw new Error("the package has no body");
+  zip.set(
+    "word/document.xml",
+    xml.replace(/\s(?:w14:paraId|w14:textId)="([^"]*)"/gu, (attribute, id) =>
+      named.has(id) ? attribute : "",
+    ),
+  );
+  return (await zip.generate({ compression: "store" })).buffer as ArrayBuffer;
 };
 
 type CorePropertiesFixture = {

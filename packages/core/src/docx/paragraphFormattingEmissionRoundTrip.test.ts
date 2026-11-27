@@ -264,17 +264,19 @@ const generatedDocument = async (
     ),
   );
   zip.set("word/numbering.xml", NUMBERING_XML);
-  zip.set(
-    "word/document.xml",
-    documentXml
-      .replace(
+  // A saved empty document already declares the paragraph id namespace.
+  const declared = documentXml.includes("xmlns:w14=")
+    ? documentXml
+    : documentXml.replace(
         'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"',
         'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"',
-      )
-      .replace(
-        /<w:body>[\s\S]*<\/w:body>/u,
-        `<w:body><w:p w14:paraId="${PARAGRAPH_ID}">${paragraphProperties(numbering)}<w:r><w:t>Text</w:t></w:r></w:p><w:sectPr/></w:body>`,
-      ),
+      );
+  zip.set(
+    "word/document.xml",
+    declared.replace(
+      /<w:body>[\s\S]*<\/w:body>/u,
+      `<w:body><w:p w14:paraId="${PARAGRAPH_ID}">${paragraphProperties(numbering)}<w:r><w:t>Text</w:t></w:r></w:p><w:sectPr/></w:body>`,
+    ),
   );
 
   return zip.generate({ compression: "store" }).then((bytes) => bytes.buffer);

@@ -242,6 +242,14 @@ export const collectExistingParaIds = (
 type AttributeSpan = { start: number; end: number; value: string };
 type ParagraphOpenTag = {
   nameEnd: number;
+  /**
+   * Just past the last namespace the open tag declares itself, when it
+   * declares any: a paragraph replayed on its own carries the bindings it
+   * reads, and is read back with every declaration before its attributes.
+   */
+  declarationsEnd: number | undefined;
+  /** The prefixes the open tag binds itself. */
+  declaredPrefixes: ReadonlySet<string>;
   inFallback: boolean;
   /** The innermost `mc:AlternateContent` the paragraph is drawn in, if any. */
   alternateContent: XmlElement | undefined;
@@ -314,7 +322,15 @@ const scanPartSpelling = (xml: string, partPath: string): PartSpelling => {
       if (alternateContent) alternateContents.set(element, alternateContent);
       let paraId: AttributeSpan | undefined;
       let textId: AttributeSpan | undefined;
+      let declarationsEnd: number | undefined;
+      const declaredPrefixes = new Set<string>();
       for (const [name, span] of spans) {
+        if (name === "xmlns" || name.startsWith("xmlns:")) {
+          // The value's span ends at its closing quote.
+          declarationsEnd = Math.max(declarationsEnd ?? 0, span.end + 1);
+          declaredPrefixes.add(name === "xmlns" ? "" : name.slice(6));
+          continue;
+        }
         const namespace = resolveAttributeNamespaceUri(element, name);
         const localName = getLocalName(name);
         const value = String(element.attributes?.[name] ?? "");
@@ -341,6 +357,8 @@ const scanPartSpelling = (xml: string, partPath: string): PartSpelling => {
       )
         paragraphs.push({
           nameEnd,
+          declarationsEnd,
+          declaredPrefixes,
           inFallback,
           alternateContent,
           paraId,
@@ -635,26 +653,42 @@ const scanPart = ({
   let deduplicated = 0;
   let ordinal = 0;
 
-  for (const { nameEnd, inFallback, paraId, textId } of spelling.paragraphs) {
+  for (const {
+    nameEnd,
+    declarationsEnd,
+    declaredPrefixes,
+    inFallback,
+    paraId,
+    textId,
+  } of spelling.paragraphs) {
     if (inFallback) {
       continue;
     }
     ordinal += 1;
+    // A paragraph that declares namespaces itself is replayed on its own and
+    // read back with every binding it reads declared ahead of its
+    // attributes: its ids go after its declarations, with the binding they
+    // read, so a save of what was read writes the same tag.
+    const at = declarationsEnd ?? nameEnd;
+    const binding =
+      declarationsEnd !== undefined && !declaredPrefixes.has(w14)
+        ? ` xmlns:${w14}="${W14_NAMESPACE_URI}"`
+        : "";
 
     if (paraId === undefined) {
       const id = mint(ordinal);
       if (textId !== undefined) {
         edits.push({
-          start: nameEnd,
-          end: nameEnd,
-          text: ` ${w14}:paraId="${id}"`,
+          start: at,
+          end: at,
+          text: `${binding} ${w14}:paraId="${id}"`,
         });
         edits.push({ start: textId.start, end: textId.end, text: id });
       } else {
         edits.push({
-          start: nameEnd,
-          end: nameEnd,
-          text: ` ${w14}:paraId="${id}" ${w14}:textId="${id}"`,
+          start: at,
+          end: at,
+          text: `${binding} ${w14}:paraId="${id}" ${w14}:textId="${id}"`,
         });
       }
       assigned += 1;
@@ -1049,32 +1083,46 @@ const planPackageParaIdsInternal = async (
   // an attacker-crafted archive with thousands of parts or a decompression-
   // bomb entry must fail fast instead of exhausting memory.
   const archive = await loadDocxArchive(docx);
+  return planParaIdsReading({
+    entries: archive.entries,
+    read: (name) => archive.readEntryString(name),
+  });
+};
 
-  const relsPath = archive.entries.find(
+/**
+ * The paragraph ids {@link ensureParaIds} writes into a package whose parts
+ * `read` gives as text, by path: the plan of {@link planPackageParaIds} for
+ * a package already open, as a save holds it.
+ */
+export const planParaIdsReading = async ({
+  entries,
+  read,
+}: {
+  entries: readonly string[];
+  read: (name: string) => Promise<string | null>;
+}): Promise<PackageParaIdPlan> => {
+  const relsPath = entries.find(
     (name) => name.toLowerCase() === PACKAGE_RELATIONSHIPS_PART,
   );
-  const rels =
-    relsPath === undefined ? null : await archive.readEntryString(relsPath);
+  const rels = relsPath === undefined ? null : await read(relsPath);
   if (rels === null)
     throw createEnsureParaIdsError("Package relationships not found");
   const documentPartName = mainDocumentPart({
     rels,
     relsPath: relsPath ?? PACKAGE_RELATIONSHIPS_PART,
-    entries: archive.entries,
+    entries,
   });
   const documentRelsPath = relationshipsPathFor(documentPartName);
-  const documentRelsName = archive.entries.find(
+  const documentRelsName = entries.find(
     (name) => name.toLowerCase() === documentRelsPath.toLowerCase(),
   );
   const { storyParts, isTargetPart } = packageStoryParts({
     documentPartName,
     documentRels:
-      documentRelsName === undefined
-        ? null
-        : await archive.readEntryString(documentRelsName),
-    entries: archive.entries,
+      documentRelsName === undefined ? null : await read(documentRelsName),
+    entries,
   });
-  const xmlPartNames = archive.entries.filter(
+  const xmlPartNames = entries.filter(
     (name) =>
       name.toLowerCase().endsWith(".xml") ||
       name === documentPartName ||
@@ -1083,15 +1131,15 @@ const planPackageParaIdsInternal = async (
 
   const partTexts = new Map<string, string>();
   for (const name of xmlPartNames) {
-    // oxlint-disable-next-line no-await-in-loop -- archive.readEntryString serializes reads to enforce a shared cumulative byte budget across parts
-    const text = await archive.readEntryString(name);
+    // oxlint-disable-next-line no-await-in-loop -- a bounded archive serializes reads to enforce a shared cumulative byte budget across parts
+    const text = await read(name);
     if (text !== null) {
       partTexts.set(name, text);
     }
   }
 
   return {
-    entries: archive.entries,
+    entries,
     partTexts,
     ...packageParaIdUpdates(
       partTexts,

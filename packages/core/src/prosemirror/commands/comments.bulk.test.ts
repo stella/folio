@@ -31,6 +31,7 @@ import {
 } from "../../__tests__/reference-editor/ParagraphChangeTrackerExtension";
 import { FolioDocxReviewer } from "../../ai-edits/headless";
 import type { FolioAIBlock, FolioAIParagraphBlock } from "../../ai-edits/types";
+import { withoutPackageParagraphIds } from "../../docx/__tests__/paragraphIds";
 import { parseDocx } from "../../docx/parser";
 import { createDocx, createEmptyDocx, repackDocx } from "../../docx/rezip";
 import type {
@@ -992,11 +993,14 @@ describe("bulk revision lifecycle", () => {
     "%s survives save and reopen with no unresolved revision carriers",
     async (mode) => {
       const doc = generatedDocument(mode === "accept" ? 71 : 72, 8, "omit");
+      // A save gives every paragraph an id; the package under test has none.
       const reviewer = await FolioDocxReviewer.fromBuffer(
-        await createDocx(
-          fromProseDoc(doc, undefined, {
-            stylesheetSource: { type: "package" },
-          }),
+        await withoutPackageParagraphIds(
+          await createDocx(
+            fromProseDoc(doc, undefined, {
+              stylesheetSource: { type: "package" },
+            }),
+          ),
         ),
       );
       const before = reviewer.readReviewedStory({ view: "current-markup" });

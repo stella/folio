@@ -17,6 +17,7 @@ import { fromProseDoc } from "../../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import { parseDocx } from "../parser";
 import { repackDocx } from "../rezip";
+import { withParagraphIds } from "./paragraphIds";
 
 const FIXTURES_DIR = path.join(import.meta.dir, "__fixtures__", "corpus");
 const REGRESSION_FIXTURES_DIR = path.join(
@@ -41,13 +42,16 @@ type ReadFixtureOptions = {
   filename: string;
 };
 
+/**
+ * A fixture with an id on every paragraph, as the editor's ingest reads it: a
+ * save adds ids only to paragraphs the edit adds, so every part the edit does
+ * not reach stays byte for byte.
+ */
 const readFixture = ({
   directory = FIXTURES_DIR,
   filename,
-}: ReadFixtureOptions): ArrayBuffer => {
-  const bytes = readFileSync(path.join(directory, filename));
-  return new Uint8Array(bytes).buffer;
-};
+}: ReadFixtureOptions): Promise<ArrayBuffer> =>
+  withParagraphIds(readFileSync(path.join(directory, filename)));
 
 const packageFileNames = (zip: ZipArchive): string[] => zip.paths().toSorted();
 
@@ -144,7 +148,7 @@ const editFixtureText = async ({
   text,
   replacement,
 }: EditFixtureTextOptions) => {
-  const originalBytes = readFixture({ directory, filename });
+  const originalBytes = await readFixture({ directory, filename });
   const parsed = await parseDocx(originalBytes);
   if (!parsed.originalBuffer) panic("parser must retain the imported package");
   const originalPm = toProseDoc(parsed);
@@ -232,7 +236,7 @@ describe("corpus edit/save/reopen", () => {
   test.each(FIXTURE_FILES)(
     "preserves package content after a body edit (%s)",
     async (filename) => {
-      const originalBytes = readFixture({ filename });
+      const originalBytes = await readFixture({ filename });
       const parsed = await parseDocx(originalBytes);
       if (!parsed.originalBuffer)
         panic("parser must retain the imported package");

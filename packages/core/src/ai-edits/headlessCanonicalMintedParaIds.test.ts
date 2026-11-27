@@ -8,6 +8,8 @@
 
 import { describe, expect, test } from "bun:test";
 
+import { ZipArchive } from "@stll/docx-core/zip";
+
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { prepareCanonicalDocxSource } from "../docx/canonicalSessionInput";
 import { createDocx } from "../docx/rezip";
@@ -23,10 +25,14 @@ const paragraph = (text: string, paraId?: string): Paragraph => ({
   ...(paraId !== undefined && { paraId }),
 });
 
-/** A package whose first paragraph names no id and whose second names one. */
-const mixedPackage = (): Promise<ArrayBuffer> => {
+/**
+ * A package whose first paragraph names no id and whose second names one. A
+ * save gives every paragraph an id, so the saved ids but the authored one are
+ * taken off again.
+ */
+const mixedPackage = async (): Promise<ArrayBuffer> => {
   const template = createEmptyDocument();
-  return createDocx({
+  const saved = await createDocx({
     ...template,
     package: {
       ...template.package,
@@ -39,6 +45,20 @@ const mixedPackage = (): Promise<ArrayBuffer> => {
       },
     },
   });
+  const zip = await ZipArchive.read(saved);
+  const documentXml = await zip.entry("word/document.xml")?.text();
+  if (documentXml === undefined) throw new Error("the package has no body");
+  zip.set(
+    "word/document.xml",
+    documentXml.replace(
+      new RegExp(
+        `\\s(?:w14:paraId|w14:textId)="(?!${AUTHORED_PARA_ID})[^"]*"`,
+        "gu",
+      ),
+      "",
+    ),
+  );
+  return (await zip.generate({ compression: "store" })).buffer as ArrayBuffer;
 };
 
 const open = (buffer: ArrayBuffer): Promise<FolioDocxReviewer> =>

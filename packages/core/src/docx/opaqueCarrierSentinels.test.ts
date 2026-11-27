@@ -5,6 +5,7 @@ import { ZipArchive } from "@stll/docx-core/zip";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { compareDocx } from "../compare/compare";
+import { withoutParagraphIds } from "./__tests__/paragraphIds";
 import { BLOCK_CONTENT_HANDLERS } from "./blockContentParser";
 import { CAPTURE } from "./containerChildren";
 import { parseDocx } from "./parser";
@@ -264,7 +265,8 @@ describe("content carrier sentinels", () => {
         )
           .entry("word/document.xml")
           ?.text();
-        expect(savedXml).toContain(fragment);
+        // The save gives the carrier's paragraphs ids, and keeps the rest.
+        expect(withoutParagraphIds(savedXml ?? "")).toContain(fragment);
       }
     });
   }

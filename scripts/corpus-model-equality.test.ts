@@ -51,6 +51,56 @@ describe("describePackageDifferences", () => {
     expect(messagesBetween([{ text: "a" }], [{ text: "a" }])).toEqual([]);
   });
 
+  describe("the paragraph ids a save gives", () => {
+    const paragraph = (
+      text: string,
+      ids?: { paraId: string; textId?: string },
+    ) => ({
+      type: "paragraph",
+      ...ids,
+      content: [{ type: "run", content: [{ type: "text", text }] }],
+    });
+
+    test("an id given to a paragraph that held none is no difference", () => {
+      expect(
+        messagesBetween(
+          [paragraph("a")],
+          [paragraph("a", { paraId: "1A2B3C4D", textId: "1A2B3C4D" })],
+        ),
+      ).toEqual([]);
+    });
+
+    test("a fresh id for a paragraph whose id another one held is no difference", () => {
+      expect(
+        messagesBetween(
+          [
+            paragraph("a", { paraId: "1A2B3C4D" }),
+            paragraph("b", { paraId: "1A2B3C4D" }),
+          ],
+          [
+            paragraph("a", { paraId: "1A2B3C4D" }),
+            paragraph("b", { paraId: "5E6F7081", textId: "5E6F7081" }),
+          ],
+        ),
+      ).toEqual([]);
+    });
+
+    test("a paragraph whose own id changed still differs", () => {
+      expect(
+        messagesBetween(
+          [
+            paragraph("a", { paraId: "1A2B3C4D" }),
+            paragraph("b", { paraId: "2B3C4D5E" }),
+          ],
+          [
+            paragraph("a", { paraId: "1A2B3C4D" }),
+            paragraph("b", { paraId: "5E6F7081" }),
+          ],
+        ),
+      ).not.toEqual([]);
+    });
+  });
+
   test("internal OPC target casing is equivalent while different parts and URLs remain distinct", () => {
     const withTarget = (
       target: string,

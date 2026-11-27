@@ -12,6 +12,7 @@ import { buildBookmarkText } from "../fields/bookmarkText";
 import { toFlowBlocks } from "../layout-bridge/convert/toFlowBlocks";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import { withParagraphIds } from "./__tests__/paragraphIds";
 import { normalizeBookmarkIdsInXmlParts } from "./bookmarkIdNormalization";
 import { addBookmark, createBookmarkMap } from "./bookmarkParser";
 import { parseDocx } from "./parser";
@@ -121,9 +122,9 @@ describe("imported bookmark collisions", () => {
         import.meta.url,
       ),
     );
-    const document = await parseDocx(
-      bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
-    );
+    // Read as the editor's ingest reads it, every paragraph holding an id, so
+    // a save adds none and reopens what it read.
+    const document = await parseDocx(await withParagraphIds(bytes));
     expect(
       document.parseWarnings?.some(
         ({ code }) => code === "duplicate-imported-id",

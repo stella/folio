@@ -15,6 +15,7 @@ import { ZipArchive } from "@stll/docx-core/zip";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document, Hyperlink } from "../types/document";
+import { withoutParagraphIds } from "./__tests__/paragraphIds";
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
 
@@ -49,7 +50,10 @@ const bodyOf = async (document: Document): Promise<string> => {
   const saved = await ZipArchive.read(
     await repackDocx(document, { updateModifiedDate: false }),
   );
-  const xml = (await saved.entry("word/document.xml")?.text()) ?? "";
+  // The save gives each paragraph an id; the fields are what these tests read.
+  const xml = withoutParagraphIds(
+    (await saved.entry("word/document.xml")?.text()) ?? "",
+  );
   return xml.slice(
     xml.indexOf("<w:body>") + "<w:body>".length,
     xml.indexOf("<w:sectPr"),

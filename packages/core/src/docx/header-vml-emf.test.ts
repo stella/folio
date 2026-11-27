@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 
 import { ZipArchive } from "@stll/docx-core/zip";
 
+import { withParagraphIds } from "./__tests__/paragraphIds";
 import { getHeaderFooterVerbatimXml } from "./headerFooterVerbatim";
 import { parseDocx } from "./parser";
 import { repackDocx } from "./rezip";
@@ -76,7 +77,9 @@ describe("parseDocx — header with EMF media", () => {
 
 describe("repackDocx — header round-trip", () => {
   test("unedited header/footer XML is byte-identical after round-trip", async () => {
-    const inBuf = load(FIXTURE);
+    // Every paragraph holds an id, as the editor's ingest reads it, so a save
+    // adds none to a header it leaves alone.
+    const inBuf = await withParagraphIds(load(FIXTURE));
     const inZip = await ZipArchive.read(inBuf);
     const headerIn = await inZip.entry("word/header1.xml")!.text();
     const footerIn = await inZip.entry("word/footer1.xml")!.text();

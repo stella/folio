@@ -37,6 +37,7 @@ import {
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 import type { BlockContent, Document, Paragraph, Run } from "../types/document";
+import { withParagraphIds } from "./__tests__/paragraphIds";
 import { cloneDocumentWithParagraphPropertySources } from "./paragraphPropertySource";
 import { parseDocx } from "./parser";
 import { repackDocx } from "./rezip";
@@ -68,18 +69,19 @@ const EDIT_FIXTURE = "podily-bps.docx";
 // A fixed seed keeps the shrunk counterexamples reproducible across runs.
 const SEED = 0x5a1e;
 
-const fixtureCache = new Map<string, ArrayBuffer>();
+const fixtureCache = new Map<string, Promise<ArrayBuffer>>();
 
-const readFixture = (name: string): ArrayBuffer => {
+/**
+ * A fixture as the editor's ingest reads it, every paragraph holding an id:
+ * a save gives a paragraph without one an id, so the invariants below hold
+ * for packages a save adds none to.
+ */
+const readFixture = (name: string): Promise<ArrayBuffer> => {
   const cached = fixtureCache.get(name);
   if (cached) {
     return cached;
   }
-  const bytes = readFileSync(path.join(FIXTURES_DIR, name));
-  const buffer = bytes.buffer.slice(
-    bytes.byteOffset,
-    bytes.byteOffset + bytes.byteLength,
-  );
+  const buffer = withParagraphIds(readFileSync(path.join(FIXTURES_DIR, name)));
   fixtureCache.set(name, buffer);
   return buffer;
 };
@@ -91,7 +93,7 @@ let parsedEditFixture: Promise<Document> | undefined;
 
 // Parse once; each generated edit gets an isolated model with save provenance intact.
 const readEditModel = () =>
-  (parsedEditFixture ??= parse(readFixture(EDIT_FIXTURE)));
+  (parsedEditFixture ??= readFixture(EDIT_FIXTURE).then(parse));
 
 const fullRepack = (
   doc: Document,
@@ -317,7 +319,7 @@ describe("invariant 1: no-op save fidelity", () => {
   test.each(FIXTURES)(
     "selective save of an unedited doc reproduces the parsed model exactly (%s)",
     async (name) => {
-      const buffer = readFixture(name);
+      const buffer = await readFixture(name);
       const doc = await parse(buffer);
       const saved = await attemptSelectiveSave(doc, buffer, {
         changedParaIds: new Set(),
@@ -338,7 +340,7 @@ describe("invariant 1: no-op save fidelity", () => {
   test.each(FIXTURES)(
     "full repack of an unedited doc preserves all visible text (%s)",
     async (name) => {
-      const buffer = readFixture(name);
+      const buffer = await readFixture(name);
       const doc = await parse(buffer);
       const repacked = await fullRepack(doc, buffer);
       expect(allBodyText(await parse(repacked))).toBe(allBodyText(doc));
@@ -354,7 +356,7 @@ describe("invariant 1: no-op save fidelity", () => {
   test.each(FIXTURES)(
     "full repack of an unedited doc is a lossless model fixed point (%s)",
     async (name) => {
-      const buffer = readFixture(name);
+      const buffer = await readFixture(name);
       const doc = await parse(buffer);
       const repacked = await fullRepack(doc, buffer);
       expect(normalizedPackage(await parse(repacked))).toEqual(
@@ -375,7 +377,7 @@ describe("invariant 2: selective equals full repack", () => {
   // fidelity gaps fixed (see invariant 1), re-serializing an unchanged paragraph
   // now round-trips, so the two paths agree at the parsed-model level.
   test("parse(selective) deep-equals parse(full) for an edited doc", async () => {
-    const buffer = readFixture(EDIT_FIXTURE);
+    const buffer = await readFixture(EDIT_FIXTURE);
     const doc = await parse(buffer);
     const paraId = applyEdit(doc, {
       targetSelector: 0,
@@ -417,7 +419,7 @@ describe("invariant 3: selective save is never silently wrong", () => {
   test(
     "selective returns null or a document that applies exactly the edit",
     async () => {
-      const buffer = readFixture(EDIT_FIXTURE);
+      const buffer = await readFixture(EDIT_FIXTURE);
       const original = await readEditModel();
       await fc.assert(
         fc.asyncProperty(arbEditSpec, async (spec) => {
@@ -453,7 +455,7 @@ describe("invariant 4: selective save keeps untouched bytes identical", () => {
   test(
     "a single-paragraph edit leaves untouched parts and unedited paragraphs byte-identical",
     async () => {
-      const buffer = readFixture(EDIT_FIXTURE);
+      const buffer = await readFixture(EDIT_FIXTURE);
       const original = await readEditModel();
       const originalZip = await ZipArchive.read(buffer);
       const originalXml = await documentXml(buffer);

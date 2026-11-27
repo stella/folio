@@ -14,6 +14,7 @@ import {
 } from "../../../../test/property-testing";
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import type { FolioAIParagraphBlock } from "../ai-edits/types";
+import { withoutParagraphIds } from "../docx/__tests__/paragraphIds";
 import { createDocx } from "../docx/rezip";
 import { generateRedlineDocx } from "../redline";
 import { createEmptyDocument } from "../utils/createDocument";
@@ -204,6 +205,15 @@ const buildInheritedCollisionDocument = async ({
     nums: [{ numId: 5, abstractNumId: 5 }],
   };
   const buffer = await createDocx(document);
+  if (omitParagraphIds) {
+    // A save gives every paragraph an id; a producer that writes none is
+    // restored by taking them off again.
+    const zip = await ZipArchive.read(buffer);
+    const xml = await zip.entry("word/document.xml")?.text();
+    expect(xml).toBeDefined();
+    zip.set("word/document.xml", withoutParagraphIds(xml ?? ""));
+    return (await zip.generate({ compression: "store" })).buffer;
+  }
   if (!duplicateParagraphIds || !includeStyledParagraph) return buffer;
   // Serialization normalizes duplicate IDs. Restore the malformed producer
   // shape in the actual package so projection sees the duplicate identities.

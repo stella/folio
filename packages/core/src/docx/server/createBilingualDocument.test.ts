@@ -1095,11 +1095,26 @@ describe("createBilingualDocx", () => {
     ) {
       throw new Error("bilingual fixture lost its second row");
     }
-    targetParagraph.paraId = sourceParagraph.paraId;
+    const { paraId: sourceId } = sourceParagraph;
+    const { paraId: targetId } = targetParagraph;
+    if (sourceId === undefined || targetId === undefined)
+      throw new Error("bilingual fixture paragraphs lost their ids");
+    // A save gives a repeated id a fresh one, so the package repeats it in
+    // its own markup.
+    const zip = await ZipArchive.read(valid.buffer);
+    const documentXml = await zip.entry("word/document.xml")?.text();
+    if (documentXml === undefined)
+      throw new Error("bilingual fixture lost its main document");
+    zip.set(
+      "word/document.xml",
+      documentXml.replace(
+        `w14:paraId="${targetId}"`,
+        `w14:paraId="${sourceId}"`,
+      ),
+    );
+    const repeated = (await zip.generate({ compression: "store" })).buffer;
 
-    await expect(
-      readBilingualDocx(await createDocx(malformed)),
-    ).rejects.toThrow(
+    await expect(readBilingualDocx(repeated)).rejects.toThrow(
       "Bilingual manifest structure or handles do not match the Folio AI-edit snapshot.",
     );
   });

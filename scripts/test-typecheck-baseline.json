@@ -1485,7 +1485,6 @@
   "packages/core/src/docx/server/createBilingualDocument.test.ts": {
     "TS2322": 1,
     "TS2345": 4,
-    "TS2412": 1,
     "TS2769": 1
   },
   "packages/core/src/docx/server/evaluateDocxXmlPatchProposal.test.ts": {

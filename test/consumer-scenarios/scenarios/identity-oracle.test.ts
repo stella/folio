@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
+import { ZipArchive } from "@stll/docx-core/zip";
 import { fromMarkdown } from "@stll/folio-core/markdown";
 import {
   createDocx,
@@ -19,6 +20,23 @@ import {
   relationCheckCount,
   startRelations,
 } from "../support/metamorphic.ts";
+
+/**
+ * Two paragraphs without ids. A save gives every paragraph one, so the ids
+ * are taken off the package it wrote.
+ */
+const paraIdLessPackage = async (): Promise<Uint8Array> => {
+  const zip = await ZipArchive.read(
+    await createDocx(fromMarkdown("First source text.\n\nSecond paragraph.")),
+  );
+  const xml = await zip.entry("word/document.xml")?.text();
+  assert.ok(xml !== undefined);
+  zip.set(
+    "word/document.xml",
+    xml.replace(/\s(?:w14:paraId|w14:textId)="[^"]*"/gu, ""),
+  );
+  return zip.generate({ compression: "store" });
+};
 
 type Row = {
   id: string;
@@ -272,9 +290,7 @@ describe("save comparison block identity", () => {
   });
 
   test("createDocx without authored paraIds survives tracked text resolution and save", async () => {
-    const bytes = new Uint8Array(
-      await createDocx(fromMarkdown("First source text.\n\nSecond paragraph.")),
-    );
+    const bytes = await paraIdLessPackage();
     const reviewer = await openReviewer(bytes);
     const [first] = reviewer.getContent();
     assert.ok(first);
@@ -316,11 +332,7 @@ describe("save comparison block identity", () => {
     "readerStability afterStep reads a comment's positional block id by position",
     { skip: !ENABLED_RELATIONS.has("readerStability") },
     async () => {
-      const fixture = new Uint8Array(
-        await createDocx(
-          fromMarkdown("First source text.\n\nSecond paragraph."),
-        ),
-      );
+      const fixture = await paraIdLessPackage();
       const reviewer = await openReviewer(fixture);
       const first = reviewer.getContent().at(0);
       assert.ok(first);
@@ -390,11 +402,7 @@ describe("save comparison block identity", () => {
     "readerStability afterStep compares resolved tracked content through shared identity maps",
     { skip: !ENABLED_RELATIONS.has("readerStability") },
     async () => {
-      const fixture = new Uint8Array(
-        await createDocx(
-          fromMarkdown("First source text.\n\nSecond paragraph."),
-        ),
-      );
+      const fixture = await paraIdLessPackage();
       const reviewer = await openReviewer(fixture);
       const first = reviewer.getContent().at(0);
       assert.ok(first);

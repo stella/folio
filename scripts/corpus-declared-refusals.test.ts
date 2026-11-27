@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
 import { ZipArchive } from "@stll/docx-core/zip";
+import { withoutParagraphIds } from "@stll/folio-core/docx/__tests__/paragraphIds";
 import {
   ENSURE_PARA_IDS_REASONS,
   ensureParaIds,
@@ -45,8 +46,16 @@ const file = (index: number) => ({
   path: `${index}.docx`,
   sha256: String(index),
 });
-const unsignedPackage = async () =>
-  new Uint8Array(await createDocx(fromMarkdown("Paragraph without an id.")));
+/** A package whose paragraph holds no id: a save gives it one, taken off again. */
+const unsignedPackage = async () => {
+  const zip = await ZipArchive.read(
+    await createDocx(fromMarkdown("Paragraph without an id.")),
+  );
+  const xml = await zip.entry("word/document.xml")?.text();
+  if (xml === undefined) throw new Error("the package has no body");
+  zip.set("word/document.xml", withoutParagraphIds(xml));
+  return zip.generate({ compression: "store" });
+};
 
 const refusedCensus = (refusals: readonly CorpusDeclaredRefusal[]) => {
   const builder = new CensusBuilder("lock", "report-only");

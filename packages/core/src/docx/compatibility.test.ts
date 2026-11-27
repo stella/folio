@@ -11,6 +11,7 @@ import { base64ToBytes } from "@stll/utf8-boundaries";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document, DrawingContent, ShapeContent } from "../types/document";
+import { withParagraphIds } from "./__tests__/paragraphIds";
 import { inspectDocxCompatibility } from "./compatibility";
 import { parseDocumentBody } from "./documentParser";
 import { classifyDrawingSafety } from "./imageRawXml";
@@ -540,7 +541,9 @@ describe("DOCX compatibility inspection", () => {
   });
 
   test("replays an untouched header verbatim through a body-only edit", async () => {
-    const source = await createHeaderPictureDocx();
+    // Every paragraph holds an id, as the editor's ingest reads it, so a save
+    // adds none to a header it leaves alone.
+    const source = await withParagraphIds(await createHeaderPictureDocx());
     const parsed = await parseDocx(source, {
       detectVariables: false,
       preloadFonts: false,
