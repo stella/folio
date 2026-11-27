@@ -452,6 +452,7 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
     readonly CONTAINER_FINAL_MARK: "containerFinalMark";
     readonly INSIDE_INLINE_CONTROL: "insideInlineControl";
     readonly UNTRACKABLE: "untrackable";
+    readonly TABLE_SNAPSHOT_PRESENCE: "tableSnapshotPresence";
     readonly PENDING_BREAK_TAKEOVER: "pendingBreakTakeover";
     readonly PENDING_PARAGRAPH_MARK_DELETION: "pendingParagraphMarkDeletion";
     readonly PENDING_PARAGRAPH_MARK_INSERTION: "pendingParagraphMarkInsertion";
