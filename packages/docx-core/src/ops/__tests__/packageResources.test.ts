@@ -9,7 +9,7 @@ import {
   propertyTestTimeout,
 } from "../../../../../test/property-testing";
 import type { Document } from "../../model/document";
-import type { MediaFile } from "../../model/styles";
+import type { MediaFile, Relationship } from "../../model/styles";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { packageResourcesOf, packageResourcesOpOf } from "../packageResources";
 import {
@@ -437,4 +437,72 @@ test("new style and numbering imports refuse missing dependencies without import
   expect(result.isErr()).toBe(true);
   if (result.isErr()) expect(result.error.reason).toBe("structureMismatch");
   expect(document.package.numbering).toBeUndefined();
+});
+
+test("a note or comment part's relationships change as one entry, survive JSON and undo exactly", () => {
+  const chart = (id: string, target: string): Relationship => ({
+    id,
+    type: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart",
+    target,
+  });
+  const seeded: Document = {
+    ...document,
+    package: {
+      ...document.package,
+      annotationRelationships: new Map([
+        ["footnotes", new Map([["rId1", chart("rId1", "charts/chart1.xml")]])],
+      ]),
+    },
+  };
+  const after: Document = {
+    ...seeded,
+    package: {
+      ...seeded.package,
+      annotationRelationships: new Map([
+        ...(seeded.package.annotationRelationships ?? []),
+        ["comments", new Map([["rId2", chart("rId2", "charts/chart2.xml")]])],
+      ]),
+    },
+  };
+  const op = jsonTransport(
+    captureDocumentOp(packageResourcesOpOf({ before: seeded, after })),
+  );
+  if (op.type !== DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES)
+    throw new TypeError("Capture changed the resource operation type.");
+  // Only the changed part travels; the footnotes part's entry stays home.
+  expect(op.annotationRelationships?.entries.map(({ key }) => key)).toEqual([
+    "comments",
+  ]);
+  expect(unchangedOp(seeded).annotationRelationships).toBeUndefined();
+  const forward = applyDocumentOp(seeded, op).unwrap();
+  assertExactModel(forward.document, after);
+  const undo = applyDocumentOps(
+    forward.document,
+    jsonTransport(forward.inverse.map(captureDocumentOp)),
+  ).unwrap();
+  assertExactModel(undo.document, seeded);
+  // A part the model does not keep, or a repeated id, refuses.
+  const entry = op.annotationRelationships?.entries.at(0);
+  if (entry?.next.type !== "present")
+    throw new TypeError("Missing the comments part's relationships.");
+  const relationship = entry.next.value.at(0);
+  if (relationship === undefined)
+    throw new TypeError("Missing the comments part's relationship.");
+  for (const bad of [
+    { ...entry, key: "header1" },
+    {
+      ...entry,
+      next: { ...entry.next, value: [relationship, relationship] },
+    },
+  ])
+    expect(
+      applyDocumentOp(seeded, {
+        ...op,
+        annotationRelationships: {
+          expected: "present",
+          next: "present",
+          entries: [bad],
+        },
+      }).isErr(),
+    ).toBe(true);
 });

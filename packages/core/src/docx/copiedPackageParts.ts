@@ -1,7 +1,9 @@
 /**
  * Package parts a paste copied in from another package: the parts kept markup
  * names (a chart, an embedding, a diagram's parts) and the relationships that
- * name them. The model carries such a part as bytes until a save writes it.
+ * name them, in the main document's relationships or in those of the note or
+ * comment part holding the markup. The model carries such a part as bytes
+ * until a save writes it.
  */
 
 import { panic, Result } from "better-result";
@@ -9,7 +11,7 @@ import { panic, Result } from "better-result";
 import { escapeXmlAttribute } from "@stll/docx-core";
 import type { ZipArchive } from "@stll/docx-core/zip";
 
-import type { Document } from "../types/document";
+import type { Document, Relationship } from "../types/document";
 import { decodeText } from "../utils/textEncoding";
 import { registerContentTypeParts } from "./contentTypeRegistry";
 import { isUnsafePackagePath } from "./packageParts";
@@ -140,6 +142,13 @@ const collectKeptMarkup = (value: unknown, found: string[]): void => {
   }
 };
 
+/** Every piece of markup kept verbatim in a model value: a note, a comment. */
+export const keptMarkupIn = (value: unknown): string[] => {
+  const found: string[] = [];
+  collectKeptMarkup(value, found);
+  return found;
+};
+
 type PublishCopiedPackagePartsOptions = {
   document: Document;
   zip: ZipArchive;
@@ -148,8 +157,9 @@ type PublishCopiedPackagePartsOptions = {
 
 /**
  * Write the parts a paste copied in, each under its content type, and the
- * main document relationships its kept markup names that the package does
- * not hold yet. A part the package already holds stays as it is.
+ * relationships its kept markup names that the package does not hold yet:
+ * the main document's for the body, and a note or comment part's own for the
+ * notes and comments in it. A part the package already holds stays as it is.
  */
 export const publishCopiedPackageParts = async ({
   document,
@@ -175,17 +185,80 @@ export const publishCopiedPackageParts = async ({
       level: compressionLevel,
     });
   }
-  const relationships = document.package.relationships;
-  const entry = zip.entry(MAIN_RELATIONSHIPS_PART);
-  if (relationships === undefined || entry === undefined) return;
-  const xml = decodeText(await entry.bytes(), { ignoreBOM: true });
+  await appendNamedRelationships({
+    zip,
+    relsPath: MAIN_RELATIONSHIPS_PART,
+    relationships: document.package.relationships,
+    content: document.package.document.content,
+    compressionLevel,
+  });
+  for (const { key, content } of annotationParts(document)) {
+    const relationships = document.package.annotationRelationships?.get(key);
+    if (relationships === undefined || content.length === 0) continue;
+    // The part the save writes the notes or comments into, and its
+    // relationships, in the casing the package already uses for them.
+    const conventional = `word/${key}.xml`;
+    const relsPath = relationshipsPartOf(
+      zip.paths().find((path) => path.toLowerCase() === conventional) ??
+        conventional,
+    );
+    // oxlint-disable-next-line no-await-in-loop -- each part owns its relationships
+    await appendNamedRelationships({
+      zip,
+      relsPath:
+        zip
+          .paths()
+          .find((path) => path.toLowerCase() === relsPath.toLowerCase()) ??
+        relsPath,
+      relationships,
+      content,
+      compressionLevel,
+    });
+  }
+};
+
+/** The notes and comments of each part whose relationships the model keeps. */
+const annotationParts = (document: Document) => [
+  { key: "footnotes", content: document.package.footnotes ?? [] },
+  { key: "endnotes", content: document.package.endnotes ?? [] },
+  { key: "comments", content: document.package.document.comments ?? [] },
+];
+
+type AppendNamedRelationshipsOptions = {
+  zip: ZipArchive;
+  relsPath: string;
+  relationships: ReadonlyMap<string, Relationship> | undefined;
+  /** The content whose kept markup names the relationships to write. */
+  content: unknown;
+  compressionLevel: number;
+};
+
+/**
+ * Write into the relationships part at `relsPath` each relationship the
+ * model holds and the part does not that `content`'s kept markup names:
+ * markup copied in with its parts. A note or comment part with no
+ * relationships yet receives a new relationships part.
+ */
+const appendNamedRelationships = async ({
+  zip,
+  relsPath,
+  relationships,
+  content,
+  compressionLevel,
+}: AppendNamedRelationshipsOptions): Promise<void> => {
+  if (relationships === undefined || relationships.size === 0) return;
+  const entry = zip.entry(relsPath);
+  if (entry === undefined && relsPath === MAIN_RELATIONSHIPS_PART) return;
+  const xml =
+    entry === undefined
+      ? `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="${PACKAGE_RELATIONSHIPS_NAMESPACE_URI}"></Relationships>`
+      : decodeText(await entry.bytes(), { ignoreBOM: true });
   const held = parseRelationships(xml);
   const missing = [...relationships.values()].filter(({ id }) => !held.has(id));
   if (missing.length === 0) return;
   // A relationship the model holds and the part does not is written when the
-  // body's kept markup names it: markup copied in with its parts.
-  const markup: string[] = [];
-  collectKeptMarkup(document.package.document.content, markup);
+  // content's kept markup names it: markup copied in with its parts.
+  const markup = keptMarkupIn(content);
   const named = new Set(
     markup
       .filter((kept) => missing.some(({ id }) => kept.includes(id)))
@@ -199,10 +272,9 @@ export const publishCopiedPackageParts = async ({
     );
   if (additions.length === 0) return;
   const rootName =
-    parseXmlDocument(xml)?.name ??
-    panic("The main document relationships have no root.");
+    parseXmlDocument(xml)?.name ?? panic("A relationships part has no root.");
   zip.set(
-    entry.path,
+    relsPath,
     appendToXmlRoot(xml, { rootName, markup: additions.join("") }),
     { level: compressionLevel },
   );

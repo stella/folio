@@ -1643,8 +1643,17 @@ const compileBlockPaste = (
       return refuse("A pasted note reference names no copied note.");
     if (story !== OP_STORIES.MAIN)
       return refuse("Notes are pasted only into the document body.");
-    if (note.content.some((block) => block.type !== "paragraph"))
-      return refuse("A pasted note holds only paragraphs.");
+    // Kept block markup pastes as it was read, beside the paragraphs that
+    // take fresh identities; its tracked record is the note reference's.
+    if (
+      note.content.some(
+        (block) =>
+          block.type !== "paragraph" && block.type !== "preservedBlock",
+      )
+    )
+      return refuse(
+        "A pasted note holds only paragraphs and kept block markup.",
+      );
     notes.push(note);
   }
   const placed = placeAnchoredBlocks(document, {
@@ -1775,25 +1784,33 @@ const compileBlockPaste = (
   for (const copy of copies) {
     let op: DocumentOp;
     if (copy.kind === "note") {
-      const content = freshContent({
+      const freshParagraphs = freshContent({
         content: copy.note.content.filter(
           (block): block is Paragraph => block.type === "paragraph",
         ),
         opType: DOCUMENT_OP_TYPES.ADD_NOTE,
         reserved: [],
       });
-      if (content.isErr()) return Result.err(content.error);
+      if (freshParagraphs.isErr()) return Result.err(freshParagraphs.error);
+      // The fresh paragraphs in their places, the kept markup between them.
+      const paragraphs = freshParagraphs.value.values();
+      const content = copy.note.content.map((block): BlockContent =>
+        block.type === "paragraph"
+          ? (paragraphs.next().value ??
+            panic("A pasted note paragraph has no fresh copy."))
+          : cloneModel(block),
+      );
       const note =
         copy.note.type === "footnote"
           ? {
               ...cloneModel(copy.note),
               id: nextId(current.package.footnotes),
-              content: content.value,
+              content,
             }
           : {
               ...cloneModel(copy.note),
               id: nextId(current.package.endnotes),
-              content: content.value,
+              content,
             };
       let stamp = {};
       if (mode.type === "suggesting") {

@@ -409,6 +409,9 @@ const withoutOwnedRecords = ({
       relationships: op.relationships,
       media: op.media,
       ...(op.copiedParts === undefined ? {} : { copiedParts: op.copiedParts }),
+      ...(op.annotationRelationships === undefined
+        ? {}
+        : { annotationRelationships: op.annotationRelationships }),
     };
     for (const [field, change] of Object.entries(maps)) {
       if (change.expected !== change.next) {
@@ -804,6 +807,13 @@ export const serializedLocalityFailures = ({
         op.copiedParts !== undefined &&
         (op.copiedParts.expected !== op.copiedParts.next ||
           op.copiedParts.entries.length > 0)
+      )
+        lifecycle = true;
+      if (
+        op.annotationRelationships !== undefined &&
+        (op.annotationRelationships.expected !==
+          op.annotationRelationships.next ||
+          op.annotationRelationships.entries.length > 0)
       )
         lifecycle = true;
       if (

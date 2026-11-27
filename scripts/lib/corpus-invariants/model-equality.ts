@@ -68,8 +68,19 @@ const CAPTURE_KEYS: ReadonlySet<string> = new Set([
 /** The ids a save gives a paragraph that holds none. */
 const PARAGRAPH_ID_KEYS: ReadonlySet<string> = new Set(["paraId", "textId"]);
 
+/**
+ * The note and comment parts' relationship tables: kept markup, erased above,
+ * resolves its ids there, and a save extends them with the relationships it
+ * allocates for the pictures and links in those parts.
+ */
+const PART_RELATIONSHIP_KEYS: ReadonlySet<string> = new Set([
+  "annotationRelationships",
+]);
+
 const isErased = (key: string): boolean =>
-  VOLATILE_KEYS.has(key) || CAPTURE_KEYS.has(key);
+  VOLATILE_KEYS.has(key) ||
+  CAPTURE_KEYS.has(key) ||
+  PART_RELATIONSHIP_KEYS.has(key);
 
 const normalizeValue = (value: unknown): unknown => {
   if (value instanceof Uint8Array) {

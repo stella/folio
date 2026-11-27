@@ -4,9 +4,11 @@
  *
  * Kept markup (an opaque drawing, an embedded object, a kept block) names its
  * parts by relationship id: a chart, an embedding, a diagram's parts, each
- * with relationships of its own. The model does not hold those parts, so a
- * copy reads them from the source package ahead of the paste, and the paste
- * copies each one under a fresh part name and relationship id.
+ * with relationships of its own. The ids are the main document's in the body
+ * and a note or comment part's own in a note or a comment. The model does not
+ * hold those parts, so a copy reads them from the source package ahead of the
+ * paste, and the paste copies each one under a fresh part name and
+ * relationship id.
  */
 
 import { Result } from "better-result";
@@ -16,6 +18,7 @@ import { escapeXmlAttribute } from "@stll/docx-core";
 import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
+  keptMarkupIn,
   mainRelationshipTarget,
   relationshipIdsInMarkup,
   RELATIONSHIPS_CONTENT_TYPE,
@@ -61,6 +64,51 @@ export const sliceKeptMarkup = (slice: Slice): string[] => {
   return markup;
 };
 
+/**
+ * The kept markup of the notes and comments a slice references, read from the
+ * document it was copied from, by the part holding them: `footnotes`,
+ * `endnotes` or `comments`.
+ */
+export const sliceAnnotationMarkup = (
+  slice: Slice,
+  document: Document,
+): Map<string, string[]> => {
+  const notes = new Set<string>();
+  const comments = new Set<number>();
+  const commentIdOf = (attrs: Readonly<Record<string, unknown>>) => {
+    const id = attrs["commentId"];
+    if (typeof id === "number") comments.add(id);
+  };
+  slice.content.descendants((node) => {
+    commentIdOf(node.attrs);
+    for (const mark of node.marks) {
+      commentIdOf(mark.attrs);
+      const id: unknown = mark.attrs["id"];
+      if (
+        mark.type.name === "footnoteRef" &&
+        (typeof id === "string" || typeof id === "number")
+      )
+        notes.add(
+          `${mark.attrs["noteType"] === "endnote" ? "endnotes" : "footnotes"}:${String(id)}`,
+        );
+    }
+    return true;
+  });
+  const markup = new Map<string, string[]>();
+  const add = (part: string, value: unknown) => {
+    const kept = keptMarkupIn(value);
+    if (kept.length > 0)
+      markup.set(part, [...(markup.get(part) ?? []), ...kept]);
+  };
+  for (const note of document.package.footnotes ?? [])
+    if (notes.has(`footnotes:${String(note.id)}`)) add("footnotes", note);
+  for (const note of document.package.endnotes ?? [])
+    if (notes.has(`endnotes:${String(note.id)}`)) add("endnotes", note);
+  for (const comment of document.package.document.comments ?? [])
+    if (comments.has(comment.id)) add("comments", comment);
+  return markup;
+};
+
 /** A target as a part name: percent escapes decoded where they decode. */
 const decodedTarget = (target: string): string =>
   Result.try(() => decodeURIComponent(target)).unwrapOr(target);
@@ -90,29 +138,46 @@ const contentTypesOf = (xml: string) => {
 
 /**
  * Read the parts the kept markup among `markup` names from `document`'s own
- * package, with every part those parts' relationships reach. Undefined when
- * the markup names no relationship or the document has no package bytes.
+ * package, with every part those parts' relationships reach: the body's
+ * markup through the main document's relationships, and each of
+ * `annotationMarkup` through its note or comment part's own. Undefined when
+ * the document has no package bytes.
  */
 export const readClipboardPackageParts = async ({
   document,
   markup,
+  annotationMarkup = new Map(),
 }: {
   document: Document;
   markup: readonly string[];
+  /** The kept markup of copied notes and comments, by the part holding it. */
+  annotationMarkup?: ReadonlyMap<string, readonly string[]>;
 }): Promise<ClipboardPackageParts | undefined> => {
   const buffer = document.originalBuffer;
-  const relationships = document.package.relationships;
-  if (buffer === undefined || relationships === undefined) return undefined;
-  const ids = new Set(
-    markup.flatMap((xml) => relationshipIdsInMarkup(xml) ?? []),
-  );
-  const roots = [...ids].flatMap((id) => {
-    const relationship = relationships.get(id);
-    return relationship === undefined || relationship.targetMode === "External"
-      ? []
-      : [mainRelationshipTarget(decodedTarget(relationship.target))];
-  });
-  if (roots.length === 0) return undefined;
+  if (buffer === undefined) return undefined;
+  // Note and comment parts sit beside the main document, so their targets
+  // resolve as its own do.
+  const rootsOf = (
+    kept: readonly string[],
+    relationships: ReadonlyMap<string, Relationship> | undefined,
+  ) =>
+    [
+      ...new Set(kept.flatMap((xml) => relationshipIdsInMarkup(xml) ?? [])),
+    ].flatMap((id) => {
+      const relationship = relationships?.get(id);
+      return relationship === undefined ||
+        relationship.targetMode === "External"
+        ? []
+        : [mainRelationshipTarget(decodedTarget(relationship.target))];
+    });
+  const roots = [
+    ...rootsOf(markup, document.package.relationships),
+    ...[...annotationMarkup].flatMap(([part, kept]) =>
+      rootsOf(kept, document.package.annotationRelationships?.get(part)),
+    ),
+  ];
+  // Markup naming only external targets copies its relationships alone.
+  if (roots.length === 0) return { source: document, parts: new Map() };
   const zip = await ZipArchive.read(buffer);
   const entries = new Map(
     zip.entries().map((entry) => [entry.path.toLowerCase(), entry]),
@@ -151,16 +216,28 @@ export const readClipboardPackageParts = async ({
 
 type PartCopierOptions = {
   parts: ClipboardPackageParts;
-  /** The source document's main relationships, which the markup's ids name. */
+  /**
+   * The source relationships the markup's ids name: the main document's, or
+   * a note or comment part's, which sits beside it.
+   */
   sourceRelationships: ReadonlyMap<string, Relationship>;
   /** The paste's destination, whose package the copies must not collide with. */
   destination: Document;
-  /** The destination's relationships, which receive the copied ones. */
+  /**
+   * The destination's relationships, which receive the copied ones: the main
+   * document's, or those of the note or comment part the markup lands in.
+   */
   relationships: Map<string, Relationship>;
   /** The destination's copied parts, which receive the copies. */
   copiedParts: Map<string, CopiedPackagePart>;
   /** A relationship id the destination does not hold yet. */
   freshRelationshipId: () => string;
+  /**
+   * The name each source part was copied under, shared by the copiers of one
+   * paste so a part the body's, a note's and a comment's markup all name is
+   * copied once.
+   */
+  copiedPaths?: Map<string, string>;
 };
 
 /** Why a copy failed: the source does not hold what the markup names. */
@@ -179,9 +256,9 @@ export const createPartCopier = ({
   relationships,
   copiedParts,
   freshRelationshipId,
+  copiedPaths = new Map(),
 }: PartCopierOptions) => {
   const copiedIds = new Map<string, string>();
-  const copiedPaths = new Map<string, string>();
   let taken: Set<string> | undefined;
   /** Every part name the destination holds or has been given, lower-cased. */
   const takenNames = (): Result<Set<string>, PartCopyFailure> => {

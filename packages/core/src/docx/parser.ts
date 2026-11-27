@@ -1013,6 +1013,17 @@ export async function parseDocxWithPreviewBudget(
       parseCoreProperties(raw.corePropsXml),
     );
 
+    // The note and comment parts' own relationships, which kept markup in a
+    // note or a comment names its parts by.
+    const annotationRelationships = new Map<string, RelationshipMap>();
+    for (const part of ["footnotes", "endnotes", "comments"]) {
+      const xml = getMapCaseInsensitive(
+        raw.allXml,
+        getRelationshipsPathForPart(`word/${part}.xml`),
+      );
+      if (xml) annotationRelationships.set(part, parseRelationships(xml));
+    }
+
     const pkg: DocxPackage = {
       conformanceClass: detectDocxConformanceClass(raw.documentXml),
       document: documentBody,
@@ -1027,6 +1038,7 @@ export async function parseDocxWithPreviewBudget(
       ...(endnotes !== undefined ? { endnotes } : {}),
       relationships: rels,
       media,
+      ...(annotationRelationships.size > 0 ? { annotationRelationships } : {}),
       ...(properties !== undefined ? { properties } : {}),
     };
 

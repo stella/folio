@@ -68,6 +68,7 @@ import type {
   NumberFormat,
   NumberingDefinitions,
   Paragraph,
+  Relationship,
   Run,
   Table,
 } from "../types/document";
@@ -395,6 +396,26 @@ const clipboardPreservedBlocks = (
       case "blockSdt":
       case "blockCustomXml":
         return clipboardPreservedBlocks(block.content);
+      default:
+        return [];
+    }
+  });
+
+/** Every paragraph among the blocks, at any depth. */
+const nestedParagraphs = (blocks: readonly BlockContent[]): Paragraph[] =>
+  blocks.flatMap((block) => {
+    switch (block.type) {
+      case "paragraph":
+        return [block];
+      case "table":
+        return nestedParagraphs(
+          block.rows.flatMap((row) =>
+            row.cells.flatMap((cell) => cell.content),
+          ),
+        );
+      case "blockSdt":
+      case "blockCustomXml":
+        return nestedParagraphs(block.content);
       default:
         return [];
     }
@@ -1159,16 +1180,30 @@ export const prepareCanonicalPaste = ({
   const relationships = new Map(destination.package.relationships);
   const media = new Map(destination.package.media);
   const copiedParts = new Map(destination.package.copiedParts);
+  // The note and comment parts' relationships, each copied once kept markup
+  // pasted into the part names a copy.
+  const annotationRelationships = new Map(
+    destination.package.annotationRelationships,
+  );
+  const changedAnnotationParts = new Set<string>();
   let importedResource = false;
   let copiedPart = false;
   let imageIndex = 1;
   let relationshipIndex = 1;
+  // A picture pasted into a note or a comment takes a main document id that
+  // the save writes into that part's relationships, so an id is fresh only
+  // where no part holds it.
+  const heldRelationshipId = (id: string) =>
+    relationships.has(id) ||
+    [...annotationRelationships.values()].some((held) => held.has(id));
   const freshRelationshipId = () => {
-    while (relationships.has(`rId${relationshipIndex}`)) relationshipIndex += 1;
+    while (heldRelationshipId(`rId${relationshipIndex}`))
+      relationshipIndex += 1;
     return `rId${relationshipIndex++}`;
   };
-  // The relationships the copied ids name: the source body's, or none for a
-  // note's body, whose ids name its own part's, which the model does not keep.
+  // The relationships the copied pictures' and links' ids name: the source
+  // body's, or none for a note's or a comment's, which import by their bytes
+  // and targets.
   let sourceRelationships = sourceDocument?.package.relationships;
   const importExternalLink = (
     href: string | undefined,
@@ -1459,24 +1494,64 @@ export const prepareCanonicalPaste = ({
     }
     return Result.ok(undefined);
   };
-  // The parts the copied markup names, read from its source package ahead
-  // of the paste, copied in under fresh names and relationship ids. The save
-  // writes a copy's relationship beside the main document's, so only markup
-  // landing in the main story names it.
-  let copier =
+  /**
+   * Where kept markup's ids resolve: the relationships the source named them
+   * in, those the destination resolves them against, and the copier that
+   * copies the parts they name from the source package, read ahead of the
+   * paste, under fresh names and relationship ids. `part` names the note or
+   * comment part the markup lands in, and is absent for the body.
+   */
+  type KeptMarkupScope = {
+    part?: string;
+    source: ReadonlyMap<string, Relationship> | undefined;
+    destination: Map<string, Relationship>;
+    copier: ReturnType<typeof createPartCopier> | undefined;
+  };
+  const copiedPaths = new Map<string, string>();
+  const copierOf = (
+    origin: ReadonlyMap<string, Relationship> | undefined,
+    into: Map<string, Relationship>,
+  ) =>
     sourceParts === undefined ||
     sourceParts.source !== sourceDocument ||
-    sourceRelationships === undefined ||
-    session.projection.story !== OP_STORIES.MAIN
+    origin === undefined
       ? undefined
       : createPartCopier({
           parts: sourceParts,
-          sourceRelationships,
+          sourceRelationships: origin,
           destination,
-          relationships,
+          relationships: into,
           copiedParts,
           freshRelationshipId,
+          copiedPaths,
         });
+  // The save writes a body copy's relationship beside the main document's,
+  // so only markup landing in the main story names it.
+  let scope: KeptMarkupScope = {
+    source: sourceRelationships,
+    destination: relationships,
+    copier:
+      session.projection.story === OP_STORIES.MAIN
+        ? copierOf(sourceRelationships, relationships)
+        : undefined,
+  };
+  const annotationScopes = new Map<string, KeptMarkupScope>();
+  /** The scope of markup in a copied note or comment: its part's own. */
+  const annotationScope = (part: string): KeptMarkupScope => {
+    const held = annotationScopes.get(part);
+    if (held !== undefined) return held;
+    const into = new Map(annotationRelationships.get(part));
+    annotationRelationships.set(part, into);
+    const origin = sourceDocument?.package.annotationRelationships?.get(part);
+    const created = {
+      part,
+      source: origin,
+      destination: into,
+      copier: copierOf(origin, into),
+    };
+    annotationScopes.set(part, created);
+    return created;
+  };
   const samePackage =
     sourceDocument !== undefined &&
     sourceDocument.originalBuffer !== undefined &&
@@ -1485,7 +1560,7 @@ export const prepareCanonicalPaste = ({
   const resolvesInPlace = (ids: readonly string[]) =>
     samePackage &&
     ids.every((id) =>
-      sameRelationship(sourceRelationships?.get(id), relationships.get(id)),
+      sameRelationship(scope.source?.get(id), scope.destination.get(id)),
     );
   /**
    * Whether a picture's captured markup is an embedded object around it: the
@@ -1501,7 +1576,7 @@ export const prepareCanonicalPaste = ({
     if (referenced.value.every((id) => own.has(id))) return false;
     return (
       moved?.markup.has(xml) === true ||
-      copier !== undefined ||
+      scope.copier !== undefined ||
       resolvesInPlace(referenced.value)
     );
   };
@@ -1510,7 +1585,8 @@ export const prepareCanonicalPaste = ({
    * the relationship ids it names renamed to the copies it pastes with. Its
    * parts (a chart, an embedding, a diagram) are carried by the package it
    * was read from, not by the model: in that package every relationship it
-   * names is the one it named, and into another the paste copies them.
+   * names is the one it named, and into another the paste copies them. In a
+   * note or a comment its ids are those of the part holding it.
    */
   const keptMarkupPlaced = (
     xml: string,
@@ -1525,12 +1601,11 @@ export const prepareCanonicalPaste = ({
     if (referenced.value.length === 0 || moved?.markup.has(xml) === true)
       return unchanged;
     if (resolvesInPlace(referenced.value)) return unchanged;
-    // Without the source package's parts (a clipboard from elsewhere, a note
-    // whose ids name its own part's relationships, which the model does not
-    // keep) the parts cannot be read, so they cannot be copied.
-    if (copier === undefined)
+    // Without the source package's parts (a clipboard from outside the
+    // editor) the parts cannot be read, so they cannot be copied.
+    if (scope.copier === undefined)
       return refuse(message, { gap: CANONICAL_GAP.storyContentProjection });
-    const copies = copier.copy(referenced.value);
+    const copies = scope.copier.copy(referenced.value);
     if (copies.isErr())
       return copies.error.type === "unresolved"
         ? refuse(
@@ -1544,7 +1619,8 @@ export const prepareCanonicalPaste = ({
         "The clipboard block markup is malformed.",
         INVALID_CLIPBOARD,
       );
-    importedResource = true;
+    if (scope.part === undefined) importedResource = true;
+    else changedAnnotationParts.add(scope.part);
     copiedPart = true;
     return Result.ok({ xml: renamed, ids: copies.value });
   };
@@ -1612,44 +1688,61 @@ export const prepareCanonicalPaste = ({
     if (placed.isErr()) return placed;
     block.xml = placed.value.xml;
   }
-  // A note's or a comment's ids name its own part's relationships, which the
-  // model does not keep: its links import by their targets and its images by
-  // their bytes, and the save writes each into the part that holds it.
+  // A note's or a comment's ids name its own part's relationships: its links
+  // import by their targets and its images by their bytes, and the save
+  // writes each into the part that holds it. Its kept markup resolves in, or
+  // copies its parts into, that part's own relationships.
   sourceRelationships = undefined;
-  copier = undefined;
-  for (const note of annotations?.notes ?? [])
-    for (const block of note.content) {
-      if (block.type !== "paragraph") continue;
-      const imported = importResources(block);
+  for (const note of annotations?.notes ?? []) {
+    scope = annotationScope(
+      note.type === "footnote" ? "footnotes" : "endnotes",
+    );
+    for (const paragraph of nestedParagraphs(note.content)) {
+      const imported = importResources(paragraph);
       if (imported.isErr()) return imported;
     }
+    for (const block of clipboardPreservedBlocks(note.content)) {
+      const placed = keptMarkupPlaced(
+        block.xml,
+        "Kept note markup naming package parts pastes only into the package holding them.",
+      );
+      if (placed.isErr()) return placed;
+      block.xml = placed.value.xml;
+    }
+  }
   for (const comment of annotations?.comments ?? []) {
+    scope = annotationScope("comments");
     for (const paragraph of comment.content) {
       const imported = importResources(paragraph);
       if (imported.isErr()) return imported;
     }
-    // A comment's kept markup replays as it was read, naming the comments
-    // part's relationships: only that part, in the same package, holds them.
-    for (const { xml } of comment.preserved?.children ?? []) {
-      const referenced = relationshipIdsIn(xml);
-      if (referenced.isErr()) return referenced;
-      if (
-        referenced.value.length > 0 &&
-        (sourceDocument?.originalBuffer === undefined ||
-          sourceDocument.originalBuffer !== destination.originalBuffer)
-      )
-        return refuse(
-          "Kept comment markup naming package parts pastes only into the package holding them.",
-          { gap: CANONICAL_GAP.storyContentProjection },
-        );
+    // A comment's kept markup replays as it was read.
+    for (const child of comment.preserved?.children ?? []) {
+      const placed = keptMarkupPlaced(
+        child.xml,
+        "Kept comment markup naming package parts pastes only into the package holding them.",
+      );
+      if (placed.isErr()) return placed;
+      child.xml = placed.value.xml;
     }
   }
   const resourceOps: DocumentOp[] = [];
   if (
     importedResource ||
+    copiedPart ||
     numbering !== destination.package.numbering ||
     styles !== destination.package.styles
   ) {
+    // Only the parts a paste copied into change; the others stay as held.
+    const partRelationships = new Map(
+      destination.package.annotationRelationships,
+    );
+    for (const part of changedAnnotationParts) {
+      const held =
+        annotationRelationships.get(part) ??
+        panic("A changed note or comment part has no relationships.");
+      partRelationships.set(part, held);
+    }
     const imported = {
       ...destination,
       package: {
@@ -1658,6 +1751,9 @@ export const prepareCanonicalPaste = ({
         ...(styles === undefined ? {} : { styles }),
         ...(importedResource ? { relationships, media } : {}),
         ...(copiedPart ? { copiedParts } : {}),
+        ...(changedAnnotationParts.size > 0
+          ? { annotationRelationships: partRelationships }
+          : {}),
       },
     };
     resourceOps.push(

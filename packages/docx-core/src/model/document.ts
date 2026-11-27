@@ -561,6 +561,13 @@ export type DocxPackage = WritableRecord & {
    * them, by path, until a save writes them into the package.
    */
   copiedParts?: Map<string, CopiedPackagePart> | undefined;
+  /**
+   * The relationships of the footnotes, endnotes and comments parts, keyed
+   * `footnotes`, `endnotes` and `comments`: the ids kept markup in a note or
+   * a comment (an opaque drawing, an embedded object, kept block markup)
+   * names its parts by.
+   */
+  annotationRelationships?: Map<string, RelationshipMap> | undefined;
   /** Document properties */
   properties?: WritableRecord & {
     title?: string;

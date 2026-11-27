@@ -97,6 +97,8 @@ export const DOCX_PACKAGE_RESERVED = {
   media: NO_RESERVED_VALUE,
   // Copied parts are bytes the model does not read.
   copiedParts: NO_RESERVED_VALUE,
+  // Relationship ids and targets are read as the part holds them.
+  annotationRelationships: NO_RESERVED_VALUE,
   properties: NO_RESERVED_VALUE,
 } satisfies Record<RecordField<DocxPackage>, ReservedValueDisposition>;
 

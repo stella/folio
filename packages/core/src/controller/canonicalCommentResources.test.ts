@@ -194,7 +194,7 @@ describe("copied comments holding pictures and links", () => {
     expect(linkTarget(commentHolding(comments, "linked"))).toBe(COMMENT_LINK);
   });
 
-  test("a copied comment's kept markup naming its part's relationships refuses in another package", async () => {
+  test("without the source package's parts, a copied comment's kept markup naming its part's relationships refuses in another package", async () => {
     const sourceDocument = await parseDocx(await sourcePackage(), {
       preloadFonts: false,
     });

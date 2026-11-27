@@ -324,6 +324,16 @@ const footprintOf = (op: DocumentOp): OpFootprint => {
           op.copiedParts.expected === op.copiedParts.next
             ? []
             : [write(EXCLUSIVE_PARTS.MEDIA)]),
+          // A note or comment part's relationships, keyed apart from the
+          // main document's relationship ids.
+          ...(op.annotationRelationships?.entries.map(({ key }) =>
+            write(EXCLUSIVE_PARTS.RELATIONSHIPS, `${key}.xml.rels`),
+          ) ?? []),
+          ...(op.annotationRelationships === undefined ||
+          op.annotationRelationships.expected ===
+            op.annotationRelationships.next
+            ? []
+            : [write(EXCLUSIVE_PARTS.RELATIONSHIPS)]),
         ],
       );
     case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
