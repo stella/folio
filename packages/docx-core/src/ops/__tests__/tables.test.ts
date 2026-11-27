@@ -361,17 +361,16 @@ describe("whole table operations", () => {
     },
   );
 
-  test("deletion requires a surviving block list anchor", () => {
+  test("deleting the main story's only table reuses its last paragraph identity", () => {
     const original = table();
-    refused(
-      documentOf([original]),
-      {
-        type: DOCUMENT_OP_TYPES.DELETE_TABLE,
-        story: OP_STORIES.MAIN,
-        blockId: "00000010",
-      },
-      DOCUMENT_OP_REFUSAL_REASONS.EMPTY_BLOCK_LIST,
-    );
+    const deleted = applied(documentOf([original]), {
+      type: DOCUMENT_OP_TYPES.DELETE_TABLE,
+      story: OP_STORIES.MAIN,
+      blockId: "00000010",
+    });
+    expect(deleted.document.package.document.content).toStrictEqual([
+      { type: "paragraph", paraId: "00000010", content: [] },
+    ]);
   });
 
   test("missing and non-table targets are refused without mutation", () => {
