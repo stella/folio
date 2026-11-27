@@ -79,16 +79,6 @@ const paragraphsIn = (rows: readonly TableRow[]): Paragraph[] =>
     ({ paragraph }) => paragraph,
   );
 
-/**
- * Shared row wrappers need a structural table operation. Indexed markup
- * beside rows moves with them ({@link relocatePositionedMarkers}).
- */
-const needsTableEdit = (table: Table): boolean =>
-  table.rows.some(
-    (row) =>
-      row.contentControls !== undefined || row.carrierStack !== undefined,
-  );
-
 type WithTableOptions = {
   document: Document;
   story: OpStory;
@@ -247,10 +237,14 @@ const commitRows = ({
       message: "A row paragraph id is already used in the package.",
     });
   }
+  const table = relocatePositionedMarkers(location.table, {
+    ...location.table,
+    rows,
+  });
   const remainingRecords = countKeys(packageIdentityKeys(document.package));
-  for (const key of identityKeysIn(before))
+  for (const key of identityKeysIn(location.table))
     remainingRecords.set(key, (remainingRecords.get(key) ?? 1) - 1);
-  const incomingRecords = identityKeysIn(rows);
+  const incomingRecords = identityKeysIn(table);
   if (
     incomingRecords.some((key) => (remainingRecords.get(key) ?? 0) > 0) ||
     new Set(incomingRecords).size !== incomingRecords.length
@@ -262,10 +256,6 @@ const commitRows = ({
         "A row revision or content-control id is already used in the package.",
     });
   }
-  const table = relocatePositionedMarkers(location.table, {
-    ...location.table,
-    rows,
-  });
   const next = withTable({
     document: document,
     story: op.story,
@@ -314,7 +304,7 @@ const commitRows = ({
             type: DOCUMENT_OP_TYPES.SET_TABLE_ROWS,
             story: op.story,
             blockId: anchor,
-            expected: rows,
+            expected: table.rows,
             rows: before,
           },
     ],
@@ -350,13 +340,6 @@ export const applyRowOp = (
           op: op,
           reason: DOCUMENT_OP_REFUSAL_REASONS.INVALID_OFFSET,
           message: "The row index is outside the table.",
-        });
-      }
-      if (needsTableEdit(location.table)) {
-        return refused({
-          op: op,
-          reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-          message: "Shared row wrappers require a table operation.",
         });
       }
       const incoming = cloneModel(op.row);
@@ -412,13 +395,6 @@ export const applyRowOp = (
       if (removesOutright && before.length === 1) {
         return commitRows({ document, op, location, rows: [] });
       }
-      if (needsTableEdit(location.table)) {
-        return refused({
-          op: op,
-          reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-          message: "Shared row wrappers require a table operation.",
-        });
-      }
       if (removesOutright || op.revision === undefined) {
         return commitRows({
           document,
@@ -455,17 +431,6 @@ export const applyRowOp = (
           op: op,
           reason: DOCUMENT_OP_REFUSAL_REASONS.STALE,
           message: "The table rows have changed.",
-        });
-      }
-      if (
-        op.rows.length > 0 &&
-        op.rows.length !== before.length &&
-        needsTableEdit(location.table)
-      ) {
-        return refused({
-          op: op,
-          reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-          message: "Shared row wrappers require a table operation.",
         });
       }
       const replacement = op.rows.map(

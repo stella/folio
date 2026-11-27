@@ -19,6 +19,7 @@ import {
   type TrackedChangeInfo,
 } from "../model/document";
 import { maxOf } from "../model/extremes";
+import { MAX_TABLE_GRID_COLUMNS } from "../model/tableGridLimits";
 import {
   storyBody,
   storyParagraphs,
@@ -1480,6 +1481,11 @@ const columnEdit = ({
     op.type === DOCUMENT_OP_TYPES.INSERT_COLUMN ? (op.count ?? 1) : 1;
   if (!Number.isSafeInteger(count) || count < 1)
     return mismatch(op, "A column insertion inserts at least one column.");
+  if (insert && count > MAX_TABLE_GRID_COLUMNS - grid.width)
+    return mismatch(
+      op,
+      `A table grid can hold at most ${MAX_TABLE_GRID_COLUMNS} columns.`,
+    );
   if (
     !Number.isSafeInteger(op.column) ||
     op.column < 0 ||
@@ -1493,12 +1499,6 @@ const columnEdit = ({
     );
   if (insert && (!Number.isSafeInteger(op.width) || op.width <= 0))
     return mismatch(op, "A column width must be a positive twip count.");
-  if (hasWrappedCellMarkup(table))
-    return refuse({
-      op,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      message: "Captures inside cell wrappers need a shared destination.",
-    });
   // A table records one previous grid (`w:tblGridChange`). A second tracked
   // insertion would have to share the pending one's record, and rejecting
   // either alone could not give back the grid without its own columns: the
@@ -1595,7 +1595,7 @@ const columnEdit = ({
   // A suggested deletion keeps the grid while it is pending: the deleted
   // cells stay in their columns, and accepting removes them with their grid
   // entries.
-  const trackedDeletion = !insert && op.revision !== undefined;
+  const trackedDeletion = suggestedDeletion && removedCells.length > 0;
   // The rows the edit leaves as they are: for a suggested deletion, those
   // with no cell in the column, which keep it for themselves when the
   // deletion is accepted; for another edit, those stopping short of the
@@ -1621,13 +1621,6 @@ const columnEdit = ({
     stampedRows.set(rowIndex, rowStamps);
     rowStamps += takesNewCells(rowIndex) ? count : 1;
   }
-  if (trackedDeletion && stampedRows.size === 0)
-    return refuse({
-      op,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      message:
-        "A suggested column deletion needs a cell in the column to mark.",
-    });
   const stamps = stampsFor(op, trackedDeletion ? rowStamps : rowStamps + 2);
   if (stamps.isErr()) return Result.err(stamps.error);
   const rowStamp = (rowIndex: number, cell = 0) => {
@@ -2832,6 +2825,11 @@ export const tableEditParagraphDemand = (
   if (grid.isErr()) return Result.err(grid.error);
   switch (op.type) {
     case DOCUMENT_OP_TYPES.INSERT_COLUMN: {
+      if ((op.count ?? 1) > MAX_TABLE_GRID_COLUMNS - grid.value.width)
+        return mismatch(
+          op,
+          `A table grid can hold at most ${MAX_TABLE_GRID_COLUMNS} columns.`,
+        );
       const plans = recordsPlaceColumnsApart(table, grid.value)
         ? columnPlanAcrossRecords({
             table,
@@ -3146,12 +3144,6 @@ export const applyTableEdit = (
           reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
           message: "Resolve the existing grid revision before resizing.",
         });
-      if (op.revision !== undefined && table.columnWidths === undefined)
-        return refuse({
-          op,
-          reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-          message: "A grid revision requires an explicit previous grid.",
-        });
       if (table.propertyChanges !== undefined)
         return refuse({
           op,
@@ -3172,7 +3164,10 @@ export const applyTableEdit = (
           ...table.formatting,
           gridChange: {
             id: gridStamp.id,
-            columnWidths: [...(table.columnWidths ?? [])],
+            columnWidths:
+              table.columnWidths === undefined
+                ? Array.from({ length: grid.value.width }, () => undefined)
+                : [...table.columnWidths],
           },
         };
         next.propertyChanges = [

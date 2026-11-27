@@ -25,6 +25,7 @@ import {
   paragraph,
   reviewedInSession,
   row,
+  table,
   textCell,
   viaCanonicalEngine,
   viaDefaultEngine,
@@ -149,6 +150,45 @@ describe("column operations on a table whose file states no widths", () => {
     expect(xml).toMatch(
       /<w:tblGridChange w:id="\d+"><w:tblGrid><w:gridCol\/><w:gridCol\/><\/w:tblGrid><\/w:tblGridChange>/u,
     );
+  });
+
+  test("narrowing a column of spanning cells records the prior grid and cell spans", async () => {
+    const source = await packageOf([
+      paragraph("10000001", "Before"),
+      table(
+        [
+          row(
+            textCell(
+              "20000001",
+              "A1",
+              '<w:gridSpan w:val="2"/><w:vMerge w:val="restart"/>',
+            ) + textCell("20000003", "B1"),
+          ),
+          row(
+            textCell("20000002", "", '<w:gridSpan w:val="2"/><w:vMerge/>') +
+              textCell("20000004", "B2"),
+          ),
+        ],
+        3,
+      ),
+      paragraph("10000002", "After"),
+    ]);
+    const op = OPERATIONS.deleteTableColumn("20000001");
+    const pending = await viaCanonicalEngine(source, op, "tracked-changes");
+    expect(pending.refusals).toEqual([]);
+    expect(pending.skipped).toEqual([]);
+    const direct = await viaCanonicalEngine(source, op, "direct");
+    expect(direct.skipped).toEqual([]);
+    const part = (await ZipArchive.read(pending.bytes)).entry(
+      "word/document.xml",
+    );
+    if (!part) throw new Error("The saved package has no document part.");
+    const xml = await part.text();
+    expect(xml.match(/<w:tcPrChange\b/gu)).toHaveLength(2);
+    expect(xml).toMatch(/<w:tblGridChange\b/u);
+    const reviewed = await reviewedInSession(pending.bytes);
+    expect(reviewed.accepted).toEqual((await outcomes(direct.bytes)).accepted);
+    expect(reviewed.rejected).toEqual((await outcomes(source)).rejected);
   });
 
   // Without the fix the canonical session refuses the suggestion the default

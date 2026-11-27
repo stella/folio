@@ -20,6 +20,7 @@ import {
 import {
   type FolioNodeRevisionKind,
   getFolioNodeRevisionCarriers,
+  propertyRevisionMetadata,
 } from "../prosemirror/revisionCarriers";
 import {
   expandRunFormattingCarrier,
@@ -584,6 +585,35 @@ const getTrackedChangeGroupsFromProjectedDoc = (
           const change = getTableCellMergeChange(continuationCell);
           if (!change) {
             if (!isRecord(continuationCell)) continue;
+            const properties = continuationCell["propertyChanges"];
+            if (Array.isArray(properties)) {
+              for (const property of properties) {
+                if (!isRecord(property)) continue;
+                const metadata = propertyRevisionMetadata(property["info"]);
+                if (
+                  metadata === null ||
+                  continuationRevisionsOwnedByRows.has(metadata.id)
+                )
+                  continue;
+                const type = "cellPropertiesChanged";
+                revisionRanges?.push({
+                  type,
+                  author: metadata.author,
+                  from: pos,
+                  to: pos + node.nodeSize,
+                });
+                grouped.set(`continuation:${String(pos)}:${metadata.id}`, {
+                  ...metadata,
+                  type,
+                  text: "",
+                  blockId: firstBlockIdWithin({
+                    node,
+                    nodePos: pos,
+                    blockStarts,
+                  }),
+                });
+              }
+            }
             const structuralChange = continuationCell["structuralChange"];
             if (!isRecord(structuralChange)) continue;
             const kind = structuralChange["type"];

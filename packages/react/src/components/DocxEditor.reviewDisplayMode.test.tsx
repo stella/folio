@@ -154,16 +154,17 @@ test("host review display modes change visible layout without changing saved DOC
       return { width, actualBoundingBoxAscent: 8, actualBoundingBoxDescent: 2 };
     },
   };
-  const relayout = () => {
+  const relayout = async () => {
     const controller =
       editor.current?.getEditor() ?? panic("Expected the editor controller");
-    let completed = false;
-    const unsubscribe = controller.on("layoutComplete", () => {
-      completed = true;
-    });
-    controller.relayout();
-    unsubscribe();
-    expect(completed).toBe(true);
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const unsubscribe = controller.on("layoutComplete", () => resolve());
+    try {
+      controller.relayout();
+      await promise;
+    } finally {
+      unsubscribe();
+    }
   };
   try {
     Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
@@ -197,7 +198,7 @@ test("host review display modes change visible layout without changing saved DOC
         await act(async () => {
           editor.current?.ensureEditorView({ focus: false });
         });
-        await act(async () => relayout());
+        await act(relayout);
         initialDoc =
           editor.current?.getEditor()?.getView()?.state.doc ??
           panic("Expected the loaded editor document");
@@ -205,7 +206,7 @@ test("host review display modes change visible layout without changing saved DOC
         expect(editor.current?.getEditor()?.getView()?.state.doc).toBe(
           initialDoc,
         );
-        await act(async () => relayout());
+        await act(relayout);
       }
 
       const controller =

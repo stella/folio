@@ -552,6 +552,9 @@ export type FootnoteProperties = WritableRecord & {
 export const getSingularRunPropertyChange: (propertyChanges: readonly RunPropertyChange[] | undefined) => RunPropertyChange | undefined;
 
 // @public
+export const gridColumnsInRows: (rows: readonly TableRow[]) => number;
+
+// @public
 export type HeaderFooter = WritableRecord & {
     type: "header" | "footer";
     hdrFtrType: HeaderFooterType;
@@ -956,6 +959,9 @@ export const MAX_RETAINED_PARSE_WARNINGS_PER_CODE = 20;
 
 // @public
 export const MAX_REVISION_ID = 2147483647;
+
+// @public
+export const MAX_TABLE_GRID_COLUMNS = 4096;
 
 // @public
 export type MediaFile = WritableRecord & {
