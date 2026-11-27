@@ -1573,6 +1573,7 @@ export type SetPackageResourcesOp = {
     relationships: PackageResourceMapChange<Relationship>;
     media: PackageResourceMapChange<PackageResourceMedia>;
     copiedParts?: PackageResourceMapChange<PackageResourceCopiedPart>;
+    annotationRelationships?: PackageResourceMapChange<readonly Relationship[]>;
 };
 
 // @public

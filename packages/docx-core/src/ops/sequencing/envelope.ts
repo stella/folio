@@ -830,6 +830,7 @@ const operationFields = {
     relationships: resourceMapChange(relationship),
     media: resourceMapChange(packageResourceMedia),
     copiedParts: optional(resourceMapChange(packageResourceCopiedPart)),
+    annotationRelationships: optional(resourceMapChange(array(relationship))),
   } satisfies OperationFields<"setPackageResources">,
   addNote: {
     type: literal("addNote"),

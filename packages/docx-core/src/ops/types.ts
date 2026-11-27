@@ -1009,6 +1009,11 @@ export type SetPackageResourcesOp = {
   media: PackageResourceMapChange<PackageResourceMedia>;
   /** Carried only when the operation changes the copied parts. */
   copiedParts?: PackageResourceMapChange<PackageResourceCopiedPart>;
+  /**
+   * Carried only when the operation changes a note or comment part's
+   * relationships: each entry is one part's relationships, whole.
+   */
+  annotationRelationships?: PackageResourceMapChange<readonly Relationship[]>;
 };
 
 /** A section endpoint is either a paragraph's sectPr or the body's final sectPr. */

@@ -5,6 +5,7 @@ import type {
   CopiedPackagePart,
   MediaFile,
   Relationship,
+  RelationshipMap,
 } from "../model/styles";
 import type { DocumentEdit } from "./edits";
 import { structurallyEqual } from "./equality";
@@ -102,6 +103,32 @@ const mediaOf = ({ package: pkg }: Document) =>
 const copiedPartsOf = ({ package: pkg }: Document) =>
   packageMapOf(Object.hasOwn(pkg, "copiedParts"), pkg.copiedParts);
 
+const annotationRelationshipsOf = ({ package: pkg }: Document) =>
+  packageMapOf(
+    Object.hasOwn(pkg, "annotationRelationships"),
+    pkg.annotationRelationships,
+  );
+
+/** A part's relationships travel as a list, each one cloned. */
+const partRelationshipsRecordOf = (
+  map: RelationshipMap,
+): readonly Relationship[] =>
+  [...map.values()].map((relationship) => cloneModel(relationship));
+
+const partRelationshipsOf = (
+  records: readonly Relationship[],
+): RelationshipMap =>
+  new Map(
+    records.map((relationship) => [relationship.id, cloneModel(relationship)]),
+  );
+
+/** The note and comment parts whose relationships the model keeps. */
+const ANNOTATION_RELATIONSHIP_PARTS: ReadonlySet<string> = new Set([
+  "footnotes",
+  "endnotes",
+  "comments",
+]);
+
 /** Whether a map change changes nothing: its presence stays and it carries no entry. */
 const unchangedMap = <Value>(change: PackageResourceMapChange<Value>) =>
   change.expected === change.next && change.entries.length === 0;
@@ -156,6 +183,11 @@ export const packageResourcesOpOf = ({
     after: copiedPartsOf(after),
     record: copiedPartRecordOf,
   });
+  const annotationRelationships = mapChangeOf({
+    before: annotationRelationshipsOf(before),
+    after: annotationRelationshipsOf(after),
+    record: partRelationshipsRecordOf,
+  });
   return {
     type: DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES,
     expected: packageResourcesOf(before),
@@ -171,6 +203,9 @@ export const packageResourcesOpOf = ({
       record: mediaRecordOf,
     }),
     ...(unchangedMap(copiedParts) ? {} : { copiedParts }),
+    ...(unchangedMap(annotationRelationships)
+      ? {}
+      : { annotationRelationships }),
   };
 };
 
@@ -261,6 +296,7 @@ const resourceViolation = ({
     relationships: relationshipChange,
     media: mediaChange,
     copiedParts: copiedPartChange,
+    annotationRelationships: annotationRelationshipChange,
   },
   expected,
   relationships,
@@ -328,6 +364,16 @@ const resourceViolation = ({
     )
   )
     return "Copied package parts contain invalid paths, content types or bytes.";
+  if (
+    annotationRelationshipChange !== undefined &&
+    presentEntries(annotationRelationshipChange).some(
+      ([key, list]) =>
+        !ANNOTATION_RELATIONSHIP_PARTS.has(key) ||
+        duplicates(list.map(({ id }) => id)) ||
+        list.some(({ id }) => id.length === 0),
+    )
+  )
+    return "Note or comment part relationships contain invalid parts or ids.";
   for (const [, relationship] of changedRelationships) {
     if (
       !relationship.type.endsWith("/image") ||
@@ -514,6 +560,20 @@ export const applyPackageResourcesOp = (
         });
   if (copiedParts?.type === "refused")
     return failed(copiedParts.reason, copiedParts.message);
+  const annotationRelationships =
+    owned.annotationRelationships === undefined
+      ? undefined
+      : applyMapChange({
+          current: annotationRelationshipsOf(document),
+          change: owned.annotationRelationships,
+          record: partRelationshipsRecordOf,
+          stored: partRelationshipsOf,
+        });
+  if (annotationRelationships?.type === "refused")
+    return failed(
+      annotationRelationships.reason,
+      annotationRelationships.message,
+    );
   const violation = resourceViolation({
     op: owned,
     expected,
@@ -550,6 +610,14 @@ export const applyPackageResourcesOp = (
           ? new Map(copiedParts.map.entries)
           : undefined;
   }
+  if (annotationRelationships !== undefined) {
+    delete pkg.annotationRelationships;
+    if (annotationRelationships.map.presence !== "omitted")
+      pkg.annotationRelationships =
+        annotationRelationships.map.presence === "present"
+          ? new Map(annotationRelationships.map.entries)
+          : undefined;
+  }
   const removed = {
     style: missingIds(
       document.package.styles?.styles.map(({ styleId }) => styleId) ?? [],
@@ -579,7 +647,9 @@ export const applyPackageResourcesOp = (
     structurallyEqual(expected, resources) &&
     unchangedMap(owned.relationships) &&
     unchangedMap(owned.media) &&
-    (owned.copiedParts === undefined || unchangedMap(owned.copiedParts))
+    (owned.copiedParts === undefined || unchangedMap(owned.copiedParts)) &&
+    (owned.annotationRelationships === undefined ||
+      unchangedMap(owned.annotationRelationships))
   )
     return Result.ok({
       document,
@@ -599,6 +669,13 @@ export const applyPackageResourcesOp = (
         ...(owned.copiedParts === undefined
           ? {}
           : { copiedParts: inverseMapChange(owned.copiedParts) }),
+        ...(owned.annotationRelationships === undefined
+          ? {}
+          : {
+              annotationRelationships: inverseMapChange(
+                owned.annotationRelationships,
+              ),
+            }),
       },
     ],
     touched: { modified: [], inserted: [], removed: [] },

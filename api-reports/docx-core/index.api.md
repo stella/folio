@@ -132,6 +132,7 @@ export type DocxPackage = WritableRecord & {
     relationships?: RelationshipMap | undefined;
     media?: Map<string, MediaFile> | undefined;
     copiedParts?: Map<string, CopiedPackagePart> | undefined;
+    annotationRelationships?: Map<string, RelationshipMap> | undefined;
     properties?: WritableRecord & {
         title?: string;
         subject?: string;

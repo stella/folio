@@ -166,7 +166,7 @@ export const CANONICAL_CAPABILITIES: {
     readonly owner: "controller";
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "A paste of content whose package parts the model does not carry refuses where those parts cannot be read: an opaque drawing, embedded object or kept block markup from another package whose copy did not read its source package's parts (a clipboard from outside the editor), or that sits in a copied note or comment.";
+    readonly summary: "A paste of content whose package parts the model does not carry refuses where those parts cannot be read or placed: an opaque drawing, embedded object or kept block markup from another package whose copy did not read its source package's parts (a clipboard from outside the editor) or names a part outside the main document's folder, or that is pasted into a header, footer or note edited on its own.";
   };
   readonly "tracked-change-records": {
     readonly owner: "document-operations";
@@ -187,7 +187,7 @@ export const CANONICAL_CAPABILITIES: {
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
-      "A paste of content whose package parts the model does not carry refuses where those parts cannot be read: an opaque drawing, embedded object or kept block markup from another package whose copy did not read its source package's parts (a clipboard from outside the editor), or that sits in a copied note or comment.",
+      "A paste of content whose package parts the model does not carry refuses where those parts cannot be read or placed: an opaque drawing, embedded object or kept block markup from another package whose copy did not read its source package's parts (a clipboard from outside the editor) or names a part outside the main document's folder, or that is pasted into a header, footer or note edited on its own.",
   },
   [CANONICAL_GAP.trackedChangeRecords]: {
     owner: "document-operations",

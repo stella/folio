@@ -409,6 +409,9 @@ const withoutOwnedRecords = ({
       relationships: op.relationships,
       media: op.media,
       ...(op.copiedParts === undefined ? {} : { copiedParts: op.copiedParts }),
+      ...(op.annotationRelationships === undefined
+        ? {}
+        : { annotationRelationships: op.annotationRelationships }),
     };
     for (const [field, change] of Object.entries(maps)) {
       if (change.expected !== change.next) {
@@ -806,6 +809,22 @@ export const serializedLocalityFailures = ({
           op.copiedParts.entries.length > 0)
       )
         lifecycle = true;
+      if (
+        op.annotationRelationships !== undefined &&
+        (op.annotationRelationships.expected !==
+          op.annotationRelationships.next ||
+          op.annotationRelationships.entries.length > 0)
+      ) {
+        lifecycle = true;
+        // The relationships file of each note or comment part whose table
+        // changed; the other parts' files stay under the locality check.
+        for (const { key: part } of op.annotationRelationships.entries) {
+          const slash = part.lastIndexOf("/");
+          ownedPaths.add(
+            `${part.slice(0, slash + 1)}_rels/${part.slice(slash + 1)}.rels`,
+          );
+        }
+      }
       if (
         op.relationships.expected !== op.relationships.next ||
         op.relationships.entries.length > 0

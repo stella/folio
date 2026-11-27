@@ -150,6 +150,7 @@ import { prepareCanonicalPaste } from "./canonicalClipboard";
 import {
   type ClipboardPackageParts,
   readClipboardPackageParts,
+  sliceAnnotationMarkup,
   sliceKeptMarkup,
 } from "./canonicalClipboardParts";
 import {
@@ -1023,9 +1024,11 @@ export const createHiddenEditorManager = (
       ...written,
     };
     clipboardCopy = copy;
-    const markup = sliceKeptMarkup(pmView.state.selection.content());
-    if (markup.length === 0) return;
-    void readClipboardPackageParts({ document, markup }).then(
+    const slice = pmView.state.selection.content();
+    const markup = sliceKeptMarkup(slice);
+    const annotationMarkup = sliceAnnotationMarkup(slice, document);
+    if (markup.length === 0 && annotationMarkup.size === 0) return;
+    void readClipboardPackageParts({ document, markup, annotationMarkup }).then(
       (parts) => {
         if (parts !== undefined) copy.parts = parts;
         return undefined;
