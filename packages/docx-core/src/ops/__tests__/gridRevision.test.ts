@@ -88,7 +88,7 @@ test.each([
     }).unwrap();
     const table = result.document.package.document.content.at(0);
     if (table?.type !== "table") throw new Error("The table remains present.");
-    expect(statedTableColumnWidths(table)).toEqual(widths);
+    expect(statedTableColumnWidths(table)).toEqual([...widths]);
     expect(table.formatting?.gridChange).toBeUndefined();
     expect(
       applyDocumentOps(result.document, result.inverse).unwrap().document,

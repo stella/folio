@@ -142,6 +142,8 @@ describe("tracked whole tables", () => {
       } satisfies Table;
       const wrapper = {
         type: "blockCustomXml",
+        openingXml: '<w:customXml w:element="terms">',
+        closingXml: "</w:customXml>",
         content: [table],
       } satisfies BlockContent;
       const before = makeParagraph("00000001");
