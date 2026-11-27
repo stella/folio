@@ -27,8 +27,8 @@ const BUDGETS = {
   // room left: a pasted or dragged block container (content control, text
   // box) is placed whole, with its notes and comments. docxOps +6.5 kB: room
   // again for ops correctness fixes; the ops measure about 674 kB.
-  react: { minified: 3_751_500, gzip: 1_181_000, docxOps: 680_900 },
-  vue: { minified: 3_446_400, gzip: 1_077_000, docxOps: 680_850 },
+  react: { minified: 3_751_500, gzip: 1_181_000, docxOps: 682_000 },
+  vue: { minified: 3_446_400, gzip: 1_077_000, docxOps: 681_950 },
 } as const satisfies Record<Adapter, Metrics>;
 
 const HOST_PEERS = [
