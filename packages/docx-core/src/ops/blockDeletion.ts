@@ -30,6 +30,7 @@ import {
   isCommentAnchor,
   isCommentAnchorCarrierType,
   isEmptyContainer,
+  rebuildNode,
 } from "./leaves";
 import { asMoveHalf } from "./moves";
 import {
@@ -367,7 +368,9 @@ export const rangeEndIdsIn = (
  * The boundaries of `nodes` a deletion of their paragraph leaves standing,
  * in document order: those split out of its records (`split`) and the bare
  * comment range anchors it never took in. What a deletion stamped by the same
- * revision (`created`) or an earlier one holds goes with it.
+ * revision (`created`) or an earlier one holds goes with it. An anchor a
+ * hyperlink, content control or transparent wrapper holds stands in what is
+ * left of that container, as accepting the deletion leaves it there.
  */
 const standingIn = (
   nodes: readonly InlineNode[],
@@ -377,8 +380,22 @@ const standingIn = (
   nodes.flatMap((node): InlineNode[] => {
     if (split.has(node) || isCommentAnchor(node)) return [node];
     if (created(node) || isRemovedRevisionNode(node)) return [];
-    return standingIn(childNodes(node) ?? [], split, created);
+    const inner = standingIn(childNodes(node) ?? [], split, created);
+    return inner.length > 0 &&
+      (node.type === "hyperlink" ||
+        node.type === "inlineSdt" ||
+        node.type === "inlineWrapper") &&
+      holdsCommentAnchorIn(inner)
+      ? [rebuildNode(node, inner)]
+      : inner;
   });
+
+/** Whether a comment anchor stands among `nodes`, at any depth. */
+const holdsCommentAnchorIn = (nodes: readonly InlineNode[]): boolean =>
+  nodes.some(
+    (node) =>
+      isCommentAnchor(node) || holdsCommentAnchorIn(childNodes(node) ?? []),
+  );
 
 /** Only what a direct deletion leaves is read off its tracked form. */
 const DIRECT_DELETION_STAMP: RevisionStamp = {

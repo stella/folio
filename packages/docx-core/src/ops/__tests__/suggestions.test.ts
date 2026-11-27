@@ -10,7 +10,6 @@ import type {
 } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { normalizeForOps } from "../contract";
-import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import {
   pendingSuggestionIdsIn,
   suggestionOwnersInStory,
@@ -270,7 +269,7 @@ describe("final section suggestion boundaries", () => {
   });
 
   test.each(Object.values(REVISION_DECISIONS))(
-    "%s refuses a final section revision before resolving any body revision",
+    "%s resolves final section and body revisions independently or together",
     (decision) => {
       const document = sectionChange("proposal");
       const before = structuredClone(document);
@@ -280,29 +279,36 @@ describe("final section suggestion boundaries", () => {
           story: OP_STORIES.MAIN,
           revisionIds,
           decision,
-        });
-        expect(result.isErr()).toBe(true);
-        if (result.isOk()) panic("Expected section review refusal");
-        expect(result.error.reason).toBe(
-          DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+        }).unwrap();
+        const final = result.document.package.document.finalSectionProperties;
+        expect(final?.propertyChanges).toBeUndefined();
+        expect(final?.pageWidth).toBe(
+          decision === REVISION_DECISIONS.ACCEPT ? 14_400 : 12_240,
         );
+        expect(
+          suggestionRevisionInfos(result.document, OP_STORIES.MAIN, "proposal"),
+        ).toEqual(revisionIds.includes(1) ? [] : [info(1, "proposal")]);
+        expect(
+          applyDocumentOps(result.document, result.inverse).unwrap().document,
+        ).toStrictEqual(before);
         expect(document).toEqual(before);
       }
     },
   );
 
-  test("a save refuses instead of leaving a pending section proposal in the file", () => {
+  test("save removes a pending final section proposal with the rest of its changes", () => {
     const document = sectionChange("proposal");
     const before = structuredClone(document);
-    const result = withoutPendingSuggestions(document);
-    expect(result.isErr()).toBe(true);
-    if (result.isOk()) panic("Expected section review refusal");
-    expect(result.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE);
+    const result = withoutPendingSuggestions(document).unwrap();
+    expect([...pendingSuggestionIdsIn(result)]).toEqual([]);
+    expect(result.package.document.finalSectionProperties).toEqual({
+      pageWidth: 12_240,
+    });
     expect(document).toEqual(before);
   });
 
   test.each(["source-only", "with-derived-view"])(
-    "adoption refuses atomically with %s",
+    "adoption preserves the section revision and updates its attribution with %s",
     (view) => {
       const document = sectionChange("proposal");
       if (view === "with-derived-view") {
@@ -318,10 +324,22 @@ describe("final section suggestion boundaries", () => {
         type: DOCUMENT_OP_TYPES.SET_REVISION_INFO,
         story: OP_STORIES.MAIN,
         infos: [info(1), info(100)],
-      });
-      expect(result.isErr()).toBe(true);
-      if (result.isOk()) panic("Expected section review refusal");
-      expect(result.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE);
+      }).unwrap();
+      expect([...pendingSuggestionIdsIn(result.document)]).toEqual([]);
+      expect(
+        result.document.package.document.finalSectionProperties?.propertyChanges?.at(
+          0,
+        )?.info,
+      ).toEqual(info(100));
+      if (view === "with-derived-view")
+        expect(
+          result.document.package.document.sections?.at(-1)?.properties,
+        ).toStrictEqual(
+          result.document.package.document.finalSectionProperties,
+        );
+      expect(
+        applyDocumentOps(result.document, result.inverse).unwrap().document,
+      ).toStrictEqual(before);
       expect(document).toEqual(before);
     },
   );

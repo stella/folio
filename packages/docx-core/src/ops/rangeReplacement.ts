@@ -40,6 +40,7 @@ import {
   type OpStory,
   type ReplaceInlineOp,
   type RevisionStamp,
+  type SetSectionEndpointOp,
   SPLIT_HALVES,
   type TextPosition,
 } from "./types";
@@ -199,8 +200,8 @@ export const pastEndedComments = (
  * Each new paragraph's own fields apply to it, including when it takes the
  * source prefix. The last fragment keeps the original survivor's identity.
  * Closed inline slices are required. Imported review and content-control ids
- * must already be distinct from destination identities; section-bearing
- * paragraphs require an explicit package import policy.
+ * must already be distinct from destination identities. A paragraph carrying
+ * a section break ends a section once its inserted mark is accepted.
  */
 export type PlanTrackedReplaceOptions = PlanTrackedDeletionOptions & {
   /** How the deletion carrying the edit's own id is recorded, when not as `revision`. */
@@ -235,24 +236,21 @@ export const planTrackedReplacement = (
   options: PlanTrackedReplacementOptions,
 ): Result<DocumentOp[], DocumentOpRefusal> => {
   const { replacement, from, revision, newIds, cuts = [] } = options;
-  const refuse = (message: string) =>
+  const refuse = (
+    message: string,
+    reason: DocumentOpRefusal["reason"] = DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+  ) =>
     Result.err(
       new DocumentOpRefusal({
-        reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+        reason,
         message,
         opType: DOCUMENT_OP_TYPES.INSERT_CONTENT,
       }),
     );
   if (replacement.tail.openStart !== 0 || replacement.tail.openEnd !== 0) {
-    return refuse("Tracked replacement requires a closed tail slice.");
-  }
-  if (
-    replacement.paragraphs.some(
-      ({ sectionProperties }) => sectionProperties !== undefined,
-    )
-  ) {
     return refuse(
-      "Tracked replacement cannot import section-bearing paragraphs.",
+      "Tracked replacement requires a closed tail slice.",
+      DOCUMENT_OP_REFUSAL_REASONS.INVALID_OPERATION,
     );
   }
   const plan = createTrackedPlan({
@@ -374,6 +372,7 @@ export const planTrackedReplacement = (
     from,
     to: options.to,
   });
+  const sectionBreaks: SetSectionEndpointOp[] = [];
   for (const paragraph of replacement.paragraphs) {
     const sourceBlockId = at.blockId;
     const source = rangeParagraph(
@@ -417,6 +416,17 @@ export const planTrackedReplacement = (
       revision,
     });
     if (split.isErr()) return Result.err(split.error);
+    // The new paragraph's mark is the inserted one, so a section break it
+    // carries goes with that mark: rejecting joins its section into the
+    // next, and accepting keeps it, as `w:pPr/w:sectPr` beside `w:rPr/w:ins`.
+    // Setting it moves no position, so it is set once the text is planned.
+    if (paragraph.sectionProperties !== undefined)
+      sectionBreaks.push({
+        type: DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT,
+        endpoint: { type: "paragraph", blockId: paraId ?? "" },
+        expected: { type: "omitted" },
+        properties: { type: "present", value: paragraph.sectionProperties },
+      });
     at = {
       story: from.story,
       blockId: at.blockId,
@@ -494,6 +504,7 @@ export const planTrackedReplacement = (
     });
     if (inserted.isErr()) return Result.err(inserted.error);
   }
+  plan.ops.push(...sectionBreaks);
   // Retracting one's own pending insertion physically removes text. Any
   // range it exhausts goes with that text, even before review is resolved.
   if (
