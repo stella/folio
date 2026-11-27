@@ -5,6 +5,7 @@ import type {
   ParagraphMarkChange,
 } from "../model/document";
 import { storyParagraphs } from "./blocks";
+import { idKey } from "./ids";
 import { findStoryParagraph } from "./paragraphLocator";
 import { reviewFieldsOf } from "./review";
 import { findStoryBody } from "./stories";
@@ -50,15 +51,27 @@ const located = (body: DocumentBody, ids: readonly string[]): Paragraph[] =>
     return at === undefined ? [] : [at.paragraph];
   });
 
+/**
+ * What retiring the marks an edit removed takes from the keep-first rule:
+ * the releases still to make, and the paragraphs an operation the edit
+ * applied already released, which the edit modified as well.
+ */
+type TakenOverMarkReleases = {
+  ops: SetParagraphReviewOp[];
+  released: string[];
+};
+
+const NO_RELEASES: TakenOverMarkReleases = { ops: [], released: [] };
+
 /** Removing a break retires the keep-first rule that depended on it. */
 const storyReleases = ({
   before,
   after,
   story,
   touched,
-}: StoryReleaseOptions): SetParagraphReviewOp[] => {
+}: StoryReleaseOptions): TakenOverMarkReleases => {
   const holders = located(before, [...touched.modified, ...touched.removed]);
-  if (holders.every(({ pPrMark }) => pPrMark === undefined)) return [];
+  if (holders.every(({ pPrMark }) => pPrMark === undefined)) return NO_RELEASES;
   const kept = markIdsOf(
     located(after, [...touched.modified, ...touched.inserted]),
   );
@@ -68,18 +81,26 @@ const storyReleases = ({
     if (id === undefined || kept.has(id)) continue;
     retired.add(id);
   }
-  if (retired.size === 0) return [];
+  if (retired.size === 0) return NO_RELEASES;
+  const naming = new Set(
+    storyParagraphs(before).flatMap(({ paragraph: { paraId, pPrMark } }) =>
+      paraId !== undefined &&
+      pPrMark?.takenOverMark !== undefined &&
+      retired.has(pPrMark.takenOverMark)
+        ? [idKey(paraId)]
+        : [],
+    ),
+  );
   const releases: SetParagraphReviewOp[] = [];
+  const released: string[] = [];
   for (const { paragraph } of storyParagraphs(after)) {
     const mark = paragraph.pPrMark;
     const named = mark?.takenOverMark;
-    if (
-      mark === undefined ||
-      named === undefined ||
-      paragraph.paraId === undefined
-    )
+    if (paragraph.paraId === undefined) continue;
+    if (mark === undefined || named === undefined || !retired.has(named)) {
+      if (naming.has(idKey(paragraph.paraId))) released.push(paragraph.paraId);
       continue;
-    if (!retired.has(named)) continue;
+    }
     const { survivor: _survivor, takenOverMark: _named, ...rest } = mark;
     const expected = reviewFieldsOf(paragraph);
     releases.push({
@@ -93,7 +114,7 @@ const storyReleases = ({
       },
     });
   }
-  return releases;
+  return { ops: releases, released };
 };
 
 type TakenOverMarkReleasesOptions = {
@@ -109,15 +130,15 @@ export const takenOverMarkReleases = ({
   after,
   touched,
   story,
-}: TakenOverMarkReleasesOptions): SetParagraphReviewOp[] => {
+}: TakenOverMarkReleasesOptions): TakenOverMarkReleases => {
   if (
     story === undefined ||
     (touched.modified.length === 0 && touched.removed.length === 0)
   )
-    return [];
+    return NO_RELEASES;
   const was = findStoryBody(before, story);
   const is = findStoryBody(after, story);
   return was === undefined || is === undefined || was === is
-    ? []
+    ? NO_RELEASES
     : storyReleases({ before: was, after: is, story, touched });
 };

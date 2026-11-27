@@ -284,6 +284,52 @@ type Step = {
 const targetOf = (operation: Operation): string =>
   "blockId" in operation ? operation.blockId : operation.range.blockId;
 
+const initialFocus = (reviewer: FolioDocxReviewer): string[] =>
+  reviewer
+    .getContent()
+    .slice(-1)
+    .map(({ id }) => id);
+
+/** Apply `intent` when the mode supports it: the step it made, and the focus next. */
+const stepOnce = (
+  reviewer: FolioDocxReviewer,
+  mode: Mode,
+  intent: Intent,
+  focus: string[],
+): { step?: Step; focus: string[] } => {
+  if (!isFolioDocumentOperationModeSupported(intent.kind, mode)) {
+    return { focus };
+  }
+  const before = new Set(idsOf(reviewer));
+  const blocks = reviewer.getContent();
+  const operation = operationFor(blocks, intent, focus);
+  const index = operation
+    ? blocks.findIndex(({ id }) => id === targetOf(operation))
+    : -1;
+  const targetText = blocks[index]?.text;
+  const beforeTable = blocks[index + 1]?.table !== undefined;
+  if (
+    !operation ||
+    targetText === undefined ||
+    !apply(reviewer, mode, operation)
+  ) {
+    return { focus };
+  }
+  const added = idsOf(reviewer).filter((id) => !before.has(id));
+  const after = reviewer.getContent();
+  const at = after.findIndex(({ id }) => id === targetOf(operation));
+  return {
+    step: { operation, targetText, beforeTable, added },
+    focus: [
+      targetOf(operation),
+      ...added,
+      ...[after[at - 1], after[at + 1], after.at(-1)].flatMap((block) =>
+        block ? [block.id] : [],
+      ),
+    ],
+  };
+};
+
 /** Apply each intent the mode supports; what each applied step added. */
 const run = (
   reviewer: FolioDocxReviewer,
@@ -291,41 +337,65 @@ const run = (
   intents: readonly Intent[],
 ): Step[] => {
   const steps: Step[] = [];
-  let focus: string[] = reviewer
-    .getContent()
-    .slice(-1)
-    .map(({ id }) => id);
+  let focus = initialFocus(reviewer);
   for (const intent of intents) {
-    if (!isFolioDocumentOperationModeSupported(intent.kind, mode)) {
-      continue;
-    }
-    const before = new Set(idsOf(reviewer));
-    const blocks = reviewer.getContent();
-    const operation = operationFor(blocks, intent, focus);
-    const index = operation
-      ? blocks.findIndex(({ id }) => id === targetOf(operation))
-      : -1;
-    const targetText = blocks[index]?.text;
-    const beforeTable = blocks[index + 1]?.table !== undefined;
-    if (
-      operation &&
-      targetText !== undefined &&
-      apply(reviewer, mode, operation)
-    ) {
-      const added = idsOf(reviewer).filter((id) => !before.has(id));
-      steps.push({ operation, targetText, beforeTable, added });
-      const after = reviewer.getContent();
-      const at = after.findIndex(({ id }) => id === targetOf(operation));
-      focus = [
-        targetOf(operation),
-        ...added,
-        ...[after[at - 1], after[at + 1], after.at(-1)].flatMap((block) =>
-          block ? [block.id] : [],
-        ),
-      ];
-    }
+    const done = stepOnce(reviewer, mode, intent, focus);
+    focus = done.focus;
+    if (done.step) steps.push(done.step);
   }
   return steps;
+};
+
+/**
+ * `run` in tracked-changes mode on a fresh document, saved and reopened
+ * before each intent `saves` marks (and at the end, past the last intent)
+ * when `reopens`. A reopened document mints fresh ids from what it holds,
+ * not from ids the live session retired, so `minted` names each block a step
+ * adds after the first such point by the step and its order there; every id
+ * the first save held stays as it was.
+ */
+const runSaving = async (
+  intents: readonly Intent[],
+  saves: readonly boolean[],
+  reopens: boolean,
+): Promise<{ reviewer: FolioDocxReviewer; minted: Map<string, string> }> => {
+  let reviewer = await open();
+  let focus = initialFocus(reviewer);
+  let saved = false;
+  const minted = new Map<string, string>();
+  for (const [index, intent] of [...intents, undefined].entries()) {
+    if (saves[index] === true) {
+      saved = true;
+      if (reopens) reviewer = await reopen(reviewer);
+    }
+    if (!intent) continue;
+    const done = stepOnce(reviewer, "tracked-changes", intent, focus);
+    focus = done.focus;
+    if (saved)
+      done.step?.added.forEach((id, order) =>
+        minted.set(id, `minted by step ${index} #${order}`),
+      );
+  }
+  return { reviewer, minted };
+};
+
+/** What a reader is left with, paragraph ids included: each block, and where each comment sits. */
+const identities = (
+  reviewer: FolioDocxReviewer,
+  aliases: ReadonlyMap<string, string> = new Map(),
+): string[] => {
+  const name = (id: string | null) => (id && aliases.get(id)) ?? id;
+  return [
+    ...reviewer
+      .getContent()
+      .map((block) => `${name(block.id)} ${block.kind}: ${block.text}`),
+    ...reviewer
+      .getComments()
+      .map(
+        (comment) =>
+          `comment on ${name(comment.blockId)}: ${comment.anchoredText}`,
+      ),
+  ];
 };
 
 /**
@@ -614,7 +684,113 @@ test("reject removes tables inserted around an inserted terminal paragraph", asy
   expect(read(await reopen(accepting))).toEqual(read(direct));
 });
 
+/**
+ * Tracked work around the original paragraphs: insertions, splits and
+ * deletions of them and of what they became, and comments on them. A small
+ * pick on a followed step aims at its target or the first block it added, so
+ * steps compose on the same paragraphs; a run often inserts a paragraph,
+ * splits it and deletes one of its halves.
+ */
+const identityIntent = (
+  kind: fc.Arbitrary<Kind>,
+  follow: fc.Arbitrary<boolean> = fc.constantFrom(true, true, false),
+): fc.Arbitrary<Intent> =>
+  fc.record({ kind, pick: fc.nat({ max: 2 }), detail: fc.nat(50), follow });
+
+/** An insertion, a split of what it added and a deletion of one of its halves. */
+const insertSplitDelete = fc.tuple(
+  identityIntent(fc.constantFrom("insertBeforeBlock", "insertAfterBlock")),
+  identityIntent(fc.constant("splitBlock"), fc.constant(true)),
+  identityIntent(fc.constant("deleteBlock"), fc.constant(true)),
+);
+
+const anyIdentityIntent = fc.tuple(
+  identityIntent(
+    fc.constantFrom(
+      "insertBeforeBlock",
+      "insertAfterBlock",
+      "splitBlock",
+      "deleteBlock",
+      "commentOnBlock",
+    ),
+  ),
+);
+
+const identityIntentsArbitrary = fc
+  .array(
+    fc.oneof(
+      { weight: 2, arbitrary: insertSplitDelete },
+      { weight: 1, arbitrary: anyIdentityIntent },
+    ),
+    { minLength: 1, maxLength: 3 },
+  )
+  .map((groups) => groups.flat());
+
+const resolveAll = (
+  reviewer: FolioDocxReviewer,
+  decision: "reject" | "accept",
+): void => {
+  if (decision === "reject") reviewer.rejectAll();
+  else reviewer.acceptAll();
+};
+
+const identityCaseArbitrary = fc.record({
+  intents: identityIntentsArbitrary,
+  saves: fc.array(fc.boolean(), { minLength: 1, maxLength: 10 }),
+});
+
+test("an insertion before an original paragraph, split, saved and half deleted resolves to the same ids after another save", async () => {
+  const target = (await open()).getContent().at(1)?.id;
+  if (target === undefined) throw new Error("Missing original paragraph");
+  const edit = (reviewer: FolioDocxReviewer, operation: Operation) =>
+    expect(apply(reviewer, "tracked-changes", operation)).toBe(true);
+  for (const decision of ["reject", "accept"] as const) {
+    const reviewer = await open();
+    edit(reviewer, {
+      type: "insertBeforeBlock",
+      blockId: target,
+      text: "Second added clause.",
+    });
+    const inserted = reviewer.getContent().at(1)?.id;
+    if (inserted === undefined) throw new Error("Missing inserted paragraph");
+    edit(reviewer, { type: "splitBlock", blockId: inserted, offset: 6 });
+    const reopened = await reopen(reviewer);
+    const half = reopened.getContent().at(2)?.id;
+    if (half === undefined) throw new Error("Missing split half");
+    edit(reopened, { type: "deleteBlock", blockId: half });
+    const saved = await reopen(reopened);
+    resolveAll(reopened, decision);
+    resolveAll(saved, decision);
+    expect(identities(saved)).toEqual(identities(reopened));
+    if (decision === "reject")
+      expect(idsOf(saved)).toEqual(idsOf(await open()));
+  }
+});
+
 describe("resolving random tracked work", () => {
+  test("resolving gives the same paragraph ids whether or not the document was saved on the way", async () => {
+    await assertProperty(
+      fc.asyncProperty(identityCaseArbitrary, async ({ intents, saves }) => {
+        for (const decision of ["reject", "accept"] as const) {
+          const live = await runSaving(intents, saves, false);
+          const saved = await runSaving(intents, saves, true);
+          const expected = () => identities(live.reviewer, live.minted);
+          expect(identities(saved.reviewer, saved.minted)).toEqual(expected());
+          // The edits made after the save reach a second save too.
+          const savedAgain = await reopen(saved.reviewer);
+          for (const reviewer of [live.reviewer, saved.reviewer, savedAgain])
+            resolveAll(reviewer, decision);
+          expect(identities(saved.reviewer, saved.minted)).toEqual(expected());
+          expect(identities(savedAgain, saved.minted)).toEqual(expected());
+        }
+      }),
+      {
+        numRuns: 40,
+        id: "resolving gives the same paragraph ids whether or not the document was saved on the way",
+      },
+    );
+  });
+
   test("reject restores, accept equals direct, and both survive a save", async () => {
     const original = read(await open());
     const resolutionProperty = (counts: { comparedWithDirect: number }) =>
