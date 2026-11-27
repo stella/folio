@@ -2493,7 +2493,7 @@ const suggestMerge = ({
   let moveCount = 0;
   for (const move of moves) {
     if (move.type === "table")
-      moveCount += move.source.table.rows.length + move.source.revisions.length;
+      moveCount += move.source.insertedRows + move.source.revisions.length;
     else moveCount += move.source.paragraph.content.length === 0 ? 1 : 3;
   }
   const stamps = stampsFor(op, structuralCount + 3 + moveCount);
@@ -2594,7 +2594,7 @@ const suggestMerge = ({
     if (move.type === "table") {
       const { source } = move;
       const endBlockId = nextBlockId + source.paragraphs.length;
-      const endStamp = nextStamp + source.table.rows.length;
+      const endStamp = nextStamp + source.insertedRows;
       const endRevisions = endStamp + source.revisions.length;
       const nested = markNestedTableMove({
         source,

@@ -904,6 +904,8 @@ const getTrackedChangeGroupsFromProjectedDoc = (
         case "tablePropertyExceptionsChanged":
         case "rowPropertiesChanged":
         case "cellPropertiesChanged":
+        case "rowInserted":
+        case "rowDeleted":
         case "cellInserted":
         case "cellDeleted":
         case "cellMerged":

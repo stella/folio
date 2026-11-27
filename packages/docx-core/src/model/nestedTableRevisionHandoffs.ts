@@ -4,6 +4,20 @@ import type { TableGeometryNestedMove } from "./formatting";
 const tableBlocks = (table: Table) =>
   table.rows.flatMap(({ cells }) => cells.flatMap(({ content }) => content));
 
+const directTableParagraphIds = (table: Table): Set<string> => {
+  const ids = new Set<string>();
+  const visit = (blocks: readonly BlockContent[]): void => {
+    for (const block of blocks) {
+      if (block.type === "paragraph" && block.paraId !== undefined)
+        ids.add(block.paraId.toUpperCase());
+      else if (block.type === "blockCustomXml" || block.type === "blockSdt")
+        visit(block.content);
+    }
+  };
+  visit(tableBlocks(table));
+  return ids;
+};
+
 const visitBlocks = (
   blocks: readonly BlockContent[],
   visit: (block: BlockContent) => void,
@@ -23,6 +37,35 @@ const paragraphIds = (table: Table): Set<string> => {
       ids.add(block.paraId.toUpperCase());
   });
   return ids;
+};
+
+const nestedTables = (owner: Table): Table[] => {
+  const tables: Table[] = [];
+  visitBlocks(tableBlocks(owner), (block) => {
+    if (block.type === "table") tables.push(block);
+  });
+  return tables;
+};
+
+/** An authored-only row copy keeps its destination anchors after review. */
+export const nestedTableCopyByAnchors = (
+  owner: Table,
+  paragraphs: TableGeometryNestedMove["paragraphs"],
+): Table | undefined => {
+  const live = paragraphIds(owner);
+  const destinations = new Set(
+    paragraphs.map(([, to]) => to.toUpperCase()).filter((id) => live.has(id)),
+  );
+  if (destinations.size === 0) return undefined;
+  return nestedTables(owner).find((table) => {
+    const direct = directTableParagraphIds(table);
+    if (![...direct].some((id) => destinations.has(id))) return false;
+    const inside = paragraphIds(table);
+    return (
+      [...destinations].every((id) => inside.has(id)) &&
+      paragraphs.every(([from]) => !inside.has(from.toUpperCase()))
+    );
+  });
 };
 
 const revisionSlots = (table: Table): ReadonlyMap<number, string> => {
@@ -45,6 +88,11 @@ const revisionSlots = (table: Table): ReadonlyMap<number, string> => {
     record(owner.propertyChanges, `${index}:table`);
     for (const [rowIndex, row] of owner.rows.entries()) {
       const position = `${index}:row:${rowIndex}`;
+      if (row.structuralChange !== undefined)
+        slots.set(
+          row.structuralChange.info.id,
+          `${position}:${row.structuralChange.type}`,
+        );
       record(row.propertyChanges, position);
       record(row.tablePropertyExceptionChanges, position);
       for (const [cellIndex, cell] of row.cells.entries()) {
@@ -76,20 +124,7 @@ export const activeNestedTableRevisionHandoffs = (
     !Array.isArray(rows)
   )
     return [];
-  const tables: Table[] = [];
-  visitBlocks(tableBlocks(owner), (block) => {
-    if (block.type === "table") tables.push(block);
-  });
-  const inserted = new Set(rows);
-  const target = tables.find(({ rows: candidateRows }) =>
-    candidateRows.some(
-      ({ structuralChange }) =>
-        structuralChange?.type === "tableRowInsertion" &&
-        inserted.has(structuralChange.info.id),
-    ),
-  );
-  if (target === undefined) return [];
-  const destinations = paragraphIds(target);
+  const tables = nestedTables(owner);
   const pairs: [string, string][] = [];
   for (const pair of paragraphs) {
     if (!Array.isArray(pair) || pair.length !== 2) return [];
@@ -98,9 +133,22 @@ export const activeNestedTableRevisionHandoffs = (
       return [];
     const from = source.toUpperCase();
     const to = destination.toUpperCase();
-    if (destinations.has(from)) return [];
     pairs.push([from, to]);
   }
+  const inserted = new Set(rows);
+  const target =
+    inserted.size === 0
+      ? nestedTableCopyByAnchors(owner, pairs)
+      : tables.find(({ rows: candidateRows }) =>
+          candidateRows.some(
+            ({ structuralChange }) =>
+              structuralChange?.type === "tableRowInsertion" &&
+              inserted.has(structuralChange.info.id),
+          ),
+        );
+  if (target === undefined) return [];
+  const destinations = paragraphIds(target);
+  if (pairs.some(([from]) => destinations.has(from))) return [];
   // A decision on an earlier cell record may have removed the same
   // paragraphs from both copies before this move is decided.
   if (!pairs.some(([, to]) => destinations.has(to))) return [];

@@ -497,6 +497,172 @@ test.each([
   },
 );
 
+test.each(["some rows", "every row", "all deleted rows"] as const)(
+  "earlier nested row revisions remain independent when a merge moves %s",
+  (coverage) => {
+    const sourceRows = nested.rows.map((row, index) => ({
+      ...row,
+      cells:
+        coverage === "every row" && index === 0
+          ? [
+              cell(
+                {
+                  type: "table",
+                  rows: [
+                    {
+                      type: "tableRow",
+                      cells: [cell(paragraph("00000007", "Deeper"))],
+                    },
+                  ],
+                },
+                paragraph("00000003", "Nested 1"),
+              ),
+            ]
+          : row.cells,
+      ...(index === 1 && coverage === "some rows"
+        ? {}
+        : {
+            structuralChange: {
+              type:
+                index === 0 || coverage === "all deleted rows"
+                  ? "tableRowDeletion"
+                  : "tableRowInsertion",
+              info: { id: 51 + index, author: "Earlier" },
+            },
+          }),
+    })) satisfies Table["rows"];
+    const start = paragraph("00000001", "Owner");
+    const end = paragraph("00000005");
+    const originalTable = {
+      type: "table",
+      columnWidths: [1000, 1400],
+      rows: [
+        {
+          type: "tableRow",
+          cells: [cell(start), cell({ ...nested, rows: sourceRows }, end)],
+        },
+      ],
+    } satisfies Table;
+    const withTable = (table: Table): Document => ({
+      package: { document: { content: [table, paragraph("00000006")] } },
+    });
+    const original = withTable(originalTable);
+    const operation = {
+      type: DOCUMENT_OP_TYPES.MERGE_CELLS,
+      story: OP_STORIES.MAIN,
+      blockId: "00000001",
+      top: 0,
+      bottom: 1,
+      left: 0,
+      right: 2,
+    } as const;
+    const intent = { type: "table", operation } as const;
+    const ids = createEditorIntentIdAllocator()(original, intent);
+    const compiled = compileEditorIntent(original, {
+      intent,
+      mode: {
+        type: "suggesting",
+        revision: { id: ids.revisionId, author: "Reviewer" },
+        newIds: ids.newIds,
+      },
+    }).unwrap();
+    const pending = applyDocumentOps(original, compiled.ops).unwrap();
+    expect(
+      applyDocumentOps(pending.document, pending.inverse).unwrap().document,
+    ).toStrictEqual(original);
+    const xml = serializeTable(tableOf(pending.document), serializeParagraph);
+    const parsed = parseSavedTable(xml);
+    const grid = parsed.formatting?.gridChange;
+    const move =
+      grid?.geometryChange?.type === "mergeCells"
+        ? grid.geometryChange.nestedMoves?.at(0)
+        : undefined;
+    const aliases = move?.revisions;
+    if (grid === undefined || aliases === undefined)
+      throw new TypeError("Expected saved row handoffs.");
+    expect(aliases.map(([source]) => source)).toEqual(
+      coverage === "some rows" ? [51] : [51, 52],
+    );
+    const reopened = withTable(parsed);
+    const doc = toProseDoc(reopened, { tableReviewGeometry: "physical" });
+    for (const [source, temporary] of aliases) {
+      const mark =
+        source === 51 || coverage === "all deleted rows" ? "del" : "ins";
+      expect(xml).toContain(`<w:trPr><w:${mark} w:id="${temporary}"`);
+      expect(getTrackedChangeGroupsForIds(doc, [source]).at(0)).toEqual([
+        source,
+        temporary,
+      ]);
+    }
+    const originalIds = aliases.map(([source]) => source);
+    const temporaryIds = aliases.map(([, temporary]) => temporary);
+    const resolve = (
+      document: Document,
+      revisionIds: number[],
+      decision: "accept" | "reject",
+    ): Document =>
+      applyDocumentOp(document, {
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story: OP_STORIES.MAIN,
+        revisionIds,
+        decision,
+      }).unwrap().document;
+    const reopen = (document: Document): Document =>
+      withTable(
+        parseSavedTable(serializeTable(tableOf(document), serializeParagraph)),
+      );
+    const direct = applyDocumentOp(original, {
+      ...operation,
+      newBlockIds: [],
+    }).unwrap().document;
+    expect(
+      resolve(pending.document, [grid.id], REVISION_DECISIONS.ACCEPT),
+    ).toStrictEqual(direct);
+    expect(
+      resolve(pending.document, [grid.id], REVISION_DECISIONS.REJECT),
+    ).toStrictEqual(original);
+    for (const rowDecision of [
+      REVISION_DECISIONS.ACCEPT,
+      REVISION_DECISIONS.REJECT,
+    ]) {
+      const decidedOriginal = resolve(original, originalIds, rowDecision);
+      const earlier = reopen(resolve(reopened, temporaryIds, rowDecision));
+      // A move keeps the original closing paragraph even if an independent
+      // row decision later removes the entire table that preceded it.
+      const decidedDirect = resolve(direct, originalIds, rowDecision);
+      for (const mergeDecision of [
+        REVISION_DECISIONS.ACCEPT,
+        REVISION_DECISIONS.REJECT,
+      ]) {
+        const expected =
+          mergeDecision === REVISION_DECISIONS.ACCEPT
+            ? decidedDirect
+            : decidedOriginal;
+        const first = resolve(earlier, [grid.id], mergeDecision);
+        const second = resolve(
+          reopen(resolve(reopened, [grid.id], mergeDecision)),
+          originalIds,
+          rowDecision,
+        );
+        for (const completed of [first, second])
+          expect(projection(tableOf(completed))).toStrictEqual(
+            projection(tableOf(expected)),
+          );
+        if (mergeDecision === rowDecision) {
+          const together = resolve(
+            reopened,
+            [grid.id, ...originalIds],
+            rowDecision,
+          );
+          expect(projection(tableOf(together))).toStrictEqual(
+            projection(tableOf(expected)),
+          );
+        }
+      }
+    }
+  },
+);
+
 test("a merge refuses before creating an unwriteable nested-table review record", () => {
   const destinationId = (index: number) =>
     (0x4000 + index).toString(16).padStart(8, "0");

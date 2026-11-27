@@ -21,6 +21,7 @@ import {
   type TableGeometryNestedMove,
   type TableGridChange,
 } from "../model/formatting";
+import { nestedTableCopyByAnchors } from "../model/nestedTableRevisionHandoffs";
 import { readXml, type XmlElement } from "../xml/streamingXmlParser";
 import {
   OOXML_NAMESPACE_SCOPE,
@@ -63,6 +64,7 @@ export type NestedTableMoveSource = {
   table: Table;
   paragraphs: string[];
   revisions: number[];
+  insertedRows: number;
 };
 
 const movableAtom = (leaf: RunContent): boolean =>
@@ -478,10 +480,11 @@ export const nestedTableMoveSource = (
         row.bookmarks !== undefined ||
         row.contentControls !== undefined ||
         row.carrierStack !== undefined ||
-        row.structuralChange !== undefined ||
         row.cells.length === 0
       )
         return false;
+      if (row.structuralChange !== undefined)
+        revisions.push(row.structuralChange.info.id);
       collectProperties(row.propertyChanges);
       collectProperties(row.tablePropertyExceptionChanges);
       return row.cells.every((cell) => {
@@ -527,7 +530,14 @@ export const nestedTableMoveSource = (
   return revisions.length === allowed.size &&
     actual.length === allowed.size &&
     actual.every((key) => allowed.has(key))
-    ? { table, paragraphs, revisions }
+    ? {
+        table,
+        paragraphs,
+        revisions,
+        insertedRows: table.rows.filter(
+          ({ structuralChange }) => structuralChange === undefined,
+        ).length,
+      }
     : undefined;
 };
 
@@ -573,6 +583,9 @@ const withNestedMoveIdentities = (
       : { propertyChanges: table.propertyChanges.map(restamp) }),
     rows: table.rows.map((row) => ({
       ...row,
+      ...(row.structuralChange === undefined
+        ? {}
+        : { structuralChange: restamp(row.structuralChange) }),
       ...(row.propertyChanges === undefined
         ? {}
         : { propertyChanges: row.propertyChanges.map(restamp) }),
@@ -614,7 +627,7 @@ export const markNestedTableMove = ({
 }: MarkNestedTableMoveOptions): MarkedNestedTableMove | undefined => {
   if (
     destinations.length !== source.paragraphs.length ||
-    rowStamps.length !== source.table.rows.length ||
+    rowStamps.length !== source.insertedRows ||
     recordStamps.length !== source.revisions.length
   )
     return undefined;
@@ -639,8 +652,10 @@ export const markNestedTableMove = ({
     ),
     revisions: new Map(revisions),
   });
-  const rows = table.rows.map((row, index) => {
-    const stamp = rowStamps[index];
+  let nextStamp = 0;
+  const rows = table.rows.map((row) => {
+    if (row.structuralChange !== undefined) return row;
+    const stamp = rowStamps[nextStamp++];
     return stamp === undefined
       ? row
       : {
@@ -1111,6 +1126,12 @@ export const resolveTableMoves = ({
       move.rows.map((id) => [id, move] as const),
     ),
   );
+  const nestedAnchors = new Map<Table, TableGeometryNestedMove>();
+  for (const move of geometry.nestedMoves ?? []) {
+    if (move.rows.length > 0) continue;
+    const copy = nestedTableCopyByAnchors(table, move.paragraphs);
+    if (copy !== undefined) nestedAnchors.set(copy, move);
+  }
   const emptyOwner =
     geometry.emptyOwner === undefined ? undefined : idKey(geometry.emptyOwner);
   const rows = table.rows.map((row) =>
@@ -1150,7 +1171,9 @@ export const resolveTableMoves = ({
                       nested.has(change.info.id),
                   );
                 const record =
-                  move === undefined ? undefined : nested.get(move.info.id);
+                  move === undefined
+                    ? nestedAnchors.get(block)
+                    : nested.get(move.info.id);
                 if (record === undefined) return [block];
                 if (reject) return [];
                 const placed = withNestedMoveIdentities(block, {
