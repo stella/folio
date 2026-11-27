@@ -6338,6 +6338,80 @@ const resolveList = ({
       while (leftEnd >= 0 && blocking(leftEnd)) leftEnd -= 1;
       let rightStart = seam;
       while (rightStart < out.length && blocking(rightStart)) rightStart += 1;
+      const removalMade = addedRemovalSeams.has(recorded)
+        ? removalDates.get(recorded)
+        : undefined;
+      // A pending insertion made before a removed insertion, nearest the seam,
+      // is a piece of the record it was made in, as content standing there
+      // once that piece is resolved is. Later ones between the pieces,
+      // joined neither to the seam nor, made at its edge, to the piece
+      // beyond, are new content put beside the seam: they wait on it where
+      // the pieces are alike down to its depth, and nothing joins where they
+      // are not, as once the pending pieces are resolved.
+      const madeBefore = (index: number): boolean => {
+        const node = out[index]?.node;
+        return (
+          removalMade !== undefined &&
+          node !== undefined &&
+          isTrackedWrapper(node) &&
+          (node.info.date ?? "") < removalMade
+        );
+      };
+      /** Whether `row`, listed from the seam's `side`, stands between. */
+      const standsBetween = (
+        row: readonly SourceOccurrence[],
+        side: "before" | "after",
+      ): boolean => {
+        const facing = row.at(0)?.node;
+        return (
+          facing === undefined ||
+          (isTrackedWrapper(facing) &&
+            (facing.resolutionJoins?.[side] ?? 0) === 0 &&
+            rowJoinDepth(
+              row.map(({ node }) => node),
+              side === "before" ? "after" : "before",
+            ) === 0)
+        );
+      };
+      let pieceLeft = keptEnd;
+      while (pieceLeft > leftEnd && !madeBefore(pieceLeft)) pieceLeft -= 1;
+      let pieceRight = seam;
+      while (pieceRight < rightStart && !madeBefore(pieceRight))
+        pieceRight += 1;
+      /** The record the piece at `index` holds at `edge`. */
+      const recordOf = (index: number, edge: "start" | "end") => {
+        const node = out[index]?.node;
+        return node !== undefined && madeBefore(index) && isTrackedWrapper(node)
+          ? node.content.at(edge === "end" ? -1 : 0)
+          : node;
+      };
+      // Content between two pieces this resolution removes was made inside
+      // the removed record, not put beside it: it takes the seam, and the
+      // markers kept there, as a piece of that record.
+      const removedWithin = (from: number, to: number): boolean =>
+        [...addedRemovalSeams].some(
+          (at) => at !== recorded && at >= from && at <= to,
+        );
+      const newBetween = pieceLeft < keptEnd || pieceRight > seam;
+      const alikePieces =
+        alikeDepth(recordOf(pieceLeft, "end"), recordOf(pieceRight, "start")) >=
+        exactDepth - 1;
+      const piecesPending =
+        (pieceLeft > leftEnd || pieceRight < rightStart) &&
+        pieceLeft >= 0 &&
+        pieceRight < out.length &&
+        (newBetween || !alikePieces) &&
+        !removedWithin(pieceLeft + 1, keptEnd) &&
+        !removedWithin(seam + 1, pieceRight) &&
+        standsBetween(
+          out.slice(pieceLeft + 1, keptEnd + 1).toReversed(),
+          "after",
+        ) &&
+        standsBetween(out.slice(seam, pieceRight), "before");
+      if (piecesPending) {
+        leftEnd = pieceLeft;
+        rightStart = pieceRight;
+      }
       // A kept revision's join that meets a pending insertion made inside
       // the record it cut is that insertion's join on the facing side too:
       // accepting the insertion later joins its content with the piece, as
@@ -6375,9 +6449,6 @@ const resolveList = ({
       // on that side lies beyond the edge, as removing them with the seam
       // leaves the cut reaching it: the seam waits on them as on insertions
       // between two pieces in the list.
-      const removalMade = addedRemovalSeams.has(recorded)
-        ? removalDates.get(recorded)
-        : undefined;
       const laterContentTo = (from: number, to: number, facing: number) =>
         removalMade !== undefined &&
         from < to &&
@@ -6566,7 +6637,8 @@ const resolveList = ({
       // goes if it is accepted, so the seam waits on it too.
       const holdsPiece = (index: number, edge: "start" | "end"): boolean => {
         const node = out[index]?.node;
-        const other = out[edge === "end" ? rightStart : leftEnd]?.node;
+        const otherAt = edge === "end" ? rightStart : leftEnd;
+        const other = out[otherAt]?.node;
         if (
           node === undefined ||
           other === undefined ||
@@ -6576,13 +6648,16 @@ const resolveList = ({
         )
           return false;
         const piece = edge === "end" ? node.content.at(-1) : node.content.at(0);
-        // Facing it, the other piece can be held in a pending removal too.
+        // Facing it, the other piece can be held in a pending removal too,
+        // or be a pending insertion's piece, which presents its content.
         let facing: InlineNode | undefined = other;
         if (
           (other.type === "deletion" || other.type === "moveFrom") &&
           !resolution.ids.has(other.info.id)
         )
           facing = edge === "end" ? other.content.at(0) : other.content.at(-1);
+        else if (madeBefore(otherAt))
+          facing = recordOf(otherAt, edge === "end" ? "start" : "end");
         return (
           piece !== undefined &&
           facing !== undefined &&
@@ -6651,6 +6726,7 @@ const resolveList = ({
         leftHolder !== undefined ||
         rightHolder !== undefined ||
         pendingPieces ||
+        (piecesPending && alikePieces) ||
         (beyondLeft !== undefined &&
           beyondRight !== undefined &&
           !isTrackedWrapper(beyondLeft) &&
