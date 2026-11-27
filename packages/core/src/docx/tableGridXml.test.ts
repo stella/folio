@@ -83,23 +83,24 @@ test("a rebuilt table distinguishes a missing width from an explicit zero", () =
   expect(modelTableGrid(rebuilt)).toContain(widths);
 });
 
+const readTable = (body: string) => {
+  const xml = body.replace(
+    "<w:tbl>",
+    '<w:tbl xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml">',
+  );
+  const element = parseXmlDocument(xml);
+  if (element === null) throw new TypeError("Expected a table element.");
+  const table = parseTable(element, new Map(), null, null, null, null);
+  if (table === undefined) throw new TypeError("Expected a parsed table.");
+  return table;
+};
+
 test.each([
   ["cellDel", REVISION_DECISIONS.ACCEPT],
   ["cellIns", REVISION_DECISIONS.REJECT],
 ] as const)(
   "review of %s can leave inferred grid columns",
   (mark, decision) => {
-    const readTable = (body: string) => {
-      const xml = body.replace(
-        "<w:tbl>",
-        '<w:tbl xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml">',
-      );
-      const element = parseXmlDocument(xml);
-      if (element === null) throw new TypeError("Expected a table element.");
-      const table = parseTable(element, new Map(), null, null, null, null);
-      if (table === undefined) throw new TypeError("Expected a parsed table.");
-      return table;
-    };
     const table = readTable(
       [
         '<w:tbl><w:tblGrid><w:gridCol w:w="600"/></w:tblGrid><w:tr>',
@@ -131,6 +132,51 @@ test.each([
     const reopened = readTable(saved);
     expect(gridColumnCount(reopened)).toBe(2);
     expect(reopened.rows.at(0)?.cells).toHaveLength(1);
+    expect(
+      applyDocumentOps(resolved.document, resolved.inverse).unwrap().document,
+    ).toStrictEqual(document);
+  },
+);
+
+test.each([
+  { cut: 0, last: 1, expected: [undefined, undefined] },
+  { cut: 0, last: 2, expected: [undefined, "restart", "continue"] },
+  { cut: 1, last: 3, expected: ["restart", undefined, "restart", "continue"] },
+])(
+  "selective cell review retains vertical merge fragments ($cut of $last)",
+  ({ cut, last, expected }) => {
+    const table = readTable(
+      [
+        '<w:tbl><w:tblGrid><w:gridCol w:w="600"/><w:gridCol w:w="700"/></w:tblGrid>',
+        ...Array.from({ length: last + 1 }, (_value, index) => {
+          const merge =
+            index === 0 ? '<w:vMerge w:val="restart"/>' : "<w:vMerge/>";
+          const change =
+            index === cut ? '<w:cellDel w:id="7" w:author="Editor"/>' : "";
+          return `<w:tr><w:tc><w:tcPr>${merge}${change}</w:tcPr><w:p w14:paraId="0000001${index}"><w:r><w:t>Merge cell ${index}</w:t></w:r></w:p></w:tc><w:tc><w:p w14:paraId="0000002${index}"/></w:tc></w:tr>`;
+        }),
+        "</w:tbl>",
+      ].join(""),
+    );
+    const document = { package: { document: { content: [table] } } };
+    const resolved = applyDocumentOp(document, {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: [7],
+      decision: REVISION_DECISIONS.ACCEPT,
+    }).unwrap();
+    const result = resolved.document.package.document.content.at(0);
+    if (result?.type !== "table")
+      throw new TypeError("Expected a retained table.");
+    expect(result.rows).toHaveLength(last + 1);
+    const mergedCells = (source: Table) =>
+      source.rows.map((row) => row.cells.at(0)?.formatting?.vMerge);
+    expect(mergedCells(result)).toEqual(expected);
+    const saved = serializeTable(result, serializeParagraph);
+    expect(saved).not.toContain(`Merge cell ${cut}`);
+    for (let index = 0; index <= last; index++)
+      if (index !== cut) expect(saved).toContain(`Merge cell ${index}`);
+    expect(mergedCells(readTable(saved))).toEqual(expected);
     expect(
       applyDocumentOps(resolved.document, resolved.inverse).unwrap().document,
     ).toStrictEqual(document);
