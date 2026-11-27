@@ -4,8 +4,8 @@ import type { BlockContent, Document, Paragraph } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { DOCUMENT_OP_TYPES, type DocumentOp, OP_STORIES } from "../types";
 
-const inner = { type: "paragraph", paraId: "10000003", content: [] } as const;
-const followers = {
+const inner: Paragraph = { type: "paragraph", paraId: "10000003", content: [] };
+const followers: Record<string, BlockContent> = {
   preservedBlock: { type: "preservedBlock", xml: "<w:altChunk/>" },
   blockSdt: {
     type: "blockSdt",
@@ -18,7 +18,7 @@ const followers = {
     closingXml: "</w:customXml>",
     content: [inner],
   },
-} satisfies Record<string, BlockContent>;
+};
 
 for (const [kind, follower] of Object.entries(followers))
   test(`${kind}: rejected added marks preserve final paragraphs, sections and JSON inverses`, () => {
@@ -56,7 +56,7 @@ for (const [kind, follower] of Object.entries(followers))
                     type: "paragraph",
                     paraId: "10000004",
                     content: [],
-                  } as const,
+                  } satisfies Paragraph,
                 ]
               : [];
             const source = {
