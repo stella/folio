@@ -324,3 +324,124 @@ describe("pieces of one rejected insertion meet around the markers that waited b
     expect(first(inTurn)).toEqual(first(atOnce));
   });
 });
+
+describe("a boundary kept beside a later insertion at a paragraph's start waits for the piece beyond the edge", () => {
+  // Insertion 1's link cut the control in two (3 levels) and holds a
+  // bookmark; insertion 2 was made before it later, and mark 3 split the
+  // paragraph between the control's first piece and insertion 2.
+  const tab = () => ({ type: "run", content: [{ type: "tab" }] }) as const;
+  const tracked = (): Document =>
+    documentOf([
+      {
+        type: "paragraph",
+        paraId: "10000000",
+        content: [
+          tab(),
+          {
+            type: "inlineSdt",
+            properties: { sdtType: "richText", id: 1, tag: "clause" },
+            content: [text("a")],
+          },
+        ],
+        pPrMark: { kind: "ins", info: stamp(3, 3), resolutionJoin: 0 },
+      },
+      {
+        type: "paragraph",
+        paraId: "00000001",
+        content: [
+          {
+            type: "insertion",
+            info: stamp(2, 1),
+            content: [text("b")],
+            resolutionJoins: { before: 0, after: 0, remove: 0 },
+          },
+          {
+            type: "insertion",
+            info: stamp(1, 0),
+            content: [link([{ type: "bookmarkStart", id: 1, name: "_Link" }])],
+            resolutionJoins: { before: 0, after: 0, remove: 3 },
+          },
+          {
+            type: "inlineSdt",
+            properties: { sdtType: "richText", id: 2, tag: "clause" },
+            content: [text("aaa")],
+          },
+        ],
+      },
+    ]);
+  const contents = (document: Document): ParagraphContent[][] =>
+    document.package.document.content.map((block) =>
+      block.type === "paragraph" ? block.content : [],
+    );
+
+  test("rejecting at once and in every order joins the control around the bookmark", () => {
+    const joined: ParagraphContent[][] = [
+      [
+        tab(),
+        {
+          type: "inlineSdt",
+          properties: { sdtType: "richText", id: 1, tag: "clause" },
+          content: [
+            text("a"),
+            { type: "bookmarkStart", id: 1, name: "_Link" },
+            text("aaa"),
+          ],
+        },
+      ],
+    ];
+    expect(contents(resolve(tracked(), [1, 2, 3], REJECT))).toEqual(joined);
+    for (const order of [
+      [1, 2, 3],
+      [1, 3, 2],
+      [2, 1, 3],
+      [2, 3, 1],
+      [3, 1, 2],
+      [3, 2, 1],
+    ])
+      expect(
+        contents(
+          resolvedInTurn(
+            tracked(),
+            order.map((id) => ({ ids: [id], decision: REJECT })),
+          ),
+        ),
+      ).toEqual(joined);
+  });
+
+  test("with the split accepted the bookmark goes into the piece after it, whichever goes first", () => {
+    const apart: ParagraphContent[][] = [
+      [
+        tab(),
+        {
+          type: "inlineSdt",
+          properties: { sdtType: "richText", id: 1, tag: "clause" },
+          content: [text("a")],
+        },
+      ],
+      [
+        {
+          type: "inlineSdt",
+          properties: { sdtType: "richText", id: 2, tag: "clause" },
+          content: [
+            { type: "bookmarkStart", id: 1, name: "_Link" },
+            text("aaa"),
+          ],
+        },
+      ],
+    ];
+    const accept: Step = { ids: [3], decision: ACCEPT };
+    const rejections: Step[][] = [
+      [{ ids: [1, 2], decision: REJECT }],
+      [1, 2].map((id) => ({ ids: [id], decision: REJECT })),
+      [2, 1].map((id) => ({ ids: [id], decision: REJECT })),
+    ];
+    for (const rejected of rejections) {
+      expect(
+        contents(resolvedInTurn(tracked(), [...rejected, accept])),
+      ).toEqual(apart);
+      expect(
+        contents(resolvedInTurn(tracked(), [accept, ...rejected])),
+      ).toEqual(apart);
+    }
+  });
+});
