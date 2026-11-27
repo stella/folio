@@ -13,7 +13,7 @@
  */
 
 export { getSingularRunPropertyChange } from "./runPropertyReview";
-export { activeNestedTablePropertyHandoffs } from "./nestedTablePropertyHandoffs";
+export { activeNestedTableRevisionHandoffs } from "./nestedTableRevisionHandoffs";
 export {
   MAX_TABLE_GEOMETRY_HISTORY_LENGTH,
   MAX_TABLE_PICTURE_ID,

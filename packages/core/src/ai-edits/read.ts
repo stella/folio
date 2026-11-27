@@ -289,7 +289,7 @@ const tableGridRevisionId = (node: PMNode): number | null => {
     : null;
 };
 
-const collectNestedTablePropertyCopies = (
+const collectNestedTableRevisionCopies = (
   node: PMNode,
   copies: Map<number, number>,
 ): void => {
@@ -302,8 +302,8 @@ const collectNestedTablePropertyCopies = (
   const moves = geometry["nestedMoves"];
   if (!Array.isArray(moves)) return;
   for (const move of moves) {
-    if (!isRecord(move) || !Array.isArray(move["properties"])) continue;
-    for (const pair of move["properties"]) {
+    if (!isRecord(move) || !Array.isArray(move["revisions"])) continue;
+    for (const pair of move["revisions"]) {
       if (!Array.isArray(pair) || pair.length !== 2) continue;
       const [source, temporary] = pair;
       if (
@@ -398,7 +398,7 @@ const getTrackedChangeGroupsFromProjectedDoc = (
   // folds, the content of continuation cells, a table's grid revision.
   // Resolving the entry reaches them.
   const foldedIds = new Map<string, Set<number>>();
-  const nestedTablePropertyCopies = new Map<number, number>();
+  const nestedTableRevisionCopies = new Map<number, number>();
   const fold = (key: string, ids: Iterable<number>) => {
     const folded = foldedIds.get(key) ?? new Set<number>();
     for (const id of ids) folded.add(id);
@@ -490,7 +490,7 @@ const getTrackedChangeGroupsFromProjectedDoc = (
       });
     }
     if (node.type.name === "table") {
-      collectNestedTablePropertyCopies(node, nestedTablePropertyCopies);
+      collectNestedTableRevisionCopies(node, nestedTableRevisionCopies);
       for (const [rowPos, ids] of continuationRevisionIdsByRow(node, pos)) {
         continuationRevisions.set(rowPos, ids);
         for (const id of ids) continuationRevisionsOwnedByRows.add(id);
@@ -896,7 +896,7 @@ const getTrackedChangeGroupsFromProjectedDoc = (
     return undefined;
   });
 
-  if (nestedTablePropertyCopies.size > 0) {
+  if (nestedTableRevisionCopies.size > 0) {
     const keys = new Map<number, string>();
     for (const [key, change] of grouped) {
       switch (change.type) {
@@ -904,11 +904,14 @@ const getTrackedChangeGroupsFromProjectedDoc = (
         case "tablePropertyExceptionsChanged":
         case "rowPropertiesChanged":
         case "cellPropertiesChanged":
+        case "cellInserted":
+        case "cellDeleted":
+        case "cellMerged":
           keys.set(change.id, key);
           break;
       }
     }
-    for (const [temporary, source] of nestedTablePropertyCopies) {
+    for (const [temporary, source] of nestedTableRevisionCopies) {
       const original = keys.get(source);
       const copy = keys.get(temporary);
       if (original === undefined || copy === undefined) continue;

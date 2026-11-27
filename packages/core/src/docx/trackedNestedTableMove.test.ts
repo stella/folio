@@ -79,6 +79,49 @@ const nestedWithProperties = {
   ],
 } satisfies Table;
 
+const nestedWithCellRecords = {
+  type: "table",
+  columnWidths: [900, 1100],
+  rows: [
+    {
+      type: "tableRow",
+      cells: [
+        {
+          ...cell(paragraph("00000003", "Earlier cell deletion")),
+          structuralChange: {
+            type: "tableCellDeletion",
+            info: { id: 44, author: "Earlier" },
+          },
+        },
+        {
+          ...cell(paragraph("00000004", "Retained cell")),
+          formatting: { width: { type: "dxa", value: 1100 } },
+          propertyChanges: [
+            {
+              type: "tableCellPropertyChange",
+              info: { id: 45, author: "Earlier" },
+              previousFormatting: { width: { type: "dxa", value: 1000 } },
+            },
+          ],
+        },
+      ],
+    },
+  ],
+} satisfies Table;
+
+const parseSavedTable = (xml: string): Table => {
+  const element = parseXmlDocument(
+    xml.replace(
+      "<w:tbl",
+      `<w:tbl xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:folio="${FOLIO_REVIEW_HISTORY_NAMESPACE}"`,
+    ),
+  );
+  if (element === null) throw new TypeError("Expected well-formed table XML.");
+  const parsed = parseTable(element, new Map(), null, null, null, null);
+  if (parsed === undefined) throw new TypeError("Expected a reopened table.");
+  return parsed;
+};
+
 const tableOf = (document: Document): Table => {
   const block = document.package.document.content.at(0);
   if (block?.type !== "table") throw new TypeError("Expected a table.");
@@ -106,14 +149,17 @@ test.each([
   "horizontal with earlier properties",
   "rectangular with earlier properties",
   "rectangular with an earlier grid",
+  "rectangular with earlier cell records",
 ] as const)(
-  "a %s merge moves a nested table and closing paragraph through native review",
+  "a nested table and closing paragraph survive a tracked merge (%s)",
   (shape) => {
     const rectangular = shape.startsWith("rectangular") || shape === "retained";
     const retained = shape === "retained";
     const priorProperties = shape.endsWith("with earlier properties");
     const priorGrid = shape.endsWith("with an earlier grid");
+    const priorCells = shape.endsWith("with earlier cell records");
     let nestedSource: Table = priorProperties ? nestedWithProperties : nested;
+    if (priorCells) nestedSource = nestedWithCellRecords;
     if (priorGrid)
       nestedSource = {
         ...nested,
@@ -207,20 +253,12 @@ test.each([
     const rowProperties = priorProperties ? "<w:cantSplit/>" : "";
     expect(xml).toContain(`<w:trPr>${rowProperties}<w:ins w:id="${nestedId}"`);
     expect(xml.match(/<w:tbl>/gu)).toHaveLength(3);
-    const element = parseXmlDocument(
-      xml.replace(
-        "<w:tbl",
-        `<w:tbl xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:folio="${FOLIO_REVIEW_HISTORY_NAMESPACE}"`,
-      ),
-    );
-    if (element === null) throw new Error("Expected well-formed XML.");
-    const parsed = parseTable(element, new Map(), null, null, null, null);
-    if (parsed === undefined) throw new Error("Expected a reopened table.");
+    const parsed = parseSavedTable(xml);
     if (priorProperties || priorGrid) {
       const fact = parsed.formatting?.gridChange?.geometryChange;
       const aliases =
         fact?.type === "mergeCells"
-          ? fact.nestedMoves?.at(0)?.properties
+          ? fact.nestedMoves?.at(0)?.revisions
           : undefined;
       if (aliases === undefined)
         throw new TypeError("Expected saved property handoffs.");
@@ -273,6 +311,96 @@ test.each([
         ).toBe(true);
       }
       expect(existing.formatting?.gridChange?.geometryChange).toBeDefined();
+    }
+    if (priorCells) {
+      const fact = parsed.formatting?.gridChange?.geometryChange;
+      const aliases =
+        fact?.type === "mergeCells"
+          ? fact.nestedMoves?.at(0)?.revisions
+          : undefined;
+      if (aliases?.length !== 2)
+        throw new TypeError("Expected the cell revision handoffs.");
+      const [deletion, formatting] = aliases;
+      if (deletion === undefined || formatting === undefined)
+        throw new TypeError("Expected both cell revision handoffs.");
+      expect(deletion[0]).toBe(44);
+      expect(formatting[0]).toBe(45);
+      const doc = toProseDoc(withTable(parsed), {
+        tableReviewGeometry: "physical",
+      });
+      expect(getTrackedChangeGroupsForIds(doc, [44]).at(0)).toEqual(deletion);
+      const descriptor = {
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story: OP_STORIES.MAIN,
+      } as const;
+      const accepted = applyDocumentOp(withTable(parsed), {
+        ...descriptor,
+        revisionIds: [deletion[1]],
+        decision: REVISION_DECISIONS.ACCEPT,
+      }).unwrap();
+      expect(
+        applyDocumentOps(accepted.document, accepted.inverse).unwrap().document,
+      ).toStrictEqual(withTable(parsed));
+      const saved = parseSavedTable(
+        serializeTable(tableOf(accepted.document), serializeParagraph),
+      );
+      const pendingGeometry = saved.formatting?.gridChange?.geometryChange;
+      const remainingAliases =
+        pendingGeometry?.type === "mergeCells"
+          ? pendingGeometry.nestedMoves?.at(0)?.revisions
+          : undefined;
+      expect(remainingAliases).toEqual([formatting]);
+      const rejected = applyDocumentOp(withTable(saved), {
+        ...descriptor,
+        revisionIds: [formatting[1]],
+        decision: REVISION_DECISIONS.REJECT,
+      }).unwrap().document;
+      const nestedTables = tableOf(rejected).rows.flatMap(({ cells }) =>
+        cells.flatMap(({ content }) =>
+          content.filter((block) => block.type === "table"),
+        ),
+      );
+      expect(nestedTables).toHaveLength(2);
+      for (const item of nestedTables) {
+        expect(item.rows.at(0)?.cells).toHaveLength(1);
+        const retainedCell = item.rows.at(0)?.cells.at(0);
+        expect(retainedCell?.formatting?.width).toEqual({
+          type: "dxa",
+          value: 1000,
+        });
+        expect(retainedCell?.propertyChanges).toBeUndefined();
+      }
+      const withoutCell = applyDocumentOp(original, {
+        ...descriptor,
+        revisionIds: [44],
+        decision: REVISION_DECISIONS.ACCEPT,
+      }).unwrap().document;
+      const reviewedSource = applyDocumentOp(withoutCell, {
+        ...descriptor,
+        revisionIds: [45],
+        decision: REVISION_DECISIONS.REJECT,
+      }).unwrap().document;
+      const reviewedDirect = applyDocumentOp(reviewedSource, {
+        ...operation,
+        newBlockIds: op.newBlockIds.slice(0, continuations),
+      }).unwrap().document;
+      for (const decision of [
+        REVISION_DECISIONS.ACCEPT,
+        REVISION_DECISIONS.REJECT,
+      ]) {
+        const completed = applyDocumentOp(rejected, {
+          ...descriptor,
+          revisionIds: [nestedId],
+          decision,
+        }).unwrap().document;
+        const expected =
+          decision === REVISION_DECISIONS.ACCEPT
+            ? reviewedDirect
+            : reviewedSource;
+        expect(projection(tableOf(completed))).toEqual(
+          projection(tableOf(expected)),
+        );
+      }
     }
 
     for (const decision of [

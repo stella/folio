@@ -510,9 +510,9 @@ const CONTENT_CONTROL_STACK = "contentControls";
 const ownReservedKeys: OwnKeys = (entries, { heldBy }) => {
   const keys: string[] = [];
   if (heldBy === "nestedMoves") {
-    const properties = fieldOf(entries, "properties");
-    if (Array.isArray(properties)) {
-      for (const pair of properties) {
+    const revisions = fieldOf(entries, "revisions");
+    if (Array.isArray(revisions)) {
+      for (const pair of revisions) {
         if (!Array.isArray(pair) || pair.length !== 2) continue;
         for (const id of pair)
           if (typeof id === "number")

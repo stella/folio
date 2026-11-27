@@ -911,7 +911,7 @@ const isNestedTableMove = (value: unknown): value is NestedTableMove => {
         pair.length === 2 &&
         pair.every((id) => typeof id === "string" && /^[\da-f]{8}$/iu.test(id)),
     ) &&
-    validIdentityHandoffs(value["properties"], validRevisionHandoff)
+    validIdentityHandoffs(value["revisions"], validRevisionHandoff)
   );
 };
 const isTableGeometryChange = (value: unknown): value is GeometryChange => {

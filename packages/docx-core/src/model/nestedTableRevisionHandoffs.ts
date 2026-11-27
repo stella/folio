@@ -25,7 +25,7 @@ const paragraphIds = (table: Table): Set<string> => {
   return ids;
 };
 
-const propertySlots = (table: Table): ReadonlyMap<number, string> => {
+const revisionSlots = (table: Table): ReadonlyMap<number, string> => {
   const slots = new Map<number, string>();
   const record = (
     changes: readonly { type: string; info: { id: number } }[] | undefined,
@@ -47,23 +47,30 @@ const propertySlots = (table: Table): ReadonlyMap<number, string> => {
       const position = `${index}:row:${rowIndex}`;
       record(row.propertyChanges, position);
       record(row.tablePropertyExceptionChanges, position);
-      for (const [cellIndex, cell] of row.cells.entries())
-        record(cell.propertyChanges, `${position}:cell:${cellIndex}`);
+      for (const [cellIndex, cell] of row.cells.entries()) {
+        const cellPosition = `${position}:cell:${cellIndex}`;
+        record(cell.propertyChanges, cellPosition);
+        if (cell.structuralChange !== undefined)
+          slots.set(
+            cell.structuralChange.info.id,
+            `${cellPosition}:${cell.structuralChange.type}`,
+          );
+      }
     }
   }
   return slots;
 };
 
-/** Active property pairs must belong to the two recorded nested tables. */
-export const activeNestedTablePropertyHandoffs = (
+/** Active revision pairs must belong to the two recorded nested tables. */
+export const activeNestedTableRevisionHandoffs = (
   owner: Table,
   move: TableGeometryNestedMove,
 ): readonly (readonly [number, number])[] => {
   if (typeof move !== "object" || move === null) return [];
-  const { properties, paragraphs, rows } = move;
+  const { revisions, paragraphs, rows } = move;
   if (
-    !Array.isArray(properties) ||
-    properties.length === 0 ||
+    !Array.isArray(revisions) ||
+    revisions.length === 0 ||
     !Array.isArray(paragraphs) ||
     paragraphs.length === 0 ||
     !Array.isArray(rows)
@@ -91,18 +98,24 @@ export const activeNestedTablePropertyHandoffs = (
       return [];
     const from = source.toUpperCase();
     const to = destination.toUpperCase();
-    if (destinations.has(from) || !destinations.has(to)) return [];
+    if (destinations.has(from)) return [];
     pairs.push([from, to]);
   }
+  // A decision on an earlier cell record may have removed the same
+  // paragraphs from both copies before this move is decided.
+  if (!pairs.some(([, to]) => destinations.has(to))) return [];
   const source = tables.find((candidate) => {
     if (candidate === target) return false;
     const origins = paragraphIds(candidate);
-    return pairs.every(([from, to]) => origins.has(from) && !origins.has(to));
+    return pairs.every(
+      ([from, to]) =>
+        !origins.has(to) && origins.has(from) === destinations.has(to),
+    );
   });
   if (source === undefined) return [];
-  const originals = propertySlots(source);
-  const copies = propertySlots(target);
-  return properties.filter((pair) => {
+  const originals = revisionSlots(source);
+  const copies = revisionSlots(target);
+  return revisions.filter((pair) => {
     if (!Array.isArray(pair) || pair.length !== 2) return false;
     const [old, temporary] = pair;
     const slot = originals.get(old);

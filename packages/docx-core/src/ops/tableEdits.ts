@@ -2493,8 +2493,7 @@ const suggestMerge = ({
   let moveCount = 0;
   for (const move of moves) {
     if (move.type === "table")
-      moveCount +=
-        move.source.table.rows.length + move.source.properties.length;
+      moveCount += move.source.table.rows.length + move.source.revisions.length;
     else moveCount += move.source.paragraph.content.length === 0 ? 1 : 3;
   }
   const stamps = stampsFor(op, structuralCount + 3 + moveCount);
@@ -2596,12 +2595,12 @@ const suggestMerge = ({
       const { source } = move;
       const endBlockId = nextBlockId + source.paragraphs.length;
       const endStamp = nextStamp + source.table.rows.length;
-      const endProperties = endStamp + source.properties.length;
+      const endRevisions = endStamp + source.revisions.length;
       const nested = markNestedTableMove({
         source,
         destinations: op.newBlockIds.slice(nextBlockId, endBlockId),
         rowStamps: moveStamps.slice(nextStamp, endStamp),
-        propertyStamps: moveStamps.slice(endStamp, endProperties),
+        recordStamps: moveStamps.slice(endStamp, endRevisions),
       });
       if (nested === undefined)
         return mismatch(
@@ -2609,7 +2608,7 @@ const suggestMerge = ({
           "A moved table needs its row stamps and destination paragraph ids.",
         );
       nextBlockId = endBlockId;
-      nextStamp = endProperties;
+      nextStamp = endRevisions;
       nestedMoves.push(nested.record);
       appendDestination(move.wrappers, nested.destination);
       continue;
@@ -3242,7 +3241,7 @@ export const tableEditCopyIdentityDemand = (
       mergeMoveBlockControls(moves).size + mergeMoveInlineControlCount(moves),
     revisions: moves.reduce(
       (total, move) =>
-        total + (move.type === "table" ? move.source.properties.length : 0),
+        total + (move.type === "table" ? move.source.revisions.length : 0),
       0,
     ),
   };

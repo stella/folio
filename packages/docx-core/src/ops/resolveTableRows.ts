@@ -11,7 +11,7 @@ import type {
   TableStructuralChangeInfo,
 } from "../model/document";
 import { maxOf } from "../model/extremes";
-import { activeNestedTablePropertyHandoffs } from "../model/nestedTablePropertyHandoffs";
+import { activeNestedTableRevisionHandoffs } from "../model/nestedTableRevisionHandoffs";
 import { TABLE_CELL_VERTICAL_MERGES } from "../model/tableCellVerticalMerge";
 import {
   declaredUnmeasuredColumnCount,
@@ -111,7 +111,7 @@ export const withBelongingTableGeometry = (
       Array.isArray(geometry.nestedMoves)
     ) {
       for (const move of geometry.nestedMoves) {
-        for (const [source, temporary] of activeNestedTablePropertyHandoffs(
+        for (const [source, temporary] of activeNestedTableRevisionHandoffs(
           table,
           move,
         )) {
@@ -1231,13 +1231,15 @@ const replaceUnaddressedTable = ({
     : Result.ok(replacement);
 };
 
-const tablePropertyHandoffs = (table: Table): ReadonlyMap<number, number> => {
+const nestedTableRevisionHandoffs = (
+  table: Table,
+): ReadonlyMap<number, number> => {
   const geometry = table.formatting?.gridChange?.geometryChange;
   const handoffs = new Map<number, number>();
   if (geometry?.type !== "mergeCells" || !Array.isArray(geometry.nestedMoves))
     return handoffs;
   for (const move of geometry.nestedMoves) {
-    for (const [source, temporary] of activeNestedTablePropertyHandoffs(
+    for (const [source, temporary] of activeNestedTableRevisionHandoffs(
       table,
       move,
     ))
@@ -1247,7 +1249,7 @@ const tablePropertyHandoffs = (table: Table): ReadonlyMap<number, number> => {
 };
 
 const tableMoveHandoffs = (table: Table): TableMoveHandoffs => ({
-  properties: tablePropertyHandoffs(table),
+  revisions: nestedTableRevisionHandoffs(table),
   controls: tableBlockControlHandoffs(table),
 });
 

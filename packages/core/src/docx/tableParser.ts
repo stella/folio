@@ -1,5 +1,5 @@
 import {
-  activeNestedTablePropertyHandoffs,
+  activeNestedTableRevisionHandoffs,
   PARSE_WARNING_CODES,
   tableColumnWidthFields,
 } from "@stll/docx-core/model";
@@ -2816,14 +2816,14 @@ export function parseTable(
   if (
     gridChange !== undefined &&
     geometry?.type === "mergeCells" &&
-    geometry.nestedMoves?.some(({ properties }) => properties !== undefined)
+    geometry.nestedMoves?.some(({ revisions }) => revisions !== undefined)
   ) {
     const nestedMoves = geometry.nestedMoves.map((move) => {
-      if (move.properties === undefined) return move;
-      const active = activeNestedTablePropertyHandoffs(table, move);
-      if (active.length === move.properties.length) return move;
-      const { properties: _original, ...anchors } = move;
-      return active.length === 0 ? anchors : { ...anchors, properties: active };
+      if (move.revisions === undefined) return move;
+      const active = activeNestedTableRevisionHandoffs(table, move);
+      if (active.length === move.revisions.length) return move;
+      const { revisions: _original, ...anchors } = move;
+      return active.length === 0 ? anchors : { ...anchors, revisions: active };
     });
     table.formatting = {
       ...table.formatting,
