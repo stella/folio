@@ -33,6 +33,7 @@ import {
 } from "../../../../../test/property-testing";
 import type { Document, Table } from "../../types/document";
 import { parseParagraph } from "../paragraphParser";
+import { FOLIO_REVIEW_HISTORY_NAMESPACE } from "../reviewHistoryNamespace";
 import { serializeParagraph } from "../serializer/paragraphSerializer";
 import { serializeTable } from "../serializer/tableSerializer";
 import { parseTable } from "../tableParser";
