@@ -1,7 +1,14 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
+import { readFile } from "node:fs/promises";
 
-import { getLoadedFolioMessages } from "./loadMessages";
 import {
+  englishFolioMessages,
+  getLoadedFolioMessages,
+  resetLocaleCatalogs,
+} from "./loadMessages";
+import { localeMessages } from "./localeMessages";
+import {
+  configureLocaleCatalogs,
   FOLIO_LOCALES,
   getFolioMessages,
   isFolioLocale,
@@ -185,6 +192,50 @@ describe("loadFolioMessages", () => {
     expect(getLoadedFolioMessages("tr")).toBe(resolved);
     for (const locale of FOLIO_LOCALES) {
       expect(await loadFolioMessages(locale)).toEqual(getFolioMessages(locale));
+    }
+  });
+});
+
+describe("translated catalogs as data files", () => {
+  const nowhere = new URL("file:///nonexistent-folio-catalogs/");
+  afterEach(() => {
+    resetLocaleCatalogs();
+  });
+
+  test("a catalog handed over is read without fetching", async () => {
+    const czech = getFolioMessages("cs");
+    configureLocaleCatalogs({ baseUrl: nowhere, catalogs: { cs: czech } });
+
+    expect(getLoadedFolioMessages("cs-CZ")).toBe(czech);
+    expect(await loadFolioMessages("cs")).toBe(czech);
+  });
+
+  test("a catalog that cannot be read rejects once, then reads as English until reconfigured", async () => {
+    resetLocaleCatalogs();
+    configureLocaleCatalogs({ baseUrl: nowhere });
+
+    await expect(loadFolioMessages("he")).rejects.toThrow();
+    expect(getLoadedFolioMessages("he")).toBe(englishFolioMessages);
+    expect(await loadFolioMessages("he")).toBe(englishFolioMessages);
+
+    configureLocaleCatalogs({});
+    expect(getLoadedFolioMessages("he")).toBeUndefined();
+    expect(await loadFolioMessages("he")).toEqual(getFolioMessages("he"));
+  });
+
+  test("every packaged data file holds its locale's strings", async () => {
+    for (const locale of FOLIO_LOCALES) {
+      if (locale === "en") continue;
+      const strings: unknown = JSON.parse(
+        await readFile(
+          new URL(`../../assets/i18n/${locale}.json`, import.meta.url),
+          "utf8",
+        ),
+      );
+      expect(Array.isArray(strings)).toBe(true);
+      expect(localeMessages(strings as string[])).toEqual(
+        getFolioMessages(locale),
+      );
     }
   });
 });

@@ -177,7 +177,11 @@ export const renderAsync = (
           return undefined;
         },
         (error: unknown) => {
-          onError(error instanceof Error ? error : new Error(String(error)));
+          // The editor still opens, in English; the host learns why.
+          editorOptions.onError?.(
+            error instanceof Error ? error : new Error(String(error)),
+          );
+          localeReady.value = true;
           return undefined;
         },
       );

@@ -71,6 +71,7 @@
     "./tiff-decoding": "./src/tiff-decoding.ts",
     "./hyphenation": "./src/hyphenation.ts",
     "./hyphenation/*.json": "./assets/hyphenation/*.json",
+    "./i18n/catalogs/*.json": "./assets/i18n/*.json",
     "./docx/paragraphPropertySource": null,
     "./internal/*": null,
     "./_virtual/*": null,

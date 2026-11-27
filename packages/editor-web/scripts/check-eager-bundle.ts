@@ -89,13 +89,16 @@ const checkCatalogs = (metafile: Metafile, eager: Set<string>) => {
   }
   if (eagerInputs.has(`${catalogDir}/catalogs.gen.ts`))
     throw new Error("The aggregate message catalog is eager");
+  // English ships with the editor. Every other catalog is a data file the
+  // editor fetches, so no chunk, eager or lazy, may carry one: a single-file
+  // bundle, which inlines every lazy chunk, carries none either.
   for (const locale of FOLIO_LOCALES) {
     const input = `${catalogDir}/${locale}.gen.ts`;
     const isEnglish = locale === "en";
     if (
       isEnglish
         ? !eagerInputs.has(input)
-        : eagerInputs.has(input) || !lazyInputs.has(input)
+        : eagerInputs.has(input) || lazyInputs.has(input)
     )
       throw new Error(`Unexpected bundle placement for the ${locale} catalog`);
   }

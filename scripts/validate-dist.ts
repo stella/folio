@@ -514,6 +514,23 @@ try {
 `
     : "";
 
+// A translated catalog must load from the installed package's data file and
+// equal the module export of the same locale.
+const localeCatalogRuntimeCheck =
+  target === "core"
+    ? `
+try {
+  const { loadFolioMessages } = await import("@stll/folio-core/i18n/messages");
+  const { messages: czech } = await import("@stll/folio-core/i18n/messages/cs");
+  const loaded = await loadFolioMessages("cs");
+  if (JSON.stringify(loaded) !== JSON.stringify(czech)) {
+    failed = true;
+    console.error("the cs catalog data file differs from its module export");
+  }
+} catch (err) { failed = true; console.error("locale catalog threw: " + (err?.message ?? err)); }
+`
+    : "";
+
 // Every hyphenation dictionary must load from the installed package's data
 // files, and from the parsed file handed over instead.
 const hyphenationRuntimeCheck =
@@ -602,6 +619,7 @@ for (const [spec, names] of Object.entries(expect)) {
 ${messagesRuntimeCheck}
 ${shaperBytesRuntimeCheck}
 ${hyphenationRuntimeCheck}
+${localeCatalogRuntimeCheck}
 ${fontsRuntimeCheck}
 ${nuxtRuntimeCheck}
 process.exit(failed ? 1 : 0);

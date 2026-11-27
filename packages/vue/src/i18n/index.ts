@@ -125,7 +125,11 @@ const useLocaleTranslator = (
           if (!active) return undefined;
           const error =
             cause instanceof Error ? cause : new Error(String(cause));
-          if (!hasTranslation) status.value = { type: "failed", error };
+          // The editor falls back to English rather than staying unusable.
+          if (!hasTranslation) {
+            translator.value = fallbackTranslator.value;
+            status.value = { type: "ready" };
+          }
           if (!onError) throw error;
           onError(error);
           return undefined;

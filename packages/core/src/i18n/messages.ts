@@ -4,7 +4,11 @@ import { resolveFolioLocale } from "./locales";
 import { CATALOGS as GENERATED_CATALOGS } from "./messages/catalogs.gen";
 import type { FolioLocale } from "./messages/locales";
 
-export { loadFolioMessages } from "./loadMessages";
+export {
+  configureLocaleCatalogs,
+  loadFolioMessages,
+  type LocaleCatalogOptions,
+} from "./loadMessages";
 export { isFolioLocale } from "./locales";
 export { FOLIO_LOCALES, type FolioLocale } from "./messages/locales";
 

@@ -130,6 +130,14 @@ test("packaged consumer mounts, lays out via the worker, and logs no errors", as
     "loaded",
   );
 
+  // --- Locales: a translated catalog ships as a data file and is fetched. --
+  const germanBold = await page.evaluate(() =>
+    globalThis.__folioSmoke?.loadGermanBold(),
+  );
+  expect(germanBold, "the German catalog must load from its data file").toBe(
+    "Fett",
+  );
+
   // --- Surface 2: the toolbar renders (chrome + catalog strings). -----------
   await expect(page.getByRole("toolbar").first()).toBeVisible();
 

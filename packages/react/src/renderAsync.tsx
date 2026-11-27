@@ -26,6 +26,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { IntlProvider } from "use-intl";
 
 import {
+  englishFolioMessages,
   getLoadedFolioMessages,
   loadFolioMessages,
 } from "@stll/folio-core/i18n/loadMessages";
@@ -184,9 +185,11 @@ export const renderAsync = (
         return undefined;
       },
       (error: unknown) => {
-        lifecycle.onError(
+        // The editor still opens, in English; the host learns why.
+        editorOptions["onError"]?.(
           error instanceof Error ? error : new Error(String(error)),
         );
+        mountEditor(englishFolioMessages);
         return undefined;
       },
     );

@@ -22,6 +22,7 @@ import {
   projectCompressedDocx,
 } from "@stll/docx-core/projection";
 import { preloadHyphenationDictionaries } from "@stll/folio-core/hyphenation";
+import { loadFolioMessages } from "@stll/folio-core/i18n/messages";
 import { getCachedTextWidth } from "@stll/folio-core/layout-engine/measure/cache";
 import {
   canPrefetchMeasurement,
@@ -137,6 +138,13 @@ async function loadHyphenation(): Promise<string> {
   return loaded.isOk() ? "loaded" : loaded.error.message;
 }
 
+// Fetch the German catalog from the data file the production build must emit
+// beside the bundle, and read one of its strings.
+const loadGermanBold = async (): Promise<string> => {
+  const bold = (await loadFolioMessages("de")).folio["bold"];
+  return typeof bold === "string" ? bold : "";
+};
+
 declare global {
   var __folioFeatureFlags: { workerFontMetrics?: boolean } | undefined;
   var __folioSmoke:
@@ -145,6 +153,7 @@ declare global {
         measureRoundTrip: () => Promise<{ width: number; alive: boolean }>;
         convertTiff: typeof convertTiff;
         loadHyphenation: typeof loadHyphenation;
+        loadGermanBold: typeof loadGermanBold;
         projectFixture: () => Promise<DocxProjectionWire>;
         projectionSchemaVersion: typeof docxProjectionSchemaVersion;
         hostEditor: typeof hostEditor;
@@ -181,6 +190,7 @@ function App() {
       measureRoundTrip,
       convertTiff,
       loadHyphenation,
+      loadGermanBold,
       projectFixture: () => {
         if (projectionPromise === undefined) {
           throw new Error("DOCX projection has not started");
