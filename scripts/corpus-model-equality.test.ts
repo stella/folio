@@ -101,6 +101,49 @@ describe("describePackageDifferences", () => {
     });
   });
 
+  test("a note part keeps the relationships its kept markup names; a save may add picture and link ones", () => {
+    const withFootnoteRelationships = (
+      types: readonly (typeof RELATIONSHIP_TYPES)[keyof typeof RELATIONSHIP_TYPES][],
+    ): Document => ({
+      package: {
+        document: { content: [] },
+        annotationRelationships: new Map([
+          [
+            "word/footnotes.xml",
+            new Map(
+              types.map((type, index) => {
+                const id = `rId${String(index + 1)}`;
+                return [id, { id, type, target: `part${String(index)}.xml` }];
+              }),
+            ),
+          ],
+        ]),
+      },
+    });
+    const chart = withFootnoteRelationships([RELATIONSHIP_TYPES.chart]);
+    // A save adds relationships for the part's pictures and links.
+    expect(
+      describePackageDifferences(
+        chart,
+        withFootnoteRelationships([
+          RELATIONSHIP_TYPES.chart,
+          RELATIONSHIP_TYPES.image,
+          RELATIONSHIP_TYPES.hyperlink,
+        ]),
+      ),
+    ).toEqual({ messages: [], omitted: 0 });
+    expect(
+      describePackageDifferences(
+        { package: { document: { content: [] } } },
+        withFootnoteRelationships([RELATIONSHIP_TYPES.image]),
+      ),
+    ).toEqual({ messages: [], omitted: 0 });
+    // Losing the chart's relationship is a loss.
+    expect(
+      describePackageDifferences(chart, withFootnoteRelationships([])).messages,
+    ).not.toEqual([]);
+  });
+
   test("internal OPC target casing is equivalent while different parts and URLs remain distinct", () => {
     const withTarget = (
       target: string,

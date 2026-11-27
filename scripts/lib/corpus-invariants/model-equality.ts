@@ -68,19 +68,18 @@ const CAPTURE_KEYS: ReadonlySet<string> = new Set([
 /** The ids a save gives a paragraph that holds none. */
 const PARAGRAPH_ID_KEYS: ReadonlySet<string> = new Set(["paraId", "textId"]);
 
-/**
- * The note and comment parts' relationship tables: kept markup, erased above,
- * resolves its ids there, and a save extends them with the relationships it
- * allocates for the pictures and links in those parts.
- */
-const PART_RELATIONSHIP_KEYS: ReadonlySet<string> = new Set([
-  "annotationRelationships",
-]);
-
 const isErased = (key: string): boolean =>
-  VOLATILE_KEYS.has(key) ||
-  CAPTURE_KEYS.has(key) ||
-  PART_RELATIONSHIP_KEYS.has(key);
+  VOLATILE_KEYS.has(key) || CAPTURE_KEYS.has(key);
+
+/**
+ * Relationship types a save allocates afresh in a note or comment part, for
+ * the pictures and links the model holds there. Every other relationship in
+ * those parts (the parts kept markup names) must survive a save as it is.
+ */
+const SAVE_ALLOCATED_TYPE_SUFFIXES = ["/image", "/hyperlink"] as const;
+
+const isSaveAllocated = (type: string): boolean =>
+  SAVE_ALLOCATED_TYPE_SUFFIXES.some((suffix) => type.endsWith(suffix));
 
 const normalizeValue = (value: unknown): unknown => {
   if (value instanceof Uint8Array) {
@@ -140,8 +139,27 @@ export const normalizeDocumentPackage = (document: Document): unknown => {
     panic(
       "Model equality requires Document inputs containing a document package.",
     );
+  // A part's table without the relationships a save allocates: a part left
+  // with none compares as absent, as a package that had none reads.
+  const keptAnnotationTables = [
+    ...(document.package.annotationRelationships ?? []),
+  ].flatMap(([part, table]) => {
+    const kept = [...table].filter(
+      ([, relationship]) => !isSaveAllocated(relationship.type),
+    );
+    return kept.length === 0 ? [] : [[part, new Map(kept)] as const];
+  });
+  const { annotationRelationships: _tables, ...packageFields } =
+    document.package;
+  const comparedPackage =
+    keptAnnotationTables.length === 0
+      ? packageFields
+      : {
+          ...packageFields,
+          annotationRelationships: new Map(keptAnnotationTables),
+        };
   const relationships = document.package.relationships;
-  if (!relationships) return normalizeValue(document.package);
+  if (!relationships) return normalizeValue(comparedPackage);
   // Internal targets identify OPC parts, whose names compare without casing.
   // External URLs and authored text retain their exact spelling.
   const normalizedRelationships = new Map(relationships);
@@ -153,7 +171,7 @@ export const normalizeDocumentPackage = (document: Document): unknown => {
     });
   }
   return normalizeValue({
-    ...document.package,
+    ...comparedPackage,
     relationships: normalizedRelationships,
   });
 };
