@@ -304,6 +304,7 @@ export type DocxBlock = {
     pageBreaks?: number;
     selfNumbers?: number[];
     revisions?: DocxBlockRevision[];
+    crossReferences?: DocxBlockCrossReference[];
     pageBreakBefore?: true;
     endsSection?: true;
     alignment?: string;
@@ -314,6 +315,16 @@ export type DocxBlock = {
     };
     cells?: DocxTableCell[];
     nested?: DocxBlock[];
+};
+
+// @public
+export type DocxBlockCrossReference = {
+    start: number;
+    end: number;
+    instruction: string;
+    bookmark: string;
+    targetBlockId: string | null;
+    targetWhole: boolean;
 };
 
 // @public (undocumented)

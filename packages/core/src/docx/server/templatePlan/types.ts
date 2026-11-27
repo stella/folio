@@ -79,6 +79,36 @@ export type DocxBlockNumbering = {
   bulletFont?: string;
 };
 
+/**
+ * A `REF` field of a paragraph (ECMA-376 Part 1, 17.16.5.52). Without a
+ * number switch it shows the content of the bookmark it names; with one,
+ * the number of the paragraph the bookmark stands in. A plan that places
+ * the paragraph the bookmark marks can keep the field a field: a
+ * `TemplatePlanReference` over its span to that paragraph, with its
+ * switches and its result.
+ */
+export type DocxBlockCrossReference = {
+  /** The span of the paragraph's `text` the field's result takes. */
+  start: number;
+  end: number;
+  /** The field's code as the document states it, e.g. ` REF Annex3 \h `. */
+  instruction: string;
+  /** The bookmark the field names. */
+  bookmark: string;
+  /**
+   * The paragraph of the main story the bookmark starts and ends in. Null
+   * when no bookmark of that name does both in one paragraph: it spans
+   * paragraphs, stands between blocks, or is not there.
+   */
+  targetBlockId: string | null;
+  /**
+   * Whether the bookmark holds all of that paragraph's content, so that a
+   * field without a number switch shows the paragraph's text, which is
+   * what a plan's own bookmark on the paragraph holds.
+   */
+  targetWhole: boolean;
+};
+
 export type DocxTableCell = {
   row: number;
   col: number;
@@ -156,6 +186,12 @@ export type DocxBlock = {
    * reference is not placed on one.
    */
   revisions?: DocxBlockRevision[];
+  /**
+   * The cross-reference fields of the paragraph, in the order they stand:
+   * each `REF` field whose result lies in the paragraph's text and in no
+   * other field. Absent without one.
+   */
+  crossReferences?: DocxBlockCrossReference[];
   /**
    * The paragraph starts on a new page by its own formatting or its
    * style's (`w:pageBreakBefore`). A plan carries it over with an item's

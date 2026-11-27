@@ -80,6 +80,102 @@ describe("applyTemplatePlan edge content", () => {
     expect(report.dropped.sourceFields).toEqual([]);
   });
 
+  test("reports a cross-reference field with the paragraph its bookmark marks", async () => {
+    const template = await buildTemplate();
+    const number =
+      '<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> AUTONUMLGL  \\* Arabic \\e </w:instrText></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r>';
+    const ref = (code: string, result: string): string =>
+      `<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve">${code}</w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>${r(result)}<w:r><w:fldChar w:fldCharType="end"/></w:r>`;
+    const source = await buildMinimalDocx(
+      [
+        p(
+          `<w:bookmarkStart w:id="1" w:name="annex1"/>${r("Annex ")}${number}${r(" - Summary")}<w:bookmarkEnd w:id="1"/>`,
+        ),
+        p(
+          `${r("See ")}${ref(" REF annex1 \\h  \\* MERGEFORMAT ", "Annex 1 - Summary")}${r(".")}`,
+        ),
+        p(
+          `${r("Also ")}${ref(" REF part \\h ", "Summary")}${r(" and ")}${ref(" REF gone \\h ", "Annex 9")}`,
+        ),
+        p(
+          `${r("Annex ")}<w:bookmarkStart w:id="2" w:name="part"/>${r("Summary")}<w:bookmarkEnd w:id="2"/>`,
+        ),
+      ].join(""),
+    );
+    const { blocks } = unwrap(await analyzeDocxBlocks(source));
+
+    expect(blocks.map(({ crossReferences }) => crossReferences)).toEqual([
+      undefined,
+      [
+        {
+          start: 4,
+          end: 21,
+          instruction: " REF annex1 \\h  \\* MERGEFORMAT ",
+          bookmark: "annex1",
+          targetBlockId: "p0",
+          targetWhole: true,
+        },
+      ],
+      [
+        {
+          start: 5,
+          end: 12,
+          instruction: " REF part \\h ",
+          bookmark: "part",
+          targetBlockId: "p3",
+          targetWhole: false,
+        },
+        {
+          start: 17,
+          end: 24,
+          instruction: " REF gone \\h ",
+          bookmark: "gone",
+          targetBlockId: null,
+          targetWhole: false,
+        },
+      ],
+      undefined,
+    ]);
+
+    // Kept as a field, the reference shows the heading's text with the
+    // number the heading's field counts.
+    const plan = await planFor({
+      source,
+      template,
+      extra: {
+        references: [
+          {
+            blockId: "p1",
+            start: 4,
+            end: 21,
+            targetBlockId: "p0",
+            instruction: "\\h",
+            expectedText: "Annex 1 - Summary",
+          },
+        ],
+      },
+    });
+    const { docx, report } = unwrap(
+      await applyTemplatePlan({ source, template, plan }),
+    );
+    const document = (await readPart(docx, "word/document.xml")) ?? "";
+    const [result] = report.references.results;
+
+    expect(report.ok).toBe(true);
+    expect(result).toMatchObject({
+      status: "ok",
+      cachedText: "Annex 1 - Summary",
+      replacedText: "Annex 1 - Summary",
+      // The number is counted when the document is laid out.
+      predictedText: null,
+    });
+    expect(report.references.predictionMismatch).toBe(0);
+    expect(document).toContain(
+      `<w:instrText xml:space="preserve"> REF ${result?.bookmark ?? ""} \\h </w:instrText>`,
+    );
+    expect(document).toContain(" AUTONUMLGL  \\* Arabic \\e ");
+  });
+
   test("strips a typed number whose parts stand apart", async () => {
     const template = await buildTemplate();
     const source = await buildMinimalDocx(
