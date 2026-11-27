@@ -182,7 +182,7 @@ test("tracked table moves give nested controls unique IDs and restore their auth
   );
 });
 
-test("a bound inline control cannot be duplicated by a tracked merge", () => {
+test("an inline control with opaque behavior remains outside the tracked move scope", () => {
   const original = documentWith([
     {
       type: "inlineSdt",
@@ -193,7 +193,7 @@ test("a bound inline control cannot be duplicated by a tracked merge", () => {
           children: [
             {
               index: 8,
-              xml: '<w:dataBinding w:storeItemID="{A0000000-0000-0000-0000-000000000001}" w:xpath="/record[1]"/>',
+              xml: "<w:temporary/>",
             },
           ],
         },
@@ -211,7 +211,7 @@ test("a bound inline control cannot be duplicated by a tracked merge", () => {
       newIds: ids.newIds,
     },
   });
-  if (result.isOk()) throw new Error("Expected the bound control to refuse.");
+  if (result.isOk()) throw new Error("Expected the opaque control to refuse.");
   expect(result.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE);
 });
 
@@ -317,3 +317,91 @@ test.each([
     }
   },
 );
+
+test("a tracked move keeps both control copies bound to the same saved custom XML part", async () => {
+  const store = "{A0000000-0000-0000-0000-000000000001}";
+  const data = "<record>Bound</record>";
+  const binding = `<w:dataBinding w:storeItemID="${store}" w:xpath="/record[1]"/>`;
+  const source = documentWith([
+    {
+      type: "inlineSdt",
+      properties: {
+        sdtType: "richText",
+        id: 42,
+        preserved: { children: [{ index: 8, xml: binding }] },
+      },
+      content: [{ type: "run", content: [{ type: "text", text: "Bound" }] }],
+    },
+  ]);
+  const seed = await ZipArchive.read(await createDocx(source));
+  const relationships = seed.entry("word/_rels/document.xml.rels");
+  const types = seed.entry("[Content_Types].xml");
+  if (relationships === undefined || types === undefined)
+    throw new Error("Expected package metadata.");
+  seed.set(
+    "word/_rels/document.xml.rels",
+    (await relationships.text()).replace(
+      "</Relationships>",
+      '<Relationship Id="rId88" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/customXml" Target="../customXml/item1.xml"/></Relationships>',
+    ),
+  );
+  seed.set(
+    "[Content_Types].xml",
+    (await types.text()).replace(
+      "</Types>",
+      '<Override PartName="/customXml/itemProps1.xml" ContentType="application/vnd.openxmlformats-officedocument.customXmlProperties+xml"/></Types>',
+    ),
+  );
+  seed.set("customXml/item1.xml", data);
+  seed.set(
+    "customXml/itemProps1.xml",
+    `<ds:datastoreItem ds:itemID="${store}" xmlns:ds="http://schemas.openxmlformats.org/officeDocument/2006/customXml"/>`,
+  );
+  seed.set(
+    "customXml/_rels/item1.xml.rels",
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/customXmlProps" Target="itemProps1.xml"/></Relationships>',
+  );
+  const original = await read((await seed.generate()).buffer);
+  const ids = allocate(original, intent);
+  expect(ids.newIds.control).toHaveLength(1);
+  const compiled = compileEditorIntent(original, {
+    intent,
+    mode: {
+      type: "suggesting",
+      revision: { ...revision, id: ids.revisionId },
+      newIds: ids.newIds,
+    },
+  }).unwrap();
+  const pending = applyDocumentOps(original, compiled.ops).unwrap();
+  const direct = applyDocumentOp(original, {
+    ...operation,
+    newBlockIds: [],
+  }).unwrap().document;
+  const file = await createDocx(pending.document);
+  const archive = await ZipArchive.read(file);
+  expect(await archive.entry("customXml/item1.xml")?.text()).toBe(data);
+  expect(
+    (await archive.entry("word/document.xml")?.text())?.split("<w:dataBinding"),
+  ).toHaveLength(3);
+  const reopened = await read(file);
+  for (const decision of [
+    REVISION_DECISIONS.ACCEPT,
+    REVISION_DECISIONS.REJECT,
+  ]) {
+    const op = {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: pending.revisions,
+      decision,
+    } as const;
+    const settled = applyDocumentOp(pending.document, op).unwrap();
+    const expected = decision === REVISION_DECISIONS.ACCEPT ? direct : original;
+    expect(settled.document).toStrictEqual(expected);
+    expect(
+      applyDocumentOps(settled.document, settled.inverse).unwrap().document,
+    ).toStrictEqual(pending.document);
+    expect(
+      cellContentOf(applyDocumentOp(reopened, op).unwrap().document),
+    ).toEqual(cellContentOf(expected));
+  }
+});
