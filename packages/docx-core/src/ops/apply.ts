@@ -76,7 +76,11 @@ import {
  * operation retired.
  */
 import { gainsSectionInTableCell } from "./cellSections";
-import { applyCommentOp, withAddedCommentRecords } from "./comments";
+import {
+  applyCommentOp,
+  newlyExhaustedCommentIds,
+  withAddedCommentRecords,
+} from "./comments";
 import { setContentControl } from "./contentControls";
 import {
   hasMultipleParagraphPropertyChanges,
@@ -90,7 +94,10 @@ import {
   copyOriginBoundaryKeysInBlocks,
   hasValidCopyOriginAncestors,
 } from "./copyOriginAncestors";
-import { keptDeletionBoundaries } from "./deletionBoundaries";
+import {
+  isolateKeptDeletionBoundaries,
+  keptDeletionBoundaries,
+} from "./deletionBoundaries";
 import {
   combineEditEffects,
   combineEdits,
@@ -184,6 +191,7 @@ import { priorValues } from "./patch";
 import {
   insertsInvertedRange,
   isBlockBoundary,
+  pairedCommentRanges,
   rangeBoundariesIn,
 } from "./rangeBoundaries";
 import {
@@ -654,35 +662,25 @@ const wrappedContent = (
     startJoin?: number;
     acceptance?: NonNullable<Insertion["resolutionJoins"]>["acceptance"];
     copiedBoundaries?: ReadonlySet<InlineNode>;
+    keptBoundaries?: ReadonlySet<InlineNode>;
   },
 ): Wrapped => {
   const wrapped = wrapTracked(options);
   switch (wrapped.kind) {
     case "wrapped":
-      // A deletion of a range holding nothing but empty hyperlinks, fields or
-      // content controls marks no run: no file or reader would show it,
-      // while deleting the range directly removes them.
-      if (options.kind === WRAP_KINDS.DELETION && !wrapped.recordsContent)
-        return Result.err(
-          refusal(
-            op,
-            DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-            "A tracked deletion cannot record only empty containers.",
-          ),
-        );
       return Result.ok(wrapped.content);
     case "unchanged":
       return Result.ok(undefined);
-    case "refused":
-      return Result.err(
-        refusal(
-          op,
-          wrapped.reason,
-          wrapped.reason === DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE
-            ? "A tracked change cannot hold a comment boundary or reference."
-            : "The tracked edit falls inside tracked-removed content.",
-        ),
-      );
+    case "refused": {
+      let message = "The selected content cannot take this tracked record.";
+      if (
+        wrapped.reason === DOCUMENT_OP_REFUSAL_REASONS.INSIDE_TRACKED_DELETION
+      )
+        message = "The tracked edit falls inside tracked-removed content.";
+      if (wrapped.reason === DOCUMENT_OP_REFUSAL_REASONS.DEPENDENT_RECORDS)
+        message = "The tracked range requires its dependent comment endpoints.";
+      return Result.err(refusal(op, wrapped.reason, message));
+    }
     default: {
       const unreachable: never = wrapped;
       return unreachable;
@@ -1072,7 +1070,11 @@ const deletedAround = (
   return content;
 };
 
-const deleteRange = (document: Document, op: DeleteRangeOp): Applied => {
+const deleteRange = (
+  document: Document,
+  op: DeleteRangeOp,
+  applyOps: ApplyOps,
+): Applied => {
   const join = op.join ?? 0;
   if (!isCount(join)) {
     return refuse(
@@ -1124,7 +1126,7 @@ const deleteRange = (document: Document, op: DeleteRangeOp): Applied => {
   // stands outside it, stays where it is: the range shrinks to the
   // deletion's edge instead of losing an end.
   const keptBoundaries =
-    op.revision === undefined && join === 0
+    join === 0
       ? keptDeletionBoundaries({
           body: storyBody(document, story),
           paragraph,
@@ -1160,13 +1162,18 @@ const deleteRange = (document: Document, op: DeleteRangeOp): Applied => {
       return unchanged(document);
     }
   }
+  const removedComments = pairedCommentRanges(removed.content);
   if (op.revision !== undefined) {
+    const input = isolateKeptDeletionBoundaries(paragraph, keptBoundaries);
     const wrapped = wrappedContent(op, {
-      items: paragraph.content,
+      ...input,
       from,
       to,
       kind: WRAP_KINDS.DELETION,
       stamp: op.revision,
+      ...(removedComments.size === 0
+        ? {}
+        : { deletesCommentAnchors: removedComments }),
       resolutionJoin: spanningRecords(paragraph.content, [from, to], 0, 2)
         .length,
     });
@@ -1200,7 +1207,7 @@ const deleteRange = (document: Document, op: DeleteRangeOp): Applied => {
     }
     ({ content, retired } = joined.value);
   }
-  return editOne(
+  const edit = editOne(
     {
       document,
       op,
@@ -1240,6 +1247,21 @@ const deleteRange = (document: Document, op: DeleteRangeOp): Applied => {
       return Result.ok([insertion]);
     },
   );
+  if (edit.isErr() || removedComments.size === 0) return edit;
+  const retire = newlyExhaustedCommentIds(document, edit.value.document).filter(
+    (id) => removedComments.has(id),
+  );
+  if (retire.length === 0) return edit;
+  const comments = applyOps(
+    edit.value.document,
+    retire.map((id) => ({
+      type: DOCUMENT_OP_TYPES.DELETE_COMMENT,
+      id,
+      scope: "thread",
+    })),
+  );
+  if (comments.isErr()) return comments;
+  return Result.ok(combineEdits(document, [edit.value, comments.value]));
 };
 
 const splitInline = (document: Document, op: SplitInlineOp): Applied => {
@@ -2190,13 +2212,6 @@ const trackJoin = ({
       "A join depth is a count.",
     );
   }
-  if (depth !== 0) {
-    return refuse(
-      op,
-      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      "A tracked paragraph mark cannot record an inline merge depth.",
-    );
-  }
   if ((op.survivor ?? SPLIT_HALVES.SECOND) !== SPLIT_HALVES.SECOND) {
     return refuse(
       op,
@@ -2217,6 +2232,20 @@ const trackJoin = ({
       pendingParagraphMarkReason(mark),
       `The mark of ${op.blockId} already carries a tracked change.`,
     );
+  }
+  if (depth > 0) {
+    if (mark !== undefined && mark.resolutionJoin !== depth)
+      return refuse(
+        op,
+        pendingParagraphMarkReason(mark),
+        "The prior inserted break owns a different inline join depth.",
+      );
+    const merged = joinedContent(
+      op,
+      joinContent(leading.content, trailing.content, depth),
+      `between ${op.blockId} and ${op.nextBlockId}`,
+    );
+    if (merged.isErr()) return Result.err(merged.error);
   }
   // The second paragraph's own mark already goes, before a table that cannot
   // receive what runs in (its first row or cell is under review): accepting
@@ -2254,7 +2283,11 @@ const trackJoin = ({
     ...leading,
     pPrMark:
       mark === undefined
-        ? { kind: "del", info: stampInfo(stamp) }
+        ? {
+            kind: "del",
+            info: stampInfo(stamp),
+            ...(depth > 0 ? { resolutionJoin: depth } : {}),
+          }
         : { ...mark, deletion: { info: stampInfo(stamp) } },
   };
   let second = trailing;
@@ -2737,38 +2770,42 @@ const replaceBlocks = (document: Document, op: ReplaceBlocksOp): Applied => {
         DOCUMENT_OP_REFUSAL_REASONS.CONTAINER_FINAL_MARK,
         "An empty replacement cannot restore a captured container-final paragraph mark through insertion.",
       );
-    // The inverse uses ordinary insertion, whose canonicalization removes empty
-    // formatting fields. Refuse captures whose field ownership it cannot restore.
+    // Ordinary insertion canonicalizes empty formatting fields. Use an exact
+    // structural inverse when the original paragraph owns one of those fields,
+    // or when no insertion point names the gap: the whole block list is set
+    // back, addressed by a paragraph that stays in it.
+    const removalList = [...blockListAt(body.content, start.list)];
+    removalList.splice(start.index, before.length);
     if (
-      before.some(
+      !before.some(
         (paragraph) =>
           Object.hasOwn(paragraph, "formatting") &&
           finalizeParagraphFormatting(paragraph.formatting) === undefined,
       )
     )
+      inverseAt = blockInsertionPointAt({
+        blocks: removalList,
+        index: start.index,
+      });
+    // A block-level `w:sdt` emptied of its only paragraph stays, holding an
+    // empty `w:sdtContent`; no operation addresses a block list without a
+    // paragraph, so nothing could put the paragraph back.
+    if (
+      inverseAt === undefined &&
+      !removalList.some(
+        (block) => block.type === "paragraph" && block.paraId !== undefined,
+      )
+    )
       return refuse(
         op,
         DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-        "An empty replacement cannot restore an owned empty paragraph-formatting field through insertion.",
+        "An empty replacement needs a paragraph or table boundary that stays in its block list.",
       );
-    const originalList = blockListAt(body.content, start.list);
-    const removalList = [...originalList];
-    removalList.splice(start.index, before.length);
-    inverseAt = blockInsertionPointAt({
-      blocks: removalList,
-      index: start.index,
-    });
     if (before.some(({ sectionProperties }) => sectionProperties !== undefined))
       return refuse(
         op,
         DOCUMENT_OP_REFUSAL_REASONS.SECTION_BOUNDARY,
         "An empty replacement cannot remove a section endpoint.",
-      );
-    if (inverseAt === undefined)
-      return refuse(
-        op,
-        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-        "An empty replacement needs a surviving paragraph or table boundary.",
       );
   }
   const replaced = replaceParagraphs({
@@ -2803,10 +2840,29 @@ const replaceBlocks = (document: Document, op: ReplaceBlocksOp): Applied => {
         DOCUMENT_OP_REFUSAL_REASONS.CONTAINER_FINAL_MARK,
         "An empty replacement must leave its cell ending with a paragraph.",
       );
-    if (inverseAt === undefined)
-      return panic(
-        "A validated empty replacement lost its insertion boundary.",
+    if (inverseAt === undefined) {
+      const nextBody = storyBody(replaced.value, op.story);
+      const anchor = blockListAt(nextBody.content, start.list).findLast(
+        (block) => block.type === "paragraph" && block.paraId !== undefined,
       );
+      if (anchor?.type !== "paragraph" || anchor.paraId === undefined)
+        return panic(
+          "A validated empty replacement lost its surviving paragraph.",
+        );
+      return Result.ok({
+        document: replaced.value,
+        inverse: [
+          {
+            type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+            story: op.story,
+            blockId: anchor.paraId,
+            expected: blockListAt(nextBody.content, start.list),
+            blocks: blockListAt(body.content, start.list),
+          },
+        ],
+        touched: touchedBetween(before, []),
+      });
+    }
     return Result.ok({
       document: replaced.value,
       inverse: [
@@ -2989,13 +3045,17 @@ const editNote = ({ document, op, applyOps }: EditNoteOptions): Applied => {
       DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
       "The position does not name the note reference.",
     );
-  const removed = deleteRange(document, {
-    type: DOCUMENT_OP_TYPES.DELETE_RANGE,
-    from: op.at,
-    to: { ...op.at, offset: op.at.offset + 1 },
-    ...(op.revision === undefined ? {} : { revision: op.revision }),
-    ...(op.newIds === undefined ? {} : { newIds: op.newIds }),
-  });
+  const removed = deleteRange(
+    document,
+    {
+      type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+      from: op.at,
+      to: { ...op.at, offset: op.at.offset + 1 },
+      ...(op.revision === undefined ? {} : { revision: op.revision }),
+      ...(op.newIds === undefined ? {} : { newIds: op.newIds }),
+    },
+    applyOps,
+  );
   if (removed.isErr()) return removed;
   const stillReferenced = documentStories(removed.value.document).some(
     (story) => {
@@ -3125,7 +3185,7 @@ const dispatchCore = ({ document, op, purpose }: DispatchOptions): Applied => {
     case DOCUMENT_OP_TYPES.INSERT_CONTENT:
       return insertContent(document, op);
     case DOCUMENT_OP_TYPES.DELETE_RANGE:
-      return deleteRange(document, op);
+      return deleteRange(document, op, applyOps);
     case DOCUMENT_OP_TYPES.SPLIT_INLINE:
       return splitInline(document, op);
     case DOCUMENT_OP_TYPES.JOIN_INLINE:
@@ -3415,6 +3475,20 @@ export const combineRecordedRevisions = (
   return { revisions, folded: [...folded] };
 };
 
+/** The content an operation brings in from elsewhere, with its own records. */
+const importedContent = (op: DocumentOp): unknown => {
+  switch (op.type) {
+    case DOCUMENT_OP_TYPES.INSERT_TABLE:
+      return op.table;
+    case DOCUMENT_OP_TYPES.INSERT_ROW:
+      return op.row;
+    case DOCUMENT_OP_TYPES.INSERT_BLOCKS:
+      return op.blocks;
+    default:
+      return undefined;
+  }
+};
+
 /**
  * Newly allocated revision ids, and the existing ones whose pending property
  * changes the operation folded its edit into.
@@ -3437,18 +3511,16 @@ const recordedRevisions = ({
     [...edit.touched.modified, ...edit.touched.inserted].map(idKey),
   );
   const packageKeys = packageIdentityKeyIndex(before.package);
-  // Imported rows and tables may bring their own review records. Those
-  // records keep their own revision even when their author and date match.
-  let known: KeyMembership = packageKeys;
-  if (
-    op.type === DOCUMENT_OP_TYPES.INSERT_TABLE ||
-    op.type === DOCUMENT_OP_TYPES.INSERT_ROW
-  ) {
-    const imported =
-      op.type === DOCUMENT_OP_TYPES.INSERT_TABLE ? op.table : op.row;
-    const importedKeys = new Set(identityKeysIn(imported));
-    known = { has: (key) => packageKeys.has(key) || importedKeys.has(key) };
-  }
+  // Imported rows, tables and pasted blocks may bring their own review
+  // records. Those records keep their own revision even when their author
+  // and date match.
+  const imported = importedContent(op);
+  const importedKeys =
+    imported === undefined ? undefined : new Set(identityKeysIn(imported));
+  const known: KeyMembership =
+    importedKeys === undefined
+      ? packageKeys
+      : { has: (key) => packageKeys.has(key) || importedKeys.has(key) };
   const tableRevisions: number[] = [];
   const paragraphRevisions: number[] = [];
   const folded: number[] = [];

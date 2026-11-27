@@ -351,3 +351,64 @@ describe("run properties over a note's own reference mark", () => {
     expect(markerFormatting(document)).toEqual(markerFormatting(withNote));
   });
 });
+
+test("native cached field revisions and instruction properties resolve with exact inverses", () => {
+  const pendingField: SimpleField = {
+    ...simpleField([]),
+    content: [
+      {
+        type: "deletion",
+        info: { ...revision, id: 81 },
+        content: [run("old")],
+      },
+      {
+        type: "insertion",
+        info: { ...revision, id: 82 },
+        content: [run("new")],
+      },
+    ],
+  };
+  const baseCode = complexField([run("3")]);
+  const pendingCode: ComplexField = {
+    ...baseCode,
+    fieldCode: baseCode.fieldCode.map((code) =>
+      Object.assign({}, code, {
+        formatting: { italic: true, bold: true },
+        propertyChanges: [
+          {
+            type: "runPropertyChange",
+            info: { ...revision, id: 83 },
+            previousFormatting: { italic: true },
+          } satisfies NonNullable<Run["propertyChanges"]>[number],
+        ],
+      }),
+    ),
+  };
+  const before = documentOf([pendingField, pendingCode]);
+  for (const decision of [
+    REVISION_DECISIONS.ACCEPT,
+    REVISION_DECISIONS.REJECT,
+  ]) {
+    const accepted = decision === REVISION_DECISIONS.ACCEPT;
+    const resolved = applied(before, {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      decision,
+      revisionIds: [81, 82, 83],
+    });
+    const expectedCode = {
+      ...baseCode,
+      fieldCode: baseCode.fieldCode.map((code) =>
+        accepted
+          ? Object.assign({}, code, {
+              formatting: { italic: true, bold: true },
+            })
+          : code,
+      ),
+    };
+    expect(resolved.document).toStrictEqual(
+      documentOf([simpleField([run(accepted ? "new" : "old")]), expectedCode]),
+    );
+    expect(undone(resolved.document, resolved.inverse)).toStrictEqual(before);
+  }
+});

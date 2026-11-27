@@ -37,7 +37,6 @@ import {
   type Gap,
   type InlineNode,
   isCommentAnchor,
-  isEmptyContainer,
   isParagraphContent,
   mergeLists,
   ownRunPropertyChanges,
@@ -463,23 +462,44 @@ const spanningAction = (
   return "cut";
 };
 
-/** Whether the wrap takes this comment reference in ({@link WrapOptions.takenReferences}). */
+/**
+ * Whether the wrap takes this comment reference in: one
+ * {@link WrapOptions.takenReferences} names, or the reference of a range the
+ * deletion owns whole ({@link WrapOptions.deletesCommentAnchors}).
+ */
 const takesReference = (node: InlineNode, state: WrapState): boolean =>
   node.type === "commentReference" &&
-  state.commentAnchorsStand &&
-  state.takenReferences.has(node.id);
+  ((state.commentAnchorsStand && state.takenReferences.has(node.id)) ||
+    state.deletesCommentAnchors?.has(node.id) === true);
 
 /** What a wrap does with a record the range covers whole. */
 type CoveredAction = "wrap" | "skip" | "descend" | "refuse";
 
 /** Whether a record holds a comment anchor at any depth. */
-const holdsCommentAnchor = (node: InlineNode): boolean =>
+const holdsCommentAnchor = (
+  node: InlineNode,
+  owned?: ReadonlySet<number>,
+): boolean =>
   (childNodes(node) ?? []).some(
-    (child) => isCommentAnchor(child) || holdsCommentAnchor(child),
+    (child) =>
+      (isCommentAnchor(child) && owned?.has(child.id) !== true) ||
+      holdsCommentAnchor(child, owned),
+  );
+
+const holdsKeptBoundary = (
+  node: InlineNode,
+  kept: ReadonlySet<InlineNode>,
+): boolean =>
+  (childNodes(node) ?? []).some(
+    (child) => kept.has(child) || holdsKeptBoundary(child, kept),
   );
 
 /**
- * A tracked change takes in no bare comment anchor. A deletion of a range,
+ * A tracked change takes in no bare comment anchor whose range it does not
+ * own. A deletion of a range leaves an endpoint whose partner stands outside
+ * it where it is (`keptBoundaries`), and takes in both anchors of a range it
+ * covers whole (`deletesCommentAnchors`), as deleting the range directly
+ * removes them. A deletion of a range,
  * which records its resolution joins, takes in a content control or
  * hyperlink holding one: accepting it removes every comment anchor it holds,
  * as deleting the range directly does. A transparent wrapper holding one is
@@ -498,9 +518,21 @@ const holdsCommentAnchor = (node: InlineNode): boolean =>
  * boundary it held.
  */
 const coveredAction = (node: InlineNode, state: WrapState): CoveredAction => {
+  if (state.keptBoundaries?.has(node)) return "skip";
+  if (
+    state.keptBoundaries !== undefined &&
+    (node.type === "inlineSdt" ||
+      node.type === "inlineWrapper" ||
+      isAddedRevision(node)) &&
+    holdsKeptBoundary(node, state.keptBoundaries)
+  )
+    return "descend";
   if (isCommentAnchor(node)) {
+    if (state.deletesCommentAnchors?.has(node.id)) return "wrap";
     if (takesReference(node, state)) return "wrap";
-    return state.commentAnchorsStand ? "skip" : "refuse";
+    if (state.commentAnchorsStand) return "skip";
+    state.refusal = DOCUMENT_OP_REFUSAL_REASONS.DEPENDENT_RECORDS;
+    return "refuse";
   }
   if (state.kind === WRAP_KINDS.DELETION) {
     if (isRemovedRevisionNode(node)) return "skip";
@@ -514,7 +546,7 @@ const coveredAction = (node: InlineNode, state: WrapState): CoveredAction => {
     }
     if (
       (state.resolutionJoin === undefined || node.type === "inlineWrapper") &&
-      holdsCommentAnchor(node)
+      holdsCommentAnchor(node, state.deletesCommentAnchors)
     )
       return "refuse";
   }
@@ -614,6 +646,7 @@ type Entry = {
   first?: true;
   joinBefore?: number;
   joinAfter?: number;
+  joinOnRemoval?: number;
   retainedAfter?: NonNullable<
     TrackedWrapper["resolutionJoins"]
   >["retainedAfter"];
@@ -635,13 +668,13 @@ type WrapState = {
   copiedBoundaries: Set<InlineNode>;
   /** Whether the wrap recorded anything: a wrapper created, or merged into a neighbour. */
   recorded: boolean;
-  /** Whether a wrapper it created holds more than empty containers. */
-  recordedContent: boolean;
   refusal: DocumentOpRefusalReason | undefined;
   /** Whether bare comment range anchors stand outside the deletion, as whole paragraphs leave them. */
   commentAnchorsStand: boolean;
   /** See {@link WrapOptions.takenReferences}. */
   takenReferences: ReadonlySet<number>;
+  deletesCommentAnchors: ReadonlySet<number> | undefined;
+  keptBoundaries: ReadonlySet<InlineNode> | undefined;
 };
 
 /** Cut facts a deletion's merge can carry: the join depths at its edges and on removal. */
@@ -805,8 +838,10 @@ const trackedContent = (
 ): TrackedRunContent[] | undefined => {
   const out: TrackedRunContent[] = [];
   for (const node of nodes) {
-    // A point comment reference already inside a tracked change stays there,
-    // but a new tracked change does not take one in.
+    // `w:ins` and `w:del` hold run-level content only (CT_RunTrackChange):
+    // anything else cannot go inside one. A point comment reference already
+    // inside a tracked change stays there, but a new tracked change takes one
+    // in only when it owns the comment ({@link takesReference}).
     if (
       !isParagraphContent(node) ||
       !isTrackedChild(node) ||
@@ -818,6 +853,40 @@ const trackedContent = (
     out.push(node);
   }
   return out;
+};
+
+/** Links are inside revision records in the model. Split the link at its
+ * standing endpoints and record the joins that put the pieces back together. */
+const splitLinkAtKeptBoundaries = (
+  entry: Entry,
+  kept: ReadonlySet<InlineNode>,
+): Entry[] | undefined => {
+  const { node } = entry;
+  if (
+    node.type !== "hyperlink" ||
+    !node.children.some((child) => kept.has(child))
+  )
+    return undefined;
+  const pieces: { covered: boolean; children: typeof node.children }[] = [];
+  for (const child of node.children) {
+    const covered = !kept.has(child);
+    const last = pieces.at(-1);
+    if (last?.covered === covered) last.children.push(child);
+    else pieces.push({ covered, children: [child] });
+  }
+  return pieces.map(({ covered, children }, index): Entry => {
+    const first = index === 0;
+    const last = index === pieces.length - 1;
+    const piece: Entry = {
+      node: Object.assign({}, node, { children }),
+      covered,
+      joinBefore: first ? (entry.joinBefore ?? 0) : 1,
+      joinAfter: last ? (entry.joinAfter ?? 0) : 1,
+      joinOnRemoval: !first && !last ? 1 : 0,
+    };
+    if (first && entry.first === true) piece.first = true;
+    return piece;
+  });
 };
 
 /** Group the covered entries of a list into wrappers; `undefined` once refused. */
@@ -879,7 +948,9 @@ const groupCovered = (
           opening?.first === true ? state.startJoin : 0,
         ),
         after: stretch.at(-1)?.joinAfter ?? 0,
-        remove: Math.max(0, state.resolutionJoin - state.depth),
+        remove:
+          opening?.joinOnRemoval ??
+          Math.max(0, state.resolutionJoin - state.depth),
       };
       if (state.acceptance !== undefined)
         wrapper.resolutionJoins.acceptance = state.acceptance;
@@ -889,9 +960,6 @@ const groupCovered = (
     }
     state.created.add(wrapper);
     state.recorded = true;
-    state.recordedContent ||= stretch.some(
-      ({ node }) => !isEmptyContainer(node),
-    );
     wrapperAt.push(out.length);
     out.push(wrapper);
     stretch = [];
@@ -922,10 +990,20 @@ const groupCovered = (
       }
       continue;
     }
+    if (covered && state.keptBoundaries !== undefined) {
+      const split = splitLinkAtKeptBoundaries(entry, state.keptBoundaries);
+      if (split !== undefined) {
+        if (!flush()) return undefined;
+        const wrapped = groupCovered(split, state);
+        if (wrapped === undefined) return undefined;
+        out.push(...wrapped);
+        continue;
+      }
+    }
     const action = covered ? coveredAction(node, state) : "skip";
     switch (action) {
       case "refuse":
-        state.refusal = DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE;
+        state.refusal ??= DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE;
         return undefined;
       case "skip":
         if (!flush()) return undefined;
@@ -1124,17 +1202,16 @@ export type WrapOptions = {
    * reference is their only anchor and goes with the content it marks.
    */
   takenReferences?: ReadonlySet<number>;
+  /** A deletion that owns both endpoints can carry the native range markers. */
+  deletesCommentAnchors?: ReadonlySet<number>;
+  /** Boundaries of ranges whose other end is outside this deletion. */
+  keptBoundaries?: ReadonlySet<InlineNode>;
 };
 
 export type WrapOutcome =
   | {
       kind: "wrapped";
       content: ParagraphContent[];
-      /**
-       * Whether a wrapper it created holds more than empty containers: one
-       * holding only those marks no run, so no file or reader shows it.
-       */
-      recordsContent: boolean;
     }
   | { kind: "unchanged" }
   | { kind: "refused"; reason: DocumentOpRefusalReason };
@@ -1156,6 +1233,8 @@ export const wrapTracked = ({
   copiedBoundaries,
   commentAnchors,
   takenReferences = new Set(),
+  deletesCommentAnchors,
+  keptBoundaries,
 }: WrapOptions): WrapOutcome => {
   const state: WrapState = {
     gaps: [from, to],
@@ -1169,10 +1248,11 @@ export const wrapTracked = ({
     created: new Set(),
     copiedBoundaries: new Set(copiedBoundaries),
     recorded: false,
-    recordedContent: false,
     refusal: undefined,
     commentAnchorsStand: commentAnchors === "stand",
     takenReferences,
+    deletesCommentAnchors,
+    keptBoundaries,
   };
   const content = wrapList(items, startCursor(), state);
   if (content === undefined) {
@@ -1197,6 +1277,5 @@ export const wrapTracked = ({
   return {
     kind: "wrapped",
     content: out,
-    recordsContent: state.recordedContent,
   };
 };

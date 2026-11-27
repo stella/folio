@@ -1894,8 +1894,10 @@ type PlaceContainerBlockOptions = {
 /**
  * A block content control, custom XML element or kept block markup put in
  * before `anchor`, in the block list holding it, as its exact list. Neither
- * has a tracked record of its own: Word records a control's insertion on the
- * runs inside it, and kept markup is not read, so a suggestion refuses.
+ * has a tracked record of its own: a block-level `w:sdt` or `w:customXml`
+ * takes no `w:ins` or `w:del` (an insertion is recorded only on the runs and
+ * paragraph marks inside it, so rejecting would leave the empty container
+ * standing), and kept markup is not read, so a suggestion refuses.
  */
 const placeContainerBlock = ({
   document,
@@ -5534,10 +5536,8 @@ const compileInStory = (
                 },
                 mode: { type: "editing", keepsLoneEmptyContainers },
               });
-            // A tracked replacement marks no empty container standing alone
-            // and so keeps it; the direct one keeps it too. Only a deletion of
-            // nothing else in one paragraph, which has no tracked
-            // counterpart, removes it.
+            // Empty containers in an otherwise untouched region survive a
+            // replacement. A deletion selecting just those records removes them.
             const keeping = segmentsKeeping(true);
             const segments =
               keeping.length === 0 &&

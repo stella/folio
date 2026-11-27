@@ -1654,13 +1654,19 @@ export const deleteBlocks = ({
   // taken, a further one records nothing on: no reader or file would show it.
   // Where the direct deletion changes nothing either, as for an empty
   // paragraph alone in its container, recording nothing is that deletion.
-  if (tracked.every((paragraph, index) => paragraph === reviewed[index]))
-    return changesNothing
-      ? unchanged(document)
-      : refuse(
-          DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-          "A tracked paragraph deletion would record nothing.",
-        );
+  if (tracked.every((paragraph, index) => paragraph === reviewed[index])) {
+    if (changesNothing) return unchanged(document);
+    const pending = selected.find(keepsDeletedMark)?.pPrMark;
+    if (pending !== undefined)
+      return refuse(
+        pendingParagraphMarkReason(pending),
+        "The paragraph's pending deletion already owns the break.",
+      );
+    return refuse(
+      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      "A tracked paragraph deletion would record nothing.",
+    );
+  }
   const beforeKeys = new Set(identityKeysIn(reviewed));
   const fresh = freshenIdentities({
     before: reviewed,

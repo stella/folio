@@ -697,7 +697,16 @@ const resolveFieldRuns = (
     resolution,
     new Set(fieldHeldChangeIds(field)),
   );
-  return next === result ? field : withFieldResult(field, next);
+  if (field.type === "simpleField")
+    return next === result ? field : withFieldResult(field, next);
+  // The instruction runs of a `w:fldChar` field carry their own `w:rPrChange`.
+  const code = field.fieldCode.map((run) => resolveRun(run, resolution));
+  const codeChanged = code.some((run, index) => run !== field.fieldCode[index]);
+  if (next === result && !codeChanged) return field;
+  return withFieldResult(
+    codeChanged ? { ...field, fieldCode: code } : field,
+    next,
+  );
 };
 
 /**
@@ -2976,11 +2985,25 @@ const resolveList = ({
     let before = beforeIndex >= 0 ? pending.at(beforeIndex) : undefined;
     let after = pending.at(afterIndex);
     // Every piece on one side goes with this resolution: no record of the
-    // level it cut is left there to join.
+    // level it cut is left there to join. An insertion made after the change
+    // is no piece of its cut: going with it, it leaves the cut reaching the
+    // list's edge, and the record beyond it, as rejecting it first does.
     const goBefore = pending.slice(beforeIndex + 1, index).some(goes);
     const goAfter = pending.slice(index + 1, afterIndex).some(goes);
     const piecesGo = goBefore || goAfter;
-    if ((before === undefined && goBefore) || (after === undefined && goAfter))
+    const pieceGoes = (from: number, to: number): boolean =>
+      pending
+        .slice(from, to)
+        .some(
+          (candidate) =>
+            goes(candidate) &&
+            isTrackedWrapper(candidate) &&
+            (candidate.info.date ?? "") <= (node.info.date ?? ""),
+        );
+    if (
+      (before === undefined && pieceGoes(beforeIndex + 1, index)) ||
+      (after === undefined && pieceGoes(index + 1, afterIndex))
+    )
       return 0;
     // An insertion made before the change, holding a piece of its cut, had
     // the change made inside it: rejected, it takes the piece and every level
@@ -5935,9 +5958,18 @@ const resolveList = ({
     const right = out[seam];
     // A side with no record still takes them when the seam's provenance
     // names the other side's record as the piece of the cut they stood in.
+    // So does the one record a removal's seam meets at the list's edge, where
+    // the markers its removal consumed the name of stood: the other piece
+    // lies beyond the edge, as when the removal that kept them stood there.
+    const edgePiece =
+      kept !== undefined &&
+      kept.piece === undefined &&
+      removalSeams.has(recorded) &&
+      (left === undefined) !== (right === undefined);
     const pieceOnly =
-      kept?.piece !== undefined &&
-      (kept.piece === "after" ? right : left) !== undefined;
+      edgePiece ||
+      (kept?.piece !== undefined &&
+        (kept.piece === "after" ? right : left) !== undefined);
     if (
       count === 0 ||
       ((left === undefined || right === undefined) && !pieceOnly)
@@ -6282,8 +6314,45 @@ const resolveList = ({
         isTrackedWrapper(metRight) &&
         sameStamp(metLeft, metRight) &&
         alikeDepth(metLeft, metRight) >= exactDepth;
+      const facingJoinAt = (index: number, side: "before" | "after") => {
+        const node = out[index]?.node;
+        return node !== undefined && isTrackedWrapper(node)
+          ? (node.resolutionJoins?.[side] ?? 0)
+          : 0;
+      };
+      // Insertions made after a removed insertion, joined to nothing on the
+      // seam's side, are new content put beside it, no piece of the record it
+      // cut. With only them between the seam and the list's edge, the piece
+      // on that side lies beyond the edge, as removing them with the seam
+      // leaves the cut reaching it: the seam waits on them as on insertions
+      // between two pieces in the list.
+      const removalMade = addedRemovalSeams.has(recorded)
+        ? removalDates.get(recorded)
+        : undefined;
+      const laterContentTo = (from: number, to: number, facing: number) =>
+        removalMade !== undefined &&
+        from < to &&
+        facing === 0 &&
+        out
+          .slice(from, to)
+          .every(
+            ({ node }) =>
+              isTrackedWrapper(node) && (node.info.date ?? "") > removalMade,
+          );
+      const edgeBefore =
+        !metAcrossKept &&
+        leftEnd < 0 &&
+        rightStart < out.length &&
+        laterContentTo(0, keptEnd + 1, facingJoinAt(keptEnd, "after"));
+      const edgeAfter =
+        !metAcrossKept &&
+        leftEnd >= 0 &&
+        rightStart >= out.length &&
+        laterContentTo(seam, out.length, facingJoinAt(seam, "before"));
       const piecesBeyond =
-        !metAcrossKept && leftEnd >= 0 && rightStart < out.length;
+        !metAcrossKept &&
+        (leftEnd >= 0 || edgeBefore) &&
+        (rightStart < out.length || edgeAfter);
       const first = seam - standingKept;
       const keptFrom = keptFromIn(first, seam);
       /**
@@ -6316,12 +6385,6 @@ const resolveList = ({
       };
       const keptJoinHandsOver =
         keptJoinSeams.has(recorded) && standingKept === 0;
-      const facingJoinAt = (index: number, side: "before" | "after") => {
-        const node = out[index]?.node;
-        return node !== undefined && isTrackedWrapper(node)
-          ? (node.resolutionJoins?.[side] ?? 0)
-          : 0;
-      };
       // A kept revision's join belongs to the record that revision cut,
       // counting that record's own tracked wrapper as its first level.
       // Insertions made before the revision there are no changes made inside
@@ -6534,6 +6597,8 @@ const resolveList = ({
         alikeDepth(beyondLeft, beyondRight) >= exactDepth;
       const mayWait =
         cutsOwn ||
+        edgeBefore ||
+        edgeAfter ||
         leftHolder !== undefined ||
         rightHolder !== undefined ||
         pendingPieces ||
@@ -6572,8 +6637,8 @@ const resolveList = ({
         !metAcrossKept &&
         mayWait &&
         deferredDepth > 0 &&
-        leftEnd >= 0 &&
-        rightStart < out.length
+        (leftEnd >= 0 || edgeBefore) &&
+        (rightStart < out.length || edgeAfter)
       ) {
         const blockerIndices = [
           ...(leftHolder === undefined ? [] : [leftHolder]),
@@ -6942,6 +7007,10 @@ const reachableIds = (paragraph: Paragraph): Set<number> => {
       if (isTrackedWrapper(node)) out.add(node.info.id);
       for (const change of ownRunPropertyChanges(node)) out.add(change.info.id);
       for (const id of fieldHeldChangeIds(node)) out.add(id);
+      if (node.type === "complexField")
+        for (const run of node.fieldCode)
+          for (const change of run.propertyChanges ?? [])
+            out.add(change.info.id);
       visit(childNodes(node) ?? []);
     }
   };

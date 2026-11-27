@@ -366,7 +366,7 @@ for (const formatting of [
         expected: [removed],
         blocks: [],
       });
-      if (formatting.type !== "authored") {
+      if (formatting.type !== "authored" && boundary === "table") {
         expect(result.isErr()).toBe(true);
         if (result.isOk())
           panic("Owned empty formatting must refuse before removal.");

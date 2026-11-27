@@ -20,7 +20,7 @@ import {
 } from "@stll/docx-core/ops";
 import { ZipArchive } from "@stll/docx-core/zip";
 
-import type { Document } from "../types/document";
+import type { Document, Paragraph } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { repackWithCanonicalStoryRemovals } from "./canonicalStoryRepack";
 import { parseDocx } from "./parser";
@@ -344,4 +344,156 @@ test("a suggested paragraph ending a section saves its break beside its inserted
     REVISION_DECISIONS.REJECT,
   );
   expect(shape(rejected)).toEqual(shape(document));
+});
+
+test.each(["outside", "inside a w:hyperlink"] as const)(
+  "a deletion a comment range crosses %s saves the standing endpoint outside its w:del",
+  async (placement) => {
+    // Alternate run formatting keeps each letter its own run across a save.
+    const letter = (text: string, bold: boolean) =>
+      `<w:r>${bold ? "<w:rPr><w:b/></w:rPr>" : ""}<w:t>${text}</w:t></w:r>`;
+    const held = letter("b", true) + letter("c", false);
+    const document = await open(
+      `<w:p w14:paraId="00000001">${letter("a", false)}` +
+        (placement === "outside"
+          ? held
+          : `<w:hyperlink w:anchor="Clause">${held}</w:hyperlink>`) +
+        `${letter("d", true)}</w:p>`,
+    );
+    const [first] = document.package.document.content;
+    if (first?.type !== "paragraph")
+      throw new TypeError("Expected a paragraph.");
+    // The range opens between "b" and "c", inside the deleted "bc", and
+    // closes after "d", outside it.
+    const start = { type: "commentRangeStart", id: 7 } as const;
+    const container = first.content[1];
+    if (placement === "outside") first.content.splice(2, 0, start);
+    else if (container?.type === "hyperlink")
+      container.children.splice(1, 0, start);
+    else throw new TypeError("Expected a hyperlink.");
+    first.content.push(
+      { type: "commentRangeEnd", id: 7 },
+      { type: "commentReference", id: 7 },
+    );
+    document.package.document.comments = [
+      { id: 7, author: "Commenter", anchorKind: "range", content: [] },
+    ];
+    const suggested = apply(document, [
+      {
+        type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+        from: { story: OP_STORIES.MAIN, blockId: "00000001", offset: 1 },
+        to: { story: OP_STORIES.MAIN, blockId: "00000001", offset: 3 },
+        revision: STAMP,
+        newIds: NEW_IDS,
+      },
+    ]);
+    const zip = await ZipArchive.read(await saved(suggested.document));
+    const xml = (await zip.entry("word/document.xml")?.text()) ?? "";
+    expect(xml).toContain("<w:del ");
+    expect(xml).not.toMatch(
+      /<w:del [^>]*>(?:(?!<\/w:del>).)*<w:commentRangeStart w:id="7"\/>/su,
+    );
+    const reread = await assertSurvivesSave(suggested);
+    expect(reread.package.document.comments?.map(({ id }) => id)).toEqual([7]);
+  },
+);
+
+test("a suggested join through hyperlinks saves its merge depth on the deleted mark", async () => {
+  const link = (text: string) =>
+    `<w:hyperlink w:anchor="Clause"><w:r><w:t>${text}</w:t></w:r></w:hyperlink>`;
+  const document = await open(
+    `<w:p w14:paraId="00000001">${link("a")}</w:p>` +
+      `<w:p w14:paraId="00000002">${link("b")}</w:p>`,
+  );
+  const suggested = apply(document, [
+    {
+      type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
+      story: OP_STORIES.MAIN,
+      blockId: "00000001",
+      nextBlockId: "00000002",
+      depth: 2,
+      revision: STAMP,
+    },
+  ]);
+  const reread = await assertSurvivesSave(suggested);
+  const [first] = reread.package.document.content;
+  expect(first?.type === "paragraph" && first.pPrMark?.resolutionJoin).toBe(2);
+  const accepted = resolve(
+    reread,
+    suggested.revisions,
+    REVISION_DECISIONS.ACCEPT,
+  );
+  const [joined] = accepted.package.document.content;
+  if (joined?.type !== "paragraph")
+    throw new TypeError("Expected a paragraph.");
+  expect(joined.content.map(({ type }) => type)).toEqual(["hyperlink"]);
+});
+
+test("a suggested paragraph keeps a pasted control's own insertion after a save", async () => {
+  const document = await open(
+    '<w:p w14:paraId="00000001"><w:r><w:t>Here.</w:t></w:r></w:p>',
+  );
+  const pasted: Paragraph = {
+    type: "paragraph",
+    paraId: "0000000B",
+    content: [
+      {
+        type: "inlineSdt",
+        properties: { sdtType: "richText", id: 42 },
+        content: [
+          {
+            type: "insertion",
+            info: { id: 91, author: "Earlier", date: "2026-01-01T00:00:00Z" },
+            content: [
+              { type: "run", content: [{ type: "text", text: "pasted" }] },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  const suggested = suggest(document, {
+    type: "insertParagraphs",
+    story: OP_STORIES.MAIN,
+    at: { type: "before", blockId: "00000001" },
+    paragraphs: [pasted],
+  });
+  expect(suggested.revisions).not.toContain(91);
+  const reread = await assertSurvivesSave(suggested);
+  const rejected = resolve(
+    reread,
+    suggested.revisions,
+    REVISION_DECISIONS.REJECT,
+  );
+  expect(shape(rejected)).toEqual(shape(document));
+});
+
+test("a property change on a field's instruction run resolves after a save", async () => {
+  const document = await open(
+    '<w:p w14:paraId="00000001"><w:r><w:fldChar w:fldCharType="begin"/></w:r>' +
+      `<w:r><w:rPr><w:b/><w:rPrChange w:id="8" ${AUTHORED}><w:rPr/></w:rPrChange></w:rPr><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r>` +
+      '<w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>3</w:t></w:r>' +
+      '<w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>',
+  );
+  const reread = await assertSurvivesSave({ document, revisions: [8] });
+  const instruction = (resolved: Document) => {
+    const [paragraph] = resolved.package.document.content;
+    const field =
+      paragraph?.type === "paragraph"
+        ? paragraph.content.find((item) => item.type === "complexField")
+        : undefined;
+    if (field?.type !== "complexField")
+      throw new TypeError("Expected a complex field.");
+    return field.fieldCode.map(({ formatting, propertyChanges }) => ({
+      bold: formatting?.bold === true,
+      pending: (propertyChanges ?? []).length,
+    }));
+  };
+  expect(instruction(reread)).toEqual([{ bold: true, pending: 1 }]);
+  expect(instruction(resolve(reread, [8], REVISION_DECISIONS.ACCEPT))).toEqual([
+    { bold: true, pending: 0 },
+  ]);
+  expect(instruction(resolve(reread, [8], REVISION_DECISIONS.REJECT))).toEqual([
+    { bold: false, pending: 0 },
+  ]);
 });
