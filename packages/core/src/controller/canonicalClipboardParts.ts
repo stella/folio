@@ -5,25 +5,29 @@
  * Kept markup (an opaque drawing, an embedded object, a kept block) names its
  * parts by relationship id: a chart, an embedding, a diagram's parts, each
  * with relationships of its own. The ids are the main document's in the body
- * and a note or comment part's own in a note or a comment. The model does not
- * hold those parts, so a copy reads them from the source package ahead of the
- * paste, and the paste copies each one under a fresh part name and
- * relationship id.
+ * and the holding part's own in a note, a comment, a header or a footer. The
+ * model does not hold those parts, so a copy reads them from the source
+ * package ahead of the paste, and the paste copies each one under a fresh
+ * part name and relationship id.
  */
 
-import { Result } from "better-result";
+import { panic, Result } from "better-result";
 import type { Slice } from "prosemirror-model";
 
 import { escapeXmlAttribute } from "@stll/docx-core";
-import { ZipArchive } from "@stll/docx-core/zip";
+import { OP_STORIES, type OpStory } from "@stll/docx-core/ops";
+import { ZipArchive, type ZipEntry } from "@stll/docx-core/zip";
 
 import {
   keptMarkupIn,
-  mainRelationshipTarget,
+  MAIN_DOCUMENT_PART,
+  partRelationshipsOf,
   relationshipIdsInMarkup,
   RELATIONSHIPS_CONTENT_TYPE,
   relationshipsPartOf,
   relativeTarget,
+  storyPartPath,
+  storyRelationshipsKey,
 } from "../docx/copiedPackageParts";
 import { parseRelationships, resolveRelativePath } from "../docx/relsParser";
 import {
@@ -113,6 +117,36 @@ export const sliceAnnotationMarkup = (
 const decodedTarget = (target: string): string =>
   Result.try(() => decodeURIComponent(target)).unwrapOr(target);
 
+/** The package path a relationship of the part at `partPath` targets. */
+export const relationshipTargetPath = (
+  partPath: string,
+  target: string,
+): string =>
+  resolveRelativePath(relationshipsPartOf(partPath), decodedTarget(target));
+
+/**
+ * The relationships kept markup in `story` names its parts by, with the path
+ * of the part holding them: the main document's for the body, the story
+ * part's own otherwise, or the main document's for a note part without its
+ * own, as the parser reads it.
+ */
+export const storyRelationshipsOf = (
+  document: Document,
+  story: OpStory,
+): {
+  relationships: ReadonlyMap<string, Relationship> | undefined;
+  partPath: string | undefined;
+} => {
+  const key = storyRelationshipsKey(story);
+  return {
+    relationships:
+      key === undefined
+        ? document.package.relationships
+        : partRelationshipsOf(document, key),
+    partPath: storyPartPath(document, story),
+  };
+};
+
 /** The content type the registry gives each part, by lower-cased path. */
 const contentTypesOf = (xml: string) => {
   const overrides = new Map<string, string>();
@@ -138,8 +172,8 @@ const contentTypesOf = (xml: string) => {
 
 /**
  * Read the parts the kept markup among `markup` names from `document`'s own
- * package, with every part those parts' relationships reach: the body's
- * markup through the main document's relationships, and each of
+ * package, with every part those parts' relationships reach: the markup
+ * copied from `story` through that story's relationships, and each of
  * `annotationMarkup` through its note or comment part's own. Undefined when
  * the document has no package bytes.
  */
@@ -147,11 +181,14 @@ export const readClipboardPackageParts = async ({
   document,
   markup,
   annotationMarkup = new Map(),
+  story = OP_STORIES.MAIN,
 }: {
   document: Document;
   markup: readonly string[];
   /** The kept markup of copied notes and comments, by the part holding it. */
   annotationMarkup?: ReadonlyMap<string, readonly string[]>;
+  /** The story the markup was copied from; the body when absent. */
+  story?: OpStory;
 }): Promise<ClipboardPackageParts | undefined> => {
   // A part an earlier paste copied in lives in `copiedParts` until a save
   // writes it; it reads from there before the package it was opened from.
@@ -163,31 +200,30 @@ export const readClipboardPackageParts = async ({
   );
   const buffer = document.originalBuffer;
   if (buffer === undefined && copied.size === 0) return undefined;
-  // Note and comment parts sit beside the main document, so their targets
-  // resolve as its own do.
   const rootsOf = (
     kept: readonly string[],
-    relationships: ReadonlyMap<string, Relationship> | undefined,
-  ) =>
-    [
-      ...new Set(kept.flatMap((xml) => relationshipIdsInMarkup(xml) ?? [])),
-    ].flatMap((id) => {
+    { relationships, partPath }: ReturnType<typeof storyRelationshipsOf>,
+  ): string[] => {
+    if (partPath === undefined) return [];
+    const ids = new Set(
+      kept.flatMap((xml) => relationshipIdsInMarkup(xml) ?? []),
+    );
+    return [...ids].flatMap((id) => {
       const relationship = relationships?.get(id);
       return relationship === undefined ||
         relationship.targetMode === "External"
         ? []
-        : [mainRelationshipTarget(decodedTarget(relationship.target))];
+        : [relationshipTargetPath(partPath, relationship.target)];
     });
+  };
+  // Note and comment parts sit beside the main document.
   const roots = [
-    ...rootsOf(markup, document.package.relationships),
+    ...rootsOf(markup, storyRelationshipsOf(document, story)),
     ...[...annotationMarkup].flatMap(([part, kept]) =>
-      // A part without its own relationships resolves through the main
-      // document's, as the parser reads it.
-      rootsOf(
-        kept,
-        document.package.annotationRelationships?.get(part) ??
-          document.package.relationships,
-      ),
+      rootsOf(kept, {
+        relationships: partRelationshipsOf(document, part),
+        partPath: `word/${part}.xml`,
+      }),
     ),
   ];
   // Markup naming only external targets copies its relationships alone.
@@ -202,6 +238,14 @@ export const readClipboardPackageParts = async ({
       ? ""
       : decodeText(await registry.bytes(), { ignoreBOM: true }),
   );
+  /** An entry's bytes; undefined when the entry cannot be read. */
+  const bytesOf = async (entry: ZipEntry): Promise<Uint8Array | undefined> =>
+    (
+      await Result.tryPromise({
+        try: () => entry.bytes(),
+        catch: () => undefined,
+      })
+    ).unwrapOr(undefined);
   const partAt = async (path: string): Promise<SourcePart | undefined> => {
     const held = copied.get(path.toLowerCase());
     if (held !== undefined)
@@ -209,8 +253,12 @@ export const readClipboardPackageParts = async ({
     const entry = entries.get(path.toLowerCase());
     const contentType = contentTypeOf(path);
     if (entry === undefined || contentType === undefined) return undefined;
-    return { data: await entry.bytes(), contentType };
+    const data = await bytesOf(entry);
+    return data === undefined ? undefined : { data, contentType };
   };
+  // A part that cannot be read is left out, as one the package lacks: the
+  // copier then refuses only the markup reaching it, and the parts other
+  // markup reaches still copy.
   const parts = new Map<string, SourcePart>();
   const pending = [...roots];
   for (let path = pending.pop(); path !== undefined; path = pending.pop()) {
@@ -218,16 +266,21 @@ export const readClipboardPackageParts = async ({
     // oxlint-disable-next-line no-await-in-loop -- each part names the next
     const part = await partAt(path);
     if (part === undefined) continue;
-    parts.set(path, part);
     const relsPath = relationshipsPartOf(path);
     const heldRels = copied.get(relsPath.toLowerCase());
     const relsEntry = entries.get(relsPath.toLowerCase());
-    let data: Uint8Array;
+    let data: Uint8Array | undefined;
     if (heldRels !== undefined) data = new Uint8Array(heldRels.data);
     else if (relsEntry !== undefined)
       // oxlint-disable-next-line no-await-in-loop -- each part names the next
-      data = await relsEntry.bytes();
-    else continue;
+      data = await bytesOf(relsEntry);
+    else {
+      parts.set(path, part);
+      continue;
+    }
+    // A part whose relationships cannot be read cannot be copied whole.
+    if (data === undefined) continue;
+    parts.set(path, part);
     parts.set(relsPath, { data, contentType: RELATIONSHIPS_CONTENT_TYPE });
     for (const relationship of parseRelationships(
       decodeText(data, { ignoreBOM: true }),
@@ -244,18 +297,27 @@ type PartCopierOptions = {
   parts: ClipboardPackageParts;
   /**
    * The source relationships the markup's ids name: the main document's, or
-   * a note or comment part's, which sits beside it.
+   * those of the story part the markup was copied from.
    */
   sourceRelationships: ReadonlyMap<string, Relationship>;
+  /** The part `sourceRelationships` belong to; the main document when absent. */
+  sourcePart?: string;
   /** The paste's destination, whose package the copies must not collide with. */
   destination: Document;
   /**
    * The destination's relationships, which receive the copied ones: the main
-   * document's, or those of the note or comment part the markup lands in.
+   * document's, or those of the story part the markup lands in.
    */
   relationships: Map<string, Relationship>;
+  /** The part `relationships` belong to; the main document when absent. */
+  destinationPart?: string;
   /** The destination's copied parts, which receive the copies. */
   copiedParts: Map<string, CopiedPackagePart>;
+  /**
+   * The media the paste stages beside the copies, by path: a picture the
+   * same paste imports holds its name there, so no copy takes it.
+   */
+  stagedMedia?: ReadonlyMap<string, unknown>;
   /** A relationship id the destination does not hold yet. */
   freshRelationshipId: () => string;
   /**
@@ -266,21 +328,33 @@ type PartCopierOptions = {
   copiedPaths?: Map<string, string>;
 };
 
-/** Why a copy failed: the source does not hold what the markup names. */
+/**
+ * Why a copy failed: the source relationships do not hold what the markup
+ * names (`unresolved`), or a part it reaches was not read from the source
+ * package or the destination package cannot be read (`unreadable`).
+ */
 export type PartCopyFailure = { type: "unresolved" | "unreadable" };
+
+/** The folder every copied part lives under, beside the parts naming it. */
+const COPY_FOLDER = "word/";
 
 /**
  * Copies the parts kept markup names into the destination: each relationship
  * under a fresh id, each internal target with its own relationships under a
- * fresh part name beside its source name. A part two pieces of markup share
- * is copied once.
+ * fresh part name beside its source name. A part outside the main document's
+ * folder is copied into it, keeping its own folder below it. A part two
+ * pieces of markup share is copied once, and a copy that cannot reach every
+ * part it needs copies nothing.
  */
 export const createPartCopier = ({
   parts,
   sourceRelationships,
+  sourcePart = MAIN_DOCUMENT_PART,
   destination,
   relationships,
+  destinationPart = MAIN_DOCUMENT_PART,
   copiedParts,
+  stagedMedia = new Map(),
   freshRelationshipId,
   copiedPaths = new Map(),
 }: PartCopierOptions) => {
@@ -300,15 +374,23 @@ export const createPartCopier = ({
     for (const path of copiedParts.keys()) names.add(path.toLowerCase());
     for (const { target, targetMode } of relationships.values())
       if (targetMode !== "External")
-        names.add(mainRelationshipTarget(target).toLowerCase());
+        names.add(
+          relationshipTargetPath(destinationPart, target).toLowerCase(),
+        );
     taken = names;
     return Result.ok(names);
   };
-  /** A part name beside `path` that the destination does not hold. */
+  /**
+   * A part name beside `path` that the destination does not hold, under the
+   * main document's folder.
+   */
   const freshName = (path: string, names: Set<string>): string => {
-    const slash = path.lastIndexOf("/");
-    const folder = path.slice(0, slash + 1);
-    const name = path.slice(slash + 1);
+    const placed = path.startsWith(COPY_FOLDER)
+      ? path
+      : `${COPY_FOLDER}${path}`;
+    const slash = placed.lastIndexOf("/");
+    const folder = placed.slice(0, slash + 1);
+    const name = placed.slice(slash + 1);
     const dot = name.lastIndexOf(".");
     const extension = dot > 0 ? name.slice(dot) : "";
     const stem = (dot > 0 ? name.slice(0, dot) : name).replace(/\d+$/u, "");
@@ -321,38 +403,73 @@ export const createPartCopier = ({
         return candidate;
     }
   };
-  const copyPart = (path: string): Result<string, PartCopyFailure> => {
-    const copied = copiedPaths.get(path);
-    if (copied !== undefined) return Result.ok(copied);
-    const part = parts.parts.get(path);
-    if (part === undefined || !path.startsWith("word/"))
-      return Result.err({ type: "unreadable" });
-    const names = takenNames();
-    if (names.isErr()) return names;
-    const target = freshName(path, names.value);
-    names.value.add(target.toLowerCase());
-    copiedPaths.set(path, target);
+  /** The relationships a read part names, with the part holding them. */
+  const partRelationships = (path: string) => {
     const relsPath = relationshipsPartOf(path);
     const rels = parts.parts.get(relsPath);
-    if (rels !== undefined) {
+    return rels === undefined
+      ? undefined
+      : {
+          relsPath,
+          relationships: [
+            ...parseRelationships(
+              decodeText(rels.data, { ignoreBOM: true }),
+            ).values(),
+          ],
+        };
+  };
+  /** Whether every part `path` reaches was read, so it can be copied whole. */
+  const reachable = (path: string, seen: Set<string>): boolean => {
+    if (seen.has(path) || copiedPaths.has(path)) return true;
+    seen.add(path);
+    if (!parts.parts.has(path)) return false;
+    const named = partRelationships(path);
+    return (
+      named === undefined ||
+      named.relationships.every(
+        (relationship) =>
+          relationship.targetMode === "External" ||
+          reachable(
+            resolveRelativePath(
+              named.relsPath,
+              decodedTarget(relationship.target),
+            ),
+            seen,
+          ),
+      )
+    );
+  };
+  const copyPart = (path: string, names: Set<string>): string => {
+    const copied = copiedPaths.get(path);
+    if (copied !== undefined) return copied;
+    const part =
+      parts.parts.get(path) ?? panic("A reachable copied part was not read.");
+    const target = freshName(path, names);
+    names.add(target.toLowerCase());
+    copiedPaths.set(path, target);
+    const named = partRelationships(path);
+    if (named !== undefined) {
       const entries: string[] = [];
-      for (const relationship of parseRelationships(
-        decodeText(rels.data, { ignoreBOM: true }),
-      ).values()) {
-        let relationshipTarget = relationship.target;
-        if (relationship.targetMode !== "External") {
-          const copiedTarget = copyPart(
-            resolveRelativePath(relsPath, decodedTarget(relationship.target)),
-          );
-          if (copiedTarget.isErr()) return copiedTarget;
-          relationshipTarget = relativeTarget(target, copiedTarget.value);
-        }
+      for (const relationship of named.relationships) {
+        const relationshipTarget =
+          relationship.targetMode === "External"
+            ? relationship.target
+            : relativeTarget(
+                target,
+                copyPart(
+                  resolveRelativePath(
+                    named.relsPath,
+                    decodedTarget(relationship.target),
+                  ),
+                  names,
+                ),
+              );
         entries.push(
           `<Relationship Id="${escapeXmlAttribute(relationship.id)}" Type="${escapeXmlAttribute(relationship.type)}" Target="${escapeXmlAttribute(relationshipTarget)}"${relationship.targetMode === "External" ? ' TargetMode="External"' : ""}/>`,
         );
       }
       const copiedRels = relationshipsPartOf(target);
-      names.value.add(copiedRels.toLowerCase());
+      names.add(copiedRels.toLowerCase());
       copiedParts.set(copiedRels, {
         path: copiedRels,
         contentType: RELATIONSHIPS_CONTENT_TYPE,
@@ -366,22 +483,22 @@ export const createPartCopier = ({
       contentType: part.contentType,
       data: new Uint8Array(part.data).buffer,
     });
-    return Result.ok(target);
+    return target;
   };
   /** The destination relationship id the copy of `id` takes. */
-  const copyRelationship = (id: string): Result<string, PartCopyFailure> => {
+  const copyRelationship = (id: string, names: Set<string>): string => {
     const copied = copiedIds.get(id);
-    if (copied !== undefined) return Result.ok(copied);
-    const source = sourceRelationships.get(id);
-    if (source === undefined) return Result.err({ type: "unresolved" });
-    let target = source.target;
-    if (source.targetMode !== "External") {
-      const part = copyPart(
-        mainRelationshipTarget(decodedTarget(source.target)),
-      );
-      if (part.isErr()) return part;
-      target = relativeTarget("word/document.xml", part.value);
-    }
+    if (copied !== undefined) return copied;
+    const source =
+      sourceRelationships.get(id) ??
+      panic("A checked copied relationship is missing.");
+    const target =
+      source.targetMode === "External"
+        ? source.target
+        : relativeTarget(
+            destinationPart,
+            copyPart(relationshipTargetPath(sourcePart, source.target), names),
+          );
     const next = freshRelationshipId();
     relationships.set(next, {
       id: next,
@@ -392,19 +509,33 @@ export const createPartCopier = ({
         : { targetMode: source.targetMode }),
     });
     copiedIds.set(id, next);
-    return Result.ok(next);
+    return next;
   };
   return {
     /** Copy what each of `ids` names; the map from each to its copy's id. */
     copy: (
       ids: readonly string[],
     ): Result<ReadonlyMap<string, string>, PartCopyFailure> => {
-      const renamed = new Map<string, string>();
+      // Every id resolves and every part it reaches was read before any is
+      // copied, so a copy that fails leaves the destination as it was.
+      const seen = new Set<string>();
       for (const id of ids) {
-        const copied = copyRelationship(id);
-        if (copied.isErr()) return copied;
-        renamed.set(id, copied.value);
+        const source = sourceRelationships.get(id);
+        if (source === undefined) return Result.err({ type: "unresolved" });
+        if (
+          source.targetMode !== "External" &&
+          !copiedIds.has(id) &&
+          !reachable(relationshipTargetPath(sourcePart, source.target), seen)
+        )
+          return Result.err({ type: "unreadable" });
       }
+      const names = takenNames();
+      if (names.isErr()) return names;
+      // The paste stages pictures and other copiers' parts between copies.
+      for (const path of [...stagedMedia.keys(), ...copiedParts.keys()])
+        names.value.add(path.toLowerCase());
+      const renamed = new Map<string, string>();
+      for (const id of ids) renamed.set(id, copyRelationship(id, names.value));
       return Result.ok(renamed);
     },
   };

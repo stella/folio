@@ -7,6 +7,7 @@
 import { App } from 'vue';
 import { CanonicalHistoryDrop } from '@stll/folio-core/canonical/canonicalSession';
 import { CanonicalHistoryEffect } from '@stll/folio-core/canonical/canonicalSession';
+import { CanonicalPasteWarning } from '@stll/folio-core/controller/canonicalClipboard';
 import { CanonicalReviewEditor } from '@stll/folio-core/controller/canonicalReview';
 import { CanonicalRoomCollaboration } from '@stll/folio-core/controller/canonicalRoomEditor';
 import { CellCoordinates } from '@stll/folio-core/managers/types';
@@ -155,6 +156,7 @@ export type UseDocxEditorOptions = {
     historyShortcuts?: HistoryShortcutOwner;
     onCanonicalHistory?: (effect: CanonicalHistoryEffect) => void;
     onCanonicalHistoryDrop?: (drop: CanonicalHistoryDrop) => void;
+    onCanonicalPasteWarnings?: (warnings: readonly CanonicalPasteWarning[]) => void;
     collaboration?: MaybeRefOrGetter<CanonicalRoomCollaboration | undefined>;
     getAnonymizationTerms?: () => readonly FolioAnonymizationTerm[] | undefined;
     getDerivedFields?: () => FolioDerivedFields | undefined;

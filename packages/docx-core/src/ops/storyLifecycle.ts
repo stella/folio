@@ -24,6 +24,7 @@ import type { DocumentEdit } from "./edits";
 import { structurallyEqual } from "./equality";
 /** Explicit story lifecycle and section property edits, with exact JSON-safe inverses. */
 import { cloneModel } from "./modelClone";
+import { packageResourcesOpOf } from "./packageResources";
 import { applyFormattingPatch } from "./patch";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import {
@@ -473,12 +474,40 @@ export const storyPartsOpOf = ({
   };
 };
 
+/** A header's or footer's part relationships key: `header:<rId>`, `footer:<rId>`. */
+const HEADER_FOOTER_TABLE = /^(?<kind>header|footer):(?<rId>.+)$/u;
+
+/**
+ * `document` without the part relationships of each header or footer it no
+ * longer holds: a removed story's part goes with it, so a later header that
+ * takes its relationship id starts with no relationships of its own.
+ */
+const withoutRemovedStoryTables = (document: Document): Document => {
+  const tables = document.package.annotationRelationships;
+  if (tables === undefined) return document;
+  const kept = [...tables].filter(([key]) => {
+    const groups = HEADER_FOOTER_TABLE.exec(key)?.groups;
+    if (groups?.["rId"] === undefined) return true;
+    const stories =
+      groups["kind"] === "header"
+        ? document.package.headers
+        : document.package.footers;
+    return stories?.has(groups["rId"]) === true;
+  });
+  if (kept.length === tables.size) return document;
+  const pkg = { ...document.package };
+  if (kept.length === 0) delete pkg.annotationRelationships;
+  else pkg.annotationRelationships = new Map(kept);
+  return { ...document, package: pkg };
+};
+
 export const storyLifecycleEdit = (
   before: Document,
-  after: Document,
+  edited: Document,
   op: DocumentOp,
   semantic = false,
 ): Result<DocumentEdit, DocumentOpRefusal> => {
+  const after = withoutRemovedStoryTables(edited);
   const invalid = contractViolation(after);
   if (invalid)
     return Result.err(
@@ -498,6 +527,22 @@ export const storyLifecycleEdit = (
         expected: cloneModel(next),
         parts: cloneModel(prior),
       },
+      // The removed stories' part relationships come back with them.
+      ...(after === edited
+        ? []
+        : [
+            packageResourcesOpOf({
+              before: after,
+              after: {
+                ...after,
+                package: {
+                  ...after.package,
+                  annotationRelationships:
+                    edited.package.annotationRelationships,
+                },
+              },
+            }),
+          ]),
     ],
     touched: storyLifecycleTouched({ before, after }),
   });

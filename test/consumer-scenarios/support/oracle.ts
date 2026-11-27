@@ -5252,11 +5252,25 @@ export const assertRequestedOutcome = async (
   const noteReferences = new Map<string, readonly FolioDocumentStoryHandle[]>(
     pre.targets.noteReferences,
   );
+  // A block put after a paragraph accepting removes replays in the gap the
+  // model puts it in (`insertionAnchor`): after the paragraph an emptied
+  // one's join leaves, beside a block the batch puts after that one.
+  const landsAfter = (operation: AppliedOperation): string | undefined => {
+    const named = model.rows.find(
+      (row) =>
+        row.outsidePreState === true && row.pre?.id === operation["blockId"],
+    );
+    if (named === undefined) return undefined;
+    const block = operation.type === "insertAfterBlock" ? "paragraph" : "table";
+    const anchor = insertionAnchor(model, named, "after", block);
+    return anchor === named ? undefined : anchor.pre?.id;
+  };
   const replayOperations = sequentialGroups({
     applied: outcome.applied,
     preRows: pre.rows,
     liveRows: pre.liveRows,
     mode: pre.mode,
+    landsAfter,
     ...(pre.joinSources.type === "live" && {
       goWhole: pre.joinSources.goWhole,
     }),

@@ -1955,6 +1955,50 @@ describe("counters in words by the paragraph's language", () => {
   });
 });
 
+describe("a heading run into its text", () => {
+  const HIDDEN_MARK = "<w:rPr><w:vanish/><w:specVanish/></w:rPr>";
+  const source = async (): Promise<Uint8Array> =>
+    await buildSourceWith({
+      body: [
+        p(r("Purchase and Sale"), HIDDEN_MARK),
+        p(r(".   On the Closing Date the Company sells the Shares.")),
+        p(r("Closing"), '<w:rPr><w:specVanish w:val="0"/></w:rPr>'),
+      ].join(""),
+    });
+
+  test("the manifest says which paragraph runs on into the next", async () => {
+    const { blocks } = unwrap(await analyzeDocxBlocks(await source()));
+    expect(blocks.map(({ runsIn }) => runsIn ?? false)).toEqual([
+      true,
+      false,
+      false,
+    ]);
+  });
+
+  test("joined to its text, the heading leaves one paragraph whose mark shows", async () => {
+    const applied = unwrap(
+      await applyFor({
+        source: await source(),
+        template,
+        items: (blocks) =>
+          blocks.map(({ id, hash }, position): TemplatePlanItem =>
+            position === 0
+              ? { kind: "source", blockId: id, hash, mergeNext: "none" }
+              : { kind: "source", blockId: id, hash },
+          ),
+      }),
+    );
+    expect(applied.report.ok).toBe(true);
+    const xml = await documentOf(applied.docx);
+    expect(xml).toContain("Purchase and Sale");
+    expect(xml).not.toContain("specVanish");
+    const { blocks } = unwrap(await analyzeDocxBlocks(applied.docx));
+    expect(blocks.map(({ text }) => text)).toContain(
+      "Purchase and Sale.   On the Closing Date the Company sells the Shares.",
+    );
+  });
+});
+
 describe("page starts", () => {
   const PAGE_BREAK = '<w:r><w:br w:type="page"/></w:r>';
   const LANDSCAPE =

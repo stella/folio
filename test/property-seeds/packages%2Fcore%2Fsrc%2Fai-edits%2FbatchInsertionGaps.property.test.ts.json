@@ -1,0 +1,10 @@
+{
+  "a batch puts blocks in the gaps they land in one at a time, in batch order, tracked and direct alike": [
+    {
+      "seed": 3,
+      "path": "141:7:9",
+      "note": "A paragraph before and one after an emptied paragraph ahead of a table, then one put before the table from its cell: the last joins the gap after the emptied paragraph, not the one before it.",
+      "date": "2026-11-27"
+    }
+  ]
+}

@@ -22,6 +22,7 @@ import { BlockRect } from '@stll/folio-core/paged-layout/blockGeometry';
 import { buildPositionalText } from '@stll/folio-core/ai-suggestions/text-positions';
 import { CanonicalHistoryDrop } from '@stll/folio-core/canonical/canonicalSession';
 import { CanonicalHistoryEffect } from '@stll/folio-core/canonical/canonicalSession';
+import { CanonicalPasteWarning } from '@stll/folio-core/controller/canonicalClipboard';
 import { CanonicalRoomCollaboration } from '@stll/folio-core/controller/canonicalRoomEditor';
 import { clearTemplateSlashMenu } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
 import { ColorValue } from '@stll/folio-core/types/document';
@@ -31,6 +32,7 @@ import { ComponentOptionsMixin } from 'vue';
 import { ComponentProvideOptions } from 'vue';
 import { ComputedRef } from 'vue';
 import { configureHyphenationAssets } from '@stll/folio-core/hyphenation';
+import { configureTiffDecoding } from '@stll/folio-core/tiff-decoding';
 import { consumeTemplateSlashQuery } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
 import { ContentControlFilter } from '@stll/folio-core/content-controls';
 import { createAICitationDecorationsPlugin } from '@stll/folio-core/prosemirror/plugins/aiCitationDecorations';
@@ -181,6 +183,8 @@ import { TemplateSlashMenuState } from '@stll/folio-core/prosemirror/plugins/tem
 import { TextPosition } from '@stll/folio-core/controller/folioEditor';
 import { TextWatermark } from '@stll/folio-core/watermark';
 import { Theme } from '@stll/folio-core/types/document';
+import { TiffDecoder } from '@stll/folio-core/tiff-decoding';
+import { TiffDecodingOptions } from '@stll/folio-core/tiff-decoding';
 import { toMarkdown } from '@stll/folio-core/markdown';
 import { toMarkdownResult } from '@stll/folio-core/markdown';
 import { Transaction } from 'prosemirror-state';
@@ -256,6 +260,8 @@ export type ColorPreset = {
 };
 
 export { configureHyphenationAssets }
+
+export { configureTiffDecoding }
 
 export { consumeTemplateSlashQuery }
 
@@ -396,6 +402,7 @@ export type DocxEditorProps = {
     onCompatibilityChange?: (compatibility: DocxCompatibility) => void;
     onCanonicalHistory?: (effect: CanonicalHistoryEffect) => void;
     onCanonicalHistoryDrop?: (drop: CanonicalHistoryDrop) => void;
+    onCanonicalPasteWarnings?: (warnings: readonly CanonicalPasteWarning[]) => void;
     onEditorViewReady?: (view: EditorView | null) => void;
     collaboration?: DocxEditorCollaboration | undefined;
     anonymizationTerms?: readonly FolioAnonymizationTerm[] | undefined;
@@ -809,6 +816,10 @@ export { TemplateSlashMenuKeyAction }
 export { TemplateSlashMenuState }
 
 export { TextWatermark }
+
+export { TiffDecoder }
+
+export { TiffDecodingOptions }
 
 export { toMarkdown }
 

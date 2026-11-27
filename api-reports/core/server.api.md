@@ -307,6 +307,7 @@ export type DocxBlock = {
     crossReferences?: DocxBlockCrossReference[];
     pageBreakBefore?: true;
     endsSection?: true;
+    runsIn?: true;
     alignment?: string;
     spacing?: TemplatePlanSpacing;
     spacingInEffect?: {

@@ -982,6 +982,9 @@ export const MAX_TABLE_GEOMETRY_HISTORY_LENGTH: number;
 export const MAX_TABLE_GRID_COLUMNS = 4096;
 
 // @public
+export const MAX_TABLE_PICTURE_ID = 2147483646;
+
+// @public
 export type MediaFile = WritableRecord & {
     path: string;
     filename?: string;
