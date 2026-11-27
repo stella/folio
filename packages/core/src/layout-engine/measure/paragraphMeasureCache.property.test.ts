@@ -73,19 +73,23 @@ const applyEdit = (specs: RunSpec[], change: Edit): RunSpec[] => {
   const index = change.run % specs.length;
   const spec = specs[index];
   if (spec?.kind !== "text") return specs;
-  const at = spec.text.length === 0 ? 0 : change.at % (spec.text.length + 1);
+  const offset = (at: number) => at % (spec.text.length + 1);
   const next = ((): RunSpec => {
     switch (change.kind) {
-      case "insert":
+      case "insert": {
+        const at = offset(change.at);
         return {
           ...spec,
           text: `${spec.text.slice(0, at)}${change.char}${spec.text.slice(at)}`,
         };
-      case "delete":
+      }
+      case "delete": {
+        const at = offset(change.at);
         return {
           ...spec,
           text: `${spec.text.slice(0, at)}${spec.text.slice(at + 1)}`,
         };
+      }
       case "bold":
         return { ...spec, bold: !spec.bold };
       case "size":
