@@ -449,8 +449,12 @@ type FetchJson = (url: string, body?: string) => Promise<unknown>;
 
 const STEP_FIELDS = "name conclusion startedAt completedAt";
 
-/** Workflows per request for job durations. */
-const WORKFLOW_BATCH = 5;
+/**
+ * Runs per request for job durations. Each run brings every check run it
+ * holds, so a page of 50 runs of several workflows times out at the gateway;
+ * a workflow's runs come a page at a time instead.
+ */
+const RUNS_PAGE = 10;
 
 /** Check runs per request for step durations. */
 const CHECK_RUN_BATCH = 25;
@@ -689,21 +693,27 @@ export const fetchWorkflowRuns = async ({
 }: FetchWorkflowRunsOptions): Promise<MeasuredRun[]> => {
   const ids = await workflowIds({ repository, workflows, fetchJson });
   const parsed: ParsedRun[] = [];
-  for (const batch of chunks([...ids.keys()].toSorted(), WORKFLOW_BATCH)) {
-    const data = await graphql({
-      fetchJson,
-      query: `query(${batch.map((_, index) => `$w${index}: ID!`).join(", ")}) { ${batch
-        .map(
-          (_, index) =>
-            `w${index}: node(id: $w${index}) { ... on Workflow { runs(first: ${RUNS_PER_WORKFLOW}, orderBy: {field: CREATED_AT, direction: DESC}) { nodes { file { path repositoryName repositoryFileUrl } checkSuite { status checkRuns(first: 100) { totalCount nodes { id ${STEP_FIELDS} } } } } } } }`,
-        )
-        .join(" ")} }`,
-      variables: Object.fromEntries(
-        batch.map((file, index) => [`w${index}`, ids.get(file)]),
-      ),
-    });
-    for (const [index] of batch.entries())
-      parsed.push(...parseWorkflowRuns(field(data, `w${index}`)));
+  for (const file of [...ids.keys()].toSorted()) {
+    let after: string | null = null;
+    for (let fetched = 0; fetched < RUNS_PER_WORKFLOW;) {
+      const first = Math.min(RUNS_PAGE, RUNS_PER_WORKFLOW - fetched);
+      const data = await graphql({
+        fetchJson,
+        query: `query($w0: ID!, $after: String) { w0: node(id: $w0) { ... on Workflow { runs(first: ${first}, after: $after, orderBy: {field: CREATED_AT, direction: DESC}) { pageInfo { hasNextPage endCursor } nodes { file { path repositoryName repositoryFileUrl } checkSuite { status checkRuns(first: 100) { totalCount nodes { id ${STEP_FIELDS} } } } } } } } }`,
+        variables: { w0: ids.get(file), after },
+      });
+      const workflow = field(data, "w0");
+      parsed.push(...parseWorkflowRuns(workflow));
+      const runs = field(workflow, "runs");
+      const count = nodesOf(runs, "runs").length;
+      fetched += count;
+      const page = field(runs, "pageInfo");
+      if (count === 0 || field(page, "hasNextPage") !== true) break;
+      const cursor = field(page, "endCursor");
+      if (typeof cursor !== "string")
+        panic("GitHub run page has a next page but no cursor");
+      after = cursor;
+    }
   }
   const snapshots = await historicalWorkflows({
     sources: parsed.map(({ source }) => source),
