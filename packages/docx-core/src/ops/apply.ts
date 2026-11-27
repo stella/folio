@@ -1714,6 +1714,9 @@ const setParagraphProps = (
     );
   }
   const { revision } = op;
+  // OOXML records this as `w:rPrChange` under `w:pPr/w:rPr`, but the model has
+  // no record for it yet: a mark's run property change is read and written
+  // back as captured markup, which no review operation can create or resolve.
   if (revision !== undefined && namesMarkFormatting(op.patch)) {
     return refuse(
       op,

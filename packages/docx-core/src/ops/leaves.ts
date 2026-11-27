@@ -25,6 +25,7 @@ import type {
   RunContent,
   RunPropertyChange,
   SimpleField,
+  TrackedRunChange,
 } from "../model/document";
 import { structurallyEqual } from "./equality";
 import {
@@ -252,6 +253,41 @@ export const withFieldResult = (
 export const nestedRecords = (
   node: InlineNode,
 ): readonly InlineNode[] | undefined => childNodes(node) ?? fieldResultOf(node);
+
+const FIELD_HELD_CHANGE_TYPES = new Set<InlineNode["type"]>([
+  "insertion",
+  "deletion",
+  "moveFrom",
+  "moveTo",
+] satisfies TrackedRunChange["type"][]);
+
+const isFieldHeldChange = (node: InlineNode): node is TrackedRunChange =>
+  FIELD_HELD_CHANGE_TYPES.has(node.type);
+
+/**
+ * The ids of the tracked changes a field's result holds at any depth:
+ * `CT_SimpleField` is `EG_PContent`, so `w:fldSimple` may hold `w:ins`,
+ * `w:del`, `w:moveFrom` and `w:moveTo` around the runs that show it. Only a
+ * change whose content the field can hold in its place is listed: resolving
+ * one keeps or drops its content where it stood, inside the field's one
+ * unit, so no offset or seam outside the field moves. A complex field's
+ * result holds runs alone; one whose result carries a change is read as its
+ * field characters, which stand in the paragraph.
+ */
+export const fieldHeldChangeIds = (node: InlineNode): number[] => {
+  const out: number[] = [];
+  const holdable = (nodes: readonly InlineNode[]): boolean =>
+    nodes.every(isSimpleFieldContent);
+  const visit = (nodes: readonly InlineNode[]): void => {
+    for (const child of nodes) {
+      if (isFieldHeldChange(child) && holdable(child.content))
+        out.push(child.info.id);
+      visit(childNodes(child) ?? []);
+    }
+  };
+  visit(fieldResultOf(node) ?? []);
+  return out;
+};
 
 /** The same record holding other {@link nestedRecords}. */
 export const withNestedRecords = (

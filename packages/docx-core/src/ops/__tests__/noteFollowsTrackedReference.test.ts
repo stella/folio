@@ -239,7 +239,7 @@ describe("a tracked deletion of a note's last live reference", () => {
     });
   });
 
-  test("refuses to track the note removal when the note holds a point comment", () => {
+  test("takes a point comment in the note with its text; accepting retires it, rejecting keeps it", () => {
     const document = documentOf(false);
     document.package.document.comments = [
       { id: 12, author: "Reviewer", anchorKind: "point", content: [] },
@@ -247,10 +247,18 @@ describe("a tracked deletion of a note's last live reference", () => {
     noteParagraphs(document)
       .at(0)
       ?.content.push({ type: "commentReference", id: 12 });
-    const { noteOps } = deleteWithNote(document, STAMP);
-    expect(noteOps.isErr() && noteOps.error.reason).toBe(
-      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+    const edit = followed(document);
+    expect(contractViolation(edit.document)).toBeUndefined();
+    expect(noteDeletions(edit.document).live).toBe(false);
+    expect(
+      applyDocumentOps(edit.document, edit.inverse).unwrap().document,
+    ).toStrictEqual(document);
+    expect(resolve(edit.document, REVISION_DECISIONS.REJECT)).toStrictEqual(
+      document,
     );
+    const accepted = resolve(edit.document, REVISION_DECISIONS.ACCEPT);
+    expect(accepted.package.footnotes).toEqual([]);
+    expect(accepted.package.document.comments).toBeUndefined();
   });
 
   test("leaves the note of a suggestion, which stays its author's until accepted", () => {

@@ -111,9 +111,9 @@ export const deletedContent = (
   | { kind: "refused"; reason: DocumentOpRefusal["reason"] } => {
   // A comment's reference stands with its range's end, which the deletion
   // leaves standing wherever that end is; a point comment's reference is its
-  // only anchor, which a deletion takes.
-  if (!liveReferencesAreRanged(paragraph.content, rangedComments))
-    return { kind: "refused", reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE };
+  // only anchor, which the deletion takes, as `w:del` around the run that
+  // carries `w:commentReference`. Accepting it retires the comment, as
+  // deleting the paragraph directly does; rejecting keeps it.
   const wrapped = wrapTracked({
     items: paragraph.content,
     from: { offset: 0, zeroWidthBefore: 0 },
@@ -124,6 +124,7 @@ export const deletedContent = (
     kind: WRAP_KINDS.DELETION,
     stamp,
     commentAnchors: "stand",
+    takenReferences: pointReferenceIds(paragraph.content, rangedComments),
   });
   if (wrapped.kind === "refused") return wrapped;
   if (wrapped.kind === "unchanged")
@@ -322,19 +323,25 @@ const holdsRangeBoundary = (
   );
 
 /**
- * Every comment reference in `nodes` outside a removal already pending
- * belongs to a comment with a range (`rangedComments`); one inside such a
- * removal goes with it either way.
+ * The ids of the comment references in `nodes` whose comment has no range
+ * (`rangedComments` names those that do): a point comment, whose reference
+ * is its only anchor.
  */
-const liveReferencesAreRanged = (
+const pointReferenceIds = (
   nodes: readonly InlineNode[],
   rangedComments: ReadonlySet<number>,
-): boolean =>
-  nodes.every((node) => {
-    if (isRemovedRevisionNode(node)) return true;
-    if (node.type === "commentReference") return rangedComments.has(node.id);
-    return liveReferencesAreRanged(childNodes(node) ?? [], rangedComments);
-  });
+): ReadonlySet<number> => {
+  const ids = new Set<number>();
+  const visit = (items: readonly InlineNode[]): void => {
+    for (const node of items) {
+      if (node.type === "commentReference" && !rangedComments.has(node.id))
+        ids.add(node.id);
+      visit(childNodes(node) ?? []);
+    }
+  };
+  visit(nodes);
+  return ids;
+};
 
 /** The ids of the comments whose range ends somewhere in `value`. */
 export const rangeEndIdsIn = (
