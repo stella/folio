@@ -19,6 +19,7 @@ import type {
   ParagraphMeasure,
   Run,
 } from "../types";
+import { contentHash128 } from "./contentHash";
 import { getLineBreakProviderGeneration } from "./lineBreakProvider";
 import { clearFontResolvedCache } from "./measureHelpers";
 import { memoizedParagraphKey } from "./paragraphKeyMemo";
@@ -292,6 +293,11 @@ type ParagraphMeasureEntry = {
   bytes: number;
 };
 
+/** What an entry keeps besides its lines: its key, itself and its measure. */
+const PARAGRAPH_ENTRY_BYTES = 256;
+/** What a measured line keeps, its optional fields included. */
+const MEASURED_LINE_BYTES = 192;
+
 /**
  * Default max entries for paragraph measure cache
  * Large documents can have 500+ unique paragraphs.
@@ -305,8 +311,8 @@ const MAX_PARAGRAPH_CACHE_BYTES = 16 * 1024 * 1024;
 let paragraphCacheMaxSize = DEFAULT_PARAGRAPH_CACHE_SIZE;
 
 /**
- * LRU cache for paragraph measurements
- * Key format: block content hash
+ * LRU cache for paragraph measurements, keyed by `hashParagraphBlock`: a key
+ * keeps none of the paragraph's text.
  */
 const paragraphMeasureCache = new Map<string, ParagraphMeasureEntry>();
 let paragraphCacheBytes = 0;
@@ -455,16 +461,23 @@ const paragraphAttrsMeasureCacheInput = (
   return { ...measurementAttrs, snapToGrid: snapToGrid !== false };
 };
 
-/** Serialize the complete, semantically normalized paragraph measurement contract into a cache key. */
+/**
+ * The cache key of a paragraph: the 128-bit hash of its complete, semantically
+ * normalized measurement contract (`serializeParagraphBlock`), so paragraphs
+ * that measure alike share a key that holds none of their text.
+ */
 export function hashParagraphBlock(block: ParagraphBlock): string {
   return memoizedParagraphKey(
     block,
     getLineBreakProviderGeneration(),
-    serializeParagraphBlock,
+    paragraphKeyOf,
   );
 }
 
-/** `hashParagraphBlock` computed in full. */
+const paragraphKeyOf = (block: ParagraphBlock): string =>
+  contentHash128(serializeParagraphBlock(block));
+
+/** The measurement contract `hashParagraphBlock` hashes. */
 export function serializeParagraphBlock(block: ParagraphBlock): string {
   // Each distinct map appears once in the paragraph key; every run carries
   // a small local reference instead of duplicating all embedded families.
@@ -556,7 +569,8 @@ export function setCachedParagraphMeasure(
   measure: ParagraphMeasure,
 ): void {
   const key = hashParagraphBlock(block);
-  const bytes = (key.length + JSON.stringify(measure).length) * 2;
+  const bytes =
+    PARAGRAPH_ENTRY_BYTES + measure.lines.length * MEASURED_LINE_BYTES;
   const previous = paragraphMeasureCache.get(key);
   if (previous !== undefined) {
     paragraphMeasureCache.delete(key);

@@ -24,23 +24,41 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   value !== null &&
   Object.getPrototypeOf(value) === Object.prototype;
 
-/** A plain object field as it was, one level down. */
-type NestedValue = { readonly fields: readonly (readonly [string, unknown])[] };
+/**
+ * A plain object field as it was, one level down: its names and values in
+ * turn. Nothing a block holds is one.
+ */
+class Nested {
+  readonly fields: readonly unknown[];
+  constructor(fields: readonly unknown[]) {
+    this.fields = fields;
+  }
+}
 
-type FieldValue = { readonly value: unknown } | NestedValue;
+/**
+ * A record's fields as it was: names and values in turn, `[name, value, …]`,
+ * one array a record, so a memo keeps little beside the values it shares.
+ */
+type Fields = readonly unknown[];
 
-type Fields = readonly (readonly [string, FieldValue])[];
+const nestedOf = (value: Record<string, unknown>): Nested => {
+  const fields: unknown[] = [];
+  for (const name of Object.keys(value)) fields.push(name, value[name]);
+  return new Nested(fields);
+};
 
 const fieldsOf = (
   record: Record<string, unknown>,
   skip: ReadonlySet<string>,
-): Fields =>
-  Object.entries(record)
-    .filter(([name]) => !skip.has(name))
-    .map(([name, value]) => [
-      name,
-      isPlainObject(value) ? { fields: Object.entries(value) } : { value },
-    ]);
+): Fields => {
+  const fields: unknown[] = [];
+  for (const name of Object.keys(record)) {
+    if (skip.has(name)) continue;
+    const value = record[name];
+    fields.push(name, isPlainObject(value) ? nestedOf(value) : value);
+  }
+  return fields;
+};
 
 const countFields = (
   record: Record<string, unknown>,
@@ -57,17 +75,19 @@ const holds = (
   fields: Fields,
   skip: ReadonlySet<string>,
 ): boolean => {
-  if (countFields(record, skip) !== fields.length) return false;
-  for (const [name, recorded] of fields) {
-    const value = record[name];
-    if (!("fields" in recorded)) {
-      if (value !== recorded.value) return false;
+  if (countFields(record, skip) * 2 !== fields.length) return false;
+  for (let at = 0; at < fields.length; at += 2) {
+    const value = record[fields[at] as string];
+    const recorded = fields[at + 1];
+    if (!(recorded instanceof Nested)) {
+      if (value !== recorded) return false;
       continue;
     }
     if (!isPlainObject(value)) return false;
-    if (Object.keys(value).length !== recorded.fields.length) return false;
-    for (const [nestedName, nestedValue] of recorded.fields)
-      if (value[nestedName] !== nestedValue) return false;
+    const nested = recorded.fields;
+    if (Object.keys(value).length * 2 !== nested.length) return false;
+    for (let index = 0; index < nested.length; index += 2)
+      if (value[nested[index] as string] !== nested[index + 1]) return false;
   }
   return true;
 };

@@ -15,6 +15,7 @@ import {
   getParagraphCacheSize,
   getTextCacheSize,
   hashParagraphBlock,
+  serializeParagraphBlock,
   setCachedParagraphMeasure,
   setCachedTextWidth,
   setTextCacheSize,
@@ -23,17 +24,26 @@ import { measureBlock } from "./measureBlocks";
 
 test("paragraph cache evicts by retained bytes before reaching its entry limit", () => {
   clearParagraphMeasureCache();
-  const text = "a".repeat(256 * 1024);
   const paragraph = (index: number) =>
     ({
       kind: "paragraph",
       id: String(index),
-      runs: [{ kind: "text", text: `${index}${text}` }],
+      runs: [{ kind: "text", text: `paragraph ${String(index)}` }],
     }) as const satisfies ParagraphBlock;
+  const line = {
+    fromRun: 0,
+    fromChar: 0,
+    toRun: 0,
+    toChar: 1,
+    width: 1,
+    ascent: 1,
+    descent: 1,
+    lineHeight: 2,
+  };
   const measure = {
     kind: "paragraph",
-    lines: [],
-    totalHeight: 0,
+    lines: Array.from({ length: 4096 }, () => line),
+    totalHeight: 8192,
   } satisfies ParagraphMeasure;
 
   try {
@@ -43,6 +53,37 @@ test("paragraph cache evicts by retained bytes before reaching its entry limit",
     expect(getParagraphCacheSize()).toBeLessThan(40);
     expect(getCachedParagraphMeasure(paragraph(0), 100)).toBeUndefined();
     expect(getCachedParagraphMeasure(paragraph(39), 100)).toBe(measure);
+  } finally {
+    clearParagraphMeasureCache();
+  }
+});
+
+test("a paragraph's cache key and retained bytes do not grow with its text", () => {
+  clearParagraphMeasureCache();
+  const paragraph = (index: number, length: number) =>
+    ({
+      kind: "paragraph",
+      id: String(index),
+      runs: [{ kind: "text", text: `${String(index)}${"a".repeat(length)}` }],
+    }) as const satisfies ParagraphBlock;
+  const measure = {
+    kind: "paragraph",
+    lines: [],
+    totalHeight: 0,
+  } satisfies ParagraphMeasure;
+
+  try {
+    expect(hashParagraphBlock(paragraph(0, 256 * 1024))).toHaveLength(
+      hashParagraphBlock(paragraph(0, 1)).length,
+    );
+    // Forty quarter-megabyte paragraphs keep only their measures and keys.
+    for (let index = 0; index < 40; index += 1) {
+      setCachedParagraphMeasure(paragraph(index, 256 * 1024), 100, measure);
+    }
+    expect(getParagraphCacheSize()).toBe(40);
+    expect(getCachedParagraphMeasure(paragraph(0, 256 * 1024), 100)).toBe(
+      measure,
+    );
   } finally {
     clearParagraphMeasureCache();
   }
@@ -552,10 +593,11 @@ test("embedded font cache identity is content-based and stores each map once per
   const firstKey = hashParagraphBlock(paragraph(first));
   expect(firstKey).toBe(hashParagraphBlock(paragraph(equal)));
   expect(firstKey).not.toBe(hashParagraphBlock(paragraph(different)));
-  expect(JSON.parse(firstKey)).toHaveProperty("fontContexts", [
+  const contract = serializeParagraphBlock(paragraph(first));
+  expect(JSON.parse(contract)).toHaveProperty("fontContexts", [
     expect.any(String),
   ]);
-  expect(firstKey).not.toContain("folio-embedded-one-Calibri");
+  expect(contract).not.toContain("folio-embedded-one-Calibri");
 });
 
 test("document font facts cache keys use content fingerprints", () => {
