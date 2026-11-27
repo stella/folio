@@ -1698,7 +1698,11 @@ describe("an empty content control is content: resolution never merges it away",
       at: at("00000001", 1),
       slice: {
         content: [
-          { type: "simpleField", instruction: "PAGE", content: [run("3")] },
+          {
+            type: "simpleField",
+            instruction: "PAGE",
+            content: [{ type: "run", content: [{ type: "text", text: "3" }] }],
+          },
         ],
         openStart: 0,
         openEnd: 0,

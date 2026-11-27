@@ -203,7 +203,7 @@
   "packages/core/src/ai-edits/directTrackedEquivalence.property.test.ts": {
     "TS2339": 2,
     "TS2341": 2,
-    "TS2375": 2,
+    "TS2375": 1,
     "TS2769": 1
   },
   "packages/core/src/ai-edits/editKeepsCommentRanges.test.ts": {
@@ -2673,7 +2673,7 @@
     "TS2322": 6,
     "TS2339": 2,
     "TS2353": 1,
-    "TS2375": 2,
+    "TS2375": 1,
     "TS2552": 1,
     "TS2769": 4
   },

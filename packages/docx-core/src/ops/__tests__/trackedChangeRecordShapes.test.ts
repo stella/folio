@@ -1347,10 +1347,10 @@ describe("a pasted paragraph whose break is pending deletion", () => {
   ])(
     "the paste inserts the break and keeps the copied removal of it beside (%o)",
     (copied) => {
-      const removal =
-        copied.kind === "moveFrom"
-          ? { info: expect.objectContaining(earlier), kind: "moveFrom" }
-          : { info: expect.objectContaining(earlier) };
+      const removal = {
+        info: expect.objectContaining(earlier),
+        ...(copied.kind === "moveFrom" ? { kind: copied.kind } : {}),
+      };
       const { suggested } = assertSuggestionLaws(document, paste(copied));
       const marks = suggested.document.package.document.content.flatMap(
         (block) =>
