@@ -584,18 +584,12 @@ describe("tracked whole table properties", () => {
   );
 
   test(
-    "unsupported cell records, moves and conflicting revisions refuse atomically",
+    "incomplete moves and conflicting revisions refuse atomically",
     () => {
       assertProperty(
         fc.property(
           shapes,
-          fc.constantFrom(
-            "cellRevision",
-            "rowRevision",
-            "moveFrom",
-            "moveTo",
-            "finalMark",
-          ),
+          fc.constantFrom("rowRevision", "moveFrom", "moveTo", "finalMark"),
           (shape, unsupported) => {
             const source = makeTable(shape);
             const row = source.rows.at(0);
@@ -606,26 +600,6 @@ describe("tracked whole table properties", () => {
             let value: Table;
             let reason: string;
             switch (unsupported) {
-              case "cellRevision":
-                value = {
-                  ...source,
-                  rows: [
-                    {
-                      ...row,
-                      cells: [
-                        {
-                          ...cell,
-                          structuralChange: {
-                            type: "tableCellInsertion",
-                            info: foreign,
-                          },
-                        },
-                      ],
-                    },
-                  ],
-                };
-                reason = DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE;
-                break;
               case "rowRevision":
                 value = {
                   ...source,
@@ -678,7 +652,7 @@ describe("tracked whole table properties", () => {
                     },
                   ],
                 };
-                reason = DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE;
+                reason = DOCUMENT_OP_REFUSAL_REASONS.DEPENDENT_RECORDS;
                 break;
               case "finalMark": {
                 const markKind = shape.seed % 2 === 0 ? "ins" : "del";
@@ -758,7 +732,7 @@ describe("tracked whole table properties", () => {
         ),
         {
           numRuns: NUM_RUNS,
-          id: "unsupported cell records, moves and conflicting revisions refuse atomically",
+          id: "incomplete moves and conflicting revisions refuse atomically",
         },
       );
     },
@@ -850,3 +824,165 @@ describe("tracked whole table properties", () => {
     propertyTestTimeout(240_000),
   );
 });
+
+test(
+  "tables in a wrapper without a local paragraph resolve and undo at the outer anchor",
+  () => {
+    assertProperty(
+      fc.property(
+        shapes,
+        fc.constantFrom("sdt", "customXml", "wrapperCell"),
+        fc.boolean(),
+        (seed, container, insert) => {
+          const shape = {
+            ...seed,
+            container,
+            placement: "before",
+          } satisfies Shape;
+          const table = makeTable(shape);
+          const original = documentOf(shape, [table]);
+          const op: DocumentOp = insert
+            ? {
+                type: DOCUMENT_OP_TYPES.INSERT_TABLE,
+                story: OP_STORIES.MAIN,
+                at: { type: "beforeTable", blockId: id(0x100) },
+                table: makeTable(shape, 0x200),
+              }
+            : {
+                type: DOCUMENT_OP_TYPES.DELETE_TABLE,
+                story: OP_STORIES.MAIN,
+                blockId: id(0x100),
+              };
+          const direct = applied(original, op);
+          exactInverse(original, direct);
+          const pending = applied(original, {
+            ...op,
+            revision: stamp(),
+            newIds: freshIds(),
+          });
+          exactInverse(original, pending);
+          const accepted = resolved(
+            pending.document,
+            pending.revisions,
+            REVISION_DECISIONS.ACCEPT,
+          );
+          const rejected = resolved(
+            pending.document,
+            pending.revisions,
+            REVISION_DECISIONS.REJECT,
+          );
+          expect(accepted.document).toStrictEqual(direct.document);
+          expect(rejected.document).toStrictEqual(original);
+          exactInverse(pending.document, accepted);
+          exactInverse(pending.document, rejected);
+        },
+      ),
+      {
+        numRuns: 200,
+        id: "tables in a wrapper without a local paragraph resolve and undo at the outer anchor",
+      },
+    );
+  },
+  propertyTestTimeout(30_000),
+);
+
+test(
+  "complete moves within a row retain their own revisions",
+  () => {
+    assertProperty(
+      fc.property(shapes, fc.boolean(), (shape, insert) => {
+        const text = shape.text || "moved";
+        const info = stamp(50);
+        const moved: Paragraph = {
+          ...makeParagraph(0x100, shape),
+          content: [
+            {
+              type: "moveFromRangeStart",
+              id: 60,
+              name: "EarlierMove",
+              author: info.author,
+              date: info.date,
+            },
+            {
+              type: "moveFrom",
+              info,
+              content: [{ type: "run", content: [{ type: "text", text }] }],
+            },
+            { type: "moveFromRangeEnd", id: 60 },
+            {
+              type: "moveToRangeStart",
+              id: 61,
+              name: "EarlierMove",
+              author: info.author,
+              date: info.date,
+            },
+            {
+              type: "moveTo",
+              info: { ...info, id: 51 },
+              content: [{ type: "run", content: [{ type: "text", text }] }],
+            },
+            { type: "moveToRangeEnd", id: 61 },
+          ],
+        };
+        const table: Table = {
+          type: "table",
+          rows: [
+            {
+              type: "tableRow",
+              cells: [
+                {
+                  type: "tableCell",
+                  content: [moved, makeParagraph(0x101, shape)],
+                },
+              ],
+            },
+          ],
+        };
+        const original = documentOf(
+          shape,
+          insert ? [makeParagraph(3, shape)] : [table, makeParagraph(3, shape)],
+        );
+        const op: DocumentOp = insert
+          ? {
+              type: DOCUMENT_OP_TYPES.INSERT_TABLE,
+              story: OP_STORIES.MAIN,
+              at: { type: "before", blockId: id(3) },
+              table,
+            }
+          : {
+              type: DOCUMENT_OP_TYPES.DELETE_TABLE,
+              story: OP_STORIES.MAIN,
+              blockId: id(0x100),
+            };
+        const direct = applied(original, op);
+        const pending = applied(original, {
+          ...op,
+          revision: stamp(),
+          newIds: freshIds(),
+        });
+        expect(pending.revisions).not.toContain(50);
+        expect(pending.revisions).not.toContain(51);
+        const accepted = resolved(
+          pending.document,
+          pending.revisions,
+          REVISION_DECISIONS.ACCEPT,
+        );
+        const rejected = resolved(
+          pending.document,
+          pending.revisions,
+          REVISION_DECISIONS.REJECT,
+        );
+        expect(accepted.document).toStrictEqual(direct.document);
+        expect(rejected.document).toStrictEqual(original);
+        exactInverse(original, pending);
+        exactInverse(pending.document, accepted);
+        exactInverse(pending.document, rejected);
+      }),
+      {
+        id: "complete moves within a row retain their own revisions",
+        numRuns: 200,
+      },
+    );
+  },
+  propertyTestTimeout(30_000),
+);

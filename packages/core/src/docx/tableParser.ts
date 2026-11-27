@@ -1,4 +1,7 @@
-import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
+import {
+  PARSE_WARNING_CODES,
+  tableColumnWidthFields,
+} from "@stll/docx-core/model";
 
 import type {
   BlockContent,
@@ -2362,41 +2365,26 @@ export function parseTableRow(
 // TABLE GRID PARSING
 // ============================================================================
 
-/**
- * Parse table grid (w:tblGrid) for column widths
- *
- * @param tblGridElement - The w:tblGrid element
- * @returns Array of column widths in twips
- */
+const declaredGridColumnWidths = (grid: XmlElement | null) =>
+  (grid === null ? [] : findChildren(grid, "w", "gridCol")).map((column) =>
+    parseNumericAttribute(column, "w", "w"),
+  );
+
+export const parseTableGridWidthFields = (
+  grid: XmlElement | null,
+): ReturnType<typeof tableColumnWidthFields> => {
+  const widths = declaredGridColumnWidths(grid);
+  // Preserve the numeric layout fallback for grids without a usable width.
+  return tableColumnWidthFields(
+    widths.some((width) => width !== undefined && width >= 0) ? widths : [],
+  );
+};
+
+/** Parse the numeric layout widths in twips from the live `w:tblGrid`. */
 export function parseTableGrid(
   tblGridElement: XmlElement | null,
 ): number[] | undefined {
-  if (!tblGridElement) {
-    return undefined;
-  }
-
-  const widths: number[] = [];
-  let hasExplicitZero = false;
-
-  const gridCols = findChildren(tblGridElement, "w", "gridCol");
-  for (const col of gridCols) {
-    const statedWidth = parseNumericAttribute(col, "w", "w");
-    hasExplicitZero ||= statedWidth === 0;
-    const width = statedWidth ?? 0;
-    widths.push(width);
-  }
-
-  // An omitted width and an explicit zero both feed zero into the layout
-  // fallback, but only the latter is authored data the editor must retain.
-  if (
-    widths.length > 0 &&
-    widths.every((width) => width <= 0) &&
-    !hasExplicitZero
-  ) {
-    return undefined;
-  }
-
-  return widths.length > 0 ? widths : undefined;
+  return parseTableGridWidthFields(tblGridElement).columnWidths;
 }
 
 /**
@@ -2419,10 +2407,7 @@ export function parseTableGridChange(
   return {
     id: parseTrackedChangeInfo(changeElement).id,
     ...parseTableGeometryChange(changeElement),
-    columnWidths: (snapshot === null
-      ? []
-      : findChildren(snapshot, "w", "gridCol")
-    ).map((column) => parseNumericAttribute(column, "w", "w")),
+    columnWidths: declaredGridColumnWidths(snapshot),
   };
 }
 
@@ -2772,10 +2757,7 @@ export function parseTable(
 
   // Parse table grid (w:tblGrid)
   const gridElement = findChild(tblElement, "w", "tblGrid");
-  const columnWidths = parseTableGrid(gridElement);
-  if (columnWidths) {
-    table.columnWidths = columnWidths;
-  }
+  Object.assign(table, parseTableGridWidthFields(gridElement));
   // The grid element travels with the table's formatting, so a save that did
   // not resize a column writes it back with whatever it carried. A save that
   // did resize one rebuilds the grid, and `w:tblGridChange` — the tracked

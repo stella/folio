@@ -1870,6 +1870,12 @@ export type SpacingExplicit = WritableRecord & {
 };
 
 // @public
+export const statedTableColumnWidths: (input: {
+    columnWidths?: readonly number[];
+    omittedColumnWidthIndices?: readonly number[];
+}) => (number | undefined)[] | undefined;
+
+// @public
 export const statesNoBorder: (style: DeepReadonly<BorderStyleValue> | undefined) => boolean;
 
 // @public
@@ -1941,6 +1947,7 @@ export type Table = WritableRecord & {
     formatting?: TableFormatting;
     propertyChanges?: TablePropertyChange[];
     columnWidths?: number[];
+    omittedColumnWidthIndices?: number[];
     rows: TableRow[];
     preserved?: TablePreservedMarkup;
     bookmarks?: PositionedBookmarkMarker[];
@@ -2013,6 +2020,9 @@ export type TableCellPropertyChange = WritableRecord & {
     currentFormatting?: TableCellFormatting;
     previousStructuralChange?: TableStructuralChangeInfo;
 };
+
+// @public
+export const tableColumnWidthFields: (stated: readonly (number | undefined)[]) => TableColumnWidths;
 
 // @public
 export type TableContentCarrier = WritableRecord & ({

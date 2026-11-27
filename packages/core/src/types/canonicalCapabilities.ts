@@ -15,6 +15,7 @@ export type CanonicalGap = (typeof CANONICAL_GAP)[keyof typeof CANONICAL_GAP];
 export const CANONICAL_RULE: {
   readonly contentControlLock: "contentControlLock";
   readonly linkSuggestionShape: "linkSuggestionShape";
+  readonly tableSnapshotPresence: "tableSnapshotPresence";
 } = {
   contentControlLock: "contentControlLock",
   /**
@@ -25,6 +26,8 @@ export const CANONICAL_RULE: {
    * directly applies.
    */
   linkSuggestionShape: "linkSuggestionShape",
+  /** Review snapshots cannot store JavaScript's distinction between omitted and own undefined fields. */
+  tableSnapshotPresence: "tableSnapshotPresence",
 } as const;
 
 export type CanonicalRule =
@@ -34,9 +37,11 @@ export type CanonicalRule =
 export const CANONICAL_RULE_MESSAGE_KEYS: {
   readonly contentControlLock: "editor.contentLocked";
   readonly linkSuggestionShape: "editor.linkSuggestionUnavailable";
+  readonly tableSnapshotPresence: "editor.changeNotApplied";
 } = {
   contentControlLock: "editor.contentLocked",
   linkSuggestionShape: "editor.linkSuggestionUnavailable",
+  tableSnapshotPresence: "editor.changeNotApplied",
 } as const satisfies Record<CanonicalRule, string>;
 
 /**

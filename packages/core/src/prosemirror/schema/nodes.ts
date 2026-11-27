@@ -1166,6 +1166,8 @@ export type TableAttrs = {
   justification?: NonNullable<TableFormatting["justification"]>;
   /** Column widths (in twips) from w:tblGrid */
   columnWidths?: number[];
+  /** Grid slots that omitted their width attribute on import. */
+  _omittedColumnWidths?: { columnCount: number; indices: readonly number[] };
   /** Floating table properties (w:tblpPr) */
   floating?: FloatingTableProperties;
   /** Default cell margins for the table (w:tblCellMar), in twips */

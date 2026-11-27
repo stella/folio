@@ -131,6 +131,8 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
    * operation addresses a block list without a paragraph).
    */
   readonly UNTRACKABLE: "untrackable";
+  /** A table snapshot cannot distinguish an own undefined field from an omitted field in OOXML. */
+  readonly TABLE_SNAPSHOT_PRESENCE: "tableSnapshotPresence";
   /**
    * A tracked paragraph would take over the mark of a paragraph whose break
    * is pending deletion or moving away. No placement of that record keeps
@@ -308,6 +310,7 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
    * operation addresses a block list without a paragraph).
    */
   UNTRACKABLE: "untrackable",
+  TABLE_SNAPSHOT_PRESENCE: "tableSnapshotPresence",
   /** A second tracked column insertion beside a pending grid change. */
   PENDING_GRID_CHANGE: "pendingGridChange",
   /**
@@ -411,6 +414,7 @@ export const DOCUMENT_OP_REFUSAL_SCOPES: Readonly<
   containerFinalMark: ANY,
   insideInlineControl: ANY,
   untrackable: TRACKED,
+  tableSnapshotPresence: TRACKED,
   pendingBreakTakeover: TRACKED,
   pendingParagraphMarkDeletion: TRACKED,
   pendingParagraphMarkInsertion: TRACKED,

@@ -394,7 +394,7 @@ describe("tracked table edits", () => {
         revision: revision(420),
         newIds: { revision: [421] },
       },
-      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      DOCUMENT_OP_REFUSAL_REASONS.TABLE_SNAPSHOT_PRESENCE,
     );
   });
 

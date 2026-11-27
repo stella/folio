@@ -6411,6 +6411,25 @@ function convertPMTable(
  * beside its rows comes back between the same two.
  */
 function restoreCarriedTableAttrs(table: Table, attrs: TableAttrs): void {
+  const widths = table.columnWidths;
+  const omitted = attrs._omittedColumnWidths;
+  if (
+    widths !== undefined &&
+    omitted?.columnCount === widths.length &&
+    Array.isArray(omitted.indices)
+  ) {
+    const indices = [
+      ...new Set(
+        omitted.indices.filter(
+          (index) =>
+            typeof index === "number" &&
+            Number.isInteger(index) &&
+            widths[index] === 0,
+        ),
+      ),
+    ].sort((left, right) => left - right);
+    if (indices.length > 0) table.omittedColumnWidthIndices = indices;
+  }
   if (Array.isArray(attrs.tblPrChange) && attrs.tblPrChange.length > 0) {
     table.propertyChanges = [...attrs.tblPrChange];
   }

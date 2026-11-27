@@ -865,6 +865,7 @@ export const TABLE_RESERVED = {
   formatting: NO_RESERVED_VALUE,
   propertyChanges: NO_RESERVED_VALUE,
   columnWidths: NO_RESERVED_VALUE,
+  omittedColumnWidthIndices: NO_RESERVED_VALUE,
   rows: NO_RESERVED_VALUE,
   // Captured bytes, replayed as written. A reserved value is a spelling the
   // model interprets; this slot interprets nothing.

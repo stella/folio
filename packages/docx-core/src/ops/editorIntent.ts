@@ -171,6 +171,7 @@ import {
 import { tableGrid } from "./tableGrid";
 import {
   locateTableRow,
+  survivingTableAnchor,
   tableRowAnchor,
   type TableRowLocation,
 } from "./tableLocation";
@@ -4547,11 +4548,13 @@ const compileInStory = (
             );
           }),
         }));
+        const body = storyBody(document, op.story);
         const survivor =
           tableRowAnchor(rows) ??
-          storyParagraphs(storyBody(document, op.story)).find((paragraph) =>
+          storyParagraphs(body).find((paragraph) =>
             sameBlockList(paragraph.list, located.value.list),
-          )?.paragraph.paraId;
+          )?.paragraph.paraId ??
+          survivingTableAnchor(body, located.value.list)?.paragraph.paraId;
         if (survivor === undefined)
           return Result.err(
             new DocumentOpRefusal({
@@ -4875,14 +4878,17 @@ const compileInStory = (
       // The caret lands beside the table: after it, or before it at the end
       // of its block list.
       const { list } = located.value;
-      const beside = storyParagraphs(storyBody(document, op.story)).filter(
+      const body = storyBody(document, op.story);
+      const beside = storyParagraphs(body).filter(
         ({ list: other, paragraph }) =>
           sameBlockList(other, list) && paragraph.paraId !== undefined,
       );
       const position = beside.findIndex(
         ({ index }) => index > located.value.index,
       );
-      const anchor = (beside[position] ?? beside.at(-1))?.paragraph.paraId;
+      const anchor =
+        (beside[position] ?? beside.at(-1))?.paragraph.paraId ??
+        survivingTableAnchor(body, list)?.paragraph.paraId;
       if (anchor === undefined)
         return Result.err(
           new DocumentOpRefusal({

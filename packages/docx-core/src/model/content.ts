@@ -1534,6 +1534,8 @@ export type Table = WritableRecord & {
   propertyChanges?: TablePropertyChange[];
   /** Column widths in twips */
   columnWidths?: number[];
+  /** Indices projected to zero in `columnWidths` because the grid omitted `w:w`. */
+  omittedColumnWidthIndices?: number[];
   /** Table rows */
   rows: TableRow[];
   /**

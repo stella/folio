@@ -560,6 +560,10 @@ export type TableAttrs = {
     widthType?: import__stll_docx_core_model.TableWidthType;
     justification?: NonNullable<import__stll_docx_core_model.TableFormatting["justification"]>;
     columnWidths?: number[];
+    _omittedColumnWidths?: {
+        columnCount: number;
+        indices: readonly number[];
+    };
     floating?: import__stll_docx_core_model.FloatingTableProperties;
     cellMargins?: {
         top?: number;

@@ -108,59 +108,105 @@ const rowWithParagraphs = (
   })),
 });
 
-const trackableInline = (nodes: readonly InlineNode[]): boolean =>
-  nodes.every((node) => {
-    switch (node.type) {
-      case "moveFrom":
-      case "moveTo":
-      case "moveFromRangeStart":
-      case "moveFromRangeEnd":
-      case "moveToRangeStart":
-      case "moveToRangeEnd":
-      case "preservedInline":
-      case "preservedXml":
-        return false;
-      default:
-        return trackableInline(childNodes(node) ?? []);
-    }
-  });
+type MoveFamily = "moveFrom" | "moveTo";
+type MoveBoundary = Extract<
+  InlineNode,
+  {
+    type:
+      | "moveFromRangeStart"
+      | "moveFromRangeEnd"
+      | "moveToRangeStart"
+      | "moveToRangeEnd";
+  }
+>;
 
-/**
- * Captured blocks, section breaks and moves have no tracked-row
- * construction. Bookmark and comment boundaries hold no words to mark, and
- * the row's structural record carries a nested table whole.
- */
-const trackableBlocks = (blocks: readonly BlockContent[]): boolean =>
-  blocks.every((block) => {
-    switch (block.type) {
-      case "paragraph":
-        return (
-          block.sectionProperties === undefined &&
-          block.pPrMark?.kind !== "moveFrom" &&
-          block.pPrMark?.kind !== "moveTo" &&
-          trackableInline(block.content)
-        );
-      case "blockSdt":
-      case "blockCustomXml":
-        return trackableBlocks(block.content);
-      case "table":
-      case "bookmarkStart":
-      case "bookmarkEnd":
-      case "commentRangeStart":
-      case "commentRangeEnd":
-        return true;
-      case "preservedBlock":
-      case "moveFromRangeStart":
-      case "moveFromRangeEnd":
-      case "moveToRangeStart":
-      case "moveToRangeEnd":
-        return false;
-      default: {
-        const unreachable: never = block;
-        return unreachable;
-      }
+const isMoveBoundary = (
+  node: InlineNode | BlockContent,
+): node is MoveBoundary =>
+  node.type === "moveFromRangeStart" ||
+  node.type === "moveFromRangeEnd" ||
+  node.type === "moveToRangeStart" ||
+  node.type === "moveToRangeEnd";
+
+/** The row can carry a preexisting move only when it owns both halves. */
+const rowMoveOwners = (cells: readonly TableCell[]) => {
+  const active: Record<MoveFamily, Map<number, string>> = {
+    moveFrom: new Map(),
+    moveTo: new Map(),
+  };
+  const closed: Record<MoveFamily, Set<string>> = {
+    moveFrom: new Set(),
+    moveTo: new Set(),
+  };
+  const paragraphs = new Set<Paragraph>();
+  let balanced = true;
+  const boundary = (node: MoveBoundary): void => {
+    const family =
+      node.type === "moveFromRangeStart" || node.type === "moveFromRangeEnd"
+        ? "moveFrom"
+        : "moveTo";
+    if (
+      node.type === "moveFromRangeStart" ||
+      node.type === "moveToRangeStart"
+    ) {
+      if (active[family].has(node.id) || closed[family].has(node.name))
+        balanced = false;
+      active[family].set(node.id, node.name);
+    } else {
+      const name = active[family].get(node.id);
+      if (name === undefined || closed[family].has(name)) balanced = false;
+      else closed[family].add(name);
+      active[family].delete(node.id);
     }
-  });
+  };
+  const inline = (paragraph: Paragraph, items: readonly InlineNode[]): void => {
+    for (const node of items) {
+      if (isMoveBoundary(node)) {
+        boundary(node);
+        paragraphs.add(paragraph);
+      } else if (node.type === "moveFrom" || node.type === "moveTo") {
+        if (active[node.type].size === 0) balanced = false;
+        paragraphs.add(paragraph);
+      }
+      const children = childNodes(node);
+      if (children !== undefined) inline(paragraph, children);
+    }
+  };
+  const blocks = (items: readonly BlockContent[]): void => {
+    for (const block of items) {
+      if (isMoveBoundary(block)) boundary(block);
+      else if (block.type === "paragraph") {
+        inline(block, block.content);
+        const kind = block.pPrMark?.kind;
+        if (kind === "moveFrom" || kind === "moveTo") {
+          if (active[kind].size === 0 && !paragraphs.has(block))
+            balanced = false;
+          paragraphs.add(block);
+        }
+      } else if (block.type === "blockSdt" || block.type === "blockCustomXml")
+        blocks(block.content);
+      else if (block.type === "table")
+        for (const row of block.rows)
+          for (const cell of row.cells) blocks(cell.content);
+    }
+  };
+  for (const cell of cells) blocks(cell.content);
+  return balanced &&
+    active.moveFrom.size === 0 &&
+    active.moveTo.size === 0 &&
+    closed.moveFrom.size === closed.moveTo.size &&
+    [...closed.moveFrom].every((name) => closed.moveTo.has(name))
+    ? paragraphs
+    : undefined;
+};
+
+const holdsCapturedInline = (items: readonly InlineNode[]): boolean =>
+  items.some(
+    (item) =>
+      item.type === "preservedInline" ||
+      item.type === "preservedXml" ||
+      holdsCapturedInline(childNodes(item) ?? []),
+  );
 
 type TrackTableRowsOptions = {
   document: Document;
@@ -228,29 +274,38 @@ export const trackTableRows = ({
   const reviewedFinalMark = [...finals].find(
     (paragraph) => paragraph.pPrMark !== undefined,
   )?.pPrMark;
-  if (!missingFinalParagraph && reviewedFinalMark !== undefined) {
+  if (missingFinalParagraph)
+    return refused({
+      op,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+      message: "A cell needs a final paragraph to record its mark.",
+    });
+  if (reviewedFinalMark !== undefined) {
     return refused({
       op,
       reason: pendingParagraphMarkReason(reviewedFinalMark),
       message: "A cell's final paragraph already carries a mark revision.",
     });
   }
-  if (
-    missingFinalParagraph ||
-    rows.some((row) =>
-      row.cells.some(
-        (cell) =>
-          cell.structuralChange !== undefined ||
-          (cell.propertyChanges?.length ?? 0) > 0 ||
-          (!survivingCells.has(cell) && !trackableBlocks(cell.content)),
-      ),
-    )
-  ) {
+  if (before.some((paragraph) => paragraph.sectionProperties !== undefined))
     return refused({
       op,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      message: "The rows contain an unsupported tracked structure.",
+      reason: DOCUMENT_OP_REFUSAL_REASONS.SECTION_BOUNDARY,
+      message: "A section cannot end inside a table cell.",
     });
+  const carriesMove = new Set<Paragraph>();
+  for (const row of rows) {
+    const owned = rowMoveOwners(
+      row.cells.filter((cell) => !survivingCells.has(cell)),
+    );
+    if (owned === undefined)
+      return refused({
+        op,
+        reason: DOCUMENT_OP_REFUSAL_REASONS.DEPENDENT_RECORDS,
+        message:
+          "An existing move must stay with both complete ranges when tracking a row.",
+      });
+    for (const paragraph of owned) carriesMove.add(paragraph);
   }
   const outside = new Set(packageIdentityKeys(document.package));
   if (
@@ -312,19 +367,24 @@ export const trackTableRows = ({
       after.push(paragraph);
       continue;
     }
-    const wrapped = wrapTracked({
-      items: paragraph.content,
-      from: { offset: 0, zeroWidthBefore: 0 },
-      to: {
-        offset: paragraphLength(paragraph),
-        zeroWidthBefore: Number.MAX_SAFE_INTEGER,
-      },
-      kind,
-      stamp: revision,
-      ...(kind === WRAP_KINDS.DELETION
-        ? { commentAnchors: "stand" as const }
-        : {}),
-    });
+    // The row owns an opaque paragraph's removal or insertion. Leave its
+    // verbatim XML in the original container, outside new inline wrappers.
+    const wrapped =
+      carriesMove.has(paragraph) || holdsCapturedInline(paragraph.content)
+        ? { kind: "unchanged" as const }
+        : wrapTracked({
+            items: paragraph.content,
+            from: { offset: 0, zeroWidthBefore: 0 },
+            to: {
+              offset: paragraphLength(paragraph),
+              zeroWidthBefore: Number.MAX_SAFE_INTEGER,
+            },
+            kind,
+            stamp: revision,
+            ...(kind === WRAP_KINDS.DELETION
+              ? { commentAnchors: "stand" as const }
+              : {}),
+          });
     if (wrapped.kind === "refused") {
       return refused({
         op,

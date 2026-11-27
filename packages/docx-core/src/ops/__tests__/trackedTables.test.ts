@@ -8,6 +8,7 @@ import type {
 } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { contractViolation } from "../contract";
+import { compileEditorIntent, type EditorIntent } from "../editorIntent";
 import { identityKeysIn } from "../ids";
 import { revisionIdDemand } from "../plan";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
@@ -125,6 +126,81 @@ const trackedInsertion = (value = makeTable()) =>
 
 // These fixtures exercise the fields previously ignored by whole-table operations.
 describe("tracked whole tables", () => {
+  test.each(["table", "column"] as const)(
+    "compiled %s deletion keeps its caret outside a table-only wrapper",
+    (scope) => {
+      const blockId = "00000010";
+      const story = OP_STORIES.MAIN;
+      const table = {
+        type: "table",
+        rows: [
+          {
+            type: "tableRow",
+            cells: [{ type: "tableCell", content: [makeParagraph(blockId)] }],
+          },
+        ],
+      } satisfies Table;
+      const wrapper = {
+        type: "blockCustomXml",
+        openingXml: '<w:customXml w:element="terms">',
+        closingXml: "</w:customXml>",
+        content: [table],
+      } satisfies BlockContent;
+      const before = makeParagraph("00000001");
+      const after = makeParagraph("00000002");
+      const document = documentOf([before, wrapper, after]);
+      const intent: EditorIntent =
+        scope === "table"
+          ? {
+              type: "tableBlock",
+              operation: {
+                type: DOCUMENT_OP_TYPES.DELETE_TABLE,
+                story,
+                blockId,
+              },
+            }
+          : {
+              type: "table",
+              operation: {
+                type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
+                story,
+                blockId,
+                column: 0,
+              },
+            };
+      const edited = compileEditorIntent(document, {
+        intent,
+        mode: { type: "editing" },
+      }).unwrap();
+      const changed = applyDocumentOps(document, edited.ops).unwrap();
+      expect(edited.selection).toEqual({
+        story,
+        blockId: "00000002",
+        offset: 0,
+      });
+      expect(changed.document).toStrictEqual(
+        documentOf([before, { ...wrapper, content: [] }, after]),
+      );
+      expect(
+        applyDocumentOps(changed.document, changed.inverse).unwrap().document,
+      ).toStrictEqual(document);
+      const suggested = compileEditorIntent(document, {
+        intent,
+        mode: { type: "suggesting", revision, newIds },
+      }).unwrap();
+      expect(suggested.selection).toEqual(edited.selection);
+      const pending = applyDocumentOps(document, suggested.ops).unwrap();
+      const ids = pending.revisions ?? [];
+      expect(ids.length).toBeGreaterThan(0);
+      expect(
+        resolve(pending.document, ids, REVISION_DECISIONS.ACCEPT).document,
+      ).toStrictEqual(changed.document);
+      expect(
+        resolve(pending.document, ids, REVISION_DECISIONS.REJECT).document,
+      ).toStrictEqual(document);
+    },
+  );
+
   test("revision receipts visit the inserted table and report rows before paragraphs", () => {
     const before = Array.from({ length: 16 }, (_, index) =>
       makeParagraph((0x10000000 + index).toString(16)),
@@ -532,6 +608,89 @@ describe("terminal table insertion carrier", () => {
 
 describe("tracked table refusals", () => {
   test.each(["insert", "delete"] as const)(
+    "%s carries opaque cell markup and existing cell revisions",
+    (mode) => {
+      const source = makeTable();
+      const row = source.rows.at(0);
+      const cell = row?.cells.at(0);
+      if (row === undefined || cell === undefined)
+        throw new Error("Fixture has a row and cell.");
+      const prior = { id: 50, author: "Earlier" };
+      const table: Table = {
+        ...source,
+        rows: [
+          {
+            ...row,
+            cells: [
+              {
+                ...cell,
+                structuralChange: { type: "tableCellDeletion", info: prior },
+                propertyChanges: [
+                  {
+                    type: "tableCellPropertyChange",
+                    info: { ...prior, id: 51 },
+                    previousFormatting: { fitText: true },
+                  },
+                ],
+                content: [
+                  {
+                    type: "preservedBlock",
+                    xml: '<w:proofErr w:type="spellStart"/>',
+                  },
+                  {
+                    ...makeParagraph("00000010"),
+                    content: [
+                      {
+                        type: "run",
+                        content: [{ type: "text", text: "Kept" }],
+                      },
+                      {
+                        type: "preservedInline",
+                        xml: '<w:proofErr w:type="spellEnd"/>',
+                        text: "",
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      };
+      const following = makeParagraph("00000002");
+      const before = documentOf(
+        mode === "insert" ? [following] : [table, following],
+      );
+      const op =
+        mode === "insert"
+          ? ({
+              type: DOCUMENT_OP_TYPES.INSERT_TABLE,
+              story: OP_STORIES.MAIN,
+              at: { type: "before", blockId: "00000002" },
+              table,
+            } satisfies DocumentOp)
+          : ({
+              type: DOCUMENT_OP_TYPES.DELETE_TABLE,
+              story: OP_STORIES.MAIN,
+              blockId: "00000010",
+            } satisfies DocumentOp);
+      const pending = applied(before, { ...op, revision, newIds });
+      expect(pending.revisions).not.toContain(prior.id);
+      for (const decision of [
+        REVISION_DECISIONS.ACCEPT,
+        REVISION_DECISIONS.REJECT,
+      ])
+        expect(
+          resolve(pending.document, pending.revisions, decision).document,
+        ).toStrictEqual(
+          decision === REVISION_DECISIONS.ACCEPT
+            ? applied(before, op).document
+            : before,
+        );
+    },
+  );
+
+  test.each(["insert", "delete"] as const)(
     "%s refuses unsupported cell content and conflicting revisions",
     (mode) => {
       const source = makeTable();
@@ -552,26 +711,6 @@ describe("tracked table refusals", () => {
             ],
           },
           reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
-        },
-        {
-          value: {
-            ...source,
-            rows: [
-              {
-                ...row,
-                cells: [
-                  {
-                    ...cell,
-                    structuralChange: {
-                      type: "tableCellDeletion",
-                      info: foreign,
-                    },
-                  },
-                ],
-              },
-            ],
-          },
-          reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
         },
         ...(
           [
@@ -651,7 +790,7 @@ describe("tracked table refusals", () => {
               },
             ],
           },
-          reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+          reason: DOCUMENT_OP_REFUSAL_REASONS.DEPENDENT_RECORDS,
         })),
       ] as const satisfies readonly { value: Table; reason: string }[];
       for (const { value, reason } of cases) {

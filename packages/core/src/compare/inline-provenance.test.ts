@@ -404,6 +404,43 @@ describe("sameAuthoredInlineProvenance", () => {
     return snapshot;
   };
 
+  test.each([1, 2])(
+    "table row review keeps only text handed to a surviving row (span %d)",
+    (rowspan) => {
+      const cell = (label: string, span = 1) =>
+        schema.node("tableCell", { rowspan: span }, [
+          provenanceParagraph({ label }),
+        ]);
+      const deleted = schema.node(
+        "tableRow",
+        {
+          trDel: {
+            revisionId: 45,
+            author: "Reviewer",
+            date: "2026-11-27T00:00:00Z",
+          },
+        },
+        [cell("starts in deleted row", rowspan)],
+      );
+      const kept = schema.node("tableRow", null, [cell("standing")]);
+      const inDocument = (rows: PMNode[]) =>
+        schema.node("doc", null, [
+          schema.node("table", null, rows),
+          provenanceParagraph({ label: "closing" }),
+        ]);
+      const reviewed = schema.node("tableRow", null, [
+        ...(rowspan === 1 ? [] : [cell("starts in deleted row")]),
+        cell("standing"),
+      ]);
+      expect(
+        sameAuthoredInlineProvenance(
+          snapshotOf(inDocument([deleted, kept])),
+          snapshotOf(inDocument([reviewed])),
+        ),
+      ).toBe(true);
+    },
+  );
+
   test("resolves no positions, so its cost stays linear in run count", () => {
     expect(
       sameAuthoredInlineProvenance(

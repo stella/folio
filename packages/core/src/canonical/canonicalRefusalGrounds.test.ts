@@ -1,6 +1,10 @@
 import { expect, test } from "bun:test";
 
-import { DOCUMENT_OP_REFUSAL_REASONS } from "@stll/docx-core/ops";
+import {
+  DOCUMENT_OP_REFUSAL_REASONS,
+  DOCUMENT_OP_TYPES,
+  DocumentOpRefusal,
+} from "@stll/docx-core/ops";
 
 import {
   CANONICAL_CAPABILITIES,
@@ -8,6 +12,7 @@ import {
   CANONICAL_GAP,
   CANONICAL_RULE,
 } from "../types/canonicalCapabilities";
+import { compilerRefusalSkip } from "./canonicalCompilerRefusal";
 import { groundForDocumentOpRefusal } from "./canonicalRefusalGrounds";
 
 const R = DOCUMENT_OP_REFUSAL_REASONS;
@@ -25,6 +30,18 @@ test("a moved-on document, an exhausted id space, a link suggestion and an untra
   expect(groundForDocumentOpRefusal(R.UNRECORDABLE_LINK_SUGGESTION)).toEqual({
     rule: CANONICAL_RULE.linkSuggestionShape,
   });
+  expect(groundForDocumentOpRefusal(R.TABLE_SNAPSHOT_PRESENCE)).toEqual({
+    rule: CANONICAL_RULE.tableSnapshotPresence,
+  });
+  expect(
+    compilerRefusalSkip(
+      new DocumentOpRefusal({
+        opType: DOCUMENT_OP_TYPES.SET_TABLE_PROPS,
+        reason: R.TABLE_SNAPSHOT_PRESENCE,
+        message: "An own undefined formatting field does not persist.",
+      }),
+    ),
+  ).toMatchObject({ refusal: { rule: CANONICAL_RULE.tableSnapshotPresence } });
   expect(groundForDocumentOpRefusal(R.UNTRACKABLE)).toEqual({
     gap: CANONICAL_GAP.trackedChangeRecords,
   });
@@ -36,6 +53,7 @@ test("every other document operation refusal is a request the document does not 
     R.SECTIONS_OUT_OF_STEP,
     R.NEEDS_NEW_IDS,
     R.UNRECORDABLE_LINK_SUGGESTION,
+    R.TABLE_SNAPSHOT_PRESENCE,
     R.UNTRACKABLE,
   ]);
   const others = Object.values(R).filter((reason) => !named.has(reason));

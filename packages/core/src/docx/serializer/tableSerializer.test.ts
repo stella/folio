@@ -161,6 +161,100 @@ describe("serializeTable shared content controls after edits", () => {
     return result.value;
   };
 
+  test.each([true, false])(
+    "a merge preserves each wrapped capture when the owner is empty: %s",
+    (emptyOwner) => {
+      const other = {
+        contentControls: [{ id: 4243, sdtType: "richText" }],
+      } satisfies Pick<
+        Table["rows"][number]["cells"][number],
+        "contentControls"
+      >;
+      const textCell = (paraId: string, text: string) =>
+        ({
+          type: "tableCell",
+          content: [
+            {
+              type: "paragraph",
+              paraId,
+              content:
+                text.length === 0
+                  ? []
+                  : [{ type: "run", content: [{ type: "text", text }] }],
+            },
+          ],
+        }) satisfies Table["rows"][number]["cells"][number];
+      const table: Table = {
+        type: "table",
+        columnWidths: [1000, 1000, 1000],
+        rows: [
+          {
+            type: "tableRow",
+            cells: [
+              { ...textCell(first, emptyOwner ? "" : "Owner"), ...wrapped },
+              { ...textCell(second, "Second"), ...other },
+              textCell(outside, "Third"),
+            ],
+            preserved: {
+              children: [
+                { index: 1, xml: captureXml, ...wrapped },
+                { index: 2, xml: '<w:proofErr w:type="spellEnd"/>', ...other },
+              ],
+            },
+          },
+        ],
+      };
+      const document: Document = {
+        package: {
+          document: {
+            content: [
+              table,
+              { type: "paragraph", paraId: inserted, content: [] },
+            ],
+          },
+        },
+      };
+      const op = {
+        type: DOCUMENT_OP_TYPES.MERGE_CELLS,
+        story: OP_STORIES.MAIN,
+        blockId: first,
+        top: 0,
+        bottom: 1,
+        left: 0,
+        right: 3,
+        newBlockIds: [],
+      } satisfies DocumentOp;
+      const direct = applied(document, op).document;
+      expect(xmlOf(direct).match(/<w:sdt>/gu)).toHaveLength(2);
+      const pending = applied(document, {
+        ...op,
+        newBlockIds: ["00000006", "00000007"],
+        revision: { id: 500, author: "Reviewer", date: "2026-11-26T00:00:00Z" },
+        newIds: {
+          revision: Array.from({ length: 15 }, (_, index) => 501 + index),
+        },
+      });
+      expect(
+        applyDocumentOps(pending.document, pending.inverse).unwrap().document,
+      ).toStrictEqual(document);
+      for (const decision of [
+        REVISION_DECISIONS.ACCEPT,
+        REVISION_DECISIONS.REJECT,
+      ]) {
+        const result = applied(pending.document, {
+          type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+          story: OP_STORIES.MAIN,
+          revisionIds: pending.revisions,
+          decision,
+        });
+        expect(result.document).toStrictEqual(
+          decision === REVISION_DECISIONS.ACCEPT ? direct : document,
+        );
+        expect(xmlOf(result.document).match(/<w:sdt>/gu)).toHaveLength(2);
+      }
+    },
+  );
+
   for (const scope of ["row", "cell"] as const) {
     test.each(["inside", "after"] as const)(
       `${scope} insertion %s a shared control keeps the capture in one wrapper`,

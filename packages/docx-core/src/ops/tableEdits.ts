@@ -20,6 +20,10 @@ import {
   type TrackedChangeInfo,
 } from "../model/document";
 import { maxOf } from "../model/extremes";
+import {
+  statedTableColumnWidths,
+  withTableColumnWidths,
+} from "../model/tableColumnWidths";
 import { MAX_TABLE_GRID_COLUMNS } from "../model/tableGridLimits";
 import {
   storyBody,
@@ -42,7 +46,10 @@ import {
 } from "./ids";
 import { paragraphLength } from "./offsets";
 import { applyFormattingPatch } from "./patch";
-import { relocatePositionedMarkers } from "./positionedMarkers";
+import {
+  type MergedTableOwner,
+  relocatePositionedMarkers,
+} from "./positionedMarkers";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { withTableRecordsResolved } from "./resolveTableRows";
 import {
@@ -341,19 +348,21 @@ type CommitTableOptions = {
   op: Op;
   location: TableRowLocation;
   table: Table;
+  mergedOwner?: MergedTableOwner | undefined;
 };
 const commitTable = ({
   document,
   op,
   location,
   table: edited,
+  mergedOwner,
 }: CommitTableOptions): Result<DocumentEdit, DocumentOpRefusal> => {
   // An inverse restores the table exactly; an edit moves the bookmark markers
   // beside rows and cells with the siblings it adds or removes.
   const table =
     op.type === DOCUMENT_OP_TYPES.SET_TABLE
       ? edited
-      : relocatePositionedMarkers(location.table, edited);
+      : relocatePositionedMarkers(location.table, edited, { mergedOwner });
   const preservesStructure =
     (isPropertyEdit(op) || op.type === DOCUMENT_OP_TYPES.SET_TABLE) &&
     structurallyEqual(
@@ -491,20 +500,6 @@ const withOmission = (
     else delete formatting.gridAfter;
   }
   return { ...row, formatting };
-};
-
-/** Captures and cells inside the same wrapper must move as one group. */
-const hasWrappedCellMarkup = (table: Table): boolean => {
-  const wrapped = ({
-    contentControls,
-    carrierStack,
-  }: Pick<TableCell, "contentControls" | "carrierStack">) =>
-    contentControls !== undefined || carrierStack !== undefined;
-  return table.rows.some(
-    (row) =>
-      row.preserved?.children !== undefined &&
-      (row.preserved.children.some(wrapped) || row.cells.some(wrapped)),
-  );
 };
 
 /** A cell holding one paragraph with nothing in it. */
@@ -962,6 +957,23 @@ const columnReviews = ({
 
 type ColumnOp = Extract<TableEditOp, { type: "insertColumn" | "deleteColumn" }>;
 
+const gridWidthsBeforeEdit = (table: Table, width: number) =>
+  statedTableColumnWidths(table) ??
+  Array.from({ length: width }, () => undefined);
+
+const withEditedColumnWidths = (table: Table, op: ColumnOp): Table => {
+  const widths = statedTableColumnWidths(table);
+  if (widths === undefined) return table;
+  if (op.type === DOCUMENT_OP_TYPES.INSERT_COLUMN)
+    widths.splice(
+      op.column,
+      0,
+      ...Array.from({ length: op.count ?? 1 }, () => op.width),
+    );
+  else widths.splice(op.column, op.count ?? 1);
+  return withTableColumnWidths(table, widths);
+};
+
 /**
  * Whether a pending record places a column differently once it is accepted
  * than once it is rejected: a cell insertion or deletion that takes only part
@@ -1414,19 +1426,7 @@ const columnEditAcrossRecords = ({
       message:
         "Resolve comments, moves and bookmarks reaching past the column before removing it.",
     });
-  const columnWidths =
-    table.columnWidths === undefined ? undefined : [...table.columnWidths];
-  if (columnWidths !== undefined) {
-    if (op.type === DOCUMENT_OP_TYPES.INSERT_COLUMN)
-      columnWidths.splice(
-        op.column,
-        0,
-        ...Array.from({ length: count }, () => op.width),
-      );
-    else columnWidths.splice(op.column, 1);
-  }
-  const edited: Table = { ...table, rows };
-  if (columnWidths !== undefined) edited.columnWidths = columnWidths;
+  const edited = withEditedColumnWidths({ ...table, rows }, op);
   // Each decision of the edited table is the edit of that decision's table.
   const newIds =
     op.type === DOCUMENT_OP_TYPES.INSERT_COLUMN ? op.newBlockIds : [];
@@ -1895,19 +1895,7 @@ const columnEdit = ({
     rows.push(next);
   }
   if (trackedDeletion) return Result.ok({ ...table, rows });
-  const columnWidths =
-    table.columnWidths === undefined ? undefined : [...table.columnWidths];
-  if (columnWidths !== undefined) {
-    if (op.type === DOCUMENT_OP_TYPES.INSERT_COLUMN)
-      columnWidths.splice(
-        op.column,
-        0,
-        ...Array.from({ length: count }, () => op.width),
-      );
-    else columnWidths.splice(op.column, count);
-  }
-  const next = { ...table, rows };
-  if (columnWidths !== undefined) next.columnWidths = columnWidths;
+  const next = withEditedColumnWidths({ ...table, rows }, op);
   if (earlierGrid.value !== undefined)
     next.formatting = { ...table.formatting, gridChange: earlierGrid.value };
   const gridStamp = stamps.value[rowStamps];
@@ -1940,10 +1928,7 @@ const columnEdit = ({
       gridChange: {
         id: gridStamp.id,
         ...(geometryChange === undefined ? {} : { geometryChange }),
-        columnWidths:
-          table.columnWidths === undefined
-            ? Array.from({ length: grid.width }, () => undefined)
-            : [...table.columnWidths],
+        columnWidths: gridWidthsBeforeEdit(table, grid.width),
       },
     };
     next.propertyChanges = [
@@ -2557,12 +2542,15 @@ const suggestMerge = ({
     },
   });
   if (direct.isErr()) return direct;
-  const owner = direct.value.rows[op.top]?.cells[first.index];
+  const settled = relocatePositionedMarkers(table, direct.value, {
+    mergedOwner: { rowIndex: op.top, cellIndex: first.index },
+  });
+  const owner = settled.rows[op.top]?.cells[first.index];
   if (owner === undefined)
     return mismatch(op, "The merge must retain its owner cell.");
   const continuationIds = new Set(op.newBlockIds.slice(0, continuationCount));
   const continuationsById = new Map<string, TableCell>();
-  for (const plannedRow of direct.value.rows)
+  for (const plannedRow of settled.rows)
     for (const cell of plannedRow.cells) {
       const paragraph = cell.content.at(0);
       if (
@@ -2731,9 +2719,7 @@ const suggestMerge = ({
       ...table.formatting,
       gridChange: {
         id: gridStamp.id,
-        columnWidths:
-          table.columnWidths ??
-          Array.from({ length: grid.width }, () => undefined),
+        columnWidths: gridWidthsBeforeEdit(table, grid.width),
         geometryChange,
       },
     },
@@ -2754,12 +2740,6 @@ const merge = ({
   table,
   grid,
 }: MergeOptions): Result<Table, DocumentOpRefusal> => {
-  if (hasWrappedCellMarkup(table))
-    return refuse({
-      op,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      message: "Captures inside cell wrappers need a shared destination.",
-    });
   if (
     op.revision !== undefined &&
     hasReviewBlockingMerge({ table, top: op.top, bottom: op.bottom })
@@ -3448,7 +3428,7 @@ export const applyTableEdit = (
     ) {
       return refuse({
         op,
-        reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+        reason: DOCUMENT_OP_REFUSAL_REASONS.TABLE_SNAPSHOT_PRESENCE,
         message:
           "Explicit undefined review fields have no persisted OOXML property snapshot.",
       });
@@ -3535,10 +3515,7 @@ export const applyTableEdit = (
         });
       const stamps = stampsFor(op, 2);
       if (stamps.isErr()) return Result.err(stamps.error);
-      const { columnWidths: _previous, ...rest } = table;
-      const next: Table = unmeasured
-        ? rest
-        : { ...rest, columnWidths: [...op.columnWidths] };
+      const next = withTableColumnWidths(table, op.columnWidths);
       const gridStamp = stamps.value.at(0);
       const propertyStamp = stamps.value.at(1);
       if (gridStamp !== undefined && propertyStamp !== undefined) {
@@ -3546,10 +3523,7 @@ export const applyTableEdit = (
           ...table.formatting,
           gridChange: {
             id: gridStamp.id,
-            columnWidths:
-              table.columnWidths === undefined
-                ? Array.from({ length: grid.value.width }, () => undefined)
-                : [...table.columnWidths],
+            columnWidths: gridWidthsBeforeEdit(table, grid.value.width),
           },
         };
         next.propertyChanges = [
@@ -3577,5 +3551,18 @@ export const applyTableEdit = (
       inverse: [],
       touched: { modified: [], inserted: [], removed: [] },
     });
-  return commitTable({ document, op, location, table: changed.value });
+  const leading =
+    op.type === DOCUMENT_OP_TYPES.MERGE_CELLS
+      ? grid.value.rows[op.top]?.find(({ start }) => start === op.left)
+      : undefined;
+  return commitTable({
+    document,
+    op,
+    location,
+    table: changed.value,
+    mergedOwner:
+      leading === undefined
+        ? undefined
+        : { rowIndex: leading.row, cellIndex: leading.index },
+  });
 };

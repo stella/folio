@@ -1,4 +1,5 @@
 import type { Table, TableCell, TableRow } from "./content";
+import { withTableColumnWidths } from "./tableColumnWidths";
 
 /** Physical cell membership and formatting while geometry review is pending. */
 type TableReviewGeometry = {
@@ -74,9 +75,5 @@ export const tableWithPhysicalColumns = (table: Table): Table => {
     }
     rows.push(next);
   }
-  const pending = { ...table, rows };
-  if (widths.every((width) => width !== undefined))
-    pending.columnWidths = [...widths];
-  else delete pending.columnWidths;
-  return pending;
+  return withTableColumnWidths({ ...table, rows }, widths);
 };
