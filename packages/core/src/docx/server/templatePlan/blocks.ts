@@ -29,6 +29,7 @@ import {
 import {
   createStoryState,
   endStory,
+  ownSpacing,
   type ParagraphRead,
   readParagraph,
   type StoryState,
@@ -106,7 +107,15 @@ type StoryResources = {
   levelIndents?: ReadonlyMap<string, IndentSides>;
   /** The indent the document's defaults give every paragraph. */
   defaultIndent?: IndentSides;
+  /** The space in front and behind each paragraph style states for itself. */
+  spacings?: ReadonlyMap<string, SpacingSides>;
+  /** The space in front and behind the document's defaults give. */
+  defaultSpacing?: SpacingSides;
 };
+
+type SpacingSides = { before: number | null; after: number | null };
+
+const NO_SPACING: SpacingSides = { before: null, after: null };
 
 type OpenTable = {
   analyzed: AnalyzedBlock;
@@ -275,6 +284,65 @@ export const styleAlignment = (
     cursor = styles.get(cursor)?.basedOn;
   }
   return null;
+};
+
+/**
+ * The space in front and behind each style of a styles part states for
+ * itself (`w:spacing`), and what the document's defaults state. A side a
+ * style does not state as a measure is null.
+ */
+export const statedSpacings = (
+  stylesPath: string | null,
+  stylesXml: string | null,
+): { styles: Map<string, SpacingSides>; defaults: SpacingSides } => {
+  const styles = new Map<string, SpacingSides>();
+  const part =
+    stylesPath === null || stylesXml === null
+      ? null
+      : readRawPart(stylesPath, stylesXml);
+  for (const style of wChildren(part?.root, "style")) {
+    const styleId = wAttr(style, "styleId");
+    const sides = ownSpacing(wChild(wChild(style, "pPr"), "spacing"));
+    if (styleId !== null && (sides.before !== null || sides.after !== null)) {
+      styles.set(styleId, sides);
+    }
+  }
+  const defaults = wChild(wChild(part?.root, "docDefaults"), "pPrDefault");
+  return {
+    styles,
+    defaults: ownSpacing(wChild(wChild(defaults, "pPr"), "spacing")),
+  };
+};
+
+/**
+ * The space in effect in front of a paragraph and behind it: each side its
+ * own, else that of the nearest style in the `basedOn` chain that states
+ * it, else the document defaults', else none.
+ */
+const spacingInEffect = (
+  own: SpacingSides,
+  styleId: string | null,
+  styles: StyleMap,
+  stated: ReadonlyMap<string, SpacingSides>,
+  defaults: SpacingSides,
+): { before: number; after: number } => {
+  const side = (name: "before" | "after"): number => {
+    if (own[name] !== null) {
+      return own[name];
+    }
+    const seen = new Set<string>();
+    let cursor: string | undefined = styleId ?? undefined;
+    while (cursor !== undefined && !seen.has(cursor)) {
+      seen.add(cursor);
+      const value = stated.get(cursor)?.[name] ?? null;
+      if (value !== null) {
+        return value;
+      }
+      cursor = styles.get(cursor)?.basedOn;
+    }
+    return defaults[name] ?? 0;
+  };
+  return { before: side("before"), after: side("after") };
 };
 
 /** What a style states of the look of its text; null where it states
@@ -692,6 +760,15 @@ export const analyzeStory = ({
           ...(after === null ? {} : { after }),
         };
       }
+      if (resources.spacings !== undefined) {
+        block.spacingInEffect = spacingInEffect(
+          read.spacing,
+          styleId ?? resources.defaultStyleId,
+          resources.styles,
+          resources.spacings,
+          resources.defaultSpacing ?? NO_SPACING,
+        );
+      }
       // A list the paragraph names itself gives its level's indent over
       // the style's; a list the style brings is part of the style, whose
       // own indent then stands over the level's.
@@ -1065,6 +1142,7 @@ export const analyzeDocument = async (
         )?.styleId ?? null;
       const numbering =
         numberingXml === null ? null : parseNumbering(numberingXml);
+      const spacings = statedSpacings(stylesPath, stylesXml);
       const story = analyzeStory({
         container: body,
         resources: {
@@ -1077,6 +1155,8 @@ export const analyzeDocument = async (
           alignments: statedAlignments(stylesPath, stylesXml),
           levelIndents: statedLevelIndents(numberingPath, numberingXml),
           defaultIndent: statedDefaultIndent(stylesPath, stylesXml),
+          spacings: spacings.styles,
+          defaultSpacing: spacings.defaults,
         },
         keepsRevisions,
       });
