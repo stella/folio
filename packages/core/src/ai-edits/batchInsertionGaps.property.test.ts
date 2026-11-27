@@ -229,9 +229,19 @@ const oneAtATime = async (setup: Case) => {
     index === undefined
       ? undefined
       : original.find(({ id }) => id === anchors[index % anchors.length]);
+  // Whether the deletion applies once the insertions stand where the batch
+  // puts them: in its order, which in one gap is not the order separate
+  // insertions after one block take.
+  const landed = await prepared(setup);
+  landed.applyOperations(
+    setup.insertions.flatMap((insertion, at) =>
+      gaps[at] === undefined ? [] : [operationOf(insertion, at, anchors)],
+    ),
+    { undefinedReferences: "refuse", mode: "tracked-changes" },
+  );
   const deletes =
     deleted !== undefined &&
-    reviewer.applyOperations(
+    landed.applyOperations(
       [{ id: "delete", type: "deleteBlock", blockId: deleted.id }],
       { undefinedReferences: "refuse", mode: "tracked-changes" },
     ).skipped.length === 0;
