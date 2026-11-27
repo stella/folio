@@ -7330,7 +7330,9 @@ const withAbsorptions = (
  * also takes, that one takes all it holds, not only the markers a paragraph
  * that goes leaves: resolving the marks one at a time from the first joins
  * that paragraph into this one first, which keeps it all, empty inline
- * containers too.
+ * containers too. Where nothing around those joined paragraphs can take what
+ * they leave, this one stays, as it would once they had joined it: its
+ * identity and properties are the ones the joins keep.
  */
 const removalBesideJoin = ({
   blocks,
@@ -7343,12 +7345,26 @@ const removalBesideJoin = ({
 }): ReturnType<typeof planParagraphBoundaryRemoval> => {
   const paragraph = blocks[index];
   const previous = blocks[index - 1];
+  const joins = (block: BlockContent | undefined): block is Paragraph =>
+    block?.type === "paragraph" && joinsBefore.has(idKey(block.paraId ?? ""));
+  if (paragraph?.type !== "paragraph" || !joins(previous))
+    return planParagraphBoundaryRemoval({ blocks, index });
+  let start = index - 1;
+  while (joins(blocks[start - 1])) start -= 1;
+  const chained: Paragraph = {
+    ...paragraph,
+    content: blocks
+      .slice(start, index + 1)
+      .flatMap((block) => (block.type === "paragraph" ? block.content : [])),
+  };
   if (
-    paragraph?.type !== "paragraph" ||
-    previous?.type !== "paragraph" ||
-    paragraph.content.length === 0 ||
-    !joinsBefore.has(idKey(previous.paraId ?? ""))
+    planParagraphBoundaryRemoval({
+      blocks: [...blocks.slice(0, start), chained, ...blocks.slice(index + 1)],
+      index: start,
+    }).type === "blocked"
   )
+    return { type: "blocked" };
+  if (paragraph.content.length === 0)
     return planParagraphBoundaryRemoval({ blocks, index });
   const host: Paragraph = {
     ...previous,
@@ -7448,7 +7464,17 @@ const joinOps = (
   }
   const { paragraph } = location;
   const blocks = blockListAt(body.content, location.list);
-  const previous = blocks[location.index - 1];
+  // The paragraphs right before this one whose marks this resolution also
+  // takes join it first, resolving the marks one at a time from the first:
+  // what stands before this one is what stands before them.
+  let previousIndex = location.index - 1;
+  for (
+    let before = blocks[previousIndex];
+    before?.type === "paragraph" && joinsBefore.has(idKey(before.paraId ?? ""));
+    before = blocks[previousIndex]
+  )
+    previousIndex -= 1;
+  const previous = blocks[previousIndex];
   // Range boundaries the block list holds between this paragraph and the
   // next block stand at its boundary. A following paragraph or opaque
   // block receives them where the earlier words meet the later content.
@@ -7755,7 +7781,7 @@ const joinOps = (
       tableBoundary?.type === "blocked" && tableBoundary.reason === "review"
         ? "pendingReview"
         : "unavailable",
-    precededByBlock: location.index > 0,
+    precededByBlock: previous !== undefined,
   });
   if (outcome.kind === "refuse") {
     return Result.err(
