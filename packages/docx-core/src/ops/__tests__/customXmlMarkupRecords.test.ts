@@ -266,11 +266,13 @@ describe("a suggested paste of a custom XML element", () => {
       content: REVISION_DECISIONS.ACCEPT,
       shape: ["before Lead", "Inside one", "Inside two", "Trailafter", "next"],
     },
-    // The tags stay around nothing; what they wrapped joins across them.
+    // What the tags wrapped joins across them, and with all of it gone the
+    // tags go too: Word keeps no empty custom XML element (it keeps no
+    // custom XML markup at all).
     {
       element: REVISION_DECISIONS.ACCEPT,
       content: REVISION_DECISIONS.REJECT,
-      shape: [{ element: ["properties"] }, "before after", "next"],
+      shape: ["before after", "next"],
     },
   ])(
     "resolves to one document whichever goes first: tags $element, content $content",

@@ -8912,12 +8912,15 @@ export const planRevisionResolution = (
       receiverEffects: rest.value.receiverEffects,
     });
   }
-  // A mark resolved at a custom XML element's edge joins across its tags.
-  const through = customXmlReadThrough({
-    document,
-    story: op.story,
-    revisionIds: op.revisionIds,
-  });
+  // A resolution reaching into a custom XML element reads through its tags.
+  const through = Object.values(REVISION_DECISIONS).includes(op.decision)
+    ? customXmlReadThrough({
+        document,
+        story: op.story,
+        revisionIds: op.revisionIds,
+        decision: op.decision,
+      })
+    : undefined;
   if (through !== undefined) {
     const unwrapped = applyOps(document, [through.unwrap]);
     const read = unwrapped.andThen((untagged) =>

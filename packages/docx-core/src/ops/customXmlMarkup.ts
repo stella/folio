@@ -17,6 +17,8 @@ import type {
   BlockCustomXml,
   Document,
   Paragraph,
+  TableCell,
+  TableRow,
 } from "../model/document";
 import {
   blockListAt,
@@ -360,29 +362,6 @@ export const settleCustomXmlMarkup = ({
   };
 };
 
-/**
- * A custom XML element a resolution reads through: one wrapping paragraphs
- * only, each with an id, so where its content stands after the resolution
- * says where its tags go back.
- */
-type ReadThrough = {
-  element: BlockCustomXml;
-  /** Its paragraphs' ids, in order. */
-  members: readonly string[];
-  /** The paragraph after it, then the one before it, read through tags. */
-  after: string | undefined;
-  before: string | undefined;
-};
-
-const simpleElement = (element: BlockCustomXml): boolean =>
-  element.content.every(
-    (child) =>
-      isCustomXmlProperties(child) ||
-      (child.type === "paragraph" &&
-        child.paraId !== undefined &&
-        child.sectionProperties === undefined),
-  );
-
 /** Every block list of `blocks`, in content controls and table cells too. */
 const mapLists = (
   blocks: readonly BlockContent[],
@@ -412,38 +391,350 @@ const mapLists = (
     }),
   );
 
-const paragraphKeyOf = (block: BlockContent | undefined): string | undefined =>
-  block?.type === "paragraph" && block.paraId !== undefined
-    ? idKey(block.paraId)
-    : undefined;
+/**
+ * A custom XML element a resolution reads through: its tags, the elements
+ * around it, and the blocks on either side of its content in its list read
+ * without tags, which say where it goes back when none of its content does.
+ */
+type Shell = {
+  element: BlockCustomXml;
+  parent: Chain;
+  before: BlockContent | undefined;
+  after: BlockContent | undefined;
+  /** Where the block after it stands in its list read without tags. */
+  end: number;
+};
 
-/** The paragraphs' ids a block puts in its list's flow, read through tags. */
-const flowKeysOf = (block: BlockContent): string[] => {
-  if (block.type === "blockCustomXml")
-    return block.content.flatMap((child) => flowKeysOf(child));
-  const key = paragraphKeyOf(block);
-  return key === undefined ? [] : [key];
+/** The elements, outermost first, a block stands inside in its block list. */
+type Chain = readonly Shell[];
+
+/** Every paragraph id a block holds, at any depth. */
+const paragraphKeysIn = (block: BlockContent): string[] =>
+  storyParagraphs({ content: [block] }).flatMap(({ paragraph }) =>
+    paragraph.paraId === undefined ? [] : [idKey(paragraph.paraId)],
+  );
+
+/** Whether an element holds anything its tags wrap, its properties apart. */
+const wrapsContent = (element: BlockCustomXml): boolean =>
+  element.content.some((child) => !isCustomXmlProperties(child));
+
+/**
+ * Where each block of a story stood among its list's custom XML elements,
+ * read so that it is found again after a resolution rebuilt it: a paragraph
+ * by its id, a table or content control by any paragraph it holds, anything
+ * else as the record it is. Lists nest in table cells and content controls,
+ * counted by `depth`; custom XML elements are steps of a list, not lists.
+ */
+type Placements = {
+  byKey: Map<string, Chain>;
+  byRecord: WeakMap<object, Chain>;
+  shells: Shell[];
+  /** The elements put back, around content or emptied. */
+  placed: Set<Shell>;
+};
+
+const placementKey = (depth: number, paraKey: string): string =>
+  `${String(depth)}:${paraKey}`;
+
+/** Whether a resolved block is the one `original` was, or what it became. */
+const sameOrigin = (
+  resolved: BlockContent,
+  original: BlockContent,
+): boolean => {
+  if (resolved === original) return true;
+  if (resolved.type !== original.type) return false;
+  if (
+    resolved.type !== "paragraph" &&
+    resolved.type !== "table" &&
+    resolved.type !== "blockSdt"
+  )
+    return false;
+  const keys = new Set(paragraphKeysIn(original));
+  return paragraphKeysIn(resolved).some((key) => keys.has(key));
+};
+
+/**
+ * `blocks` with every custom XML element wrapping content taken away, written
+ * into `out` (one list's blocks, through the elements it holds).
+ */
+const untagInto = (
+  blocks: readonly BlockContent[],
+  depth: number,
+  placements: Placements,
+  chain: Chain,
+  out: BlockContent[],
+): void => {
+  for (const block of blocks) {
+    if (block.type === "blockCustomXml" && wrapsContent(block)) {
+      const shell: Shell = {
+        element: block,
+        parent: chain,
+        before: out.at(-1),
+        after: undefined,
+        end: 0,
+      };
+      placements.shells.push(shell);
+      untagInto(
+        block.content.filter((child) => !isCustomXmlProperties(child)),
+        depth,
+        placements,
+        [...chain, shell],
+        out,
+      );
+      shell.end = out.length;
+      continue;
+    }
+    let placed: BlockContent = block;
+    if (block.type === "blockSdt")
+      placed = {
+        ...block,
+        content: untagged(block.content, depth + 1, placements),
+      };
+    else if (block.type === "table")
+      placed = {
+        ...block,
+        rows: block.rows.map((row) => ({
+          ...row,
+          cells: row.cells.map((cell) => ({
+            ...cell,
+            content: untagged(cell.content, depth + 1, placements),
+          })),
+        })),
+      };
+    if (block.type === "paragraph") {
+      if (block.paraId !== undefined)
+        placements.byKey.set(placementKey(depth, idKey(block.paraId)), chain);
+    } else if (block.type === "table" || block.type === "blockSdt")
+      for (const key of paragraphKeysIn(block))
+        placements.byKey.set(placementKey(depth, key), chain);
+    placements.byRecord.set(placed, chain);
+    out.push(placed);
+  }
+};
+
+const untagged = (
+  blocks: readonly BlockContent[],
+  depth: number,
+  placements: Placements,
+): BlockContent[] => {
+  const out: BlockContent[] = [];
+  const first = placements.shells.length;
+  untagInto(blocks, depth, placements, [], out);
+  // The block after each element's content, once the list's blocks are in.
+  for (const shell of placements.shells.slice(first))
+    if (shell.after === undefined) shell.after = out[shell.end];
+  return out;
+};
+
+/** Where a block of a resolved list stands, if it is found. */
+const chainOf = (
+  block: BlockContent,
+  depth: number,
+  placements: Placements,
+): Chain | undefined => {
+  const byRecord = placements.byRecord.get(block);
+  if (byRecord !== undefined) return byRecord;
+  if (
+    block.type !== "paragraph" &&
+    block.type !== "table" &&
+    block.type !== "blockSdt"
+  )
+    return undefined;
+  for (const key of paragraphKeysIn(block)) {
+    const chain = placements.byKey.get(placementKey(depth, key));
+    if (chain !== undefined) return chain;
+  }
+  return undefined;
+};
+
+const commonPrefix = (left: Chain, right: Chain): Chain => {
+  let length = 0;
+  while (
+    length < left.length &&
+    length < right.length &&
+    left[length] === right[length]
+  )
+    length += 1;
+  return left.slice(0, length);
+};
+
+/**
+ * A resolved list with the tags put back around the blocks that stood inside
+ * them: each element around the run of its blocks that remain, nested as it
+ * was. A block the resolution made anew stands in what the blocks on both
+ * sides of it share. An element none of whose content remains goes with
+ * that content when a rejection took it, as an element inserted with it
+ * goes; one whose content an acceptance removed stays, emptied, where it
+ * stood, as removing that content directly leaves it. `undefined` when an
+ * element's blocks no longer stand together, or an emptied element has no
+ * block left beside it to stand by.
+ */
+const retagged = (
+  blocks: readonly BlockContent[],
+  depth: number,
+  placements: Placements,
+  keepEmptied: boolean,
+): BlockContent[] | undefined => {
+  const found = blocks.map((block) => chainOf(block, depth, placements));
+  const entries: { block: BlockContent | undefined; chain: Chain }[] =
+    blocks.map((block, index) => {
+      const chain = found[index];
+      if (chain !== undefined) return { block, chain };
+      const before = found
+        .slice(0, index)
+        .findLast((each) => each !== undefined);
+      const after = found.slice(index + 1).find((each) => each !== undefined);
+      return {
+        block,
+        chain:
+          before === undefined || after === undefined
+            ? []
+            : commonPrefix(before, after),
+      };
+    });
+  if (keepEmptied) {
+    // An emptied element of this list stands where its content stood: before
+    // the block that followed it, else after the one before it. Only the
+    // innermost of nested emptied elements needs a place: the elements
+    // around it stand around it.
+    const standing = new Set(entries.flatMap(({ chain }) => chain));
+    const emptied = placements.shells.filter(
+      (shell) =>
+        !standing.has(shell) &&
+        [shell.before, shell.after].some(
+          (side) =>
+            side !== undefined &&
+            blocks.some((block) => sameOrigin(block, side)),
+        ),
+    );
+    const innermost = emptied.filter(
+      (shell) => !emptied.some((other) => other.parent.includes(shell)),
+    );
+    for (const shell of innermost) {
+      const at = blocks.findIndex(
+        (block) => shell.after !== undefined && sameOrigin(block, shell.after),
+      );
+      const by = blocks.findIndex(
+        (block) =>
+          shell.before !== undefined && sameOrigin(block, shell.before),
+      );
+      const entry = { block: undefined, chain: [...shell.parent, shell] };
+      if (at >= 0) {
+        const index = entries.findIndex(({ block }) => block === blocks[at]);
+        entries.splice(index, 0, entry);
+      } else if (by >= 0) {
+        const index = entries.findIndex(({ block }) => block === blocks[by]);
+        entries.splice(index + 1, 0, entry);
+      } else return undefined;
+    }
+  }
+  type Frame = { shell: Shell; content: BlockContent[] };
+  const root: BlockContent[] = [];
+  const open: Frame[] = [];
+  const closed = new Set<Shell>();
+  const close = () => {
+    const frame = open.pop();
+    if (frame === undefined) return;
+    closed.add(frame.shell);
+    (open.at(-1)?.content ?? root).push({
+      ...frame.shell.element,
+      content: [
+        ...frame.shell.element.content.filter(isCustomXmlProperties),
+        ...frame.content,
+      ],
+    });
+  };
+  for (const { block: source, chain } of entries) {
+    let shared = 0;
+    while (
+      shared < open.length &&
+      shared < chain.length &&
+      open[shared]?.shell === chain[shared]
+    )
+      shared += 1;
+    while (open.length > shared) close();
+    for (const shell of chain.slice(shared)) {
+      if (closed.has(shell)) return undefined;
+      placements.placed.add(shell);
+      open.push({ shell, content: [] });
+    }
+    if (source === undefined) continue;
+    let block = source;
+    if (block.type === "blockSdt") {
+      const content = retagged(
+        block.content,
+        depth + 1,
+        placements,
+        keepEmptied,
+      );
+      if (content === undefined) return undefined;
+      block = { ...block, content };
+    } else if (block.type === "table") {
+      const rows: TableRow[] = [];
+      for (const row of block.rows) {
+        const cells: TableCell[] = [];
+        for (const cell of row.cells) {
+          const content = retagged(
+            cell.content,
+            depth + 1,
+            placements,
+            keepEmptied,
+          );
+          if (content === undefined) return undefined;
+          cells.push(Object.assign({}, cell, { content }));
+        }
+        rows.push(Object.assign({}, row, { cells }));
+      }
+      block = Object.assign({}, block, { rows });
+    }
+    (open.at(-1)?.content ?? root).push(block);
+  }
+  while (open.length > 0) close();
+  return root;
+};
+
+/** Whether `value` holds a record with one of `ids`. */
+const holdsRevision = (value: unknown, ids: ReadonlySet<number>): boolean => {
+  if (typeof value !== "object" || value === null) return false;
+  if (Array.isArray(value))
+    return value.some((item) => holdsRevision(item, ids));
+  if (
+    "info" in value &&
+    typeof value.info === "object" &&
+    value.info !== null &&
+    "id" in value.info &&
+    typeof value.info.id === "number" &&
+    ids.has(value.info.id)
+  )
+    return true;
+  return Object.values(value).some((field) => holdsRevision(field, ids));
 };
 
 /**
  * How a resolution reads through the custom XML elements of a story: the
  * operation taking their tags away, and the one putting them back around
- * what their content left. A paragraph mark resolved at an element's end
- * (on its last paragraph) joins across the tags as it would without them, and the tags go back around the element's
- * paragraphs that stand after, or where it stood when none does. So the
- * order the tags' own records and their content's are resolved in leaves the
- * same document. `undefined` when no resolved mark ends an element,
- * or when an element wraps more than paragraphs: the resolution then meets
- * the tags as blocks.
+ * what their content left. A resolution reaching into an element reads its
+ * content as if the tags were not there, at any depth of elements, through
+ * tables and content controls: a mark ending an element joins the paragraph
+ * after it across every element end it stands inside, as it would without
+ * them. The tags then go back around their content that remains; an element
+ * whose content a rejection took goes too (Word keeps no custom XML markup at
+ * all, so leaves no empty element there), and one whose content an
+ * acceptance removed stays emptied, as removing it directly leaves it. So the
+ * order the tags' own records and their content's resolve in leaves the same
+ * document. `undefined` when the resolution reaches into no
+ * element.
  */
 export const customXmlReadThrough = ({
   document,
   story,
   revisionIds,
+  decision,
 }: {
   document: Document;
   story: OpStory;
   revisionIds: readonly number[];
+  decision: RevisionDecision;
 }):
   | {
       unwrap: DocumentOp;
@@ -452,52 +743,23 @@ export const customXmlReadThrough = ({
   | undefined => {
   const body = storyBody(document, story);
   const selected = new Set(revisionIds);
-  const shells: ReadThrough[] = [];
-  let simple = true;
-  let atEdge = false;
-  const resolvedMark = (block: BlockContent | undefined): boolean =>
-    block?.type === "paragraph" &&
-    block.pPrMark !== undefined &&
-    (selected.has(block.pPrMark.info.id) ||
-      (block.pPrMark.deletion !== undefined &&
-        selected.has(block.pPrMark.deletion.info.id)));
+  let reached = false;
   mapLists(body.content, (list) => {
-    const flow = list.map(flowKeysOf);
-    for (const [index, block] of list.entries()) {
-      if (block.type !== "blockCustomXml") continue;
-      if (!simpleElement(block)) {
-        simple = false;
-        continue;
-      }
-      const paragraphs = block.content.filter(
-        (child): child is Paragraph => child.type === "paragraph",
-      );
-      // Before an element, a resolved mark's paragraph stays or goes by what
-      // it holds, as before any block; only the element's last mark has
-      // nowhere to join inside it.
-      if (resolvedMark(paragraphs.at(-1))) atEdge = true;
-      shells.push({
-        element: block,
-        members: flow[index] ?? [],
-        after: flow
-          .slice(index + 1)
-          .flat()
-          .at(0),
-        before: flow.slice(0, index).flat().at(-1),
-      });
-    }
+    if (
+      list.some(
+        (block) =>
+          block.type === "blockCustomXml" &&
+          wrapsContent(block) &&
+          holdsRevision(block.content, selected),
+      )
+    )
+      reached = true;
     return [...list];
   });
   const anchor = storyParagraphs(body).find(
     ({ paragraph }) => paragraph.paraId !== undefined,
   );
-  if (
-    !simple ||
-    !atEdge ||
-    shells.length === 0 ||
-    anchor?.paragraph.paraId === undefined
-  )
-    return undefined;
+  if (!reached || anchor?.paragraph.paraId === undefined) return undefined;
   const address = (located: {
     list: readonly unknown[];
     paragraph: Paragraph;
@@ -507,100 +769,34 @@ export const customXmlReadThrough = ({
       ? {}
       : { ancestorDepth: located.list.length }),
   });
+  const placements: Placements = {
+    byKey: new Map(),
+    byRecord: new WeakMap(),
+    shells: [],
+    placed: new Set(),
+  };
   const unwrap: DocumentOp = {
     type: DOCUMENT_OP_TYPES.SET_CUSTOM_XML_MARKUP,
     story,
     ...address(anchor),
     expected: body.content,
-    blocks: mapLists(body.content, (list) =>
-      list.flatMap((block) =>
-        block.type === "blockCustomXml"
-          ? block.content.filter((child) => !isCustomXmlProperties(child))
-          : [block],
-      ),
-    ),
+    blocks: untagged(body.content, 0, placements),
   };
   const rewrap = (resolved: Document): DocumentOp | undefined => {
     const resolvedBody = storyBody(resolved, story);
-    const present = new Set(
-      storyParagraphs(resolvedBody).flatMap(({ paragraph }) =>
-        paragraph.paraId === undefined ? [] : [idKey(paragraph.paraId)],
-      ),
-    );
-    const runs = new Map<string, ReadThrough>();
-    const emptyBefore = new Map<string, ReadThrough[]>();
-    const emptyAfter = new Map<string, ReadThrough[]>();
-    for (const shell of shells) {
-      const first = shell.members.find((key) => present.has(key));
-      if (first !== undefined) {
-        runs.set(first, shell);
-        continue;
-      }
-      if (shell.after !== undefined && present.has(shell.after))
-        emptyBefore.set(shell.after, [
-          ...(emptyBefore.get(shell.after) ?? []),
-          shell,
-        ]);
-      else if (shell.before !== undefined && present.has(shell.before))
-        emptyAfter.set(shell.before, [
-          ...(emptyAfter.get(shell.before) ?? []),
-          shell,
-        ]);
-      else return undefined;
-    }
-    let placed = 0;
-    let failed = false;
-    const emptied = (shell: ReadThrough): BlockContent => {
-      placed += 1;
-      return {
-        ...shell.element,
-        content: shell.element.content.filter(isCustomXmlProperties),
-      };
-    };
-    const content = mapLists(resolvedBody.content, (list) => {
-      const out: BlockContent[] = [];
-      for (let index = 0; index < list.length; index += 1) {
-        const block = list[index];
-        if (block === undefined) continue;
-        const key = paragraphKeyOf(block);
-        if (key === undefined) {
-          out.push(block);
-          continue;
-        }
-        out.push(...(emptyBefore.get(key) ?? []).map(emptied));
-        const shell = runs.get(key);
-        let last = key;
-        if (shell === undefined) out.push(block);
-        else {
-          const remaining = shell.members.filter((member) =>
-            present.has(member),
-          );
-          const run = list.slice(index, index + remaining.length);
-          if (
-            run.length !== remaining.length ||
-            run.some((each, at) => paragraphKeyOf(each) !== remaining[at])
-          )
-            failed = true;
-          out.push({
-            ...shell.element,
-            content: [
-              ...shell.element.content.filter(isCustomXmlProperties),
-              ...run,
-            ],
-          });
-          placed += 1;
-          index += run.length - 1;
-          last = remaining.at(-1) ?? key;
-        }
-        out.push(...(emptyAfter.get(last) ?? []).map(emptied));
-      }
-      return out;
-    });
-    if (failed || placed !== shells.length) return undefined;
+    const keepEmptied = decision === REVISION_DECISIONS.ACCEPT;
+    placements.placed.clear();
+    const content = retagged(resolvedBody.content, 0, placements, keepEmptied);
+    // An emptied element an acceptance keeps that found no place would be lost.
+    if (
+      keepEmptied &&
+      placements.shells.some((shell) => !placements.placed.has(shell))
+    )
+      return undefined;
     const located = storyParagraphs(resolvedBody).find(
       ({ paragraph }) => paragraph.paraId !== undefined,
     );
-    if (located === undefined) return undefined;
+    if (content === undefined || located === undefined) return undefined;
     return {
       type: DOCUMENT_OP_TYPES.SET_CUSTOM_XML_MARKUP,
       story,

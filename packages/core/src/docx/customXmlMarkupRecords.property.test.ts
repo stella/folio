@@ -27,6 +27,7 @@ import type {
   BlockCustomXml,
   Document,
   Paragraph,
+  Table,
 } from "../types/document";
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
@@ -82,11 +83,48 @@ const resolve = (
     },
   ]);
 
+const table = (text: string): Table => ({
+  type: "table",
+  rows: [
+    {
+      type: "tableRow",
+      cells: [{ type: "tableCell", content: [paragraph(text)] }],
+    },
+  ],
+});
+
+const tagged = (content: BlockContent[]): BlockCustomXml => ({
+  type: "blockCustomXml",
+  openingXml: '<w:customXml w:element="clause">',
+  closingXml: "</w:customXml>",
+  content,
+});
+
+/** One block an element holds: a paragraph, a table or another element. */
+type Held =
+  | { kind: "paragraph"; text: string }
+  | { kind: "table"; text: string }
+  | { kind: "element"; held: Held[] };
+
+const blockOf = (held: Held): BlockContent => {
+  if (held.kind === "paragraph") return paragraph(held.text);
+  if (held.kind === "table") return table(held.text);
+  return tagged(held.held.map(blockOf));
+};
+
 /** What a reader sees: text by paragraph, an element as nesting. */
 const shapeOf = (blocks: readonly BlockContent[]): unknown[] =>
   blocks.flatMap((block): unknown[] => {
     if (block.type === "blockCustomXml")
       return [{ element: shapeOf(block.content) }];
+    if (block.type === "table")
+      return [
+        {
+          table: block.rows.map((row) =>
+            row.cells.map((cell) => shapeOf(cell.content)),
+          ),
+        },
+      ];
     if (block.type !== "paragraph") return [];
     const texts: string[] = [];
     const visit = (nodes: readonly unknown[]): void => {
@@ -166,6 +204,23 @@ const outcomes = (
 };
 
 const word = fc.stringMatching(/^[a-z]{1,6}$/u);
+const leaf: fc.Arbitrary<Held> = fc.oneof(
+  word.map((text): Held => ({ kind: "paragraph", text })),
+  word.map((text): Held => ({ kind: "table", text })),
+);
+/** An element's blocks: paragraphs, tables and nested elements of them. */
+const heldArbitrary: fc.Arbitrary<Held[]> = fc.array(
+  fc.oneof(
+    { weight: 3, arbitrary: leaf },
+    {
+      weight: 1,
+      arbitrary: fc
+        .array(leaf, { minLength: 1, maxLength: 2 })
+        .map((held): Held => ({ kind: "element", held })),
+    },
+  ),
+  { minLength: 1, maxLength: 3 },
+);
 const decision = fc.constantFrom(
   REVISION_DECISIONS.ACCEPT,
   REVISION_DECISIONS.REJECT,
@@ -174,14 +229,14 @@ const decision = fc.constantFrom(
 test("a suggested custom XML element resolves alike in every order, and after a reopen", async () => {
   const base = await opened();
   const cases: {
-    inner: string[];
+    inner: Held[];
     offset: number;
     element: RevisionDecision;
     content: RevisionDecision;
   }[] = [];
   assertProperty(
     fc.property(
-      fc.array(word, { minLength: 1, maxLength: 3 }),
+      heldArbitrary,
       fc.integer({ min: 0, max: DESTINATION.length }),
       decision,
       decision,
@@ -189,7 +244,7 @@ test("a suggested custom XML element resolves alike in every order, and after a 
         cases.push({ inner, offset, element, content });
       },
     ),
-    { id: "suggested custom XML element resolution orders", numRuns: 20 },
+    { id: "suggested custom XML element resolution orders", numRuns: 40 },
   );
   for (const { inner, offset, element, content } of cases) {
     const at = { story: OP_STORIES.MAIN, blockId: "00000001", offset };
@@ -200,12 +255,7 @@ test("a suggested custom XML element resolves alike in every order, and after a 
         to: at,
         blocks: [
           paragraph("Lead"),
-          {
-            type: "blockCustomXml",
-            openingXml: '<w:customXml w:element="clause">',
-            closingXml: "</w:customXml>",
-            content: inner.map(paragraph),
-          },
+          tagged(inner.map(blockOf)),
           paragraph("Trail"),
         ],
         openStart: 1,

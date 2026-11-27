@@ -16,9 +16,11 @@ import type {
   TrackedChangeInfo,
 } from "../types/document";
 import {
-  getAttributeAnyPrefix,
+  getAttributeByNamespaceUri,
   getLocalName,
+  OOXML_NAMESPACE_SCOPE,
   parseXml,
+  WORDPROCESSINGML_NAMESPACE_URIS,
   type XmlElement,
 } from "./xmlParser";
 
@@ -47,7 +49,9 @@ type ReadMarker = {
 
 const readElement = (xml: string): XmlElement | undefined => {
   try {
-    return parseXml(xml);
+    // A capture is replayed under the part's own bindings, so it is read in
+    // the scope the part's root declares.
+    return parseXml(xml, OOXML_NAMESPACE_SCOPE);
   } catch {
     return undefined;
   }
@@ -73,19 +77,19 @@ const markerOf = (block: BlockContent | undefined): ReadMarker | undefined => {
     if (name === "xmlns" || name.startsWith("xmlns:")) continue;
     if (!allowed.has(getLocalName(name))) return undefined;
   }
-  // A capture is replayed under the part's own bindings, so it may name a
-  // prefix it does not declare: its attributes are read by local name.
-  const rawId = getAttributeAnyPrefix(element, "id");
+  const read = (name: string) =>
+    getAttributeByNamespaceUri(element, WORDPROCESSINGML_NAMESPACE_URIS, name);
+  const rawId = read("id");
   if (rawId === null || !/^\d+$/u.test(rawId)) return undefined;
   const id = Number.parseInt(rawId, 10);
   if (!Number.isSafeInteger(id)) return undefined;
   const info: TrackedChangeInfo = { id, author: "" };
   if (marker.edge === "start") {
-    const author = getAttributeAnyPrefix(element, "author");
+    const author = read("author");
     if (author === null || author.trim() !== author || author.length === 0)
       return undefined;
     info.author = author;
-    const date = getAttributeAnyPrefix(element, "date");
+    const date = read("date");
     if (date !== null) {
       if (date.trim() !== date || date.length === 0) return undefined;
       info.date = date;
