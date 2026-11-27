@@ -603,6 +603,26 @@ describe("paragraphMarkOutcome", () => {
       needsFollowingCommentHost: true,
       expected: "run-in",
     },
+    // Anchors stay before a table whose receiver is still pending review.
+    {
+      follows: "table",
+      holdsContent: false,
+      markWasAdded: false,
+      containerStillEndsWithParagraph: true,
+      followingTableCanReceiveRunIn: false,
+      followingTableReceiverPending: true,
+      needsFollowingCommentHost: true,
+      expected: "keep",
+    },
+    {
+      follows: "table",
+      holdsContent: false,
+      markWasAdded: false,
+      containerStillEndsWithParagraph: true,
+      followingTableCanReceiveRunIn: false,
+      followingTableReceiverPending: true,
+      expected: "remove",
+    },
     {
       follows: "table",
       holdsContent: true,

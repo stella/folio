@@ -4,8 +4,11 @@ import {
   type BlockContent,
   type Document,
   type Paragraph,
+  type ParagraphContent,
+  type ParagraphMarkChange,
   REVIEW_CARRIERS,
   type Table,
+  type TrackedRunContent,
 } from "../../model/document";
 import { validateOpsDocument } from "../contract";
 import {
@@ -249,6 +252,69 @@ test("a deleted table after a paragraph resolves to that paragraph", () => {
   expect(view.unresolved).toEqual([]);
   expect(shape(view)).toEqual(["00000001:1"]);
 });
+
+for (const decision of ["accept", "reject"] as const)
+  for (const held of ["bookmark", "words"] as const)
+    for (const chained of [false, true])
+      test(`a paragraph left with its ${held} stays before a table whose first row is pending (${decision}${chained ? ", through an emptied paragraph" : ""})`, () => {
+        // Accepted, a deletion empties a paragraph; rejected, an insertion does.
+        const removed = (id: number, words: string): ParagraphContent => {
+          const content: TrackedRunContent[] = [
+            { type: "run", content: [{ type: "text", text: words }] },
+          ];
+          const type = decision === "accept" ? "deletion" : "insertion";
+          return { type, info: { ...info, id }, content };
+        };
+        const mark = (id: number): ParagraphMarkChange => ({
+          kind: decision === "accept" ? "del" : "ins",
+          info: { ...info, id },
+        });
+        const emptied: Paragraph = {
+          type: "paragraph",
+          paraId: "00000001",
+          content:
+            held === "bookmark"
+              ? [
+                  { type: "bookmarkStart", id: 1, name: "kept" },
+                  removed(4, "Gone"),
+                  { type: "bookmarkEnd", id: 1 },
+                ]
+              : [{ type: "run", content: [{ type: "text", text: "Words" }] }],
+          pPrMark: mark(4),
+        };
+        const between: Paragraph = {
+          type: "paragraph",
+          paraId: "00000002",
+          content: [removed(5, "Also gone")],
+          pPrMark: mark(5),
+        };
+        const pending = table("00000005", decision === "accept");
+        const first = pending.rows[0];
+        if (first === undefined) throw new Error("The table has a row");
+        if (decision === "reject")
+          first.structuralChange = { type: "tableRowInsertion", info };
+        pending.rows.push({
+          type: "tableRow",
+          cells: [{ type: "tableCell", content: [text("00000006", "Cell")] }],
+        });
+        const source = bodyOf([
+          emptied,
+          ...(chained ? [between] : []),
+          pending,
+          text("00000007", "Tail"),
+        ]);
+        const view = resolvedMarkupDocumentView(source, decision);
+        expect(view.unresolved).toEqual([]);
+        // The table's surviving row was not its receiver: what the paragraph
+        // holds stays in a paragraph of its own instead of running in or
+        // moving past the table.
+        const [kept, ...rest] = view.document.package.document.content;
+        expect(kept?.type).toBe("paragraph");
+        expect(JSON.stringify(kept)).toContain(
+          held === "bookmark" ? '"name":"kept"' : '"text":"Words"',
+        );
+        expect(rest.map((block) => block.type)).toEqual(["table", "paragraph"]);
+      });
 
 for (const decision of ["accept", "reject"] as const)
   test(`a terminal-table review carrier resolves as its table does (${decision})`, () => {

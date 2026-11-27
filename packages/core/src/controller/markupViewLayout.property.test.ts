@@ -18,7 +18,10 @@
  * it moves line breaks), moves, inserted and deleted paragraph marks,
  * paragraph-property changes and a table with tracked rows; edits run in
  * editing or suggesting mode, so typing in Original with tracking on inserts
- * text the view does not show.
+ * text the view does not show. A second property keeps to short documents
+ * around the table whose paragraphs a view, a cleared paragraph or Accept All
+ * and Reject All leave with only their anchors (a bookmark, a move range) or
+ * nothing, with undo and redo between view switches.
  *
  * Three invariants of the committed blocks keep editing in a view sane: every
  * painted character addresses the editor character it shows (so caret,
@@ -32,7 +35,9 @@
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
+import { redo, undo } from "prosemirror-history";
 import { EditorState } from "prosemirror-state";
+import type { Command, Transaction } from "prosemirror-state";
 
 import {
   assertProperty,
@@ -52,6 +57,10 @@ import {
   resolveAllChanges,
 } from "../__tests__/editorHarness";
 import type { EditorMode } from "../__tests__/editorHarness";
+import {
+  acceptAllChanges,
+  rejectAllChanges,
+} from "../__tests__/reference-editor/comments";
 import {
   sizeProportionalCharWidth,
   withFakeTextMeasure,
@@ -129,11 +138,17 @@ const SEGMENT_KINDS = [
 type Segment = { kind: (typeof SEGMENT_KINDS)[number]; text: string };
 
 const PARAGRAPH_MARKS = ["plain", "inserted", "deleted"] as const;
+/**
+ * A bookmark around the paragraph's content, or collapsed at its start: what
+ * a paragraph whose every run a view removes still holds.
+ */
+const BOOKMARK_KINDS = ["range", "point"] as const;
 type ParagraphSpec = {
   segments: Segment[];
   mark: (typeof PARAGRAPH_MARKS)[number];
   justified: boolean;
   alignmentChange: boolean;
+  bookmark?: (typeof BOOKMARK_KINDS)[number];
 };
 
 type ReviewProperties = { numberingChange: boolean; commented: boolean };
@@ -157,45 +172,93 @@ const segmentArb = fc.record({
   text: phrase,
 });
 
-const paragraphArb = fc.record({
+const paragraphMarkArb = fc.oneof(
+  { weight: 3, arbitrary: fc.constant("plain" as const) },
+  { weight: 1, arbitrary: fc.constant("inserted" as const) },
+  { weight: 1, arbitrary: fc.constant("deleted" as const) },
+);
+
+const paragraphArb: fc.Arbitrary<ParagraphSpec> = fc.record({
   segments: fc.array(segmentArb, { minLength: 1, maxLength: 6 }),
-  mark: fc.oneof(
-    { weight: 3, arbitrary: fc.constant("plain" as const) },
-    { weight: 1, arbitrary: fc.constant("inserted" as const) },
-    { weight: 1, arbitrary: fc.constant("deleted" as const) },
-  ),
+  mark: paragraphMarkArb,
   justified: fc.boolean(),
   alignmentChange: fc.boolean(),
 });
 
+/**
+ * Paragraphs a view can empty to their anchors: few runs, mostly tracked, or
+ * none at all, and often a bookmark that stays when every run goes.
+ */
+const anchoredParagraphArb: fc.Arbitrary<ParagraphSpec> = fc
+  .record({
+    segments: fc.array(
+      fc.record({
+        kind: fc.oneof(
+          { weight: 2, arbitrary: fc.constant("deletion" as const) },
+          { weight: 2, arbitrary: fc.constant("insertion" as const) },
+          {
+            weight: 1,
+            arbitrary: fc.constantFrom(
+              "plain" as const,
+              "format-change" as const,
+            ),
+          },
+        ),
+        text: phrase,
+      }),
+      { minLength: 0, maxLength: 2 },
+    ),
+    mark: fc.constantFrom(...PARAGRAPH_MARKS),
+    justified: fc.boolean(),
+    alignmentChange: fc.boolean(),
+    bookmark: fc.option(fc.constantFrom(...BOOKMARK_KINDS), {
+      nil: null,
+      freq: 4,
+    }),
+  })
+  .map(({ bookmark, ...paragraph }) =>
+    bookmark === null ? paragraph : Object.assign(paragraph, { bookmark }),
+  );
+
 const cellArb = fc.array(segmentArb, { minLength: 1, maxLength: 3 });
+
+const tableArb = (paragraphs: number): fc.Arbitrary<TableSpec> =>
+  fc.record({
+    before: fc.nat({ max: paragraphs - 1 }),
+    rows: fc.array(
+      fc.record({
+        kind: fc.constantFrom(...ROW_KINDS),
+        cells: fc.tuple(cellArb, cellArb),
+      }),
+      { minLength: 1, maxLength: 4 },
+    ),
+  });
+
+const moveArb = (paragraphs: number): fc.Arbitrary<MoveSpec> =>
+  fc.record({
+    from: fc.nat({ max: paragraphs - 1 }),
+    to: fc.nat({ max: paragraphs - 1 }),
+    text: phrase,
+  });
 
 const documentArb: fc.Arbitrary<DocumentSpec> = fc
   .array(paragraphArb, { minLength: 1, maxLength: 6 })
   .chain((paragraphs) =>
     fc.record({
       paragraphs: fc.constant(paragraphs),
-      move: fc.option(
-        fc.record({
-          from: fc.nat({ max: paragraphs.length - 1 }),
-          to: fc.nat({ max: paragraphs.length - 1 }),
-          text: phrase,
-        }),
-        { nil: null },
-      ),
-      table: fc.option(
-        fc.record({
-          before: fc.nat({ max: paragraphs.length - 1 }),
-          rows: fc.array(
-            fc.record({
-              kind: fc.constantFrom(...ROW_KINDS),
-              cells: fc.tuple(cellArb, cellArb),
-            }),
-            { minLength: 1, maxLength: 4 },
-          ),
-        }),
-        { nil: null },
-      ),
+      move: fc.option(moveArb(paragraphs.length), { nil: null }),
+      table: fc.option(tableArb(paragraphs.length), { nil: null }),
+    }),
+  );
+
+/** Two or three such paragraphs around a table, which can open the story. */
+const anchoredDocumentArb: fc.Arbitrary<DocumentSpec> = fc
+  .array(anchoredParagraphArb, { minLength: 2, maxLength: 3 })
+  .chain((paragraphs) =>
+    fc.record({
+      paragraphs: fc.constant(paragraphs),
+      move: fc.option(moveArb(paragraphs.length), { nil: null }),
+      table: tableArb(paragraphs.length),
     }),
   );
 
@@ -263,6 +326,13 @@ const buildBody = (
         ? `<w:pPrChange ${revision()}><w:pPr>${paragraph.alignmentChange ? `<w:jc w:val="${paragraph.justified ? "left" : "both"}"/>` : alignment}${numberingBefore}</w:pPr></w:pPrChange>`
         : "";
     let content = paragraph.segments.map(segmentXml).join("");
+    const bookmarkId = 1000 + index;
+    const bookmarkStart = `<w:bookmarkStart w:id="${bookmarkId}" w:name="mark${index}"/>`;
+    const bookmarkEnd = `<w:bookmarkEnd w:id="${bookmarkId}"/>`;
+    if (paragraph.bookmark === "range")
+      content = `${bookmarkStart}${content}${bookmarkEnd}`;
+    else if (paragraph.bookmark === "point")
+      content = `${bookmarkStart}${bookmarkEnd}${content}`;
     if (review?.commented)
       content = `<w:commentRangeStart w:id="${index}"/>${content}<w:commentRangeEnd w:id="${index}"/><w:r><w:commentReference w:id="${index}"/></w:r>`;
     if (move && move.from === index) content += moveXml("From", move.text);
@@ -410,6 +480,68 @@ const textblockEditEventKind = defineFreshRenderEventKind<
     }),
 });
 
+/**
+ * Select a textblock's whole content and delete it, leaving its paragraph
+ * without a run (tracked in suggesting mode, so only some views empty it).
+ */
+const clearTextblockEventKind = defineFreshRenderEventKind<
+  number,
+  MarkupViewExt
+>({
+  kind: "clearTextblock",
+  arbitrary: fc.double({ min: 0, max: 1, noNaN: true }),
+  apply: (rig, at) =>
+    rig.edit((state) => {
+      const blocks: { from: number; to: number }[] = [];
+      state.doc.descendants((node, pos) => {
+        if (!node.isTextblock) return true;
+        if (node.content.size > 0)
+          blocks.push({ from: pos + 1, to: pos + 1 + node.content.size });
+        return false;
+      });
+      const block = blocks.at(Math.floor(at * blocks.length));
+      return block === undefined ? null : state.tr.delete(block.from, block.to);
+    }),
+});
+
+/** A command's transaction, or null when it does not apply. */
+const commandTransaction = (
+  command: Command,
+  state: EditorState,
+): Transaction | null => {
+  let tr: Transaction | null = null;
+  command(state, (dispatched) => {
+    tr = dispatched;
+  });
+  return tr;
+};
+
+/** Accept All, Reject All, Undo or Redo from the review toolbar. */
+const commandEventKind = defineFreshRenderEventKind<
+  "accept-all" | "reject-all" | "undo" | "redo",
+  MarkupViewExt
+>({
+  kind: "command",
+  arbitrary: fc.constantFrom(
+    "accept-all" as const,
+    "reject-all" as const,
+    "undo" as const,
+    "redo" as const,
+  ),
+  apply: (rig, command) =>
+    rig.edit((state) =>
+      commandTransaction(
+        {
+          "accept-all": acceptAllChanges(),
+          "reject-all": rejectAllChanges(),
+          undo,
+          redo,
+        }[command],
+        state,
+      ),
+    ),
+});
+
 const EVENT_KINDS: fc.Arbitrary<FreshRenderEvent<MarkupViewExt>>[] = [
   markupViewEventKind,
   textblockEditEventKind,
@@ -436,6 +568,28 @@ const scenarioArb: fc.Arbitrary<MarkupViewScenario> = fc.record({
   initialView: fc.constantFrom(...DISPLAY_MODES),
   leadingFrame: fc.boolean(),
   events: fc.array(fc.oneof(...EVENT_KINDS), { minLength: 1, maxLength: 12 }),
+});
+
+/**
+ * Paragraphs emptied to their anchors beside a table, by a view, by clearing
+ * them, or by Accept All or Reject All, with undo and redo between views.
+ */
+const anchoredScenarioArb: fc.Arbitrary<MarkupViewScenario> = fc.record({
+  document: anchoredDocumentArb,
+  mode: fc.constantFrom(...EDITOR_MODES),
+  initialView: fc.constantFrom(...DISPLAY_MODES),
+  leadingFrame: fc.boolean(),
+  events: fc.array(
+    fc.oneof(
+      markupViewEventKind,
+      clearTextblockEventKind,
+      commandEventKind,
+      textblockEditEventKind,
+      loadDocumentEventKind<MarkupViewExt>(),
+      rerenderEventKind<MarkupViewExt>(),
+    ),
+    { minLength: 1, maxLength: 8 },
+  ),
 });
 
 // ============================================================================
@@ -638,6 +792,8 @@ const runScenario = async (
   return verdict;
 };
 
+const PLAIN_THE: Segment = { kind: "plain", text: "the " };
+
 /**
  * Counterexamples the property once found, replayed first on every run.
  * Seed 860847627 (path 133:213:0:0:1:1 at ten times the runs): two deleted
@@ -809,7 +965,100 @@ const PINNED_SCENARIOS: MarkupViewScenario[] = [
       { kind: "visible", apply: (rig) => rig.pauseFrames() },
     ],
   },
+  // Seed 1320691432 (path 3:87:1:4:2:…): a deleted paragraph holding only a
+  // move source, before a table whose first row is deleted. No Markup moved
+  // the move range's anchor past the table and dropped the paragraph, which
+  // Accept All keeps.
+  {
+    document: {
+      paragraphs: [
+        {
+          segments: [{ kind: "deletion", text: "ten within " }],
+          mark: "deleted",
+          justified: false,
+          alignmentChange: false,
+        },
+        {
+          segments: [{ kind: "plain", text: "zboží the " }],
+          mark: "plain",
+          justified: false,
+          alignmentChange: false,
+        },
+      ],
+      move: { from: 0, to: 1, text: "the " },
+      table: {
+        before: 1,
+        rows: [
+          { kind: "deleted", cells: [[PLAIN_THE], [PLAIN_THE]] },
+          { kind: "plain", cells: [[PLAIN_THE], [PLAIN_THE]] },
+        ],
+      },
+    },
+    mode: "editing",
+    initialView: "all-markup",
+    leadingFrame: false,
+    events: [
+      {
+        kind: "markupView",
+        apply: (rig) =>
+          rig.updateExt(() => ({ view: "no-markup" }), LOAD_LAYOUT.immediate),
+      },
+      { kind: "rerender", apply: (rig) => rig.rerender() },
+    ],
+  },
 ];
+
+/** The same class with a bookmark and a tracked insertion, in Original and No Markup. */
+const ANCHORED_SCENARIOS: MarkupViewScenario[] = (
+  ["no-markup", "original"] as const
+).map((view): MarkupViewScenario => {
+  const accepting = view === "no-markup";
+  return {
+    document: {
+      paragraphs: [
+        {
+          segments: [
+            { kind: accepting ? "deletion" : "insertion", text: "gone " },
+          ],
+          mark: accepting ? "deleted" : "inserted",
+          justified: false,
+          alignmentChange: false,
+          bookmark: "range",
+        },
+        {
+          segments: [{ kind: "plain", text: "tail " }],
+          mark: "plain",
+          justified: false,
+          alignmentChange: false,
+        },
+      ],
+      move: null,
+      table: {
+        before: 1,
+        rows: [
+          {
+            kind: accepting ? "deleted" : "inserted",
+            cells: [[PLAIN_THE], [PLAIN_THE]],
+          },
+          { kind: "plain", cells: [[PLAIN_THE], [PLAIN_THE]] },
+        ],
+      },
+    },
+    mode: "editing",
+    initialView: view,
+    leadingFrame: false,
+    events: [{ kind: "rerender", apply: (rig) => rig.rerender() }],
+  };
+});
+
+const expectSettled = (verdict: MarkupViewVerdict): void => {
+  expect(verdict.staleCommits).toEqual([]);
+  expect(verdict.committed).toEqual(verdict.fresh);
+  expect(verdict.committed).toEqual(verdict.materialised);
+  expect(verdict.misaddressed).toEqual([]);
+  expect(verdict.unpaintable).toEqual([]);
+  expect(verdict.misplacedBars).toEqual([]);
+};
 
 describe("markup views lay out the text they show", () => {
   test("addressing oracle rejects a text run whose editor span is too short", () => {
@@ -833,18 +1082,25 @@ describe("markup views lay out the text they show", () => {
   test("every view settles on the layout of the text it reads, through any event sequence", async () => {
     await assertProperty(
       fc.asyncProperty(scenarioArb, async (scenario) => {
-        const verdict = await runScenario(scenario, "as-input");
-        expect(verdict.staleCommits).toEqual([]);
-        expect(verdict.committed).toEqual(verdict.fresh);
-        expect(verdict.committed).toEqual(verdict.materialised);
-        expect(verdict.misaddressed).toEqual([]);
-        expect(verdict.unpaintable).toEqual([]);
-        expect(verdict.misplacedBars).toEqual([]);
+        expectSettled(await runScenario(scenario, "as-input"));
       }),
       {
         numRuns: 40,
         examples: PINNED_SCENARIOS.map((scenario) => [scenario]),
         id: "every view settles on the layout of the text it reads, through any event sequence",
+      },
+    );
+  });
+
+  test("a paragraph emptied to its anchors beside a table lays out as the text it reads, in every view", async () => {
+    await assertProperty(
+      fc.asyncProperty(anchoredScenarioArb, async (scenario) => {
+        expectSettled(await runScenario(scenario, "as-input"));
+      }),
+      {
+        numRuns: 40,
+        examples: ANCHORED_SCENARIOS.map((scenario) => [scenario]),
+        id: "a paragraph emptied to its anchors beside a table lays out as the text it reads, in every view",
       },
     );
   });
@@ -880,12 +1136,7 @@ describe("markup views lay out the text they show", () => {
               },
               "as-input",
             );
-            expect(verdict.staleCommits).toEqual([]);
-            expect(verdict.committed).toEqual(verdict.fresh);
-            expect(verdict.committed).toEqual(verdict.materialised);
-            expect(verdict.misaddressed).toEqual([]);
-            expect(verdict.unpaintable).toEqual([]);
-            expect(verdict.misplacedBars).toEqual([]);
+            expectSettled(verdict);
           }
         },
       ),

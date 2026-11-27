@@ -317,4 +317,47 @@ describe("authored positions of resolved markup views", () => {
     expect(map.invert().map(0, 1)).toBe(gone.nodeSize);
     expect(map.invert().map(1, -1)).toBe(gone.nodeSize + 1);
   });
+
+  test("keeps long text addresses when a removed paragraph hands its bookmark back", () => {
+    const bookmark = (type: "start" | "end") =>
+      schema.node("bookmarkBoundary", { type, id: 7, name: "kept" });
+    const piece = "standing text ".repeat(6);
+    const standing = piece.repeat(3);
+    const removed = "removed text ".repeat(16);
+    const table = (content: PMNode[]) =>
+      schema.node("table", null, [
+        schema.node("tableRow", null, [
+          schema.node("tableCell", null, [paragraph(content)]),
+        ]),
+      ]);
+    // Accepted insertions leave the cell's text as one node.
+    const inserted = [2, 3, 4].map((id) =>
+      schema.text(piece, [revision("insertion", id)]),
+    );
+    // Accepting removes the second paragraph; its bookmark moves to the
+    // end of the first, across that paragraph's closing edge.
+    const before = doc([
+      paragraph([schema.text("kept")], "00000001"),
+      paragraph(
+        [
+          bookmark("start"),
+          bookmark("end"),
+          schema.text(removed, [revision("deletion", 1)]),
+        ],
+        "00000002",
+      ),
+      table(inserted),
+    ]);
+    const after = doc([
+      paragraph(
+        [schema.text("kept"), bookmark("start"), bookmark("end")],
+        "00000001",
+      ),
+      table([schema.text(standing)]),
+    ]);
+    const map = markupViewPositionMap({ before, after, decision: "accept" });
+    const cellText = (node: PMNode) => node.content.size - standing.length - 4;
+    const from = map.invert().map(cellText(after), 1);
+    expect(before.textBetween(from, from + standing.length)).toBe(standing);
+  });
 });

@@ -574,6 +574,7 @@ export const paragraphMarkOutcome = ({
   markWasAdded,
   containerStillEndsWithParagraph,
   followingTableCanReceiveRunIn,
+  followingTableReceiverPending = false,
   holdsContentOnceAccepted = holdsContent,
   followingBlockCanReceiveRunIn = false,
   needsFollowingCommentHost = false,
@@ -595,6 +596,11 @@ export const paragraphMarkOutcome = ({
    */
   containerStillEndsWithParagraph: boolean;
   followingTableCanReceiveRunIn: boolean;
+  /**
+   * Whether the following table's receiver is a row or cell still pending
+   * review, which a markup view does not hand over to a run-in.
+   */
+  followingTableReceiverPending?: boolean;
   /**
    * Read when a block follows: whether the paragraph still holds content
    * once every change in it is accepted, from
@@ -646,9 +652,13 @@ export const paragraphMarkOutcome = ({
           kind: "refuse",
           reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
         };
+      // Anchors no paragraph before takes go into the table, or, while its
+      // receiver is pending, stay where they are, as words would.
       if (!holdsContent) {
-        return needsFollowingCommentHost && followingTableCanReceiveRunIn
-          ? { kind: "run-in" }
+        if (!needsFollowingCommentHost) return { kind: "remove" };
+        if (followingTableCanReceiveRunIn) return { kind: "run-in" };
+        return followingTableReceiverPending
+          ? { kind: "keep" }
           : { kind: "remove" };
       }
       return followingTableCanReceiveRunIn

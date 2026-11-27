@@ -11,6 +11,38 @@
       "path": "14:4:5:3:14:14:14:4:13:14:14:14:14:5:4:2:5:5:5:3:4:4:4:4:2:2:2:2:5:3:9:38:38:39:42:54:44:55:55:62:70:71:72:72:102:104:110:119:124:125:139:167:167:181:47:194:205:190:204:204:204:205:226:208:210:207:209:208:207:209:208:208:207:207:207:210:209:208:208:208:207:211:207:207:208:210:212:209",
       "note": "a hidden insertion split a word across two runs in Original; the line width summed \"confirm\" + \"ation\" and differed from the materialised line in the last floating-point digit (found at path 16:…, which counted the two example scenarios)",
       "date": "2026-09-30"
+    },
+    {
+      "seed": 1320691432,
+      "path": "3:87:1:4:2:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:6:4:6",
+      "note": "No Markup dropped a deleted paragraph left with only a move range's anchor before a table whose first row was deleted, which Accept All keeps (found at path 6:…, which counted the three example scenarios)",
+      "date": "2026-11-27"
+    }
+  ],
+  "a paragraph emptied to its anchors beside a table lays out as the text it reads, in every view": [
+    {
+      "seed": 7,
+      "path": "98:69:2:2:2:2:2:2:2:2:2:2:3:3:3",
+      "note": "two deleted paragraph marks in a row before a table: Accept All kept the first paragraph's words in place, though accepting the marks in turn runs them into the table",
+      "date": "2026-11-27"
+    },
+    {
+      "seed": 7,
+      "path": "98:69:3:4:4:4:4:4:4:4:4:4:4:4:4:4:4:5:5:5",
+      "note": "the same join chain before a table whose first row was inserted: the view ran the words into the pending row instead of keeping them in place",
+      "date": "2026-11-27"
+    },
+    {
+      "seed": 424242,
+      "path": "308:49:2:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:5",
+      "note": "a join chain left with only a bookmark before a table whose first row was inserted: the view dropped the paragraph holding it",
+      "date": "2026-11-27"
+    },
+    {
+      "seed": 99,
+      "path": "387:86:1:1:1:51:52:52:53:53:95:95:95:95:95:95:95:95:95:95:95:95:95:95:95:96:96:97",
+      "note": "a removed paragraph's bookmark moved to the paragraph before it, and the view's position map lost the long cell text after it",
+      "date": "2026-11-27"
     }
   ]
 }
