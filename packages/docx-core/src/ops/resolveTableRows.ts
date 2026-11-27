@@ -572,6 +572,9 @@ const resolveCellColumns = ({
     // Columns a removed cell held that other rows keep, waiting for the
     // next kept cell when nothing before it in the row can take them.
     let carried = 0;
+    let omittedBefore = 0;
+    let omittedAfter = 0;
+    const lastKept = layout.cells.findLastIndex(({ cell }) => !removes(cell));
     const widen = (cell: TableCell, extra: number): TableCell | undefined => {
       if (extra === 0) return cell;
       // A widened cell would no longer line up with its vertical merge.
@@ -584,7 +587,7 @@ const resolveCellColumns = ({
         },
       };
     };
-    for (const { cell, start, end } of layout.cells) {
+    for (const [index, { cell, start, end }] of layout.cells.entries()) {
       if (removes(cell)) {
         const kept = end - start - removedIn(start, end);
         if (kept === 0) continue;
@@ -595,7 +598,12 @@ const resolveCellColumns = ({
           continue;
         }
         const widened = widen(previous, kept);
-        if (widened === undefined) return Result.err("unsupported");
+        if (widened === undefined) {
+          if (index < lastKept || row.formatting?.widthAfter !== undefined)
+            return Result.err("unsupported");
+          omittedAfter += kept;
+          continue;
+        }
         cells[cells.length - 1] = widened;
         continue;
       }
@@ -611,16 +619,40 @@ const resolveCellColumns = ({
       }
       // A kept cell holds no column every row loses.
       const widened = widen(next, carried);
-      if (widened === undefined) return Result.err("unsupported");
+      if (widened === undefined) {
+        if (row.formatting?.widthBefore !== undefined)
+          return Result.err("unsupported");
+        omittedBefore = carried;
+      }
       carried = 0;
-      cells.push(widened);
+      cells.push(widened ?? next);
     }
     if (carried > 0) return Result.err("unsupported");
     // Accepting a deletion that leaves the row nothing it starts removes
     // the row, as the direct deletion does.
     if (!reject && editRemovesRow({ before: row.cells, after: cells }))
       continue;
-    rows.push({ ...row, cells });
+    // Preserve the occupied columns of a vertical merge. Unoccupied slots
+    // at the row edges can be expressed as native gridBefore/gridAfter.
+    rows.push({
+      ...row,
+      cells,
+      ...(omittedBefore === 0 && omittedAfter === 0
+        ? {}
+        : {
+            formatting: {
+              ...row.formatting,
+              ...(omittedBefore === 0
+                ? {}
+                : { gridBefore: layout.before + omittedBefore }),
+              ...(omittedAfter === 0
+                ? {}
+                : {
+                    gridAfter: (row.formatting?.gridAfter ?? 0) + omittedAfter,
+                  }),
+            },
+          }),
+    });
   }
   if (rows.length === 0) return Result.err("unsupported");
   let next: Table = { ...table, rows };

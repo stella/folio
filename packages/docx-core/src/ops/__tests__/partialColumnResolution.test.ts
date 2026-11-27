@@ -5,9 +5,14 @@
  * the cell after it when the inserted cell started the row.
  */
 import { describe, expect, test } from "bun:test";
+import fc from "fast-check";
 
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import type { Document, Table, TableCell } from "../../model/document";
-import { applyDocumentOp } from "../apply";
+import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { tableGrid } from "../tableGrid";
 import { DOCUMENT_OP_TYPES, OP_STORIES, REVISION_DECISIONS } from "../types";
 
@@ -127,3 +132,77 @@ describe("rejecting the rest of a partly accepted column insertion", () => {
     expect(rejected.columnWidths).toEqual([500, 700]);
   });
 });
+
+test.each(["before", "after"] as const)(
+  "partly rejecting cell insertion records leaves a grid omission %s a vertical merge",
+  (edge) => {
+    assertProperty(
+      fc.property(fc.integer({ min: 1, max: 4 }), (span) => {
+        const table: Table = {
+          type: "table",
+          columnWidths: Array.from(
+            { length: span + 1 },
+            (_, slot) => 300 + slot * 100,
+          ),
+          rows: [0, 1, 2].map((row) => {
+            const added: TableCell = {
+              ...cell(`0000${row}0A0`, row + 1),
+              formatting: { gridSpan: span },
+            };
+            const merged: TableCell = {
+              ...cell(`0000${row}0B0`),
+              ...(row === 2
+                ? {}
+                : {
+                    formatting: { vMerge: row === 0 ? "restart" : "continue" },
+                  }),
+            };
+            return {
+              type: "tableRow",
+              cells: edge === "before" ? [added, merged] : [merged, added],
+            };
+          }),
+        };
+        const source = resolve(
+          documentOf(table),
+          [3],
+          REVISION_DECISIONS.ACCEPT,
+        );
+        const settled = applyDocumentOp(source, {
+          type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+          story: OP_STORIES.MAIN,
+          revisionIds: [1, 2],
+          decision: REVISION_DECISIONS.REJECT,
+        }).unwrap();
+        const resolved = tableOf(settled.document);
+        expect(resolved.columnWidths).toEqual(table.columnWidths);
+        expect(resolved.rows.map((row) => row.formatting)).toEqual([
+          edge === "before" ? { gridBefore: span } : { gridAfter: span },
+          edge === "before" ? { gridBefore: span } : { gridAfter: span },
+          undefined,
+        ]);
+        expect(
+          resolved.rows.map(({ cells }) =>
+            cells.map(({ formatting }) => formatting),
+          ),
+        ).toEqual([
+          [{ vMerge: "restart" }],
+          [{ vMerge: "continue" }],
+          edge === "before"
+            ? [{ gridSpan: span }, undefined]
+            : [undefined, { gridSpan: span }],
+        ]);
+        expect(tableGrid(resolved, DOCUMENT_OP_TYPES.SET_TABLE).isOk()).toBe(
+          true,
+        );
+        expect(
+          applyDocumentOps(settled.document, settled.inverse).unwrap().document,
+        ).toStrictEqual(source);
+      }),
+      {
+        id: `partly rejecting cell insertion records leaves a ${edge} grid omission`,
+      },
+    );
+  },
+  propertyTestTimeout(10_000),
+);
