@@ -306,6 +306,28 @@ type DifferenceCollector = {
   readonly seen: Set<string>;
   readonly messages: string[];
   omitted: number;
+  /** The paragraph ids more than one paragraph of the earlier package holds. */
+  readonly repeatedParaIds: ReadonlySet<unknown>;
+};
+
+/** The paragraph ids more than one paragraph of `value` holds. */
+const repeatedParagraphIds = (value: unknown): ReadonlySet<unknown> => {
+  const seen = new Set<unknown>();
+  const repeated = new Set<unknown>();
+  const visit = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      for (const item of node) visit(item);
+      return;
+    }
+    if (!isRecord(node)) return;
+    if (node["type"] === "paragraph" && typeof node["paraId"] === "string") {
+      if (seen.has(node["paraId"])) repeated.add(node["paraId"]);
+      seen.add(node["paraId"]);
+    }
+    for (const child of Object.values(node)) visit(child);
+  };
+  visit(value);
+  return repeated;
 };
 
 const record = (collector: DifferenceCollector, message: string): void => {
@@ -364,16 +386,22 @@ const collectDifferences = (
   }
 
   if (isRecord(left) && isRecord(right)) {
-    // A save gives a paragraph that held no id one: the id is the save's.
+    // A save gives a paragraph that held no id, or one another paragraph of
+    // the package held too, an id of its own: the id is the save's.
     const idGiven =
       left["type"] === "paragraph" &&
-      left["paraId"] === undefined &&
+      (left["paraId"] === undefined ||
+        collector.repeatedParaIds.has(left["paraId"])) &&
       typeof right["paraId"] === "string";
     const keys = [
       ...new Set([...Object.keys(left), ...Object.keys(right)]),
     ].sort();
     for (const key of keys) {
-      if (idGiven && PARAGRAPH_ID_KEYS.has(key) && left[key] === undefined)
+      if (
+        idGiven &&
+        PARAGRAPH_ID_KEYS.has(key) &&
+        (left[key] === undefined || left["paraId"] !== undefined)
+      )
         continue;
       collectDifferences(left[key], right[key], `${path}.${key}`, collector);
     }
@@ -401,13 +429,15 @@ export const describePackageDifferences = (
   before: Document,
   after: Document,
 ): PackageDifferences => {
+  const earlier = normalizeDocumentPackage(before);
   const collector: DifferenceCollector = {
     seen: new Set(),
     messages: [],
     omitted: 0,
+    repeatedParaIds: repeatedParagraphIds(earlier),
   };
   collectDifferences(
-    normalizeDocumentPackage(before),
+    earlier,
     normalizeDocumentPackage(after),
     "package",
     collector,

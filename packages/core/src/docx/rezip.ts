@@ -19,7 +19,7 @@ import {
   getXmlSourceRange,
   parseStreamingXmlWithSourceRanges,
 } from "@stll/docx-core/xml";
-import { ZipArchive, type ZipEntry } from "@stll/docx-core/zip";
+import { ZipArchive, type ZipEntry, ZipError } from "@stll/docx-core/zip";
 
 import {
   consumeTrackedSectionEndpointRemoval,
@@ -1678,7 +1678,8 @@ const normalizePackageIdsInZip = async (
  * the rule the editor's ingest applies (`ensureParaIds`): ids a
  * paragraph holds stay, a fresh one is unique in the package and a pure
  * function of the part's markup, so a second save writes the same ids. A
- * signed package keeps its parts, and so does one the rule cannot read.
+ * signed package keeps its parts, and so does one the rule cannot read,
+ * whether a part's XML or its stored bytes are what fail.
  */
 const withParagraphIds = async (
   zip: ZipArchive,
@@ -1700,7 +1701,8 @@ const withParagraphIds = async (
     });
     return plan.updates;
   } catch (error) {
-    if (error instanceof EnsureParaIdsError) return new Map();
+    if (error instanceof EnsureParaIdsError || error instanceof ZipError)
+      return new Map();
     throw error;
   }
 };
