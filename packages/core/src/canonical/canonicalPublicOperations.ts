@@ -5849,6 +5849,7 @@ export class CanonicalPublicOperations {
       if (
         landing !== undefined &&
         placesTable(landing) &&
+        "blockId" in operation &&
         deletedIds.has(operation.blockId) &&
         landing.blockId !== operation.blockId
       )
