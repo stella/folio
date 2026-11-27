@@ -19,6 +19,7 @@ import {
   sameBlockList,
   storyBody,
   storyParagraphs,
+  survivingBlockListAnchor,
   updateBlockList,
   withBodyContent,
 } from "./blocks";
@@ -522,7 +523,7 @@ const insertBesideTable = ({
   const { list, index: tableIndex } = located.value;
   const body = storyBody(document, op.story);
   const blocks = [...blockListAt(body.content, list)];
-  const anchor = survivingTableAnchor(body, list);
+  const anchor = survivingBlockListAnchor(body, list);
   if (anchor === undefined)
     return refuse({
       op,
