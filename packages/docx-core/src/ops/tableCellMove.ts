@@ -39,15 +39,18 @@ export const tableMoveSource = (
   return { paragraph, id: paragraph.paraId, runs };
 };
 
+type TableMoveRanges = { fromRange: number; toRange: number; name: string };
 type MarkTableMoveOptions = {
   source: TableMoveSource;
   destination: string;
   from: RevisionStamp;
   to: RevisionStamp;
   mark: RevisionStamp;
-  ranges: { fromRange: number; toRange: number; name: string };
+  ranges: TableMoveRanges;
 };
-export const moveRangeAllocator = (pkg: DocxPackage) => {
+export const moveRangeAllocator = (
+  pkg: DocxPackage,
+): (() => TableMoveRanges | undefined) => {
   const { ids, names } = packageMoveRangeCensus(pkg);
   let nextId = 1;
   let nextName = 1;
@@ -65,6 +68,11 @@ export const moveRangeAllocator = (pkg: DocxPackage) => {
   };
 };
 
+type MarkedTableMove = {
+  record: TableGeometryMove;
+  source: Paragraph;
+  destination: Paragraph;
+};
 export const markTableMove = ({
   source,
   destination,
@@ -72,7 +80,7 @@ export const markTableMove = ({
   to,
   mark,
   ranges,
-}: MarkTableMoveOptions) => {
+}: MarkTableMoveOptions): MarkedTableMove => {
   const { fromRange, toRange, name } = ranges;
   const record = {
     source: source.id,

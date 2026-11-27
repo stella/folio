@@ -175,7 +175,9 @@ export const packageBookmarkCensus = (
 };
 
 /** Native move range pairs use their own ids and share one move name. */
-export const packageMoveRangeCensus = (pkg: DocxPackage) => {
+export const packageMoveRangeCensus = (
+  pkg: DocxPackage,
+): { ids: ReadonlySet<number>; names: ReadonlySet<string> } => {
   const ids = new Set<number>();
   const names = new Set<string>();
   walk({
