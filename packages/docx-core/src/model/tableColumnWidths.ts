@@ -2,7 +2,9 @@ import type { Table } from "./content";
 import type { WritableRecord } from "./deepReadonly";
 import { gridColumnsInRows, MAX_TABLE_GRID_COLUMNS } from "./tableGridLimits";
 
-export const inferredTableColumnCount = ({ rows }: Pick<Table, "rows">): number =>
+export const inferredTableColumnCount = ({
+  rows,
+}: Pick<Table, "rows">): number =>
   Math.min(gridColumnsInRows(rows), MAX_TABLE_GRID_COLUMNS);
 
 export const declaredUnmeasuredColumnCount = (
