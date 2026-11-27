@@ -11,7 +11,7 @@ import { TaggedErrorClass } from 'better-result';
 export const configureHyphenationAssets: (options: HyphenationAssetOptions) => void;
 
 // @public
-export const HYPHENATION_DICTIONARY_IDS: readonly ["cs", "en-gb", "en-us", "sk"];
+export const HYPHENATION_DICTIONARY_IDS: readonly HyphenationDictionaryId[];
 
 // @public (undocumented)
 export type HyphenationAssetOptions = {
@@ -30,7 +30,7 @@ export class HyphenationDictionaryError extends HyphenationDictionaryErrorBase<{
 export const hyphenationDictionaryFor: (locale: string | undefined) => HyphenationDictionaryId | undefined;
 
 // @public (undocumented)
-export type HyphenationDictionaryId = (typeof HYPHENATION_DICTIONARY_IDS)[number];
+export type HyphenationDictionaryId = "cs" | "en-gb" | "en-us" | "sk";
 
 // @public
 export type HyphenationPatterns = unknown;
