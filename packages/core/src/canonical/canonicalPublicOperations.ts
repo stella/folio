@@ -657,15 +657,26 @@ const COLUMN_EDITED_CELL_SHAPE =
  * and the cells it runs through, so, as `planTableMutations` refuses them on
  * the legacy engine, they are refused in either mode.
  */
-const columnEditedCellShapes = <T extends PlannedOperation>(
+const columnEditedCellShapes = <
+  T extends PlannedOperation & { intents: readonly EditorIntent[] },
+>(
   items: readonly T[],
 ): T[] => {
   const tables = new Set(
-    items.flatMap(({ plan: { address } }) =>
+    items.flatMap(({ plan: { address, claim }, intents }) => {
+      if (claim.type === "tableStructure" && claim.axis === "column")
+        return [claim.table];
       // Removing the final column compiles to a table deletion. Its public
       // address still names the column and claims the same cell geometry.
-      address.type === "column" ? [address.tablePosition] : [],
-    ),
+      return address.type === "column" &&
+        intents.some(
+          (intent) =>
+            intent.type === "tableBlock" &&
+            intent.operation.type === DOCUMENT_OP_TYPES.DELETE_TABLE,
+        )
+        ? [address.tablePosition]
+        : [];
+    }),
   );
   if (tables.size === 0) return [];
   return items.filter(
