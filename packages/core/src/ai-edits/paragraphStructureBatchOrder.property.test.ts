@@ -4,9 +4,9 @@
  * tables put before or after its paragraphs, over a small numbered document,
  * in every mode and after up to two earlier calls that left changes pending,
  * leaves what its operations leave one at a time, each its own call, in the
- * order the batch runs them: from the last paragraph back, a table in the
- * gap it lands in alone, ahead of a removal of the paragraph it names. Tables
- * in one gap go in one call, in batch order. Every operation the batch
+ * order the batch runs them: from the last paragraph back, with tables in a
+ * gap ahead of the paragraph removal that would join the tables around that
+ * gap. Tables in one gap go in one call, in batch order. Every operation the batch
  * applies applies alone too, every one it refuses for the document's state
  * is refused alone for the same reason, and the two save the same package,
  * up to revision and added paragraph ids and dates; with tables and changes
@@ -314,8 +314,6 @@ const run = async ({ mode, batches, resolved = false }: RunOptions) => {
 const BATCH_ONLY_REASONS = new Set(["overlappingOperation"]);
 
 type RankOptions = {
-  /** The steps the batch applies or refuses for the document's state. */
-  steps: readonly Step[];
   /** The blocks as the batch finds them. */
   blocks: readonly string[];
   /** The gap each table lands in alone, its number of `blocks` before it. */
@@ -325,34 +323,16 @@ type RankOptions = {
 /**
  * Where an operation runs one at a time, from the last block back, as the
  * batch finds the blocks: a paragraph's own operation at its place; the
- * tables in one gap together, there, unless the batch deletes or merges a
- * paragraph one of them names (a merge may retire its id), or merges it into
- * the one before, when they run right before that, while it still stands.
+ * tables in one gap together, just after that gap's position so they run
+ * before a paragraph removal at the same position. The position is the gap
+ * the table actually takes alone; an empty pending deletion remains a block
+ * until accepted and does not collapse the reference order early.
  */
-const rankOf = (step: Step, { steps, blocks, gaps }: RankOptions): number => {
+const rankOf = (step: Step, { blocks, gaps }: RankOptions): number => {
   const placeOf = (block: number) => blocks.indexOf(IDS[block] ?? "");
   const gap = gaps.get(step);
   if (gap === undefined) return placeOf(step.block);
-  const named = (table: Step) => {
-    const at = placeOf(table.block);
-    const removals = steps.flatMap((other) => {
-      if (
-        other.block === table.block &&
-        (other.type === "delete" || other.type === "merge")
-      )
-        return [at];
-      if (other.type !== "merge") return [];
-      const merged = placeOf(other.block);
-      return merged >= 0 && blocks[merged + 1] === IDS[table.block]
-        ? [merged]
-        : [];
-    });
-    return Math.max(...removals) + 0.25;
-  };
-  return Math.max(
-    gap - 0.5,
-    ...[...gaps].flatMap(([table, at]) => (at === gap ? [named(table)] : [])),
-  );
+  return gap + 0.25;
 };
 
 /**
@@ -379,12 +359,11 @@ const checkCase = async ({ mode, prior, steps }: Case) => {
       batches: [...before, [operationOf(step, index)]],
     });
     const landed = alone.blocks.findIndex(({ id }) => !blocks.includes(id));
-    let gap =
+    const gap =
       landed < 0
         ? blocks.length
         : alone.blocks.slice(0, landed).filter(({ id }) => blocks.includes(id))
             .length;
-    while (gap > 0 && found[gap - 1]?.text === "") gap -= 1;
     gaps.set(step, gap);
   }
   // Pending, the two sides of a paragraph accepting removes whole are one
@@ -404,9 +383,6 @@ const checkCase = async ({ mode, prior, steps }: Case) => {
     }),
   );
   const ranks = {
-    steps: steps.filter(
-      (_, index) => !batchOnly.has(operations[index]?.id ?? ""),
-    ),
     blocks,
     gaps,
   };

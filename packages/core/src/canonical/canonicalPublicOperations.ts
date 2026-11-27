@@ -1702,10 +1702,12 @@ type LastPutBetweenOptions = {
 
 /**
  * The last block the batch puts in the gap before `blockId` that stands
- * there when the batch deletes it: one gap's blocks land in batch order. One
- * named by it needs it standing, so the gap's blocks land first. With none
- * named by it, they are put after the block before it and land after the
- * deletion, as one at a time, unless `blockId` ends its container.
+ * there when the batch deletes it: one gap's blocks land in batch order.
+ * Tables in the gap land before the deletion, because removing the paragraph
+ * first would join the surrounding tables; a block named by the paragraph
+ * also needs it standing. Otherwise blocks put after the paragraph before it
+ * land after the deletion, as one at a time, unless `blockId` ends its
+ * container.
  */
 const lastPutBetween = ({
   besideDeletions,
@@ -1728,6 +1730,7 @@ const lastPutBetween = ({
   ].toSorted((left, right) => order(left.id) - order(right.id));
   const standing =
     endsContainer ||
+    gap.some(placesTable) ||
     gap.some(({ id }) => {
       const stated = inputOrder[order(id)];
       return (
