@@ -91,11 +91,11 @@ const lowerCardinal = (value: number): string => {
 };
 
 const capitalised = (words: string): string =>
-  words.charAt(0).toUpperCase() + words.slice(1);
+  words.replace(/^\p{Ll}/u, (initial) => initial.toUpperCase());
 
 const ordinalWord = (word: string): string =>
   IRREGULAR_ORDINALS[word] ??
-  (word.endsWith("y") ? `${word.slice(0, -1)}ieth` : `${word}th`);
+  (word.endsWith("y") ? word.replace(/y$/u, "ieth") : `${word}th`);
 
 const known = (value: number): boolean =>
   Number.isInteger(value) && value >= 1 && value <= SPELLED_MAX;
@@ -105,14 +105,10 @@ export const englishCardinal = (value: number): string | null =>
   known(value) ? capitalised(lowerCardinal(value)) : null;
 
 /** `ordinalText` in English, or null for a counter not written out here. */
-export const englishOrdinal = (value: number): string | null => {
-  if (!known(value)) {
-    return null;
-  }
-  const cardinal = lowerCardinal(value);
-  // The last word, or the unit after the hyphen, takes the ordinal form.
-  const cut = Math.max(cardinal.lastIndexOf(" "), cardinal.lastIndexOf("-"));
-  return capitalised(
-    cardinal.slice(0, cut + 1) + ordinalWord(cardinal.slice(cut + 1)),
-  );
-};
+export const englishOrdinal = (value: number): string | null =>
+  known(value)
+    ? capitalised(
+        // The last word, or the unit after the hyphen, takes the ordinal form.
+        lowerCardinal(value).replace(/[a-z]+$/u, ordinalWord),
+      )
+    : null;
