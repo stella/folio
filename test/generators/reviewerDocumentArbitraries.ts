@@ -1,11 +1,12 @@
 /** Documents a headless reviewer reads, for properties that compare its engines. */
 import fc from "fast-check";
 
-import type {
-  BlockContent,
-  Document,
-  Paragraph,
-  ParagraphContent,
+import {
+  type BlockContent,
+  type Document,
+  type Paragraph,
+  type ParagraphContent,
+  paragraphNumberingReference,
 } from "../../packages/docx-core/src/model/document";
 import { reviewDocumentArbitrary } from "../../packages/docx-core/src/ops/__tests__/documentArbitraries";
 import { withCoherentSyntheticReviewComments } from "./coherentReviewerComments";
@@ -98,6 +99,7 @@ const PENDING_JOIN_HOLDINGS = [
   "nothing",
   "anchors",
   "bookmark",
+  "note",
   "words",
 ] as const;
 
@@ -107,6 +109,8 @@ type PendingJoinPiece =
       holds: (typeof PENDING_JOIN_HOLDINGS)[number];
       mark: "none" | "ins" | "del";
       changed: boolean;
+      /** No list, list 1, or list 2, which restarts the numbering. */
+      list: 0 | 1 | 2;
     }
   | { type: "bookmark" | "altChunk" | "table" };
 
@@ -119,6 +123,7 @@ const pendingJoinPieceArbitrary: fc.Arbitrary<PendingJoinPiece> = fc.oneof(
       holds: fc.constantFrom(...PENDING_JOIN_HOLDINGS, "nothing", "anchors"),
       mark: fc.constantFrom("none" as const, "ins" as const, "del" as const),
       changed: fc.boolean(),
+      list: fc.constantFrom(0 as const, 0 as const, 1 as const, 2 as const),
     }),
   },
   {
@@ -149,6 +154,8 @@ const pendingJoinContent = (
         { type: "bookmarkStart", id: 30, name: "_Ref30" },
         { type: "bookmarkEnd", id: 30 },
       ];
+    case "note":
+      return [{ type: "run", content: [{ type: "footnoteRef", id: 2 }] }];
     case "words":
       return [{ type: "run", content: [{ type: "text", text: "Alpha beta" }] }];
   }
@@ -156,10 +163,10 @@ const pendingJoinContent = (
 
 /**
  * Short bodies around pending paragraph joins: paragraphs that are empty, hold
- * only range boundaries or hold words, under pending insertions or deletions
- * of their marks and property changes, beside block-level bookmarks,
- * preserved blocks and a one-cell table. As a review leaves them, a paragraph
- * ending the body has no pending mark.
+ * only range boundaries, a note reference or words, in lists or not, under
+ * pending insertions or deletions of their marks and property changes, beside
+ * block-level bookmarks, preserved blocks and a one-cell table. As a review
+ * leaves them, a paragraph ending the body has no pending mark.
  */
 export const pendingJoinDocumentArbitrary: fc.Arbitrary<Document> = fc
   .array(pendingJoinPieceArbitrary, { minLength: 2, maxLength: 5 })
@@ -201,6 +208,10 @@ export const pendingJoinDocumentArbitrary: fc.Arbitrary<Document> = fc
         content: pendingJoinContent(piece.holds),
         paraId: paraId(),
       };
+      if (piece.list !== 0)
+        paragraph.formatting = {
+          numPr: paragraphNumberingReference({ numId: piece.list, ilvl: 0 }),
+        };
       if (piece.changed)
         paragraph.propertyChanges = [
           {
@@ -226,6 +237,29 @@ export const pendingJoinDocumentArbitrary: fc.Arbitrary<Document> = fc
             },
           ],
         },
+        numbering: {
+          abstractNums: [
+            {
+              abstractNumId: 1,
+              levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }],
+            },
+          ],
+          nums: [
+            { numId: 1, abstractNumId: 1 },
+            {
+              numId: 2,
+              abstractNumId: 1,
+              levelOverrides: [{ ilvl: 0, startOverride: 1 }],
+            },
+          ],
+        },
+        footnotes: [
+          {
+            type: "footnote",
+            id: 2,
+            content: [{ type: "paragraph", paraId: "7FFFFFF1", content: [] }],
+          },
+        ],
       },
     });
   });

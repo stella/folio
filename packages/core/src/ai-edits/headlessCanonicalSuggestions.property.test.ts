@@ -460,6 +460,51 @@ const DELETIONS_BESIDE_NUMBERED_JOINS: Record<
     ],
 };
 
+/**
+ * Deletions of a paragraph beside a numbered one, where the direct deletion
+ * leaves the numbered paragraph's list item: generated cases, shrunk. The
+ * last paragraph keeps its own pending deleted mark and takes the numbered
+ * one's properties, as the direct deletion's join leaves it; across a block
+ * bookmark, the deleted paragraph joins the numbered one after it, in every
+ * mode; before a table, under another's pending insertion of its mark, the
+ * deletion is recorded beside that insertion, so accepting both removes the
+ * paragraph whole, as the direct deletion does.
+ */
+const DELETIONS_BESIDE_NUMBERED_PARAGRAPHS: Record<
+  string,
+  [BlockContent[], OperationDraw]
+> = {
+  "deleting a last paragraph under a pending deletion of its mark, after a numbered one":
+    [
+      [
+        numbered(pending(1, noteReference)),
+        pending(2, noteReference, "del"),
+        blockBookmark,
+      ],
+      deleting(1),
+    ],
+  "deleting an empty numbered paragraph a block bookmark parts from the next": [
+    [
+      blockBookmark,
+      numbered(pending(1, []), 2),
+      blockBookmark,
+      numbered(pending(2, noteReference)),
+      blockBookmark,
+    ],
+    deleting(0),
+  ],
+  "deleting a numbered paragraph before a table, whose mark is another's pending insertion":
+    [
+      [
+        numbered(pending(1, alpha, "ins")),
+        oneCellTable(2),
+        numbered(pending(3, noteReference)),
+        pending(4, []),
+      ],
+      deleting(0),
+    ],
+};
+
 const inserting = (
   kind: "insertBeforeBlock" | "insertAfterBlock",
   block: number,
@@ -575,12 +620,14 @@ const COVERAGE_RUNS = 30;
 
 describe("a canonical reviewer's pending suggestions", () => {
   // A paragraph suggested beside a pending join stages as the tracked one
-  // applies; a suggested deletion a numbered pending join runs into numbers
-  // its words, once accepted, as the direct deletion does.
+  // applies; a suggested deletion beside a numbered paragraph, or one a
+  // numbered pending join runs into, numbers the words, once accepted, as the
+  // direct deletion does.
   test.each(
     Object.entries({
       ...BESIDE_PENDING_JOINS,
       ...DELETIONS_BESIDE_NUMBERED_JOINS,
+      ...DELETIONS_BESIDE_NUMBERED_PARAGRAPHS,
     }),
   )("a suggestion %s follows the laws", async (_shape, [content, draw]) => {
     const buffer = await packaged(bodyOf(content));

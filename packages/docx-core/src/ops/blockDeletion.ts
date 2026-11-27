@@ -1610,7 +1610,10 @@ export const deleteBlocks = ({
               : form.content,
         };
     }
+    // The paragraph ending the container takes the properties the direct
+    // deletion leaves it, whatever pending record its mark keeps.
     let restyle = paragraph === last.paragraph ? holderRestyle : undefined;
+    if (paragraph === endsContainer) restyle = { formatting: endFormatting };
     if (joinsNext.has(paragraph)) {
       restyle = undefined;
       const { pPrMark: _removed, ...unmarked } = next;
@@ -1625,17 +1628,15 @@ export const deleteBlocks = ({
           deletion: { info: stampInfo(op.revision) },
         },
       };
-    } else {
-      if (losesMark(paragraph))
-        next = {
-          ...next,
-          // A move's source marks its paragraph moved from, not deleted.
-          pPrMark: {
-            kind: op.move === true ? "moveFrom" : "del",
-            info: stampInfo(op.revision),
-          },
-        };
-      if (paragraph === endsContainer) restyle = { formatting: endFormatting };
+    } else if (losesMark(paragraph)) {
+      next = {
+        ...next,
+        // A move's source marks its paragraph moved from, not deleted.
+        pPrMark: {
+          kind: op.move === true ? "moveFrom" : "del",
+          info: stampInfo(op.revision),
+        },
+      };
     }
     if (
       restyle !== undefined &&

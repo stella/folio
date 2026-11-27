@@ -5,7 +5,7 @@ import {
   TaggedError,
   type TaggedErrorClass,
 } from "better-result";
-import { Mark, type Node as PMNode } from "prosemirror-model";
+import { Mark, type Node as PMNode, type ResolvedPos } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
 
@@ -210,6 +210,7 @@ import {
   tableAttrsToFormatting,
 } from "../prosemirror/conversion/fromProseDoc";
 import { insertionGap } from "../prosemirror/insertionGaps";
+import { isBlockBoundaryNode } from "../prosemirror/keptRangeBoundaries";
 import { ensureParaIdsInDoc } from "../prosemirror/paraIds";
 import { forEachAnnotationIdInDoc } from "../prosemirror/plugins/revisionIds";
 import { surveyAcceptedReplacedAnnotations } from "../prosemirror/replacedAnnotations";
@@ -2472,7 +2473,7 @@ const opensSurvivor = ({
   );
 };
 
-type OwnMarkBeforeInsertedTableOptions = {
+type AddedMarkBeforeTableOptions = {
   document: Document;
   story: OpStory;
   blockId: string;
@@ -2483,22 +2484,22 @@ type OwnMarkBeforeInsertedTableOptions = {
 };
 
 /**
- * A tracked deletion of a body paragraph whose break is `author`'s own
- * pending insertion, right before a table whose rows are all pending
- * insertion, as the batch stands when it runs: the block deletion records
- * the deletion beside that insertion and takes the words, so accepting
- * removes the paragraph as the direct deletion does. Read as it runs, it is
- * the same whether that table, or that insertion, came before the batch or
- * from it.
+ * A tracked deletion of a body paragraph whose break is another owner's
+ * pending insertion, right before a table, or `author`'s own right before a
+ * table whose rows are all pending insertion, as the batch stands when it
+ * runs: the block deletion records the deletion beside that insertion and
+ * takes the words, so accepting removes the paragraph as the direct deletion
+ * does. Read as it runs, it is the same whether that table, or that
+ * insertion, came before the batch or from it.
  */
-const ownMarkBeforeInsertedTableAsItRuns = ({
+const addedMarkBeforeTableAsItRuns = ({
   document,
   story,
   blockId,
   author,
   gainsFollower,
   intents,
-}: OwnMarkBeforeInsertedTableOptions): readonly EditorIntent[] => {
+}: AddedMarkBeforeTableOptions): readonly EditorIntent[] => {
   const blocks = findStoryBody(document, story)?.content ?? [];
   const index = blocks.findIndex(
     (block) =>
@@ -2523,12 +2524,12 @@ const ownMarkBeforeInsertedTableAsItRuns = ({
     paragraph.paraId === undefined ||
     paragraph.pPrMark?.kind !== "ins" ||
     paragraph.pPrMark.deletion !== undefined ||
-    paragraph.pPrMark.info.author !== author ||
     following?.type !== "table" ||
     following.rows.length === 0 ||
-    !following.rows.every(
-      (row) => row.structuralChange?.type === "tableRowInsertion",
-    )
+    (paragraph.pPrMark.info.author === author &&
+      !following.rows.every(
+        (row) => row.structuralChange?.type === "tableRowInsertion",
+      ))
   )
     return intents;
   return [{ type: "deleteParagraphs", story, blockIds: [paragraph.paraId] }];
@@ -2603,6 +2604,15 @@ const commentsRetiredBetween = (
   return (before.package.document.comments ?? []).flatMap(({ id, parentId }) =>
     parentId === undefined && !kept.has(id) ? [id] : [],
   );
+};
+
+/** The node after `$pos` past any block-level range boundaries, if any. */
+const nodePastBoundaries = ($pos: ResolvedPos): PMNode | null => {
+  for (let index = $pos.index(); index < $pos.parent.childCount; index += 1) {
+    const node = $pos.parent.child(index);
+    if (!isBlockBoundaryNode(node)) return node;
+  }
+  return null;
 };
 
 /**
@@ -5933,7 +5943,7 @@ export class CanonicalPublicOperations {
               blockId: operation.blockId,
               author: options.author ?? "AI",
               suggestionId,
-              intents: ownMarkBeforeInsertedTableAsItRuns({
+              intents: addedMarkBeforeTableAsItRuns({
                 document: sourceDocument,
                 story,
                 blockId: operation.blockId,
@@ -7043,7 +7053,9 @@ export class CanonicalPublicOperations {
         ? projection.paragraph(id)
         : undefined;
     };
-    const next = neighbour(after);
+    // Block-level range boundaries hold nothing: the paragraph past them is
+    // the one after it, whose mark the block deletion joins it to.
+    const next = neighbour(nodePastBoundaries(doc.resolve(end + 1)));
     // A table before it, standing or put there by the batch, leaves it no
     // paragraph before it to end the list in its place.
     const previous = followsInsertedTable ? undefined : neighbour(before);
@@ -7086,7 +7098,9 @@ export class CanonicalPublicOperations {
     // that holds words of the original keeps that mark: tracked, the deletion
     // takes its words only, and rejecting the insertion later runs them into
     // the table as it would have. A paragraph the insertion added whole goes
-    // with it, as the block deletion takes it.
+    // with it, as the block deletion takes it. Where the block deletion can
+    // record the deletion beside that insertion, it does, as the batch runs
+    // (`addedMarkBeforeTableAsItRuns`).
     // Between two tables (`keepsTablesApart`), the deletion takes the words
     // and leaves the mark in every mode: directly the paragraph stays, empty,
     // and accepting the tracked deletion keeps it, so the tables stay apart.
