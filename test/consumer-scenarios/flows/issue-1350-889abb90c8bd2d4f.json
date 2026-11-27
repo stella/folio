@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "title": "PINNED #1350: a text box's paragraph with a pending paragraph after it, deleted as a table goes after it, goes once the tracked batch is accepted, as applied directly",
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "stories",
+  "mode": "direct",
+  "seed": 1394129031,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 1322611534,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "1BF99289",
+          "text": "Supplier party invoice period period payment.",
+          "numbering": {
+            "kind": "newList",
+            "format": "bullet"
+          }
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 3700840604,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "1BF99289"
+        },
+        {
+          "type": "insertTable",
+          "blockId": "1BF99289",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "insertAfterBlock",
+    "insertBeforeBlock",
+    "deleteBlock",
+    "splitBlock",
+    "setBlockParagraphProperties",
+    "insertTable",
+    "deleteTable"
+  ],
+  "origin": "shrunk from splice+swap of 088fff3e0d70d729"
+}

@@ -229,9 +229,19 @@ const oneAtATime = async (setup: Case) => {
     index === undefined
       ? undefined
       : original.find(({ id }) => id === anchors[index % anchors.length]);
+  // Whether the deletion applies once the insertions stand where the batch
+  // puts them: in its order, which in one gap is not the order separate
+  // insertions after one block take.
+  const landed = await prepared(setup);
+  landed.applyOperations(
+    setup.insertions.flatMap((insertion, at) =>
+      gaps[at] === undefined ? [] : [operationOf(insertion, at, anchors)],
+    ),
+    { undefinedReferences: "refuse", mode: "tracked-changes" },
+  );
   const deletes =
     deleted !== undefined &&
-    reviewer.applyOperations(
+    landed.applyOperations(
       [{ id: "delete", type: "deleteBlock", blockId: deleted.id }],
       { undefinedReferences: "refuse", mode: "tracked-changes" },
     ).skipped.length === 0;
@@ -333,18 +343,7 @@ const caseArbitrary: fc.Arbitrary<Case> = fc
     setup,
     target,
     deletes,
-    // A batch that deletes a paragraph puts paragraphs beside paragraphs:
-    // tables a direct batch puts right beside the paragraph it deletes can
-    // still leave it no paragraph to go by when it runs (the examples hold
-    // the ones that do not).
-    insertions:
-      deletes === undefined
-        ? insertions
-        : insertions.map(({ side, anchor }) => ({
-            kind: "paragraph" as const,
-            side,
-            anchor: anchor % paragraphs,
-          })),
+    insertions,
   }));
 
 const paragraph = (side: Insertion["side"], anchor: number): Insertion => ({
@@ -366,6 +365,16 @@ const plain = {
 } as const;
 
 const examples: [Case][] = [
+  // Direct: a table put before the paragraph the batch deletes goes after
+  // the one before it, so the deletion runs with a paragraph before it.
+  [
+    {
+      ...plain,
+      tableAfter: 1,
+      insertions: [table("before", 1), paragraph("after", 0)],
+      deletes: 1,
+    },
+  ],
   // An emptied paragraph whose join leaves the next one, and a table after
   // that one: a table and paragraphs after either keep the batch's order.
   [
@@ -468,6 +477,17 @@ const examples: [Case][] = [
         paragraph("after", 0),
       ],
       deletes: 1,
+    },
+  ],
+  // An emptied paragraph before a table: a paragraph put before the table
+  // from its cell stops at a table the batch put after the emptied one.
+  [
+    {
+      ...plain,
+      setup: "emptiedJoin",
+      target: 1,
+      tableAfter: 1,
+      insertions: [table("after", 1), paragraph("before", 3)],
     },
   ],
   // An emptied paragraph before a table: one put before the table from its
@@ -579,6 +599,38 @@ test(
     );
   },
   propertyTestTimeout(120_000),
+);
+
+// Seed 5150: the last paragraph emptied, its join pending, deleted as a
+// paragraph goes before it and a table after the one before it. The blocks
+// landed before it leave the deletion nothing to do, as one at a time.
+test.each(["tracked-changes", "direct"] as const)(
+  "a deletion the batch's blocks leave nothing to do is skipped (%s)",
+  async (mode) => {
+    const setup: Case = {
+      ...plain,
+      setup: "emptiedJoin",
+      target: 2,
+      insertions: [paragraph("before", 2), table("after", 1)],
+      deletes: 2,
+    };
+    const reviewer = await prepared(setup);
+    const anchors = anchorsOf(reviewer);
+    const result = reviewer.applyOperations(
+      [
+        ...setup.insertions.map((insertion, at) =>
+          operationOf(insertion, at, anchors),
+        ),
+        { id: "delete", type: "deleteBlock", blockId: anchors[2] ?? "" },
+      ],
+      { undefinedReferences: "refuse", mode },
+    );
+    expect(result.skipped.map(({ id, reason }) => ({ id, reason }))).toEqual([
+      { id: "delete", reason: "noopOperation" },
+    ]);
+    reviewer.acceptAll();
+    expect(labelsOf(reviewer)).toEqual(["P0", "P1", "I0", "I1"]);
+  },
 );
 
 // The reported case: the words of the paragraph before the last one were
