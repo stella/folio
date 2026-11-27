@@ -5881,9 +5881,26 @@ export class CanonicalPublicOperations {
      * `tables` a table too: put before a paragraph, at the start of its gap
      * (`insertionGap`).
      */
+    // Each read once per operation: a batch of thousands of insertions asks
+    // every one of them where the ones before it landed.
+    const namedById = new Map(
+      batch.operations.map((operation) => [operation.id, operation] as const),
+    );
+    const landingOfCache = new Map<string, number[]>();
     const landingOf = (
       operation: FolioDocumentOperation,
       tables = false,
+    ): number[] => {
+      const key = `${tables ? "t" : "p"}${operation.id}`;
+      const cached = landingOfCache.get(key);
+      if (cached !== undefined) return cached;
+      const gaps = landingGapOf(operation, tables);
+      landingOfCache.set(key, gaps);
+      return gaps;
+    };
+    const landingGapOf = (
+      operation: FolioDocumentOperation,
+      tables: boolean,
     ): number[] => {
       const place =
         (isBlockInsertion(operation) || (tables && placesBlock(operation))) &&
@@ -5893,7 +5910,7 @@ export class CanonicalPublicOperations {
       if (place === undefined || !projected.isOk()) return [];
       // One a cell's paragraph names lands beside its table, not in a gap a
       // later insertion beside a paragraph reads.
-      const named = batch.operations.find(({ id }) => id === operation.id);
+      const named = namedById.get(operation.id);
       const source =
         named !== undefined && placesBlock(named)
           ? projected.value.paragraph(named.blockId)
@@ -5911,11 +5928,26 @@ export class CanonicalPublicOperations {
       ];
     };
     /** The operations before `operationId`, in input order, that land. */
-    const landingBefore = (operationId: string) => {
-      const index = placements.findIndex(({ id }) => id === operationId);
-      return placements
-        .slice(0, Math.max(index, 0))
-        .filter((operation) => landing.includes(operation));
+    /**
+     * The gaps the landing operations before one land in: read from where
+     * each gap is first landed in, kept once for the batch, not rebuilt from
+     * every operation before each one.
+     */
+    const landedBefore = (tables: boolean) => {
+      let first: Map<number, number> | undefined;
+      return (operationId: string): ReadonlySet<number> => {
+        if (first === undefined) {
+          first = new Map();
+          for (const operation of landing)
+            for (const gap of landingOf(operation, tables))
+              if (!first.has(gap))
+                first.set(gap, placementIndex.get(operation.id) ?? 0);
+        }
+        const limit = placementIndex.get(operationId) ?? 0;
+        return new Set(
+          [...first].flatMap(([gap, at]) => (at < limit ? [gap] : [])),
+        );
+      };
     };
     // A block its own paragraph refuses (gone, changed since the snapshot,
     // or not as its precondition read it) lands nowhere: the batch's
@@ -5946,6 +5978,9 @@ export class CanonicalPublicOperations {
       const named = batch.operations[index];
       return named !== undefined && landsAsRequested(named);
     });
+    const placementIndex = new Map(
+      placements.map(({ id }, index) => [id, index] as const),
+    );
     const besideDeletions: BesideDeletions = {
       deleted: deletedIds,
       insertedBeside: new Set(
@@ -5967,12 +6002,8 @@ export class CanonicalPublicOperations {
           operation.type === "insertAfterBlock" ? [operation.blockId] : [],
         ),
       ),
-      landedEarlier: (operationId) =>
-        new Set(landingBefore(operationId).flatMap((at) => landingOf(at))),
-      blocksLandedEarlier: (operationId) =>
-        new Set(
-          landingBefore(operationId).flatMap((at) => landingOf(at, true)),
-        ),
+      landedEarlier: landedBefore(false),
+      blocksLandedEarlier: landedBefore(true),
       placedBeside: (blockId) =>
         landing.filter(
           (operation): operation is BlockInsertion | TableInsertion =>
