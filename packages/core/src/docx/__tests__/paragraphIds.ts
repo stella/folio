@@ -1,3 +1,5 @@
+import { ZipArchive } from "@stll/docx-core/zip";
+
 import { ensureParaIds } from "../ensureParaIds";
 
 /**
@@ -19,4 +21,22 @@ export const withParagraphIds = async (
     stamped.byteOffset,
     stamped.byteOffset + stamped.byteLength,
   ) as ArrayBuffer;
+};
+
+/**
+ * `docx` with no paragraph ids in any part, as a producer that writes none
+ * leaves it: a save gives every paragraph one, so a test of paragraphs
+ * without ids takes them off what it saved.
+ */
+export const withoutPackageParagraphIds = async (
+  docx: Uint8Array | ArrayBuffer,
+): Promise<ArrayBuffer> => {
+  const zip = await ZipArchive.read(docx);
+  for (const path of zip.paths()) {
+    if (!/^word\/[^/]+\.xml$/u.test(path)) continue;
+    // oxlint-disable-next-line no-await-in-loop -- each part is read and rewritten in turn
+    const xml = await zip.entry(path)?.text();
+    if (xml !== undefined) zip.set(path, withoutParagraphIds(xml));
+  }
+  return (await zip.generate({ compression: "store" })).buffer as ArrayBuffer;
 };

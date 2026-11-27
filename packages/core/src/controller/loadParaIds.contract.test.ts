@@ -11,6 +11,7 @@ import { ZipArchive } from "@stll/docx-core/zip";
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
+import { withoutParagraphIds } from "../docx/__tests__/paragraphIds";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
@@ -33,13 +34,15 @@ const DOCUMENTS = {
 } as const;
 
 const docxWithoutParaIds = async (markdown: string): Promise<ArrayBuffer> => {
-  const bytes = await createDocx(fromMarkdown(markdown));
-  const zip = await ZipArchive.read(bytes);
-  const body = await zip.entry("word/document.xml")?.text();
-  // The case under test: no paragraph carries an id of its own.
-  expect(body).toBeDefined();
+  const zip = await ZipArchive.read(await createDocx(fromMarkdown(markdown)));
+  const saved = await zip.entry("word/document.xml")?.text();
+  expect(saved).toBeDefined();
+  // The case under test: no paragraph carries an id of its own. A save gives
+  // every paragraph one, so they are taken off again.
+  const body = withoutParagraphIds(saved ?? "");
   expect(body).not.toContain("w14:paraId");
-  return bytes;
+  zip.set("word/document.xml", body);
+  return (await zip.generate({ compression: "store" })).buffer as ArrayBuffer;
 };
 
 /** A save stamps the time it was made, whatever it changed. */
@@ -167,10 +170,10 @@ describe("load-time paragraph ids", () => {
     },
   );
 
-  // The ids are minted the same way on every open, so a save need not write
-  // them for a reopen to find them: it writes them only into a part it
-  // rewrites anyway, and leaves every other part as the package held it.
-  test("a save writes minted ids only into a part it rewrites", async () => {
+  // The ids are minted the same way on every open, so an unedited package
+  // goes back as it was. A save gives every paragraph of a part it writes an
+  // id, and leaves every other part as the package held it.
+  test("a save writes ids into the part it writes, and leaves other parts as they were", async () => {
     const bytes = await docxWithoutParaIds(DOCUMENTS.table);
     const source = await partTexts(bytes);
 
@@ -200,6 +203,10 @@ describe("load-time paragraph ids", () => {
     const saved = await partTexts(await edited.toBuffer());
     expect(saved.get("word/document.xml")).toContain("apply");
     expect(saved.get("word/document.xml")).not.toContain("follow");
+    for (const [tag] of saved
+      .get("word/document.xml")
+      ?.matchAll(/<w:p(?=[\s/>])[^>]*>/gu) ?? [])
+      expect(tag).toMatch(/\bw14:paraId="[0-9A-F]{8}"/u);
     saved.delete("word/document.xml");
     source.delete("word/document.xml");
     expect(saved).toEqual(source);
