@@ -127,7 +127,7 @@ type SpacingSides = {
 const NO_SPACING: SpacingSides = { before: null, after: null, line: null };
 
 const LINE_RULES: ReadonlySet<string> = new Set(["auto", "exact", "atLeast"]);
-/** Word's line spacing where nothing states one: single. */
+/** The line spacing where nothing states one: single. */
 const SINGLE_LINE: LineSpacing = { line: 240, lineRule: "auto" };
 
 const SPACING_SWITCHED_ON: ReadonlySet<string> = new Set(["1", "true", "on"]);

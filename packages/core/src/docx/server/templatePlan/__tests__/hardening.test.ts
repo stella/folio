@@ -2280,7 +2280,7 @@ describe("page starts", () => {
     ).toEqual([]);
     // A spacing without a side, with another key, with a fraction or below
     // zero, a line spacing of none, a rule without a line spacing or a rule
-    // Word does not know is no spacing a plan may state.
+    // the format does not know is no spacing a plan may state.
     for (const spacing of [
       {},
       { gap: 240 },
