@@ -14,7 +14,12 @@ import type {
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { contractViolation } from "../contract";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
-import { DOCUMENT_OP_TYPES, type DocumentOp, OP_STORIES } from "../types";
+import {
+  DOCUMENT_OP_TYPES,
+  type DocumentOp,
+  OP_STORIES,
+  REVISION_DECISIONS,
+} from "../types";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
@@ -59,6 +64,79 @@ const refused = (document: Document, op: DocumentOp, reason: string) => {
 };
 
 describe("whole table operations", () => {
+  test("a table-only wrapper retains a paragraph for a crossing range reference", () => {
+    const blockId = "00000010";
+    const end = { type: "commentRangeEnd", id: 7 } as const;
+    const reference = { type: "commentReference", id: 7 } as const;
+    const wrapper = {
+      type: "blockSdt",
+      properties: { sdtType: "group", id: 9 },
+      content: [
+        {
+          type: "table",
+          rows: [
+            {
+              type: "tableRow",
+              cells: [
+                {
+                  type: "tableCell",
+                  content: [
+                    {
+                      type: "paragraph",
+                      paraId: blockId,
+                      content: [end, reference],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    } satisfies BlockContent;
+    const outside = paragraph("00000001");
+    outside.content.unshift({ type: "commentRangeStart", id: 7 });
+    const document = documentOf([outside, wrapper]);
+    document.package.document.comments = [
+      { id: 7, author: "Reviewer", anchorKind: "range", content: [] },
+    ];
+    const op = {
+      type: DOCUMENT_OP_TYPES.DELETE_TABLE,
+      story: OP_STORIES.MAIN,
+      blockId,
+    } satisfies DocumentOp;
+    const direct = applied(document, op);
+    expect(direct.document.package.document.content).toStrictEqual([
+      outside,
+      {
+        ...wrapper,
+        content: [
+          { type: "paragraph", paraId: blockId, content: [end, reference] },
+        ],
+      },
+    ]);
+    const pending = applied(document, {
+      ...op,
+      revision: {
+        id: 1000,
+        author: "Reviewer",
+        date: "2026-11-27T00:00:00Z",
+      },
+      newIds: { revision: [1001, 1002, 1003] },
+    });
+    for (const decision of Object.values(REVISION_DECISIONS)) {
+      const resolved = applied(pending.document, {
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story: OP_STORIES.MAIN,
+        revisionIds: [1000, 1001],
+        decision,
+      });
+      expect(resolved.document).toStrictEqual(
+        decision === REVISION_DECISIONS.ACCEPT ? direct.document : document,
+      );
+    }
+  });
+
   test("tables placed beside tables preserve topology, review outcomes and wire history", () => {
     assertProperty(
       fc.property(

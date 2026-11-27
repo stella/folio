@@ -56,6 +56,7 @@ import {
   type DeleteTableOp,
   DOCUMENT_OP_TYPES,
   type InsertTableOp,
+  OP_STORIES,
   type SetContainerBlocksOp,
   type TableInsertionPoint,
 } from "./types";
@@ -155,6 +156,16 @@ type CommitBlocksOptions = {
   anchor: ParagraphLocation;
   blocks: readonly BlockContent[];
 };
+
+const blockListEndsInTable = (blocks: readonly BlockContent[]): boolean => {
+  const last = blocks.at(-1);
+  return (
+    last?.type === "table" ||
+    ((last?.type === "blockSdt" || last?.type === "blockCustomXml") &&
+      blockListEndsInTable(last.content))
+  );
+};
+
 const commitBlocks = ({
   document,
   op,
@@ -184,6 +195,11 @@ const commitBlocks = ({
         "The structural inverse requires a surviving paragraph in this block list.",
     });
   }
+  const restoresMainTable =
+    op.type === DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS &&
+    op.story === OP_STORIES.MAIN &&
+    anchor.list.length === 0 &&
+    blockListEndsInTable(blocks);
   // A table at a container's end needs a terminal carrier, constructed by a
   // separate operation; this direct primitive never invents a paragraph id.
   if (
@@ -192,7 +208,8 @@ const commitBlocks = ({
     !validStructure(blocks) ||
     // A container that ends in a paragraph keeps it; one a file ends with a
     // table, as a body may, is left no worse.
-    (endsItsContainer(body, { list: anchor.list, index: before.length - 1 }) &&
+    (!restoresMainTable &&
+      endsItsContainer(body, { list: anchor.list, index: before.length - 1 }) &&
       blockListEndsInParagraph(before) &&
       !blockListEndsInParagraph(blocks))
   ) {
@@ -722,7 +739,21 @@ export const applyTableOp = (
               ? [...host.content, ...ends]
               : [...ends, ...host.content],
           };
-        else if (ends.length > 0) blocks.splice(location.index, 0, ...ends);
+        else if (ends.length > 0) {
+          const boundaries = ends.filter(
+            (end) => end.type !== "commentReference",
+          );
+          if (boundaries.length === ends.length)
+            blocks.splice(location.index, 0, ...boundaries);
+          // A comment reference needs a paragraph, so reuse the removed
+          // table's addressed paragraph when no sibling can host it.
+          else
+            blocks.splice(location.index, 0, {
+              type: "paragraph",
+              paraId: op.blockId,
+              content: ends,
+            });
+        }
       } else {
         // A row already suggested for deletion keeps its own suggestion; the
         // table's deletion marks every other row.

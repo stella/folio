@@ -20,11 +20,11 @@ import {
   type TrackedChangeInfo,
 } from "../model/document";
 import { maxOf } from "../model/extremes";
-import { MAX_TABLE_GRID_COLUMNS } from "../model/tableGridLimits";
 import {
   statedTableColumnWidths,
   withTableColumnWidths,
 } from "../model/tableColumnWidths";
+import { MAX_TABLE_GRID_COLUMNS } from "../model/tableGridLimits";
 import {
   storyBody,
   storyParagraphs,
