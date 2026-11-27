@@ -6,7 +6,8 @@ import {
   propertyTestTimeout,
 } from "../../../../../test/property-testing";
 import { type Document, MAX_REVISION_ID } from "../../model/document";
-import { applyDocumentOp } from "../apply";
+import { statedTableColumnWidths } from "../../model/tableColumnWidths";
+import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { validateOpsDocument } from "../contract";
 import { IDENTITY_SPACES, identityKeysIn, slotKey } from "../ids";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
@@ -73,22 +74,25 @@ test("rejecting restores a previous grid wider than the rows", () => {
 });
 
 test.each([
-  [[undefined, 1000], DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE],
-  [[1000, undefined], DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE],
+  { widths: [undefined, 1000] },
+  { widths: [1000, undefined] },
 ] as const)(
-  "rejecting an unrepresentable previous grid refuses atomically",
-  (widths, reason) => {
+  "rejecting restores mixed measured and omitted grid widths $widths",
+  ({ widths }) => {
     const document = documentOf(100, widths);
-    const before = structuredClone(document);
     const result = applyDocumentOp(document, {
       type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
       story: OP_STORIES.MAIN,
       revisionIds: [100],
       decision: REVISION_DECISIONS.REJECT,
-    });
-    expect(result.isErr()).toBe(true);
-    if (result.isErr()) expect(result.error.reason).toBe(reason);
-    expect(document).toStrictEqual(before);
+    }).unwrap();
+    const table = result.document.package.document.content.at(0);
+    if (table?.type !== "table") throw new Error("The table remains present.");
+    expect(statedTableColumnWidths(table)).toEqual(widths);
+    expect(table.formatting?.gridChange).toBeUndefined();
+    expect(
+      applyDocumentOps(result.document, result.inverse).unwrap().document,
+    ).toStrictEqual(document);
   },
 );
 
