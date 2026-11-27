@@ -1001,3 +1001,50 @@ describe("nested tables carried by outer row revisions", () => {
     );
   }
 });
+
+test.each(["insert", "delete"] as const)(
+  "tracked table %s has an exact inverse when only a peer table provides an anchor",
+  (mode) => {
+    const peer: Table = {
+      type: "table",
+      rows: [
+        {
+          type: "tableRow",
+          cells: [
+            { type: "tableCell", content: [makeParagraph("00000040", "peer")] },
+          ],
+        },
+      ],
+    };
+    const table = makeTable();
+    const original = documentOf(mode === "insert" ? [peer] : [table, peer]);
+    const directOp: DocumentOp =
+      mode === "insert"
+        ? {
+            type: DOCUMENT_OP_TYPES.INSERT_TABLE,
+            story: OP_STORIES.MAIN,
+            at: { type: "beforeTable", blockId: "00000040" },
+            table,
+          }
+        : {
+            type: DOCUMENT_OP_TYPES.DELETE_TABLE,
+            story: OP_STORIES.MAIN,
+            blockId: "00000010",
+          };
+    const direct = applied(original, directOp);
+    const pending = applied(original, { ...directOp, revision, newIds });
+    expect(pending.inverse.at(0)).toMatchObject({
+      type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+      blockId: "00000040",
+      ancestorDepth: 1,
+    });
+    expect(
+      resolve(pending.document, pending.revisions, REVISION_DECISIONS.ACCEPT)
+        .document,
+    ).toStrictEqual(direct.document);
+    expect(
+      resolve(pending.document, pending.revisions, REVISION_DECISIONS.REJECT)
+        .document,
+    ).toStrictEqual(original);
+  },
+);

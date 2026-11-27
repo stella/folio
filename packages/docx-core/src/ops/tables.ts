@@ -10,9 +10,11 @@ import type {
 } from "../model/document";
 import { hasIllegalXmlCharacters } from "../serialize/xmlEscape";
 import {
+  type BlockListAnchor,
   blockListAt,
   blockListEndsInParagraph,
   endsItsContainer,
+  ownBlockListAnchor,
   type ParagraphLocation,
   sameBlockList,
   storyBody,
@@ -142,7 +144,7 @@ const fixedBlocks = (items: readonly BlockContent[]): BlockContent[] => {
 const tableBlocksForAnchor = (
   body: DocumentBody,
   list: ParagraphLocation["list"],
-  anchor: ParagraphLocation,
+  anchor: BlockListAnchor,
   blocks: BlockContent[],
 ): readonly BlockContent[] => {
   if (sameBlockList(list, anchor.list)) return blocks;
@@ -153,7 +155,7 @@ const tableBlocksForAnchor = (
 type CommitBlocksOptions = {
   document: Document;
   op: TableOp;
-  anchor: ParagraphLocation;
+  anchor: BlockListAnchor;
   blocks: readonly BlockContent[];
 };
 
@@ -181,20 +183,16 @@ const commitBlocks = ({
       touched: { modified: [], inserted: [], removed: [] },
     });
   }
-  if (
-    !blocks.some(
-      (block) =>
-        block.type === "paragraph" &&
-        idKey(block.paraId ?? "") === idKey(anchor.paragraph.paraId ?? ""),
-    )
-  ) {
+  const afterLocations = storyParagraphs({ content: [...blocks] });
+  const placedAnchor = afterLocations.find(
+    ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(anchor.blockId),
+  );
+  if (placedAnchor === undefined)
     return refuse({
       op,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      message:
-        "The structural inverse requires a surviving paragraph in this block list.",
+      reason: DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
+      message: "The structural inverse anchor must survive the edit.",
     });
-  }
   const restoresMainTable =
     op.type === DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS &&
     op.story === OP_STORIES.MAIN &&
@@ -239,7 +237,7 @@ const commitBlocks = ({
     });
   }
   const beforeParagraphs = paragraphsIn(before);
-  const afterParagraphs = paragraphsIn(blocks);
+  const afterParagraphs = afterLocations.map(({ paragraph }) => paragraph);
   const beforeById = new Map(
     beforeParagraphs.map((paragraph) => [
       idKey(paragraph.paraId ?? ""),
@@ -460,7 +458,10 @@ const commitBlocks = ({
       {
         type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
         story: op.story,
-        blockId: anchor.paragraph.paraId ?? "",
+        blockId: anchor.blockId,
+        ...(placedAnchor.list.length === 0
+          ? {}
+          : { ancestorDepth: placedAnchor.list.length }),
         expected: replacement,
         blocks: before,
       },
@@ -631,7 +632,12 @@ export const applyTableOp = (
         );
       }
       if (op.revision === undefined)
-        return commitBlocks({ document, op, anchor, blocks });
+        return commitBlocks({
+          document,
+          op,
+          anchor: ownBlockListAnchor(anchor),
+          blocks,
+        });
       const tracked = trackTableRows({
         document,
         op,
@@ -641,7 +647,12 @@ export const applyTableOp = (
         kind: WRAP_KINDS.INSERTION,
       });
       if (tracked.isErr()) return Result.err(tracked.error);
-      const direct = commitBlocks({ document, op, anchor, blocks });
+      const direct = commitBlocks({
+        document,
+        op,
+        anchor: ownBlockListAnchor(anchor),
+        blocks,
+      });
       if (direct.isErr()) return direct;
       const table: Table = { ...op.table, rows: tracked.value };
       const tableIndex = anchor.index + (op.at.type === "after" ? 1 : 0);
@@ -690,7 +701,12 @@ export const applyTableOp = (
           }
         }
       }
-      return commitBlocks({ document, op, anchor, blocks });
+      return commitBlocks({
+        document,
+        op,
+        anchor: ownBlockListAnchor(anchor),
+        blocks,
+      });
     }
     case DOCUMENT_OP_TYPES.DELETE_TABLE: {
       const located = locateTableRow(document, op);
@@ -705,20 +721,25 @@ export const applyTableOp = (
           reason: DOCUMENT_OP_REFUSAL_REASONS.STALE,
           message: "The table to remove has changed.",
         });
-      // Preserve the original same-list anchor. Search enclosing lists only
-      // when the edited list has no paragraph of its own.
-      const anchor =
-        storyParagraphs(body).find((paragraph) =>
-          sameBlockList(paragraph.list, location.list),
-        ) ?? survivingTableAnchor(body, location.list);
+      const blocks = [...blockListAt(body.content, location.list)];
+      const remaining = [...blocks];
+      remaining.splice(location.index, 1);
+      const remainingBody = {
+        ...body,
+        content: updateBlockList(body.content, location.list, () => remaining),
+      };
+      // Keep the same-list anchor used by earlier inverses when it survives.
+      const standing = remaining.find((block) => block.type === "paragraph")?.paraId;
+      const anchor = standing === undefined
+        ? survivingBlockListAnchor(remainingBody, location.list)
+        : { list: location.list, blockId: standing };
       if (anchor === undefined)
         return refuse({
           op,
-          reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+          reason: DOCUMENT_OP_REFUSAL_REASONS.EMPTY_BLOCK_LIST,
           message:
-            "Removing a table requires a surviving paragraph in its block list.",
+            "Removing the table must leave a surviving paragraph in its container.",
         });
-      const blocks = [...blockListAt(body.content, location.list)];
       if (op.revision === undefined) {
         blocks.splice(location.index, 1);
         // The table's ends of ranges reaching past it stay where it was: at
@@ -803,14 +824,36 @@ export const applyTableOp = (
           reason: DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
           message: "The structural inverse anchor does not exist.",
         });
-      const before = blockListAt(body.content, anchor.list);
+      const depth = op.ancestorDepth ?? 0;
+      if (
+        !Number.isSafeInteger(depth) ||
+        depth < 0 ||
+        depth > anchor.list.length
+      )
+        return refuse({
+          op,
+          reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+          message:
+            "The structural inverse anchor has no such enclosing block list.",
+        });
+      const list = anchor.list.slice(0, anchor.list.length - depth);
+      const before = blockListAt(body.content, list);
       if (!equalForStaleness(before, op.expected))
         return refuse({
           op,
           reason: DOCUMENT_OP_REFUSAL_REASONS.STALE,
           message: "The container blocks have changed.",
         });
-      return commitBlocks({ document, op, anchor, blocks: op.blocks });
+      return commitBlocks({
+        document,
+        op,
+        anchor: {
+          list,
+          blockId: op.blockId,
+          ...(depth === 0 ? {} : { ancestorDepth: depth }),
+        },
+        blocks: op.blocks,
+      });
     }
     default: {
       const unreachable: never = op;

@@ -708,6 +708,7 @@ const operationFields = {
     type: literal("setContainerBlocks"),
     story: isOpStory,
     blockId,
+    ancestorDepth: optional(natural),
     expected: array(blockContent),
     blocks: array(blockContent),
   } satisfies OperationFields<"setContainerBlocks">,
