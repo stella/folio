@@ -2926,13 +2926,25 @@ const statedGrid = (
         ),
   );
 
+const pendingGeometry = (table: Table, op: TableIntentOperation) =>
+  table.formatting?.gridChange?.geometryChange === undefined
+    ? undefined
+    : refuse({
+        op,
+        reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
+        message:
+          "Resolve the pending geometry change before editing this table's grid or properties.",
+      });
+
 /** Count identities from the same topology/selection decisions the operation applies. */
 export const tableEditParagraphDemand = (
   location: TableRowLocation,
   op: TableIntentOperation,
 ): Result<number, DocumentOpRefusal> => {
-  if (isPropertyEdit(op)) return Result.ok(0);
   const table = location.table;
+  const pending = pendingGeometry(table, op);
+  if (pending !== undefined) return pending;
+  if (isPropertyEdit(op)) return Result.ok(0);
   const grid = statedGrid(table, op);
   if (grid.isErr()) return Result.err(grid.error);
   switch (op.type) {
@@ -3160,13 +3172,8 @@ export const applyTableEdit = (
       });
     return commitTable({ document, op, location, table: op.table });
   }
-  if (table.formatting?.gridChange?.geometryChange !== undefined)
-    return refuse({
-      op,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
-      message:
-        "Resolve the pending geometry change before editing this table's grid or properties.",
-    });
+  const pending = pendingGeometry(table, op);
+  if (pending !== undefined) return pending;
   if (op.revision !== undefined) {
     const ambiguous = (record: object) =>
       ["formatting", "propertyChanges", "structuralChange"].some(
