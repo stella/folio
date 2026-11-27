@@ -749,7 +749,7 @@ test("an insertion before an original paragraph, split, saved and half deleted r
     edit(reviewer, {
       type: "insertBeforeBlock",
       blockId: target,
-      text: "Second added clause.",
+      text: "Inserted clause.",
     });
     const inserted = reviewer.getContent().at(1)?.id;
     if (inserted === undefined) throw new Error("Missing inserted paragraph");
