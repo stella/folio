@@ -3,18 +3,21 @@
  * comment's reference in a deleted paragraph, a comment anchor a hyperlink or
  * content control holds there, a tracked change inside a simple field's
  * result, a deleted or inserted paragraph mark that ends a section, a
- * contents list over paragraphs under review, and a paragraph mark's own run
- * properties.
+ * contents list over paragraphs under review, a paragraph mark's own run
+ * properties, a paragraph put in after a pending inserted mark, and a pasted
+ * paragraph whose break is pending deletion or that carries a review carrier.
  * Each is recorded, accepted and rejected as its direct edit and its source
  * state are, and every step undoes.
  */
 import { describe, expect, test } from "bun:test";
 
-import type {
-  Document,
-  Paragraph,
-  ParagraphFormatting,
-  TextFormatting,
+import {
+  type Document,
+  type Paragraph,
+  type ParagraphFormatting,
+  type ParagraphMarkChange,
+  REVIEW_CARRIERS,
+  type TextFormatting,
 } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { compileEditorIntent, type EditorIntent } from "../editorIntent";
@@ -1120,5 +1123,330 @@ describe("a paragraph mark's run properties", () => {
               ?.bold === true,
         ),
       ).toBe(true);
+  });
+});
+
+describe("a direct paragraph after a pending inserted mark", () => {
+  const EARLIER: RevisionStamp = {
+    id: 11,
+    author: "Earlier",
+    date: "2026-01-01T00:00:00Z",
+  };
+  const paragraph = (paraId: string, text: string): Paragraph => ({
+    type: "paragraph",
+    paraId,
+    content: [run(text)],
+  });
+  /**
+   * A tracked insertion after the story's last paragraph: the anchor's mark
+   * is the inserted one, and the last new paragraph holds the mark it had.
+   */
+  const pending = (count: number) =>
+    apply(
+      {
+        package: {
+          document: {
+            content: [
+              paragraph("00000001", "Before."),
+              paragraph("00000002", "Anchor."),
+            ],
+          },
+        },
+      },
+      [
+        {
+          type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+          story: OP_STORIES.MAIN,
+          at: { type: "after", blockId: "00000002" },
+          blocks: Array.from({ length: count }, (_, index) =>
+            paragraph(`0000001${index}`, "Tracked."),
+          ),
+          revision: EARLIER,
+          newIds: { revision: [12, 13, 14, 15] },
+        },
+      ],
+    );
+  const insertion = (blocks: readonly Paragraph[]): DocumentOp => ({
+    type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+    story: OP_STORIES.MAIN,
+    at: { type: "after", blockId: "00000002" },
+    blocks,
+  });
+  const added = [
+    paragraph("00000020", "Direct."),
+    paragraph("00000021", "More."),
+  ];
+  const blockWith = (document: Document, paraId: string): Paragraph => {
+    const block = document.package.document.content.find(
+      (candidate) =>
+        candidate.type === "paragraph" && candidate.paraId === paraId,
+    );
+    if (block?.type !== "paragraph")
+      throw new TypeError(`Expected paragraph ${paraId}.`);
+    return block;
+  };
+
+  test.each([1, 2])(
+    "takes the break to its last paragraph and resolves as the insertion into the resolved document (%i pending paragraphs)",
+    (count) => {
+      const marked = pending(count);
+      const inserted = apply(marked.document, [insertion(added)]);
+      expect(blockWith(inserted.document, "00000002").pPrMark).toBeUndefined();
+      expect(blockWith(inserted.document, "00000021").pPrMark).toEqual(
+        blockWith(marked.document, "00000002").pPrMark,
+      );
+      expect(apply(inserted.document, inserted.inverse).document).toStrictEqual(
+        marked.document,
+      );
+      for (const decision of Object.values(REVISION_DECISIONS)) {
+        const resolved = resolve(inserted.document, marked.revisions, decision);
+        expect(resolved.document).toStrictEqual(
+          apply(resolve(marked.document, marked.revisions, decision).document, [
+            insertion(added),
+          ]).document,
+        );
+        expect(
+          apply(resolved.document, resolved.inverse).document,
+        ).toStrictEqual(inserted.document);
+      }
+    },
+  );
+
+  test("from the editor, directly or suggested, the insertion resolves with the pending one", () => {
+    const marked = pending(1);
+    const intent: EditorIntent = {
+      type: "insertParagraphs",
+      story: OP_STORIES.MAIN,
+      at: { type: "after", blockId: "00000002" },
+      paragraphs: [paragraph("00000020", "Direct.")],
+    };
+    const suggested = apply(
+      marked.document,
+      compiled(marked.document, intent, true),
+    );
+    expect(suggested.revisions.length).toBeGreaterThan(0);
+    expect(apply(suggested.document, suggested.inverse).document).toStrictEqual(
+      marked.document,
+    );
+    const direct = apply(
+      marked.document,
+      compiled(marked.document, intent, false),
+    );
+    expect(apply(direct.document, direct.inverse).document).toStrictEqual(
+      marked.document,
+    );
+    expect(
+      resolve(direct.document, marked.revisions, REVISION_DECISIONS.REJECT)
+        .document.package.document.content.length,
+    ).toBe(3);
+    const all = [...marked.revisions, ...suggested.revisions];
+    expect(
+      resolve(suggested.document, all, REVISION_DECISIONS.ACCEPT).document,
+    ).toStrictEqual(
+      resolve(direct.document, marked.revisions, REVISION_DECISIONS.ACCEPT)
+        .document,
+    );
+    expect(
+      resolve(suggested.document, all, REVISION_DECISIONS.REJECT).document,
+    ).toStrictEqual(
+      resolve(marked.document, marked.revisions, REVISION_DECISIONS.REJECT)
+        .document,
+    );
+  });
+
+  test("a paragraph the rejection would give other properties is refused", () => {
+    const marked = pending(1);
+    const refused = applyDocumentOp(
+      marked.document,
+      insertion([
+        { ...paragraph("00000020", "Direct."), formatting: { keepNext: true } },
+      ]),
+    );
+    expect(refused.isErr() && refused.error.reason).toBe(
+      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+    );
+  });
+});
+
+describe("a pasted paragraph whose break is pending deletion", () => {
+  const document: Document = {
+    package: {
+      document: {
+        content: [
+          { type: "paragraph", paraId: "00000001", content: [run("Here.")] },
+        ],
+      },
+    },
+  };
+  const earlier = { author: "Earlier", date: "2026-01-01T00:00:00Z" };
+  const paste = (pPrMark: ParagraphMarkChange): EditorIntent => ({
+    type: "replaceFragment",
+    from: at(5),
+    to: at(5),
+    openStart: 0,
+    openEnd: 0,
+    paragraphs: [
+      {
+        type: "paragraph",
+        paraId: "0000000D",
+        pPrMark,
+        content: [run("Copied")],
+      },
+      { type: "paragraph", content: [run("tail")] },
+    ],
+  });
+
+  test("the paste inserts the break and keeps the copied deletion of it beside", () => {
+    const { suggested } = assertSuggestionLaws(
+      document,
+      paste({ kind: "del", info: { id: 93, ...earlier } }),
+    );
+    const marks = suggested.document.package.document.content.flatMap(
+      (block) =>
+        block.type === "paragraph" && block.pPrMark?.deletion !== undefined
+          ? [block.pPrMark]
+          : [],
+    );
+    expect(marks).toEqual([
+      {
+        kind: "ins",
+        info: expect.objectContaining({ author: STAMP.author }),
+        deletion: { info: expect.objectContaining(earlier) },
+      },
+    ]);
+    const [mark] = marks;
+    if (mark?.deletion === undefined)
+      throw new TypeError("The pasted break holds the copied deletion.");
+    expect(suggested.revisions).not.toContain(mark.deletion.info.id);
+  });
+
+  test.each<ParagraphMarkChange>([
+    { kind: "ins", info: { id: 93, ...earlier } },
+    { kind: "moveTo", info: { id: 93, ...earlier } },
+    { kind: "moveFrom", info: { id: 93, ...earlier } },
+    {
+      kind: "ins",
+      info: { id: 93, ...earlier },
+      deletion: { info: { id: 94, ...earlier } },
+    },
+  ])(
+    "a copied mark that is no deletion beside the paste's insertion is refused, suggested only (%o)",
+    (pPrMark) => {
+      const intent = paste(pPrMark);
+      const refused = compileEditorIntent(document, {
+        intent,
+        mode: { type: "suggesting", revision: STAMP, newIds: NEW_IDS },
+      });
+      expect(refused.isErr() && refused.error.reason).toBe(
+        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      );
+      expect(compiled(document, intent, false).length).toBeGreaterThan(0);
+    },
+  );
+
+  test.each<
+    [
+      string,
+      Pick<
+        Paragraph,
+        "formatting" | "pPrMark" | "propertyChanges" | "sectionProperties"
+      >,
+    ]
+  >([
+    [
+      "a deleted mark",
+      { pPrMark: { kind: "del", info: { id: 93, ...earlier } } },
+    ],
+    [
+      "a property change",
+      {
+        formatting: { alignment: "center" },
+        propertyChanges: [
+          {
+            type: "paragraphPropertyChange",
+            info: { id: 93, ...earlier },
+            previousFormatting: { alignment: "end" },
+          },
+        ],
+      },
+    ],
+    ["a section break", { sectionProperties: { pageWidth: 12240 } }],
+  ])(
+    "copied review on the mark the paste ends in stays refused, suggested only (%s)",
+    (_shape, fields) => {
+      const followed: Document = {
+        package: {
+          document: {
+            content: [
+              ...document.package.document.content,
+              {
+                type: "paragraph",
+                paraId: "00000002",
+                content: [run("Next.")],
+              },
+            ],
+          },
+        },
+      };
+      const intent: EditorIntent = {
+        type: "replaceFragment",
+        from: at(5),
+        to: at(5),
+        openStart: 0,
+        openEnd: 0,
+        paragraphs: [
+          { type: "paragraph", paraId: "0000000D", content: [run("Copied")] },
+          { type: "paragraph", ...fields, content: [run("tail")] },
+        ],
+      };
+      const refused = compileEditorIntent(followed, {
+        intent,
+        mode: { type: "suggesting", revision: STAMP, newIds: NEW_IDS },
+      });
+      expect(refused.isErr() && refused.error.reason).toBe(
+        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      );
+      expect(
+        apply(followed, compiled(followed, intent, false)).document,
+      ).not.toStrictEqual(followed);
+    },
+  );
+});
+
+describe("a pasted paragraph carrying a table's review carrier", () => {
+  const document: Document = {
+    package: {
+      document: {
+        content: [
+          { type: "paragraph", paraId: "00000001", content: [run("Here.")] },
+        ],
+      },
+    },
+  };
+
+  test("pastes as the plain paragraph it shows, directly and suggested", () => {
+    const { direct, suggested } = assertSuggestionLaws(document, {
+      type: "replaceFragment",
+      from: at(5),
+      to: at(5),
+      openStart: 0,
+      openEnd: 0,
+      paragraphs: [
+        {
+          type: "paragraph",
+          paraId: "0000000E",
+          reviewCarrier: REVIEW_CARRIERS.TERMINAL_TABLE,
+          content: [run("Carried")],
+        },
+        { type: "paragraph", content: [run("tail")] },
+      ],
+    });
+    for (const pasted of [direct, suggested])
+      expect(
+        pasted.document.package.document.content.some(
+          (block) =>
+            block.type === "paragraph" && block.reviewCarrier !== undefined,
+        ),
+      ).toBe(false);
   });
 });

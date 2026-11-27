@@ -9,6 +9,7 @@ import {
   type ParagraphMarkChange,
   type ParagraphMarkPropertyChange,
   type ParagraphPropertyChange,
+  type TrackedChangeInfo,
 } from "../model/document";
 import {
   isOpaqueFollower,
@@ -27,6 +28,7 @@ import {
 } from "./blocks";
 import { validateOpsDocument } from "./contract";
 import type { DocumentEdit, DocumentEditEffects } from "./edits";
+import { structurallyEqual } from "./equality";
 import { firstSurvivorFields } from "./firstSurvivor";
 import { freshenIdentities } from "./identity";
 import {
@@ -119,6 +121,108 @@ export type ValidateBlockReplacement = (options: {
   op: ReplaceBlocksOp;
   before: readonly Paragraph[];
 }) => Result<void, DocumentOpRefusal>;
+
+/** A paragraph's fields a join on rejection takes from the paragraph after. */
+const joinedFields = ({
+  paraId: _paraId,
+  textId: _textId,
+  preservedAttributes: _preservedAttributes,
+  renderedPageBreakBefore: _renderedPageBreakBefore,
+  content: _content,
+  pPrMark: _pPrMark,
+  ...fields
+}: Paragraph): Omit<
+  Paragraph,
+  | "paraId"
+  | "textId"
+  | "preservedAttributes"
+  | "renderedPageBreakBefore"
+  | "content"
+  | "pPrMark"
+> => fields;
+
+type MovedPendingBreakOptions = {
+  /** The paragraph whose inserted mark keeps it on rejection. */
+  anchor: Paragraph;
+  /** The blocks after the anchor in its block list. */
+  after: readonly BlockContent[];
+  blocks: readonly Paragraph[];
+};
+
+/** Whether two records were made by one change: alike in all but their ids. */
+const sameChange = (
+  left: TrackedChangeInfo,
+  right: TrackedChangeInfo,
+): boolean => structurallyEqual({ ...left, id: 0 }, { ...right, id: 0 });
+
+/**
+ * Whether `mark` is a plain inserted break of the change `info` records that
+ * keeps the paragraph before it.
+ */
+const keepsFirstBreakOf = (
+  mark: ParagraphMarkChange | undefined,
+  info: TrackedChangeInfo,
+): boolean =>
+  mark?.kind === "ins" &&
+  sameChange(mark.info, info) &&
+  mark.survivor === "first" &&
+  mark.takenOverMark === undefined &&
+  mark.deletion === undefined &&
+  (mark.resolutionJoin ?? 0) === 0;
+
+/**
+ * The anchor and the new paragraphs of a direct insertion after the anchor's
+ * pending break, the break moved to the last new paragraph, as a break typed
+ * at the anchor's end leaves it; `undefined` where rejecting the moved break
+ * would not give the insertion into the rejected document. Rejecting joins
+ * the last new paragraph through the paragraphs that insertion added into
+ * the one holding the anchor's former mark, keeping the new paragraph and
+ * taking that holder's properties. So the paragraphs after the anchor must
+ * hold only that insertion's content, the holder no record of its own, and
+ * the anchor and the last new paragraph its properties. Any other difference
+ * is one only a property change of the pending insertion records, and a
+ * direct insertion makes no tracked change.
+ */
+const movedPendingBreak = ({
+  anchor,
+  after,
+  blocks,
+}: MovedPendingBreakOptions): Paragraph[] | undefined => {
+  const mark = anchor.pPrMark;
+  const last = blocks.at(-1);
+  if (
+    mark === undefined ||
+    !keepsFirstBreakOf(mark, mark.info) ||
+    anchor.sectionProperties !== undefined ||
+    last === undefined ||
+    last.pPrMark !== undefined
+  )
+    return undefined;
+  let holder: Paragraph | undefined;
+  for (const block of after) {
+    if (
+      block.type !== "paragraph" ||
+      !block.content.every(
+        (node) => node.type === "insertion" && sameChange(node.info, mark.info),
+      )
+    )
+      return undefined;
+    if (block.pPrMark === undefined) {
+      holder = block;
+      break;
+    }
+    if (!keepsFirstBreakOf(block.pPrMark, mark.info)) return undefined;
+  }
+  if (holder === undefined) return undefined;
+  const fields = joinedFields(holder);
+  if (
+    !structurallyEqual(joinedFields(anchor), fields) ||
+    !structurallyEqual(joinedFields(last), fields)
+  )
+    return undefined;
+  const { pPrMark: _moved, ...own } = anchor;
+  return [own, ...blocks.slice(0, -1), { ...last, pPrMark: mark }];
+};
 
 const canonicalizeInsertedParagraph = (paragraph: Paragraph): Paragraph => {
   if (finalizeParagraphFormatting(paragraph.formatting) !== undefined)
@@ -1002,19 +1106,32 @@ export const insertBlocks = ({
   const replacement = paragraphReplacement({ op, before, anchor });
   const canonicalBlocks = op.blocks.map(canonicalizeInsertedParagraph);
   // A direct paragraph after this pending break would be joined into its
-  // anchor when the mark is rejected. Moving the break instead needs the
-  // former mark's formatting snapshot and revision ids, which this direct
-  // insertion does not carry.
+  // anchor when the mark is rejected, so the break moves to the last new
+  // paragraph (`movedPendingBreak`) where rejecting it there gives the
+  // insertion into the rejected document.
+  let movedBreak: ReplaceBlocksOp | undefined;
   if (
     op.revision === undefined &&
     op.at.type === "after" &&
     following?.type === "paragraph" &&
     location.paragraph.pPrMark?.survivor === "first"
   ) {
-    return refuse(
-      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      "Insertion after a pending paragraph mark needs its former formatting snapshot and revision ids.",
-    );
+    const moved = movedPendingBreak({
+      anchor: location.paragraph,
+      after: list.slice(location.index + 1),
+      blocks: canonicalBlocks,
+    });
+    if (moved === undefined)
+      return refuse(
+        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+        "Insertion after a pending paragraph mark would change what rejecting that mark leaves.",
+      );
+    movedBreak = {
+      type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+      story: op.story,
+      expected: [location.paragraph],
+      blocks: moved,
+    };
   }
   const sectionBoundaries = opensNextSection
     ? { sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE }
@@ -1022,7 +1139,7 @@ export const insertBlocks = ({
   // A draft ordinary insertion has no other work when its main-body splice
   // has no section or note repair and cannot add inline stories or review
   // records. The tracked replacement below still runs full validation.
-  const draft: ReplaceBlocksOp = {
+  const draft: ReplaceBlocksOp = movedBreak ?? {
     ...replacement(canonicalBlocks),
     ...sectionBoundaries,
   };
@@ -1082,9 +1199,11 @@ export const insertBlocks = ({
       "Insertion would leave a tracked mark on a container-final paragraph.",
     );
   const touched = {
-    // The anchor's mark becomes the inserted one when it takes over.
+    // The anchor's mark becomes the inserted one when it takes over, and its
+    // own again when a direct insertion moves its pending break on.
     modified:
-      takesOverMark && location.paragraph.paraId !== undefined
+      (takesOverMark || movedBreak !== undefined) &&
+      location.paragraph.paraId !== undefined
         ? [location.paragraph.paraId]
         : [],
     inserted: op.blocks.flatMap(({ paraId }) =>

@@ -15,6 +15,7 @@ import {
   type Paragraph,
   type ParagraphContent,
   type ParagraphFormatting,
+  type ParagraphMarkChange,
   type RunContent,
   type SdtProperties,
   type TabContent,
@@ -2659,6 +2660,32 @@ const withoutMoveAnchors = (nodes: readonly InlineNode[]): InlineNode[] => {
   return out;
 };
 
+/**
+ * Whether a copied paragraph mark can go beside a suggested paste's
+ * insertion of that break: a pending deletion of it holding no cut of its
+ * own, which accepting the paste leaves pending as the direct paste does.
+ */
+const goesBesidePastedBreak = (mark: ParagraphMarkChange): boolean =>
+  mark.kind === "del" &&
+  mark.resolutionJoin === undefined &&
+  mark.splitDate === undefined;
+
+/**
+ * The paste's inserted `mark` holding the copied deletion `copied` beside it.
+ * A break that cut no record keeps no cut depth, so accepting the paste
+ * leaves the deletion as the direct paste copies it.
+ */
+const besidePastedBreak = (
+  mark: ParagraphMarkChange,
+  copied: ParagraphMarkChange,
+): ParagraphMarkChange => {
+  const { resolutionJoin, ...uncut } = mark;
+  return {
+    ...(resolutionJoin === 0 ? uncut : mark),
+    deletion: { info: copied.info },
+  };
+};
+
 type IdentifyClipboardParagraphsOptions = {
   document: Document;
   paragraphs: readonly Paragraph[];
@@ -4130,6 +4157,11 @@ const compileInStory = (
       if (identified.isErr()) return identified;
       const paragraphs = identified.value;
       for (const [index, paragraph] of paragraphs.entries()) {
+        // A review carrier stands for the paragraph a story keeps after a
+        // table shown deleted, and only as that story's last paragraph. A
+        // pasted paragraph is followed by the paragraph the paste ends in,
+        // so its copy is the plain paragraph it shows.
+        delete paragraph.reviewCarrier;
         const openStart = index === 0 && intent.openStart === 1;
         const openEnd = index === normalized.length - 1 && intent.openEnd === 1;
         if (!openStart && !openEnd) continue;
@@ -4138,25 +4170,12 @@ const compileInStory = (
         delete paragraph.propertyChanges;
         delete paragraph.markPropertyChange;
         delete paragraph.pPrMark;
-        delete paragraph.reviewCarrier;
         delete paragraph.sectionProperties;
         delete paragraph.formatting;
         const inherited = openStart
           ? destinationFormatting
           : endpointFormatting;
         if (inherited !== undefined) paragraph.formatting = inherited;
-      }
-      if (
-        paragraphs.some((paragraph) => paragraph.reviewCarrier !== undefined)
-      ) {
-        return Result.err(
-          new DocumentOpRefusal({
-            reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-            message:
-              "A clipboard paragraph cannot import a private review-resolution carrier.",
-            opType: DOCUMENT_OP_TYPES.INSERT_CONTENT,
-          }),
-        );
       }
       if (
         paragraphs.some(
@@ -4174,20 +4193,37 @@ const compileInStory = (
           }),
         );
       }
+      const tail = paragraphs.at(-1);
+      // A suggested paste inserts each pasted paragraph's break, so that
+      // mark's insertion is the paste's own. A copied deletion of the break
+      // goes beside it, `w:del` beside `w:ins` in `w:pPr/w:rPr`, and stays
+      // pending once the paste is accepted, as a pasted inline record does.
+      // CT_ParaRPr holds one `w:ins`, the paste's, so a copied added mark
+      // (`w:ins`, `w:moveTo`) has no place on the break; an added mark
+      // records only a `w:del` beside it, not a move away.
       if (
         mode.type === "suggesting" &&
-        paragraphs.some((paragraph) => paragraph.pPrMark !== undefined)
+        paragraphs
+          .slice(0, -1)
+          .some(
+            ({ pPrMark }) =>
+              pPrMark !== undefined && !goesBesidePastedBreak(pPrMark),
+          )
       ) {
         return Result.err(
           new DocumentOpRefusal({
             reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
             message:
-              "A copied paragraph mark cannot coexist with the tracked paste mark in the paragraph's single mark slot.",
+              "A copied added or moved-away paragraph mark has no place beside the tracked paste's insertion of that break.",
             opType: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
           }),
         );
       }
-      const tail = paragraphs.at(-1);
+      // The paste ends in the destination's mark, which it keeps rather
+      // than inserts. A record copied onto that mark (`w:del` or `w:ins` in
+      // `w:pPr/w:rPr`, `w:pPrChange`, `w:rPrChange`) or a `w:sectPr` added to
+      // it would stand once the paste is rejected: OOXML nests no mark-level
+      // record inside the paste's `w:ins`, and the kept mark has none.
       if (
         mode.type === "suggesting" &&
         tail !== undefined &&
@@ -4200,7 +4236,7 @@ const compileInStory = (
           new DocumentOpRefusal({
             reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
             message:
-              "A tracked paste cannot attach copied paragraph review or section metadata to a retained destination mark without a separately rejectable mark change.",
+              "A tracked paste cannot put copied paragraph review or a section break on the destination mark it keeps: rejecting the paste would leave them there.",
             opType: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
           }),
         );
@@ -4375,8 +4411,20 @@ const compileInStory = (
         });
         if (current === undefined)
           panic("An allocated clipboard paragraph must remain present.");
+        // The paste's own insertion of this break, which a copied deletion
+        // of it goes beside.
+        const pastedBreak =
+          mode.type === "suggesting" &&
+          paragraph.pPrMark !== undefined &&
+          index < paragraphs.length - 1 &&
+          current.pPrMark?.kind === "ins" &&
+          current.pPrMark.deletion === undefined
+            ? current.pPrMark
+            : undefined;
         if (
-          (paragraph.pPrMark !== undefined && current.pPrMark !== undefined) ||
+          (paragraph.pPrMark !== undefined &&
+            current.pPrMark !== undefined &&
+            pastedBreak === undefined) ||
           (copiedMarkChange !== undefined &&
             current.markPropertyChange !== undefined &&
             !structurallyEqual(current.markPropertyChange, copiedMarkChange))
@@ -4420,7 +4468,9 @@ const compileInStory = (
           if (changes.length > 0) review.propertyChanges = changes;
           if (copiedMarkChange !== undefined)
             review.markPropertyChange = copiedMarkChange;
-          if (paragraph.pPrMark !== undefined)
+          if (pastedBreak !== undefined && paragraph.pPrMark !== undefined)
+            review.pPrMark = besidePastedBreak(pastedBreak, paragraph.pPrMark);
+          else if (paragraph.pPrMark !== undefined)
             review.pPrMark = paragraph.pPrMark;
           ops.push({
             type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,

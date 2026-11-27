@@ -281,7 +281,7 @@ describe("paragraph insertions sharing an anchor", () => {
   );
 
   test(
-    "sequential insertions after a pending mark refuse without changing any formatting history",
+    "sequential insertions after a pending mark resolve as the insertion into the resolved document, or refuse without changing any formatting history",
     () => {
       assertProperty(
         fc.property(formattingHistory, (history) => {
@@ -318,23 +318,50 @@ describe("paragraph insertions sharing an anchor", () => {
           ]);
           if (changed.isErr()) throw changed.error;
           const before = structuredClone(changed.value.document);
+          const insertion = {
+            ...directOp,
+            blocks: [
+              {
+                ...paragraph("00001001", "Direct"),
+                formatting: history.directFormatting,
+              },
+            ],
+          } satisfies DocumentOp;
           const inserted = applyDocumentOps(changed.value.document, [
-            {
-              ...directOp,
-              blocks: [
-                {
-                  ...paragraph("00001001", "Direct"),
-                  formatting: history.directFormatting,
-                },
-              ],
-            },
+            insertion,
           ]);
-          expect(inserted.isErr()).toBe(true);
-          if (inserted.isErr())
+          expect(changed.value.document).toStrictEqual(before);
+          if (inserted.isErr()) {
             expect(inserted.error.reason).toBe(
               DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
             );
-          expect(changed.value.document).toStrictEqual(before);
+            return;
+          }
+          // Moved to the direct paragraph, the pending break resolves as the
+          // insertion made into the resolved document.
+          for (const decision of [
+            REVISION_DECISIONS.ACCEPT,
+            REVISION_DECISIONS.REJECT,
+          ]) {
+            const resolution = {
+              type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+              story: OP_STORIES.MAIN,
+              revisionIds: marked.value.revisions,
+              decision,
+            } satisfies DocumentOp;
+            const resolved = applyDocumentOps(inserted.value.document, [
+              resolution,
+            ]);
+            const expected = applyDocumentOps(changed.value.document, [
+              resolution,
+              insertion,
+            ]);
+            if (resolved.isErr()) throw resolved.error;
+            if (expected.isErr()) throw expected.error;
+            expect(resolved.value.document).toStrictEqual(
+              expected.value.document,
+            );
+          }
         }),
         {
           id: "pending paragraph mark insertion preserves formatting history",
@@ -347,6 +374,15 @@ describe("paragraph insertions sharing an anchor", () => {
                 directFormatting: { keepNext: true },
                 insertedFormatting: {},
                 count: 1,
+              },
+            ],
+            [
+              {
+                anchorFormatting: { keepNext: false },
+                currentFormatting: {},
+                directFormatting: { keepNext: false },
+                insertedFormatting: { keepNext: false },
+                count: 2,
               },
             ],
           ],
