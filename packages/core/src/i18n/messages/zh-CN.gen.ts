@@ -287,6 +287,7 @@ export const messages: FolioMessages = localeMessages([
   "文档大纲",
   "修订",
   "编辑内容将记录为修订",
+  "此更改无法记录为修订。请在编辑模式下进行。",
   "查看",
   "阅读或打印最终文档",
   "关闭搜索",

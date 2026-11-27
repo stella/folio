@@ -287,6 +287,7 @@ export const messages: FolioMessages = localeMessages([
   "Prehľad dokumentu",
   "Sledovanie zmien",
   "Úpravy sa zaznamenajú ako sledované zmeny",
+  "Túto zmenu nemožno sledovať. Vykonajte ju v režime Úpravy.",
   "Zobrazenie",
   "Čítajte alebo vytlačte výsledný dokument",
   "Zavrieť hľadanie",

@@ -459,6 +459,7 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
     readonly PENDING_PARAGRAPH_JOIN: "pendingParagraphJoin";
     readonly PENDING_GRID_CHANGE: "pendingGridChange";
     readonly UNRECORDABLE_LINK_SUGGESTION: "unrecordableLinkSuggestion";
+    readonly NO_REVISION_RECORD: "noRevisionRecord";
     readonly MISSING_BLOCK_ID: "missingBlockId";
     readonly DUPLICATE_BLOCK_ID: "duplicateBlockId";
     readonly DUPLICATE_RECORD_ID: "duplicateRecordId";

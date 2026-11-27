@@ -356,6 +356,7 @@ export const CATALOG_SHAPE: CatalogShape = {
       "showDocumentOutline": 0,
       "suggesting": 0,
       "suggestingDescription": 0,
+      "suggestionUnavailable": 0,
       "viewing": 0,
       "viewingDescription": 0
     },

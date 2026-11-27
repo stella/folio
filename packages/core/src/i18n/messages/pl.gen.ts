@@ -287,6 +287,7 @@ export const messages: FolioMessages = localeMessages([
   "Konspekt dokumentu",
   "Śledzenie zmian",
   "Edycje są zapisywane jako śledzone zmiany",
+  "Tej zmiany nie można śledzić. Wprowadź ją w trybie Edytowanie.",
   "Wyświetlanie",
   "Czytaj lub drukuj dokument końcowy",
   "Zamknij wyszukiwanie",

@@ -351,6 +351,7 @@
       "showDocumentOutline": "दस्तावेज़ रूपरेखा",
       "suggesting": "परिवर्तन ट्रैक करें",
       "suggestingDescription": "संपादन ट्रैक किए गए परिवर्तनों के रूप में दर्ज होते हैं",
+      "suggestionUnavailable": "इस परिवर्तन को ट्रैक नहीं किया जा सकता। इसे संपादन मोड में करें।",
       "viewing": "अवलोकन",
       "viewingDescription": "अंतिम दस्तावेज़ पढ़ें या प्रिंट करें"
     },

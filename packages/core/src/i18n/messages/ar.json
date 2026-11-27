@@ -351,6 +351,7 @@
       "showDocumentOutline": "مخطط المستند",
       "suggesting": "تعقب التغييرات",
       "suggestingDescription": "تُسجَّل التعديلات كتغييرات متعقبة",
+      "suggestionUnavailable": "لا يمكن تعقب هذا التغيير. أجرِه في وضع التحرير.",
       "viewing": "عرض",
       "viewingDescription": "قراءة المستند النهائي أو طباعته"
     },

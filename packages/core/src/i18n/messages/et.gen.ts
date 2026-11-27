@@ -287,6 +287,7 @@ export const messages: FolioMessages = localeMessages([
   "Dokumendi liigendus",
   "Muutuste jälitus",
   "Muudatused salvestatakse jälitatud muudatustena",
+  "Seda muudatust ei saa jälitada. Tehke see redigeerimisrežiimis.",
   "Vaatamine",
   "Lugege või printige lõplik dokument",
   "Sulge otsing",

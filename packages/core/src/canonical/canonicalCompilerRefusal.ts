@@ -39,8 +39,9 @@ const R = DOCUMENT_OP_REFUSAL_REASONS;
  * change that would change nothing. A document that moved on is a stale
  * range, and an offset inside a character splits it. Every other reason
  * reports its ground besides: `untrackable` the shapes the tracked-change
- * records do not express yet, `unrecordableLinkSuggestion` the rule the
- * review records state, and the rest a request the document does not allow.
+ * records do not express yet, `unrecordableLinkSuggestion` and
+ * `noRevisionRecord` the rules the review records state, and the rest a
+ * request the document does not allow.
  */
 const COMPILER_REFUSAL_DISPOSITIONS = {
   [R.PENDING_RUN_PROPERTY_CHANGE]: typed("pendingRunPropertyChange"),
@@ -83,6 +84,7 @@ const COMPILER_REFUSAL_DISPOSITIONS = {
   [R.UNTRACKABLE]: UNSUPPORTED,
   [R.TABLE_SNAPSHOT_PRESENCE]: UNSUPPORTED,
   [R.UNRECORDABLE_LINK_SUGGESTION]: UNSUPPORTED,
+  [R.NO_REVISION_RECORD]: UNSUPPORTED,
   [R.MISSING_BLOCK_ID]: UNSUPPORTED,
   [R.DUPLICATE_BLOCK_ID]: UNSUPPORTED,
   [R.DUPLICATE_RECORD_ID]: UNSUPPORTED,

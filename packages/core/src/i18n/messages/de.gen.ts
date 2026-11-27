@@ -287,6 +287,7 @@ export const messages: FolioMessages = localeMessages([
   "Dokumentgliederung",
   "Änderungen nachverfolgen",
   "Bearbeitungen werden als nachverfolgte Änderungen aufgezeichnet",
+  "Diese Änderung kann nicht nachverfolgt werden. Nehmen Sie sie im Modus Bearbeiten vor.",
   "Anzeigen",
   "Endgültiges Dokument lesen oder drucken",
   "Suche schließen",

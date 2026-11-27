@@ -351,6 +351,7 @@
       "showDocumentOutline": "Konspekt dokumentu",
       "suggesting": "Śledzenie zmian",
       "suggestingDescription": "Edycje są zapisywane jako śledzone zmiany",
+      "suggestionUnavailable": "Tej zmiany nie można śledzić. Wprowadź ją w trybie Edytowanie.",
       "viewing": "Wyświetlanie",
       "viewingDescription": "Czytaj lub drukuj dokument końcowy"
     },

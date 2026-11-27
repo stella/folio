@@ -351,6 +351,7 @@
       "showDocumentOutline": "Estrutura de tópicos do documento",
       "suggesting": "Controle de Alterações",
       "suggestingDescription": "As edições são registradas como alterações controladas",
+      "suggestionUnavailable": "Esta alteração não pode ser controlada. Faça-a no modo Editando.",
       "viewing": "Visualizando",
       "viewingDescription": "Leia ou imprima o documento final"
     },

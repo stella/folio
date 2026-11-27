@@ -359,6 +359,7 @@ export const CATALOGS = {
         "showDocumentOutline": "Document outline",
         "suggesting": "Track Changes",
         "suggestingDescription": "Edits are recorded as tracked changes",
+        "suggestionUnavailable": "This change can't be tracked. Make it in Editing.",
         "viewing": "Viewing",
         "viewingDescription": "Read or print the final document"
       },
@@ -1026,6 +1027,7 @@ export const CATALOGS = {
         "showDocumentOutline": "Dokumentgliederung",
         "suggesting": "Änderungen nachverfolgen",
         "suggestingDescription": "Bearbeitungen werden als nachverfolgte Änderungen aufgezeichnet",
+        "suggestionUnavailable": "Diese Änderung kann nicht nachverfolgt werden. Nehmen Sie sie im Modus Bearbeiten vor.",
         "viewing": "Anzeigen",
         "viewingDescription": "Endgültiges Dokument lesen oder drucken"
       },
@@ -1693,6 +1695,7 @@ export const CATALOGS = {
         "showDocumentOutline": "Plan du document",
         "suggesting": "Suivi des modifications",
         "suggestingDescription": "Les modifications sont enregistrées comme modifications suivies",
+        "suggestionUnavailable": "Cette modification ne peut pas être suivie. Faites-la en mode Modification.",
         "viewing": "Affichage",
         "viewingDescription": "Lire ou imprimer le document final"
       },
@@ -2360,6 +2363,7 @@ export const CATALOGS = {
         "showDocumentOutline": "Esquema del documento",
         "suggesting": "Control de cambios",
         "suggestingDescription": "Las ediciones se registran como cambios controlados",
+        "suggestionUnavailable": "Este cambio no se puede controlar. Hazlo en modo Edición.",
         "viewing": "Visualización",
         "viewingDescription": "Leer o imprimir el documento final"
       },
@@ -3027,6 +3031,7 @@ export const CATALOGS = {
         "showDocumentOutline": "Osnova dokumentu",
         "suggesting": "Sledování změn",
         "suggestingDescription": "Úpravy se zaznamenají jako sledované změny",
+        "suggestionUnavailable": "Tuto změnu nelze sledovat. Proveďte ji v režimu Úpravy.",
         "viewing": "Prohlížení",
         "viewingDescription": "Číst nebo tisknout konečný dokument"
       },
@@ -3694,6 +3699,7 @@ export const CATALOGS = {
         "showDocumentOutline": "مخطط المستند",
         "suggesting": "تعقب التغييرات",
         "suggestingDescription": "تُسجَّل التعديلات كتغييرات متعقبة",
+        "suggestionUnavailable": "لا يمكن تعقب هذا التغيير. أجرِه في وضع التحرير.",
         "viewing": "عرض",
         "viewingDescription": "قراءة المستند النهائي أو طباعته"
       },
@@ -4361,6 +4367,7 @@ export const CATALOGS = {
         "showDocumentOutline": "Dokumendi liigendus",
         "suggesting": "Muutuste jälitus",
         "suggestingDescription": "Muudatused salvestatakse jälitatud muudatustena",
+        "suggestionUnavailable": "Seda muudatust ei saa jälitada. Tehke see redigeerimisrežiimis.",
         "viewing": "Vaatamine",
         "viewingDescription": "Lugege või printige lõplik dokument"
       },
@@ -5028,6 +5035,7 @@ export const CATALOGS = {
         "showDocumentOutline": "חלונית הניווט במסמך",
         "suggesting": "מעקב אחר שינויים",
         "suggestingDescription": "עריכות נרשמות כשינויים במעקב",
+        "suggestionUnavailable": "לא ניתן לעקוב אחר שינוי זה. בצעו אותו במצב עריכה.",
         "viewing": "תצוגה",
         "viewingDescription": "קרא או הדפס את המסמך הסופי"
       },
@@ -5695,6 +5703,7 @@ export const CATALOGS = {
         "showDocumentOutline": "दस्तावेज़ रूपरेखा",
         "suggesting": "परिवर्तन ट्रैक करें",
         "suggestingDescription": "संपादन ट्रैक किए गए परिवर्तनों के रूप में दर्ज होते हैं",
+        "suggestionUnavailable": "इस परिवर्तन को ट्रैक नहीं किया जा सकता। इसे संपादन मोड में करें।",
         "viewing": "अवलोकन",
         "viewingDescription": "अंतिम दस्तावेज़ पढ़ें या प्रिंट करें"
       },
@@ -6362,6 +6371,7 @@ export const CATALOGS = {
         "showDocumentOutline": "Dokumentum vázlata",
         "suggesting": "Változások követése",
         "suggestingDescription": "A szerkesztések követett változásként rögzülnek",
+        "suggestionUnavailable": "Ez a módosítás nem követhető. Végezze el Szerkesztés módban.",
         "viewing": "Megtekintés",
         "viewingDescription": "A végleges dokumentum olvasása vagy nyomtatása"
       },
@@ -7029,6 +7039,7 @@ export const CATALOGS = {
         "showDocumentOutline": "Dokumento struktūra",
         "suggesting": "Keitimų sekimas",
         "suggestingDescription": "Taisymai įrašomi kaip sekami keitimai",
+        "suggestionUnavailable": "Šio pakeitimo negalima sekti. Atlikite jį redagavimo režimu.",
         "viewing": "Peržiūra",
         "viewingDescription": "Skaitykite arba spausdinkite galutinį dokumentą"
       },
@@ -7696,6 +7707,7 @@ export const CATALOGS = {
         "showDocumentOutline": "Dokumenta struktūra",
         "suggesting": "Izmaiņu reģistrēšana",
         "suggestingDescription": "Labojumi tiek reģistrēti kā izsekotas izmaiņas",
+        "suggestionUnavailable": "Šīs izmaiņas nevar reģistrēt. Veiciet tās rediģēšanas režīmā.",
         "viewing": "Skatīšana",
         "viewingDescription": "Lasiet vai drukājiet gatavo dokumentu"
       },
@@ -8363,6 +8375,7 @@ export const CATALOGS = {
         "showDocumentOutline": "Konspekt dokumentu",
         "suggesting": "Śledzenie zmian",
         "suggestingDescription": "Edycje są zapisywane jako śledzone zmiany",
+        "suggestionUnavailable": "Tej zmiany nie można śledzić. Wprowadź ją w trybie Edytowanie.",
         "viewing": "Wyświetlanie",
         "viewingDescription": "Czytaj lub drukuj dokument końcowy"
       },
@@ -9030,6 +9043,7 @@ export const CATALOGS = {
         "showDocumentOutline": "Estrutura de tópicos do documento",
         "suggesting": "Controle de Alterações",
         "suggestingDescription": "As edições são registradas como alterações controladas",
+        "suggestionUnavailable": "Esta alteração não pode ser controlada. Faça-a no modo Editando.",
         "viewing": "Visualizando",
         "viewingDescription": "Leia ou imprima o documento final"
       },
@@ -9697,6 +9711,7 @@ export const CATALOGS = {
         "showDocumentOutline": "Prehľad dokumentu",
         "suggesting": "Sledovanie zmien",
         "suggestingDescription": "Úpravy sa zaznamenajú ako sledované zmeny",
+        "suggestionUnavailable": "Túto zmenu nemožno sledovať. Vykonajte ju v režime Úpravy.",
         "viewing": "Zobrazenie",
         "viewingDescription": "Čítajte alebo vytlačte výsledný dokument"
       },
@@ -10364,6 +10379,7 @@ export const CATALOGS = {
         "showDocumentOutline": "Belge ana hattı",
         "suggesting": "Değişiklik izleme",
         "suggestingDescription": "Düzenlemeler izlenen değişiklikler olarak kaydedilir",
+        "suggestionUnavailable": "Bu değişiklik izlenemez. Değişikliği Düzenleme modunda yapın.",
         "viewing": "Görüntüleme",
         "viewingDescription": "Son belgeyi okuyun veya yazdırın"
       },
@@ -11031,6 +11047,7 @@ export const CATALOGS = {
         "showDocumentOutline": "文档大纲",
         "suggesting": "修订",
         "suggestingDescription": "编辑内容将记录为修订",
+        "suggestionUnavailable": "此更改无法记录为修订。请在编辑模式下进行。",
         "viewing": "查看",
         "viewingDescription": "阅读或打印最终文档"
       },

@@ -354,6 +354,7 @@ type Messages = {
       "showDocumentOutline": "Document outline";
       "suggesting": "Track Changes";
       "suggestingDescription": "Edits are recorded as tracked changes";
+      "suggestionUnavailable": "This change can't be tracked. Make it in Editing.";
       "viewing": "Viewing";
       "viewingDescription": "Read or print the final document";
     };

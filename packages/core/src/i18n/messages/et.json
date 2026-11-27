@@ -351,6 +351,7 @@
       "showDocumentOutline": "Dokumendi liigendus",
       "suggesting": "Muutuste jälitus",
       "suggestingDescription": "Muudatused salvestatakse jälitatud muudatustena",
+      "suggestionUnavailable": "Seda muudatust ei saa jälitada. Tehke see redigeerimisrežiimis.",
       "viewing": "Vaatamine",
       "viewingDescription": "Lugege või printige lõplik dokument"
     },

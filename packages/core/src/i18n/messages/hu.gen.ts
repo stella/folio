@@ -287,6 +287,7 @@ export const messages: FolioMessages = localeMessages([
   "Dokumentum vázlata",
   "Változások követése",
   "A szerkesztések követett változásként rögzülnek",
+  "Ez a módosítás nem követhető. Végezze el Szerkesztés módban.",
   "Megtekintés",
   "A végleges dokumentum olvasása vagy nyomtatása",
   "Keresés bezárása",
