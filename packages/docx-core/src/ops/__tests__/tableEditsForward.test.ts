@@ -1205,7 +1205,7 @@ describe("independent table forward oracles", () => {
       left: 0,
       right: width,
       newBlockIds: [],
-      revision: { id: start, author: "Reviewer" },
+      revision: { id: start, author: "Reviewer", date: "2026-11-27T00:00:00Z" },
       newIds: {
         revision: Array.from(
           { length: width + 1 },
