@@ -2210,29 +2210,45 @@ type LandingBesideOptions = {
   operation: BlockInsertion | TableInsertion;
   projection: CanonicalProjection;
   noteReferences: NoteReferenceLabels;
-  /** Whether a cell's paragraph is read by its table; else it is not read. */
-  besideTables: boolean;
+  /**
+   * The paragraphs the batch deletes. Only a batch that deletes one reads a
+   * cell's paragraph by its table, or a table put before a deleted one by
+   * the paragraph before that.
+   */
+  deleted: ReadonlySet<string>;
 };
 
 const landingBeside = ({
   operation,
   projection,
   noteReferences,
-  besideTables,
+  deleted,
 }: LandingBesideOptions): Landing | undefined => {
   const paragraph = projection.paragraph(operation.blockId);
   if (paragraph === undefined) return undefined;
   const side = placementSide(operation);
+  const idOf = (node: PMNode | null): unknown =>
+    node?.type.name === "paragraph" ? node.attrs["paraId"] : undefined;
+  // Put before a paragraph the batch deletes, a table lands after the one
+  // before it, which that gap is once the deletion goes: it no longer needs
+  // the deleted paragraph standing when it runs.
+  const previous = idOf(projection.doc.resolve(paragraph.start - 1).nodeBefore);
+  if (
+    placesTable(operation) &&
+    side === "before" &&
+    deleted.has(operation.blockId) &&
+    typeof previous === "string" &&
+    !deleted.has(previous)
+  )
+    return { blockId: previous, side: "after" };
   const table = findOutermostTableBoundary(projection.doc, paragraph.start - 1);
   if (table !== null) {
-    if (!besideTables) return undefined;
+    if (deleted.size === 0) return undefined;
     // Before the table, before the blocks right before it that accepting
     // removes whole (`insertionGap`), as a block put there lands.
     const $gap = projection.doc.resolve(
       insertionGap(projection.doc, table[side], side),
     );
-    const idOf = (node: PMNode | null): unknown =>
-      node?.type.name === "paragraph" ? node.attrs["paraId"] : undefined;
     const before = idOf($gap.nodeBefore),
       after = idOf($gap.nodeAfter);
     if (side === "before" && typeof before === "string")
@@ -5799,7 +5815,7 @@ export class CanonicalPublicOperations {
               projection: projected.value,
               noteReferences: (batchNoteReferences ??=
                 collectNoteReferenceLabels(state.doc)),
-              besideTables: deletedIds.size > 0,
+              deleted: deletedIds,
             });
             return landing === undefined
               ? []
@@ -5815,6 +5831,15 @@ export class CanonicalPublicOperations {
     // deletion reads it.
     const addressed = (operation: FolioDocumentOperation) => {
       const landing = landed.get(operation.id);
+      // A table put before a paragraph the batch deletes goes after the one
+      // before it (`landingBeside`).
+      if (
+        landing !== undefined &&
+        placesTable(landing) &&
+        deletedIds.has(operation.blockId) &&
+        landing.blockId !== operation.blockId
+      )
+        return landing;
       if (
         !isBlockInsertion(operation) ||
         landing === undefined ||
@@ -7227,6 +7252,16 @@ export class CanonicalPublicOperations {
             ...replayOptions,
             nextRevisionId: Math.max(nextRevisionId, admissionRevisionId),
           });
+        // A deletion the blocks landed before it leave nothing to do is
+        // skipped, as it is one at a time.
+        if (
+          prepared.type === "declined" &&
+          prepared.reason === "noopOperation" &&
+          replayOperation.operation.type === "deleteBlock"
+        ) {
+          commitOperation(replayOperation, prepared);
+          continue;
+        }
         if (prepared.type === "declined")
           panic(`Admitted insertion failed when ordered: ${prepared.message}`);
         commitOperation(replayOperation, prepared);

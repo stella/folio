@@ -333,17 +333,7 @@ const caseArbitrary: fc.Arbitrary<Case> = fc
     setup,
     target,
     deletes,
-    // A table a direct batch puts by a paragraph beside the one it deletes
-    // can still leave it no paragraph to go by when it runs (the examples
-    // hold the ones that do not). One a table's cell names lands beside that
-    // table, where the batch reads it.
-    insertions: insertions.map((insertion) =>
-      deletes !== undefined &&
-      insertion.kind === "table" &&
-      !(table && insertion.anchor % (paragraphs + 1) === paragraphs)
-        ? { ...insertion, kind: "paragraph" as const }
-        : insertion,
-    ),
+    insertions,
   }));
 
 const paragraph = (side: Insertion["side"], anchor: number): Insertion => ({
@@ -365,6 +355,16 @@ const plain = {
 } as const;
 
 const examples: [Case][] = [
+  // Direct: a table put before the paragraph the batch deletes goes after
+  // the one before it, so the deletion runs with a paragraph before it.
+  [
+    {
+      ...plain,
+      tableAfter: 1,
+      insertions: [table("before", 1), paragraph("after", 0)],
+      deletes: 1,
+    },
+  ],
   // An emptied paragraph whose join leaves the next one, and a table after
   // that one: a table and paragraphs after either keep the batch's order.
   [
@@ -578,6 +578,38 @@ test(
     );
   },
   propertyTestTimeout(120_000),
+);
+
+// Seed 5150: the last paragraph emptied, its join pending, deleted as a
+// paragraph goes before it and a table after the one before it. The blocks
+// landed before it leave the deletion nothing to do, as one at a time.
+test.each(["tracked-changes", "direct"] as const)(
+  "a deletion the batch's blocks leave nothing to do is skipped (%s)",
+  async (mode) => {
+    const setup: Case = {
+      ...plain,
+      setup: "emptiedJoin",
+      target: 2,
+      insertions: [paragraph("before", 2), table("after", 1)],
+      deletes: 2,
+    };
+    const reviewer = await prepared(setup);
+    const anchors = anchorsOf(reviewer);
+    const result = reviewer.applyOperations(
+      [
+        ...setup.insertions.map((insertion, at) =>
+          operationOf(insertion, at, anchors),
+        ),
+        { id: "delete", type: "deleteBlock", blockId: anchors[2] ?? "" },
+      ],
+      { undefinedReferences: "refuse", mode },
+    );
+    expect(result.skipped.map(({ id, reason }) => ({ id, reason }))).toEqual([
+      { id: "delete", reason: "noopOperation" },
+    ]);
+    reviewer.acceptAll();
+    expect(labelsOf(reviewer)).toEqual(["P0", "P1", "I0", "I1"]);
+  },
 );
 
 // The reported case: the words of the paragraph before the last one were
