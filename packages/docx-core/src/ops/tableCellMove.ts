@@ -1,4 +1,5 @@
 import {
+  type BlockContent,
   type DocxPackage,
   MAX_REVISION_ID,
   type Paragraph,
@@ -317,11 +318,28 @@ export const tableMoveOwnershipMatches = (
   table: Table,
   geometry: MergeGeometry,
 ): boolean => {
-  if (geometry.moves === undefined && geometry.emptyOwner === undefined)
+  if (
+    geometry.moves === undefined &&
+    geometry.nestedMoves === undefined &&
+    geometry.emptyOwner === undefined
+  )
     return true;
   const members = new Set(geometry.revisionIds);
   const sources = new Map<string, Paragraph>();
   const destinations = new Map<string, Paragraph>();
+  const movedRows = new Map<number, Table>();
+  const collectMovedRows = (blocks: readonly BlockContent[]): void => {
+    for (const block of blocks) {
+      if (block.type === "table") {
+        for (const { structuralChange } of block.rows) {
+          if (structuralChange?.type === "tableRowInsertion")
+            movedRows.set(structuralChange.info.id, block);
+        }
+      } else if (block.type === "blockCustomXml" || block.type === "blockSdt") {
+        collectMovedRows(block.content);
+      }
+    }
+  };
   let hasOwner = false;
   let emptyOwner: string | undefined;
   for (const row of table.rows) {
@@ -341,6 +359,8 @@ export const tableMoveOwnershipMatches = (
       }
       const first = cell.content.at(0);
       if (owned && first?.type === "paragraph") emptyOwner = first.paraId;
+      if (owned && geometry.nestedMoves !== undefined)
+        collectMovedRows(cell.content);
       const paragraphs = owned ? destinations : sources;
       for (const paragraph of cell.content) {
         if (paragraph.type === "paragraph" && paragraph.paraId !== undefined)
@@ -355,6 +375,19 @@ export const tableMoveOwnershipMatches = (
       (geometry.moves?.length ?? 0) + (geometry.nestedMoves?.length ?? 0) === 0)
   )
     return false;
+  const nestedTables = new Set<Table>();
+  for (const move of geometry.nestedMoves ?? []) {
+    const first = move.rows.at(0);
+    const destination = first === undefined ? undefined : movedRows.get(first);
+    if (
+      destination === undefined ||
+      nestedTables.has(destination) ||
+      new Set(move.rows).size !== move.rows.length ||
+      move.rows.some((id) => movedRows.get(id) !== destination)
+    )
+      return false;
+    nestedTables.add(destination);
+  }
   const seen = new Set<string>();
   for (const move of geometry.moves ?? []) {
     const sourceId = idKey(move.source);
@@ -434,7 +467,7 @@ export const resolveTableMoves = (table: Table, reject: boolean): Table => {
     Object.assign({}, row, {
       cells: row.cells.map((cell) =>
         Object.assign({}, cell, {
-          content: cell.content.flatMap((block) => {
+          content: cell.content.flatMap((block): BlockContent[] => {
             if (block.type === "table") {
               const move = block.rows
                 .map((nestedRow) => nestedRow.structuralChange)

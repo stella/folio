@@ -181,6 +181,52 @@ test.each(["horizontal", "rectangular", "retained"] as const)(
         projection(tableOf(resolve(withTable(parsed)).document)),
       ).toStrictEqual(projection(tableOf(expected)));
     }
+
+    const corrupt = structuredClone(parsed);
+    const grid = corrupt.formatting?.gridChange;
+    const history = grid?.geometryChange;
+    const nestedMove =
+      history?.type === "mergeCells" ? history.nestedMoves?.at(0) : undefined;
+    if (
+      grid === undefined ||
+      history?.type !== "mergeCells" ||
+      nestedMove === undefined
+    )
+      throw new Error("Expected a saved nested move.");
+    const foreignId = 60_000;
+    grid.geometryChange = {
+      ...history,
+      nestedMoves: [{ ...nestedMove, rows: [foreignId, ...nestedMove.rows] }],
+    };
+    const foreign: Table = {
+      type: "table",
+      rows: [{ type: "tableRow", cells: [cell(paragraph("000000BB"))] }],
+      formatting: { gridChange: { id: foreignId, columnWidths: [500] } },
+      columnWidths: [600],
+    };
+    const contaminated = withTable(corrupt);
+    contaminated.package.document.content.splice(1, 0, foreign);
+    const review = {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      decision: REVISION_DECISIONS.ACCEPT,
+    } as const;
+    const isolated = applyDocumentOp(contaminated, {
+      ...review,
+      revisionIds: [foreignId],
+    }).unwrap().document;
+    expect(tableOf(isolated)).toStrictEqual(corrupt);
+    const reviewedForeign = isolated.package.document.content.at(1);
+    if (reviewedForeign?.type !== "table")
+      throw new Error("Expected a peer table.");
+    expect(reviewedForeign.formatting?.gridChange).toBeUndefined();
+    const stale = applyDocumentOp(contaminated, {
+      ...review,
+      revisionIds: [grid.id],
+    });
+    expect(stale.isErr() && stale.error.reason).toBe(
+      DOCUMENT_OP_REFUSAL_REASONS.STALE,
+    );
   },
 );
 

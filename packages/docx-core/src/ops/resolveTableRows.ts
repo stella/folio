@@ -129,7 +129,7 @@ export const withBelongingTableGeometry = (
           opType: op.type,
           reason: DOCUMENT_OP_REFUSAL_REASONS.STALE,
           message:
-            "The tracked table merge no longer matches its paragraph move records.",
+            "The tracked table merge no longer matches its native move records.",
         }),
       );
     }
