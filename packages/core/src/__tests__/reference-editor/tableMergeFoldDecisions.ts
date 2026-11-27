@@ -18,8 +18,8 @@ import {
   isTableCellMergeRevisionContinuation,
 } from "../../docx/tableParser";
 import { tableCellHasMeaningfulContent } from "../../docx/verticalMergeProjection";
-import { expectTableCellAttrs } from "../attrs";
-import { standaloneTableCellFromProseMirror } from "../conversion/fromProseDoc";
+import { expectTableCellAttrs } from "../../prosemirror/attrs";
+import { standaloneTableCellFromProseMirror } from "../../prosemirror/conversion/fromProseDoc";
 
 type TableMergeFoldDecisionsOptions = {
   table: PMNode;

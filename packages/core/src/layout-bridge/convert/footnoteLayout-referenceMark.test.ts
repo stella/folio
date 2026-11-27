@@ -181,5 +181,22 @@ for (const kind of ["footnote", "endnote"] as const) {
         markupView === "original" ? "1 basedeleted" : "1 baseinserted",
       );
     });
+
+    test(`${kind} resolves ${markupView} revisions around the automatic note mark`, () => {
+      const xml = `<w:${kind}s xmlns:w="${W_NS}"><w:${kind} w:id="4"><w:p><w:ins w:id="1" w:author="Reviewer"><w:r><w:t>inserted</w:t></w:r></w:ins><w:r><w:${kind}Ref/></w:r><w:del w:id="2" w:author="Reviewer"><w:r><w:delText>deleted</w:delText></w:r></w:del></w:p></w:${kind}></w:${kind}s>`;
+      const note = (
+        kind === "footnote" ? parseFootnotes(xml) : parseEndnotes(xml)
+      ).byId.get(4);
+      if (!note) panic("Expected parsed note");
+      const { flowBlocks, hasReferenceMark } = convertNoteStoryToFlowBlocks(
+        note.content,
+        { markupView },
+        "iv",
+      );
+      expect(hasReferenceMark).toBe(true);
+      expect(visibleText(firstParagraphRuns(flowBlocks))).toBe(
+        markupView === "original" ? "ivdeleted" : "insertediv",
+      );
+    });
   }
 }

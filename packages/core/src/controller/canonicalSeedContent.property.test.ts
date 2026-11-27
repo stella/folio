@@ -360,12 +360,12 @@ describe("canonical seed check", () => {
         }),
         (body, note, edits) => {
           let document = documentOf(body, note);
-          expect(unsupportedSeedReason(document)).toBe(
+          expect(unsupportedSeedReason(document)).toEqual(
             unsupportedSeedReasonWholeDocument(document),
           );
           for (const [edit, inNote] of edits) {
             document = edited(document, edit, inNote);
-            expect(unsupportedSeedReason(document)).toBe(
+            expect(unsupportedSeedReason(document)).toEqual(
               unsupportedSeedReasonWholeDocument(document),
             );
           }
@@ -376,7 +376,7 @@ describe("canonical seed check", () => {
   });
 
   const judgedAsOneWalk = ({ previous, document, stories }: EditStep) =>
-    expect(unsupportedEditReason({ previous, document, stories })).toBe(
+    expect(unsupportedEditReason({ previous, document, stories })).toEqual(
       unsupportedSeedReasonWholeDocument(document, stories),
     );
 
@@ -417,8 +417,7 @@ describe("canonical seed check", () => {
             step.document,
             step.stories,
           );
-          if (verdict !== null && /comment/iu.test(verdict))
-            counts.commentIssues += 1;
+          if (verdict?.kind === "comments") counts.commentIssues += 1;
         }),
       );
     assertProperty(law({ judged: 0, commentIssues: 0 }), {
@@ -449,7 +448,7 @@ describe("canonical seed check", () => {
       const stories = changedStoriesOf(previous, document);
       const verdict = unsupportedSeedReasonWholeDocument(document, stories);
       expect(verdict).not.toBeNull();
-      expect(unsupportedEditReason({ previous, document, stories })).toBe(
+      expect(unsupportedEditReason({ previous, document, stories })).toEqual(
         verdict,
       );
     };
@@ -588,7 +587,7 @@ describe("canonical seed check", () => {
     const stories = changedStoriesOf(previous, document);
     const verdict = unsupportedSeedReasonWholeDocument(document, stories);
     expect(verdict).not.toBeNull();
-    expect(unsupportedEditReason({ previous, document, stories })).toBe(
+    expect(unsupportedEditReason({ previous, document, stories })).toEqual(
       verdict,
     );
   });

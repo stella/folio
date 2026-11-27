@@ -1215,6 +1215,142 @@ describe("template fields", () => {
   });
 });
 
+describe("a kept table of contents", () => {
+  const TOC_BEGIN =
+    '<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> TOC';
+  const FIELD_END = '<w:r><w:fldChar w:fldCharType="end"/></w:r>';
+  const EMPTIED = `<w:r><w:fldChar w:fldCharType="separate"/></w:r>${FIELD_END}</w:p>`;
+
+  /** The template with its document part rewritten. */
+  const reshaped = async (
+    change: (document: string) => string,
+  ): Promise<Uint8Array> => {
+    const document = await documentOf(template);
+    const changed = change(document);
+    expect(changed).not.toBe(document);
+    return await replacePart(template, "word/document.xml", changed);
+  };
+  const withContents = (blocks: PlannedBlock[]): TemplatePlanItem[] => [
+    {
+      kind: "template",
+      templateBlockIds: [TEMPLATE_IDS.tocFirst, TEMPLATE_IDS.tocLast],
+    },
+    ...blocks.map(({ id, hash }): TemplatePlanItem => ({
+      kind: "source",
+      blockId: id,
+      hash,
+    })),
+  ];
+  const applyOnto = async (
+    onto: Uint8Array,
+    extra: Partial<TemplatePlan> = {},
+  ) => {
+    const source = await buildMinimalDocx(
+      `${p(r("First clause."))}${p(r("Second clause."))}`,
+    );
+    const plan = await planFor({
+      source,
+      template: onto,
+      items: withContents,
+      extra,
+    });
+    const applied = unwrap(
+      await applyTemplatePlan({ source, template: onto, plan }),
+    );
+    return {
+      ...applied,
+      source,
+      plan,
+      document: await documentOf(applied.docx),
+    };
+  };
+
+  test("text and a whole field in front of the contents field stay; the contents field is the one emptied", async () => {
+    const page = fieldRuns("PAGE", r("1"));
+    const onto = await reshaped((document) =>
+      document.replace(TOC_BEGIN, `${r("Page ")}${page}${r(": ")}${TOC_BEGIN}`),
+    );
+    const { document, report } = await applyOnto(onto);
+
+    expect(report.ok).toBe(true);
+    expect(document).toContain(`${r("Page ")}${page}${r(": ")}${TOC_BEGIN}`);
+    expect(document).toContain(`\\z </w:instrText></w:r>${EMPTIED}`);
+    expect(document).not.toContain("Sample article");
+    expect(document).not.toContain("Second sample");
+  });
+
+  test("text behind the field's own end keeps the contents as the template has them, whatever field follows it", async () => {
+    const onto = await reshaped((document) => {
+      const close = document.indexOf(
+        `${FIELD_END}</w:p>`,
+        document.indexOf("Second sample"),
+      );
+      return `${document.slice(0, close + FIELD_END.length)}${r(" Printed on page ")}${fieldRuns("PAGE", r("3"))}${document.slice(close + FIELD_END.length)}`;
+    });
+    const { document } = await applyOnto(onto);
+
+    expect(document).toContain("Sample article");
+    expect(document).toContain("Second sample");
+    expect(document).toContain(" Printed on page ");
+  });
+
+  test("a bookmark that starts in front of the field and ends among its entries goes with them", async () => {
+    // Both halves in the paragraph the field begins in: the end among the
+    // entries the paragraph loses, the start in front of the field.
+    const onto = await reshaped((document) => {
+      const close = document.indexOf(
+        "</w:p>",
+        document.indexOf("Sample article"),
+      );
+      return `${document.slice(0, close)}<w:bookmarkEnd w:id="77"/>${document.slice(close)}`.replace(
+        TOC_BEGIN,
+        `<w:bookmarkStart w:id="77" w:name="ContentsMark"/>${TOC_BEGIN}`,
+      );
+    });
+    const { document, report } = await applyOnto(onto);
+
+    expect(report.ok).toBe(true);
+    expect(document).toContain(EMPTIED);
+    expect(document).not.toContain("ContentsMark");
+    expect(document).not.toContain('<w:bookmarkEnd w:id="77"/>');
+  });
+
+  test("a plan that freezes the field keeps its entries as text and adds no end of a field", async () => {
+    const { document, report } = await applyOnto(template, {
+      fields: { freezeKinds: ["TOC"] },
+    });
+
+    expect(report.ok).toBe(true);
+    expect(document).not.toContain(" TOC ");
+    expect(document).toContain("Sample article");
+    expect(document).toContain("Second sample");
+    expect(document.split('w:fldCharType="begin"')).toHaveLength(
+      document.split('w:fldCharType="end"').length,
+    );
+  });
+
+  test("verification holds the emptied paragraph to the template's style", async () => {
+    const { docx, document, source, plan } = await applyOnto(template);
+    const emptied = document.indexOf(TOC_BEGIN);
+    const paragraph = document.lastIndexOf("<w:p>", emptied);
+    const restyled = `${document.slice(0, paragraph)}${document
+      .slice(paragraph, emptied)
+      .replace('w:val="TOC1"', 'w:val="HouseBody"')}${document.slice(emptied)}`;
+    expect(restyled).not.toBe(document);
+    const report = await verifyFor({
+      source,
+      template,
+      output: await replacePart(docx, "word/document.xml", restyled),
+      plan,
+    });
+
+    expect(report.ok).toBe(false);
+    expect(report.issues.map(({ code }) => code)).toContain(
+      "template-mismatch",
+    );
+  });
+});
+
 describe("labels written as text", () => {
   const level = (
     ilvl: number,

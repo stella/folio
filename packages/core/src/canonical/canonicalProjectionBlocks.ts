@@ -8,6 +8,7 @@
  * their records: their starts follow from the new block starts and their
  * index entries from the number of blocks the edit added or removed.
  */
+import type { Result } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
 
 import {
@@ -29,6 +30,9 @@ export type ParagraphAddress = {
   source: Paragraph;
 };
 
+/** A paragraph's text and the editor positions of each of its offsets. */
+export type ParagraphInline = Pick<ParagraphAddress, "text" | "gaps">;
+
 /** A paragraph as the top-level block holding it projects it. */
 export type BlockParagraph = {
   blockId: string;
@@ -36,7 +40,13 @@ export type BlockParagraph = {
   container: readonly BlockContent[] | undefined;
   /** From the start of the top-level node holding it. */
   offset: number;
-  inline: Pick<ParagraphAddress, "text" | "gaps">;
+  /**
+   * The paragraph's text and gaps, worked out on the first call: a
+   * projection that opens a story aligns each paragraph's source with its
+   * editor node only when the paragraph is first addressed. The message
+   * says why the two do not align.
+   */
+  inline: () => Result<ParagraphInline, string>;
   node: PMNode;
   source: Paragraph;
 };

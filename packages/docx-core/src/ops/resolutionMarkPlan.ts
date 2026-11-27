@@ -10,6 +10,8 @@ export type JoinPlan = {
   depth: number | undefined;
   /** Paragraphs standing only for their pending insertions. */
   holders: ReadonlySet<string>;
+  /** Paragraphs in the authored table whose receiver was pending when review began. */
+  pendingReceiverTableIds?: ReadonlySet<string>;
 };
 
 export type ResolutionReceiverEffect = {

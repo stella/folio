@@ -5,8 +5,8 @@ import {
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import { resolveWholeStory } from "../__tests__/reference-editor/wholeStoryRevisionResolution";
 import { schema } from "../prosemirror/schema";
-import { resolveWholeStory } from "./wholeStoryRevisionResolution";
 
 setDefaultTimeout(propertyTestTimeout(5_000));
 

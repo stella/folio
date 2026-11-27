@@ -13,7 +13,10 @@ const reference = "packages/core/src/__tests__/reference-editor/comments.ts";
 const EXPECTED_CALLS = new Map([
   ["packages/docx-core/src/ops/resolve.ts", 2],
   ["packages/docx-core/src/ops/blockDeletion.ts", 1],
-  ["packages/core/src/internal/wholeStoryRevisionResolution.ts", 1],
+  [
+    "packages/core/src/__tests__/reference-editor/wholeStoryRevisionResolution.ts",
+    1,
+  ],
   ["packages/core/src/prosemirror/tableRunIn.ts", 1],
   [reader, 0],
   [reference, 1],

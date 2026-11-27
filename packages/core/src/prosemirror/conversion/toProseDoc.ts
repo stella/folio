@@ -238,6 +238,7 @@ import {
   HYPHEN_TEXT_CARRIERS,
 } from "./hyphenTextCarriers";
 import { createMarkInterner } from "./markInterner";
+import { markupViewSources } from "./markupViewSource";
 import { hasSinkChildren } from "./preservedSinkCarriers";
 import { sdtAttrsFromProperties } from "./sdtAttrs";
 
@@ -663,6 +664,7 @@ const CONVERSION_CONTEXT_DEPENDENCY = {
   warnPageBreakProjection: "package",
   createMark: "package",
   nextTextBoxGroupId: "story",
+  placedTextBoxGroup: "story",
   nextHyperlinkInstanceIndex: "story",
   nextNoteReferenceOccurrenceId: "story",
   pairedBookmarkIds: "story",
@@ -939,7 +941,11 @@ export class ProjectionBlockCache {
     }
     const context =
       this.context ?? panic("A block cache converts after its package context");
-    const textBoxGroups = { start: state.textBoxGroups.value, taken: 0 };
+    const textBoxGroups = {
+      start: state.textBoxGroups.value,
+      taken: 0,
+      used: false,
+    };
     const hyperlinks = { start: state.hyperlinks.value, taken: 0 };
     const noteOccurrences = { start: state.noteOccurrences.value, taken: 0 };
     const pairedBookmarkIds = new RecordedMembership(state.pairedBookmarkIds);
@@ -951,6 +957,11 @@ export class ProjectionBlockCache {
       nextTextBoxGroupId: () => {
         textBoxGroups.taken += 1;
         return `${this.salt}:${state.textBoxGroups.value++}`;
+      },
+      // A placed group id reads where its group number falls; a block whose
+      // paragraphs placed none reads the same anywhere.
+      placedTextBoxGroup: () => {
+        textBoxGroups.used = true;
       },
       nextHyperlinkInstanceIndex: () => {
         hyperlinks.taken += 1;
@@ -974,16 +985,8 @@ export class ProjectionBlockCache {
       ...story,
     };
     const nodes = convert(blockContext);
-    // A minted text-box id carries the salt; a block holding none of them
-    // reads the same wherever its group number falls.
-    const saltMark = `"${this.salt}:`;
     const reads: StoryReads = {
-      textBoxGroups: {
-        ...textBoxGroups,
-        used: nodes.some((node) =>
-          JSON.stringify(node.toJSON()).includes(saltMark),
-        ),
-      },
+      textBoxGroups: { ...textBoxGroups },
       hyperlinks,
       noteOccurrences,
       pairedBookmarkIds: setReadsOf(pairedBookmarkIds),
@@ -1185,6 +1188,17 @@ export function toProseDoc(
       invalid,
       cache.validated,
     );
+  markupViewSources.set(pmDoc, {
+    document,
+    options: {
+      ...(packageInputs.styles === undefined
+        ? {}
+        : { styles: packageInputs.styles }),
+      theme: packageInputs.theme,
+      ...(cache === undefined ? {} : { blockCache: cache }),
+      textBoxGroupSalt: salt,
+    },
+  });
   return pmDoc;
 }
 
@@ -1516,7 +1530,7 @@ function convertParagraph(
   // paragraph's content is the only writer, and it sets this before entering
   // the switch, so every node the switch emits gets the item's own stack.
   let wrapperStack: readonly InlineWrapperLayer[] = [];
-  let paragraphContainsInlineSdt = false;
+  let paragraphKeepsBoundaryNodes = false;
   const emitInlineNodes = (
     nodes: PMNode[],
     commentsAlreadyApplied = false,
@@ -1603,7 +1617,7 @@ function convertParagraph(
         wrapperStack,
         openCommentIds,
         {
-          preserveSdtBoundaryOccurrences: paragraphContainsInlineSdt,
+          preserveSdtBoundaryOccurrences: paragraphKeepsBoundaryNodes,
         },
       ),
       true,
@@ -1618,7 +1632,7 @@ function convertParagraph(
     withFieldWrapperCaptures(withLinkedPiecesInWrappers(paragraph.content)),
   );
   visitInlineContentSlots(paragraph, ({ item }) => {
-    if (item.type === "inlineSdt") paragraphContainsInlineSdt = true;
+    if (keepsCommentBoundaryNodes(item)) paragraphKeepsBoundaryNodes = true;
   });
   const emptyRanges = planEmptyRanges(
     stacked.map((item) => item.content),
@@ -1639,7 +1653,7 @@ function convertParagraph(
     switch (content.type) {
       case "commentRangeStart":
         openCommentIds.add(content.id);
-        if (paragraphContainsInlineSdt) {
+        if (paragraphKeepsBoundaryNodes) {
           emitInlineNodes(
             [
               schema.node(COMMENT_RANGE_BOUNDARY_NODE_NAME, {
@@ -1652,7 +1666,7 @@ function convertParagraph(
         break;
       case "commentRangeEnd":
         openCommentIds.delete(content.id);
-        if (paragraphContainsInlineSdt) {
+        if (paragraphKeepsBoundaryNodes) {
           emitInlineNodes(
             [
               schema.node(COMMENT_RANGE_BOUNDARY_NODE_NAME, {
@@ -1995,6 +2009,20 @@ const runPropertyChangeMark = (changes: readonly RunPropertyChange[]): Mark => {
 };
 
 /**
+ * A content control, or a link holding a comment boundary, writes its comment
+ * boundaries as nodes. Every comment boundary beside it does too, so a range
+ * ending outside such an item still runs between two nodes.
+ */
+const keepsCommentBoundaryNodes = (item: ParagraphContent): boolean =>
+  item.type === "inlineSdt" ||
+  (item.type === "hyperlink" &&
+    withInlineWrapperStacks(item.children).some(
+      ({ content }) =>
+        content.type === "commentRangeStart" ||
+        content.type === "commentRangeEnd",
+    ));
+
+/**
  * Convert tracked change (insertion or deletion) content to PM nodes with
  * an insertion/deletion mark applied.
  */
@@ -2049,16 +2077,16 @@ function convertTrackedChange(
   // wrapper: the caller marks what this returns, and `wrappedBy` reaches only
   // the leaves no caller can still see, those inside a content control.
   const stacked = withInlineWrapperStacks(change.content);
-  let containsInlineSdt = false;
+  let keepsBoundaryNodes = false;
   if (options.preserveSdtBoundaryOccurrences === undefined) {
     visitInlineContentSlotsInContent(change.content, ({ item }) => {
-      if (item.type === "inlineSdt") {
-        containsInlineSdt = true;
+      if (keepsCommentBoundaryNodes(item)) {
+        keepsBoundaryNodes = true;
       }
     });
   }
   const preserveBoundaryOccurrences =
-    options.preserveSdtBoundaryOccurrences ?? containsInlineSdt;
+    options.preserveSdtBoundaryOccurrences ?? keepsBoundaryNodes;
   const emptyRanges = planEmptyRanges(
     stacked.map(({ content }) => content),
     stacked.map(({ stack }) => stack),
@@ -2703,6 +2731,8 @@ type TableConversionContext = {
   numbering: NumberingMap | undefined;
   theme: DeepReadonly<Theme> | null | undefined;
   nextTextBoxGroupId: () => string;
+  /** Told when a paragraph puts the group id it drew on what it converts. */
+  placedTextBoxGroup?: () => void;
   nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator;
   nextNoteReferenceOccurrenceId: () => string;
   pairedBookmarkIds: IdMembership;
@@ -6085,6 +6115,8 @@ function convertParagraphWithTextBoxes(
     block,
     textBoxGroupId,
   );
+  // The group id reaches the nodes only through the boxes and their anchors.
+  if (textBoxes.length > 0) context.placedTextBoxGroup?.();
   const pmParagraph = convertParagraph(
     block,
     styleResolver,

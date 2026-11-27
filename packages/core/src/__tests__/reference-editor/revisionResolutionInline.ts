@@ -8,36 +8,36 @@ import {
 } from "prosemirror-model";
 import { ReplaceStep, type Step, StepMap } from "prosemirror-transform";
 
-import { recreateProseNodeWithParagraphPropertySource } from "../docx/paragraphPropertySource";
+import { recreateProseNodeWithParagraphPropertySource } from "../../docx/paragraphPropertySource";
 import {
   expectFieldAttrs,
   expectRunPropertyChangeMarkAttrs,
   expectTrackedChangeMarkAttrs,
-} from "../prosemirror/attrs";
-import { readCommentReferenceAttrs } from "../prosemirror/commentReferenceAttrs";
+} from "../../prosemirror/attrs";
+import { readCommentReferenceAttrs } from "../../prosemirror/commentReferenceAttrs";
 import {
   resolutionRemovesControl,
   withoutResolvedEnclosures,
-} from "../prosemirror/contentControlRevisions";
-import { copyOriginBoundaryAttrsAfterResolution } from "../prosemirror/copyOriginResolution";
-import { resolveEmptyFieldResultRuns } from "../prosemirror/emptyFieldResultRuns";
-import { INLINE_CONTENT_CONTROL_NODE_NAME } from "../prosemirror/extensions/nodes/SdtExtension";
-import { canonicalFieldNode } from "../prosemirror/fieldRepresentation";
+} from "../../prosemirror/contentControlRevisions";
+import { copyOriginBoundaryAttrsAfterResolution } from "../../prosemirror/copyOriginResolution";
+import { resolveEmptyFieldResultRuns } from "../../prosemirror/emptyFieldResultRuns";
+import { INLINE_CONTENT_CONTROL_NODE_NAME } from "../../prosemirror/extensions/nodes/SdtExtension";
+import { canonicalFieldNode } from "../../prosemirror/fieldRepresentation";
 import {
   type RemovedSubtree,
   removeResolvedSubtree,
   type RevisionSelection,
-} from "../prosemirror/keptRangeBoundaries";
-import { resolvedPreservedXmlAttrs } from "../prosemirror/preservedXmlReview";
-import { continuedRunMarks } from "../prosemirror/rejoinRunCarriers";
-import { RUN_FORMATTING_MARK_NAMES } from "../prosemirror/runFormattingMarkNames";
-import { rejectedRunFormatting } from "../prosemirror/runPropertyChangeResolution";
+} from "../../prosemirror/keptRangeBoundaries";
+import { resolvedPreservedXmlAttrs } from "../../prosemirror/preservedXmlReview";
+import { RUN_FORMATTING_MARK_NAMES } from "../../prosemirror/runFormattingMarkNames";
 import {
   type ParagraphRunStyleContext,
   paragraphRunStyleContext,
   type RunStyleResolver,
-} from "../prosemirror/runStyleFormatting";
+} from "../../prosemirror/runStyleFormatting";
+import { continuedRunMarks } from "./rejoinRunCarriers";
 import { recordNodeResolution } from "./revisionResolutionEdits";
+import { rejectedRunFormatting } from "./runPropertyChangeResolution";
 
 export type RevisionResolutionMode = "accept" | "reject";
 

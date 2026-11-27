@@ -152,7 +152,7 @@ export const CANONICAL_CAPABILITIES: {
     readonly owner: "controller";
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Unsupported inline, field and review content cannot be projected after canonical edits; pasted embedded blocks, comment and note references copied outside the editor, and compositions over such content refuse.";
+    readonly summary: "A paste of content whose package parts the model does not carry refuses: an opaque drawing or kept block markup from another package, and a copied comment holding images or external links.";
   };
   readonly "tracked-change-records": {
     readonly owner: "document-operations";
@@ -170,7 +170,7 @@ export const CANONICAL_CAPABILITIES: {
     readonly owner: "document-operations";
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "A reviewer refuses to resolve one story of a suggestion that reaches several, which resolves only whole.";
+    readonly summary: "A reviewer refuses a resolved view, a comparison projection or a story resolution that leaves a staged suggestion pending, because the suggestion's resolution refused without stating its ground.";
   };
 } = {
   [CANONICAL_GAP.trackedTableStructure]: {
@@ -185,7 +185,7 @@ export const CANONICAL_CAPABILITIES: {
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
-      "Unsupported inline, field and review content cannot be projected after canonical edits; pasted embedded blocks, comment and note references copied outside the editor, and compositions over such content refuse.",
+      "A paste of content whose package parts the model does not carry refuses: an opaque drawing or kept block markup from another package, and a copied comment holding images or external links.",
   },
   [CANONICAL_GAP.trackedChangeRecords]: {
     owner: "document-operations",
@@ -206,7 +206,7 @@ export const CANONICAL_CAPABILITIES: {
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
-      "A reviewer refuses to resolve one story of a suggestion that reaches several, which resolves only whole.",
+      "A reviewer refuses a resolved view, a comparison projection or a story resolution that leaves a staged suggestion pending, because the suggestion's resolution refused without stating its ground.",
   },
 } as const satisfies Record<CanonicalGap, CanonicalCapability>;
 

@@ -55,6 +55,9 @@ export function useFontLifecycle(
 
       let cancelled = false;
       let registered: FontFace[] = [];
+      // Clearing the family map redraws every font run of the view, so only
+      // a document that set one clears it.
+      let activated = false;
       void dependencies.loadEmbedded(buffer).then(({ faces, familyMap }) => {
         if (cancelled) {
           dependencies.remove(faces);
@@ -69,6 +72,7 @@ export function useFontLifecycle(
         // so every run that resolves after this point picks up the scoped
         // family instead of the raw DOCX name — which is never registered on
         // `document.fonts` (see `@stll/folio-core/fonts/embeddedFonts`).
+        activated = true;
         options.setEmbeddedFontFamilies(new Map(familyMap));
         options.remeasure();
         return undefined;
@@ -77,7 +81,7 @@ export function useFontLifecycle(
       onCleanup(() => {
         cancelled = true;
         dependencies.remove(registered);
-        options.setEmbeddedFontFamilies(null);
+        if (activated) options.setEmbeddedFontFamilies(null);
       });
     },
     { immediate: true },

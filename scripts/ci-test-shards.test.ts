@@ -594,7 +594,7 @@ test("the reported regression tests are selected from the real repository graph"
   const result = selectFastTestSuitesWithReason({
     suites,
     changedFiles: [
-      "packages/core/src/internal/wholeStoryRevisionResolution.ts",
+      "packages/core/src/__tests__/reference-editor/wholeStoryRevisionResolution.ts",
       "packages/docx-core/src/ops/blockDeletion.ts",
       "packages/docx-core/src/ops/documentOps.ts",
       "packages/docx-core/src/ops/resolve.ts",

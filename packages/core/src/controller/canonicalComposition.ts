@@ -5,6 +5,7 @@ import {
   Fragment,
   type Mark,
   type Node as PMNode,
+  type ResolvedPos,
 } from "prosemirror-model";
 import {
   EditorState,
@@ -17,7 +18,6 @@ import { splitsSurrogatePair } from "../ai-edits/character-boundaries";
 import { CanonicalSessionError } from "../canonical/canonicalSession";
 import {
   CANONICAL_CONDITION,
-  CANONICAL_GAP,
   type CanonicalRefusalGround,
 } from "../types/canonicalCapabilities";
 import {
@@ -25,9 +25,16 @@ import {
   setCanonicalInputTimer,
 } from "./canonicalInputTimer";
 
-/** A composition over content the session cannot project, restored. */
+/**
+ * A composition the browser's own input did not reduce to one text
+ * replacement, restored. The commit reads what native input changed from the
+ * view; where it changed an atom (an image, a field, a note reference) or
+ * more than one textblock, or a plugin rewrote more than text, the DOM states
+ * no edit the session can tell from noise. The user types the text again, as
+ * input outside a composition reaches the session as intents.
+ */
 const UNSUPPORTED_COMPOSITION: CanonicalRefusalGround = {
-  gap: CANONICAL_GAP.storyContentProjection,
+  condition: CANONICAL_CONDITION.invalidRequest,
 };
 
 type CompositionOptions = {
@@ -123,6 +130,41 @@ const readBack = (mark: Mark): Mark | null | undefined => {
   const read = mark.type.isInSet(texts.at(0)?.marks ?? []) ?? null;
   readBackCache.set(mark, read);
   return read;
+};
+
+/** The depth of the innermost textblock holding `position`, if one does. */
+const textblockDepth = (position: ResolvedPos): number | undefined => {
+  for (let depth = position.depth; depth >= 0; depth -= 1)
+    if (position.node(depth).isTextblock) return depth;
+  return undefined;
+};
+
+/** The child of `fragment` that `position` falls in, with its offset. */
+const childAround = (
+  fragment: Fragment,
+  position: number,
+): { node: PMNode; offset: number } | undefined => {
+  let found: { node: PMNode; offset: number } | undefined;
+  fragment.forEach((node, offset) => {
+    if (found === undefined && position < offset + node.nodeSize)
+      found = { node, offset };
+  });
+  return found;
+};
+
+/**
+ * One character for each position of `fragment`: a text node's own, the
+ * object replacement character for an inline atom, and a private-use
+ * character for each edge of an inline node holding content.
+ */
+const positionText = (fragment: Fragment): string => {
+  let text = "";
+  fragment.forEach((node) => {
+    if (node.isText) text += node.text ?? "";
+    else if (node.isLeaf) text += "\uFFFC".repeat(node.nodeSize);
+    else text += `\uE000${positionText(node.content)}\uE001`;
+  });
+  return text;
 };
 
 type NativeReplacementComparisonOptions = {
@@ -299,7 +341,10 @@ export const createCanonicalComposition = (
   };
   const replacement = (baseline: EditorState, proposed: EditorState) => {
     const { $from, $to } = baseline.selection;
-    if (!$from.parent.isTextblock || !$to.parent.isTextblock) return null;
+    // The textblock each end lies in, through any inline container.
+    const fromDepth = textblockDepth($from);
+    const toDepth = textblockDepth($to);
+    if (fromDepth === undefined || toDepth === undefined) return null;
     // Native updates may omit source identity across the whole text carrier,
     // including its untouched suffix. The captured model owns the committed identities.
     const selected = selectedReplacement(baseline, proposed);
@@ -319,12 +364,15 @@ export const createCanonicalComposition = (
       return selected;
     }
     // A selected paragraph boundary can disappear only through its exact replacement.
-    if (!$from.sameParent($to)) return null;
-    const start = $from.start();
-    const next = proposed.doc.nodeAt(start - 1);
-    if (!next || next.type !== $from.parent.type) return null;
-    const previous = $from.parent.content;
-    const changedFrom = previous.findDiffStart(next.content);
+    const paragraphStart = $from.start(fromDepth);
+    if (paragraphStart !== $to.start(toDepth)) return null;
+    const textblock = $from.node(fromDepth);
+    const proposedParagraph = proposed.doc.nodeAt(paragraphStart - 1);
+    if (!proposedParagraph || proposedParagraph.type !== textblock.type)
+      return null;
+    const changedFrom = textblock.content.findDiffStart(
+      proposedParagraph.content,
+    );
     if (changedFrom === null) {
       if (!baseline.doc.eq(proposed.doc)) return null;
       return {
@@ -334,7 +382,7 @@ export const createCanonicalComposition = (
         semantic: "composition" as const,
       };
     }
-    const changedEnd = previous.findDiffEnd(next.content);
+    const changedEnd = textblock.content.findDiffEnd(proposedParagraph.content);
     if (changedEnd === null) return null;
     let from = changedFrom;
     let oldEnd = changedEnd.a;
@@ -344,10 +392,40 @@ export const createCanonicalComposition = (
       oldEnd += overlap;
       newEnd += overlap;
     }
-    // Leaf placeholders keep text offsets aligned with PM positions while
-    // untouched inline atoms remain part of the exact reconstruction below.
-    const before = previous.textBetween(0, previous.size, "", "\uFFFC");
-    const after = next.content.textBetween(0, next.content.size, "", "\uFFFC");
+    // A change inside an inline container both states hold the same, such as
+    // a content control, is a replacement in that container's content: the
+    // commit addresses text there, as typing does.
+    let start = paragraphStart;
+    let previous = textblock.content;
+    let next = proposedParagraph.content;
+    for (;;) {
+      const held = childAround(previous, from);
+      const read = childAround(next, from);
+      if (
+        held === undefined ||
+        read === undefined ||
+        held.node.isText ||
+        held.node.isLeaf ||
+        held.offset !== read.offset ||
+        !held.node.sameMarkup(read.node) ||
+        from <= held.offset ||
+        oldEnd >= held.offset + held.node.nodeSize ||
+        newEnd >= read.offset + read.node.nodeSize
+      )
+        break;
+      const inner = held.offset + 1;
+      start += inner;
+      from -= inner;
+      oldEnd -= inner;
+      newEnd -= inner;
+      previous = held.node.content;
+      next = read.node.content;
+    }
+    // One character per position keeps text offsets aligned with PM
+    // positions: untouched inline atoms and the edges of inline containers
+    // remain part of the exact reconstruction below.
+    const before = positionText(previous);
+    const after = positionText(next);
     // Node diffs also report mark-only changes (a native rewrite can drop run
     // identity). Narrow to the text change; reconstruction still checks every
     // semantic mark instead of committing a same-text replacement.
@@ -374,7 +452,7 @@ export const createCanonicalComposition = (
       newEnd++;
     }
     const removed = previous.cut(from, oldEnd);
-    const inserted = next.content.cut(from, newEnd);
+    const inserted = next.cut(from, newEnd);
     const text = inserted.textBetween(0, inserted.size, "", "");
     if (
       removed.textBetween(0, removed.size, "", "").length !== removed.size ||

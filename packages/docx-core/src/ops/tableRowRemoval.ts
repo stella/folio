@@ -141,15 +141,18 @@ const withMergesEnded = (
 const BOUNDARIES = rangeBoundaryDefinitions();
 type Boundary = Extract<
   Paragraph["content"][number],
-  { type: keyof typeof BOUNDARIES }
+  { type: keyof typeof BOUNDARIES | "commentReference" }
 >;
 
-/** Every range boundary in `value`, at any depth, in source order. */
+/** Every range boundary and comment reference in `value`, at any depth, in source order. */
 const boundariesIn = (value: unknown, out: Boundary[] = []): Boundary[] => {
   if (typeof value !== "object" || value === null) return out;
   const type: unknown = Reflect.get(value, "type");
-  // SAFETY: a model node whose type names a range boundary is one.
-  if (typeof type === "string" && Object.hasOwn(BOUNDARIES, type))
+  // SAFETY: a model node whose type names a range boundary or a reference is one.
+  if (
+    typeof type === "string" &&
+    (Object.hasOwn(BOUNDARIES, type) || type === "commentReference")
+  )
     out.push(value as Boundary);
   else for (const field of Object.values(value)) boundariesIn(field, out);
   return out;
@@ -158,18 +161,30 @@ const boundariesIn = (value: unknown, out: Boundary[] = []): Boundary[] => {
 /**
  * The range boundaries in `removed`, other than those `kept` still holds,
  * whose other end stands outside it. Removed content takes its words, not
- * the end of a range reaching past it: these ends stay where it was. A range
- * wholly inside goes with it.
+ * the end of a range reaching past it: these ends stay where it was, and a
+ * comment's reference stays beside its range's end. A range wholly inside
+ * goes with it.
  */
 export const rangeEndsReachingPast = (
   removed: unknown,
   kept?: unknown,
 ): Boundary[] => {
   const keeps = new Set(boundariesIn(kept));
-  const key = (node: Boundary) => `${BOUNDARIES[node.type].family}:${node.id}`;
   const lost = boundariesIn(removed).filter((node) => !keeps.has(node));
+  const key = ({ type, id }: Boundary) =>
+    type === "commentReference" ? "" : `${BOUNDARIES[type].family}:${id}`;
+  const reaching = lost.filter(
+    (node) =>
+      key(node) !== "" &&
+      lost.filter((other) => key(other) === key(node)).length === 1,
+  );
   return lost.filter(
-    (node) => lost.filter((other) => key(other) === key(node)).length === 1,
+    (node) =>
+      reaching.includes(node) ||
+      (node.type === "commentReference" &&
+        reaching.some(
+          ({ type, id }) => type === "commentRangeEnd" && id === node.id,
+        )),
   );
 };
 

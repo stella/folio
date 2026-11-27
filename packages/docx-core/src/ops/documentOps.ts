@@ -144,6 +144,7 @@ export {
   type EditorIntentMode,
 } from "./editorIntent";
 export type { PasteAnnotations } from "./pasteAnchors";
+export type { PastedBlock } from "./pastedBlocks";
 export {
   DocumentOpsContractError,
   normalizeForOps,
@@ -244,7 +245,10 @@ export {
 export {
   resolvedDocumentView,
   type ResolvedDocumentView,
+  resolvedMarkupDocumentView,
+  type ResolvedMarkupDocumentView,
 } from "./resolvedView";
+export type { IndependentMarkupParagraph } from "./resolve";
 export {
   DOCUMENT_OP_REFUSAL_REASONS,
   DocumentOpRefusal,

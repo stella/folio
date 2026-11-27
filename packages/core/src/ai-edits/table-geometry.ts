@@ -437,12 +437,20 @@ const propertyChangeFor = <TFormatting extends object>({
   };
 };
 
-/** The paragraph id of the last paragraph directly in a cell. */
+/**
+ * The paragraph id of the last paragraph in a cell, through the block content
+ * controls and other wrappers around it but outside any nested table: a
+ * table operation addressed by a paragraph selects the innermost table that
+ * holds it, even through block wrappers.
+ */
 const cellAnchorParaId = (cell: PMNode): string | undefined => {
   let paraId: string | undefined;
-  cell.forEach((child) => {
-    const id: unknown = child.attrs["paraId"];
-    if (child.type.name === "paragraph" && typeof id === "string") paraId = id;
+  cell.descendants((node) => {
+    if (node.type.name === "table") return false;
+    if (node.type.name !== "paragraph") return true;
+    const id: unknown = node.attrs["paraId"];
+    if (typeof id === "string") paraId = id;
+    return false;
   });
   return paraId;
 };

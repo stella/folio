@@ -70,10 +70,6 @@ const isRefusal = (name: string) =>
 const unwrapChain = (node: Node): Node =>
   node.type === "ChainExpression" ? node.expression : node;
 
-/** An object literal member written as `name: value`, a shorthand or a method. */
-const isObjectLiteralMember = (node: Node, parent: Node | undefined) =>
-  node.type === "Property" && parent?.type === "ObjectExpression";
-
 /** The written name of a non-computed property or method key. */
 const keyText = (text: string, node: Node): string | undefined => {
   if (
@@ -93,25 +89,6 @@ const isPropertyAssignment = (node: Node) =>
 
 const isShorthandProperty = (node: Node) =>
   node.type === "Property" && node.shorthand;
-
-const headlessSessionGap = (
-  node: Node,
-  parent: Node | undefined,
-  text: string,
-  file: string,
-): string | undefined => {
-  if (!file.endsWith("/headless.ts")) return undefined;
-  const method =
-    ((node.type === "MethodDefinition" ||
-      node.type === "TSAbstractMethodDefinition") &&
-      node.kind === "method") ||
-    (isObjectLiteralMember(node, parent) &&
-      node.type === "Property" &&
-      (node.method || isPropertyAssignment(node)));
-  return method && keyText(text, node) === "fromBuffer"
-    ? CANONICAL_GAP.publicHeadlessSession
-    : undefined;
-};
 
 export const inspectCanonicalSources = (
   sources: readonly CanonicalSource[],
@@ -308,7 +285,6 @@ export const inspectCanonicalSources = (
           ? memberKey(node)
           : undefined;
       };
-      const lines = part.split("\n");
       const gapRelays = new Set<string>();
       walkAst(program, (node) => {
         if (
@@ -341,28 +317,7 @@ export const inspectCanonicalSources = (
           gapRelays.add(name);
       });
       const markers = [...part.matchAll(/\/\/ canonical-gap: ([\w.-]+)/g)];
-      const usedMarkers = new Set<number>();
-      const markerFor = (node: Node, gap: string) => {
-        const { line } = lineOf(node.start);
-        const marker = markers.find((match) => {
-          const markerLine = lineOf(match.index).line;
-          const between = lines.slice(markerLine + 1, line);
-          return (
-            match[1] === gap &&
-            markerLine < line &&
-            between.every((entry) => /^\s*\/\/ canonical-gap:/.test(entry))
-          );
-        });
-        if (!marker)
-          failures.push(
-            `${file}:${line + 1}: ${gap} source needs its ledger marker`,
-          );
-        else {
-          usedMarkers.add(marker.index);
-          record(gap, file);
-        }
-      };
-      walkAst(program, (node, ancestors) => {
+      walkAst(program, (node) => {
         const key = gapKey(node);
         if (key !== undefined) {
           const gap = gapNames.get(key);
@@ -434,17 +389,10 @@ export const inspectCanonicalSources = (
               `${file}:${lineOf(node.start).line + 1}: the reference editor owns PM document reconstruction`,
             );
         }
-        const headlessGap = headlessSessionGap(
-          node,
-          ancestors.at(-1),
-          part,
-          file,
-        );
-        if (headlessGap) markerFor(node, headlessGap);
       });
+      // No source carries a ledger marker: every one is an orphan.
       for (const marker of markers)
-        if (!usedMarkers.has(marker.index))
-          failures.push(`${file}: orphan canonical gap marker ${marker[1]}`);
+        failures.push(`${file}: orphan canonical gap marker ${marker[1]}`);
     }
   }
   for (const gap of gapIds)

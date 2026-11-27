@@ -597,7 +597,7 @@ export type EditorIntent = HyperlinkEditorIntent | GenerateTOCIntent | {
     type: "pasteBlocks";
     from: TextPosition;
     to: TextPosition;
-    blocks: readonly (Paragraph | Table)[];
+    blocks: readonly PastedBlock[];
     openStart: 0 | 1;
     openEnd: 0 | 1;
     annotations?: PasteAnnotations;
@@ -614,7 +614,7 @@ export type EditorIntent = HyperlinkEditorIntent | GenerateTOCIntent | {
     from: TextPosition;
     to: TextPosition;
     target: TextPosition;
-    blocks: readonly (Paragraph | Table)[];
+    blocks: readonly PastedBlock[];
     openStart: 0 | 1;
     openEnd: 0 | 1;
 } | {
@@ -842,6 +842,16 @@ export type IdLeaseState = {
     readonly blockSizes: Readonly<Record<IdLeaseKind, number>>;
     readonly grants: readonly IdLeaseGrant[];
     readonly minted: readonly IdLeaseMinted[];
+};
+
+// @public
+export type IndependentMarkupParagraph = {
+    index: number;
+    sourceLength: number;
+    omitted: readonly {
+        from: number;
+        to: number;
+    }[];
 };
 
 // @public
@@ -1236,6 +1246,9 @@ export type PasteAnnotations = {
 };
 
 // @public
+export type PastedBlock = Paragraph | Table | BlockSdt | BlockCustomXml | PreservedBlock;
+
+// @public
 export const pendingSuggestionIdsIn: (document: Document_2) => Set<string>;
 
 // @public
@@ -1359,6 +1372,14 @@ export type ResolvedDocumentView = {
 
 // @public
 export const resolvedDocumentView: (document: Document_2, decision: RevisionDecision) => ResolvedDocumentView;
+
+// @public
+export type ResolvedMarkupDocumentView = ResolvedDocumentView & {
+    independentInline?: readonly IndependentMarkupParagraph[];
+};
+
+// @public
+export const resolvedMarkupDocumentView: (document: Document_2, decision: RevisionDecision) => ResolvedMarkupDocumentView;
 
 // @public
 export type ResolveRevisionOp = {

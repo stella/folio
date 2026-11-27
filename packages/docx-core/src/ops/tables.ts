@@ -105,6 +105,18 @@ const validStructure = (blocks: readonly BlockContent[]): boolean =>
     }
   });
 
+/** Whether `shorter` is `longer` with some of its blocks left out, in order. */
+const isSubsequence = (
+  shorter: readonly BlockContent[],
+  longer: readonly BlockContent[],
+): boolean => {
+  let index = 0;
+  for (const block of longer)
+    if (index < shorter.length && structurallyEqual(shorter[index], block))
+      index += 1;
+  return index === shorter.length;
+};
+
 type CommitBlocksOptions = {
   document: Document;
   op: TableOp;
@@ -168,7 +180,15 @@ const commitBlocks = ({
         block.type !== "paragraph" &&
         !isBlockBoundary(block),
     );
-  if (!structurallyEqual(fixedBlocks(before), fixedBlocks(blocks))) {
+  // The exact inverse may put whole wrappers and captured blocks in or take
+  // them out, as a paste of one and its undo do; it never changes one in
+  // place or reorders them.
+  const fixedKept =
+    op.type === DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS
+      ? isSubsequence(fixedBlocks(before), fixedBlocks(blocks)) ||
+        isSubsequence(fixedBlocks(blocks), fixedBlocks(before))
+      : structurallyEqual(fixedBlocks(before), fixedBlocks(blocks));
+  if (!fixedKept) {
     return refuse({
       op,
       reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
