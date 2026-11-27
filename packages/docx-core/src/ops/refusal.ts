@@ -185,7 +185,11 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
    * only (CT_RunTrackChange), and a block-level `w:sdt` takes no revision of
    * its own (CT_SdtBlock records none; an insertion is recorded only on the
    * runs and paragraph marks inside it, so rejecting would leave the empty
-   * control standing). The same change made directly applies.
+   * control standing). A paragraph mark has one `w:ins` in `w:pPr/w:rPr`, so a
+   * tracked paste, whose own insertion it holds, cannot also carry a copied
+   * added mark; and the mark a paste ends in is kept, not inserted, so no
+   * record of the paste holds copied mark review or a `w:sectPr` added to
+   * it. The same change made directly applies.
    */
   readonly NO_REVISION_RECORD: "noRevisionRecord";
   /** Seed contract: a main-story paragraph has no `paraId`. */
@@ -370,7 +374,11 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
    * only (CT_RunTrackChange), and a block-level `w:sdt` takes no revision of
    * its own (CT_SdtBlock records none; an insertion is recorded only on the
    * runs and paragraph marks inside it, so rejecting would leave the empty
-   * control standing). The same change made directly applies.
+   * control standing). A paragraph mark has one `w:ins` in `w:pPr/w:rPr`, so a
+   * tracked paste, whose own insertion it holds, cannot also carry a copied
+   * added mark; and the mark a paste ends in is kept, not inserted, so no
+   * record of the paste holds copied mark review or a `w:sectPr` added to
+   * it. The same change made directly applies.
    */
   NO_REVISION_RECORD: "noRevisionRecord",
   /** Seed contract: a main-story paragraph has no `paraId`. */

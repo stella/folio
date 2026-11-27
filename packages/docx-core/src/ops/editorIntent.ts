@@ -4201,18 +4201,24 @@ const compileInStory = (
       // CT_ParaRPr holds one `w:ins`, the paste's, so a copied added mark
       // (`w:ins`, `w:moveTo`) has no place on the break; an added mark
       // records only a `w:del` beside it, not a move away.
-      if (
-        mode.type === "suggesting" &&
-        paragraphs
-          .slice(0, -1)
-          .some(
-            ({ pPrMark }) =>
-              pPrMark !== undefined && !goesBesidePastedBreak(pPrMark),
-          )
-      ) {
+      const unplaced =
+        mode.type === "suggesting"
+          ? paragraphs
+              .slice(0, -1)
+              .find(
+                ({ pPrMark }) =>
+                  pPrMark !== undefined && !goesBesidePastedBreak(pPrMark),
+              )?.pPrMark
+          : undefined;
+      if (unplaced !== undefined) {
+        // An added mark is a format limit; a moved-away mark or a joined
+        // deletion is one the model does not record beside an added mark.
+        const added = unplaced.kind === "ins" || unplaced.kind === "moveTo";
         return Result.err(
           new DocumentOpRefusal({
-            reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+            reason: added
+              ? DOCUMENT_OP_REFUSAL_REASONS.NO_REVISION_RECORD
+              : DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
             message:
               "A copied added or moved-away paragraph mark has no place beside the tracked paste's insertion of that break.",
             opType: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
@@ -4234,7 +4240,7 @@ const compileInStory = (
       ) {
         return Result.err(
           new DocumentOpRefusal({
-            reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+            reason: DOCUMENT_OP_REFUSAL_REASONS.NO_REVISION_RECORD,
             message:
               "A tracked paste cannot put copied paragraph review or a section break on the destination mark it keeps: rejecting the paste would leave them there.",
             opType: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,

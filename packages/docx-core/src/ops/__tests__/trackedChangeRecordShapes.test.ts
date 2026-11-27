@@ -1337,8 +1337,13 @@ describe("a pasted paragraph whose break is pending deletion", () => {
         intent,
         mode: { type: "suggesting", revision: STAMP, newIds: NEW_IDS },
       });
+      // An added mark is a format limit: `w:pPr/w:rPr` holds one `w:ins`,
+      // the paste's. A moved-away mark is one the model records only as a
+      // deletion beside an added mark.
       expect(refused.isErr() && refused.error.reason).toBe(
-        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+        pPrMark.kind === "moveFrom"
+          ? DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE
+          : DOCUMENT_OP_REFUSAL_REASONS.NO_REVISION_RECORD,
       );
       expect(compiled(document, intent, false).length).toBeGreaterThan(0);
     },
@@ -1403,8 +1408,10 @@ describe("a pasted paragraph whose break is pending deletion", () => {
         intent,
         mode: { type: "suggesting", revision: STAMP, newIds: NEW_IDS },
       });
+      // The mark a paste ends in is kept, not inserted: no record of the
+      // paste holds copied mark review or a section break added to it.
       expect(refused.isErr() && refused.error.reason).toBe(
-        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+        DOCUMENT_OP_REFUSAL_REASONS.NO_REVISION_RECORD,
       );
       expect(
         apply(followed, compiled(followed, intent, false)).document,
