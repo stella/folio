@@ -6384,6 +6384,13 @@ const resolveList = ({
           ? node.content.at(edge === "end" ? -1 : 0)
           : node;
       };
+      // Content between two pieces this resolution removes was made inside
+      // the removed record, not put beside it: it takes the seam, and the
+      // markers kept there, as a piece of that record.
+      const removedWithin = (from: number, to: number): boolean =>
+        [...addedRemovalSeams].some(
+          (at) => at !== recorded && at >= from && at <= to,
+        );
       const newBetween = pieceLeft < keptEnd || pieceRight > seam;
       const alikePieces =
         alikeDepth(recordOf(pieceLeft, "end"), recordOf(pieceRight, "start")) >=
@@ -6393,6 +6400,8 @@ const resolveList = ({
         pieceLeft >= 0 &&
         pieceRight < out.length &&
         (newBetween || !alikePieces) &&
+        !removedWithin(pieceLeft + 1, keptEnd) &&
+        !removedWithin(seam + 1, pieceRight) &&
         standsBetween(
           out.slice(pieceLeft + 1, keptEnd + 1).toReversed(),
           "after",
