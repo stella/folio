@@ -462,8 +462,11 @@ const canonicalBatchPlan = ({
       const insertion = intents.find(
         (intent) => intent.type === "tableBlock",
       )?.operation;
+      // Placed beside a table, or a paragraph other than the one it names
+      // (before the join that paragraph is part of), it needs that block
+      // standing when it runs.
       return insertion?.type === DOCUMENT_OP_TYPES.INSERT_TABLE &&
-        insertion.anchor === "table"
+        insertion.anchor !== "containerStart"
         ? { ...plan, placedAgainst: insertionAnchor(insertion.blockId) }
         : plan;
     }
@@ -1509,17 +1512,20 @@ const placesTable = (operation: BlockInsertion | TableInsertion): boolean =>
   operation.type === "insertTable" || operation.type === "insertSignatureTable";
 
 /**
- * Whether the last of the blocks a batch puts after a block, of `placed`
- * beside it in input order, is a table: those land in that order, so it is
- * the one right before the block after.
+ * Whether the block a batch puts on `side` of a block, of `placed` beside it
+ * in input order, that lands furthest from it is a table: those land in that
+ * order, so the last put after it is right before the block after, and the
+ * first put before it right after the block before.
  */
-const lastPutAfterIsTable = (
+const outermostPutIsTable = (
   placed: readonly (BlockInsertion | TableInsertion)[],
+  side: "before" | "after",
 ): boolean => {
-  const last = placed.findLast(
-    (operation) => placementSide(operation) === "after",
+  const onSide = placed.filter(
+    (operation) => placementSide(operation) === side,
   );
-  return last !== undefined && placesTable(last);
+  const outermost = side === "after" ? onSide.at(-1) : onSide.at(0);
+  return outermost !== undefined && placesTable(outermost);
 };
 
 type DeletedParagraphPlacementOptions = {
@@ -1529,8 +1535,11 @@ type DeletedParagraphPlacementOptions = {
   tableBefore: boolean;
   /** Whether a table follows the paragraph if nothing is put right after it. */
   tableAfter: boolean;
-  /** The physical block after the paragraph before the batch runs. */
-  after: PMNode | null;
+  /**
+   * What follows the paragraph as the batch runs, before its blocks beside
+   * it land: a paragraph, another block, or nothing.
+   */
+  after: "paragraph" | "block" | "none";
 };
 
 /**
@@ -1575,8 +1584,7 @@ const deletedParagraphPlacement = ({
   const followedByTable =
     firstAfter === undefined ? tableAfter : placesTable(firstAfter);
   if (precededByTable && followedByTable) return { type: "keepsTablesApart" };
-  if (after === null || after.type.name === "paragraph")
-    return { type: "inPlace" };
+  if (after !== "block") return { type: "inPlace" };
   const firstParagraph = before.findIndex(
     (operation) => operation.type === "insertBeforeBlock",
   );
@@ -1593,6 +1601,133 @@ const deletedParagraphPlacement = ({
 type ProjectedParagraph = NonNullable<
   ReturnType<CanonicalProjection["paragraph"]>
 >;
+
+type TableLandsBesideOptions = {
+  /** The paragraph id the batch's blocks are put beside. */
+  blockId: string;
+  side: "before" | "after";
+  projection: CanonicalProjection;
+  noteReferences: NoteReferenceLabels;
+  besideDeletions: BesideDeletions;
+};
+
+/**
+ * Whether the block the batch puts on `side` of a paragraph furthest from
+ * it is a table that lands right beside it, not beside the pending join the
+ * paragraph is part of (`besidePendingJoin`).
+ */
+const tableLandsBeside = ({
+  blockId,
+  side,
+  projection,
+  noteReferences,
+  besideDeletions,
+}: TableLandsBesideOptions): boolean => {
+  const paragraph = projection.paragraph(blockId);
+  return (
+    paragraph !== undefined &&
+    outermostPutIsTable(besideDeletions.placedBeside(blockId), side) &&
+    besidePendingJoin({ side, paragraph, projection, noteReferences }).place
+      .blockId === blockId
+  );
+};
+
+type TableLandsAfterOptions = Omit<
+  TableLandsBesideOptions,
+  "blockId" | "side"
+> & {
+  paragraph: ProjectedParagraph;
+};
+
+/**
+ * Whether, applied directly, a table lands right after `paragraph`: the
+ * first block the batch puts after it is one, or, with none there, the first
+ * it puts before the paragraph after it. No paragraph follows it then. One
+ * whose own break is under review keeps the paragraph after it instead.
+ */
+const tableLandsAfter = ({
+  paragraph,
+  projection,
+  noteReferences,
+  besideDeletions,
+}: TableLandsAfterOptions): boolean => {
+  if (paragraph.node.attrs["pPrMark"] != null) return false;
+  const first = besideDeletions
+    .placedBeside(paragraph.blockId)
+    .find((operation) => placementSide(operation) === "after");
+  if (first !== undefined) return placesTable(first);
+  const next = projection.doc.resolve(
+    paragraph.start - 1 + paragraph.node.nodeSize,
+  ).nodeAfter;
+  const nextId: unknown =
+    next?.type.name === "paragraph" ? next.attrs["paraId"] : undefined;
+  return (
+    typeof nextId === "string" &&
+    tableLandsBeside({
+      blockId: nextId,
+      side: "before",
+      projection,
+      noteReferences,
+      besideDeletions,
+    })
+  );
+};
+
+type MovedPastDeletionOptions = {
+  operation: BlockInsertion | TableInsertion;
+  /** The paragraph the insertion lands after. */
+  place: ProjectedParagraph;
+  projection: CanonicalProjection;
+  noteReferences: NoteReferenceLabels;
+  besideDeletions: BesideDeletions;
+  inputOrder: readonly FolioDocumentOperation[];
+};
+
+/**
+ * The paragraph a direct insertion after `place` goes after instead: the
+ * one right after it, which the batch deletes, when the blocks put before
+ * that one go after it (`placedAfter`) from a paragraph put earlier in the
+ * batch. Both sides of it are one gap once it goes, and its blocks keep the
+ * batch's order there.
+ */
+const movedPastDeletion = ({
+  operation,
+  place,
+  projection,
+  noteReferences,
+  besideDeletions,
+  inputOrder,
+}: MovedPastDeletionOptions): ProjectedParagraph | undefined => {
+  const end = place.start - 1 + place.node.nodeSize;
+  const next = projection.paragraphStartingAt(end);
+  if (next === undefined || !besideDeletions.deleted.has(next.blockId))
+    return undefined;
+  const beside = besideDeletions.placedBeside(next.blockId);
+  const order = (id: string) =>
+    inputOrder.findIndex((other) => other.id === id);
+  const first = beside.find(({ type }) => type === "insertBeforeBlock");
+  if (first === undefined || order(first.id) > order(operation.id))
+    return undefined;
+  const after = projection.doc.resolve(end + next.node.nodeSize).nodeAfter;
+  if (after === null) return undefined;
+  const afterId: unknown =
+    after.type.name === "paragraph" ? after.attrs["paraId"] : undefined;
+  const options = { projection, noteReferences, besideDeletions };
+  const followed =
+    after.type.name === "paragraph" &&
+    !tableLandsAfter({ paragraph: next, ...options });
+  return deletedParagraphPlacement({
+    beside,
+    tableBefore: false,
+    tableAfter:
+      after.type.name === "table" ||
+      (typeof afterId === "string" &&
+        tableLandsBeside({ blockId: afterId, side: "before", ...options })),
+    after: followed ? "paragraph" : "block",
+  }).type === "placedAfter"
+    ? next
+    : undefined;
+};
 
 /**
  * The start of the block list holding the paragraph `blockId` names, at
@@ -1620,6 +1755,24 @@ type ResolveBlockInsertionOptions = {
     reason: FolioAIEditSkipReason,
     message: string,
   ) => Result<never, CanonicalPublicOperationResolutionError>;
+  /** `BesidePendingJoinOptions.landedEarlier`. */
+  landedEarlier?: ReadonlySet<number>;
+};
+
+/**
+ * Where the gap a block put before `boundary` lands in starts as the batch
+ * runs (`insertionGap`): before the blocks right before it that accepting
+ * removes whole, back to the last place among them an earlier operation of
+ * the batch put a paragraph, which stays.
+ */
+const gapStartAsTheBatchRuns = (
+  doc: PMNode,
+  boundary: number,
+  landed: ReadonlySet<number> | undefined,
+): number => {
+  let gap = insertionGap(doc, boundary, "before");
+  for (const at of landed ?? []) if (at > gap && at <= boundary) gap = at;
+  return gap;
 };
 
 /**
@@ -1634,51 +1787,47 @@ const blockInsertionPlace = (
   paragraph: NonNullable<ReturnType<CanonicalProjection["paragraph"]>>,
   projection: CanonicalProjection,
   noteReferences: NoteReferenceLabels,
+  landedEarlier: ReadonlySet<number> | undefined,
 ): { at: TableInsertionPoint; position: number } | undefined => {
   const side = operation.type === "insertAfterBlock" ? "after" : "before";
   const table = findOutermostTableBoundary(projection.doc, paragraph.start - 1);
-  if (table === null && side === "before") {
-    // Put before a paragraph, a block lands before the blocks right before
-    // it that accepting removes whole, at the start of its gap, as the
-    // legacy engine puts it: accepted, both sides of those blocks are one
-    // place, and a block put after one of them follows this one there.
-    const gap = insertionGap(projection.doc, paragraph.start - 1, "before");
-    if (gap < paragraph.start - 1) {
-      const $gap = projection.doc.resolve(gap);
-      const first = $gap.nodeAfter;
-      const previous = $gap.nodeBefore;
-      const end =
-        previous?.type.name === "paragraph"
-          ? projection.paragraphStartingAt(gap - previous.nodeSize)
-          : undefined;
-      if (end !== undefined)
-        return {
-          at: { type: "after", blockId: end.blockId },
-          position: paragraph.start,
-        };
-      // Without a preceding paragraph, the pending-deleted table itself
-      // supplies the address at the start of the gap.
-      if (first?.type.name === "table") {
-        const blockId = tableBlockAddress(projection, {
-          table: first,
-          tableStart: gap + 1,
-        });
-        if (blockId !== undefined)
-          return {
-            at: { type: "beforeTable", blockId },
-            position: paragraph.start,
-          };
-      }
-      const start =
-        first?.type.name === "paragraph"
-          ? projection.paragraphStartingAt(gap)
-          : undefined;
-      if (start !== undefined)
-        return {
-          at: { type: "before", blockId: start.blockId },
-          position: paragraph.start,
-        };
+  // Put before a paragraph or a table, a block lands before the blocks right
+  // before it that accepting removes whole, at the start of its gap, as the
+  // legacy engine puts it: accepted, both sides of those blocks are one
+  // place, and a block put after one of them follows this one there.
+  const atGapStart = (boundary: number, position: number) => {
+    const gap = gapStartAsTheBatchRuns(projection.doc, boundary, landedEarlier);
+    if (gap >= boundary) return undefined;
+    const $gap = projection.doc.resolve(gap);
+    const first = $gap.nodeAfter;
+    const previous = $gap.nodeBefore;
+    const end =
+      previous?.type.name === "paragraph"
+        ? projection.paragraphStartingAt(gap - previous.nodeSize)
+        : undefined;
+    if (end !== undefined)
+      return { at: { type: "after", blockId: end.blockId } as const, position };
+    // Without a preceding paragraph, the pending-deleted table itself
+    // supplies the address at the start of the gap.
+    if (first?.type.name === "table") {
+      const blockId = tableBlockAddress(projection, {
+        table: first,
+        tableStart: gap + 1,
+      });
+      if (blockId !== undefined)
+        return { at: { type: "beforeTable", blockId } as const, position };
     }
+    const start =
+      first?.type.name === "paragraph"
+        ? projection.paragraphStartingAt(gap)
+        : undefined;
+    return start === undefined
+      ? undefined
+      : { at: { type: "before", blockId: start.blockId } as const, position };
+  };
+  if (table === null && side === "before") {
+    const place = atGapStart(paragraph.start - 1, paragraph.start);
+    if (place !== undefined) return place;
   }
   if (table === null)
     return {
@@ -1706,6 +1855,8 @@ const blockInsertionPlace = (
       position: joined.start,
     };
   const position = table[side];
+  const walked = side === "before" ? atGapStart(position, position) : undefined;
+  if (walked !== undefined) return walked;
   const resolved = projection.doc.resolve(position);
   const beside = side === "after" ? resolved.nodeAfter : resolved.nodeBefore;
   const neighbour =
@@ -1758,12 +1909,15 @@ type PlaceAfterOptions = Omit<BesidePendingJoinOptions, "side">;
 /**
  * Where a paragraph put after `paragraph` goes (`insertionAfterPendingBreak`):
  * right after it, or after the paragraph its pending join leaves, in every
- * mode, so a suggestion lands where the same tracked insertion does.
+ * mode, so a suggestion lands where the same tracked insertion does. A
+ * paragraph the batch already put between the two ends the join there, so
+ * it goes right after `paragraph`, as one at a time (`joinAsTheBatchRuns`).
  */
 const placeAfter = ({
   paragraph,
   projection,
   noteReferences,
+  landedEarlier,
 }: PlaceAfterOptions): BesidePendingJoin => {
   const rule = insertionAfterPendingBreak({
     doc: projection.doc,
@@ -1774,6 +1928,13 @@ const placeAfter = ({
     case "afterParagraph":
       return besideAsItStands(paragraph);
     case "afterJoin": {
+      const end = paragraph.start - 1 + paragraph.node.nodeSize;
+      if (
+        [...(landedEarlier ?? [])].some(
+          (at) => at >= end && at <= rule.survivor,
+        )
+      )
+        return besideAsItStands(paragraph);
       const survivor =
         projection.paragraphStartingAt(rule.survivor) ??
         panic("A pending join names a paragraph the projection lacks.");
@@ -1788,44 +1949,39 @@ const placeAfter = ({
 
 type JoinAsTheBatchRunsOptions = {
   join: PendingJoinParagraphs;
-  /** `BesidePendingJoinOptions.paragraphsAfterEarlier`, for a block put before. */
-  before: ReadonlySet<string> | undefined;
+  side: "before" | "after";
+  /** `BesidePendingJoinOptions.landedEarlier`. */
+  landed: ReadonlySet<number> | undefined;
+  /** Where the paragraph the block is put beside starts. */
+  paragraphPos: number;
   doc: PMNode;
-  noteReferences: NoteReferenceLabels;
 };
 
 /**
  * A pending join as the batch reads it once its earlier operations ran: a
- * paragraph one of them puts right after a paragraph of the join, taking its
- * words, ends the join there, so the join a later block put before reads
- * starts past it, as it does applied one at a time.
+ * paragraph one of them puts between two paragraphs of the join takes the
+ * words before it, ending the join there, as it does applied one at a time.
+ * A later block put before a paragraph past it reads a join starting past
+ * it; one put after a paragraph before it, a join ending before it.
  */
 const joinAsTheBatchRuns = ({
   join,
-  before,
+  side,
+  landed,
+  paragraphPos,
   doc,
-  noteReferences,
 }: JoinAsTheBatchRunsOptions): PendingJoinParagraphs => {
-  if (before === undefined || before.size === 0) return join;
+  if (landed === undefined || landed.size === 0) return join;
   const at = doc.resolve(join.first);
-  let first = join.first;
+  let { first } = join;
   let position = join.first;
   for (let index = at.index(); index < at.parent.childCount; index++) {
-    const node = at.parent.child(index);
-    const next = position + node.nodeSize;
-    if (next > join.last) break;
-    const id: unknown = node.attrs["paraId"];
-    if (
-      node.type.name === "paragraph" &&
-      typeof id === "string" &&
-      before.has(id) &&
-      insertionAfterPendingBreak({
-        doc,
-        paragraphPos: position,
-        noteReferences,
-      }).type === "afterParagraph"
-    )
-      first = next;
+    const next = position + at.parent.child(index).nodeSize;
+    if (next > join.last || (side === "before" && position >= paragraphPos))
+      break;
+    if (landed.has(next) && side === "after" && position >= paragraphPos)
+      return { first, last: position };
+    if (landed.has(next) && side === "before") first = next;
     position = next;
   }
   return { first, last: join.last };
@@ -1837,11 +1993,11 @@ type BesidePendingJoinOptions = {
   projection: CanonicalProjection;
   noteReferences: NoteReferenceLabels;
   /**
-   * The paragraphs an earlier operation of the batch puts a paragraph after:
-   * where that paragraph goes right after one of the join, taking its words
-   * (`insertionAfterPendingBreak`), the join ends there as the batch runs.
+   * The block boundaries, in the document the batch read, where its earlier
+   * operations put paragraphs: one between two paragraphs of the join ends
+   * the join there as the batch runs (`joinAsTheBatchRuns`).
    */
-  paragraphsAfterEarlier?: ReadonlySet<string>;
+  landedEarlier?: ReadonlySet<number>;
 };
 
 /** Whether `paragraph` holds anything no pending deletion takes. */
@@ -1966,7 +2122,7 @@ const besidePendingJoin = ({
   paragraph,
   projection,
   noteReferences,
-  paragraphsAfterEarlier,
+  landedEarlier,
 }: BesidePendingJoinOptions): BesidePendingJoin => {
   const options = {
     doc: projection.doc,
@@ -1975,9 +2131,10 @@ const besidePendingJoin = ({
   };
   const join = joinAsTheBatchRuns({
     join: pendingJoinParagraphs(options),
-    before: side === "before" ? paragraphsAfterEarlier : undefined,
+    side,
+    landed: landedEarlier,
+    paragraphPos: options.paragraphPos,
     doc: projection.doc,
-    noteReferences,
   });
   const after = side === "after";
   const at = (position: number) =>
@@ -1989,6 +2146,33 @@ const besidePendingJoin = ({
   if (place === undefined || formattingSource === undefined)
     return panic("A pending join names a paragraph the projection lacks.");
   return { place, formattingSource };
+};
+
+/**
+ * The paragraph outside tables a block put beside the one `operation` names
+ * lands beside, as the batch read it: after a paragraph, the one a pending
+ * join leaves where the join reads the two as one (`placeAfter`,
+ * `besidePendingJoin`); before one, the first the join takes in. A batch
+ * reads what its blocks stand beside by it, as they land.
+ */
+const landingParagraph = (
+  operation: BlockInsertion | TableInsertion,
+  projection: CanonicalProjection,
+  noteReferences: NoteReferenceLabels,
+): ProjectedParagraph | undefined => {
+  const paragraph = projection.paragraph(operation.blockId);
+  if (
+    paragraph === undefined ||
+    findOutermostTableBoundary(projection.doc, paragraph.start - 1) !== null
+  )
+    return undefined;
+  const options = { paragraph, projection, noteReferences };
+  const side = placementSide(operation);
+  return (
+    operation.type === "insertAfterBlock"
+      ? placeAfter(options)
+      : besidePendingJoin({ ...options, side })
+  ).place;
 };
 
 /**
@@ -2008,6 +2192,7 @@ const resolveBlockInsertion = ({
   mintList,
   refusal,
   skipAlike,
+  landedEarlier,
 }: ResolveBlockInsertionOptions) => {
   const { text } = operation;
   const markdown =
@@ -2142,7 +2327,13 @@ const resolveBlockInsertion = ({
     );
   const place =
     listStart === undefined
-      ? blockInsertionPlace(operation, paragraph, projection, noteReferences)
+      ? blockInsertionPlace(
+          operation,
+          paragraph,
+          projection,
+          noteReferences,
+          landedEarlier,
+        )
       : {
           at: { type: "containerStart", blockId: listStart.blockId } as const,
           position: listStart.position,
@@ -2857,8 +3048,9 @@ type GapAnchorBeforeFollowerOptions = {
 
 /**
  * An insertion after a paragraph, as one before the paragraph that follows
- * it and stays: a follower the batch removes is gone by the time the
- * insertion replays. With no paragraph staying after it, the anchor is kept.
+ * it. With no paragraph after it, or one the batch removes, which is gone by
+ * the time the insertion replays, the anchor is kept: the blocks the batch
+ * puts before the next paragraph it keeps come after these.
  */
 const gapAnchorBeforeFollower = ({
   anchor,
@@ -2869,30 +3061,43 @@ const gapAnchorBeforeFollower = ({
   const paragraph = projection.paragraph(anchor.at.blockId);
   if (paragraph === undefined)
     return panic("An insertion anchor is missing from the projection.");
-  let position = paragraph.start - 1 + paragraph.node.nodeSize;
-  for (;;) {
-    const next = projection.doc.resolve(position).nodeAfter;
-    if (next?.type.name !== "paragraph") return anchor;
-    const follower = projection.paragraphStartingAt(position);
-    if (follower === undefined)
-      return panic("A following paragraph is missing from the projection.");
-    if (!removedBlockIds.has(follower.blockId))
-      return {
-        type: "paragraph",
-        at: { type: "before", blockId: follower.blockId },
-      };
-    position += next.nodeSize;
+  const position = paragraph.start - 1 + paragraph.node.nodeSize;
+  const next = projection.doc.resolve(position).nodeAfter;
+  // Before a table, after an anchor whose break is pending deletion, the
+  // blocks replay before the table: a paragraph after the anchor would take
+  // over its mark once another block of the gap stands there.
+  if (
+    next?.type.name === "table" &&
+    isDeletedPPrMark(paragraph.node.attrs["pPrMark"])
+  ) {
+    const blockId = tableBlockAddress(projection, {
+      table: next,
+      tableStart: position + 1,
+    });
+    return blockId === undefined
+      ? anchor
+      : { type: "table", at: { type: "before", blockId } };
   }
+  if (next?.type.name !== "paragraph") return anchor;
+  const follower =
+    projection.paragraphStartingAt(position) ??
+    panic("A following paragraph is missing from the projection.");
+  return removedBlockIds.has(follower.blockId)
+    ? anchor
+    : { type: "paragraph", at: { type: "before", blockId: follower.blockId } };
 };
 
 type InsertionGapOptions = {
   operation: FolioDocumentOperation;
   intents: readonly EditorIntent[];
   projection: CanonicalProjection;
+  /** `BesidePendingJoinOptions.landedEarlier`, for the gap of a block put before. */
+  landedEarlier?: ReadonlySet<number>;
 };
 
 /** The physical anchor and accepted source gap, before this batch inserts. */
 const canonicalInsertionGap = ({
+  landedEarlier,
   operation,
   intents,
   projection,
@@ -2967,6 +3172,10 @@ const canonicalInsertionGap = ({
     source.start - 1,
   );
   const blockSide = operation.type === "insertBeforeBlock" ? "before" : "after";
+  const gapOf = (at: number, side: "before" | "after") =>
+    side === "before"
+      ? gapStartAsTheBatchRuns(projection.doc, at, landedEarlier)
+      : insertionGap(projection.doc, at, side);
   const requestedSide = isBlockInsertion(operation)
     ? blockSide
     : (operation.position ?? "after");
@@ -2974,15 +3183,14 @@ const canonicalInsertionGap = ({
     anchor,
     boundary,
     // Lowering an insertion after a table to before its next paragraph
-    // changes its physical anchor, not its accepted source gap.
-    gap:
-      sourceTable === null
-        ? insertionGap(projection.doc, boundary, anchor.at.type)
-        : insertionGap(
-            projection.doc,
-            sourceTable[requestedSide],
-            requestedSide,
-          ),
+    // changes its physical anchor, not its accepted source gap. Before a
+    // block, the gap stops where the placement does: at a paragraph an
+    // earlier operation puts among the blocks accepting removes
+    // (`gapStartAsTheBatchRuns`).
+    gap: gapOf(
+      sourceTable === null ? boundary : sourceTable[requestedSide],
+      sourceTable === null ? anchor.at.type : requestedSide,
+    ),
   };
 };
 
@@ -3192,6 +3400,8 @@ type ResolveTableInsertionOptions = {
   ) => Result<never, CanonicalPublicOperationResolutionError>;
   /** The table to copy, when the batch hands one for this operation. */
   template: PMNode | undefined;
+  /** `BesidePendingJoinOptions.landedEarlier`. */
+  landedEarlier: ReadonlySet<number>;
 };
 
 /**
@@ -3214,6 +3424,7 @@ const resolveTableInsertion = ({
   refusal,
   skipAlike,
   template,
+  landedEarlier,
 }: ResolveTableInsertionOptions) => {
   const side = operation.position ?? "after";
   const { schema } = projection.doc.type;
@@ -3381,24 +3592,30 @@ const resolveTableInsertion = ({
     paragraph,
     projection,
     noteReferences,
+    landedEarlier,
   });
+  // A paragraph the batch already put right after `place` stands between
+  // it and the table, holding its words once accepted.
+  const afterEarlier =
+    side === "after" &&
+    landedEarlier.has(place.start - 1 + place.node.nodeSize);
   const $place = projection.doc.resolve(place.start - 1);
   const neighbour = $place.parent.maybeChild(
     $place.index() + (side === "after" ? 1 : -1),
   );
   const gap =
     side === "after" ? place.start - 1 + place.node.nodeSize : place.start - 1;
-  if (stopsPendingJoin(gap)) return pendingJoinRefusal();
+  if (!afterEarlier && stopsPendingJoin(gap)) return pendingJoinRefusal();
   // Right after a paragraph whose break is pending deletion, accepting that
   // deletion would run the paragraph's words into the table's first cell;
   // one that goes whole leaves nothing of its own to run in, but passes on
   // the words of a paragraph joining into it.
-  if (side === "after" && followsDeletedBreak(gap))
+  if (side === "after" && !afterEarlier && followsDeletedBreak(gap))
     return pendingBreakRefusal();
   // A pending-deleted table is at the start of this accepted gap. Use its
   // before edge so a later insertion explicitly after it can stay there.
   if (side === "before") {
-    const start = insertionGap(projection.doc, gap, side);
+    const start = gapStartAsTheBatchRuns(projection.doc, gap, landedEarlier);
     const pending = start < gap ? projection.doc.nodeAt(start) : null;
     if (pending?.type.name === "table") {
       const address = tableBlockAddress(projection, {
@@ -4828,8 +5045,11 @@ type BesideDeletions = {
   };
   /** The blocks the batch puts a paragraph after. */
   paragraphsAfter: ReadonlySet<string>;
-  /** Those the operations before this one, in input order, put a paragraph after. */
-  paragraphsAfterEarlier: (operationId: string) => ReadonlySet<string>;
+  /**
+   * The block boundaries where the operations before this one, in input
+   * order, put a paragraph (`BesidePendingJoinOptions.landedEarlier`).
+   */
+  landedEarlier: (operationId: string) => ReadonlySet<number>;
   /** The insertions that put a block beside `blockId`, in input order. */
   placedBeside: (
     blockId: string,
@@ -4958,13 +5178,14 @@ const tableParagraphIds = (table: PMNode): string[] => {
 const tableAnchors = (
   operations: readonly FolioDocumentOperation[],
   side: "after" | "before",
+  anchorOf: (operation: TableInsertion) => string = ({ blockId }) => blockId,
 ): ReadonlySet<string> =>
   new Set(
     operations.flatMap((operation) =>
       (operation.type === "insertTable" ||
         operation.type === "insertSignatureTable") &&
       (operation.position ?? "after") === side
-        ? [operation.blockId]
+        ? [anchorOf(operation)]
         : [],
     ),
   );
@@ -4974,7 +5195,7 @@ const NO_BESIDE_DELETIONS: BesideDeletions = {
   insertedBeside: new Set(),
   tables: { after: new Set(), before: new Set(), deleted: new Set() },
   paragraphsAfter: new Set(),
-  paragraphsAfterEarlier: () => new Set(),
+  landedEarlier: () => new Set(),
   placedBeside: () => [],
 };
 
@@ -5413,6 +5634,57 @@ export class CanonicalPublicOperations {
         operation.type === "commentOnBlock" ||
         operation.type === "commentOnRange",
     );
+    let batchNoteReferences: NoteReferenceLabels | undefined;
+    const placeOf = (operation: BlockInsertion | TableInsertion) =>
+      state && projected.isOk()
+        ? landingParagraph(
+            operation,
+            projected.value,
+            (batchNoteReferences ??= collectNoteReferenceLabels(state.doc)),
+          )
+        : undefined;
+    const landsBeside = (operation: BlockInsertion | TableInsertion) =>
+      placeOf(operation)?.blockId ?? operation.blockId;
+    /**
+     * The block boundary a paragraph the operation puts lands at: put
+     * before a paragraph, at the start of its gap (`insertionGap`).
+     */
+    const landingOf = (operation: FolioDocumentOperation): number[] => {
+      const place = isBlockInsertion(operation)
+        ? placeOf(operation)
+        : undefined;
+      if (place === undefined || !projected.isOk()) return [];
+      return [
+        operation.type === "insertAfterBlock"
+          ? place.start - 1 + place.node.nodeSize
+          : insertionGap(projected.value.doc, place.start - 1, "before"),
+      ];
+    };
+    // A block its own paragraph refuses (gone, changed since the snapshot,
+    // or not as its precondition read it) lands nowhere: the batch's
+    // deletions read only the blocks that land beside them.
+    const landsAsRequested = (operation: FolioDocumentOperation): boolean => {
+      if (!placesBlock(operation) || !state || projected.isErr()) return true;
+      const anchor = Object.hasOwn(options.snapshot.anchors, operation.blockId)
+        ? options.snapshot.anchors[operation.blockId]
+        : undefined;
+      const paragraph = projected.value.paragraph(operation.blockId);
+      if (anchor === undefined || paragraph === undefined) return false;
+      const hash = hashFolioAIBlockContent(
+        buildCleanBlockText(paragraph.node, paragraph.start - 1, {
+          fieldResults: "text",
+          noteReferences: (batchNoteReferences ??= collectNoteReferenceLabels(
+            state.doc,
+          )),
+        }).text,
+      );
+      return (
+        hash === anchor.textHash &&
+        (operation.precondition === undefined ||
+          hash === operation.precondition.blockTextHash)
+      );
+    };
+    const landing = batch.operations.filter(landsAsRequested);
     const besideDeletions: BesideDeletions = {
       deleted: new Set(
         batch.operations.flatMap((operation) =>
@@ -5420,16 +5692,13 @@ export class CanonicalPublicOperations {
         ),
       ),
       insertedBeside: new Set(
-        batch.operations.flatMap((operation) =>
-          operation.type === "insertAfterBlock" ||
-          operation.type === "insertBeforeBlock"
-            ? [operation.blockId]
-            : [],
+        landing.flatMap((operation) =>
+          isBlockInsertion(operation) ? [landsBeside(operation)] : [],
         ),
       ),
       tables: {
-        after: tableAnchors(batch.operations, "after"),
-        before: tableAnchors(batch.operations, "before"),
+        after: tableAnchors(landing, "after", landsBeside),
+        before: tableAnchors(landing, "before", landsBeside),
         deleted: new Set(
           batch.operations.flatMap((operation) =>
             operation.type === "deleteTable" ? [operation.blockId] : [],
@@ -5437,26 +5706,25 @@ export class CanonicalPublicOperations {
         ),
       },
       paragraphsAfter: new Set(
-        batch.operations.flatMap((operation) =>
-          operation.type === "insertAfterBlock" ? [operation.blockId] : [],
+        landing.flatMap((operation) =>
+          operation.type === "insertAfterBlock" ? [landsBeside(operation)] : [],
         ),
       ),
-      paragraphsAfterEarlier: (operationId) => {
+      landedEarlier: (operationId) => {
         const index = batch.operations.findIndex(
           ({ id }) => id === operationId,
         );
         return new Set(
           batch.operations
             .slice(0, Math.max(index, 0))
-            .flatMap((operation) =>
-              operation.type === "insertAfterBlock" ? [operation.blockId] : [],
-            ),
+            .filter((operation) => landing.includes(operation))
+            .flatMap(landingOf),
         );
       },
       placedBeside: (blockId) =>
-        batch.operations.filter(
+        landing.filter(
           (operation): operation is BlockInsertion | TableInsertion =>
-            placesBlock(operation) && operation.blockId === blockId,
+            placesBlock(operation) && landsBeside(operation) === blockId,
         ),
     };
     const inputIndices = new Map(
@@ -5645,7 +5913,10 @@ export class CanonicalPublicOperations {
           ? (other.type === "insertAfterBlock" ||
               other.type === "insertBeforeBlock") &&
             other.blockId === operation.blockId
-          : other.type === "deleteBlock" && other.blockId === operation.blockId,
+          : // One moved past the deletion names the paragraph it deletes.
+            other.type === "deleteBlock" &&
+            "blockId" in item.operation &&
+            other.blockId === item.operation.blockId,
       );
       if (partnered) continue;
       resolved.splice(resolved.indexOf(item), 1);
@@ -6361,6 +6632,7 @@ export class CanonicalPublicOperations {
         operation: member.operation,
         intents: member.intents,
         projection: projected.value,
+        landedEarlier: besideDeletions.landedEarlier(member.operation.id),
       });
       if (place === undefined)
         panic("A resolved block insertion lost its placement.");
@@ -6439,6 +6711,20 @@ export class CanonicalPublicOperations {
       // These insertions only add paragraph IDs. Later siblings cannot take
       // any of the IDs an earlier member already selected from the free space.
       return true;
+    };
+    /** The anchor a gap's insertions replay against, read from its first. */
+    const replayAnchorOf = (first: AdmittedOperation) => {
+      const place =
+        canonicalInsertionGap({
+          operation: first.operation,
+          intents: first.intents,
+          projection: projected.value,
+        }) ?? panic("An admitted insertion lost its source placement.");
+      return gapAnchorBeforeFollower({
+        anchor: place.anchor,
+        projection: projected.value,
+        removedBlockIds: batchRemovedBlockIds,
+      });
     };
     const windows = new Map<AdmittedOperation, readonly AdmittedOperation[]>();
     for (const interval of merged) {
@@ -6525,6 +6811,34 @@ export class CanonicalPublicOperations {
         // ordinary compiler, with its original exhaustion diagnostics.
         if (nextLease.type === "bounded" && prepared.type === "declined")
           prepared = prepareOperation(admissionOptions);
+        // Refused the mark of a paragraph under review beside a block of its
+        // gap admitted before it (a table now after the paragraph it names,
+        // say), it is admitted where the gap replays, as it then runs.
+        const group = groupOf.get(member);
+        const lead =
+          group === undefined
+            ? undefined
+            : admitted.find(
+                (entry) => groupOf.get(entry.resolvedOperation) === group,
+              )?.resolvedOperation;
+        if (
+          prepared.type === "declined" &&
+          prepared.reason === "pendingParagraphMarkDeletion" &&
+          lead !== undefined
+        ) {
+          const replayed = prepareOperation({
+            ...admissionOptions,
+            resolvedOperation: {
+              ...member,
+              intents: placeInsertionIntents({
+                intents: member.intents,
+                anchor: replayAnchorOf(lead),
+                placement: "following",
+              }),
+            },
+          });
+          if (replayed.type !== "declined") prepared = replayed;
+        }
         if (prepared.type === "declined") {
           declinedMembers.push({ resolvedOperation: member, prepared });
           continue;
@@ -6590,18 +6904,7 @@ export class CanonicalPublicOperations {
           ordered.push({ member, operation: member.resolvedOperation });
           continue;
         }
-        const firstPlace = canonicalInsertionGap({
-          operation: first.resolvedOperation.operation,
-          intents: first.resolvedOperation.intents,
-          projection: projected.value,
-        });
-        if (firstPlace === undefined)
-          panic("An admitted insertion lost its source placement.");
-        const anchor = gapAnchorBeforeFollower({
-          anchor: firstPlace.anchor,
-          projection: projected.value,
-          removedBlockIds: batchRemovedBlockIds,
-        });
+        const anchor = replayAnchorOf(first.resolvedOperation);
         const placed = partners.toSorted(
           (left, right) =>
             (placementOrderOf(left.resolvedOperation) -
@@ -6677,7 +6980,7 @@ export class CanonicalPublicOperations {
           if (droppedCarrier !== undefined) reserved.add(droppedCarrier);
           reservedBlockIds = reserved;
         }
-        const prepared = prepareOperation({
+        const replayOptions = {
           document,
           columnInsertions: insertedColumnCounts,
           resolvedOperation: replayOperation,
@@ -6686,13 +6989,25 @@ export class CanonicalPublicOperations {
           ...(paragraphAllocationLease === undefined
             ? {}
             : { paragraphAllocationLease }),
-          allocations: member.allocations,
           ...(reuseStaging ? { verifyOperation: operationStaging.apply } : {}),
           ...(member.commentAllocation === undefined
             ? {}
             : { commentAllocation: member.commentAllocation }),
           ...(idLease === undefined ? {} : { idLease }),
+        };
+        let prepared = prepareOperation({
+          ...replayOptions,
+          allocations: member.allocations,
         });
+        // Replayed where it lands beside the others of its gap, a member may
+        // need other ids than it was admitted with: it allocates them afresh,
+        // from its own lease when the session holds one, and takes revision
+        // ids past every admitted member's.
+        if (prepared.type === "declined")
+          prepared = prepareOperation({
+            ...replayOptions,
+            nextRevisionId: Math.max(nextRevisionId, admissionRevisionId),
+          });
         if (prepared.type === "declined")
           panic(`Admitted insertion failed when ordered: ${prepared.message}`);
         commitOperation(replayOperation, prepared);
@@ -7707,7 +8022,17 @@ export class CanonicalPublicOperations {
     const blockAfter = state.doc.resolve(
       paragraph.start + paragraph.node.content.size + 1,
     ).nodeAfter;
-    const followed = blockAfter?.type.name === "paragraph";
+    // Applied directly, a table the batch puts right after it leaves no
+    // paragraph following it (`tableLandsAfter`).
+    const followed =
+      blockAfter?.type.name === "paragraph" &&
+      (tracked ||
+        !tableLandsAfter({
+          paragraph,
+          projection: projection.value,
+          noteReferences,
+          besideDeletions,
+        }));
     const blockBefore = state.doc.resolve(paragraph.start - 1).nodeBefore;
     const previousId: unknown =
       blockBefore?.type.name === "paragraph"
@@ -7747,16 +8072,30 @@ export class CanonicalPublicOperations {
         afterPos += after.nodeSize;
         after = beyond;
       }
-      const precedingId: unknown =
-        before?.type.name === "paragraph" ? before.attrs["paraId"] : undefined;
+      const idOf = (block: PMNode | null): unknown =>
+        block?.type.name === "paragraph" ? block.attrs["paraId"] : undefined;
+      // A table the batch puts after the paragraph before, or before the
+      // one after, borders it as one standing there does.
+      const tableBeside = (block: PMNode | null, side: "before" | "after") => {
+        const id = idOf(block);
+        return (
+          block?.type.name === "table" ||
+          (typeof id === "string" &&
+            tableLandsBeside({
+              blockId: id,
+              side,
+              projection: projection.value,
+              noteReferences,
+              besideDeletions,
+            }))
+        );
+      };
+      const follower = followed ? "paragraph" : "block";
       return deletedParagraphPlacement({
         beside: besideDeletions.placedBeside(blockId),
-        tableBefore:
-          before?.type.name === "table" ||
-          (typeof precedingId === "string" &&
-            lastPutAfterIsTable(besideDeletions.placedBeside(precedingId))),
-        tableAfter: after?.type.name === "table",
-        after: blockAfter,
+        tableBefore: tableBeside(before, "after"),
+        tableAfter: tableBeside(after, "before"),
+        after: blockAfter === null ? "none" : follower,
       });
     };
     const besideDeleted = besideDeletions.deleted.has(blockId)
@@ -7783,25 +8122,56 @@ export class CanonicalPublicOperations {
       operation.type === "insertTable" ||
       operation.type === "insertSignatureTable"
     ) {
+      const landedEarlier = besideDeletions.landedEarlier(operation.id);
+      // Put after the paragraph before one the direct batch deletes, it may
+      // go after that one too (`movedPastDeletion`).
+      const movedPast =
+        tracked ||
+        listStart !== undefined ||
+        (operation.position ?? "after") !== "after" ||
+        findOutermostTableBoundary(
+          projection.value.doc,
+          paragraph.start - 1,
+        ) !== null
+          ? undefined
+          : movedPastDeletion({
+              operation,
+              place: besidePendingJoin({
+                side: "after",
+                paragraph,
+                projection: projection.value,
+                noteReferences,
+                landedEarlier,
+              }).place,
+              projection: projection.value,
+              noteReferences,
+              besideDeletions,
+              inputOrder: options.batch.operations,
+            });
       // Put before a paragraph the direct batch deletes behind a paragraph
       // put there, it goes after it with that paragraph.
       const besideDeletion =
-        !tracked &&
-        listStart === undefined &&
-        besideDeleted?.type === "placedAfter" &&
-        besideDeleted.operationIds.has(operation.id);
+        movedPast !== undefined ||
+        (!tracked &&
+          listStart === undefined &&
+          besideDeleted?.type === "placedAfter" &&
+          besideDeleted.operationIds.has(operation.id));
+      let placedOperation: TableInsertion = operation;
+      if (movedPast !== undefined)
+        placedOperation = { ...operation, blockId: movedPast.blockId };
+      else if (besideDeletion)
+        placedOperation = { ...operation, position: "after" };
       const inserted = resolveTableInsertion({
-        operation: besideDeletion
-          ? { ...operation, position: "after" }
-          : operation,
+        operation: placedOperation,
         ...(listStart === undefined ? {} : { listStart }),
-        paragraph,
+        paragraph: movedPast ?? paragraph,
         projection: projection.value,
         story,
         noteReferences,
         refusal,
         skipAlike,
         template: options.tableTemplates?.get(operation.id),
+        landedEarlier,
       });
       return besideDeletion && inserted.isOk()
         ? Result.ok({ ...inserted.value, besideDeletion: true as const })
@@ -7824,41 +8194,62 @@ export class CanonicalPublicOperations {
         skipAlike,
       });
     if (isBlockInsertion(operation)) {
+      const landedEarlier = besideDeletions.landedEarlier(operation.id);
+      const after =
+        operation.type === "insertAfterBlock"
+          ? placeAfter({
+              paragraph,
+              projection: projection.value,
+              noteReferences,
+              landedEarlier,
+            })
+          : undefined;
+      const movedPast =
+        after === undefined || tracked
+          ? undefined
+          : movedPastDeletion({
+              operation,
+              place: after.place,
+              projection: projection.value,
+              noteReferences,
+              besideDeletions,
+              inputOrder: options.batch.operations,
+            });
       const besideDeletion =
-        !tracked &&
-        operation.type === "insertBeforeBlock" &&
-        !followed &&
-        besideDeletions.deleted.has(blockId) &&
-        !keepsTablesApart;
+        movedPast !== undefined ||
+        (!tracked &&
+          operation.type === "insertBeforeBlock" &&
+          !followed &&
+          besideDeletions.deleted.has(blockId) &&
+          !keepsTablesApart);
       // A container's final mark remains on a paragraph inserted before it.
       // Before a table or control, its own mark goes: insert after it first
       // so the block deletion has a following paragraph to receive its text
       // (`deletedParagraphPlacement`).
-      const insertion: BlockInsertion =
-        besideDeletion && blockAfter !== null
-          ? { ...operation, type: "insertAfterBlock" }
-          : operation;
+      let insertion: BlockInsertion = operation;
+      if (movedPast !== undefined)
+        insertion = { ...operation, blockId: movedPast.blockId };
+      else if (besideDeletion && blockAfter !== null)
+        insertion = { ...operation, type: "insertAfterBlock" };
       // A paragraph put after one whose break a pending join removes goes
       // where `insertionAfterPendingBreak` puts it, and one put before a
       // paragraph goes before the join it is part of, in every mode: a
       // suggestion lands where the same tracked insertion does, so
       // accepting it leaves what the direct edit does.
-      const placed =
-        insertion.type === "insertAfterBlock"
-          ? placeAfter({
-              paragraph,
-              projection: projection.value,
-              noteReferences,
-            })
-          : besidePendingJoin({
-              side: "before",
-              paragraph,
-              projection: projection.value,
-              noteReferences,
-              paragraphsAfterEarlier: besideDeletions.paragraphsAfterEarlier(
-                operation.id,
-              ),
-            });
+      const placing = {
+        paragraph,
+        projection: projection.value,
+        noteReferences,
+        landedEarlier,
+      };
+      let placed: BesidePendingJoin;
+      // Moved past a deletion, it lands after the deleted paragraph but
+      // copies the one it was put after, as it would there.
+      if (movedPast !== undefined && after !== undefined)
+        placed = { place: movedPast, formattingSource: after.formattingSource };
+      else if (insertion.type === "insertAfterBlock")
+        placed = after ?? placeAfter(placing);
+      else placed = besidePendingJoin({ ...placing, side: "before" });
       // A block the join would run into the words before it, or into a
       // table after it, waits for the join to be resolved.
       const gap =
@@ -7888,6 +8279,7 @@ export class CanonicalPublicOperations {
         mintList,
         refusal,
         skipAlike,
+        landedEarlier,
       });
       return besideDeletion && inserted.isOk()
         ? Result.ok({ ...inserted.value, besideDeletion: true as const })
