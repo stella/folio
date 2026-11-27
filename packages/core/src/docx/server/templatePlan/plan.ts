@@ -167,6 +167,9 @@ export type ResolvedSlot = {
   paragraph: ResolvedParagraph;
 };
 
+/** A `REF` switch that shows the target paragraph's number, not its text. */
+const SHOWS_NUMBER = /\\[nrw]\b/u;
+
 const fieldCharOf = (run: XmlElement): string | null =>
   wName(run) === "r" ? wAttr(wChild(run, "fldChar"), "fldCharType") : null;
 
@@ -2017,8 +2020,9 @@ export const resolvePlan = (
         }),
       );
     }
-    if (paragraph === target) {
-      // A field inside its own bookmark refers to itself.
+    if (paragraph === target && !SHOWS_NUMBER.test(reference.instruction)) {
+      // A field inside its own bookmark that shows the bookmark's text
+      // refers to itself; one that shows the paragraph's number does not.
       return Result.err(
         refuse({
           code: "reference-span-invalid",
