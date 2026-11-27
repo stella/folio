@@ -1686,6 +1686,11 @@ type LastPutBetweenOptions = {
   before: unknown;
   /** The paragraph after it. */
   blockId: string;
+  /**
+   * The first paragraph of a pending join into it, which a block put before
+   * it lands before (`besidePendingJoin`).
+   */
+  opening?: string | undefined;
   inputOrder: readonly FolioDocumentOperation[];
 };
 
@@ -1697,6 +1702,7 @@ const lastPutBetween = ({
   besideDeletions,
   before,
   blockId,
+  opening,
   inputOrder,
 }: LastPutBetweenOptions) => {
   const order = (id: string) =>
@@ -1706,8 +1712,8 @@ const lastPutBetween = ({
       ? besideDeletions.placedBeside(before)
       : []
     ).filter((placed) => placementSide(placed) === "after"),
-    ...besideDeletions
-      .placedBeside(blockId)
+    ...[blockId, ...(opening === undefined ? [] : [opening])]
+      .flatMap((id) => besideDeletions.placedBeside(id))
       .filter((placed) => placementSide(placed) === "before"),
   ]
     .toSorted((left, right) => order(left.id) - order(right.id))
@@ -2229,18 +2235,21 @@ const landingBeside = ({
   const side = placementSide(operation);
   const idOf = (node: PMNode | null): unknown =>
     node?.type.name === "paragraph" ? node.attrs["paraId"] : undefined;
+  const options = { paragraph, projection, noteReferences };
   // Put before a paragraph the batch deletes, a table lands after the one
   // before it, which that gap is once the deletion goes: it no longer needs
-  // the deleted paragraph standing when it runs.
-  const previous = idOf(projection.doc.resolve(paragraph.start - 1).nodeBefore);
+  // the deleted paragraph standing when it runs. That is the one before the
+  // pending join the paragraph is part of (`besidePendingJoin`).
   if (
     placesTable(operation) &&
     side === "before" &&
-    deleted.has(operation.blockId) &&
-    typeof previous === "string" &&
-    !deleted.has(previous)
-  )
-    return { blockId: previous, side: "after" };
+    deleted.has(operation.blockId)
+  ) {
+    const { place } = besidePendingJoin({ ...options, side });
+    const previous = idOf(projection.doc.resolve(place.start - 1).nodeBefore);
+    if (typeof previous === "string" && !deleted.has(previous))
+      return { blockId: previous, side: "after" };
+  }
   const table = findOutermostTableBoundary(projection.doc, paragraph.start - 1);
   if (table !== null) {
     if (deleted.size === 0) return undefined;
@@ -2257,7 +2266,6 @@ const landingBeside = ({
       ? { blockId: after, side: "before" }
       : null;
   }
-  const options = { paragraph, projection, noteReferences };
   const { place } =
     operation.type === "insertAfterBlock"
       ? placeAfter(options)
@@ -7746,13 +7754,10 @@ export class CanonicalPublicOperations {
           // added mark before a table its author's insertion put there.
           joinedWordsStart === undefined))
     ) {
-      if (paragraph.start === end) return refusal("noopOperation");
-      // Words a pending join runs into it go with its own, as below. Between
-      // two tables nothing runs into it: a table the batch puts before it
-      // stands between it and the words of the join.
-      const start = keepsTablesApart
-        ? paragraph.start
-        : (joinedWordsStart ?? paragraph.start);
+      // Words a pending join runs into it go with its own, as below: a table
+      // the batch puts before it lands before the join.
+      const start = joinedWordsStart ?? paragraph.start;
+      if (start === end) return refusal("noopOperation");
       const from = projection.addressAt(start);
       const to = projection.addressAt(end);
       if (from.isErr() || to.isErr())
@@ -7788,12 +7793,13 @@ export class CanonicalPublicOperations {
     // destination still supplies the container's last mark.
     // The intent collects deleted marks. Move-source marks belong to
     // their paired move and their words stay under that move's review.
+    // Claimed from the paragraph before the join, it runs after a paragraph
+    // the batch puts right before the join and retires that one's break.
     const deletesFinalJoin =
       after === null &&
       takesJoinedWords &&
       previous?.source.pPrMark?.kind === "del" &&
       !isDeletedPPrMark(paragraph.node.attrs["pPrMark"]) &&
-      !previousGainsFollower &&
       noDeletedRunBefore(deletedRun);
     if (
       !keepsSectionBreakBeforeBlock &&
@@ -7830,6 +7836,11 @@ export class CanonicalPublicOperations {
       // It retires the break of a paragraph the batch puts right before it.
       else if (retiresBefore && endsOnceAccepted && previousGainsFollower)
         from = previous.start;
+      else if (deletesFinalJoin && previousGainsFollower)
+        from =
+          neighbour(
+            doc.resolve((joinedWordsStart ?? paragraph.start) - 1).nodeBefore,
+          )?.start ?? paragraph.start;
       const runCarrier =
         retiresRun &&
         (deletedRun.type === "kept" || deletedRun.type === "runStart")
@@ -8088,8 +8099,11 @@ export class CanonicalPublicOperations {
           followsTableInsertion: true,
         });
       }
-      if (paragraph.node.content.size === 0) return refusal("noopOperation");
-      range = { from: paragraph.start, to: end };
+      // After a table the batch puts before a pending join into it, the
+      // joined words go with its own.
+      const start = joinedWordsStart ?? paragraph.start;
+      if (start === end) return refusal("noopOperation");
+      range = { from: start, to: end };
     }
     const from = projection.addressAt(range.from);
     const to = projection.addressAt(range.to);
@@ -8348,7 +8362,21 @@ export class CanonicalPublicOperations {
           noteReferences,
           besideDeletions,
         }));
-    const blockBefore = state.doc.resolve(paragraph.start - 1).nodeBefore;
+    // Tracked, it takes the paragraphs a pending join runs into it
+    // (`joinedWords`): the block before them is the one before it.
+    const joined = deletionTakesJoinedWords(
+      options.batch.mode ?? "tracked-changes",
+    )
+      ? joinedBefore(state.doc, paragraph.start - 1)
+      : [];
+    const opening = joined.some((id) => besideDeletions.deleted.has(id))
+      ? undefined
+      : joined.at(-1);
+    const joinStart =
+      (opening === undefined
+        ? undefined
+        : projection.value.paragraph(opening)?.start) ?? paragraph.start;
+    const blockBefore = state.doc.resolve(joinStart - 1).nodeBefore;
     const previousId: unknown =
       blockBefore?.type.name === "paragraph"
         ? blockBefore.attrs["paraId"]
@@ -8358,6 +8386,7 @@ export class CanonicalPublicOperations {
         besideDeletions,
         before,
         blockId,
+        opening,
         inputOrder: options.batch.operations,
       });
     // Find the tables that will actually border the deleted paragraph.
@@ -8371,8 +8400,8 @@ export class CanonicalPublicOperations {
       block.type.name === "table" &&
       ((tracked && tableGoes(block, "accept")) || batchRemovesTable(block));
     const resolveDeletedPlacement = () => {
-      let beforePos = paragraph.start - 1;
-      let afterPos = beforePos + paragraph.node.nodeSize;
+      let beforePos = joinStart - 1;
+      let afterPos = paragraph.start - 1 + paragraph.node.nodeSize;
       let before = blockBefore;
       let after = blockAfter;
       // Block-level range boundaries hold nothing: the blocks past them

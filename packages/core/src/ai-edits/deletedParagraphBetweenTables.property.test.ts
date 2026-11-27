@@ -6,8 +6,9 @@
  *
  * The block before the deleted paragraph is a paragraph, which may get a table
  * put after it, or a table; the block after it is nothing, a paragraph or a
- * table. A tracked join of the opening paragraph into the next may be
- * pending, and an earlier batch may put tables and paragraphs beside it
+ * table. A tracked join may be pending, of the opening paragraph into the
+ * next, of the paragraph before into the deleted one, or of the deleted one
+ * into the next, and an earlier batch may put tables and paragraphs beside it
  * first, so the later one meets them pending in the tracked replay. The
  * batch deletes the paragraph, in any place among up to three tables or
  * paragraphs it puts beside it, beside the blocks before and after it (a
@@ -53,10 +54,12 @@ type Case = {
   /** A table put after the paragraph before, when that is a paragraph. */
   tableAfterPrevious: boolean;
   /**
-   * A tracked join of the opening paragraph into the one after it, pending
-   * before the batches in both replays, when that one is a paragraph.
+   * The paragraph a tracked join runs into the one after it, pending before
+   * the batches in both replays: the opening one, the one before the deleted
+   * paragraph, which runs into it, or the deleted one, which runs out of it,
+   * when a paragraph follows each.
    */
-  pendingJoin: boolean;
+  pendingJoin: "none" | "opening" | "previous" | "anchor";
   /** An earlier batch's insertions beside the paragraph. */
   earlier: readonly Insertion[];
   insertions: readonly Insertion[];
@@ -69,6 +72,7 @@ const PREVIOUS = "Previous clause.";
 const ANCHOR = "Anchor clause.";
 const NEXT = "Next clause.";
 const CLOSING = "Closing clause.";
+const JOINED = { opening: OPENING, previous: PREVIOUS, anchor: ANCHOR };
 
 const tableMarkdown = (label: string) =>
   `| ${label} one | ${label} two |\n| --- | --- |\n| ${label} three | ${label} four |`;
@@ -156,13 +160,20 @@ const blockIdOf = (reviewer: FolioDocxReviewer, text: string): string => {
   return block.id;
 };
 
+/**
+ * The deleted paragraph, which keeps its id through a join into it, and the
+ * paragraph a pending join runs into it, if any, which the direct join
+ * removes: it reads as part of the deleted paragraph.
+ */
+type Anchor = { id: string; joined: string | undefined };
+
 /** The block `step` places from the anchor as the batch finds it, or the anchor. */
 const besideOf = (
   reviewer: FolioDocxReviewer,
-  anchor: string,
+  { id: anchor, joined }: Anchor,
   step: 1 | -1,
 ): string => {
-  const content = reviewer.getContent();
+  const content = reviewer.getContent().filter(({ id }) => id !== joined);
   const index = content.findIndex(({ id }) => id === anchor);
   return content[index + step]?.id ?? anchor;
 };
@@ -170,11 +181,11 @@ const besideOf = (
 const insertionsOf = (
   insertions: readonly Insertion[],
   reviewer: FolioDocxReviewer,
+  anchor: Anchor,
   prefix: string,
 ): FolioDocumentOperation[] => {
-  const anchor = blockIdOf(reviewer, ANCHOR);
   const targets = {
-    anchor,
+    anchor: anchor.id,
     follower: besideOf(reviewer, anchor, 1),
     precursor: besideOf(reviewer, anchor, -1),
     opening: blockIdOf(reviewer, OPENING),
@@ -197,8 +208,9 @@ const insertionsOf = (
 const operationsOf = (
   setup: Case,
   reviewer: FolioDocxReviewer,
+  anchor: Anchor,
 ): FolioDocumentOperation[] => {
-  const operations = insertionsOf(setup.insertions, reviewer, "insert");
+  const operations = insertionsOf(setup.insertions, reviewer, anchor, "insert");
   if (setup.tableAfterPrevious)
     operations.unshift({
       id: "table-after-previous",
@@ -209,7 +221,7 @@ const operationsOf = (
   operations.splice(Math.min(setup.deletionAt, operations.length), 0, {
     id: "delete",
     type: "deleteBlock",
-    blockId: blockIdOf(reviewer, ANCHOR),
+    blockId: anchor.id,
   });
   return operations;
 };
@@ -234,16 +246,26 @@ const replay = async (setup: Case, mode: Mode) => {
   const reviewer = await open(setup);
   const original = blocksOf(reviewer);
   const applied: string[] = [];
-  if (setup.pendingJoin) {
+  const anchor: Anchor = {
+    id: blockIdOf(reviewer, ANCHOR),
+    joined:
+      setup.pendingJoin === "previous"
+        ? blockIdOf(reviewer, PREVIOUS)
+        : undefined,
+  };
+  if (setup.pendingJoin !== "none") {
     const joined = reviewer.applyDocumentOperations(
       {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "tracked-changes",
+        // A join into the deleted paragraph goes in the batches' mode: the
+        // tracked deletion takes the words it runs in, as deleting the
+        // joined paragraph directly does.
+        mode: setup.pendingJoin === "previous" ? mode : "tracked-changes",
         operations: [
           {
             id: "join",
             type: "mergeBlockWithNext",
-            blockId: blockIdOf(reviewer, OPENING),
+            blockId: blockIdOf(reviewer, JOINED[setup.pendingJoin]),
             separator: " ",
           },
         ],
@@ -253,8 +275,8 @@ const replay = async (setup: Case, mode: Mode) => {
     applied.push(...joined.applied.map(({ id }) => id));
   }
   for (const operations of [
-    () => insertionsOf(setup.earlier, reviewer, "earlier"),
-    () => operationsOf(setup, reviewer),
+    () => insertionsOf(setup.earlier, reviewer, anchor, "earlier"),
+    () => operationsOf(setup, reviewer, anchor),
   ]) {
     const result = reviewer.applyDocumentOperations(
       {
@@ -295,18 +317,32 @@ const caseArbitrary: fc.Arbitrary<Case> = fc
     before: fc.constantFrom<Case["before"][]>("paragraph", "table"),
     after: fc.constantFrom<Case["after"][]>("end", "paragraph", "table"),
     tableAfterPrevious: fc.boolean(),
-    pendingJoin: fc.boolean(),
+    pendingJoin: fc.constantFrom<Case["pendingJoin"][]>(
+      "none",
+      "opening",
+      "previous",
+      "anchor",
+    ),
     earlier: fc.array(insertionArbitrary, { maxLength: 2 }),
     insertions: fc.array(insertionArbitrary, { maxLength: 3 }),
     deletionAt: fc.nat({ max: 4 }),
   })
   .map((setup) =>
     Object.assign(setup, {
-      // Only a paragraph before it can have a table put after it.
+      // Only a paragraph before it can have a table put after it, one a
+      // direct join leaves standing.
       tableAfterPrevious:
-        setup.before === "paragraph" && setup.tableAfterPrevious,
-      // Only a paragraph after the opening one can take its pending join.
-      pendingJoin: setup.before === "paragraph" && setup.pendingJoin,
+        setup.before === "paragraph" &&
+        setup.pendingJoin !== "previous" &&
+        setup.tableAfterPrevious,
+      // Only a paragraph after the one a pending join runs out of takes it.
+      pendingJoin: (
+        setup.pendingJoin === "anchor"
+          ? setup.after === "paragraph"
+          : setup.before === "paragraph"
+      )
+        ? setup.pendingJoin
+        : "none",
     }),
   );
 
@@ -318,7 +354,7 @@ const anchorInsertion = (
 const singleBatch = {
   container: "body",
   tableAfterPrevious: false,
-  pendingJoin: false,
+  pendingJoin: "none",
   earlier: [],
 } as const;
 
@@ -331,7 +367,7 @@ const regressions: [string, Case][] = [
       before: "paragraph",
       after: "end",
       tableAfterPrevious: false,
-      pendingJoin: false,
+      pendingJoin: "none",
       earlier: [anchorInsertion("paragraph", "after")],
       insertions: [anchorInsertion("table", "after")],
       deletionAt: 0,
@@ -345,7 +381,7 @@ const regressions: [string, Case][] = [
       before: "paragraph",
       after: "end",
       tableAfterPrevious: false,
-      pendingJoin: false,
+      pendingJoin: "none",
       earlier: [anchorInsertion("table", "after")],
       insertions: [{ kind: "paragraph", side: "before", target: "follower" }],
       deletionAt: 0,
@@ -358,7 +394,7 @@ const regressions: [string, Case][] = [
       before: "paragraph",
       after: "end",
       tableAfterPrevious: false,
-      pendingJoin: false,
+      pendingJoin: "none",
       earlier: [anchorInsertion("table", "after")],
       insertions: [
         { kind: "paragraph", side: "before", target: "follower" },
@@ -374,7 +410,7 @@ const regressions: [string, Case][] = [
       before: "paragraph",
       after: "table",
       tableAfterPrevious: false,
-      pendingJoin: false,
+      pendingJoin: "none",
       earlier: [],
       insertions: [anchorInsertion("paragraph", "before")],
       deletionAt: 0,
@@ -389,7 +425,7 @@ const regressions: [string, Case][] = [
       before: "paragraph",
       after: "table",
       tableAfterPrevious: false,
-      pendingJoin: false,
+      pendingJoin: "none",
       earlier: [],
       insertions: [
         anchorInsertion("paragraph", "before"),
@@ -409,7 +445,7 @@ const regressions: [string, Case][] = [
       before: "paragraph",
       after: "end",
       tableAfterPrevious: false,
-      pendingJoin: true,
+      pendingJoin: "opening",
       earlier: [],
       insertions: [
         anchorInsertion("paragraph", "before"),
@@ -428,7 +464,7 @@ const regressions: [string, Case][] = [
       before: "paragraph",
       after: "table",
       tableAfterPrevious: false,
-      pendingJoin: false,
+      pendingJoin: "none",
       earlier: [],
       insertions: [
         anchorInsertion("table", "before"),
@@ -447,7 +483,7 @@ const regressions: [string, Case][] = [
       before: "paragraph",
       after: "table",
       tableAfterPrevious: true,
-      pendingJoin: false,
+      pendingJoin: "none",
       earlier: [],
       insertions: [{ kind: "paragraph", side: "after", target: "precursor" }],
       deletionAt: 0,
@@ -462,7 +498,7 @@ const regressions: [string, Case][] = [
       before: "paragraph",
       after: "paragraph",
       tableAfterPrevious: true,
-      pendingJoin: false,
+      pendingJoin: "none",
       earlier: [],
       insertions: [
         anchorInsertion("paragraph", "after"),
@@ -480,7 +516,7 @@ const regressions: [string, Case][] = [
       before: "paragraph",
       after: "table",
       tableAfterPrevious: true,
-      pendingJoin: false,
+      pendingJoin: "none",
       earlier: [],
       insertions: [{ kind: "paragraph", side: "after", target: "precursor" }],
       deletionAt: 0,
@@ -495,7 +531,7 @@ const regressions: [string, Case][] = [
       before: "paragraph",
       after: "table",
       tableAfterPrevious: false,
-      pendingJoin: false,
+      pendingJoin: "none",
       earlier: [],
       insertions: [
         anchorInsertion("paragraph", "before"),
@@ -512,7 +548,7 @@ const regressions: [string, Case][] = [
       before: "paragraph",
       after: "table",
       tableAfterPrevious: false,
-      pendingJoin: false,
+      pendingJoin: "none",
       earlier: [],
       insertions: [
         anchorInsertion("paragraph", "before"),
@@ -530,7 +566,7 @@ const regressions: [string, Case][] = [
       before: "paragraph",
       after: "paragraph",
       tableAfterPrevious: true,
-      pendingJoin: false,
+      pendingJoin: "none",
       earlier: [],
       insertions: [
         { kind: "table", side: "after", target: "precursor" },
@@ -548,7 +584,7 @@ const regressions: [string, Case][] = [
       before: "table",
       after: "paragraph",
       tableAfterPrevious: false,
-      pendingJoin: false,
+      pendingJoin: "none",
       earlier: [],
       insertions: [
         anchorInsertion("paragraph", "before"),
@@ -564,7 +600,7 @@ const regressions: [string, Case][] = [
       before: "table",
       after: "end",
       tableAfterPrevious: false,
-      pendingJoin: false,
+      pendingJoin: "none",
       earlier: [],
       insertions: [
         anchorInsertion("paragraph", "before"),
@@ -583,7 +619,7 @@ const regressions: [string, Case][] = [
       before: "paragraph",
       after: "paragraph",
       tableAfterPrevious: false,
-      pendingJoin: false,
+      pendingJoin: "none",
       earlier: [{ kind: "table", side: "after", target: "precursor" }],
       insertions: [
         { kind: "table", side: "after", target: "precursor" },
@@ -599,12 +635,114 @@ const regressions: [string, Case][] = [
       before: "paragraph",
       after: "paragraph",
       tableAfterPrevious: true,
-      pendingJoin: true,
+      pendingJoin: "opening",
       earlier: [],
       insertions: [
         { kind: "table", side: "before", target: "follower" },
         { kind: "table", side: "after", target: "opening" },
       ],
+      deletionAt: 0,
+    },
+  ],
+  // #3690 flow a0ac291309b51011: the table lands right before the join,
+  // so the paragraph follows a table and keeps its mark, its words and the
+  // joined ones going.
+  [
+    "the body's last paragraph a pending join runs into, deleted as a table goes after the paragraph before the join",
+    {
+      ...singleBatch,
+      before: "paragraph",
+      after: "end",
+      pendingJoin: "previous",
+      insertions: [{ kind: "table", side: "after", target: "opening" }],
+      deletionAt: 1,
+    },
+  ],
+  // Put before a paragraph the batch deletes, a table lands after the one
+  // before the join that runs into it, not after the join.
+  [
+    "the body's last paragraph a pending join runs into, deleted as a table goes before it",
+    {
+      ...singleBatch,
+      before: "paragraph",
+      after: "end",
+      pendingJoin: "previous",
+      insertions: [anchorInsertion("table", "before")],
+      deletionAt: 0,
+    },
+  ],
+  [
+    "a paragraph a pending join runs into, deleted between a table after it and one put before it",
+    {
+      ...singleBatch,
+      before: "paragraph",
+      after: "table",
+      pendingJoin: "previous",
+      insertions: [anchorInsertion("table", "before")],
+      deletionAt: 0,
+    },
+  ],
+  [
+    "a paragraph a pending join runs into, deleted between a table after it and one put after the paragraph before the join",
+    {
+      ...singleBatch,
+      before: "paragraph",
+      after: "table",
+      pendingJoin: "previous",
+      insertions: [{ kind: "table", side: "after", target: "opening" }],
+      deletionAt: 0,
+    },
+  ],
+  [
+    "a paragraph a pending join runs into, deleted between tables put before and after it",
+    {
+      ...singleBatch,
+      before: "paragraph",
+      after: "paragraph",
+      pendingJoin: "previous",
+      insertions: [
+        anchorInsertion("table", "before"),
+        anchorInsertion("table", "after"),
+      ],
+      deletionAt: 0,
+    },
+  ],
+  // A paragraph put right before the join stands before it when the
+  // deletion runs, which retires that one's break and takes the joined words.
+  [
+    "the body's last paragraph a pending join runs into, deleted as a paragraph goes after the one before the join",
+    {
+      ...singleBatch,
+      before: "paragraph",
+      after: "end",
+      pendingJoin: "previous",
+      insertions: [{ kind: "paragraph", side: "after", target: "precursor" }],
+      deletionAt: 0,
+    },
+  ],
+  [
+    "the body's last paragraph a pending join runs into, deleted as a table and then a paragraph go before it",
+    {
+      ...singleBatch,
+      before: "paragraph",
+      after: "end",
+      pendingJoin: "previous",
+      insertions: [
+        anchorInsertion("table", "before"),
+        anchorInsertion("paragraph", "before"),
+      ],
+      deletionAt: 0,
+    },
+  ],
+  [
+    "a paragraph a pending join runs into before a table, deleted as a paragraph goes after a pending table before the join",
+    {
+      ...singleBatch,
+      before: "paragraph",
+      after: "table",
+      pendingJoin: "previous",
+      earlier: [anchorInsertion("table", "before")],
+      insertions: [{ kind: "paragraph", side: "after", target: "precursor" }],
       deletionAt: 0,
     },
   ],
