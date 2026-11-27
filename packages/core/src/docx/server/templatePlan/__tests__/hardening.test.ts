@@ -2039,6 +2039,117 @@ describe("page starts", () => {
     ]);
   });
 
+  test("an item gives its paragraph a spacing of its own, and a cell paragraph too", async () => {
+    const tight = '<w:spacing w:before="0" w:after="0"/>';
+    const source = await buildMinimalDocx(
+      [
+        p(r("spaced line"), '<w:spacing w:before="240" w:after="60"/>'),
+        p(r("plain line")),
+        `<w:tbl><w:tr><w:tc>${p(r("swatch"), tight)}</w:tc></w:tr></w:tbl>`,
+        // A side that follows the application, and one counted in lines,
+        // state no measure.
+        p(
+          r("end"),
+          '<w:spacing w:before="100" w:beforeAutospacing="1" w:after="120" w:afterLines="50"/>',
+        ),
+      ].join(""),
+    );
+    // The manifest says what each paragraph states for itself.
+    const read = unwrap(await analyzeDocxBlocks(source)).blocks;
+    expect(read.at(0)?.spacing).toEqual({ before: 240, after: 60 });
+    expect(read.at(1)?.spacing).toBeUndefined();
+    expect(read.at(2)?.nested?.at(0)?.spacing).toEqual({ before: 0, after: 0 });
+    expect(read.at(3)?.spacing).toBeUndefined();
+
+    const itemOf = (
+      { id, hash }: PlannedBlock,
+      spaced: boolean,
+    ): TemplatePlanItem => {
+      const item: TemplatePlanItem = { kind: "source", blockId: id, hash };
+      if (id.startsWith("t")) {
+        if (spaced) {
+          item.nested = [{ blockId: "p3", spacing: { before: 0, after: 0 } }];
+        }
+        return item;
+      }
+      item.styleId = "HouseBody";
+      if (id === "p0" && spaced) {
+        item.spacing = { after: 60 };
+        item.tabStops = [1000];
+        item.indent = { left: 0 };
+      }
+      return item;
+    };
+    const items = (spaced: boolean) => (blocks: PlannedBlock[]) =>
+      blocks
+        .filter(({ id }) => id !== "p3")
+        .map((block) => itemOf(block, spaced));
+    const spaced = await planFor({ source, template, items: items(true) });
+    const plain = await planFor({ source, template, items: items(false) });
+    const { docx, report } = unwrap(
+      await applyTemplatePlan({ source, template, plan: spaced }),
+    );
+    const document = await documentOf(docx);
+
+    expect(report.ok).toBe(true);
+    // Between the tab stops and the indent, as the schema orders them; a
+    // side the plan leaves out is the style's.
+    expect(document).toContain(
+      '<w:pPr><w:pStyle w:val="HouseBody"/><w:tabs><w:tab w:val="left" w:pos="1000"/></w:tabs><w:spacing w:after="60"/><w:ind w:left="0"/></w:pPr>',
+    );
+    expect(document).toContain(
+      '<w:tc><w:p><w:pPr><w:spacing w:before="0" w:after="0"/></w:pPr>',
+    );
+    expect(document.split("<w:spacing ")).toHaveLength(3);
+    // Verification holds the output to the plan both ways.
+    const plainOutput = unwrap(
+      await applyTemplatePlan({ source, template, plan: plain }),
+    ).docx;
+    for (const [output, plan] of [
+      [docx, plain],
+      [plainOutput, spaced],
+    ] as const) {
+      expect(
+        (await verifyFor({ source, template, output, plan })).issues.map(
+          ({ code, blockId }) => [code, blockId],
+        ),
+      ).toEqual([
+        ["paragraph-format-mismatch", "p0"],
+        ["paragraph-format-mismatch", "p3"],
+      ]);
+    }
+    // A spacing without a side, with another key, with a fraction or below
+    // zero is no spacing a plan may state.
+    for (const spacing of [
+      {},
+      { line: 240 },
+      { before: 1.5 },
+      { after: -20 },
+    ]) {
+      const malformed = await planFor({
+        source,
+        template,
+        items: (blocks) =>
+          blocks
+            .filter(({ id }) => id !== "p3")
+            .map(({ id, hash }): TemplatePlanItem => {
+              const item: TemplatePlanItem = {
+                kind: "source",
+                blockId: id,
+                hash,
+              };
+              if (id === "p0") {
+                Object.assign(item, { spacing });
+              }
+              return item;
+            }),
+      });
+      expect(
+        codeOf(await applyTemplatePlan({ source, template, plan: malformed })),
+      ).toBe("plan-invalid");
+    }
+  });
+
   test("an item keeps its paragraph with the next and gives it an indent of its own", async () => {
     const source = await twoParagraphs();
     const items = (formatted: boolean) => (blocks: PlannedBlock[]) =>

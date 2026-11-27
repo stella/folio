@@ -203,6 +203,28 @@ const ALIGNMENTS: ReadonlySet<string> = new Set([
 const isAlignment = (value: unknown): boolean =>
   isString(value) && ALIGNMENTS.has(value);
 
+const SPACING_KEYS: ReadonlySet<string> = new Set(["before", "after"]);
+
+/**
+ * Whether `value` is a spacing a plan may state: `before`, `after` or
+ * both, each a whole number of twentieths of a point.
+ */
+const isSpacing = (value: unknown): boolean => {
+  if (!isObject(value)) {
+    return false;
+  }
+  const keys = Object.keys(value);
+  return (
+    keys.length > 0 &&
+    keys.every(
+      (key) =>
+        SPACING_KEYS.has(key) &&
+        isCount(value[key]) &&
+        value[key] <= MAX_INDENT,
+    )
+  );
+};
+
 const sourceItemIssue = (item: Json, where: string): string | null => {
   if (!isString(item["blockId"]) || !isString(item["hash"])) {
     return `${where} names no source block and hash.`;
@@ -230,6 +252,9 @@ const sourceItemIssue = (item: Json, where: string): string | null => {
   }
   if (item["alignment"] !== undefined && !isAlignment(item["alignment"])) {
     return `${where} carries an unknown alignment.`;
+  }
+  if (item["spacing"] !== undefined && !isSpacing(item["spacing"])) {
+    return `${where} carries a malformed spacing.`;
   }
   const merge = item["mergeNext"];
   if (merge !== undefined && !(isString(merge) && MERGES.has(merge))) {
@@ -266,7 +291,8 @@ const sourceItemIssue = (item: Json, where: string): string | null => {
       !isOptionalBoolean(entry["keepNext"]) ||
       (entry["indent"] !== undefined && !isIndent(entry["indent"])) ||
       (entry["tabStops"] !== undefined && !isTabStops(entry["tabStops"])) ||
-      (entry["alignment"] !== undefined && !isAlignment(entry["alignment"]))
+      (entry["alignment"] !== undefined && !isAlignment(entry["alignment"])) ||
+      (entry["spacing"] !== undefined && !isSpacing(entry["spacing"]))
     ) {
       return `${where} carries a malformed nested placement.`;
     }

@@ -393,6 +393,7 @@ export {
   type TemplatePlanSection,
   type TemplatePlanSectionPage,
   type TemplatePlanSourceItem,
+  type TemplatePlanSpacing,
   type TemplatePlanSpanCounts,
   type TemplatePlanTrackedChanges,
   type TemplatePlanTrackedView,

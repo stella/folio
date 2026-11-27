@@ -193,6 +193,25 @@ const ownIndent = (
   };
 };
 
+const SWITCHED_ON: ReadonlySet<string> = new Set(["1", "true", "on"]);
+
+/**
+ * The space in front of a paragraph and behind it as its own `w:spacing`
+ * states it in twentieths of a point. A side set to follow the application
+ * (`beforeAutospacing`) or counted in lines (`beforeLines`) is not such a
+ * measure and reads as not stated.
+ */
+const ownSpacing = (
+  spacing: XmlElement | null,
+): { before: number | null; after: number | null } => {
+  const side = (name: "before" | "after"): number | null =>
+    SWITCHED_ON.has(wAttr(spacing, `${name}Autospacing`) ?? "") ||
+    wAttr(spacing, `${name}Lines`) !== null
+      ? null
+      : twipsOrNull(wAttr(spacing, name));
+  return { before: side("before"), after: side("after") };
+};
+
 export type ParagraphRead = {
   element: XmlElement;
   ordinal: number;
@@ -218,6 +237,9 @@ export type ParagraphRead = {
   pageBreakBefore: boolean | null;
   /** `w:jc` as the paragraph itself states it, or null. */
   alignment: string | null;
+  /** The space in front and behind (`w:spacing`) the paragraph itself
+   *  states, in twentieths of a point; null for a side it does not state. */
+  spacing: { before: number | null; after: number | null };
   /** The sides of `w:ind` the paragraph itself states, in twentieths of a
    *  point: where its lines start, and what its first line adds to that
    *  (negative for a hanging indent). Null for a side it does not state. */
@@ -781,6 +803,7 @@ export const readParagraph = (
     hasSectionBreak: wChild(properties, "sectPr") !== null,
     pageBreakBefore: toggleOf(wChild(properties, "pageBreakBefore")),
     alignment: wChildVal(properties, "jc"),
+    spacing: ownSpacing(wChild(properties, "spacing")),
     indent: ownIndent(wChild(properties, "ind")),
     indentInCharacters: CHARACTER_INDENTS.some((name) => {
       const value = wAttr(wChild(properties, "ind"), name);
