@@ -68,6 +68,16 @@ export const nestedTableCopyByAnchors = (
   });
 };
 
+/** Property anchors only belong to tables containing no cells. */
+export const omittedTableAnchorId = (table: Table): number | undefined => {
+  const id = table.propertyChanges?.at(0)?.info.id;
+  return id !== undefined &&
+    table.rows.length > 0 &&
+    table.rows.every(({ cells }) => cells.length === 0)
+    ? id
+    : undefined;
+};
+
 const revisionSlots = (table: Table): ReadonlyMap<number, string> => {
   const slots = new Map<number, string>();
   const record = (
@@ -147,16 +157,23 @@ export const activeNestedTableRevisionHandoffs = (
     pairs.push([from, to]);
   }
   const inserted = new Set(rows);
-  const target =
-    inserted.size === 0
-      ? nestedTableCopyByAnchors(owner, pairs)
-      : tables.find(({ rows: candidateRows }) =>
-          candidateRows.some(
-            ({ structuralChange }) =>
-              structuralChange?.type === "tableRowInsertion" &&
-              inserted.has(structuralChange.info.id),
-          ),
-        );
+  const omittedTable = move.omittedTable;
+  let target: Table | undefined;
+  if (omittedTable !== undefined) {
+    target = tables.find(
+      (candidate) => omittedTableAnchorId(candidate) === omittedTable[1],
+    );
+  } else if (inserted.size === 0) {
+    target = nestedTableCopyByAnchors(owner, pairs);
+  } else {
+    target = tables.find(({ rows: candidateRows }) =>
+      candidateRows.some(
+        ({ structuralChange }) =>
+          structuralChange?.type === "tableRowInsertion" &&
+          inserted.has(structuralChange.info.id),
+      ),
+    );
+  }
   if (target === undefined) return [];
   const copies = revisionSlots(target);
   const pairedIn = (candidate: Table) => {
@@ -168,6 +185,12 @@ export const activeNestedTableRevisionHandoffs = (
       return slot !== undefined && slot === copies.get(temporary);
     });
   };
+  if (omittedTable !== undefined) {
+    const source = tables.find(
+      (candidate) => omittedTableAnchorId(candidate) === omittedTable[0],
+    );
+    return source === undefined || source === target ? [] : pairedIn(source);
+  }
   // Fully omitted rows have no paragraphs to pair. A native insertion
   // identifies the target. Matching physical slots identify the source
   // while both versions still carry the earlier record.

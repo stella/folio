@@ -543,17 +543,30 @@ test.each([
   "all deleted rows",
   "omitted row",
   "fully omitted rows",
+  "every omitted row marked",
+  "every omitted row deleted",
 ] as const)(
   "earlier nested row revisions remain independent when a merge moves %s",
   (coverage) => {
+    const allOmittedAndMarked =
+      coverage === "every omitted row marked" ||
+      coverage === "every omitted row deleted";
+    const allDeleted =
+      coverage === "all deleted rows" ||
+      coverage === "every omitted row deleted";
     const sourceRows = nested.rows.map((row, index) => {
       const omitted =
         coverage === "fully omitted rows" ||
+        allOmittedAndMarked ||
         (coverage === "omitted row" && index === 1);
       const sourceRow = omitted
         ? { ...row, cells: [], formatting: { gridBefore: 1 } }
         : row;
-      if (index === 1 && (omitted || coverage === "some rows"))
+      if (
+        index === 1 &&
+        !allOmittedAndMarked &&
+        (omitted || coverage === "some rows")
+      )
         return sourceRow;
       const cells =
         coverage === "every row" && index === 0
@@ -577,7 +590,7 @@ test.each([
         cells,
         structuralChange: {
           type:
-            index === 0 || coverage === "all deleted rows"
+            index === 0 || allDeleted
               ? "tableRowDeletion"
               : "tableRowInsertion",
           info: { id: 51 + index, author: "Earlier" },
@@ -638,15 +651,14 @@ test.each([
     if (grid === undefined || aliases === undefined)
       throw new TypeError("Expected saved row handoffs.");
     expect(aliases.map(([source]) => source)).toEqual(
-      coverage === "every row" || coverage === "all deleted rows"
+      coverage === "every row" || allDeleted || allOmittedAndMarked
         ? [51, 52]
         : [51],
     );
     const reopened = withTable(parsed);
     const doc = toProseDoc(reopened, { tableReviewGeometry: "physical" });
     for (const [source, temporary] of aliases) {
-      const mark =
-        source === 51 || coverage === "all deleted rows" ? "del" : "ins";
+      const mark = source === 51 || allDeleted ? "del" : "ins";
       expect(xml).toMatch(
         new RegExp(
           `<w:trPr>(?:<w:gridBefore[^>]*\\/>)?<w:${mark} w:id="${temporary}"`,
@@ -685,6 +697,41 @@ test.each([
     expect(
       resolve(pending.document, [grid.id], REVISION_DECISIONS.REJECT),
     ).toStrictEqual(original);
+    if (allOmittedAndMarked) {
+      const anchors = move?.omittedTable;
+      if (move === undefined || anchors === undefined)
+        throw new TypeError("Expected two native table property anchors.");
+      expect(getTrackedChangeGroupsForIds(doc, [...anchors])).toHaveLength(1);
+      for (const anchor of anchors) {
+        expect(getTrackedChangeGroupsForIds(doc, [anchor]).at(0)).toContain(
+          grid.id,
+        );
+        expect(xml).toContain(`<w:tblPrChange w:id="${anchor}"`);
+        expect(
+          projection(
+            tableOf(resolve(reopened, [anchor], REVISION_DECISIONS.ACCEPT)),
+          ),
+        ).toStrictEqual(projection(tableOf(direct)));
+      }
+      const changed = structuredClone(reopened);
+      const changedGrid = tableOf(changed).formatting?.gridChange;
+      const geometry = changedGrid?.geometryChange;
+      if (geometry?.type !== "mergeCells" || changedGrid === undefined)
+        throw new TypeError("Expected saved merge geometry.");
+      changedGrid.geometryChange = {
+        ...geometry,
+        nestedMoves: [{ ...move, omittedTable: [anchors[1], anchors[0]] }],
+      };
+      const wrongSide = applyDocumentOp(changed, {
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story: OP_STORIES.MAIN,
+        revisionIds: [grid.id],
+        decision: REVISION_DECISIONS.REJECT,
+      });
+      expect(wrongSide.isErr() && wrongSide.error.reason).toBe(
+        DOCUMENT_OP_REFUSAL_REASONS.STALE,
+      );
+    }
     for (const rowDecision of [
       REVISION_DECISIONS.ACCEPT,
       REVISION_DECISIONS.REJECT,

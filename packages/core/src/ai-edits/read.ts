@@ -289,10 +289,16 @@ const tableGridRevisionId = (node: PMNode): number | null => {
     : null;
 };
 
-const collectNestedTableRevisionCopies = (
-  node: PMNode,
-  copies: Map<number, number>,
-): void => {
+type CollectNestedTableRevisionsOptions = {
+  node: PMNode;
+  copies: Map<number, number>;
+  groupId: number | null;
+};
+const collectNestedTableRevisionCopies = ({
+  node,
+  copies,
+  groupId,
+}: CollectNestedTableRevisionsOptions): void => {
   const formatting: unknown = node.attrs["_originalFormatting"];
   if (!isRecord(formatting)) return;
   const grid = formatting["gridChange"];
@@ -301,8 +307,14 @@ const collectNestedTableRevisionCopies = (
   if (!isRecord(geometry) || geometry["type"] !== "mergeCells") return;
   const moves = geometry["nestedMoves"];
   if (!Array.isArray(moves)) return;
+  const anchors = new Set<number>();
   for (const move of moves) {
-    if (!isRecord(move) || !Array.isArray(move["revisions"])) continue;
+    if (!isRecord(move)) continue;
+    const omitted = move["omittedTable"];
+    if (groupId !== null && Array.isArray(omitted) && omitted.length === 2)
+      for (const id of omitted)
+        if (typeof id === "number" && id !== groupId) anchors.add(id);
+    if (!Array.isArray(move["revisions"])) continue;
     for (const pair of move["revisions"]) {
       if (!Array.isArray(pair) || pair.length !== 2) continue;
       const [source, temporary] = pair;
@@ -314,6 +326,14 @@ const collectNestedTableRevisionCopies = (
         copies.set(temporary, source);
     }
   }
+  if (groupId === null || anchors.size === 0) return;
+  node.descendants((child, pos) => {
+    if (child.type.name !== "table") return;
+    for (const { id, type } of getFolioNodeRevisionCarriers(child, pos)) {
+      if (type === "tablePropertiesChanged" && anchors.has(id))
+        copies.set(id, groupId);
+    }
+  });
 };
 
 const rowRevisionMarkers = [
@@ -490,12 +510,19 @@ const getTrackedChangeGroupsFromProjectedDoc = (
       });
     }
     if (node.type.name === "table") {
-      collectNestedTableRevisionCopies(node, nestedTableRevisionCopies);
+      const gridId = tableGridRevisionId(node);
+      collectNestedTableRevisionCopies({
+        node,
+        copies: nestedTableRevisionCopies,
+        groupId:
+          nodeRevisionCarriers.find(
+            ({ type }) => type === "tablePropertiesChanged",
+          )?.id ?? gridId,
+      });
       for (const [rowPos, ids] of continuationRevisionIdsByRow(node, pos)) {
         continuationRevisions.set(rowPos, ids);
         for (const id of ids) continuationRevisionsOwnedByRows.add(id);
       }
-      const gridId = tableGridRevisionId(node);
       if (gridId !== null) {
         // A grid revision has no author or date of its own; it is part of
         // the table's property change, or lists as one when there is none.

@@ -510,6 +510,11 @@ const CONTENT_CONTROL_STACK = "contentControls";
 const ownReservedKeys: OwnKeys = (entries, { heldBy }) => {
   const keys: string[] = [];
   if (heldBy === "nestedMoves") {
+    const anchors = fieldOf(entries, "omittedTable");
+    if (Array.isArray(anchors))
+      for (const id of anchors)
+        if (typeof id === "number")
+          keys.push(slotKey({ space: IDENTITY_SPACES.REVISION, id }));
     for (const [field, space] of [
       ["revisions", IDENTITY_SPACES.REVISION],
       ["controls", IDENTITY_SPACES.CONTROL],

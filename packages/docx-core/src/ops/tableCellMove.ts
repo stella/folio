@@ -24,7 +24,10 @@ import {
   type TableGeometryNestedMove,
   type TableGridChange,
 } from "../model/formatting";
-import { nestedTableCopyByAnchors } from "../model/nestedTableRevisionHandoffs";
+import {
+  nestedTableCopyByAnchors,
+  omittedTableAnchorId,
+} from "../model/nestedTableRevisionHandoffs";
 import { readXml, type XmlElement } from "../xml/streamingXmlParser";
 import {
   OOXML_NAMESPACE_SCOPE,
@@ -69,6 +72,7 @@ export type NestedTableMoveSource = {
   paragraphs: string[];
   revisions: number[];
   insertedRows: number;
+  omittedAnchorCount: 0 | 2;
   controls: number[];
   pictures: ReadonlySet<number>;
 };
@@ -589,8 +593,7 @@ export const nestedTableMoveSource = (
   const insertedRows = table.rows.filter(
     ({ structuralChange }) => structuralChange === undefined,
   ).length;
-  if (!collect(table) || (paragraphs.length === 0 && insertedRows === 0))
-    return undefined;
+  if (!collect(table)) return undefined;
   const revisionIds = new Set(revisions);
   if (gridMembers.some((id) => !revisionIds.has(id))) return undefined;
   const allowed = new Set([
@@ -610,6 +613,8 @@ export const nestedTableMoveSource = (
         controls: [...controls],
         pictures,
         insertedRows,
+        omittedAnchorCount:
+          paragraphs.length === 0 && insertedRows === 0 ? 2 : 0,
       }
     : undefined;
 };
@@ -753,25 +758,45 @@ type MarkNestedTableMoveOptions = {
   destinations: readonly string[];
   rowStamps: readonly RevisionStamp[];
   recordStamps: readonly RevisionStamp[];
+  anchorStamps: readonly RevisionStamp[];
   controls: readonly (readonly [number, number])[];
   pictures: readonly (readonly [number, number])[];
 };
 type MarkedNestedTableMove = {
+  original: Table;
   destination: Table;
   record: TableGeometryNestedMove;
+};
+const addOmittedTableAnchor = (table: Table, stamp: RevisionStamp): Table => {
+  const { gridChange: _grid, ...previousFormatting } = table.formatting ?? {};
+  return {
+    ...table,
+    propertyChanges: [
+      {
+        type: "tablePropertyChange",
+        info: stampInfo(stamp),
+        ...(Object.keys(previousFormatting).length === 0
+          ? {}
+          : { previousFormatting }),
+      },
+      ...(table.propertyChanges ?? []),
+    ],
+  };
 };
 export const markNestedTableMove = ({
   source,
   destinations,
   rowStamps,
   recordStamps,
+  anchorStamps,
   controls,
   pictures,
 }: MarkNestedTableMoveOptions): MarkedNestedTableMove | undefined => {
   if (
     destinations.length !== source.paragraphs.length ||
     rowStamps.length !== source.insertedRows ||
-    recordStamps.length !== source.revisions.length
+    recordStamps.length !== source.revisions.length ||
+    anchorStamps.length !== source.omittedAnchorCount
   )
     return undefined;
   const paragraphs: [string, string][] = [];
@@ -811,11 +836,21 @@ export const markNestedTableMove = ({
           },
         };
   });
+  const destination = { ...table, rows };
+  const [from, to] = anchorStamps;
   return {
-    destination: { ...table, rows },
+    original:
+      from === undefined
+        ? source.table
+        : addOmittedTableAnchor(source.table, from),
+    destination:
+      to === undefined ? destination : addOmittedTableAnchor(destination, to),
     record: {
       rows: rowStamps.map(({ id }) => id),
       paragraphs,
+      ...(from === undefined || to === undefined
+        ? {}
+        : { omittedTable: [from.id, to.id] as const }),
       ...(revisions.length === 0 ? {} : { revisions }),
       ...(controls.length === 0 ? {} : { controls }),
       ...(pictures.length === 0 ? {} : { pictures }),
@@ -1026,12 +1061,20 @@ export const tableMoveOwnershipMatches = (
   const destinationTables = new Set<Table>();
   const movedRows = new Map<number, Table>();
   const nestedSources = new Map<string, string[]>();
+  const sourceOmittedTables = new Map<number, Table>();
+  const targetOmittedTables = new Map<number, Table>();
   const collectMovedTables = (
     blocks: readonly BlockContent[],
     side: "source" | "destination",
   ): void => {
     for (const block of blocks) {
       if (block.type === "table") {
+        const anchor = omittedTableAnchorId(block);
+        if (anchor !== undefined)
+          (side === "source" ? sourceOmittedTables : targetOmittedTables).set(
+            anchor,
+            block,
+          );
         if (side === "source") {
           const ids = paragraphIdsIn(block).map(idKey);
           for (const id of ids) nestedSources.set(id, ids);
@@ -1090,11 +1133,41 @@ export const tableMoveOwnershipMatches = (
   )
     return false;
   const nestedTables = new Set<Table>();
+  const omittedSources = new Set<Table>();
   const claimedSources = new Set<readonly string[]>();
   const surviving = new Set(
     geometry.nestedMoves === undefined ? [] : paragraphIdsIn(table).map(idKey),
   );
   for (const move of geometry.nestedMoves ?? []) {
+    if (move.omittedTable !== undefined) {
+      const [from, to] = move.omittedTable;
+      if (from === to || move.rows.length !== 0 || move.paragraphs.length !== 0)
+        return false;
+      const source = sourceOmittedTables.get(from);
+      const target = targetOmittedTables.get(to);
+      if (source === undefined && target === undefined) {
+        // Reject misplaced records, while allowing an earlier row decision to
+        // leave both copies empty and remove them completely.
+        const physical = new Set(identityKeysIn(table));
+        if (
+          [from, to].some((id) =>
+            physical.has(slotKey({ space: IDENTITY_SPACES.REVISION, id })),
+          )
+        )
+          return false;
+        continue;
+      }
+      if (
+        source === undefined ||
+        target === undefined ||
+        omittedSources.has(source) ||
+        nestedTables.has(target)
+      )
+        return false;
+      omittedSources.add(source);
+      nestedTables.add(target);
+      continue;
+    }
     const first = move.rows.at(0);
     const destination =
       first === undefined
@@ -1270,6 +1343,14 @@ export type TableMoveHandoffs = {
   controls: ReadonlyMap<number, number>;
 };
 
+const withoutOmittedTableAnchor = (table: Table): Table => {
+  const { propertyChanges, ...base } = table;
+  const remaining = propertyChanges?.slice(1);
+  return remaining === undefined || remaining.length === 0
+    ? base
+    : { ...base, propertyChanges: remaining };
+};
+
 /** Settle copied identities with the cell topology. */
 export const resolveTableMoves = ({
   table,
@@ -1294,7 +1375,14 @@ export const resolveTableMoves = ({
     ),
   );
   const nestedAnchors = new Map<Table, TableGeometryNestedMove>();
+  const omittedSources = new Set<number>();
+  const omittedTargets = new Map<number, TableGeometryNestedMove>();
   for (const move of geometry.nestedMoves ?? []) {
+    if (move.omittedTable !== undefined) {
+      omittedSources.add(move.omittedTable[0]);
+      omittedTargets.set(move.omittedTable[1], move);
+      continue;
+    }
     if (move.rows.length > 0) continue;
     const copy = nestedTableCopyByAnchors(table, move.paragraphs);
     if (copy !== undefined) nestedAnchors.set(copy, move);
@@ -1330,6 +1418,18 @@ export const resolveTableMoves = ({
                 return [{ ...block, content }];
               }
               if (block.type === "table") {
+                const anchor =
+                  omittedSources.size === 0
+                    ? undefined
+                    : omittedTableAnchorId(block);
+                if (
+                  reject &&
+                  anchor !== undefined &&
+                  omittedSources.has(anchor)
+                )
+                  return [withoutOmittedTableAnchor(block)];
+                const omitted =
+                  anchor === undefined ? undefined : omittedTargets.get(anchor);
                 const move = block.rows
                   .map((nestedRow) => nestedRow.structuralChange)
                   .find(
@@ -1338,9 +1438,10 @@ export const resolveTableMoves = ({
                       nested.has(change.info.id),
                   );
                 const record =
-                  move === undefined
+                  omitted ??
+                  (move === undefined
                     ? nestedAnchors.get(block)
-                    : nested.get(move.info.id);
+                    : nested.get(move.info.id));
                 if (record === undefined) return [block];
                 if (reject) return [];
                 const placed = withNestedMoveIdentities(block, {
@@ -1372,7 +1473,11 @@ export const resolveTableMoves = ({
                   const { structuralChange: _owned, ...accepted } = child;
                   return accepted;
                 });
-                return [placed];
+                return [
+                  omitted === undefined
+                    ? placed
+                    : withoutOmittedTableAnchor(placed),
+                ];
               }
               if (block.type !== "paragraph" || block.paraId === undefined)
                 return [block];

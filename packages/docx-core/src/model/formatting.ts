@@ -604,6 +604,8 @@ export type TableGeometryNestedMove = {
   readonly rows: readonly number[];
   /** Original and temporary destination paragraph IDs, respectively. */
   readonly paragraphs: readonly (readonly [string, string])[];
+  /** Table-property record ids when both copies have only already-marked omitted rows. */
+  readonly omittedTable?: readonly [number, number];
   /** Authored table revisions paired with their temporary copies. */
   readonly revisions?: readonly (readonly [number, number])[];
   /** Authored content-control IDs paired with temporary destination IDs. */
