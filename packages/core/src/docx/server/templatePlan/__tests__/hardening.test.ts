@@ -1931,6 +1931,47 @@ describe("a heading run into its text", () => {
   });
 });
 
+describe("italic a style gives its text", () => {
+  const STYLES = [
+    '<w:style w:type="paragraph" w:styleId="NoteText"><w:name w:val="Note Text"/><w:rPr><w:i/><w:iCs/></w:rPr></w:style>',
+    '<w:style w:type="paragraph" w:styleId="Heading3"><w:name w:val="heading 3"/><w:pPr><w:outlineLvl w:val="2"/></w:pPr><w:rPr><w:i/></w:rPr></w:style>',
+  ].join("");
+  const source = async (): Promise<Uint8Array> =>
+    await buildSourceWith({
+      body: [
+        p(
+          r("Comment: this clause is optional."),
+          '<w:pStyle w:val="NoteText"/>',
+        ),
+        p(
+          `${r("See ")}${r("Smith v. Jones", '<w:i w:val="0"/>')}${r(" for the rule.")}`,
+          '<w:pStyle w:val="NoteText"/>',
+        ),
+        p(r("Optional Provisions"), '<w:pStyle w:val="Heading3"/>'),
+      ].join(""),
+      styles: STYLES,
+    });
+  const runsOf = (xml: string, text: string): string =>
+    new RegExp(`<w:r>(?:(?!</w:r>).)*${text}`, "u").exec(xml)?.[0] ?? "";
+
+  test("a note set in an italic text style stays italic on the template, a heading's italic is the template's", async () => {
+    const applied = unwrap(
+      await applyFor({
+        source: await source(),
+        template,
+        items: styled("HouseBody"),
+      }),
+    );
+    expect(applied.report.ok).toBe(true);
+    const xml = await documentOf(applied.docx);
+    expect(runsOf(xml, "Comment: this clause")).toContain("<w:i/>");
+    expect(runsOf(xml, "See ")).toContain("<w:i/>");
+    // A run that sets the style's italic off reads upright.
+    expect(runsOf(xml, "Smith v. Jones")).not.toContain("<w:i/>");
+    expect(runsOf(xml, "Optional Provisions")).not.toContain("<w:i/>");
+  });
+});
+
 describe("page starts", () => {
   const PAGE_BREAK = '<w:r><w:br w:type="page"/></w:r>';
   const LANDSCAPE =
