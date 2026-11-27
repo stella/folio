@@ -239,6 +239,7 @@ const sourceItemIssue = (item: Json, where: string): string | null => {
     "pageBreakBefore",
     "keepNext",
     "stripLabelBreak",
+    "dropPageShapes",
   ] as const) {
     if (!isOptionalBoolean(item[key])) {
       return `${where} carries a malformed ${key}.`;
@@ -289,6 +290,7 @@ const sourceItemIssue = (item: Json, where: string): string | null => {
       !isOptionalString(entry["stripLabel"]) ||
       !isOptionalBoolean(entry["labelAsText"]) ||
       !isOptionalBoolean(entry["keepNext"]) ||
+      !isOptionalBoolean(entry["dropPageShapes"]) ||
       (entry["indent"] !== undefined && !isIndent(entry["indent"])) ||
       (entry["tabStops"] !== undefined && !isTabStops(entry["tabStops"])) ||
       (entry["alignment"] !== undefined && !isAlignment(entry["alignment"])) ||

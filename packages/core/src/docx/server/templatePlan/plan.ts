@@ -29,6 +29,7 @@ import { type ParagraphLabel, styleNumbering } from "./labels";
 import { PLAN_HIGHLIGHT_COLORS, planShapeIssue } from "./planShape";
 import type { StoryOrigin } from "./resources";
 import { DELETED_PARAGRAPH_MARK } from "./revisions";
+import { isPageShape } from "./story";
 import type {
   AtomKind,
   AtomLink,
@@ -103,6 +104,8 @@ export type ResolvedNumbering =
 export type ResolvedPart = {
   block: AnalyzedBlock;
   strippedPrefix: string;
+  /** Drawn shapes fixed to the page the part is written without. */
+  droppedPageShapes: number;
   /** The lead a slot dropped off the part and the template paragraph that
    *  shows the field, or null. */
   droppedLead: { text: string; shownByTemplateBlockId: string } | null;
@@ -852,6 +855,9 @@ const partTables = (items: ResolvedItem[]): void => {
 type PlannedPart = {
   block: AnalyzedBlock;
   stripLabel: string | undefined;
+  /** Whether the part is written without its drawn shapes fixed to the
+   *  page. */
+  dropPageShapes?: boolean;
   /** A slot's lead to drop off the part: a field's name the template
    *  shows itself. */
   dropLead?: { text: string; shownByTemplateBlockId: string };
@@ -1284,14 +1290,29 @@ export const resolvePlan = (
           shownByTemplateBlockId: planned.dropLead.shownByTemplateBlockId,
         };
       }
+      // Marks of the page the source was laid out on go when the plan
+      // says so; every other piece of the paragraph stays.
+      const every = paragraphPieces({
+        read: block.read,
+        context: source,
+        origin: "document",
+        fields: source.story.state.fields,
+      });
+      const kept =
+        planned.dropPageShapes === true
+          ? every.filter(
+              ({ kind, atom }) =>
+                !(
+                  kind === "object" &&
+                  atom?.element !== null &&
+                  atom?.element !== undefined &&
+                  isPageShape(atom.element)
+                ),
+            )
+          : every;
       const part = partSegments({
         block,
-        pieces: paragraphPieces({
-          read: block.read,
-          context: source,
-          origin: "document",
-          fields: source.story.state.fields,
-        }),
+        pieces: kept,
         strippedLength:
           droppedLead === null
             ? strippedPrefix.length
@@ -1343,6 +1364,7 @@ export const resolvePlan = (
       resolvedParts.push({
         block,
         strippedPrefix,
+        droppedPageShapes: every.length - kept.length,
         droppedLead,
         labelAsText: written?.label ?? null,
       });
@@ -1423,6 +1445,7 @@ export const resolvePlan = (
       item.stripLabel !== undefined ||
       item.stripLabelBreak !== undefined ||
       item.labelAsText !== undefined ||
+      item.dropPageShapes !== undefined ||
       item.pageBreakBefore !== undefined ||
       item.keepNext !== undefined ||
       item.indent !== undefined ||
@@ -1473,6 +1496,7 @@ export const resolvePlan = (
             block: nested,
             stripLabel: override?.stripLabel,
             labelAsText: override?.labelAsText === true,
+            dropPageShapes: override?.dropPageShapes === true,
           },
         ],
         separators: [],
@@ -1581,6 +1605,7 @@ export const resolvePlan = (
             stripLabel: item.stripLabel,
             stripLabelBreak: item.stripLabelBreak === true,
             labelAsText: item.labelAsText === true,
+            dropPageShapes: item.dropPageShapes === true,
           },
         ];
         const separators: TemplatePlanMerge[] = [];
@@ -1640,6 +1665,7 @@ export const resolvePlan = (
             stripLabel: next.stripLabel,
             stripLabelBreak: next.stripLabelBreak === true,
             labelAsText: next.labelAsText === true,
+            dropPageShapes: next.dropPageShapes === true,
           });
           merge = next.mergeNext;
           index += 1;

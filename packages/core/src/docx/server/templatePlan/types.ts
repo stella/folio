@@ -130,6 +130,14 @@ export type DocxBlock = {
   /** Drawings, pictures, embedded objects and equations anchored in the block. */
   inlineObjects: number;
   /**
+   * How many of them are drawn shapes fixed to the page, when the block
+   * holds any: a single floating shape without a picture and without text
+   * of its own (a rule, a dot, a line) whose horizontal place is counted
+   * from the page or a margin. Such a mark belongs to the layout of the
+   * page it was drawn on; a plan may leave it out (`dropPageShapes`).
+   */
+  pageShapes?: number;
+  /**
    * Page breaks among the paragraph's runs, when it holds any. A paragraph
    * without text can hold one: it is then all that starts the next page.
    */
@@ -473,6 +481,8 @@ export type TemplatePlanNestedParagraph = {
   /** As on a source item. */
   labelAsText?: boolean;
   /** As on a source item. */
+  dropPageShapes?: boolean;
+  /** As on a source item. */
   keepNext?: boolean;
   /** As on a source item. */
   indent?: TemplatePlanIndent;
@@ -544,6 +554,14 @@ export type TemplatePlanSourceItem = {
    * bullet glyph and not a number a language spells.
    */
   labelAsText?: boolean;
+  /**
+   * Write the paragraph without its drawn shapes that are fixed to the page
+   * (`pageShapes` of the block): marks of the page the source was laid out
+   * on, which would stand at that page's places in the output. Everything
+   * else the paragraph holds is placed as it is. The report counts what was
+   * left out.
+   */
+  dropPageShapes?: boolean;
   /** Join the next item of the plan, a source paragraph, into this paragraph. */
   mergeNext?: TemplatePlanMerge;
   /**
@@ -893,6 +911,9 @@ export type TemplatePlanReport = {
     sourceFields: { kind: string; count: number }[];
     internalHyperlinks: number;
     sectionBreaks: number;
+    /** Drawn shapes fixed to the page that placed paragraphs were written
+     *  without, as their items asked (`dropPageShapes`). */
+    pageShapes: number;
   };
   /**
    * Text effects that show nothing: those of the template the output does
