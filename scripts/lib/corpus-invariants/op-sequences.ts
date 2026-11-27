@@ -214,6 +214,7 @@ export const OP_GENERATOR_ROLES = {
   [DOCUMENT_OP_TYPES.JOIN_INLINE]: "inverse",
   [DOCUMENT_OP_TYPES.REPLACE_BLOCKS]: "inverse",
   [DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW]: "inverse",
+  [DOCUMENT_OP_TYPES.SET_CUSTOM_XML_MARKUP]: "generated",
   [DOCUMENT_OP_TYPES.REPLACE_INLINE]: "inverse",
   [DOCUMENT_OP_TYPES.SET_TABLE_ROWS]: "inverse",
   [DOCUMENT_OP_TYPES.SET_TABLE]: "inverse",
@@ -311,6 +312,18 @@ const candidate = ({
       });
       if (horizontalSpans.length > 0) candidates = horizontalSpans;
     }
+  }
+  if (family === DOCUMENT_OP_TYPES.SET_CUSTOM_XML_MARKUP) {
+    candidates = paragraphs.filter((candidateLocation) => {
+      const blocks = blockListAt(
+        document.package.document.content,
+        candidateLocation.list,
+      );
+      return (
+        candidateLocation.index < blocks.length - 1 &&
+        candidateLocation.paragraph.sectionProperties === undefined
+      );
+    });
   }
   let location = candidates.at(choose(candidates.length));
   if (location === undefined && isTableEditFamily(family)) {
@@ -620,6 +633,30 @@ const candidate = ({
         },
         ...review,
       };
+    case "setCustomXmlMarkup": {
+      const expected = blockListAt(
+        document.package.document.content,
+        location.list,
+      );
+      const target = expected.at(location.index);
+      if (target === undefined) return undefined;
+      return {
+        type: DOCUMENT_OP_TYPES.SET_CUSTOM_XML_MARKUP,
+        story: OP_STORIES.MAIN,
+        blockId,
+        expected,
+        blocks: [
+          ...expected.slice(0, location.index),
+          {
+            type: "blockCustomXml",
+            openingXml: '<w:customXml w:element="corpus">',
+            closingXml: "</w:customXml>",
+            content: [target],
+          },
+          ...expected.slice(location.index + 1),
+        ],
+      };
+    }
     case "splitBlock":
       return {
         type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
