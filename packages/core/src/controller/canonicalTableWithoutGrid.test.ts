@@ -157,10 +157,19 @@ describe("column operations on a table whose file states no widths", () => {
       paragraph("10000001", "Before"),
       table(
         [
-          row(textCell("20000001", "A1", '<w:gridSpan w:val="2"/>')),
-          row(textCell("20000002", "A2", '<w:gridSpan w:val="2"/>')),
+          row(
+            textCell(
+              "20000001",
+              "A1",
+              '<w:gridSpan w:val="2"/><w:vMerge w:val="restart"/>',
+            ) + textCell("20000003", "B1"),
+          ),
+          row(
+            textCell("20000002", "", '<w:gridSpan w:val="2"/><w:vMerge/>') +
+              textCell("20000004", "B2"),
+          ),
         ],
-        2,
+        3,
       ),
       paragraph("10000002", "After"),
     ]);
