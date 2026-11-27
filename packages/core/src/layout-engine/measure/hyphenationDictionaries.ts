@@ -28,16 +28,15 @@ import { recordHyphenationDictionaryError } from "../layoutInstrumentation";
 
 export type HyphenateWord = (text: string) => string;
 
+export type HyphenationDictionaryId = "cs" | "en-gb" | "en-us" | "sk";
+
 /** The languages folio hyphenates, by dictionary. */
-export const HYPHENATION_DICTIONARY_IDS = [
+export const HYPHENATION_DICTIONARY_IDS: readonly HyphenationDictionaryId[] = [
   "cs",
   "en-gb",
   "en-us",
   "sk",
-] as const;
-
-export type HyphenationDictionaryId =
-  (typeof HYPHENATION_DICTIONARY_IDS)[number];
+];
 
 export type HyphenationDictionaryLoaders = Readonly<
   Record<HyphenationDictionaryId, () => Promise<HyphenateWord>>
