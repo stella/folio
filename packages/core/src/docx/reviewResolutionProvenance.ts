@@ -878,7 +878,7 @@ const isTableGeometryChange = (value: unknown): value is GeometryChange => {
         key !== "type" &&
         key !== "revisionIds" &&
         (value["type"] !== "mergeCells" ||
-          (key !== "moves" && key !== "emptyOwner")),
+          (key !== "moves" && key !== "nestedMoves" && key !== "emptyOwner")),
     )
   )
     return false;

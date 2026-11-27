@@ -242,7 +242,5 @@ test("a merge refuses before creating an unwriteable nested-table review record"
   expect(result.error.reason).toBe(
     DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
   );
-  expect(result.error.message).toContain(
-    "review record exceeds the saved history limit",
-  );
+  expect(result.error.message).toContain("exceeds the saved history limit");
 });

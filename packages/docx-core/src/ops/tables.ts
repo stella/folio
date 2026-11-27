@@ -51,7 +51,7 @@ import { replaceStoryBody } from "./stories";
 import {
   locateBlockInsertion,
   locateTableRow,
-  survivingTableAnchor,
+  tableRemovalAnchor,
 } from "./tableLocation";
 import { rangeEndsReachingPast } from "./tableRowRemoval";
 import { permitsRestoredCellFinalMark, trackTableRows } from "./tableTracking";
@@ -723,17 +723,7 @@ export const applyTableOp = (
           message: "The table to remove has changed.",
         });
       const blocks = [...blockListAt(body.content, location.list)];
-      const remaining = [...blocks];
-      remaining.splice(location.index, 1);
-      const remainingBody = {
-        ...body,
-        content: updateBlockList(body.content, location.list, () => remaining),
-      };
-      // Keep the same-list anchor used by earlier inverses when it survives.
-      const standing = remaining.find((block) => block.type === "paragraph")?.paraId;
-      const anchor = standing === undefined
-        ? survivingBlockListAnchor(remainingBody, location.list)
-        : { list: location.list, blockId: standing };
+      const anchor = tableRemovalAnchor(body, location);
       if (anchor === undefined)
         return refuse({
           op,

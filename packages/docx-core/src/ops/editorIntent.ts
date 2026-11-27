@@ -171,7 +171,7 @@ import {
 import { tableGrid } from "./tableGrid";
 import {
   locateTableRow,
-  survivingTableAnchor,
+  tableRemovalAnchor,
   tableRowAnchor,
   type TableRowLocation,
 } from "./tableLocation";
@@ -4554,7 +4554,7 @@ const compileInStory = (
           storyParagraphs(body).find((paragraph) =>
             sameBlockList(paragraph.list, located.value.list),
           )?.paragraph.paraId ??
-          survivingTableAnchor(body, located.value.list)?.paragraph.paraId;
+          tableRemovalAnchor(body, located.value)?.blockId;
         if (survivor === undefined)
           return Result.err(
             new DocumentOpRefusal({
@@ -4647,7 +4647,7 @@ const compileInStory = (
       const operation = intent.operation;
       const located = locateTableRow(document, operation);
       if (located.isErr()) return Result.err(located.error);
-      const { table, rowIndex, list } = located.value;
+      const { table, rowIndex } = located.value;
       let op: InsertRowOp | DeleteRowOp;
       let blockId: string | undefined;
       if (operation.type === DOCUMENT_OP_TYPES.INSERT_ROW) {
@@ -4673,11 +4673,8 @@ const compileInStory = (
               ? rowsWithoutRow(table, rowIndex)
               : table.rows.filter((_row, index) => index !== rowIndex),
           ) ??
-          storyParagraphs(storyBody(document, op.story)).find(
-            (paragraph) =>
-              sameBlockList(paragraph.list, list) &&
-              paragraph.paragraph.paraId !== undefined,
-          )?.paragraph.paraId;
+          tableRemovalAnchor(storyBody(document, op.story), located.value)
+            ?.blockId;
       }
       if (blockId === undefined)
         return Result.err(
@@ -4888,7 +4885,7 @@ const compileInStory = (
       );
       const anchor =
         (beside[position] ?? beside.at(-1))?.paragraph.paraId ??
-        survivingTableAnchor(body, list)?.paragraph.paraId;
+        tableRemovalAnchor(body, located.value)?.blockId;
       if (anchor === undefined)
         return Result.err(
           new DocumentOpRefusal({
