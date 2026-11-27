@@ -1256,15 +1256,16 @@ test.each(["before", "beforeTable"] as const)(
 );
 
 test.each([
-  { location: "beside paragraph", formatting: undefined },
-  { location: "inside control", formatting: {} },
+  { location: "beside paragraph" },
+  { location: "inside control" },
 ] as const)(
   "an empty paragraph replacement $location restores the exact authored snapshot",
-  ({ location, formatting }) => {
+  ({ location }) => {
     // An own `formatting` field, even one holding nothing.
-    const removed: Paragraph = Object.assign(makeParagraph("00000004", ""), {
-      formatting,
-    });
+    const removed: Paragraph = {
+      ...makeParagraph("00000004", ""),
+      formatting: {},
+    };
     const control = {
       type: "blockSdt",
       properties: { sdtType: "group", id: 4 },

@@ -207,7 +207,11 @@ describe("tracked text", () => {
       {
         type: "hyperlink",
         href: "https://example.com",
-        children: [run("b"), { type: "commentRangeStart", id: 40 }, run("c")],
+        children: [
+          { type: "run", content: [{ type: "text", text: "b" }] },
+          { type: "commentRangeStart", id: 40 },
+          { type: "run", content: [{ type: "text", text: "c" }] },
+        ],
       },
       run("d"),
       { type: "commentRangeEnd", id: 40 },
