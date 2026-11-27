@@ -459,6 +459,7 @@ export const nestedTableMoveSource = (
   if (reachesPastRemovedCell(table)) return undefined;
   const paragraphs: string[] = [];
   const revisions: number[] = [];
+  const gridMembers: number[] = [];
   const collectProperties = (
     changes: readonly { info: { id: number } }[] | undefined,
   ) => {
@@ -466,14 +467,21 @@ export const nestedTableMoveSource = (
   };
   const collect = (nested: Table): boolean => {
     const grid = nested.formatting?.gridChange;
+    const geometry = grid?.geometryChange;
     if (
       nested.bookmarks !== undefined ||
       nested.carrierStack !== undefined ||
-      grid?.geometryChange !== undefined ||
+      (geometry?.type === "mergeCells" &&
+        (geometry.moves !== undefined ||
+          geometry.nestedMoves !== undefined ||
+          geometry.emptyOwner !== undefined)) ||
       nested.rows.length === 0
     )
       return false;
-    if (grid !== undefined) revisions.push(grid.id);
+    if (grid !== undefined) {
+      revisions.push(grid.id);
+      for (const id of geometry?.revisionIds ?? []) gridMembers.push(id);
+    }
     collectProperties(nested.propertyChanges);
     return nested.rows.every((row) => {
       if (
@@ -523,6 +531,8 @@ export const nestedTableMoveSource = (
     return true;
   };
   if (!collect(table)) return undefined;
+  const revisionIds = new Set(revisions);
+  if (gridMembers.some((id) => !revisionIds.has(id))) return undefined;
   const allowed = new Set(
     revisions.map((id) => slotKey({ space: IDENTITY_SPACES.REVISION, id })),
   );
@@ -575,7 +585,20 @@ const withNestedMoveIdentities = (
       : {
           formatting: {
             ...table.formatting,
-            gridChange: { ...grid, id: gridId },
+            gridChange: {
+              ...grid,
+              id: gridId,
+              ...(grid.geometryChange !== undefined
+                ? {
+                    geometryChange: {
+                      ...grid.geometryChange,
+                      revisionIds: grid.geometryChange.revisionIds.map(
+                        (id) => ids.revisions.get(id) ?? id,
+                      ),
+                    },
+                  }
+                : {}),
+            },
           },
         }),
     ...(table.propertyChanges === undefined

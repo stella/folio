@@ -663,6 +663,188 @@ test.each(["some rows", "every row", "all deleted rows"] as const)(
   },
 );
 
+test.each(["deleteColumn", "mergeCells"] as const)(
+  "a moved nested table keeps its earlier grouped geometry actionable (%s)",
+  (kind) => {
+    const inner = {
+      type: "table",
+      columnWidths: [700, 900],
+      rows: [
+        {
+          type: "tableRow",
+          cells: [
+            {
+              ...cell(paragraph("00000003", "Span")),
+              formatting: { gridSpan: 2 },
+            },
+          ],
+        },
+        {
+          type: "tableRow",
+          cells: [
+            cell(paragraph("00000004", "Removed")),
+            cell(
+              paragraph(
+                "00000007",
+                kind === "deleteColumn" ? "Survivor" : undefined,
+              ),
+            ),
+          ],
+        },
+      ],
+    } satisfies Table;
+    const source = {
+      type: "table",
+      columnWidths: [1000, 1400],
+      rows: [
+        {
+          type: "tableRow",
+          cells: [
+            cell(paragraph("00000001", "Owner")),
+            cell(inner, paragraph("00000005")),
+          ],
+        },
+      ],
+    } satisfies Table;
+    const withTable = (table: Table): Document => ({
+      package: { document: { content: [table, paragraph("00000006")] } },
+    });
+    const deletion = {
+      type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
+      story: OP_STORIES.MAIN,
+      blockId: "00000003",
+      column: 0,
+    } as const;
+    const merge = {
+      type: DOCUMENT_OP_TYPES.MERGE_CELLS,
+      story: OP_STORIES.MAIN,
+      blockId: "00000001",
+      top: 0,
+      bottom: 1,
+      left: 0,
+      right: 2,
+    } as const;
+    const innerMerge = { ...merge, blockId: "00000004", top: 1, bottom: 2 };
+    const suggest = (
+      document: Document,
+      operation: typeof deletion | typeof merge,
+    ) => {
+      const intent = { type: "table", operation } as const;
+      const { revisionId, newIds } = createEditorIntentIdAllocator()(
+        document,
+        intent,
+      );
+      const { ops } = compileEditorIntent(document, {
+        intent,
+        mode: {
+          type: "suggesting",
+          revision: { id: revisionId, author: "Reviewer" },
+          newIds,
+        },
+      }).unwrap();
+      return applyDocumentOps(document, ops).unwrap().document;
+    };
+    const reopen = (document: Document): Document =>
+      withTable(
+        parseSavedTable(serializeTable(tableOf(document), serializeParagraph)),
+      );
+    const resolve = (
+      document: Document,
+      revisionIds: readonly number[],
+      decision: "accept" | "reject",
+    ) =>
+      applyDocumentOp(document, {
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story: OP_STORIES.MAIN,
+        revisionIds: [...revisionIds],
+        decision,
+      }).unwrap().document;
+    const nestedTables = (document: Document) =>
+      tableOf(document).rows.flatMap(({ cells }) =>
+        cells.flatMap(({ content }) =>
+          content.filter((block) => block.type === "table"),
+        ),
+      );
+    const earlier = suggest(
+      withTable(source),
+      kind === "deleteColumn" ? deletion : innerMerge,
+    );
+    const prior = nestedTables(earlier).at(0)?.formatting?.gridChange;
+    if (prior?.geometryChange?.type !== kind)
+      throw new TypeError("Expected earlier grid geometry.");
+
+    const moved = suggest(earlier, merge);
+    const reopened = reopen(moved);
+    const outer = tableOf(reopened).formatting?.gridChange;
+    const aliases =
+      outer?.geometryChange?.type === "mergeCells"
+        ? outer.geometryChange.nestedMoves?.at(0)?.revisions
+        : undefined;
+    const priorCopy = aliases?.find(([original]) => original === prior.id);
+    if (outer === undefined || aliases === undefined || priorCopy === undefined)
+      throw new TypeError("Expected grid geometry handoffs.");
+    const projectionDoc = toProseDoc(reopened, {
+      tableReviewGeometry: "physical",
+    });
+    expect(
+      getTrackedChangeGroupsForIds(projectionDoc, [prior.id]).at(0),
+    ).toContain(priorCopy[1]);
+    const members = new Map(aliases);
+    expect(
+      nestedTables(reopened).map(
+        ({ formatting }) => formatting?.gridChange?.geometryChange?.revisionIds,
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        prior.geometryChange.revisionIds,
+        prior.geometryChange.revisionIds.map((id) => members.get(id)),
+      ]),
+    );
+    const directMerge = (document: Document) =>
+      applyDocumentOp(document, {
+        ...merge,
+        newBlockIds: [],
+      }).unwrap().document;
+    expect(resolve(moved, [outer.id], REVISION_DECISIONS.ACCEPT)).toStrictEqual(
+      directMerge(earlier),
+    );
+    expect(resolve(moved, [outer.id], REVISION_DECISIONS.REJECT)).toStrictEqual(
+      earlier,
+    );
+    for (const decision of [
+      REVISION_DECISIONS.ACCEPT,
+      REVISION_DECISIONS.REJECT,
+    ]) {
+      const reviewed = reopen(resolve(reopened, [priorCopy[1]], decision));
+      const expected = resolve(earlier, [prior.id], decision);
+      const widths = nestedTables(expected).at(0)?.columnWidths;
+      expect(nestedTables(reviewed)).toHaveLength(2);
+      for (const table of nestedTables(reviewed)) {
+        expect(table.formatting?.gridChange).toBeUndefined();
+        expect(table.columnWidths).toEqual(widths);
+      }
+      const kept = resolve(reviewed, [outer.id], REVISION_DECISIONS.ACCEPT);
+      const restored = resolve(reviewed, [outer.id], REVISION_DECISIONS.REJECT);
+      expect(projection(tableOf(kept))).toEqual(
+        projection(tableOf(directMerge(expected))),
+      );
+      expect(projection(tableOf(restored))).toEqual(
+        projection(tableOf(expected)),
+      );
+      const together = resolve(reopened, [outer.id, prior.id], decision);
+      expect(projection(tableOf(together))).toEqual(
+        projection(
+          tableOf(
+            decision === REVISION_DECISIONS.ACCEPT
+              ? directMerge(expected)
+              : expected,
+          ),
+        ),
+      );
+    }
+  },
+);
+
 test("a merge refuses before creating an unwriteable nested-table review record", () => {
   const destinationId = (index: number) =>
     (0x4000 + index).toString(16).padStart(8, "0");

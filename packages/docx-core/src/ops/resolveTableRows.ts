@@ -101,11 +101,10 @@ export const withBelongingTableGeometry = (
 ): Result<ResolveRevisionOp, DocumentOpRefusal> => {
   const ids = new Set(op.revisionIds);
   const uniqueCount = ids.size;
-  for (const table of tablesIn(document, op.story)) {
+  const tables = tablesIn(document, op.story);
+  for (const table of tables) {
     const grid = table.formatting?.gridChange;
     const geometry = grid?.geometryChange;
-    const members = geometry?.revisionIds;
-    if (grid === undefined || !Array.isArray(members)) continue;
     if (
       geometry?.type === "mergeCells" &&
       Array.isArray(geometry.nestedMoves)
@@ -121,6 +120,12 @@ export const withBelongingTableGeometry = (
         }
       }
     }
+  }
+  for (const table of tables) {
+    const grid = table.formatting?.gridChange;
+    const geometry = grid?.geometryChange;
+    const members = geometry?.revisionIds;
+    if (grid === undefined || !Array.isArray(members)) continue;
     const local = reachableOnTable(table);
     const moves =
       geometry?.type === "mergeCells"

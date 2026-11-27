@@ -83,8 +83,11 @@ const revisionSlots = (table: Table): ReadonlyMap<number, string> => {
   });
   for (const [index, owner] of owners.entries()) {
     const grid = owner.formatting?.gridChange;
-    if (grid !== undefined && grid.geometryChange === undefined)
-      slots.set(grid.id, `${index}:grid`);
+    if (grid !== undefined)
+      slots.set(
+        grid.id,
+        `${index}:grid:${grid.geometryChange?.type ?? "plain"}`,
+      );
     record(owner.propertyChanges, `${index}:table`);
     for (const [rowIndex, row] of owner.rows.entries()) {
       const position = `${index}:row:${rowIndex}`;
