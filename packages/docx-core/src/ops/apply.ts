@@ -3045,13 +3045,17 @@ const editNote = ({ document, op, applyOps }: EditNoteOptions): Applied => {
       DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
       "The position does not name the note reference.",
     );
-  const removed = deleteRange(document, {
-    type: DOCUMENT_OP_TYPES.DELETE_RANGE,
-    from: op.at,
-    to: { ...op.at, offset: op.at.offset + 1 },
-    ...(op.revision === undefined ? {} : { revision: op.revision }),
-    ...(op.newIds === undefined ? {} : { newIds: op.newIds }),
-  });
+  const removed = deleteRange(
+    document,
+    {
+      type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+      from: op.at,
+      to: { ...op.at, offset: op.at.offset + 1 },
+      ...(op.revision === undefined ? {} : { revision: op.revision }),
+      ...(op.newIds === undefined ? {} : { newIds: op.newIds }),
+    },
+    applyOps,
+  );
   if (removed.isErr()) return removed;
   const stillReferenced = documentStories(removed.value.document).some(
     (story) => {
