@@ -389,3 +389,121 @@ describe("handleVisualLineKeyDown", () => {
     expect(view.state.selection.from).toBe(19);
   });
 });
+
+const lineKey = (
+  key: "Home" | "End",
+  modifiers: Partial<
+    Pick<KeyboardEvent, "shiftKey" | "ctrlKey" | "metaKey" | "altKey">
+  > = {},
+): KeyboardEvent =>
+  ({
+    key,
+    ctrlKey: false,
+    metaKey: false,
+    altKey: false,
+    shiftKey: false,
+    ...modifiers,
+  }) as KeyboardEvent;
+
+describe("handleVisualLineKeyDown: Home and End", () => {
+  // A click leaves the caret mid-line; the key that follows must act on that
+  // caret in the editor's state at once. Nothing here reads a DOM selection or
+  // waits for an event: the position is decided as the key is handled, so no
+  // later write of the state's selection can put the caret back.
+  test("Home and End move a clicked caret to the edges of its painted line", () => {
+    const container = buildContainer(WRAPPED_LINES);
+    const view = createView();
+
+    placeCaret(view, 5);
+    expect(
+      handleVisualLineKeyDown(
+        createVisualLineState(),
+        view,
+        lineKey("Home"),
+        container,
+      ),
+    ).toBe(true);
+    expect(view.state.selection.head).toBe(1);
+
+    placeCaret(view, 5);
+    expect(
+      handleVisualLineKeyDown(
+        createVisualLineState(),
+        view,
+        lineKey("End"),
+        container,
+      ),
+    ).toBe(true);
+    expect(view.state.selection.head).toBe(WRAP_BOUNDARY);
+  });
+
+  test("Home on a wrapped line goes to that line's start, not the paragraph's", () => {
+    const container = buildContainer(WRAPPED_LINES);
+    const view = createView();
+
+    placeCaret(view, 12);
+    handleVisualLineKeyDown(
+      createVisualLineState(),
+      view,
+      lineKey("Home"),
+      container,
+    );
+    expect(view.state.selection.head).toBe(WRAP_BOUNDARY);
+
+    placeCaret(view, 12);
+    handleVisualLineKeyDown(
+      createVisualLineState(),
+      view,
+      lineKey("End"),
+      container,
+    );
+    expect(view.state.selection.head).toBe(15);
+  });
+
+  test("Shift+End extends the selection from where it was", () => {
+    const container = buildContainer(WRAPPED_LINES);
+    const view = createView();
+
+    placeCaret(view, 10);
+    handleVisualLineKeyDown(
+      createVisualLineState(),
+      view,
+      lineKey("End", { shiftKey: true }),
+      container,
+    );
+    expect(view.state.selection.anchor).toBe(10);
+    expect(view.state.selection.head).toBe(15);
+  });
+
+  test("a vertical step after Home keeps the line-start column", () => {
+    const container = buildContainer(WRAPPED_LINES);
+    const state = createVisualLineState();
+    const view = createView();
+
+    placeCaret(view, 12);
+    handleVisualLineKeyDown(state, view, lineKey("Home"), container);
+    handleVisualLineKeyDown(state, view, arrow("ArrowDown"), container);
+    expect(view.state.selection.head).toBe(15);
+  });
+
+  test("Home and End with a modifier are left to their own commands", () => {
+    const container = buildContainer(WRAPPED_LINES);
+    const view = createView();
+    placeCaret(view, 12);
+
+    for (const modifiers of [
+      { ctrlKey: true },
+      { metaKey: true },
+      { altKey: true },
+    ])
+      expect(
+        handleVisualLineKeyDown(
+          createVisualLineState(),
+          view,
+          lineKey("Home", modifiers),
+          container,
+        ),
+      ).toBe(false);
+    expect(view.state.selection.head).toBe(12);
+  });
+});

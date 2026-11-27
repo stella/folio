@@ -295,11 +295,86 @@ const createVerticalSelection = ({
   }
 };
 
+/** The first and last positions painted on `lineEl`, from its text runs. */
+const paintedLineEdges = (
+  lineEl: HTMLElement,
+): { start: number; end: number } | null => {
+  let start = Number.POSITIVE_INFINITY;
+  let end = Number.NEGATIVE_INFINITY;
+  for (const span of Array.from(
+    lineEl.querySelectorAll<HTMLElement>(PM_SPAN_SELECTOR),
+  )) {
+    const spanStart = readPaintedStart(span);
+    const spanEnd = readPaintedEnd(span);
+    if (spanStart === undefined || spanEnd === undefined) continue;
+    start = Math.min(start, spanStart);
+    end = Math.max(end, spanEnd);
+  }
+  return Number.isFinite(start) && Number.isFinite(end) ? { start, end } : null;
+};
+
+/**
+ * Home / End: the start or end of the visual line the caret is painted on,
+ * set in the editor state as the key is handled. The hidden editor's own DOM
+ * wraps differently from the painted pages, and a native caret move there is
+ * read back only on a later `selectionchange`, so any write of the state's
+ * selection in between (a refocus, a re-render) would put the caret back
+ * where it was before the key.
+ */
+const handleLineEdgeKey = ({
+  state,
+  view,
+  event,
+  container,
+  allLines,
+}: {
+  state: VisualLineState;
+  view: EditorView;
+  event: KeyboardEvent;
+  container: HTMLElement;
+  allLines: HTMLElement[];
+}): boolean => {
+  const { head, anchor } = view.state.selection;
+  const step = resolveVisualLineStep({
+    state,
+    container,
+    allLines,
+    pmPos: head,
+  });
+  if (!step) return false;
+  const line = allLines[step.lineIndex];
+  if (!line) return false;
+  const edges = paintedLineEdges(line);
+  let target: number | null;
+  if (edges === null) target = findPositionOnLineAtClientX(line, 0);
+  else target = event.key === "End" ? edges.end : edges.start;
+  if (target === null) return false;
+  const { state: pmState, dispatch } = view;
+  const selection = createVerticalSelection({
+    doc: pmState.doc,
+    anchor,
+    head: Math.max(0, Math.min(target, pmState.doc.content.size)),
+    extend: event.shiftKey,
+  });
+  dispatch(pmState.tr.setSelection(selection));
+  // A line's start can be the position that ends the line above, which
+  // measures there; the column after Home is this line's own left edge.
+  const stickyX =
+    event.key === "Home"
+      ? line.getBoundingClientRect().left
+      : getCaretClientX(container, selection.head);
+  state.step =
+    stickyX === null
+      ? null
+      : { stickyX, lineIndex: step.lineIndex, pmPos: selection.head };
+  return true;
+};
+
 /**
  * Handle PM ArrowUp / ArrowDown with visual-line awareness + sticky
- * X. Returns true if the event was handled and PM should not run
- * its default behaviour. Mutates `state` so consecutive presses
- * keep the same sticky X.
+ * X, and Home / End against the painted line. Returns true if the event
+ * was handled and PM should not run its default behaviour. Mutates
+ * `state` so consecutive presses keep the same sticky X.
  *
  * @internal
  */
@@ -309,14 +384,19 @@ export function handleVisualLineKeyDown(
   event: KeyboardEvent,
   container: HTMLElement | null,
 ): boolean {
-  if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return false;
-  if (event.ctrlKey || event.metaKey) return false;
+  const lineEdge = event.key === "Home" || event.key === "End";
+  if (event.key !== "ArrowUp" && event.key !== "ArrowDown" && !lineEdge)
+    return false;
+  if (event.ctrlKey || event.metaKey || (lineEdge && event.altKey))
+    return false;
   if (!container) return false;
 
   const allLines = Array.from(
     container.querySelectorAll<HTMLElement>(CONTENT_LINE_SELECTOR),
   );
   if (allLines.length === 0) return false;
+  if (lineEdge)
+    return handleLineEdgeKey({ state, view, event, container, allLines });
 
   // The head is where the caret is painted: for a shift-extended selection
   // `from` is the fixed end, which would step down from the wrong line.
