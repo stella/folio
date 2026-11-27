@@ -323,6 +323,22 @@ export const operations = {
     patch: { alignment: "center" },
     revision: stamp,
   }),
+  [DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW]: () => ({
+    type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
+    story: OP_STORIES.MAIN,
+    blockId: FIRST_ID,
+    expected: {},
+    review: { pPrMark: { kind: "ins", info: stamp } },
+    revision: stamp,
+  }),
+  [DOCUMENT_OP_TYPES.SET_CUSTOM_XML_MARKUP]: () => ({
+    type: DOCUMENT_OP_TYPES.SET_CUSTOM_XML_MARKUP,
+    story: OP_STORIES.MAIN,
+    blockId: FIRST_ID,
+    expected: [],
+    blocks: [],
+    revision: stamp,
+  }),
   [DOCUMENT_OP_TYPES.SPLIT_BLOCK]: ({ document, seed }: OperationOptions) => ({
     type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
     at: at(targetOffset({ document, seed })),

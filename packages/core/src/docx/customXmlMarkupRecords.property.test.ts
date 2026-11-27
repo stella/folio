@@ -228,61 +228,61 @@ const decision = fc.constantFrom(
 
 test("a suggested custom XML element resolves alike in every order, and after a reopen", async () => {
   const base = await opened();
-  const cases: {
-    inner: Held[];
-    offset: number;
-    element: RevisionDecision;
-    content: RevisionDecision;
-  }[] = [];
-  assertProperty(
-    fc.property(
+  await assertProperty(
+    fc.asyncProperty(
       heldArbitrary,
       fc.integer({ min: 0, max: DESTINATION.length }),
       decision,
       decision,
-      (inner, offset, element, content) => {
-        cases.push({ inner, offset, element, content });
+      async (inner, offset, element, content) => {
+        const at = { story: OP_STORIES.MAIN, blockId: "00000001", offset };
+        const compiled = compileEditorIntent(base, {
+          intent: {
+            type: "pasteBlocks",
+            from: at,
+            to: at,
+            blocks: [
+              paragraph("Lead"),
+              tagged(inner.map(blockOf)),
+              paragraph("Trail"),
+            ],
+            openStart: 1,
+            openEnd: 1,
+          },
+          mode: {
+            type: "suggesting",
+            revision: {
+              id: 900,
+              author: "R",
+              date: "2026-01-02T00:00:00Z",
+            },
+            newIds: {
+              revision: Array.from({ length: 60 }, (_, index) => 901 + index),
+            },
+          },
+        });
+        if (compiled.isErr()) throw compiled.error;
+        const suggested = apply(base, compiled.value.ops);
+        const here = outcomes(suggested, { element, content });
+        expect(here.size).toBe(1);
+        const reopened = await parseDocx(
+          await repackDocx(suggested, { updateModifiedDate: false }),
+          { preloadFonts: false },
+        );
+        expect(elementOf(reopened).insertion?.info).toEqual(
+          elementOf(suggested).insertion?.info,
+        );
+        expect(revisionIdsOf(reopened).length).toBe(
+          revisionIdsOf(suggested).length,
+        );
+        expect([...outcomes(reopened, { element, content })]).toEqual([
+          ...here,
+        ]);
       },
     ),
-    { id: "suggested custom XML element resolution orders", numRuns: 40 },
+    {
+      id: "suggested custom XML element resolution orders",
+      numRuns: 40,
+    },
   );
-  for (const { inner, offset, element, content } of cases) {
-    const at = { story: OP_STORIES.MAIN, blockId: "00000001", offset };
-    const compiled = compileEditorIntent(base, {
-      intent: {
-        type: "pasteBlocks",
-        from: at,
-        to: at,
-        blocks: [
-          paragraph("Lead"),
-          tagged(inner.map(blockOf)),
-          paragraph("Trail"),
-        ],
-        openStart: 1,
-        openEnd: 1,
-      },
-      mode: {
-        type: "suggesting",
-        revision: { id: 900, author: "R", date: "2026-01-02T00:00:00Z" },
-        newIds: {
-          revision: Array.from({ length: 60 }, (_, index) => 901 + index),
-        },
-      },
-    });
-    if (compiled.isErr()) throw compiled.error;
-    const suggested = apply(base, compiled.value.ops);
-    const here = outcomes(suggested, { element, content });
-    expect(here.size).toBe(1);
-    const reopened = await parseDocx(
-      await repackDocx(suggested, { updateModifiedDate: false }),
-      { preloadFonts: false },
-    );
-    expect(elementOf(reopened).insertion?.info).toEqual(
-      elementOf(suggested).insertion?.info,
-    );
-    expect(revisionIdsOf(reopened).length).toBe(
-      revisionIdsOf(suggested).length,
-    );
-    expect([...outcomes(reopened, { element, content })]).toEqual([...here]);
-  }
 });
