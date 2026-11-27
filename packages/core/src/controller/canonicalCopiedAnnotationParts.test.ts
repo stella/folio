@@ -293,6 +293,29 @@ const destination = () =>
     },
   });
 
+/**
+ * A source whose footnotes part has no relationships file: its note's chart
+ * and kept block markup resolve through the main document's relationships.
+ */
+const sourceWithoutNoteRelationships = () =>
+  packageOf({
+    paraIdBase: 3,
+    footnotesName: "footnotes",
+    body:
+      '<w:p><w:r><w:t xml:space="preserve">Copied </w:t></w:r>' +
+      '<w:r><w:footnoteReference w:id="1"/></w:r></w:p>' +
+      "<w:p><w:r><w:t>After</w:t></w:r></w:p>",
+    footnotes:
+      `<w:footnote w:id="1"><w:p><w:r><w:t xml:space="preserve">Note </w:t></w:r>${chart("rId11", 31)}</w:p>` +
+      `${chunk("rId12")}<w:p><w:r><w:t>Tail</w:t></w:r></w:p></w:footnote>`,
+    footnoteRelationships: [
+      { id: "rId11", type: CHART_TYPE, target: "charts/chart1.xml" },
+      { id: "rId12", type: CHUNK_TYPE, target: "chunk1.html" },
+    ],
+    parts: CHART_PARTS,
+    ownNoteRelationships: false,
+  });
+
 /** The copied range: the source's first paragraph, with its note and comment. */
 const copiedSlice = (doc: ProseNode) => doc.slice(0, doc.child(0).nodeSize);
 
@@ -305,10 +328,11 @@ type Pasted = {
 const paste = async (
   into: "same" | "other",
   mode: "editing" | "suggesting",
+  from: () => Promise<Document> = source,
 ): Promise<Pasted> => {
   // Within one package the copy is the session's own document, as the
   // editor reads it.
-  const copy = createCanonicalSession(await source()).unwrap();
+  const copy = createCanonicalSession(await from()).unwrap();
   const copiedFrom = readModel(copy.document);
   const slice = copiedSlice(copy.projection.doc);
   const sourceParts = await readClipboardPackageParts({
@@ -641,25 +665,8 @@ test("a copy reads the parts its notes' and comments' markup reaches through the
 
 test("a copy reads the parts a note's markup reaches through the main document when the note part has no relationships of its own", async () => {
   const copiedFrom = readModel(
-    createCanonicalSession(
-      await packageOf({
-        paraIdBase: 3,
-        footnotesName: "footnotes",
-        body:
-          '<w:p><w:r><w:t xml:space="preserve">Copied </w:t></w:r>' +
-          '<w:r><w:footnoteReference w:id="1"/></w:r></w:p>' +
-          "<w:p><w:r><w:t>After</w:t></w:r></w:p>",
-        footnotes:
-          `<w:footnote w:id="1"><w:p><w:r><w:t xml:space="preserve">Note </w:t></w:r>${chart("rId11", 31)}</w:p>` +
-          `${chunk("rId12")}<w:p><w:r><w:t>Tail</w:t></w:r></w:p></w:footnote>`,
-        footnoteRelationships: [
-          { id: "rId11", type: CHART_TYPE, target: "charts/chart1.xml" },
-          { id: "rId12", type: CHUNK_TYPE, target: "chunk1.html" },
-        ],
-        parts: CHART_PARTS,
-        ownNoteRelationships: false,
-      }),
-    ).unwrap().document,
+    createCanonicalSession(await sourceWithoutNoteRelationships()).unwrap()
+      .document,
   );
   expect(
     copiedFrom.package.annotationRelationships?.has("footnotes") ?? false,
@@ -677,4 +684,41 @@ test("a copy reads the parts a note's markup reaches through the main document w
   expect([...(parts?.parts.keys() ?? [])].toSorted()).toEqual(
     Object.keys(CHART_PARTS).toSorted(),
   );
+});
+
+test("a note whose part has no relationships of its own pastes into another package with the parts its markup names", async () => {
+  const { session, before } = await paste(
+    "other",
+    "editing",
+    sourceWithoutNoteRelationships,
+  );
+  const pasted = readModel(session.document);
+  const copied = [...(pasted.package.copiedParts?.keys() ?? [])];
+  expect(copied.length).toBeGreaterThan(0);
+  const footnotes = pasted.package.annotationRelationships?.get("footnotes");
+  const held = before.package.annotationRelationships?.get("footnotes");
+  if (footnotes === undefined || held === undefined)
+    throw new TypeError("The destination's footnotes part relates its parts.");
+  const added = [...footnotes.keys()].filter((id) => !held.has(id));
+  expect(added.map((id) => footnotes.get(id)?.type).toSorted()).toEqual(
+    [CHART_TYPE, CHUNK_TYPE].toSorted(),
+  );
+});
+
+test("a note pasted into one package and copied on reads the parts that paste copied in", async () => {
+  const { session } = await paste("other", "editing");
+  const intermediate = readModel(session.document);
+  const copiedPaths = [...(intermediate.package.copiedParts?.keys() ?? [])];
+  expect(copiedPaths.length).toBeGreaterThan(0);
+  // The whole document, so the copy holds the note the first paste brought.
+  const { doc } = createCanonicalSession(intermediate).unwrap().projection;
+  const slice = doc.slice(0, doc.content.size);
+  const parts = await readClipboardPackageParts({
+    document: intermediate,
+    markup: sliceKeptMarkup(slice),
+    annotationMarkup: sliceAnnotationMarkup(slice, intermediate),
+  });
+  const read = new Set(parts?.parts.keys() ?? []);
+  for (const path of copiedPaths)
+    if (!path.includes("_rels/")) expect(read.has(path)).toBe(true);
 });

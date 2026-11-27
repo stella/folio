@@ -153,8 +153,16 @@ export const readClipboardPackageParts = async ({
   /** The kept markup of copied notes and comments, by the part holding it. */
   annotationMarkup?: ReadonlyMap<string, readonly string[]>;
 }): Promise<ClipboardPackageParts | undefined> => {
+  // A part an earlier paste copied in lives in `copiedParts` until a save
+  // writes it; it reads from there before the package it was opened from.
+  const copied = new Map(
+    [...(document.package.copiedParts?.values() ?? [])].map((part) => [
+      part.path.toLowerCase(),
+      part,
+    ]),
+  );
   const buffer = document.originalBuffer;
-  if (buffer === undefined) return undefined;
+  if (buffer === undefined && copied.size === 0) return undefined;
   // Note and comment parts sit beside the main document, so their targets
   // resolve as its own do.
   const rootsOf = (
@@ -184,9 +192,9 @@ export const readClipboardPackageParts = async ({
   ];
   // Markup naming only external targets copies its relationships alone.
   if (roots.length === 0) return { source: document, parts: new Map() };
-  const zip = await ZipArchive.read(buffer);
+  const zip = buffer === undefined ? undefined : await ZipArchive.read(buffer);
   const entries = new Map(
-    zip.entries().map((entry) => [entry.path.toLowerCase(), entry]),
+    (zip?.entries() ?? []).map((entry) => [entry.path.toLowerCase(), entry]),
   );
   const registry = entries.get("[content_types].xml");
   const contentTypeOf = contentTypesOf(
@@ -194,20 +202,32 @@ export const readClipboardPackageParts = async ({
       ? ""
       : decodeText(await registry.bytes(), { ignoreBOM: true }),
   );
+  const partAt = async (path: string): Promise<SourcePart | undefined> => {
+    const held = copied.get(path.toLowerCase());
+    if (held !== undefined)
+      return { data: new Uint8Array(held.data), contentType: held.contentType };
+    const entry = entries.get(path.toLowerCase());
+    const contentType = contentTypeOf(path);
+    if (entry === undefined || contentType === undefined) return undefined;
+    return { data: await entry.bytes(), contentType };
+  };
   const parts = new Map<string, SourcePart>();
   const pending = [...roots];
   for (let path = pending.pop(); path !== undefined; path = pending.pop()) {
     if (parts.has(path)) continue;
-    const entry = entries.get(path.toLowerCase());
-    const contentType = contentTypeOf(path);
-    if (entry === undefined || contentType === undefined) continue;
     // oxlint-disable-next-line no-await-in-loop -- each part names the next
-    parts.set(path, { data: await entry.bytes(), contentType });
+    const part = await partAt(path);
+    if (part === undefined) continue;
+    parts.set(path, part);
     const relsPath = relationshipsPartOf(path);
-    const rels = entries.get(relsPath.toLowerCase());
-    if (rels === undefined) continue;
-    // oxlint-disable-next-line no-await-in-loop -- each part names the next
-    const data = await rels.bytes();
+    const heldRels = copied.get(relsPath.toLowerCase());
+    const relsEntry = entries.get(relsPath.toLowerCase());
+    let data: Uint8Array;
+    if (heldRels !== undefined) data = new Uint8Array(heldRels.data);
+    else if (relsEntry !== undefined)
+      // oxlint-disable-next-line no-await-in-loop -- each part names the next
+      data = await relsEntry.bytes();
+    else continue;
     parts.set(relsPath, { data, contentType: RELATIONSHIPS_CONTENT_TYPE });
     for (const relationship of parseRelationships(
       decodeText(data, { ignoreBOM: true }),

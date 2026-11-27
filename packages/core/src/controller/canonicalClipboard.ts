@@ -1544,7 +1544,7 @@ export const prepareCanonicalPaste = ({
     // main document's, as the parser reads it.
     const origin =
       sourceDocument?.package.annotationRelationships?.get(part) ??
-      sourceRelationships;
+      sourceDocument?.package.relationships;
     // Copying into such a part gives it a relationships file of its own,
     // which the parser then reads instead of the main document's: the new
     // table starts from the main document's relationships, so the ids the
