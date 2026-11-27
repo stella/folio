@@ -21,6 +21,7 @@ import { storyBody, storyParagraphs } from "./blocks";
 import { combineEdits, type DocumentEdit } from "./edits";
 import { IDENTITY_SPACES, identityKeysIn, slotKey } from "./ids";
 import {
+  holdsPositionedRowMarkup,
   pendingMergedOwner,
   relocatePositionedMarkers,
 } from "./positionedMarkers";
@@ -34,6 +35,7 @@ import {
 } from "./tableCellMove";
 import { editRemovesRow, type TableGrid, tableGrid } from "./tableGrid";
 import { locateTableRow, tableRowAnchor } from "./tableLocation";
+import { CELL_GRID_FIELDS, restatedCell } from "./tablePropertyGeometry";
 import {
   removalOrphansAMerge,
   rowsWithoutRow,
@@ -489,11 +491,13 @@ const cellRemoval =
 type RetainedMergeOwnersOptions = {
   table: Table;
   grid: TableGrid;
+  withProperties: Table;
   removes: (cell: TableCell) => boolean;
 };
 const retainedMergeOwners = ({
   table,
   grid,
+  withProperties,
   removes,
 }: RetainedMergeOwnersOptions): ReadonlyMap<TableCell, TableCell> => {
   const affected = new Set<TableCell>();
@@ -513,8 +517,11 @@ const retainedMergeOwners = ({
       if (removes(slot.cell)) continue;
       const owner = table.rows[slot.ownerRow]?.cells[slot.ownerIndex];
       if (owner === undefined || !affected.has(owner)) continue;
-      owners.set(slot.cell, owner);
-      if (slot.ownerRow !== slot.row) continued = true;
+      const next = withProperties.rows[slot.row]?.cells[slot.index];
+      if (next?.formatting?.vMerge === undefined) continue;
+      owners.set(next, owner);
+      if (next.formatting.vMerge === TABLE_CELL_VERTICAL_MERGES.CONTINUE)
+        continued = true;
     }
   }
   if (!continued) owners.clear();
@@ -522,13 +529,14 @@ const retainedMergeOwners = ({
 };
 
 type RetainedVerticalSlot = { cell: TableCell; owner: TableCell; end: number };
+type CellReviewRefusal = "unsupported" | "earlierGrid";
 
 /** Restart surviving fragments of the same aligned merge after cells go. */
 const restoreVerticalFragments = (
   rows: TableRow[],
   owners: ReadonlyMap<TableCell, TableCell>,
-): TableRow[] => {
-  if (owners.size === 0) return rows;
+): Result<TableRow[], "earlierGrid"> => {
+  if (owners.size === 0) return Result.ok(rows);
   const first = new Set<TableCell>();
   const hasContinuation = new Set<TableCell>();
   let previous = new Map<number, RetainedVerticalSlot>();
@@ -549,28 +557,61 @@ const restoreVerticalFragments = (
     }
     previous = slots;
   }
-  return rows.map((row) => ({
-    ...row,
-    cells: row.cells.map((cell) => {
-      if (!first.has(cell)) return cell;
+  const restored: TableRow[] = [];
+  for (const row of rows) {
+    const cells: TableCell[] = [];
+    for (const cell of row.cells) {
+      if (!first.has(cell)) {
+        cells.push(cell);
+        continue;
+      }
       const {
         vMerge: _merge,
         sourceXml: _capture,
-        ...formatting
+        ...authored
       } = cell.formatting ?? {};
-      if (hasContinuation.has(cell))
-        return {
-          ...cell,
-          formatting: {
-            ...formatting,
-            vMerge: TABLE_CELL_VERTICAL_MERGES.RESTART,
-          },
-        };
-      if (Object.keys(formatting).length > 0) return { ...cell, formatting };
+      const formatting = hasContinuation.has(cell)
+        ? { ...authored, vMerge: TABLE_CELL_VERTICAL_MERGES.RESTART }
+        : authored;
       const { formatting: _original, ...plain } = cell;
-      return plain;
-    }),
-  }));
+      const next =
+        Object.keys(formatting).length > 0 ? { ...plain, formatting } : plain;
+      const restated = restatedCell(cell, next, CELL_GRID_FIELDS);
+      if (restated.isErr()) return Result.err(restated.error);
+      cells.push(restated.value);
+    }
+    restored.push({ ...row, cells });
+  }
+  return Result.ok(restored);
+};
+
+const holdsCellContentOrReview = (cell: TableCell): boolean => {
+  const first = cell.content.at(0);
+  return (
+    cell.structuralChange !== undefined ||
+    (cell.propertyChanges?.length ?? 0) > 0 ||
+    (cell.carrierStack?.length ?? 0) > 0 ||
+    (cell.contentControls?.length ?? 0) > 0 ||
+    cell.id !== undefined ||
+    cell.content.length > 1 ||
+    (first !== undefined &&
+      (first.type !== "paragraph" ||
+        first.content.length > 0 ||
+        first.pPrMark !== undefined ||
+        (first.propertyChanges?.length ?? 0) > 0))
+  );
+};
+
+const cellReviewRemovesRow = (row: TableRow, cells: TableCell[]): boolean => {
+  if (cells.length === 0) return row.cells.length > 0;
+  return (
+    editRemovesRow({ before: row.cells, after: cells }) &&
+    row.structuralChange === undefined &&
+    (row.propertyChanges?.length ?? 0) === 0 &&
+    (row.tablePropertyExceptionChanges?.length ?? 0) === 0 &&
+    !holdsPositionedRowMarkup(row) &&
+    !cells.some(holdsCellContentOrReview)
+  );
 };
 
 /**
@@ -595,7 +636,7 @@ const resolveCellColumns = ({
   mergeOwners,
 }: ResolveCellColumnsOptions): Result<
   { table: Table; holdsRemovedColumns: boolean },
-  "unsupported"
+  CellReviewRefusal
 > => {
   const removes = cellRemoval(ids, reject);
   const columnWidths = statedTableColumnWidths(table);
@@ -748,7 +789,7 @@ const resolveCellColumns = ({
         ? row.cells.filter((cell) => !removes(cell))
         : cells;
       if (
-        editRemovesRow({ before: row.cells, after: survivors }) &&
+        cellReviewRemovesRow(row, survivors) &&
         !cells.some((cell) => retainedOwners.has(cell))
       )
         continue;
@@ -776,10 +817,9 @@ const resolveCellColumns = ({
     });
   }
   if (rows.length === 0) return Result.err("unsupported");
-  let next: Table = {
-    ...table,
-    rows: restoreVerticalFragments(rows, retainedOwners),
-  };
+  const repaired = restoreVerticalFragments(rows, retainedOwners);
+  if (repaired.isErr()) return Result.err(repaired.error);
+  let next: Table = { ...table, rows: repaired.value };
   if (columnWidths !== undefined && columnWidths.length > 0) {
     const nextWidths = columnWidths.filter(
       (_width, slot) => !removable.has(slot),
@@ -890,9 +930,12 @@ const resolveCellChanges = ({
   selectedGridChange,
 }: ResolveCellChangesOptions): Result<
   { table: Table; holdsRemovedColumns: boolean },
-  "unsupported"
+  CellReviewRefusal
 > => {
   const mergeRows = reject ? undefined : selectedMergeMembers(table, ids);
+  const compoundGrid =
+    selectedGridChange &&
+    table.formatting?.gridChange?.geometryChange !== undefined;
   const properties = (source: Table): Table => ({
     ...source,
     rows: source.rows.map((row) => ({
@@ -939,7 +982,10 @@ const resolveCellChanges = ({
       // Accepting a deletion that leaves a row nothing it starts removes
       // the row; rejecting gives back the rows the source had.
       return (row.cells.length > 0 && cells.length === 0) ||
-        (!reject && editRemovesRow({ before: row.cells, after: cells }))
+        (!reject &&
+          (compoundGrid
+            ? editRemovesRow({ before: row.cells, after: cells })
+            : cellReviewRemovesRow(row, cells)))
         ? []
         : [{ ...row, cells }];
     }),
@@ -950,10 +996,7 @@ const resolveCellChanges = ({
 
   const removes = cellRemoval(ids, reject);
   const hasRemovedCells = table.rows.some((row) => row.cells.some(removes));
-  if (
-    selectedGridChange &&
-    table.formatting?.gridChange?.geometryChange !== undefined
-  )
+  if (compoundGrid)
     return Result.ok({
       table: resolveTableMoves(
         endAdjacentMerges({
@@ -974,9 +1017,15 @@ const resolveCellChanges = ({
   // never narrows the grid by itself: a row that then ends early is resolved
   // by the column rule below.
   const restored = tableGrid(structureResolved, DOCUMENT_OP_TYPES.SET_TABLE);
-  const mergeOwners = tableGrid(propertiesResolved, DOCUMENT_OP_TYPES.SET_TABLE)
+  const previous = tableGrid(table, DOCUMENT_OP_TYPES.SET_TABLE);
+  const mergeOwners = previous
     .map((grid) =>
-      retainedMergeOwners({ table: propertiesResolved, grid, removes }),
+      retainedMergeOwners({
+        table,
+        withProperties: propertiesResolved,
+        grid,
+        removes,
+      }),
     )
     .unwrapOr(new Map());
   if (
@@ -984,9 +1033,7 @@ const resolveCellChanges = ({
     ((restored.isOk() &&
       restored.value.stated &&
       restored.value.width ===
-        tableGrid(table, DOCUMENT_OP_TYPES.SET_TABLE)
-          .map(({ width }) => width)
-          .unwrapOr(restored.value.width)) ||
+        previous.map(({ width }) => width).unwrapOr(restored.value.width)) ||
       (selectedGridChange &&
         (coversEvenly(structureResolved) ||
           impliesWidth(
@@ -1266,13 +1313,23 @@ export const resolveTableRows = ({
       reject,
       selectedGridChange,
     });
-    if (cellsResolved.isErr())
+    if (cellsResolved.isErr()) {
+      if (cellsResolved.error === "earlierGrid")
+        return Result.err(
+          new DocumentOpRefusal({
+            opType: op.type,
+            reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
+            message:
+              "Resolve the earlier cell geometry change before removing its merged neighbor.",
+          }),
+        );
       return Result.err(
         refusal(
           op,
           "The selected cell revisions do not describe complete grid columns.",
         ),
       );
+    }
     const propertiesResolved = propertyTable({
       table: cellsResolved.value.table,
       keepsGrid: cellsResolved.value.holdsRemovedColumns,
@@ -1351,7 +1408,7 @@ export const withTableRecordsResolved = (
       table.formatting?.gridChange !== undefined &&
       ids.has(table.formatting.gridChange.id),
   });
-  if (cells.isErr()) return Result.err(cells.error);
+  if (cells.isErr()) return Result.err("unsupported");
   return Result.ok(
     propertyTable({
       table: cells.value.table,

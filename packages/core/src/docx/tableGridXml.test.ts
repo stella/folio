@@ -183,17 +183,26 @@ test.each([
   { cut: 0, last: 1, expected: [undefined, undefined] },
   { cut: 0, last: 2, expected: [undefined, "restart", "continue"] },
   { cut: 1, last: 3, expected: ["restart", undefined, "restart", "continue"] },
+  {
+    cut: 1,
+    last: 3,
+    rejectsInsertionAndFormatting: true,
+    expected: ["restart", undefined, "restart", "continue"],
+  },
 ])(
   "selective cell review retains vertical merge fragments ($cut of $last)",
-  ({ cut, last, expected }) => {
+  ({ cut, last, expected, rejectsInsertionAndFormatting }) => {
     const table = readTable(
       [
         '<w:tbl><w:tblGrid><w:gridCol w:w="600"/><w:gridCol w:w="700"/></w:tblGrid>',
         ...Array.from({ length: last + 1 }, (_value, index) => {
           const merge =
             index === 0 ? '<w:vMerge w:val="restart"/>' : "<w:vMerge/>";
-          const change =
-            index === cut ? '<w:cellDel w:id="7" w:author="Editor"/>' : "";
+          let change = "";
+          if (index === cut)
+            change = rejectsInsertionAndFormatting
+              ? '<w:cellIns w:id="7" w:author="Editor"/><w:tcPrChange w:id="8" w:author="Editor"><w:tcPr/></w:tcPrChange>'
+              : '<w:cellDel w:id="7" w:author="Editor"/>';
           return `<w:tr><w:tc><w:tcPr>${merge}${change}</w:tcPr><w:p w14:paraId="0000001${index}"><w:r><w:t>Merge cell ${index}</w:t></w:r></w:p></w:tc><w:tc><w:p w14:paraId="0000002${index}"/></w:tc></w:tr>`;
         }),
         "</w:tbl>",
@@ -203,8 +212,10 @@ test.each([
     const resolved = applyDocumentOp(document, {
       type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
       story: OP_STORIES.MAIN,
-      revisionIds: [7],
-      decision: REVISION_DECISIONS.ACCEPT,
+      revisionIds: rejectsInsertionAndFormatting ? [7, 8] : [7],
+      decision: rejectsInsertionAndFormatting
+        ? REVISION_DECISIONS.REJECT
+        : REVISION_DECISIONS.ACCEPT,
     }).unwrap();
     const result = resolved.document.package.document.content.at(0);
     if (result?.type !== "table")
@@ -223,3 +234,76 @@ test.each([
     ).toStrictEqual(document);
   },
 );
+
+test("a separate property decision uses the surviving continuation's new merge state", () => {
+  const table = readTable(
+    [
+      '<w:tbl><w:tblGrid><w:gridCol w:w="600"/><w:gridCol w:w="700"/></w:tblGrid>',
+      '<w:tr><w:tc><w:tcPr><w:vMerge w:val="restart"/><w:cellDel w:id="7" w:author="Editor"/></w:tcPr><w:p w14:paraId="00000001"/></w:tc><w:tc><w:p w14:paraId="00000002"/></w:tc></w:tr>',
+      '<w:tr><w:tc><w:tcPr><w:shd w:val="clear" w:fill="FFFF00"/><w:vMerge/><w:tcPrChange w:id="8" w:author="Earlier"><w:tcPr><w:vMerge/></w:tcPr></w:tcPrChange></w:tcPr><w:p w14:paraId="00000003"/></w:tc><w:tc><w:p w14:paraId="00000004"/></w:tc></w:tr>',
+      "</w:tbl>",
+    ].join(""),
+  );
+  const review = {
+    type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+    story: OP_STORIES.MAIN,
+  } as const;
+  const document = { package: { document: { content: [table] } } };
+  const ownerRemoved = applyDocumentOp(document, {
+    ...review,
+    revisionIds: [7],
+    decision: REVISION_DECISIONS.ACCEPT,
+  })
+    .unwrap()
+    .document.package.document.content.at(0);
+  if (ownerRemoved?.type !== "table")
+    throw new TypeError("Expected a retained table.");
+  const saved = readTable(serializeTable(ownerRemoved, serializeParagraph));
+  const shadeRejected = applyDocumentOp(
+    { package: { document: { content: [saved] } } },
+    {
+      ...review,
+      revisionIds: [8],
+      decision: REVISION_DECISIONS.REJECT,
+    },
+  )
+    .unwrap()
+    .document.package.document.content.at(0);
+  if (shadeRejected?.type !== "table")
+    throw new TypeError("Expected a retained table.");
+  const retained = shadeRejected.rows.at(1)?.cells.at(0);
+  expect(retained?.formatting?.vMerge).toBeUndefined();
+  expect(retained?.formatting?.shading).toBeUndefined();
+  expect(retained?.propertyChanges).toBeUndefined();
+});
+
+test("cell review keeps an authored continuation after removing the row's only independent cell", () => {
+  const table = readTable(
+    [
+      '<w:tbl><w:tblGrid><w:gridCol w:w="600"/><w:gridCol w:w="700"/></w:tblGrid>',
+      '<w:tr><w:tc><w:tcPr><w:vMerge w:val="restart"/></w:tcPr><w:p w14:paraId="00000001"/></w:tc><w:tc><w:p w14:paraId="00000002"/></w:tc></w:tr>',
+      '<w:tr><w:tc><w:tcPr><w:vMerge/><w:tcPrChange w:id="8" w:author="Earlier"><w:tcPr><w:vMerge/></w:tcPr></w:tcPrChange></w:tcPr><w:p w14:paraId="00000003"><w:r><w:t>Retained continuation</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:cellDel w:id="7" w:author="Editor"/></w:tcPr><w:p w14:paraId="00000004"/></w:tc></w:tr>',
+      "</w:tbl>",
+    ].join(""),
+  );
+  const document = { package: { document: { content: [table] } } };
+  const accepted = applyDocumentOp(document, {
+    type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+    story: OP_STORIES.MAIN,
+    revisionIds: [7],
+    decision: REVISION_DECISIONS.ACCEPT,
+  }).unwrap();
+  const retained = accepted.document.package.document.content.at(0);
+  if (retained?.type !== "table")
+    throw new TypeError("Expected a retained table.");
+  const xml = serializeTable(retained, serializeParagraph);
+  expect(xml).toContain("Retained continuation");
+  const reopened = readTable(xml);
+  expect(reopened.rows).toHaveLength(2);
+  expect(
+    reopened.rows.at(1)?.cells.at(0)?.propertyChanges?.at(0)?.info.id,
+  ).toBe(8);
+  expect(
+    applyDocumentOps(accepted.document, accepted.inverse).unwrap().document,
+  ).toStrictEqual(document);
+});

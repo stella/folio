@@ -336,17 +336,17 @@ export const relocatePositionedMarkers = (
 };
 
 /** Whether the inverse needs the original row and cell gaps. */
+export const holdsPositionedRowMarkup = (row: TableRow): boolean =>
+  row.bookmarks !== undefined ||
+  row.preserved?.children !== undefined ||
+  row.contentControls !== undefined ||
+  row.carrierStack !== undefined ||
+  row.cells.some(
+    (cell) =>
+      cell.contentControls !== undefined || cell.carrierStack !== undefined,
+  );
+
 export const holdsPositionedMarkup = (table: Table): boolean =>
   table.preserved?.children !== undefined ||
   table.bookmarks !== undefined ||
-  table.rows.some(
-    (row) =>
-      row.bookmarks !== undefined ||
-      row.preserved?.children !== undefined ||
-      row.contentControls !== undefined ||
-      row.carrierStack !== undefined ||
-      row.cells.some(
-        (cell) =>
-          cell.contentControls !== undefined || cell.carrierStack !== undefined,
-      ),
-  );
+  table.rows.some(holdsPositionedRowMarkup);
