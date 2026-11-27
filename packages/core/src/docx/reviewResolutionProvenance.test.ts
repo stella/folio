@@ -6,6 +6,7 @@ import {
   MAX_REVISION_ID,
   PARAGRAPH_MARK_CHANGE_KINDS,
 } from "@stll/docx-core/model";
+import { isCopyOriginAncestors } from "@stll/docx-core/ops";
 
 import { assertExactModel } from "../../../../test/exactModel";
 import {
@@ -587,10 +588,6 @@ test("copy-origin ancestry uses the bounded versioned private envelope", () => {
     JSON.stringify({ version: 1, value: [0, 0] }),
     JSON.stringify({ version: 1, value: [1, 0] }),
     JSON.stringify({ version: 1, value: [Number.MAX_SAFE_INTEGER + 1] }),
-    JSON.stringify({
-      version: 1,
-      value: Array.from({ length: 257 }, (_, index) => index),
-    }),
     " ".repeat(32_769),
   ];
   for (const invalid of invalidEnvelopes) {
@@ -603,6 +600,18 @@ test("copy-origin ancestry uses the bounded versioned private envelope", () => {
   expect(() => serializeCopyOriginAncestors([])).toThrow(
     ReviewResolutionProvenanceError,
   );
+  // A copy owned by more nested insertions than any fixed count reads back:
+  // the envelope's length is the only bound.
+  const deep = Array.from({ length: 257 }, (_, index) => index);
+  if (!isCopyOriginAncestors(deep))
+    throw new TypeError("Every ancestor may own the copy.");
+  expect(
+    parseCopyOriginAncestors(
+      element(
+        `<r xmlns:history="${FOLIO_REVIEW_HISTORY_NAMESPACE}" history:copyOriginAncestors="${escapeXmlAttribute(serializeCopyOriginAncestors(deep) ?? "")}"/>`,
+      ),
+    ),
+  ).toEqual(deep);
 });
 
 /** The paragraph read back from what the serializer wrote for it. */

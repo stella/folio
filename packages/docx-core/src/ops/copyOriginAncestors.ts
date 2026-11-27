@@ -18,8 +18,6 @@ import {
   rebuildNode,
 } from "./leaves";
 
-export const MAX_COPY_ORIGIN_ANCESTORS = 256;
-
 export type CopyOriginAncestorList = NonNullable<
   BookmarkEnd["copyOriginAncestors"]
 >;
@@ -169,9 +167,14 @@ export const cloneIncomingCopyBoundaries = (
   return { content, copiedBoundaries };
 };
 
+/**
+ * Whether a list names copy owners: strictly increasing safe ordinals. It
+ * holds no more entries than the boundary has added ancestors, one per
+ * ancestor at most, so its length is bounded by the nesting it sits in
+ * ({@link hasValidCopyOriginAncestors}), however deep that is.
+ */
 const validOrdinals = (ordinals: readonly number[]): boolean => {
-  if (ordinals.length === 0 || ordinals.length > MAX_COPY_ORIGIN_ANCESTORS)
-    return false;
+  if (ordinals.length === 0) return false;
   for (let index = 0; index < ordinals.length; index += 1) {
     const ordinal = ordinals[index];
     const previous = ordinals[index - 1];
@@ -225,11 +228,7 @@ export const addCopyOriginAncestor = (
   const next = [...(shifted ?? []), addedOrdinal].sort(
     (left, right) => left - right,
   );
-  if (
-    next.length > MAX_COPY_ORIGIN_ANCESTORS ||
-    new Set(next).size !== next.length
-  )
-    return undefined;
+  if (new Set(next).size !== next.length) return undefined;
   return nonEmptyOrdinals(next);
 };
 
@@ -399,7 +398,11 @@ export const copyOriginBoundaryKeysInBlocks = (
   return keys;
 };
 
-/** Adds one inserted revision around `nodes`, preserving exact owner depths. */
+/**
+ * Adds one inserted revision around `nodes`, preserving exact owner depths.
+ * `undefined` only when a boundary's ancestry is malformed: any nesting depth
+ * is carried.
+ */
 export const addCopyOriginAncestorsInNodes = (
   nodes: readonly InlineNode[],
   copiedBoundaries: Set<InlineNode>,
@@ -466,7 +469,10 @@ export const addCopyOriginAncestorsInNodes = (
   return visit(nodes, 0);
 };
 
-/** Records copied boundaries under an existing revision without shifting ancestry. */
+/**
+ * Records copied boundaries under an existing revision without shifting
+ * ancestry. `undefined` only when a boundary's ancestry is malformed.
+ */
 export const addCopyOriginToExistingAncestor = (
   nodes: readonly InlineNode[],
   copiedBoundaries: Set<InlineNode>,
@@ -491,7 +497,6 @@ export const addCopyOriginToExistingAncestor = (
         const nextOrigins = [...origins, nestedAddedAncestors].sort(
           (left, right) => left - right,
         );
-        if (nextOrigins.length > MAX_COPY_ORIGIN_ANCESTORS) return undefined;
         const copyOriginAncestors = nonEmptyOrdinals(nextOrigins);
         if (copyOriginAncestors === undefined) return undefined;
         const copy = { ...node, copyOriginAncestors };

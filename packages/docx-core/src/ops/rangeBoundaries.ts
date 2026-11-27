@@ -321,14 +321,14 @@ export const joinNeighbour = (
   blocks: readonly BlockContent[],
   { index, side }: { index: number; side: "before" | "after" },
 ): Paragraph | undefined => {
-  /** The paragraph whose mark joins it with the one it returns. */
-  const follower = (at: number): BlockContent | undefined => {
-    const paragraph = blocks[at];
-    if (paragraph?.type !== "paragraph") return undefined;
-    return paragraph.sectionProperties === undefined
+  /**
+   * The block the mark of the paragraph at `at` joins it with, past the
+   * range boundaries between them, whether or not that mark ends a section.
+   */
+  const follower = (at: number): BlockContent | undefined =>
+    blocks[at]?.type === "paragraph"
       ? blockFollower(blocks, at).block
-      : blocks[at + 1];
-  };
+      : undefined;
   const own = blocks[index];
   if (own?.type !== "paragraph") return undefined;
   if (side === "after") {
