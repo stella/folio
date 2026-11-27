@@ -1,5 +1,13 @@
 # @stll/docx-core
 
+## 0.48.2
+
+### Patch Changes
+
+- [#3704](https://github.com/stella/folio/pull/3704) [`bd2ac1b`](https://github.com/stella/folio/commit/bd2ac1ba64d3795bf9739bb78e5de3c02515981c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Rejecting a suggested link that cut a content control now rejoins the control around the bookmark the link held when later suggestions stand between it and the start of its paragraph, whether those suggestions are rejected with it, before it or after it.
+
+- [#3704](https://github.com/stella/folio/pull/3704) [`bd2ac1b`](https://github.com/stella/folio/commit/bd2ac1ba64d3795bf9739bb78e5de3c02515981c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A suggested deletion now records comment ranges it crosses or holds whole, keeping a standing endpoint in place (inside a hyperlink too), and can delete an empty hyperlink or content control on its own. A suggested paragraph join records an inline merge depth, a suggested paste keeps the review and content-control records the pasted paragraphs carry, and a property change on a field's instruction run can be accepted or rejected. Removing a paragraph that owns an empty formatting field now undoes exactly, and a story-crossing range is refused as a cross-block range.
+
 ## 0.48.1
 
 ### Patch Changes
