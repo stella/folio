@@ -81,6 +81,7 @@ import {
   sequencePositions,
   withPreservedChildren,
 } from "./containerChildren";
+import { withCustomXmlMarkupRevisions } from "./customXmlMarkupRevisions";
 import {
   BLOCK_COMMENT_RANGE_MARKER_HANDLERS,
   BLOCK_MOVE_RANGE_MARKER_HANDLERS,
@@ -1948,13 +1949,15 @@ const parseCellChildren = ({
     }
   }
 
-  return withPreservedChildren(
-    modelled,
-    { children: captured },
-    (xml): PreservedBlock => ({
-      type: "preservedBlock",
-      xml,
-    }),
+  return withCustomXmlMarkupRevisions(
+    withPreservedChildren(
+      modelled,
+      { children: captured },
+      (xml): PreservedBlock => ({
+        type: "preservedBlock",
+        xml,
+      }),
+    ),
   );
 };
 

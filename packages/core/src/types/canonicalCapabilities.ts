@@ -28,9 +28,12 @@ export const CANONICAL_RULE: {
   /**
    * OOXML has no revision record for the content a suggestion would track:
    * a `w:ins`, `w:del`, `w:moveFrom` or `w:moveTo` holds run-level content
-   * only (CT_RunTrackChange), and a block-level `w:sdt` takes no revision of
-   * its own (CT_SdtBlock records none), so a suggested paste or move of a
-   * block content control is refused. The same change made directly applies.
+   * only (CT_RunTrackChange, ECMA-376 Part 1, §17.13.5), and a block-level
+   * `w:sdt` takes no revision of its own (CT_SdtBlock records none), so a
+   * suggested paste or move of a block content control, or of block markup
+   * kept as it was read, is refused; so is a copied added paragraph mark on
+   * a pasted break, which holds the paste's one insertion. The same change
+   * made directly applies.
    */
   revisionContentShape: "revisionContentShape",
   /** Review snapshots cannot store JavaScript's distinction between omitted and own undefined fields. */
@@ -165,7 +168,7 @@ export const CANONICAL_CAPABILITIES: {
     readonly owner: "document-operations";
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "A suggested change whose content the tracked-change records cannot express yet is refused: a custom XML element or kept block markup pasted or moved, or a copied deleted or moved-away paragraph mark holding a cut of its own on a pasted paragraph.";
+    readonly summary: "A suggested change whose content the tracked-change records cannot express yet is refused: the removal of a block content control's only paragraph, and a pasted paragraph whose copied deleted or moved-away mark holds a cut reaching a copied record of its own at the seam rather than the paste's insertion.";
   };
 } = {
   [CANONICAL_GAP.trackedTableStructure]: {
@@ -180,7 +183,7 @@ export const CANONICAL_CAPABILITIES: {
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
-      "A suggested change whose content the tracked-change records cannot express yet is refused: a custom XML element or kept block markup pasted or moved, or a copied deleted or moved-away paragraph mark holding a cut of its own on a pasted paragraph.",
+      "A suggested change whose content the tracked-change records cannot express yet is refused: the removal of a block content control's only paragraph, and a pasted paragraph whose copied deleted or moved-away mark holds a cut reaching a copied record of its own at the seam rather than the paste's insertion.",
   },
 } as const satisfies Record<CanonicalGap, CanonicalCapability>;
 

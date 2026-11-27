@@ -1,7 +1,17 @@
 # Sequencing wire fixtures
 
-`batches-v18.json` and `ops/__tests__/__fixtures__/ops-v18.json` pin the
-current semantic operation schema. Version 18 adds `comments` and
+`batches-v19.json` and `ops/__tests__/__fixtures__/ops-v19.json` pin the
+current semantic operation schema. Version 19 adds `setCustomXmlMarkup`,
+which wraps blocks in a custom XML element, takes an element's tags away or
+sets the element's own tracked records (the ranges around it recording the
+insertion and deletion of its tags), and an optional `revision` stamp on
+`setParagraphReview`, which reports the records it adds as the operation's
+revisions. Its envelopes are otherwise those of version 18.
+
+Version 18 and older envelopes receive `unsupportedSchema`.
+
+`batches-v18.json` and `ops/__tests__/__fixtures__/ops-v18.json` pin
+version 18. Version 18 adds `comments` and
 `newCommentIds` to `insertContent`: a comment owns one range, so a pasted
 anchor of a kind its comment already has standing takes a fresh comment id
 and a copy of the thread the insertion carries, or is left out without one.

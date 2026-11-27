@@ -1865,7 +1865,7 @@ function convertPMBlockCustomXml(
   node: PMNode,
   styleResolver: StyleEngine | null,
 ): BlockCustomXml {
-  const { openingXml, closingXml, _originallyEmpty } =
+  const { openingXml, closingXml, _originallyEmpty, insertion, deletion } =
     expectBlockCustomXmlAttrs(node);
   const innerDoc = node.type.schema.node("doc", null, node.content);
   const extracted = extractBlocks(innerDoc, "inherit", styleResolver);
@@ -1873,7 +1873,14 @@ function convertPMBlockCustomXml(
     _originallyEmpty === true && isStillSyntheticFiller(extracted)
       ? []
       : extracted;
-  return { type: "blockCustomXml", openingXml, closingXml, content };
+  return {
+    type: "blockCustomXml",
+    openingXml,
+    closingXml,
+    content,
+    ...(insertion === undefined || insertion === null ? {} : { insertion }),
+    ...(deletion === undefined || deletion === null ? {} : { deletion }),
+  };
 }
 
 function isStillSyntheticFiller(blocks: BlockContent[]): boolean {

@@ -1716,6 +1716,29 @@ export const readBlockCustomXmlAttrs = (
     "blockCustomXml.attrs._originallyEmpty",
     issues,
   );
+  for (const key of ["insertion", "deletion"] as const) {
+    const record = attrs[key];
+    if (record === undefined || record === null) continue;
+    if (!isRecord(record) || !isRecord(record["info"])) {
+      issues.push({
+        path: `blockCustomXml.attrs.${key}`,
+        message: "Expected { info } or null.",
+      });
+      continue;
+    }
+    requiredNumber(
+      record["info"],
+      "id",
+      `blockCustomXml.attrs.${key}.info.id`,
+      issues,
+    );
+    requiredString(
+      record["info"],
+      "author",
+      `blockCustomXml.attrs.${key}.info.author`,
+      issues,
+    );
+  }
   return attrsResult(attrs, issues);
 };
 

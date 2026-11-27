@@ -39,6 +39,8 @@ export type BlockCustomXml = WritableRecord & {
     openingXml: string;
     closingXml: string;
     content: BlockContent[];
+    insertion?: CustomXmlMarkupRevision | undefined;
+    deletion?: CustomXmlMarkupRevision | undefined;
 };
 
 // @public
@@ -233,6 +235,11 @@ export const COUNTER_FORMATS: readonly ["decimal", "upperRoman", "lowerRoman", "
 
 // @public (undocumented)
 export type CounterFormat = (typeof COUNTER_FORMATS)[number];
+
+// @public
+export type CustomXmlMarkupRevision = WritableRecord & {
+    info: TrackedChangeInfo;
+};
 
 // @public (undocumented)
 export const declaredUnmeasuredColumnCount: (unmeasuredColumnCount: number | undefined) => number | undefined;

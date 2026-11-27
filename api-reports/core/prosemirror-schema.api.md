@@ -20,6 +20,8 @@ export type BlockCustomXmlAttrs = {
     openingXml: string;
     closingXml: string;
     _originallyEmpty: boolean;
+    insertion?: import__stll_docx_core_model.CustomXmlMarkupRevision | null;
+    deletion?: import__stll_docx_core_model.CustomXmlMarkupRevision | null;
 };
 
 // @public

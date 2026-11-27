@@ -1392,6 +1392,8 @@ function convertBlockCustomXml(
       openingXml: block.openingXml,
       closingXml: block.closingXml,
       _originallyEmpty: block.content.length === 0,
+      insertion: block.insertion ?? null,
+      deletion: block.deletion ?? null,
     },
     children,
   );

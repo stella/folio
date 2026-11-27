@@ -324,6 +324,7 @@ export {
   type RevisionStamp,
   type RunPropsPatch,
   type SetContentControlOp,
+  type SetCustomXmlMarkupOp,
   type SetParagraphPropsOp,
   type SetParagraphReviewOp,
   type SetRunPropsOp,

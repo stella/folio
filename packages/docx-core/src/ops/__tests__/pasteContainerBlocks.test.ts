@@ -2,7 +2,9 @@
  * Clipboard block content controls, custom XML elements and kept block markup:
  * pasted directly, each stands whole before the caret's paragraph with its
  * own paragraphs and control identified afresh, and the operations' inverse
- * gives the document back. A suggestion has no record for them and refuses.
+ * gives the document back. A suggestion has no record for a block content
+ * control or kept block markup and refuses; a custom XML element records its
+ * own tags (customXmlMarkupRecords.test.ts), and here holds a control.
  */
 import { describe, expect, test } from "bun:test";
 
@@ -98,16 +100,15 @@ const paraIds = (blocks: readonly BlockContent[]): string[] =>
   });
 
 // A block-level `w:sdt` takes no revision of its own (CT_SdtBlock records
-// none), so OOXML has no record for its suggested paste or move. A block
-// `w:customXml` has range records the model does not carry yet, and kept
-// markup is not read.
+// none), and kept block markup is markup no revision holds (a `w:ins` or
+// `w:del` holds run-level content only), so OOXML has no record for either's
+// suggested paste or move, a custom XML element holding a control included.
 const NO_RECORD = DOCUMENT_OP_REFUSAL_REASONS.NO_REVISION_RECORD;
-const NOT_YET = DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE;
 
 describe.each([
   { kind: "block content control", blocks: [control()], suggested: NO_RECORD },
-  { kind: "custom XML element", blocks: [customXml()], suggested: NOT_YET },
-  { kind: "kept block markup", blocks: [preserved()], suggested: NOT_YET },
+  { kind: "custom XML element", blocks: [customXml()], suggested: NO_RECORD },
+  { kind: "kept block markup", blocks: [preserved()], suggested: NO_RECORD },
   {
     kind: "every kind",
     blocks: [control(), customXml(), preserved()],

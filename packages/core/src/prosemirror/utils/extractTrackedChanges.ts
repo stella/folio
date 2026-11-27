@@ -47,6 +47,11 @@ export type TrackedChangeEntry = {
    * - `paragraphMarkInsertion` / `paragraphMarkDeletion` — Enter /
    *   Backspace produced a tracked paragraph break (`<w:pPr><w:rPr><w:ins/>` /
    *   `<w:del/>`).
+   * - `customXmlInserted` / `customXmlDeleted` — a block custom XML
+   *   element's own tags were inserted / deleted
+   *   (`<w:customXmlInsRangeStart>` / `<w:customXmlDelRangeStart>` around it).
+   *   Hidden behind an inline card of the same author and date, which then
+   *   carries its id, as a paragraph-mark card is.
    * - `rowInserted` / `rowDeleted` — table row authored / removed
    *   (`<w:trPr><w:ins/>` / `<w:del/>`).
    * - `cellInserted` / `cellDeleted` / `cellMerged` — per-cell structural
@@ -63,6 +68,8 @@ export type TrackedChangeEntry = {
     | "runPropertiesChanged"
     | "paragraphMarkInsertion"
     | "paragraphMarkDeletion"
+    | "customXmlInserted"
+    | "customXmlDeleted"
     | "rowInserted"
     | "rowDeleted"
     | "cellInserted"
@@ -130,6 +137,20 @@ export type TrackedChangesResult = {
    */
   commentToRevision: Map<number, number>;
 };
+
+/**
+ * The structural entries an inline or empty-table card of the same author and
+ * date stands for: a paragraph mark's and a custom XML element's own tags'.
+ */
+const MARK_LIKE_TYPES: ReadonlySet<TrackedChangeEntry["type"]> = new Set([
+  "paragraphMarkInsertion",
+  "paragraphMarkDeletion",
+  "customXmlInserted",
+  "customXmlDeleted",
+]);
+
+const isMarkLikeEntry = (entry: TrackedChangeEntry): boolean =>
+  MARK_LIKE_TYPES.has(entry.type);
 
 const EMPTY_RESULT: TrackedChangesResult = {
   entries: [],
@@ -262,6 +283,40 @@ export function extractTrackedChanges(
         });
       }
       // Descend into paragraph content; do not return here.
+    }
+
+    // A block custom XML element's own tags (`w:customXmlInsRangeStart` /
+    // `w:customXmlDelRangeStart` around it).
+    if (node.type.name === "blockCustomXml") {
+      for (const [attr, type] of [
+        ["insertion", "customXmlInserted"],
+        ["deletion", "customXmlDeleted"],
+      ] as const) {
+        const record: unknown = node.attrs[attr];
+        if (
+          typeof record !== "object" ||
+          record === null ||
+          !("info" in record) ||
+          typeof record.info !== "object" ||
+          record.info === null
+        )
+          continue;
+        const { info } = record;
+        const id = "id" in info ? info.id : undefined;
+        if (typeof id !== "number") continue;
+        const author = "author" in info ? info.author : undefined;
+        const date = "date" in info ? info.date : undefined;
+        raw.push({
+          type,
+          text: node.textContent || "",
+          author: typeof author === "string" ? author : "",
+          date: typeof date === "string" ? date : undefined,
+          from: pos,
+          to: pos + node.nodeSize,
+          revisionId: id,
+        });
+      }
+      // Descend into the element's content.
     }
 
     // Table-row revisions (`<w:trPr><w:ins/>` / `<w:del/>`).
@@ -614,6 +669,8 @@ export function extractTrackedChanges(
       family: "deletion",
       priority: 2,
     },
+    customXmlInserted: { type: "coalesce", family: "insertion", priority: 2 },
+    customXmlDeleted: { type: "coalesce", family: "deletion", priority: 2 },
     paragraphPropertiesChanged: {
       type: "coalesce",
       family: "properties",
@@ -779,11 +836,7 @@ export function extractTrackedChanges(
     }
   }
   for (const e of final) {
-    if (
-      e.type !== "paragraphMarkInsertion" &&
-      e.type !== "paragraphMarkDeletion"
-    )
-      continue;
+    if (!isMarkLikeEntry(e)) continue;
     const survivor = inlineByKey.get(`${e.author}|${e.date ?? ""}`);
     if (!survivor) continue;
     const ids = new Set<number>(survivor.coalescedRevisionIds ?? []);
@@ -831,11 +884,7 @@ export function extractTrackedChanges(
   // the table's `coalescedRevisionIds`. Without this, accepting the table
   // card would leave the orphaned pPrIns/pPrDel behind.
   for (const e of final) {
-    if (
-      e.type !== "paragraphMarkInsertion" &&
-      e.type !== "paragraphMarkDeletion"
-    )
-      continue;
+    if (!isMarkLikeEntry(e)) continue;
     const survivor = tableByKey.get(`${e.author}|${e.date ?? ""}`);
     if (!survivor) continue;
     const ids = new Set<number>(survivor.coalescedRevisionIds ?? []);
@@ -883,10 +932,7 @@ export function extractTrackedChanges(
       // rest so an inline card takes over.
       return emptyTableEntries.has(e);
     }
-    if (
-      e.type === "paragraphMarkInsertion" ||
-      e.type === "paragraphMarkDeletion"
-    ) {
+    if (isMarkLikeEntry(e)) {
       return !inlineByKey.has(key) && !tableByKey.has(key);
     }
     if (e.type === "paragraphPropertiesChanged") {

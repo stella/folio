@@ -316,6 +316,7 @@ export const SEQUENCED_EFFECT_TYPES: Readonly<
   replaceBlocks: "touchedBlocks",
   setParagraphReview: "touchedBlocks",
   setContentControl: "touchedBlocks",
+  setCustomXmlMarkup: "touchedBlocks",
   replaceInline: "touchedBlocks",
   setRevisionInfo: "touchedBlocks",
   insertTable: "touchedBlocks",
@@ -678,6 +679,7 @@ const operationFields = {
     blockId,
     expected: paragraphReviewFields,
     review: paragraphReviewFields,
+    revision,
   } satisfies OperationFields<"setParagraphReview">,
   replaceInline: {
     type: literal("replaceInline"),
@@ -815,6 +817,15 @@ const operationFields = {
     sectionIndex: natural,
     patch: properties(sectionPropertyFields, true),
   } satisfies OperationFields<"setSectionProps">,
+  setCustomXmlMarkup: {
+    type: literal("setCustomXmlMarkup"),
+    story: isOpStory,
+    blockId,
+    ancestorDepth: optional(natural),
+    expected: array(blockContent),
+    blocks: array(blockContent),
+    revision,
+  } satisfies OperationFields<"setCustomXmlMarkup">,
   setContentControl: {
     type: literal("setContentControl"),
     story: isOpStory,

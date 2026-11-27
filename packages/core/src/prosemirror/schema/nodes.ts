@@ -10,6 +10,7 @@ import type {
   BookmarkEnd,
   BorderSpec,
   CounterFormat,
+  CustomXmlMarkupRevision,
   DisplacedByCustomXml,
   DrawingAnchor,
   DrawingGroupChild,
@@ -852,6 +853,10 @@ export type BlockCustomXmlAttrs = {
   openingXml: string;
   closingXml: string;
   _originallyEmpty: boolean;
+  /** The tracked insertion of the element's own tags, or null. */
+  insertion?: CustomXmlMarkupRevision | null;
+  /** The tracked deletion of the element's own tags, or null. */
+  deletion?: CustomXmlMarkupRevision | null;
 };
 
 /**

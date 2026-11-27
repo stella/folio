@@ -4,6 +4,7 @@ import { INSERTION_SEAM_POLICIES } from "../model/content";
 import {
   type AbstractNumbering,
   type BlockContent,
+  type BlockCustomXml,
   type BreakContent,
   type Comment,
   type Document,
@@ -49,6 +50,10 @@ import {
   isCommentExhausted,
   linksEmptiedByRetirement,
 } from "./comments";
+import {
+  isCustomXmlProperties,
+  withoutElementRecords,
+} from "./customXmlMarkup";
 import { packageIdOccupancy } from "./editorIntentCensus";
 import { combineEdits } from "./edits";
 import { structurallyEqual } from "./equality";
@@ -146,7 +151,7 @@ import {
   selectedParagraphRuns,
   trimAppliedNewIds,
 } from "./plan";
-import { blockFollower } from "./rangeBoundaries";
+import { blockFollower, isBlockBoundary } from "./rangeBoundaries";
 import {
   cutPieceHandoffs,
   pastEndedComments,
@@ -160,6 +165,7 @@ import {
   isTrackedWrapper,
   paragraphPropertiesOf,
   reviewFieldsOf,
+  stampInfo,
 } from "./review";
 import { groupedDeletionStamp, ownInsertionSlice } from "./revisionGrouping";
 import { formattingEquals, runsMergeable } from "./runMerge";
@@ -1916,36 +1922,34 @@ type PlaceContainerBlockOptions = {
 };
 
 /**
- * A suggestion's refusal of a container block it would paste or move. A
- * block-level `w:sdt` takes no revision of its own (CT_SdtBlock records none:
- * an insertion is recorded only on the runs and paragraph marks inside it, so
- * rejecting would leave the empty control standing), which is the format's
- * rule. A block-level `w:customXml` records its own tags' insertion and
- * deletion with ranges around it (`w:customXmlInsRangeStart` and its kin),
- * but no operation sets those records on a standing element (the structural
- * container op puts whole wrappers in or takes them out and never changes
- * one in place, so accepting the insertion or recording a move's deletion
- * has no op), and the review surface lists no change for an element's own
- * record, so one would stay pending once the pasted content is resolved.
- * Kept markup is not read.
+ * A suggestion's refusal of a block the format gives no revision of its own,
+ * which is the format's rule. A block-level `w:sdt` takes none (CT_SdtBlock
+ * records none: an insertion is recorded only on the runs and paragraph marks
+ * inside it, so rejecting would leave the empty control standing). Kept block
+ * markup is markup the reader does not model, such as `w:altChunk`: a
+ * `w:ins`, `w:del`, `w:moveFrom` or `w:moveTo` holds run-level content only
+ * (CT_RunTrackChange, ECMA-376 Part 1, §17.13.5), and only a custom XML
+ * element's tags have ranges of their own (§17.13.5.4–7), so no record
+ * holds it either. A custom XML element records its own tags' insertion and
+ * deletion with those ranges ({@link compileBlockPlacement}).
  */
-const containerBlockSuggestionRefusal = (
-  block: { type: BlockContent["type"] },
-  message: string,
-): DocumentOpRefusal =>
+const containerBlockSuggestionRefusal = (message: string): DocumentOpRefusal =>
   new DocumentOpRefusal({
-    reason:
-      block.type === "blockSdt"
-        ? DOCUMENT_OP_REFUSAL_REASONS.NO_REVISION_RECORD
-        : DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+    reason: DOCUMENT_OP_REFUSAL_REASONS.NO_REVISION_RECORD,
     message,
     opType: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
   });
 
+const SUGGESTED_PASTE_REFUSAL =
+  "A suggested paste cannot record a block content control or kept block markup: neither has a revision of its own.";
+const SUGGESTED_MOVE_REFUSAL =
+  "A suggested move cannot record a block content control or kept block markup: neither has a revision of its own.";
+
 /**
  * A block content control, custom XML element or kept block markup put in
- * before `anchor`, in the block list holding it, as its exact list. None has
- * a tracked record the model carries, so a suggestion refuses
+ * before `anchor`, in the block list holding it, as its exact list. A
+ * suggestion places a custom XML element with its own record
+ * ({@link compileBlockPlacement}) and refuses the others
  * ({@link containerBlockSuggestionRefusal}).
  */
 const placeContainerBlock = ({
@@ -1959,12 +1963,7 @@ const placeContainerBlock = ({
   DocumentOpRefusal
 > => {
   if (mode.type === "suggesting")
-    return Result.err(
-      containerBlockSuggestionRefusal(
-        block,
-        "A suggested paste cannot record a block content control, custom XML element or kept block markup.",
-      ),
-    );
+    return Result.err(containerBlockSuggestionRefusal(SUGGESTED_PASTE_REFUSAL));
   const body = storyBody(document, story);
   const located = storyParagraphs(body).find(
     ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(anchor),
@@ -1996,8 +1995,10 @@ const placeContainerBlock = ({
 
 /**
  * A block content control, custom XML element or kept block markup taken out
- * of the block list holding `anchor`, as its exact list; a suggestion has no
- * record for it and refuses.
+ * of the block list holding `anchor`, as its exact list. A suggestion records
+ * the deletion of a custom XML element's tags on the element, which stands
+ * until it is resolved, while the move's range deletion records what it
+ * wraps; it has no record for the others and refuses.
  */
 const removeContainerBlock = ({
   document,
@@ -2012,7 +2013,11 @@ const removeContainerBlock = ({
   block: BlockContent;
   mode: EditorIntentMode;
 }): Result<
-  { op: DocumentOp; document: Document; inverse: readonly DocumentOp[] },
+  {
+    ops: readonly DocumentOp[];
+    document: Document;
+    inverse: readonly DocumentOp[];
+  },
   DocumentOpRefusal
 > => {
   const refuse = (
@@ -2026,13 +2031,8 @@ const removeContainerBlock = ({
         opType: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
       }),
     );
-  if (mode.type === "suggesting")
-    return Result.err(
-      containerBlockSuggestionRefusal(
-        block,
-        "A suggested move cannot record a block content control, custom XML element or kept block markup.",
-      ),
-    );
+  if (mode.type === "suggesting" && block.type !== "blockCustomXml")
+    return Result.err(containerBlockSuggestionRefusal(SUGGESTED_MOVE_REFUSAL));
   const body = storyBody(document, story);
   const located = storyParagraphs(body).find(
     ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(anchor),
@@ -2049,6 +2049,82 @@ const removeContainerBlock = ({
       DOCUMENT_OP_REFUSAL_REASONS.STALE,
       "The moved block is no longer where the range found it.",
     );
+  if (mode.type === "suggesting" && block.type === "blockCustomXml") {
+    // Tags already recorded as deleted stay so.
+    if (block.deletion !== undefined)
+      return Result.ok({ ops: [], document, inverse: [] });
+    const occupied = packageIdOccupancy(document.package).revisions;
+    const free = [mode.revision.id, ...(mode.newIds.revision ?? [])].filter(
+      (candidate) => !occupied.has(candidate),
+    );
+    const [id, ...rest] = free;
+    if (id === undefined)
+      return refuse(
+        DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
+        "The moved custom XML element needs a revision id for its tags.",
+      );
+    const revision = { ...mode.revision, id };
+    const info = stampInfo(revision);
+    const marked: DocumentOp[] = [
+      {
+        type: DOCUMENT_OP_TYPES.SET_CUSTOM_XML_MARKUP,
+        story,
+        blockId: anchor,
+        expected,
+        blocks: expected.map((each, position) =>
+          position === index ? { ...block, deletion: { info } } : each,
+        ),
+        revision,
+      },
+    ];
+    // The moved range's breaks the range deletion cannot reach across the
+    // tags: the one before the element and each one inside it. Removed
+    // beside the tags, they join what stood around the element.
+    const before = expected
+      .slice(0, index)
+      .findLast((each) => !isBlockBoundary(each));
+    for (const paragraph of [
+      ...(before?.type === "paragraph" ? [before] : []),
+      ...block.content.filter(
+        (child): child is Paragraph => child.type === "paragraph",
+      ),
+    ]) {
+      if (paragraph.paraId === undefined) continue;
+      const mark = paragraph.pPrMark;
+      const removed =
+        mark === undefined ||
+        ((mark.kind === "ins" || mark.kind === "moveTo") &&
+          mark.deletion === undefined);
+      if (!removed) continue;
+      const markId = rest.shift();
+      if (markId === undefined)
+        return refuse(
+          DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
+          "The moved custom XML element needs revision ids for its breaks.",
+        );
+      const markInfo = stampInfo({ ...mode.revision, id: markId });
+      const pPrMark: ParagraphMarkChange =
+        mark === undefined
+          ? { kind: "del", info: markInfo }
+          : { ...mark, deletion: { info: markInfo } };
+      const fields = reviewFieldsOf(paragraph);
+      marked.push({
+        type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
+        story,
+        blockId: paragraph.paraId,
+        expected: fields,
+        review: { ...fields, pPrMark },
+        revision: { ...mode.revision, id: markId },
+      });
+    }
+    const applied = applyDocumentOps(document, marked);
+    if (applied.isErr()) return Result.err(applied.error);
+    return Result.ok({
+      ops: marked,
+      document: applied.value.document,
+      inverse: applied.value.inverse,
+    });
+  }
   const op: DocumentOp = {
     type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
     story,
@@ -2059,7 +2135,7 @@ const removeContainerBlock = ({
   const applied = applyDocumentOps(document, [op]);
   if (applied.isErr()) return Result.err(applied.error);
   return Result.ok({
-    op,
+    ops: [op],
     document: applied.value.document,
     inverse: applied.value.inverse,
   });
@@ -2109,7 +2185,10 @@ const compileBlockPlacement = (
     panic("An identified clipboard paragraph is missing.");
   const controls = [...identified.value.controls];
   const blocks = intent.blocks.map((block): PastedBlock => {
-    const placed = mapPastedBlockParagraphs(block, take);
+    const mapped = mapPastedBlockParagraphs(block, take);
+    // The element's earlier records belong to the copied document.
+    const placed =
+      mapped.type === "blockCustomXml" ? withoutElementRecords(mapped) : mapped;
     if (placed.type === "paragraph" || placed.type === "preservedBlock")
       return placed;
     const [withControls] = withBlockControls([placed], controls);
@@ -2262,7 +2341,154 @@ const compileBlockPlacement = (
     if (split.isErr()) return Result.err(split.error);
   }
   const anchor = caret.blockId;
+  const locateAnchor = (): ParagraphLocation | undefined =>
+    storyParagraphs(storyBody(current, caret.story)).find(
+      ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(anchor),
+    );
+  const refuseShape = (message: string) =>
+    Result.err(
+      new DocumentOpRefusal({
+        reason: DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
+        message,
+        opType: DOCUMENT_OP_TYPES.SET_CUSTOM_XML_MARKUP,
+      }),
+    );
+  // A block range boundary the element holds goes in before the caret's
+  // paragraph as it stands: a boundary is no content, and records nothing.
+  const placeBoundary = (
+    boundary: BlockContent,
+  ): Result<void, DocumentOpRefusal> => {
+    const located = locateAnchor();
+    if (located === undefined)
+      return refuseShape("The clipboard destination paragraph does not exist.");
+    const expected = blockListAt(
+      storyBody(current, caret.story).content,
+      located.list,
+    );
+    const op: DocumentOp = {
+      type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+      story: caret.story,
+      blockId: anchor,
+      expected,
+      blocks: [
+        ...expected.slice(0, located.index),
+        boundary,
+        ...expected.slice(located.index),
+      ],
+    };
+    const applied = applyDocumentOps(current, [op]);
+    if (applied.isErr()) return Result.err(applied.error);
+    ops.push(op);
+    current = applied.value.document;
+    return Result.ok(undefined);
+  };
+  // A suggested custom XML element: what it wraps goes in before the caret's
+  // paragraph as the paste's own insertion, and the element is then put
+  // around it with the insertion of its own tags recorded on it
+  // (`w:customXmlInsRangeStart`, ECMA-376 Part 1, §17.13.5.6–7). Rejecting
+  // the tags leaves what they wrap; rejecting that too leaves nothing, in
+  // either order.
+  const placeSuggestedElement = (
+    element: BlockCustomXml,
+  ): Result<void, DocumentOpRefusal> => {
+    if (mode.type !== "suggesting")
+      return panic("Only a suggestion records a custom XML element's tags.");
+    const start = locateAnchor();
+    if (start === undefined)
+      return refuseShape("The clipboard destination paragraph does not exist.");
+    for (const child of element.content) {
+      if (isCustomXmlProperties(child)) continue;
+      let placed: Result<unknown, DocumentOpRefusal>;
+      switch (child.type) {
+        case "paragraph":
+          placed = step({
+            type: "insertParagraphs",
+            story: caret.story,
+            at: { type: "before", blockId: anchor },
+            paragraphs: [child],
+          });
+          break;
+        case "table":
+          placed = step({
+            type: "tableBlock",
+            operation: {
+              type: DOCUMENT_OP_TYPES.INSERT_TABLE,
+              story: caret.story,
+              blockId: anchor,
+              table: child,
+              side: "before",
+              paragraphAfter: "none",
+            },
+          });
+          break;
+        case "blockCustomXml":
+          placed = placeSuggestedElement(child);
+          break;
+        case "blockSdt":
+        case "preservedBlock":
+          return Result.err(
+            containerBlockSuggestionRefusal(SUGGESTED_PASTE_REFUSAL),
+          );
+        default:
+          placed = placeBoundary(child);
+      }
+      if (placed.isErr()) return Result.err(placed.error);
+    }
+    const end = locateAnchor();
+    if (end === undefined || !sameBlockList(start.list, end.list))
+      return refuseShape(
+        "The suggested element's content left its block list.",
+      );
+    const expected = blockListAt(
+      storyBody(current, caret.story).content,
+      end.list,
+    );
+    const [id] = pool;
+    if (id === undefined)
+      return Result.err(
+        new DocumentOpRefusal({
+          reason: DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
+          message: "The pasted custom XML element needs a revision id.",
+          opType: DOCUMENT_OP_TYPES.SET_CUSTOM_XML_MARKUP,
+        }),
+      );
+    const revision = { ...mode.revision, id };
+    const wrapper: BlockCustomXml = {
+      type: "blockCustomXml",
+      openingXml: element.openingXml,
+      closingXml: element.closingXml,
+      content: [
+        ...element.content.filter(isCustomXmlProperties),
+        ...expected.slice(start.index, end.index),
+      ],
+      insertion: { info: stampInfo(revision) },
+    };
+    const op: DocumentOp = {
+      type: DOCUMENT_OP_TYPES.SET_CUSTOM_XML_MARKUP,
+      story: caret.story,
+      blockId: anchor,
+      expected,
+      blocks: [
+        ...expected.slice(0, start.index),
+        wrapper,
+        ...expected.slice(end.index),
+      ],
+      revision,
+    };
+    const applied = applyDocumentOps(current, [op]);
+    if (applied.isErr()) return Result.err(applied.error);
+    ops.push(op);
+    current = applied.value.document;
+    const occupied = packageIdOccupancy(current.package).revisions;
+    pool = pool.filter((candidate) => !occupied.has(candidate));
+    return Result.ok(undefined);
+  };
   for (const block of blocks) {
+    if (block.type === "blockCustomXml" && mode.type === "suggesting") {
+      const placed = placeSuggestedElement(block);
+      if (placed.isErr()) return Result.err(placed.error);
+      continue;
+    }
     if (
       block.type === "blockSdt" ||
       block.type === "blockCustomXml" ||
@@ -2686,41 +2912,103 @@ const withoutMoveAnchors = (nodes: readonly InlineNode[]): InlineNode[] => {
 
 /**
  * Whether a copied paragraph mark can go beside a suggested paste's
- * insertion of that break: a pending deletion or move away of it holding no
- * cut of its own, which accepting the paste leaves pending as the direct
- * paste does.
- *
- * A removal holding a cut of its own (`resolutionJoin`, `splitDate`) stays
- * refused. Its cut joins pieces the paste's own insertions hold at the seam,
- * one wrapper below where a mark's cut is read, and how deep it reaches
- * changes as those insertions resolve apart from the break: accepting them
- * first ends a cut at the edge of a closed inserted payload, and accepting
- * the removal first merges only their wrappers. A removal beside an added
- * mark records one fixed depth, so no record of it resolves in every order
- * as the direct paste does.
+ * insertion of that break: a pending deletion or move away of it, which
+ * accepting the paste leaves pending as the direct paste does
+ * ({@link besidePastedBreak}).
  */
 const goesBesidePastedBreak = (mark: ParagraphMarkChange): boolean =>
-  (mark.kind === "del" || mark.kind === "moveFrom") &&
-  mark.resolutionJoin === undefined &&
-  mark.splitDate === undefined;
+  mark.kind === "del" || mark.kind === "moveFrom";
 
 /**
  * The paste's inserted `mark` holding the copied deletion or move away
  * `copied` beside it. A break that cut no record keeps no cut depth, so
  * accepting the paste leaves the copied record as the direct paste copies it.
+ *
+ * A copied removal holding a cut of its own (`resolutionJoin`, with the
+ * date of the split that made it) cuts the copied content at the seam,
+ * which the paste holds one wrapper deeper, in its own insertion on each
+ * side: the break records the cut one level deeper, when it was made, and
+ * the two insertions meet open at the seam ({@link openedPastedSeam}), as
+ * the pieces of a break inserted inside a change do. Rejecting the paste's
+ * break and accepting the copied removal then join at the same cut, and
+ * accepting the insertions first leaves the copied cut on the break, so
+ * every order resolves as the direct paste does.
  */
 const besidePastedBreak = (
   mark: ParagraphMarkChange,
   copied: ParagraphMarkChange,
-): ParagraphMarkChange => {
+): Result<ParagraphMarkChange, DocumentOpRefusal> => {
   const { resolutionJoin, ...uncut } = mark;
-  return {
+  if (copied.resolutionJoin !== undefined && (resolutionJoin ?? 0) !== 0)
+    return Result.err(
+      new DocumentOpRefusal({
+        reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+        message:
+          "A pasted break cutting the destination cannot hold the cut of a copied removal beside it.",
+        opType: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
+      }),
+    );
+  const splitDate = copied.splitDate ?? copied.info.date;
+  const cut =
+    copied.resolutionJoin === undefined
+      ? {}
+      : {
+          resolutionJoin: copied.resolutionJoin + 1,
+          ...(splitDate === undefined ? {} : { splitDate }),
+        };
+  return Result.ok({
     ...(resolutionJoin === 0 ? uncut : mark),
+    ...cut,
     deletion:
       copied.kind === "moveFrom"
         ? { info: copied.info, kind: "moveFrom" }
         : { info: copied.info },
+  });
+};
+
+/**
+ * The paste's insertions on the two sides of a pasted break holding a copied
+ * cut, open where they meet: neither closes its payload at the seam, so the
+ * cut joins the copied pieces they hold whichever of the records resolves
+ * first. Each insertion holds its whole paragraph, so its other edge meets
+ * only that paragraph's start or end. `undefined` when a side holds anything
+ * but the paste's own insertion there.
+ */
+const openedPastedSeam = ({
+  before,
+  after,
+  story,
+  stamp,
+}: {
+  before: Paragraph;
+  after: Paragraph;
+  story: OpStory;
+  stamp: { id: number; author: string; date?: string | undefined };
+}): DocumentOp[] | undefined => {
+  const opened = (paragraph: Paragraph): DocumentOp | undefined => {
+    const [only, ...rest] = paragraph.content;
+    if (
+      only === undefined ||
+      rest.length > 0 ||
+      only.type !== "insertion" ||
+      only.info.author !== stamp.author ||
+      only.info.date !== stamp.date ||
+      paragraph.paraId === undefined
+    )
+      return undefined;
+    if (only.resolutionJoins === undefined) return undefined;
+    const { resolutionJoins: _closed, ...open } = only;
+    return {
+      type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
+      story,
+      blockId: paragraph.paraId,
+      expected: paragraph.content,
+      content: [open],
+    };
   };
+  const left = opened(before);
+  const right = opened(after);
+  return left === undefined || right === undefined ? undefined : [left, right];
 };
 
 type IdentifyClipboardParagraphsOptions = {
@@ -3789,9 +4077,10 @@ const compileBlockMove = (
         mode: currentMode,
       });
       if (removed.isErr()) return removed;
-      ops.push(removed.value.op);
+      ops.push(...removed.value.ops);
       current = removed.value.document;
       movedNoteBodies.push(...noteBodyRestorations(removed.value.inverse));
+      currentMode = { ...modeAfterOps(current, currentMode), ...reserved };
       continue;
     }
     const blockId = storyParagraphs({ content: [table] }).at(0)?.paragraph
@@ -4235,9 +4524,9 @@ const compileInStory = (
       // mark's insertion is the paste's own. A copied deletion or move away
       // of the break goes beside it, `w:del` or `w:moveFrom` beside `w:ins`
       // in `w:pPr/w:rPr`, and stays pending once the paste is accepted, as a
-      // pasted inline record does. CT_ParaRPr holds one `w:ins`, the
-      // paste's, so a copied added mark (`w:ins`, `w:moveTo`) has no place
-      // on the break.
+      // pasted inline record does, its cut included. CT_ParaRPr holds one
+      // `w:ins`, the paste's, so a copied added mark (`w:ins`, `w:moveTo`)
+      // has no place on the break: the format's rule.
       const unplaced =
         mode.type === "suggesting"
           ? paragraphs
@@ -4247,21 +4536,15 @@ const compileInStory = (
                   pPrMark !== undefined && !goesBesidePastedBreak(pPrMark),
               )?.pPrMark
           : undefined;
-      if (unplaced !== undefined) {
-        // An added mark is a format limit; a removal holding a cut of its
-        // own is one the record beside an added mark does not carry.
-        const added = unplaced.kind === "ins" || unplaced.kind === "moveTo";
+      if (unplaced !== undefined)
         return Result.err(
           new DocumentOpRefusal({
-            reason: added
-              ? DOCUMENT_OP_REFUSAL_REASONS.NO_REVISION_RECORD
-              : DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+            reason: DOCUMENT_OP_REFUSAL_REASONS.NO_REVISION_RECORD,
             message:
-              "A copied added paragraph mark, or a removed one holding a cut of its own, has no place beside the tracked paste's insertion of that break.",
+              "A copied added paragraph mark has no place beside the tracked paste's insertion of that break: a paragraph mark holds one insertion.",
             opType: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
           }),
         );
-      }
       // The paste ends in the destination's mark, which it keeps rather
       // than inserts. A record copied onto that mark (`w:del` or `w:ins` in
       // `w:pPr/w:rPr`, `w:pPrChange`, `w:rPrChange`) or a `w:sectPr` added to
@@ -4502,6 +4785,7 @@ const compileInStory = (
         const changes = [
           ...(paragraph.propertyChanges ?? current.propertyChanges ?? []),
         ];
+        const seamOps: DocumentOp[] = [];
         if (
           paragraph.pPrMark !== undefined ||
           copiedChange !== undefined ||
@@ -4511,9 +4795,56 @@ const compileInStory = (
           if (changes.length > 0) review.propertyChanges = changes;
           if (copiedMarkChange !== undefined)
             review.markPropertyChange = copiedMarkChange;
-          if (pastedBreak !== undefined && paragraph.pPrMark !== undefined)
-            review.pPrMark = besidePastedBreak(pastedBreak, paragraph.pPrMark);
-          else if (paragraph.pPrMark !== undefined)
+          if (pastedBreak !== undefined && paragraph.pPrMark !== undefined) {
+            const nextId =
+              index + 1 === paragraphs.length - 1
+                ? selection.blockId
+                : (paragraphs[index + 1]?.paraId ?? "");
+            const next = paragraphAt(applied.value.document, {
+              story: selection.story,
+              blockId: nextId,
+              offset: 0,
+            });
+            // A cut with no piece on one side joins nothing there.
+            const cutMeetsPieces =
+              paragraph.pPrMark.resolutionJoin !== undefined &&
+              current.content.length > 0 &&
+              (next?.content.length ?? 0) > 0;
+            const {
+              resolutionJoin: _cut,
+              splitDate: _split,
+              ...uncutCopy
+            } = paragraph.pPrMark;
+            const beside = besidePastedBreak(
+              pastedBreak,
+              cutMeetsPieces ? paragraph.pPrMark : uncutCopy,
+            );
+            if (beside.isErr()) return Result.err(beside.error);
+            review.pPrMark = beside.value;
+            if (cutMeetsPieces) {
+              const seam =
+                next === undefined || mode.type !== "suggesting"
+                  ? undefined
+                  : openedPastedSeam({
+                      before: current,
+                      after: next,
+                      story: selection.story,
+                      stamp: mode.revision,
+                    });
+              // The cut would join a copied record of its own at the seam,
+              // which the paste's insertion does not hold whole.
+              if (seam === undefined)
+                return Result.err(
+                  new DocumentOpRefusal({
+                    reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+                    message:
+                      "A copied removal's cut reaches a pasted piece the paste's own insertion does not hold.",
+                    opType: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
+                  }),
+                );
+              seamOps.push(...seam);
+            }
+          } else if (paragraph.pPrMark !== undefined)
             review.pPrMark = paragraph.pPrMark;
           ops.push({
             type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
@@ -4522,6 +4853,7 @@ const compileInStory = (
             expected,
             review,
           });
+          ops.push(...seamOps);
         }
         if (paragraph.sectionProperties !== undefined) {
           ops.push({
