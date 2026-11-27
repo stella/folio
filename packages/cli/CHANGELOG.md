@@ -1,5 +1,14 @@
 # @stll/folio-cli
 
+## 0.6.7
+
+### Patch Changes
+
+- Updated dependencies [[`8991368`](https://github.com/stella/folio/commit/8991368ebc927714be58492732fb9fed9809666e), [`b3e5391`](https://github.com/stella/folio/commit/b3e539129a983e9fa32a38c040f856ede68bf544), [`8b6d090`](https://github.com/stella/folio/commit/8b6d09012aa6aaeaed9b35da9bffd72b75101dd8), [`9117b98`](https://github.com/stella/folio/commit/9117b983d3e0d158714420a6f1c7381bcf5ae848), [`8b6d090`](https://github.com/stella/folio/commit/8b6d09012aa6aaeaed9b35da9bffd72b75101dd8), [`043d924`](https://github.com/stella/folio/commit/043d924b46b6fd6daeec5ed84afc432135fdd26c), [`a2cbf52`](https://github.com/stella/folio/commit/a2cbf525e9526e49cf45dff89a6b837dd22e851f), [`8a0173b`](https://github.com/stella/folio/commit/8a0173b82a3462b4c33a95c6ed65785e863c6cf6), [`bafc8e5`](https://github.com/stella/folio/commit/bafc8e5c03b5d4bc2157a7fbaa5fdfc575d731f5), [`9e391c8`](https://github.com/stella/folio/commit/9e391c811fb5b606ea6fda7ca3eeeea4271962af), [`90c6a20`](https://github.com/stella/folio/commit/90c6a20a74c5488fd2b8c00acce62b6b0c718f7e), [`8eae91a`](https://github.com/stella/folio/commit/8eae91a6a169ccc88d366c7bb48a77c23b8a6234), [`03ff998`](https://github.com/stella/folio/commit/03ff998ce44a8f3df69bc6ca11101288dd31c756), [`2921fe5`](https://github.com/stella/folio/commit/2921fe518e22439757b37abebe5ef53cb174a9ac), [`5fd9052`](https://github.com/stella/folio/commit/5fd9052b702d5a01dfdafa3f83c4eac35462dc61), [`32a2223`](https://github.com/stella/folio/commit/32a22230e5856a3574c7c50d645aebd6203f77d8), [`fe96ce1`](https://github.com/stella/folio/commit/fe96ce16800cdb477799aea754dc42d364dac0ac), [`d4e9f21`](https://github.com/stella/folio/commit/d4e9f2198a117cba27a640ca0bfa39fda708a6e5), [`2ee857b`](https://github.com/stella/folio/commit/2ee857bcf1e754b13867559ab9ab250a354fe8ba), [`8404345`](https://github.com/stella/folio/commit/8404345597f237e89ff62c539683ffe33b144417)]:
+  - @stll/folio-core@0.77.0
+  - @stll/docx-core@0.48.0
+  - @stll/folio-agents@0.17.7
+
 ## 0.6.6
 
 ### Patch Changes
