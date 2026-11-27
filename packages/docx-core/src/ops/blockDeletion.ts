@@ -463,9 +463,10 @@ export const paragraphTableRunInBoundary = (
 /**
  * Whether the mark of `paragraph`, which `table` follows in `blocks`, can be
  * resolved away: the block list goes on ending with a paragraph, through a
- * block content control that ends it, and the table has a paragraph to
- * receive what runs in. A tracked deletion before a table is admitted only
- * where this holds, so each decision on it resolves.
+ * block content control that ends it and past the range boundaries after
+ * it, which mark a position rather than end the list, and the table has a
+ * paragraph to receive what runs in. A tracked deletion before a table is
+ * admitted only where this holds, so each decision on it resolves.
  */
 export const markBeforeTableResolves = ({
   blocks,
@@ -473,7 +474,14 @@ export const markBeforeTableResolves = ({
 }: {
   blocks: readonly BlockContent[];
   boundary: TableRunInBoundary;
-}): boolean => blockListEndsInParagraph(blocks) && boundary.type === "receiver";
+}): boolean =>
+  boundary.type === "receiver" &&
+  blockListEndsInParagraph(
+    blocks.slice(
+      0,
+      blocks.findLastIndex((block) => !isBlockBoundary(block)) + 1,
+    ),
+  );
 
 type SectionEndpointRemovalOptions = {
   story: OpStory;
@@ -1512,14 +1520,24 @@ export const deleteBlocks = ({
   let reviewed = affected;
   if (retiredIndex !== undefined && retired?.type === "paragraph") {
     const ending = lastBlockPastBoundaries(list);
-    if (
+    const restyles =
       ending?.type === "paragraph" &&
-      // The final paragraph's independent review keeps its own properties.
-      // A deletion-owned change was already taken back above.
-      (ending.propertyChanges?.length ?? 0) === 0 &&
       givesProperties(list, retiredIndex) &&
-      !sameParagraphProperties(retired.formatting, ending.formatting)
-    ) {
+      !sameParagraphProperties(retired.formatting, ending.formatting);
+    // The final paragraph's independent review keeps its own properties. A
+    // deletion-owned change was already taken back above. A suggestion that
+    // would join words into them, where it cannot fold into that review, is
+    // refused, as one restyling that paragraph is.
+    const conflict =
+      restyles && (ending.propertyChanges?.length ?? 0) > 0
+        ? paragraphPropertyFoldConflict(ending, revision)
+        : undefined;
+    if (conflict !== undefined)
+      return refuse(
+        DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_PROPERTY_CHANGE,
+        conflict,
+      );
+    if (restyles && (ending.propertyChanges?.length ?? 0) === 0) {
       trailing.push(...paragraphsIn(list.slice(last.index + 1)));
       propertySource = retired;
       endFormatting = withMarkFormatting(

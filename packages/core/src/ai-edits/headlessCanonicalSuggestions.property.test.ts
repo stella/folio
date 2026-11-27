@@ -575,6 +575,139 @@ const BESIDE_PENDING_JOINS: Record<string, [BlockContent[], OperationDraw]> = {
     ],
 };
 
+/** `paragraph` ending a section before the body's last one. */
+const endingSection = (paragraph: Paragraph): Paragraph => ({
+  ...paragraph,
+  sectionProperties: { pageWidth: 11906 },
+});
+/** Paragraph `n` holding nothing, its break another's pending deletion. */
+const deletedByAnother = (n: number): Paragraph => ({
+  ...pending(n, []),
+  pPrMark: { kind: "del", info: { id: n, author: "B" } },
+});
+
+/**
+ * Bodies around a paragraph ending a section, with the draw naming a
+ * paragraph put beside it: generated cases, shrunk, whose suggestion staged
+ * while the same tracked insertion was refused, because Reject All would not
+ * give the original back. Rejected, the added paragraph goes before the block
+ * bookmarks after it, which stay where they stood, and so does a paragraph
+ * after it whose break was another pending insertion, as without it.
+ */
+const BESIDE_SECTION_BREAKS: Record<string, [BlockContent[], OperationDraw]> = {
+  "after a paragraph ending a section under a pending deletion of its break, before one whose break was added and a block bookmark":
+    [
+      [
+        endingSection(pending(1, [], "del")),
+        pending(2, [], "ins"),
+        blockBookmark,
+      ],
+      inserting("insertAfterBlock", 0),
+    ],
+  "before a paragraph whose break was added, after one ending a section under a pending deletion of its break":
+    [
+      [
+        endingSection(pending(1, [], "del")),
+        pending(2, [], "ins"),
+        blockBookmark,
+      ],
+      inserting("insertBeforeBlock", 1),
+    ],
+  "after a paragraph ending a section under a pending deletion of its break, before a block bookmark":
+    [
+      [endingSection(pending(1, [], "del")), blockBookmark, pending(2, [])],
+      inserting("insertAfterBlock", 0),
+    ],
+  "after a paragraph ending a section under another reviewer's pending deletion of its break, before a block bookmark":
+    [
+      [endingSection(deletedByAnother(1)), blockBookmark, pending(2, [])],
+      inserting("insertAfterBlock", 0),
+    ],
+  "after a paragraph ending a middle section, after one under a pending deletion of its break and before a block bookmark":
+    [
+      [
+        pending(1, [], "del"),
+        endingSection(pending(2, [])),
+        blockBookmark,
+        pending(3, []),
+        blockBookmark,
+      ],
+      inserting("insertAfterBlock", 1),
+    ],
+  "after a paragraph ending a middle section under a pending deletion of its break, before a block bookmark":
+    [
+      [
+        pending(1, []),
+        endingSection(pending(2, [], "del")),
+        blockBookmark,
+        pending(3, []),
+        blockBookmark,
+      ],
+      inserting("insertAfterBlock", 1),
+    ],
+  "after a paragraph ending a section whose break was added, holding a note reference, before a content control":
+    [
+      [
+        endingSection(pending(1, noteReference, "ins", true)),
+        groupControl(pending(2, [])),
+        pending(3, [], "del"),
+        blockBookmark,
+      ],
+      inserting("insertAfterBlock", 0),
+    ],
+};
+
+/**
+ * Paragraphs put after one ending a section, before a block bookmark or a
+ * table and a body ending in a block bookmark or a preserved block: the
+ * tracked insertion applies, and Reject All gives the original back.
+ */
+const AFTER_SECTION_BREAKS: Record<string, BlockContent[]> = {
+  "before a block bookmark": [
+    endingSection(pending(1, [])),
+    blockBookmark,
+    pending(2, []),
+  ],
+  "before a paragraph whose break was added and a block bookmark ending the body":
+    [endingSection(pending(1, [])), pending(2, [], "ins"), blockBookmark],
+  "before a table, in a body ending in a block bookmark": [
+    endingSection(pending(1, [])),
+    oneCellTable(2),
+    pending(3, []),
+    blockBookmark,
+  ],
+  "before a table, in a body ending in a preserved block": [
+    endingSection(pending(1, [])),
+    oneCellTable(2),
+    pending(3, []),
+    altChunk,
+  ],
+};
+
+/**
+ * Bodies with a pending mark before a table, in a body ending in a block, and
+ * the draw naming a paragraph put before it (generated cases, shrunk): a mark
+ * the original cannot resolve alone stays pending on both sides of the proof.
+ */
+const BEFORE_UNRESOLVED_MARKS: Record<string, [BlockContent[], OperationDraw]> =
+  {
+    "before an empty paragraph whose added mark cannot be rejected before a table, in a body ending in a preserved block":
+      [
+        [
+          pending(1, [], "ins"),
+          oneCellTable(2),
+          pending(3, [], "del"),
+          altChunk,
+        ],
+        inserting("insertBeforeBlock", 0),
+      ],
+    "before an empty paragraph whose deleted mark cannot be accepted before a table, in a body ending in a content control":
+      [
+        [pending(1, [], "del"), oneCellTable(2), groupControl(pending(3, []))],
+        inserting("insertBeforeBlock", 0),
+      ],
+  };
+
 const bodyOf = (content: BlockContent[]): Document => ({
   package: {
     document: {
@@ -626,6 +759,8 @@ describe("a canonical reviewer's pending suggestions", () => {
   test.each(
     Object.entries({
       ...BESIDE_PENDING_JOINS,
+      ...BESIDE_SECTION_BREAKS,
+      ...BEFORE_UNRESOLVED_MARKS,
       ...DELETIONS_BESIDE_NUMBERED_JOINS,
       ...DELETIONS_BESIDE_NUMBERED_PARAGRAPHS,
     }),
@@ -635,6 +770,46 @@ describe("a canonical reviewer's pending suggestions", () => {
     if (buffer === null) return;
     expect(await suggestionLaws(buffer, draw)).toBe("suggested");
   });
+
+  // A suggested deletion whose accepted join would run a numbered paragraph's
+  // words into a last paragraph keeping another reviewer's pending property
+  // change, so losing their list number, is refused (a generated case,
+  // shrunk), as one restyling that paragraph is.
+  test("a suggested deletion joining words into a last paragraph under another's property change is refused", async () => {
+    const buffer = await packaged(
+      bodyOf([
+        numbered(pending(1, alpha), 2),
+        pending(2, noteReference, "del"),
+        pending(3, [], undefined, true),
+      ]),
+    );
+    expect(buffer).not.toBeNull();
+    if (buffer === null) return;
+    expect(await suggestionLaws(buffer, deleting(1))).toBe("refusedOperation");
+  });
+
+  // A tracked paragraph put after one ending a section applies, and Reject
+  // All gives back what rejecting every change of the original does.
+  test.each(Object.entries(AFTER_SECTION_BREAKS))(
+    "a tracked paragraph after one ending a section %s rejects back to the original",
+    async (_shape, content) => {
+      const buffer = await packaged(bodyOf(content));
+      expect(buffer).not.toBeNull();
+      if (buffer === null) return;
+      const original = await open(buffer);
+      const operation = operationFor(
+        original,
+        inserting("insertAfterBlock", 0),
+      );
+      expect(operation?.type).toBe("insertAfterBlock");
+      if (operation === null) return;
+      const tracked = await open(buffer);
+      expect(apply(tracked, operation, "tracked-changes").skipped).toEqual([]);
+      expect(tracked.rejectAll().skipped).toEqual([]);
+      expect(original.rejectAll().skipped).toEqual([]);
+      expect(reads(tracked)).toEqual(reads(original));
+    },
+  );
 
   test("a suggestion beside pending paragraph marks restages", async () => {
     const buffer = await packaged(besidePendingMarks);
