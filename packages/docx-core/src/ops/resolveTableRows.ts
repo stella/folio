@@ -630,11 +630,23 @@ const holdsCellContentOrReview = (cell: TableCell): boolean => {
   );
 };
 
-const cellReviewRemovesRow = (row: TableRow, cells: TableCell[]): boolean => {
+type CellReviewRemovesRowOptions = {
+  row: TableRow;
+  cells: TableCell[];
+  /** Row insertions that exist only to carry a nested-table move. */
+  moveRows: ReadonlySet<number> | undefined;
+};
+const cellReviewRemovesRow = ({
+  row,
+  cells,
+  moveRows,
+}: CellReviewRemovesRowOptions): boolean => {
   if (cells.length === 0) return row.cells.length > 0;
   return (
     editRemovesRow({ before: row.cells, after: cells }) &&
-    row.structuralChange === undefined &&
+    (row.structuralChange === undefined ||
+      (row.structuralChange.type === "tableRowInsertion" &&
+        moveRows?.has(row.structuralChange.info.id) === true)) &&
     (row.propertyChanges?.length ?? 0) === 0 &&
     (row.tablePropertyExceptionChanges?.length ?? 0) === 0 &&
     !holdsPositionedRowMarkup(row) &&
@@ -656,12 +668,14 @@ type ResolveCellColumnsOptions = {
   ids: ReadonlySet<number>;
   reject: boolean;
   mergeOwners: ReadonlyMap<TableCell, TableCell>;
+  moveRows: ReadonlySet<number> | undefined;
 };
 const resolveCellColumns = ({
   table,
   ids,
   reject,
   mergeOwners,
+  moveRows,
 }: ResolveCellColumnsOptions): Result<
   { table: Table; holdsRemovedColumns: boolean },
   CellReviewRefusal
@@ -822,7 +836,7 @@ const resolveCellColumns = ({
       // way as its direct edit. Selective review keeps authored survivors
       // when another row still uses the columns the removed cells occupied.
       const closes = holdsRemovedColumnsInRow
-        ? cellReviewRemovesRow(row, survivors)
+        ? cellReviewRemovesRow({ row, cells: survivors, moveRows })
         : editRemovesRow({ before: row.cells, after: survivors });
       if (closes && !cells.some((cell) => retainedOwners.has(cell))) continue;
     }
@@ -952,6 +966,7 @@ const endAdjacentMerges = ({
 type ResolveCellChangesOptions = {
   table: Table;
   moveHandoffs?: TableMoveHandoffs;
+  moveRows?: ReadonlySet<number>;
   ids: ReadonlySet<number>;
   reject: boolean;
   selectedGridChange: boolean;
@@ -959,6 +974,7 @@ type ResolveCellChangesOptions = {
 const resolveCellChanges = ({
   table,
   moveHandoffs,
+  moveRows,
   ids,
   reject,
   selectedGridChange,
@@ -1019,7 +1035,7 @@ const resolveCellChanges = ({
         (!reject &&
           (compoundGrid
             ? editRemovesRow({ before: row.cells, after: cells })
-            : cellReviewRemovesRow(row, cells)))
+            : cellReviewRemovesRow({ row, cells, moveRows })))
         ? []
         : [{ ...row, cells }];
     }),
@@ -1086,6 +1102,7 @@ const resolveCellChanges = ({
   // Historical cell marks without a grid snapshot can represent complete
   // column edits. This fallback removes those slots from the explicit grid.
   const columns = resolveCellColumns({
+    moveRows,
     table: propertiesResolved,
     ids,
     reject,
@@ -1268,6 +1285,7 @@ export const resolveTableRows = ({
   let current = document;
   const edits: DocumentEdit[] = [];
   const moveHandoffs = new Map<number, TableMoveHandoffs>();
+  const moveRows = new Set<number>();
 
   const settled = marksInRemovedStructure(document, op);
   if (settled.length > 0) {
@@ -1282,6 +1300,10 @@ export const resolveTableRows = ({
   for (const originalTable of tablesIn(document, op.story)) {
     // Match both copies before row decisions remove one of them.
     const grid = originalTable.formatting?.gridChange;
+    const geometry = grid?.geometryChange;
+    if (geometry?.type === "mergeCells")
+      for (const move of geometry.nestedMoves ?? [])
+        for (const id of move.rows) moveRows.add(id);
     if (grid !== undefined && ids.has(grid.id))
       moveHandoffs.set(grid.id, tableMoveHandoffs(originalTable));
     // A merge already records the replacement cell topology. Applying its
@@ -1400,6 +1422,7 @@ export const resolveTableRows = ({
     const selectedGridChange = grid !== undefined && ids.has(grid.id);
     const cellsResolved = resolveCellChanges({
       table,
+      moveRows,
       moveHandoffs: selectedGridChange ? moveHandoffs.get(grid.id) : undefined,
       ids,
       reject,
