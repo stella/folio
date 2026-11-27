@@ -33,6 +33,7 @@ import {
   hashParagraphBlock,
   serializeParagraphBlock,
 } from "../../layout-engine/measure/cache";
+import { contentHash128 } from "../../layout-engine/measure/contentHash";
 import type { FlowBlock } from "../../layout-engine/types";
 import type { Document } from "../../types/document";
 import type { ToFlowBlocksOptions } from "./flowConversionShared";
@@ -463,11 +464,11 @@ describe("paragraph block cache", () => {
               [])
               deepFreeze(node.blocks);
             // A moved paragraph's measurement key, taken from the block it
-            // was moved from, is the key serializing it in full gives.
+            // was moved from, is the key hashing it in full gives.
             for (const block of paragraphBlocksOf(kept))
               if (block.kind === "paragraph")
                 expect(hashParagraphBlock(block)).toBe(
-                  serializeParagraphBlock(block),
+                  contentHash128(serializeParagraphBlock(block)),
                 );
           };
           convert();
