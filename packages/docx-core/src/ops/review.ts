@@ -11,6 +11,8 @@
  * each piece keeping every field of the record, as a direct edit cuts them.
  */
 
+import { panic } from "better-result";
+
 import {
   finalizeParagraphFormatting,
   type Paragraph,
@@ -513,8 +515,12 @@ const takesReference = (node: InlineNode, state: WrapState): boolean =>
   ((state.commentAnchorsStand && state.takenReferences.has(node.id)) ||
     state.deletesCommentAnchors?.has(node.id) === true);
 
-/** What a wrap does with a record the range covers whole. */
-type CoveredAction = "wrap" | "skip" | "descend" | "refuse";
+/**
+ * What a wrap does with a record the range covers whole; a refusal names
+ * why the record cannot go in.
+ */
+type CoveredAction =
+  "wrap" | "skip" | "descend" | { refuse: DocumentOpRefusalReason };
 
 /** Whether a record holds a comment anchor at any depth. */
 const holdsCommentAnchor = (
@@ -554,9 +560,12 @@ const holdsKeptBoundary = (
  * an anchor instead ({@link splitAtStandingAnchors}). A
  * deletion recording no joins takes in no record holding one: accepting it
  * keeps the anchors of comment ranges that continue past it, which removing
- * that content directly does not keep where they were. An insertion may
- * hold one inside a record it takes in whole: rejecting keeps every
- * boundary it held.
+ * that content directly does not keep where they were. So it goes inside a
+ * content control or transparent wrapper holding one, and meets each anchor
+ * there as a bare one (taken in with a range it owns whole, else a dependent
+ * record of the comment); a hyperlink, which holds no deletion, is refused
+ * as holding that dependent record. An insertion may hold one inside a
+ * record it takes in whole: rejecting keeps every boundary it held.
  */
 const coveredAction = (node: InlineNode, state: WrapState): CoveredAction => {
   if (state.keptBoundaries?.has(node)) return "skip";
@@ -572,24 +581,28 @@ const coveredAction = (node: InlineNode, state: WrapState): CoveredAction => {
     if (state.deletesCommentAnchors?.has(node.id)) return "wrap";
     if (takesReference(node, state)) return "wrap";
     if (state.commentAnchorsStand) return "skip";
-    state.refusal = DOCUMENT_OP_REFUSAL_REASONS.DEPENDENT_RECORDS;
-    return "refuse";
+    return { refuse: DOCUMENT_OP_REFUSAL_REASONS.DEPENDENT_RECORDS };
   }
   if (state.kind === WRAP_KINDS.DELETION) {
     if (isRemovedRevisionNode(node)) return "skip";
     if (isAddedRevision(node)) return "descend";
+    const container =
+      node.type === "inlineSdt" || node.type === "inlineWrapper";
     if (state.commentAnchorsStand) {
       if (!holdsStandingAnchor(node, state)) return "wrap";
-      // A hyperlink holding one is cut around it before it gets here.
-      return node.type === "inlineSdt" || node.type === "inlineWrapper"
-        ? "descend"
-        : "refuse";
+      if (container) return "descend";
+      // Of the records that hold others, insertions and moved-in content
+      // are gone into and removed content kept above, and a hyperlink
+      // holding a standing anchor is cut around it before it gets here.
+      return panic("Only a container holds an anchor a deletion leaves.");
     }
     if (
       (state.resolutionJoin === undefined || node.type === "inlineWrapper") &&
       holdsCommentAnchor(node, state.deletesCommentAnchors)
     )
-      return "refuse";
+      return container
+        ? "descend"
+        : { refuse: DOCUMENT_OP_REFUSAL_REASONS.DEPENDENT_RECORDS };
   }
   return "wrap";
 };
@@ -951,8 +964,9 @@ const groupCovered = (
         content,
         state.copiedBoundaries,
       );
+      // Any nesting is carried; only malformed ancestry is not.
       if (adjusted === undefined) {
-        state.refusal = DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE;
+        state.refusal = DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH;
         return false;
       }
       const adjustedContent: TrackedRunContent[] = [];
@@ -1043,10 +1057,11 @@ const groupCovered = (
       }
     }
     const action = covered ? coveredAction(node, state) : "skip";
+    if (typeof action === "object") {
+      state.refusal = action.refuse;
+      return undefined;
+    }
     switch (action) {
-      case "refuse":
-        state.refusal ??= DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE;
-        return undefined;
       case "skip":
         if (!flush()) return undefined;
         out.push(node);
@@ -1098,8 +1113,9 @@ const wrapList = (
       node.content,
       state.copiedBoundaries,
     );
+    // Any nesting is carried; only malformed ancestry is not.
     if (copied === undefined) {
-      state.refusal = DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE;
+      state.refusal = DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH;
       return undefined;
     }
     const same =
@@ -1300,7 +1316,8 @@ export const wrapTracked = ({
   if (content === undefined) {
     return {
       kind: "refused",
-      reason: state.refusal ?? DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      // Every step that gives up names why.
+      reason: state.refusal ?? panic("A refused wrap names its reason."),
     };
   }
   if (!state.recorded) {

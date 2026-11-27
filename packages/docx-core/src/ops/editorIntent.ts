@@ -2687,6 +2687,15 @@ const withoutMoveAnchors = (nodes: readonly InlineNode[]): InlineNode[] => {
  * insertion of that break: a pending deletion or move away of it holding no
  * cut of its own, which accepting the paste leaves pending as the direct
  * paste does.
+ *
+ * A removal holding a cut of its own (`resolutionJoin`, `splitDate`) stays
+ * refused. Its cut joins pieces the paste's own insertions hold at the seam,
+ * one wrapper below where a mark's cut is read, and how deep it reaches
+ * changes as those insertions resolve apart from the break: accepting them
+ * first ends a cut at the edge of a closed inserted payload, and accepting
+ * the removal first merges only their wrappers. A removal beside an added
+ * mark records one fixed depth, so no record of it resolves in every order
+ * as the direct paste does.
  */
 const goesBesidePastedBreak = (mark: ParagraphMarkChange): boolean =>
   (mark.kind === "del" || mark.kind === "moveFrom") &&

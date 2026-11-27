@@ -2,8 +2,10 @@
  * Suggestions over records a tracked change has to hold survive a save:
  * a point comment's reference inside a deleted paragraph's `w:del`, a comment
  * anchor in a `w:hyperlink` or `w:sdt` there, a `w:ins`/`w:del` inside
- * `w:fldSimple` (holding boundaries and controls too), a deleted or inserted paragraph mark that carries
- * `w:sectPr`, a `w:sectPrChange` on the body's final `w:sectPr`, a
+ * `w:fldSimple` (holding boundaries and controls too), a deleted or
+ * inserted paragraph mark that carries `w:sectPr` (also with a bookmark
+ * standing between it and the next paragraph), a `w:sectPrChange` on the
+ * body's final `w:sectPr`, a
  * `w:rPrChange` on a paragraph mark's `w:pPr/w:rPr`, an inserted mark a
  * direct paragraph took over, and a pasted break's `w:ins` holding a copied
  * `w:del` or `w:moveFrom` beside it. Each reopens as the same pending change and resolves as
@@ -726,4 +728,25 @@ test("a suggested paste of a review carrier saves the plain paragraph it shows",
         block.type === "paragraph" && block.reviewCarrier !== undefined,
     ),
   ).toBe(false);
+});
+
+test("a deleted section-ending mark before a standing bookmark resolves after a save", async () => {
+  const document = await open(
+    `<w:p w14:paraId="00000001"><w:pPr><w:rPr><w:del w:id="7" ${AUTHORED}/></w:rPr><w:sectPr><w:pgSz w:w="11906" w:h="16838"/></w:sectPr></w:pPr><w:r><w:t>Ends a section.</w:t></w:r></w:p>` +
+      '<w:bookmarkStart w:id="2" w:name="Later"/>' +
+      '<w:p w14:paraId="00000002"><w:r><w:t>Opens the next.</w:t></w:r></w:p>' +
+      '<w:bookmarkEnd w:id="2"/>',
+  );
+  const reread = await assertSurvivesSave({ document, revisions: [7] });
+  const accepted = resolve(reread, [7], REVISION_DECISIONS.ACCEPT);
+  const [joined] = accepted.package.document.content;
+  if (joined?.type !== "paragraph")
+    throw new TypeError("The joined block is a paragraph.");
+  expect(joined.sectionProperties).toBeUndefined();
+  expect(joined.content.map(({ type }) => type)).toEqual([
+    "run",
+    "bookmarkStart",
+    "run",
+  ]);
+  expect(shape(await reopened(accepted))).toEqual(shape(accepted));
 });

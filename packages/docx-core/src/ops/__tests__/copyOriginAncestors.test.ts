@@ -555,7 +555,7 @@ test("an open deletion slice and its inverse preserve copied-boundary ownership"
   expect(restored).toStrictEqual(paragraph.content);
 });
 
-test("copy-origin arrays require sorted unique safe ordinals and a bounded nonempty tuple", () => {
+test("copy-origin arrays require sorted unique safe ordinals in a nonempty tuple", () => {
   expect(isCopyOriginAncestors([0])).toBe(true);
   expect(isCopyOriginAncestors([])).toBe(false);
   expect(isCopyOriginAncestors([1, 1])).toBe(false);
@@ -563,9 +563,10 @@ test("copy-origin arrays require sorted unique safe ordinals and a bounded nonem
   expect(isCopyOriginAncestors(Array(1))).toBe(false);
   expect(isCopyOriginAncestors([-1])).toBe(false);
   expect(isCopyOriginAncestors([Number.MAX_SAFE_INTEGER + 1])).toBe(false);
+  // Its length is bounded by the nesting it sits in, not by the list.
   expect(
     isCopyOriginAncestors(Array.from({ length: 257 }, (_, index) => index)),
-  ).toBe(false);
+  ).toBe(true);
 });
 
 test("shared owner transforms remove accepted owners and drop rejected copies", () => {
@@ -640,11 +641,14 @@ test(
   propertyTestTimeout(10_000),
 );
 
-test("copy-origin transforms refuse ownership beyond the configured cap", () => {
-  const maximumOrigins = Array.from({ length: 256 }, (_, index) => index);
-  if (!isCopyOriginAncestors(maximumOrigins))
-    throw new TypeError("The configured cap must be valid.");
-  expect(addCopyOriginAncestor(maximumOrigins, 256)).toBeUndefined();
+test("copy-origin transforms carry ownership at any nesting depth", () => {
+  const origins = Array.from({ length: 256 }, (_, index) => index);
+  if (!isCopyOriginAncestors(origins))
+    throw new TypeError("Every ancestor may own the copy.");
+  const added = addCopyOriginAncestor(origins, 256);
+  if (added === undefined)
+    throw new TypeError("An owner past the old cap must be representable.");
+  expect([...added]).toEqual([...origins, 256]);
 });
 
 test("the operations contract rejects copied ownership on block-level boundaries", () => {

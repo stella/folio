@@ -119,20 +119,18 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
   readonly INSIDE_INLINE_CONTROL: "insideInlineControl";
   /**
    * No tracked change can record the edit yet, or no resolution op can carry
-   * it out yet: a section-ending mark resolved across a standing range
-   * boundary, a block-level `w:customXml` or kept block markup pasted or
+   * it out yet: a block-level `w:customXml` or kept block markup pasted or
    * moved as a suggestion (no operation sets a custom XML element's own
    * insertion or deletion range, and no listed change names one), a copied
-   * deleted or moved-away mark holding a cut of its own on a pasted
-   * paragraph (the record beside an added mark holds none), copy-origin
-   * records nested past their limit, a tracked deletion of a
-   * record holding a comment anchor that records no joins, a direct
-   * insertion after a pending inserted mark whose rejection would give the
-   * paragraphs it joins other properties or content (only a property change
-   * of that insertion could record the difference), the table-side
-   * insertions and paragraph removals beside a table, and removing a block
-   * content control's only paragraph (no operation addresses a block list
-   * without a paragraph).
+   * deleted or moved-away mark of a pasted paragraph's break holding a cut
+   * of its own (the cut is read below the paste's own insertions, at a depth
+   * their resolution changes, and the record beside an added mark holds one
+   * fixed depth), a direct insertion after a pending inserted mark whose
+   * rejection would give the paragraphs it joins other properties or
+   * content (only a property change of that insertion could record the
+   * difference), the table-side insertions and paragraph removals beside a
+   * table, and removing a block content control's only paragraph (no
+   * operation addresses a block list without a paragraph).
    */
   readonly UNTRACKABLE: "untrackable";
   /** A table snapshot cannot distinguish an own undefined field from an omitted field in OOXML. */
@@ -315,20 +313,18 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
   INSIDE_INLINE_CONTROL: "insideInlineControl",
   /**
    * No tracked change can record the edit yet, or no resolution op can carry
-   * it out yet: a section-ending mark resolved across a standing range
-   * boundary, a block-level `w:customXml` or kept block markup pasted or
+   * it out yet: a block-level `w:customXml` or kept block markup pasted or
    * moved as a suggestion (no operation sets a custom XML element's own
    * insertion or deletion range, and no listed change names one), a copied
-   * deleted or moved-away mark holding a cut of its own on a pasted
-   * paragraph (the record beside an added mark holds none), copy-origin
-   * records nested past their limit, a tracked deletion of a
-   * record holding a comment anchor that records no joins, a direct
-   * insertion after a pending inserted mark whose rejection would give the
-   * paragraphs it joins other properties or content (only a property change
-   * of that insertion could record the difference), the table-side
-   * insertions and paragraph removals beside a table, and removing a block
-   * content control's only paragraph (no operation addresses a block list
-   * without a paragraph).
+   * deleted or moved-away mark of a pasted paragraph's break holding a cut
+   * of its own (the cut is read below the paste's own insertions, at a depth
+   * their resolution changes, and the record beside an added mark holds one
+   * fixed depth), a direct insertion after a pending inserted mark whose
+   * rejection would give the paragraphs it joins other properties or
+   * content (only a property change of that insertion could record the
+   * difference), the table-side insertions and paragraph removals beside a
+   * table, and removing a block content control's only paragraph (no
+   * operation addresses a block list without a paragraph).
    */
   UNTRACKABLE: "untrackable",
   TABLE_SNAPSHOT_PRESENCE: "tableSnapshotPresence",

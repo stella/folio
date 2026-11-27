@@ -7627,16 +7627,13 @@ const joinOps = (
   const previous = blocks[previousIndex];
   // Range boundaries the block list holds between this paragraph and the
   // next block stand at its boundary. A following paragraph or opaque
-  // block receives them where the earlier words meet the later content.
-  const across =
-    paragraph.sectionProperties === undefined
-      ? blockFollower(blocks, location.index)
-      : {
-          index: location.index + 1,
-          block: blocks[location.index + 1],
-          standing: [],
-        };
-  const { index: followerIndex, block: follower, standing } = across;
+  // block receives them where the earlier words meet the later content;
+  // after a section-ending mark, that is where the resolved section ends.
+  const {
+    index: followerIndex,
+    block: follower,
+    standing,
+  } = blockFollower(blocks, location.index);
   const standingBeforeBlock = isOpaqueFollower(follower) ? standing : [];
   const next =
     standing.length > 0 && follower?.type === "paragraph"
@@ -7756,14 +7753,22 @@ const joinOps = (
       { type: "paragraph-join", receiver },
     ];
     if (standing.length > 0) {
+      // A section-ending mark goes with the break it carries: its section
+      // and the one after it become one under the later section's
+      // properties. The break is removed first, explicitly, so the join and
+      // both inverses keep every other section as it stands.
+      const breakRemoval = sectionEndpointRemoval({ story, location });
       return paragraphMarkPlan(
         [
+          ...breakRemoval.ops,
           {
             type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
             story,
             // The joined paragraph stays in the list to anchor the inverse.
             blockId: survivor.paraId ?? paraId,
-            expected: blocks,
+            expected: blocks.map((block, index) =>
+              index === location.index ? breakRemoval.paragraph : block,
+            ),
             blocks: [
               ...blocks.slice(0, location.index),
               survivor,
@@ -7787,18 +7792,6 @@ const joinOps = (
         },
       ],
       receiverEffects,
-    );
-  }
-  // A section-ending mark cannot move contents across a range boundary.
-  // A boundary at the end stays in place while the last mark resolves.
-  if (next !== undefined && isBlockBoundary(next)) {
-    return Result.err(
-      new DocumentOpRefusal({
-        opType: op.type,
-        reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-        message: `A range boundary stands between ${paraId} and the next block.`,
-        blockedParagraphMarkRevisionId: revisionId,
-      }),
     );
   }
   // No paragraph to join: a table or another block follows, or the

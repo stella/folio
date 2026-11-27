@@ -172,7 +172,7 @@ export const CANONICAL_CAPABILITIES: {
     readonly owner: "document-operations";
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "A suggested change whose content the tracked-change records cannot express yet is refused: a section-ending mark resolved across a standing range boundary, a custom XML element or kept block markup pasted or moved, a copied deleted or moved-away paragraph mark holding a cut of its own on a pasted paragraph, copy-origin records nested past their limit, a tracked deletion without joins of a record holding a comment anchor, a direct insertion after a pending inserted mark whose rejection would give the paragraphs it joins other properties or content, and the removal of a block content control's only paragraph.";
+    readonly summary: "A suggested change whose content the tracked-change records cannot express yet is refused: a custom XML element or kept block markup pasted or moved, a copied deleted or moved-away paragraph mark holding a cut of its own on a pasted paragraph, a direct insertion after a pending inserted mark whose rejection would give the paragraphs it joins other properties or content, and the removal of a block content control's only paragraph.";
   };
 } = {
   [CANONICAL_GAP.trackedTableStructure]: {
@@ -194,7 +194,7 @@ export const CANONICAL_CAPABILITIES: {
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
-      "A suggested change whose content the tracked-change records cannot express yet is refused: a section-ending mark resolved across a standing range boundary, a custom XML element or kept block markup pasted or moved, a copied deleted or moved-away paragraph mark holding a cut of its own on a pasted paragraph, copy-origin records nested past their limit, a tracked deletion without joins of a record holding a comment anchor, a direct insertion after a pending inserted mark whose rejection would give the paragraphs it joins other properties or content, and the removal of a block content control's only paragraph.",
+      "A suggested change whose content the tracked-change records cannot express yet is refused: a custom XML element or kept block markup pasted or moved, a copied deleted or moved-away paragraph mark holding a cut of its own on a pasted paragraph, a direct insertion after a pending inserted mark whose rejection would give the paragraphs it joins other properties or content, and the removal of a block content control's only paragraph.",
   },
 } as const satisfies Record<CanonicalGap, CanonicalCapability>;
 
