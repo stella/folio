@@ -622,24 +622,66 @@ describe.each(["editing", "suggesting"] as const)("in %s", (mode) => {
   );
 });
 
-test("without the source package's parts, a copied note's kept markup naming them refuses in another package", async () => {
-  const copiedFrom = readModel(
-    createCanonicalSession(await source()).unwrap().document,
-  );
-  const slice = copiedSlice(
-    createCanonicalSession(copiedFrom).unwrap().projection.doc,
-  );
-  const session = createCanonicalSession(await destination()).unwrap();
-  const state = EditorState.create({ doc: session.projection.doc });
-  const prepared = prepareCanonicalPaste({
-    session,
-    state,
-    slice,
-    sourceDocument: copiedFrom,
-  });
-  if (prepared.isOk()) throw new TypeError("The paste was expected to refuse.");
-  expect(prepared.error.ground).toEqual({ gap: "story-content-projection" });
-});
+describe.each(["editing", "suggesting"] as const)(
+  "without the source package's parts, in %s",
+  (mode) => {
+    test("a copied note's and comment's kept markup pastes as what it maps to, resolves after a save, and undo removes it", async () => {
+      const copiedFrom = readModel(
+        createCanonicalSession(await source()).unwrap().document,
+      );
+      const slice = copiedSlice(
+        createCanonicalSession(copiedFrom).unwrap().projection.doc,
+      );
+      const session = createCanonicalSession(await destination()).unwrap();
+      session.setMode(
+        mode === "editing"
+          ? { type: "editing" }
+          : { type: "suggesting", author: "Paster" },
+      );
+      const state = EditorState.create({ doc: session.projection.doc });
+      const before = readModel(session.document);
+      const prepared = prepareCanonicalPaste({
+        session,
+        state,
+        slice,
+        sourceDocument: copiedFrom,
+      });
+      if (prepared.isErr()) throw prepared.error;
+      // Each chart holds no picture and each chunk no text: both are left out.
+      expect(
+        prepared.value.warnings.map(
+          ({ code, part, element }) => `${code} ${part} ${element}`,
+        ),
+      ).toEqual([
+        "kept-markup-dropped footnotes w:drawing",
+        "kept-markup-dropped footnotes w:altChunk",
+        "kept-markup-dropped comments w:drawing",
+        "kept-markup-dropped comments w:altChunk",
+      ]);
+      const next = publishCanonicalProjection({
+        session,
+        state,
+        commit: prepared.value,
+      }).unwrap().state;
+      const zip = await ZipArchive.read(await save(session, "full"));
+      // The destination's own note keeps its chart; the copies name nothing.
+      expect(
+        targetsByType(await resolvedIn(zip, "word/Footnotes.xml")).get("chart"),
+      ).toEqual(["word/charts/chart1.xml"]);
+      expect(await resolvedIn(zip, "word/comments.xml")).toEqual([]);
+      const footnotes = await textOf(zip, "word/Footnotes.xml");
+      expect(footnotes).toContain(">Tail<");
+      expect(footnotes).not.toContain("<w:altChunk");
+      expect(zip.paths()).not.toContain("word/charts/chart2.xml");
+      publishCanonicalProjection({
+        session,
+        state: next,
+        commit: session.prepareUndo(next).unwrap(),
+      }).unwrap();
+      expect(readModel(session.document)).toEqual(before);
+    });
+  },
+);
 
 test("a copy reads the parts its notes' and comments' markup reaches through their own parts' relationships", async () => {
   const copiedFrom = readModel(

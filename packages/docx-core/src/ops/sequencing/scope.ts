@@ -324,8 +324,8 @@ const footprintOf = (op: DocumentOp): OpFootprint => {
           op.copiedParts.expected === op.copiedParts.next
             ? []
             : [write(EXCLUSIVE_PARTS.MEDIA)]),
-          // A note or comment part's relationships, keyed apart from the
-          // main document's relationship ids.
+          // A note, comment, header or footer part's relationships, keyed
+          // apart from the main document's relationship ids.
           ...(op.annotationRelationships?.entries.map(({ key }) =>
             write(EXCLUSIVE_PARTS.RELATIONSHIPS, `${key}.xml.rels`),
           ) ?? []),

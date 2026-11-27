@@ -137,7 +137,7 @@ test.each(EDITOR_MODES)(
 // The control proves bold is supported; the ablation must fail the conformance oracle.
 test.each([
   {
-    gap: CANONICAL_GAP.storyContentProjection,
+    gap: CANONICAL_GAP.trackedChangeRecords,
     message: "The operations produce unsupported canonical story content.",
   },
 ])(

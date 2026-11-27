@@ -22,7 +22,6 @@ import { parseDocx } from "../docx/parser";
 import { parseRelationships, RELATIONSHIP_TYPES } from "../docx/relsParser";
 import { createDocx } from "../docx/rezip";
 import { schema } from "../prosemirror/schema";
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import type { Comment, Document, Hyperlink, Image } from "../types/document";
 import { readModel } from "../types/documentModel";
 import { FOLIO_DOCX_SERIALIZATION_MODE } from "../types/docxSerialization";
@@ -194,7 +193,7 @@ describe("copied comments holding pictures and links", () => {
     expect(linkTarget(commentHolding(comments, "linked"))).toBe(COMMENT_LINK);
   });
 
-  test("without the source package's parts, a copied comment's kept markup naming its part's relationships refuses in another package", async () => {
+  test("without the source package's parts, a copied comment's kept markup naming an external target carries its relationship into another package", async () => {
     const sourceDocument = await parseDocx(await sourcePackage(), {
       preloadFonts: false,
     });
@@ -229,13 +228,40 @@ describe("copied comments holding pictures and links", () => {
       ),
       sourceDocument,
     });
-    if (prepared.isOk())
-      throw new TypeError("Kept comment markup from another package pasted.");
-    expect(prepared.error.ground).toEqual({
-      gap: CANONICAL_GAP.storyContentProjection,
+    if (prepared.isErr()) throw prepared.error;
+    expect(prepared.value.warnings).toEqual([]);
+    const next = publishCanonicalProjection({
+      session,
+      state,
+      commit: prepared.value,
+    }).unwrap().state;
+    // The kept link names a fresh relationship of the comments part, to the
+    // target its source named.
+    const pasted = readModel(session.document);
+    const kept = pasted.package.document.comments
+      ?.flatMap((comment) => comment.preserved?.children ?? [])
+      .at(0);
+    if (kept === undefined) throw new TypeError("The kept markup is missing.");
+    const id = /r:id="(?<id>[^"]+)"/u.exec(kept.xml)?.groups?.["id"];
+    if (id === undefined) throw new TypeError("The kept markup names no id.");
+    expect(
+      pasted.package.annotationRelationships?.get("comments")?.get(id)?.target,
+    ).toBe(COMMENT_LINK);
+    const saved = await serializeCanonicalSave({
+      snapshot: session.captureSaveSnapshot(),
+      options: { mode: FOLIO_DOCX_SERIALIZATION_MODE.full },
     });
+    const zip = await ZipArchive.read(saved.buffer);
+    const commentRels = parseRelationships(
+      (await zip.entry("word/_rels/comments.xml.rels")?.text()) ?? "",
+    );
+    expect(commentRels.get(id)?.target).toBe(COMMENT_LINK);
+    publishCanonicalProjection({
+      session,
+      state: next,
+      commit: session.prepareUndo(next).unwrap(),
+    }).unwrap();
     assertExactModel(session.document, before);
-    expect(session.canUndo).toBe(false);
   });
 
   for (const suggesting of [false, true])

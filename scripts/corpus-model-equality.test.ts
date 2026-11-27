@@ -142,6 +142,32 @@ describe("describePackageDifferences", () => {
     expect(
       describePackageDifferences(chart, withFootnoteRelationships([])).messages,
     ).not.toEqual([]);
+    // A header the document no longer holds has no part to keep them in.
+    const removedHeader: Document = {
+      package: {
+        document: { content: [] },
+        annotationRelationships: new Map([
+          [
+            "header:rIdRemoved",
+            new Map([
+              [
+                "rId1",
+                {
+                  id: "rId1",
+                  type: RELATIONSHIP_TYPES.chart,
+                  target: "charts/chart1.xml",
+                },
+              ],
+            ]),
+          ],
+        ]),
+      },
+    };
+    expect(
+      describePackageDifferences(removedHeader, {
+        package: { document: { content: [] } },
+      }),
+    ).toEqual({ messages: [], omitted: 0 });
   });
 
   test("internal OPC target casing is equivalent while different parts and URLs remain distinct", () => {

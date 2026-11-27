@@ -72,9 +72,10 @@ const isErased = (key: string): boolean =>
   VOLATILE_KEYS.has(key) || CAPTURE_KEYS.has(key);
 
 /**
- * Relationship types a save allocates afresh in a note or comment part, for
- * the pictures and links the model holds there. Every other relationship in
- * those parts (the parts kept markup names) must survive a save as it is.
+ * Relationship types a save allocates afresh in a note, comment, header or
+ * footer part, for the pictures and links the model holds there. Every other
+ * relationship in those parts (the parts kept markup names) must survive a
+ * save as it is.
  */
 const SAVE_ALLOCATED_TYPE_SUFFIXES = ["/image", "/hyperlink"] as const;
 
@@ -140,10 +141,20 @@ export const normalizeDocumentPackage = (document: Document): unknown => {
       "Model equality requires Document inputs containing a document package.",
     );
   // A part's table without the relationships a save allocates: a part left
-  // with none compares as absent, as a package that had none reads.
+  // with none compares as absent, as a package that had none reads. A header
+  // or footer the document no longer holds has no part a save writes.
+  const heldStories = new Set([
+    ...[...(document.package.headers?.keys() ?? [])].map(
+      (id) => `header:${id}`,
+    ),
+    ...[...(document.package.footers?.keys() ?? [])].map(
+      (id) => `footer:${id}`,
+    ),
+  ]);
   const keptAnnotationTables = [
     ...(document.package.annotationRelationships ?? []),
   ].flatMap(([part, table]) => {
+    if (/^(?:header|footer):/u.test(part) && !heldStories.has(part)) return [];
     const kept = [...table].filter(
       ([, relationship]) => !isSaveAllocated(relationship.type),
     );

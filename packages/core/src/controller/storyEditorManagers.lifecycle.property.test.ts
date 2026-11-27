@@ -110,6 +110,7 @@ const harness = () => {
       replaceCanonicalStoryText: () => false,
       applyCanonicalStoryStructure: () => false,
       cutCanonicalStory: () => false,
+      pasteCanonicalStory: () => false,
       noteCanonicalStoryView: () => {},
       applyCanonicalStoryHistory: () => false,
     },

@@ -6,7 +6,7 @@
  * reopen, and an undo leaves none of them in the save.
  */
 import { describe, expect, test } from "bun:test";
-import type { Node as ProseNode } from "prosemirror-model";
+import { Fragment, type Node as ProseNode, Slice } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 
 import { DRAWING_RAW_XML_MODES } from "@stll/docx-core/model";
@@ -489,18 +489,74 @@ describe.each(["editing", "suggesting"] as const)("in %s", (mode) => {
   );
 });
 
-test("without the source package's parts, a paste naming them into another package refuses", async () => {
-  const { session, state, slice, copiedFrom } = await pasted("editing");
-  const prepared = prepareCanonicalPaste({
-    session,
-    state,
-    slice,
-    sourceDocument: copiedFrom,
-  });
-  expect(prepared.isErr()).toBe(true);
-  if (prepared.isOk()) return;
-  expect(prepared.error.ground).toEqual({ gap: "story-content-projection" });
-});
+describe.each(["editing", "suggesting"] as const)(
+  "without the source package's parts, in %s",
+  (mode) => {
+    test("a paste keeps what the markup maps to, every relationship resolves, and undo removes it", async () => {
+      const { session, state, slice, copiedFrom } = await pasted(mode);
+      const before = session.document;
+      const prepared = prepareCanonicalPaste({
+        session,
+        state,
+        slice,
+        sourceDocument: copiedFrom,
+      });
+      if (prepared.isErr()) throw prepared.error;
+      // The chart and the bare object hold no picture and are left out; the
+      // pictured object pastes as its picture, the chunk holds no text.
+      expect(
+        prepared.value.warnings.map(
+          ({ code, element }) => `${code} ${element}`,
+        ),
+      ).toEqual([
+        "kept-markup-dropped w:drawing",
+        "kept-markup-dropped w:object",
+        "kept-markup-as-picture w:object",
+        ...(mode === "editing" ? ["kept-markup-dropped w:altChunk"] : []),
+      ]);
+      expect(new Set(prepared.value.warnings.map(({ part }) => part))).toEqual(
+        new Set(["document"]),
+      );
+      const next = publishCanonicalProjection({
+        session,
+        state,
+        commit: prepared.value,
+      }).unwrap().state;
+      const zip = await ZipArchive.read(await save(session, "full"));
+      await assertResolves(zip);
+      const documentXml = await textOf(zip, "word/document.xml");
+      expect(documentXml).not.toContain("<c:chart");
+      expect(documentXml).not.toContain("<o:OLEObject");
+      expect(documentXml).not.toContain("<w:altChunk");
+      expect(documentXml.match(/<pic:pic /gu)).toHaveLength(1);
+      expect(documentXml).toContain(">Chart<");
+      // Every id the body names resolves in its relationships.
+      const relationships = parseRelationships(
+        await textOf(zip, "word/_rels/document.xml.rels"),
+      );
+      const ids = [
+        ...documentXml.matchAll(/\sr:(?:id|embed|link)="(?<id>[^"]+)"/gu),
+      ].flatMap(({ groups }) =>
+        groups?.["id"] === undefined ? [] : [groups["id"]],
+      );
+      expect(ids.length).toBeGreaterThan(0);
+      for (const id of ids) expect(relationships.has(id)).toBe(true);
+      const reopened = await parseDocx(
+        (await zip.generate({ compression: "store" })).buffer,
+        { preloadFonts: false },
+      );
+      expect(JSON.stringify(reopened.package.document.content)).toContain(
+        "Chart",
+      );
+      publishCanonicalProjection({
+        session,
+        state: next,
+        commit: session.prepareUndo(next).unwrap(),
+      }).unwrap();
+      expect(session.document).toEqual(before);
+    });
+  },
+);
 
 test("the source parts read for a copy are the ones its markup reaches", async () => {
   const { slice, copiedFrom, sourceParts } = await pasted("editing");
@@ -515,3 +571,223 @@ test("the source parts read for a copy are the ones its markup reaches", async (
     ),
   ).toEqual(encodeUtf8(textBody("word/charts/chart1.xml")));
 });
+
+describe.each(["editing", "suggesting"] as const)(
+  "a part outside the main document's folder, in %s",
+  (mode) => {
+    test("is copied under the main document's folder, resolves after a reopen, and undo removes it", async () => {
+      const outsideChart =
+        `<w:drawing ${NS} ` +
+        'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" ' +
+        'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" ' +
+        'xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart">' +
+        '<wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="914400" cy="457200"/>' +
+        '<wp:docPr id="78" name="Outside chart"/><a:graphic>' +
+        '<a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart">' +
+        '<c:chart r:id="rIdOutside"/></a:graphicData></a:graphic></wp:inline></w:drawing>';
+      const copiedFrom = readModel(
+        createCanonicalSession(
+          await packageOf(
+            [
+              {
+                type: "paragraph",
+                paraId: "30000001",
+                content: [
+                  {
+                    type: "run",
+                    content: [
+                      drawing(outsideChart),
+                      { type: "text", text: "Outside" },
+                    ],
+                  },
+                ],
+              },
+            ],
+            {
+              "extra/chart9.xml": {
+                type: "application/vnd.openxmlformats-officedocument.drawingml.chart+xml",
+                body: '<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><c:chart/><c:externalData r:id="rId1"/></c:chartSpace>',
+              },
+              "extra/_rels/chart9.xml.rels": {
+                type: "application/vnd.openxmlformats-package.relationships+xml",
+                body:
+                  '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+                  `<Relationship Id="rId1" Type="${RELATIONSHIP_TYPE}/package" Target="data/book.xlsx"/>` +
+                  "</Relationships>",
+              },
+              "extra/data/book.xlsx": {
+                type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                body: "PK outside workbook bytes",
+              },
+            },
+            [
+              {
+                id: "rIdOutside",
+                type: `${RELATIONSHIP_TYPE}/chart`,
+                target: "../extra/chart9.xml",
+              },
+            ],
+          ),
+        ).unwrap().document,
+      );
+      const copy = createCanonicalSession(copiedFrom).unwrap();
+      const slice = copy.projection.doc.slice(
+        0,
+        copy.projection.doc.child(0).nodeSize,
+      );
+      const sourceParts = await readClipboardPackageParts({
+        document: copiedFrom,
+        markup: sliceKeptMarkup(slice),
+      });
+      expect([...(sourceParts?.parts.keys() ?? [])].toSorted()).toEqual([
+        "extra/_rels/chart9.xml.rels",
+        "extra/chart9.xml",
+        "extra/data/book.xlsx",
+      ]);
+      const session = createCanonicalSession(await destination()).unwrap();
+      session.setMode(
+        mode === "editing"
+          ? { type: "editing" }
+          : { type: "suggesting", author: "Paster" },
+      );
+      const state = EditorState.create({ doc: session.projection.doc });
+      const before = session.document;
+      const prepared = prepareCanonicalPaste({
+        session,
+        state,
+        slice,
+        sourceDocument: copiedFrom,
+        ...(sourceParts === undefined ? {} : { sourceParts }),
+      });
+      if (prepared.isErr()) throw prepared.error;
+      expect(prepared.value.warnings).toEqual([]);
+      const next = publishCanonicalProjection({
+        session,
+        state,
+        commit: prepared.value,
+      }).unwrap().state;
+
+      const zip = await ZipArchive.read(await save(session, "full"));
+      await assertResolves(zip);
+      const relationships = parseRelationships(
+        await textOf(zip, "word/_rels/document.xml.rels"),
+      );
+      const named = namedIds(await textOf(zip, "word/document.xml"));
+      expect(named).toHaveLength(1);
+      const id = named.at(0) ?? "";
+      expect(relationships.get(id)?.target).toBe("extra/chart1.xml");
+      expect(await textOf(zip, "word/extra/data/book1.xlsx")).toBe(
+        "PK outside workbook bytes",
+      );
+      expect(
+        parseRelationships(
+          await textOf(zip, "word/extra/_rels/chart1.xml.rels"),
+        ).get("rId1")?.target,
+      ).toBe("data/book1.xlsx");
+      expect(zip.paths()).not.toContain("extra/chart9.xml");
+      const reopened = await parseDocx(
+        (await zip.generate({ compression: "store" })).buffer,
+        { preloadFonts: false },
+      );
+      expect(reopened.package.relationships?.get(id)?.target).toBe(
+        "extra/chart1.xml",
+      );
+
+      publishCanonicalProjection({
+        session,
+        state: next,
+        commit: session.prepareUndo(next).unwrap(),
+      }).unwrap();
+      expect(session.document).toEqual(before);
+      const undone = await ZipArchive.read(await save(session, "full"));
+      expect(undone.paths()).not.toContain("word/extra/chart1.xml");
+    });
+  },
+);
+
+describe.each(["editing", "suggesting"] as const)(
+  "kept block markup from outside the editor, in %s",
+  (mode) => {
+    test("pastes as the paragraphs it holds, or not at all, with a warning for each", async () => {
+      const session = createCanonicalSession(await destination()).unwrap();
+      session.setMode(
+        mode === "editing"
+          ? { type: "editing" }
+          : { type: "suggesting", author: "Paster" },
+      );
+      let state = EditorState.create({ doc: session.projection.doc });
+      state = state.apply(
+        state.tr.setSelection(
+          TextSelection.create(state.doc, state.doc.child(0).nodeSize - 1),
+        ),
+      );
+      const { schema } = state;
+      const paragraphNode = (text: string) =>
+        schema.node("paragraph", null, [schema.text(text)]);
+      const keptText =
+        '<mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" ' +
+        `${NS} xmlns:o="urn:schemas-microsoft-com:office:office">` +
+        '<mc:Choice Requires="w14"><w:p><w:r><w:t>First kept</w:t></w:r>' +
+        '<w:r><w:object><o:OLEObject Type="Embed" r:id="rIdElsewhere"/></w:object></w:r></w:p>' +
+        "<w:p><w:r><w:t>Second</w:t><w:tab/><w:t>kept</w:t></w:r>" +
+        "<w:del><w:r><w:delText>gone</w:delText></w:r></w:del></w:p>" +
+        "</mc:Choice></mc:AlternateContent>";
+      const before = session.document;
+      const prepared = prepareCanonicalPaste({
+        session,
+        state,
+        slice: new Slice(
+          Fragment.from([
+            paragraphNode("Lead"),
+            schema.node("preservedBlock", { xml: keptText }),
+            schema.node("preservedBlock", { xml: CHUNK_XML }),
+            paragraphNode("Trail"),
+          ]),
+          1,
+          1,
+        ),
+      });
+      if (prepared.isErr()) throw prepared.error;
+      expect(
+        prepared.value.warnings.map(
+          ({ code, part, element }) => `${code} ${part} ${element}`,
+        ),
+      ).toEqual([
+        "kept-markup-dropped document w:altChunk",
+        "kept-markup-as-text document mc:AlternateContent",
+      ]);
+      const next = publishCanonicalProjection({
+        session,
+        state,
+        commit: prepared.value,
+      }).unwrap().state;
+      const zip = await ZipArchive.read(await save(session, "full"));
+      await assertResolves(zip);
+      const documentXml = await textOf(zip, "word/document.xml");
+      expect(documentXml).not.toContain("rIdElsewhere");
+      expect(documentXml).not.toContain("<w:altChunk");
+      expect(documentXml).not.toContain(">gone<");
+      const reopened = await parseDocx(
+        (await zip.generate({ compression: "store" })).buffer,
+        { preloadFonts: false },
+      );
+      const texts: string[] = [];
+      createCanonicalSession(reopened)
+        .unwrap()
+        .projection.doc.forEach((node) => texts.push(node.textContent));
+      expect(texts).toContain("First kept");
+      // The tab between the second paragraph's words is a tab.
+      expect(texts).toContain("Secondkept");
+      expect(documentXml).toMatch(
+        /<w:t>Second<\/w:t><w:tab\/><w:t>kept<\/w:t>/u,
+      );
+
+      publishCanonicalProjection({
+        session,
+        state: next,
+        commit: session.prepareUndo(next).unwrap(),
+      }).unwrap();
+      expect(session.document).toEqual(before);
+    });
+  },
+);

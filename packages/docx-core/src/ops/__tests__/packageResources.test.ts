@@ -505,4 +505,19 @@ test("a note or comment part's relationships change as one entry, survive JSON a
         },
       }).isErr(),
     ).toBe(true);
+  // A header's or a footer's part is keyed by the relationship naming it.
+  for (const key of ["header:rIdHeader1", "footer:rIdFooter1"])
+    expect(
+      applyDocumentOp(seeded, {
+        ...op,
+        annotationRelationships: {
+          expected: "present",
+          next: "present",
+          entries: [{ ...entry, key }],
+        },
+      })
+        .unwrap()
+        .document.package.annotationRelationships?.get(key)
+        ?.get(relationship.id),
+    ).toEqual(relationship);
 });

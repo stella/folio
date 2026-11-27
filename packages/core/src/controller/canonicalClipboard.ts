@@ -13,6 +13,7 @@ import {
   type DocumentOp,
   type EditorIntent,
   OP_STORIES,
+  type OpStory,
   packageResourcesOpOf,
   type PasteAnnotations,
   type PastedBlock,
@@ -25,7 +26,11 @@ import {
   type CanonicalSession,
   CanonicalSessionError,
 } from "../canonical/canonicalSession";
-import { withRelationshipIds } from "../docx/copiedPackageParts";
+import {
+  storyPartPath,
+  storyRelationshipsKey,
+  withRelationshipIds,
+} from "../docx/copiedPackageParts";
 import {
   takeDrawingId,
   usedDrawingIds,
@@ -38,13 +43,17 @@ import {
 } from "../docx/numberingIds";
 import { copyParagraphIndentationProjection } from "../docx/paragraphPropertySource";
 import {
+  type InlineContentSlot,
   visitInlineContentSlots,
   visitParagraphRuns,
+  withInlineContentRewritten,
 } from "../docx/paragraphTraversal";
 import { captureVerbatimXml } from "../docx/verbatimCapture";
 import {
   findAttributeByNamespaceUri,
   getLocalName,
+  getNamespaceUri,
+  getTextContent,
   OFFICE_RELATIONSHIP_NAMESPACE_URIS,
   OOXML_NAMESPACE_SCOPE,
   parseXml,
@@ -57,7 +66,6 @@ import { marksToTextFormatting } from "../prosemirror/runFormattingFromMarks";
 import { pastedCells } from "../prosemirror/tableCellPaste";
 import {
   CANONICAL_CONDITION,
-  CANONICAL_GAP,
   type CanonicalRefusalGround,
 } from "../types/canonicalCapabilities";
 import type {
@@ -68,6 +76,7 @@ import type {
   NumberFormat,
   NumberingDefinitions,
   Paragraph,
+  ParagraphContent,
   Relationship,
   Run,
   Table,
@@ -78,6 +87,7 @@ import { base64ToBytes } from "../utils/textEncoding";
 import {
   type ClipboardPackageParts,
   createPartCopier,
+  storyRelationshipsOf,
 } from "./canonicalClipboardParts";
 import {
   flattenClipboardStyleReferences,
@@ -374,28 +384,6 @@ const clipboardTables = (blocks: readonly BlockContent[]): Table[] =>
       case "blockSdt":
       case "blockCustomXml":
         return clipboardTables(block.content);
-      default:
-        return [];
-    }
-  });
-
-/** Every kept block among the blocks, at any depth. */
-const clipboardPreservedBlocks = (
-  blocks: readonly BlockContent[],
-): Extract<BlockContent, { type: "preservedBlock" }>[] =>
-  blocks.flatMap((block) => {
-    switch (block.type) {
-      case "preservedBlock":
-        return [block];
-      case "table":
-        return clipboardPreservedBlocks(
-          block.rows.flatMap((row) =>
-            row.cells.flatMap((cell) => cell.content),
-          ),
-        );
-      case "blockSdt":
-      case "blockCustomXml":
-        return clipboardPreservedBlocks(block.content);
       default:
         return [];
     }
@@ -901,6 +889,109 @@ const rangeHoldings = (
   return { relationshipIds, markup };
 };
 
+/** A picture source a paste imports: image bytes, or an HTTP image URL. */
+const IMPORTABLE_PICTURE_SOURCE =
+  /^(?:data:image\/(?:png|jpeg|gif|webp);base64,|https?:\/\/)/u;
+
+const WORDPROCESSING_NAMESPACE =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+
+/** Control characters a paragraph's text cannot hold, a tab aside. */
+// oxlint-disable-next-line no-control-regex -- matches the characters XML text cannot hold
+const UNWRITABLE_TEXT = /[\u0000-\u0008\u000B-\u001F\uFFFE\uFFFF]/gu;
+
+/** A paragraph holding `text`, a tab written as a tab. */
+const textParagraph = (text: string): Paragraph => {
+  const content: Run["content"] = [];
+  for (const [index, part] of text
+    .replaceAll(UNWRITABLE_TEXT, "")
+    .split("\t")
+    .entries()) {
+    if (index > 0) content.push({ type: "tab" });
+    if (part.length > 0) content.push({ type: "text", text: part });
+  }
+  return {
+    type: "paragraph",
+    content: content.length === 0 ? [] : [{ type: "run", content }],
+  };
+};
+
+/**
+ * The text of each paragraph kept block markup holds, in order, or of each
+ * line of the text read from the part it names: none when it holds none.
+ */
+const keptBlockTexts = (
+  xml: string,
+  readerText: string | undefined,
+): string[] => {
+  if (readerText !== undefined)
+    return readerText
+      .split(/\r\n|\r|\n/u)
+      .filter((line) => line.trim().length > 0);
+  const parsed = Result.try(() =>
+    parseXml(`<root>${xml}</root>`, OOXML_NAMESPACE_SCOPE),
+  );
+  if (parsed.isErr()) return [];
+  const texts: string[] = [];
+  const isWord = (element: XmlElement, name: string) =>
+    getLocalName(element.name ?? "") === name &&
+    getNamespaceUri(element) === WORDPROCESSING_NAMESPACE;
+  const textOf = (element: XmlElement): string =>
+    (element.elements ?? [])
+      .map((child) => {
+        if (isWord(child, "t")) return getTextContent(child);
+        if (isWord(child, "tab")) return "\t";
+        // Deleted text is not the paragraph's text.
+        if (isWord(child, "del") || isWord(child, "moveFrom")) return "";
+        return textOf(child);
+      })
+      .join("");
+  const visit = (element: XmlElement): void => {
+    for (const child of element.elements ?? []) {
+      if (isWord(child, "p")) {
+        texts.push(textOf(child));
+        continue;
+      }
+      visit(child);
+    }
+  };
+  visit(parsed.value);
+  return texts.some((text) => text.trim().length > 0) ? texts : [];
+};
+
+/**
+ * `paragraph` without the runs of `emptied` left empty, and without each
+ * wrapper their removal leaves empty: markup a paste left out leaves no empty
+ * run or wrapper behind.
+ */
+const withoutEmptiedRuns = (
+  paragraph: Paragraph,
+  emptied: ReadonlySet<Run>,
+): void => {
+  const shrunk = new Set<ParagraphContent[]>();
+  const leftEmpty = (item: ParagraphContent): boolean => {
+    if (item.type === "run")
+      return emptied.has(item) && item.content.length === 0;
+    let empty = false;
+    withInlineContentRewritten(item, (children) => {
+      empty = children.length === 0 && shrunk.has(children);
+      return children;
+    });
+    return empty;
+  };
+  for (;;) {
+    const removed: InlineContentSlot[] = [];
+    visitInlineContentSlots(paragraph, (slot) => {
+      if (leftEmpty(slot.item)) removed.push(slot);
+    });
+    if (removed.length === 0) return;
+    for (const { content, index } of removed.toReversed()) {
+      content.splice(index, 1);
+      shrunk.add(content);
+    }
+  }
+};
+
 /** Clipboard slices are input payloads; their paragraph identities and private captures are not owners. */
 type PrepareCanonicalPasteOptions = {
   session: CanonicalSession;
@@ -916,7 +1007,43 @@ type PrepareCanonicalPasteOptions = {
    * another package.
    */
   sourceParts?: ClipboardPackageParts;
+  /** The story of `sourceDocument` the slice was copied from; the body when absent. */
+  sourceStory?: OpStory;
+  /** The story `state` shows, which the paste lands in; the body when absent. */
+  story?: OpStory;
   moveSource?: { from: number; to: number };
+};
+
+/**
+ * What a paste did in place of keeping markup whose package parts cannot
+ * come with it: a clipboard from outside the editor, or a copy whose source
+ * package could not be read.
+ */
+export const CANONICAL_PASTE_WARNING_CODES = {
+  /** A drawing or embedded object pasted as the picture that previews it. */
+  keptMarkupAsPicture: "kept-markup-as-picture",
+  /** Kept block markup pasted as the paragraphs of text it holds. */
+  keptMarkupAsText: "kept-markup-as-text",
+  /** Kept markup holding neither a picture nor text, left out. */
+  keptMarkupDropped: "kept-markup-dropped",
+} as const;
+
+/** One substitution a paste made, as data. */
+export type CanonicalPasteWarning = {
+  code: (typeof CANONICAL_PASTE_WARNING_CODES)[keyof typeof CANONICAL_PASTE_WARNING_CODES];
+  /**
+   * The part the markup was pasted into: `document`, `footnotes`,
+   * `endnotes`, `comments`, or a header's or footer's `header:<rId>` or
+   * `footer:<rId>`.
+   */
+  part: string;
+  /** The kept element's name as the markup spells it, such as `w:altChunk`. */
+  element: string;
+};
+
+/** A prepared paste, with what it pasted in place of markup it could not keep. */
+export type CanonicalPasteCommit = CanonicalCommit & {
+  readonly warnings: readonly CanonicalPasteWarning[];
 };
 
 export const prepareCanonicalPaste = ({
@@ -928,9 +1055,11 @@ export const prepareCanonicalPaste = ({
   pasteTarget,
   sourceDocument,
   sourceParts,
+  sourceStory = OP_STORIES.MAIN,
+  story = OP_STORIES.MAIN,
   moveSource,
 }: PrepareCanonicalPasteOptions): Result<
-  CanonicalCommit,
+  CanonicalPasteCommit,
   CanonicalSessionError
 > => {
   // Declared: the inferred union of Ok/Err branches is emitted in a nondeterministic order.
@@ -1049,17 +1178,19 @@ export const prepareCanonicalPaste = ({
   const selectionRange = overCells
     ? { from: state.selection.from, to: state.selection.to }
     : canonicalSelectionRange(state);
+  // The projection of the story the paste lands in, which `state` shows.
+  const projected = session.projectStory(story);
+  if (projected.isErr()) return projected;
+  const projection = projected.value;
   const from = overCells
     ? Result.ok(undefined)
-    : session.projection.addressAt(
+    : projection.addressAt(
         pasteTarget ?? moveSource?.from ?? selectionRange.from,
       );
   if (from.isErr()) return from;
   const to = overCells
     ? Result.ok(undefined)
-    : session.projection.addressAt(
-        pasteTarget ?? moveSource?.to ?? selectionRange.to,
-      );
+    : projection.addressAt(pasteTarget ?? moveSource?.to ?? selectionRange.to);
   if (to.isErr()) return to;
   // The notes and comments the blocks name, copied from their source: their
   // bodies import styles and numbering with the blocks' own paragraphs.
@@ -1180,8 +1311,8 @@ export const prepareCanonicalPaste = ({
   const relationships = new Map(destination.package.relationships);
   const media = new Map(destination.package.media);
   const copiedParts = new Map(destination.package.copiedParts);
-  // The note and comment parts' relationships, each copied once kept markup
-  // pasted into the part names a copy.
+  // The note, comment, header and footer parts' relationships, each copied
+  // once kept markup pasted into the part names a copy.
   const annotationRelationships = new Map(
     destination.package.annotationRelationships,
   );
@@ -1190,9 +1321,9 @@ export const prepareCanonicalPaste = ({
   let copiedPart = false;
   let imageIndex = 1;
   let relationshipIndex = 1;
-  // A picture pasted into a note or a comment takes a main document id that
-  // the save writes into that part's relationships, so an id is fresh only
-  // where no part holds it.
+  // A picture pasted into a note, a comment, a header or a footer takes a
+  // main document id that the save writes into that part's relationships, so
+  // an id is fresh only where no part holds it.
   const heldRelationshipId = (id: string) =>
     relationships.has(id) ||
     [...annotationRelationships.values()].some((held) => held.has(id));
@@ -1202,9 +1333,14 @@ export const prepareCanonicalPaste = ({
     return `rId${relationshipIndex++}`;
   };
   // The relationships the copied pictures' and links' ids name: the source
-  // body's, or none for a note's or a comment's, which import by their bytes
-  // and targets.
-  let sourceRelationships = sourceDocument?.package.relationships;
+  // body's, or none for a note's, a comment's, a header's or a footer's,
+  // which import by their bytes and targets.
+  let sourceRelationships =
+    sourceStory === OP_STORIES.MAIN
+      ? sourceDocument?.package.relationships
+      : undefined;
+  // What the paste put in place of kept markup it could not keep.
+  const warnings: CanonicalPasteWarning[] = [];
   const importExternalLink = (
     href: string | undefined,
     previousId: string | undefined,
@@ -1314,6 +1450,8 @@ export const prepareCanonicalPaste = ({
     }
     const runs: Run[] = [];
     visitParagraphRuns(paragraph, (run) => runs.push(run));
+    // The runs a drawing was left out of, removed once they hold nothing.
+    const emptied = new Set<Run>();
     for (const item of runs) {
       if (plain)
         item.formatting = marksToTextFormatting(
@@ -1322,14 +1460,29 @@ export const prepareCanonicalPaste = ({
               .resolve(pasteTarget ?? moveSource?.from ?? selectionRange.from)
               .marks(),
         );
-      for (const [index, child] of item.content.entries()) {
-        if (child.type !== "drawing") continue;
-        if (child.rawXmlMode !== undefined || keepsEmbeddedObject(child)) {
-          const kept = keptOpaqueDrawing(child);
+      const dropped: number[] = [];
+      for (const [index, original] of item.content.entries()) {
+        if (original.type !== "drawing") continue;
+        let child: Extract<DrawingContent, { rawXmlMode?: never }>;
+        if (original.rawXmlMode !== undefined || embedsObject(original)) {
+          const kept = keptOpaqueDrawing(original);
           if (kept.isErr()) return kept;
-          item.content[index] = kept.value;
-          continue;
-        }
+          if (kept.value !== undefined) {
+            item.content[index] = kept.value;
+            continue;
+          }
+          // Its parts cannot come with it: it pastes as the picture that
+          // previews it, or, without one, not at all.
+          const xml = original.rawXml ?? "";
+          if (!hasPictureBytes(original.image)) {
+            warn(CANONICAL_PASTE_WARNING_CODES.keptMarkupDropped, xml);
+            dropped.push(index);
+            continue;
+          }
+          warn(CANONICAL_PASTE_WARNING_CODES.keptMarkupAsPicture, xml);
+          child = { type: "drawing", image: original.image };
+          item.content[index] = child;
+        } else child = original;
         delete child.rawXml;
         delete child.rawImageFingerprint;
         const image = child.image;
@@ -1491,15 +1644,19 @@ export const prepareCanonicalPaste = ({
         delete image.id;
         importedResource = true;
       }
+      for (const index of dropped.toReversed()) item.content.splice(index, 1);
+      if (dropped.length > 0) emptied.add(item);
     }
+    withoutEmptiedRuns(paragraph, emptied);
     return Result.ok(undefined);
   };
   /**
    * Where kept markup's ids resolve: the relationships the source named them
    * in, those the destination resolves them against, and the copier that
    * copies the parts they name from the source package, read ahead of the
-   * paste, under fresh names and relationship ids. `part` names the note or
-   * comment part the markup lands in, and is absent for the body.
+   * paste, under fresh names and relationship ids. `part` names the note,
+   * comment, header or footer part the markup lands in, and is absent for
+   * the body.
    */
   type KeptMarkupScope = {
     part?: string;
@@ -1508,32 +1665,73 @@ export const prepareCanonicalPaste = ({
     copier: ReturnType<typeof createPartCopier> | undefined;
   };
   const copiedPaths = new Map<string, string>();
-  const copierOf = (
-    origin: ReadonlyMap<string, Relationship> | undefined,
-    into: Map<string, Relationship>,
-  ) =>
-    sourceParts === undefined ||
-    sourceParts.source !== sourceDocument ||
-    origin === undefined
+  const copierOf = ({
+    origin,
+    into,
+    sourcePart,
+    destinationPart,
+  }: {
+    origin: ReadonlyMap<string, Relationship> | undefined;
+    into: Map<string, Relationship>;
+    sourcePart: string | undefined;
+    destinationPart: string | undefined;
+  }) => {
+    if (
+      sourceDocument === undefined ||
+      origin === undefined ||
+      sourcePart === undefined ||
+      destinationPart === undefined
+    )
+      return undefined;
+    // Without the parts read from the source package, the copier copies
+    // relationships to external targets alone.
+    const parts: ClipboardPackageParts =
+      sourceParts?.source === sourceDocument
+        ? sourceParts
+        : { source: sourceDocument, parts: new Map() };
+    return createPartCopier({
+      parts,
+      sourceRelationships: origin,
+      sourcePart,
+      destination,
+      relationships: into,
+      destinationPart,
+      copiedParts,
+      freshRelationshipId,
+      copiedPaths,
+    });
+  };
+  // The story parts whose relationships this paste holds its own copy of.
+  const ownParts = new Set<string>();
+  /** A story part's relationships, the paste's own copy of them. */
+  const partRelationships = (part: string): Map<string, Relationship> => {
+    const held = annotationRelationships.get(part);
+    if (held !== undefined && ownParts.has(part)) return held;
+    const into = new Map(held);
+    annotationRelationships.set(part, into);
+    ownParts.add(part);
+    return into;
+  };
+  // The slice's markup names the relationships of the story it was copied
+  // from, and lands in those of the story the paste goes into: the main
+  // document's for the body, the story part's own otherwise.
+  const copiedFrom =
+    sourceDocument === undefined
       ? undefined
-      : createPartCopier({
-          parts: sourceParts,
-          sourceRelationships: origin,
-          destination,
-          relationships: into,
-          copiedParts,
-          freshRelationshipId,
-          copiedPaths,
-        });
-  // The save writes a body copy's relationship beside the main document's,
-  // so only markup landing in the main story names it.
+      : storyRelationshipsOf(sourceDocument, sourceStory);
+  const landingPart = storyRelationshipsKey(story);
+  const landing =
+    landingPart === undefined ? relationships : partRelationships(landingPart);
   let scope: KeptMarkupScope = {
-    source: sourceRelationships,
-    destination: relationships,
-    copier:
-      session.projection.story === OP_STORIES.MAIN
-        ? copierOf(sourceRelationships, relationships)
-        : undefined,
+    ...(landingPart === undefined ? {} : { part: landingPart }),
+    source: copiedFrom?.relationships,
+    destination: landing,
+    copier: copierOf({
+      origin: copiedFrom?.relationships,
+      into: landing,
+      sourcePart: copiedFrom?.partPath,
+      destinationPart: storyPartPath(destination, story),
+    }),
   };
   const annotationScopes = new Map<string, KeptMarkupScope>();
   /** The scope of markup in a copied note or comment: its part's own. */
@@ -1549,13 +1747,21 @@ export const prepareCanonicalPaste = ({
     // which the parser then reads instead of the main document's: the new
     // table starts from the main document's relationships, so the ids the
     // part already names keep resolving to what they named.
-    const into = new Map(annotationRelationships.get(part) ?? relationships);
-    annotationRelationships.set(part, into);
+    const hadOwn = annotationRelationships.has(part);
+    const into = partRelationships(part);
+    if (!hadOwn)
+      for (const [id, relationship] of relationships)
+        if (!into.has(id)) into.set(id, relationship);
     const created = {
       part,
       source: origin,
       destination: into,
-      copier: copierOf(origin, into),
+      copier: copierOf({
+        origin,
+        into,
+        sourcePart: `word/${part}.xml`,
+        destinationPart: `word/${part}.xml`,
+      }),
     };
     annotationScopes.set(part, created);
     return created;
@@ -1575,18 +1781,35 @@ export const prepareCanonicalPaste = ({
    * markup names a part besides the picture's own. It pastes as the object
    * where the parts it names paste with it, and as the picture otherwise.
    */
-  const keepsEmbeddedObject = (drawing: DrawingContent): boolean => {
+  const embedsObject = (drawing: DrawingContent): boolean => {
     const xml = drawing.rawXml;
     if (xml === undefined) return false;
     const referenced = relationshipIdsIn(xml);
     if (referenced.isErr()) return false;
     const own = new Set([drawing.image.rId, drawing.image.hlinkRId]);
-    if (referenced.value.every((id) => own.has(id))) return false;
-    return (
-      moved?.markup.has(xml) === true ||
-      scope.copier !== undefined ||
-      resolvesInPlace(referenced.value)
-    );
+    return !referenced.value.every((id) => own.has(id));
+  };
+  /** Whether a picture has bytes or a URL the paste can import it by. */
+  const hasPictureBytes = (image: DrawingContent["image"]): boolean => {
+    if (image.src !== undefined)
+      return IMPORTABLE_PICTURE_SOURCE.test(image.src);
+    const relationship =
+      image.rId === undefined ? undefined : sourceRelationships?.get(image.rId);
+    if (relationship === undefined) return false;
+    if (relationship.targetMode === "External")
+      return IMPORTABLE_PICTURE_SOURCE.test(relationship.target);
+    const path = relationship.target.startsWith("/")
+      ? relationship.target.slice(1)
+      : `word/${relationship.target}`;
+    return sourceDocument?.package.media?.has(path) === true;
+  };
+  /** Record what the paste did in place of keeping `xml`. */
+  const warn = (code: CanonicalPasteWarning["code"], xml: string): void => {
+    warnings.push({
+      code,
+      part: scope.part ?? "document",
+      element: /^<(?<name>[^\s/>]+)/u.exec(xml)?.groups?.["name"] ?? "",
+    });
   };
   /**
    * Kept markup (an opaque drawing, an embedded object, a kept block), with
@@ -1594,13 +1817,14 @@ export const prepareCanonicalPaste = ({
    * parts (a chart, an embedding, a diagram) are carried by the package it
    * was read from, not by the model: in that package every relationship it
    * names is the one it named, and into another the paste copies them. In a
-   * note or a comment its ids are those of the part holding it.
+   * note, a comment, a header or a footer its ids are those of the part
+   * holding it. Undefined when the parts cannot come with it: the clipboard
+   * came from outside the editor, or its source package could not be read.
    */
   const keptMarkupPlaced = (
     xml: string,
-    message: string,
   ): Result<
-    { xml: string; ids: ReadonlyMap<string, string> },
+    { xml: string; ids: ReadonlyMap<string, string> } | undefined,
     CanonicalSessionError
   > => {
     const unchanged = Result.ok({ xml, ids: new Map<string, string>() });
@@ -1609,10 +1833,7 @@ export const prepareCanonicalPaste = ({
     if (referenced.value.length === 0 || moved?.markup.has(xml) === true)
       return unchanged;
     if (resolvesInPlace(referenced.value)) return unchanged;
-    // Without the source package's parts (a clipboard from outside the
-    // editor) the parts cannot be read, so they cannot be copied.
-    if (scope.copier === undefined)
-      return refuse(message, { gap: CANONICAL_GAP.storyContentProjection });
+    if (scope.copier === undefined) return Result.ok(undefined);
     const copies = scope.copier.copy(referenced.value);
     if (copies.isErr())
       return copies.error.type === "unresolved"
@@ -1620,7 +1841,7 @@ export const prepareCanonicalPaste = ({
             "Copied markup names a relationship its package does not hold.",
             INVALID_CLIPBOARD,
           )
-        : refuse(message, { gap: CANONICAL_GAP.storyContentProjection });
+        : Result.ok(undefined);
     const renamed = withRelationshipIds(xml, copies.value);
     if (renamed === undefined)
       return refuse(
@@ -1632,14 +1853,16 @@ export const prepareCanonicalPaste = ({
     copiedPart = true;
     return Result.ok({ xml: renamed, ids: copies.value });
   };
+  /**
+   * An opaque drawing with the parts it names, under a fresh drawing id;
+   * undefined when its parts cannot come with it.
+   */
   const keptOpaqueDrawing = (
     drawing: DrawingContent,
-  ): Result<DrawingContent, CanonicalSessionError> => {
-    const placed = keptMarkupPlaced(
-      drawing.rawXml ?? "",
-      "Opaque drawings and embedded objects paste only into the package holding their parts.",
-    );
+  ): Result<DrawingContent | undefined, CanonicalSessionError> => {
+    const placed = keptMarkupPlaced(drawing.rawXml ?? "");
     if (placed.isErr()) return placed;
+    if (placed.value === undefined) return Result.ok(undefined);
     drawingIds ??= usedDrawingIds({
       documentBody: destination.package.document,
       headers: destination.package.headers,
@@ -1683,19 +1906,83 @@ export const prepareCanonicalPaste = ({
     if (renumbered !== undefined) kept.rawXml = renumbered;
     return Result.ok(kept);
   };
+  /**
+   * Kept block markup with the parts it names, or, where they cannot come
+   * with it, the paragraphs of text it holds; none when it holds no text.
+   */
+  const keptBlockPlaced = (
+    xml: string,
+    readerText: string | undefined,
+  ): Result<{ xml: string } | Paragraph[], CanonicalSessionError> => {
+    const placed = keptMarkupPlaced(xml);
+    if (placed.isErr()) return placed;
+    if (placed.value !== undefined) return Result.ok({ xml: placed.value.xml });
+    const texts = keptBlockTexts(xml, readerText);
+    warn(
+      texts.length === 0
+        ? CANONICAL_PASTE_WARNING_CODES.keptMarkupDropped
+        : CANONICAL_PASTE_WARNING_CODES.keptMarkupAsText,
+      xml,
+    );
+    return Result.ok(texts.map(textParagraph));
+  };
+  /** Every kept block among `container`, at any depth, placed or replaced. */
+  const placeKeptBlocks = (
+    container: BlockContent[],
+  ): Result<void, CanonicalSessionError> => {
+    for (let index = container.length - 1; index >= 0; index -= 1) {
+      const block = container[index];
+      if (block === undefined) continue;
+      if (block.type === "preservedBlock") {
+        const placed = keptBlockPlaced(block.xml, block.readerText);
+        if (placed.isErr()) return placed;
+        if (Array.isArray(placed.value))
+          container.splice(index, 1, ...placed.value);
+        else block.xml = placed.value.xml;
+        continue;
+      }
+      const inner: BlockContent[][] = [];
+      if (block.type === "table")
+        for (const row of block.rows)
+          for (const cell of row.cells) inner.push(cell.content);
+      if (block.type === "blockSdt" || block.type === "blockCustomXml")
+        inner.push(block.content);
+      for (const content of inner) {
+        const placedInner = placeKeptBlocks(content);
+        if (placedInner.isErr()) return placedInner;
+        // A cell or a container holds at least a paragraph.
+        if (content.length === 0) content.push(textParagraph(""));
+      }
+    }
+    return Result.ok(undefined);
+  };
   for (const paragraph of paragraphs) {
     const imported = importResources(paragraph);
     if (imported.isErr()) return imported;
   }
-  // Kept block markup replays as it was read: what it names must be there.
-  for (const block of clipboardPreservedBlocks(blocks)) {
-    const placed = keptMarkupPlaced(
-      block.xml,
-      "Kept block markup naming package parts pastes only into the package holding them.",
-    );
+  // Kept block markup replays as it was read: what it names must be there,
+  // or it pastes as the text it holds.
+  for (let index = blocks.length - 1; index >= 0; index -= 1) {
+    const block = blocks[index];
+    if (block === undefined) continue;
+    if (block.type !== "preservedBlock") {
+      const placedInner = placeKeptBlocks([block]);
+      if (placedInner.isErr()) return placedInner;
+      continue;
+    }
+    const placed = keptBlockPlaced(block.xml, block.readerText);
     if (placed.isErr()) return placed;
-    block.xml = placed.value.xml;
+    if (Array.isArray(placed.value)) blocks.splice(index, 1, ...placed.value);
+    else block.xml = placed.value.xml;
   }
+  if (blocks.length === 0)
+    return Result.err(
+      new CanonicalSessionError({
+        ground: INVALID_CLIPBOARD,
+        message: "The clipboard contains no content the document can hold.",
+        reason: "noChange",
+      }),
+    );
   // A note's or a comment's ids name its own part's relationships: its links
   // import by their targets and its images by their bytes, and the save
   // writes each into the part that holds it. Its kept markup resolves in, or
@@ -1709,14 +1996,9 @@ export const prepareCanonicalPaste = ({
       const imported = importResources(paragraph);
       if (imported.isErr()) return imported;
     }
-    for (const block of clipboardPreservedBlocks(note.content)) {
-      const placed = keptMarkupPlaced(
-        block.xml,
-        "Kept note markup naming package parts pastes only into the package holding them.",
-      );
-      if (placed.isErr()) return placed;
-      block.xml = placed.value.xml;
-    }
+    const placed = placeKeptBlocks(note.content);
+    if (placed.isErr()) return placed;
+    if (note.content.length === 0) note.content.push(textParagraph(""));
   }
   for (const comment of annotations?.comments ?? []) {
     scope = annotationScope("comments");
@@ -1724,15 +2006,26 @@ export const prepareCanonicalPaste = ({
       const imported = importResources(paragraph);
       if (imported.isErr()) return imported;
     }
-    // A comment's kept markup replays as it was read.
-    for (const child of comment.preserved?.children ?? []) {
-      const placed = keptMarkupPlaced(
-        child.xml,
-        "Kept comment markup naming package parts pastes only into the package holding them.",
-      );
+    // A comment's kept markup replays as it was read, or, where its parts
+    // cannot come with it, as the paragraphs it holds in its place.
+    const children = comment.preserved?.children ?? [];
+    const keptChildren: typeof children = [];
+    let inserted = 0;
+    for (const child of children) {
+      const placed = keptBlockPlaced(child.xml, undefined);
       if (placed.isErr()) return placed;
-      child.xml = placed.value.xml;
+      const at = child.index + inserted;
+      if (Array.isArray(placed.value)) {
+        comment.content.splice(at, 0, ...placed.value);
+        inserted += placed.value.length;
+        continue;
+      }
+      keptChildren.push({ ...child, index: at, xml: placed.value.xml });
     }
+    // A container keeps no empty record of markup it does not hold.
+    if (keptChildren.length > 0 && comment.preserved !== undefined)
+      comment.preserved.children = keptChildren;
+    else delete comment.preserved;
   }
   const resourceOps: DocumentOp[] = [];
   if (
@@ -1742,14 +2035,12 @@ export const prepareCanonicalPaste = ({
     styles !== destination.package.styles
   ) {
     // Only the parts a paste copied into change; the others stay as held.
-    const partRelationships = new Map(
-      destination.package.annotationRelationships,
-    );
+    const changedTables = new Map(destination.package.annotationRelationships);
     for (const part of changedAnnotationParts) {
       const held =
         annotationRelationships.get(part) ??
-        panic("A changed note or comment part has no relationships.");
-      partRelationships.set(part, held);
+        panic("A changed story part has no relationships.");
+      changedTables.set(part, held);
     }
     const imported = {
       ...destination,
@@ -1760,7 +2051,7 @@ export const prepareCanonicalPaste = ({
         ...(importedResource ? { relationships, media } : {}),
         ...(copiedPart ? { copiedParts } : {}),
         ...(changedAnnotationParts.size > 0
-          ? { annotationRelationships: partRelationships }
+          ? { annotationRelationships: changedTables }
           : {}),
       },
     };
@@ -1798,44 +2089,56 @@ export const prepareCanonicalPaste = ({
       };
     return { type: "pasteBlocks", ...range, blocks, openStart, openEnd };
   };
+  const withWarnings = (
+    prepared: Result<CanonicalCommit, CanonicalSessionError>,
+  ): Result<CanonicalPasteCommit, CanonicalSessionError> =>
+    prepared.map((commit): CanonicalPasteCommit =>
+      Object.assign(commit, { warnings }),
+    );
   if (from.value === undefined || to.value === undefined)
-    return session.prepareCellSelectionStructure(
-      state,
-      (at) => pasted({ from: at, to: at }),
-      { resourceOps, semantic: "paste" },
+    return withWarnings(
+      session.prepareCellSelectionStructure(
+        state,
+        (at) => pasted({ from: at, to: at }),
+        { resourceOps, semantic: "paste", story },
+      ),
     );
   const range = { from: from.value, to: to.value };
   if (moveTarget === undefined)
-    return session.prepareIntents(state, {
-      intents: [pasted(range)],
-      resourceOps,
-      semantic: "paste",
-    });
-  const target = session.projection.addressAt(moveTarget);
+    return withWarnings(
+      session.prepareIntents(state, {
+        intents: [pasted(range)],
+        resourceOps,
+        semantic: "paste",
+      }),
+    );
+  const target = projection.addressAt(moveTarget);
   if (target.isErr()) return target;
   // Dragged paragraphs move as a fragment; with a table or a container, as
   // blocks.
-  return session.prepareIntents(state, {
-    intents: [
-      topParagraphs.length === blocks.length
-        ? {
-            type: "moveFragment",
-            target: target.value,
-            ...range,
-            paragraphs: topParagraphs,
-            openStart,
-            openEnd,
-          }
-        : {
-            type: "moveBlocks",
-            target: target.value,
-            ...range,
-            blocks,
-            openStart,
-            openEnd,
-          },
-    ],
-    resourceOps,
-    semantic: "paste",
-  });
+  return withWarnings(
+    session.prepareIntents(state, {
+      intents: [
+        topParagraphs.length === blocks.length
+          ? {
+              type: "moveFragment",
+              target: target.value,
+              ...range,
+              paragraphs: topParagraphs,
+              openStart,
+              openEnd,
+            }
+          : {
+              type: "moveBlocks",
+              target: target.value,
+              ...range,
+              blocks,
+              openStart,
+              openEnd,
+            },
+      ],
+      resourceOps,
+      semantic: "paste",
+    }),
+  );
 };
