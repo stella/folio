@@ -603,6 +603,7 @@ async function writeChangedParts({
   for (const { notes, part } of [
     { notes: doc.package.footnotes, part: "word/footnotes.xml" },
     { notes: doc.package.endnotes, part: "word/endnotes.xml" },
+    { notes: doc.package.document.comments, part: "word/comments.xml" },
   ]) {
     if (notes?.some((note) => hasUnmaterializedInlineResources(note.content)))
       return decline({
