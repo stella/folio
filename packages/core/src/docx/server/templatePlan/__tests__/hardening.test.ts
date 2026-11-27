@@ -630,7 +630,7 @@ describe("malformed plans", () => {
             start: 0,
             end: 5,
             targetBlockId: "p1",
-            instruction: "\\* MERGEFORMAT",
+            instruction: "\\* Roman",
             expectedText: "First",
           },
         ],
@@ -1784,7 +1784,8 @@ describe("reference fields with a letter-case format", () => {
 
   test("refuses any other format switch", async () => {
     for (const instruction of [
-      "\\n \\* MERGEFORMAT \\h",
+      "\\n \\* Roman \\h",
+      "\\n \\* MERGEFORMAT \\* CHARFORMAT \\h",
       "\\n \\* lower \\* Upper \\h",
       "\\n \\* \\h",
     ]) {

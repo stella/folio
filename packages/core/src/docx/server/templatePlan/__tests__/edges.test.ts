@@ -149,7 +149,8 @@ describe("applyTemplatePlan edge content", () => {
             start: 4,
             end: 21,
             targetBlockId: "p0",
-            instruction: "\\h",
+            // An update keeps the result's look, as it did in the source.
+            instruction: "\\h \\* MERGEFORMAT",
             expectedText: "Annex 1 - Summary",
           },
         ],
@@ -171,7 +172,7 @@ describe("applyTemplatePlan edge content", () => {
     });
     expect(report.references.predictionMismatch).toBe(0);
     expect(document).toContain(
-      `<w:instrText xml:space="preserve"> REF ${result?.bookmark ?? ""} \\h </w:instrText>`,
+      `<w:instrText xml:space="preserve"> REF ${result?.bookmark ?? ""} \\h \\* MERGEFORMAT </w:instrText>`,
     );
     expect(document).toContain(" AUTONUMLGL  \\* Arabic \\e ");
   });

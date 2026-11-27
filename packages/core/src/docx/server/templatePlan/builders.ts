@@ -171,6 +171,12 @@ const REF_SWITCH = /^\\[fhnprtw]$/u;
 /** The general format switch and the letter cases it may name. */
 const FORMAT_SWITCH = "\\*";
 const CASE_FORMAT = /^(?:lower|upper|firstcap)$/iu;
+/**
+ * What else the general format switch may name: that an update keeps the
+ * look of the previous result (ECMA-376 Part 1, 17.16.4.3), so a field
+ * set in a face of its own stays so once its result is recalculated.
+ */
+const LOOK_FORMAT = /^(?:mergeformat|charformat)$/iu;
 
 /** The letter case a REF instruction asks for its result in, or null. */
 export const refCaseFormat = (
@@ -209,19 +215,27 @@ export const applyRefCaseFormat = (
 /**
  * The field code of a REF to `bookmark` with `switches` (`\n \t \h`,
  * `\n \* lower \h`). Null when the switches hold anything but
- * single-letter switches and one letter-case format.
+ * single-letter switches, one letter-case format and one format that
+ * keeps the result's look.
  */
 export const refFieldInstruction = (
   bookmark: string,
   switches: string,
 ): string | null => {
   const parts = switches.trim().split(/\s+/u).filter(Boolean);
-  let formats = 0;
+  let cases = 0;
+  let looks = 0;
   for (const [index, part] of parts.entries()) {
     const afterFormat = parts[index - 1] === FORMAT_SWITCH;
     if (part === FORMAT_SWITCH) {
-      formats += 1;
-      if (formats > 1 || !CASE_FORMAT.test(parts[index + 1] ?? "")) {
+      const format = parts[index + 1] ?? "";
+      cases += CASE_FORMAT.test(format) ? 1 : 0;
+      looks += LOOK_FORMAT.test(format) ? 1 : 0;
+      if (
+        cases > 1 ||
+        looks > 1 ||
+        !(CASE_FORMAT.test(format) || LOOK_FORMAT.test(format))
+      ) {
         return null;
       }
     } else if (!afterFormat && !REF_SWITCH.test(part)) {
