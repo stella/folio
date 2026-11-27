@@ -6636,7 +6636,8 @@ const resolveList = ({
       // goes if it is accepted, so the seam waits on it too.
       const holdsPiece = (index: number, edge: "start" | "end"): boolean => {
         const node = out[index]?.node;
-        const other = out[edge === "end" ? rightStart : leftEnd]?.node;
+        const otherAt = edge === "end" ? rightStart : leftEnd;
+        const other = out[otherAt]?.node;
         if (
           node === undefined ||
           other === undefined ||
@@ -6646,13 +6647,16 @@ const resolveList = ({
         )
           return false;
         const piece = edge === "end" ? node.content.at(-1) : node.content.at(0);
-        // Facing it, the other piece can be held in a pending removal too.
+        // Facing it, the other piece can be held in a pending removal too,
+        // or be a pending insertion's piece, which presents its content.
         let facing: InlineNode | undefined = other;
         if (
           (other.type === "deletion" || other.type === "moveFrom") &&
           !resolution.ids.has(other.info.id)
         )
           facing = edge === "end" ? other.content.at(0) : other.content.at(-1);
+        else if (madeBefore(otherAt))
+          facing = recordOf(otherAt, edge === "end" ? "start" : "end");
         return (
           piece !== undefined &&
           facing !== undefined &&

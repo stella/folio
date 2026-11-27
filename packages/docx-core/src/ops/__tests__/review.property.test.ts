@@ -1990,6 +1990,92 @@ describe("tracked operations and their resolution", () => {
     }
   });
 
+  test("L3: a pending deletion holding a removed insertion's far piece waits on its seam beside a pending piece", () => {
+    // A link piece inserted (1), a range start inserted after it (2), a tab
+    // put beside that (3) and a pending deletion of a link piece (4) beyond.
+    // Rejecting 2 defers its seam on the tab and the deletion holding the
+    // far piece, whether 1 is still pending or accepted first: the pending
+    // piece presents its link to the deletion's piece as the accepted one
+    // does.
+    const text = (value: string): Run => ({
+      type: "run",
+      content: [{ type: "text", text: value }],
+    });
+    const link = (content: ParagraphContent[]): Hyperlink => ({
+      type: "hyperlink",
+      rId: "rId9",
+      href: "https://example.org",
+      children: content,
+    });
+    const info = (id: number, made: number) => ({
+      id,
+      author: "A",
+      date: `2026-03-04T05:00:0${String(made)}Z`,
+    });
+    const none = { before: 0, after: 0, remove: 0 };
+    const tracked: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              paraId: "00000001",
+              content: [
+                {
+                  type: "insertion",
+                  info: info(1, 1),
+                  content: [link([text("a")])],
+                  resolutionJoins: none,
+                },
+                {
+                  type: "insertion",
+                  info: info(2, 2),
+                  content: [{ type: "bookmarkStart", id: 1, name: "_Ref1" }],
+                  resolutionJoins: { before: 0, after: 0, remove: 3 },
+                },
+                {
+                  type: "insertion",
+                  info: info(3, 3),
+                  content: [{ type: "run", content: [{ type: "tab" }] }],
+                  resolutionJoins: none,
+                },
+                {
+                  type: "deletion",
+                  info: info(4, 1),
+                  content: [link([text("b")])],
+                  resolutionJoins: { before: 3, after: 0, remove: 3 },
+                },
+                link([text("c")]),
+              ],
+            },
+          ],
+        },
+      },
+    };
+    const deferred = (document: Document) =>
+      document.package.document.content.flatMap((block) =>
+        block.type === "paragraph"
+          ? block.content.flatMap((node) =>
+              (node.type === "insertion" || node.type === "deletion") &&
+              node.info.id !== 1
+                ? [[node.info.id, node.resolutionJoins?.deferredRemove]]
+                : [],
+            )
+          : [],
+      );
+    const rejectedFirst = resolved(tracked, [2], REVISION_DECISIONS.REJECT);
+    const pieceFirst = resolved(
+      resolved(tracked, [1], REVISION_DECISIONS.ACCEPT),
+      [2],
+      REVISION_DECISIONS.REJECT,
+    );
+    expect(deferred(rejectedFirst)).toStrictEqual([
+      [3, [{ depth: 3, blockers: [3, 4] }]],
+      [4, [{ depth: 3, blockers: [3, 4], edge: "start" }]],
+    ]);
+    expect(deferred(rejectedFirst)).toStrictEqual(deferred(pieceFirst));
+  });
+
   test("L1: accepting a tracked operation's revisions gives the direct operation's result", () => {
     const law = (tally: Tally) =>
       fc.property(
