@@ -71,8 +71,9 @@ const GATE =
 const PR_SCOPED_JOBS = new Set(["browser-discovery"]);
 // Jobs that read another job's results wait for it as well as the plan.
 const JOB_PREDECESSORS: Readonly<Record<string, readonly string[]>> = {
-  // Runs the consumer scenarios again under the oldest supported Node.
-  "consumer-scenarios-minimum": [PLAN_JOB, "consumer-scenarios"],
+  // Both scenario jobs install the tarballs one job packs.
+  "consumer-scenarios": [PLAN_JOB, "consumer-tarballs"],
+  "consumer-scenarios-minimum": [PLAN_JOB, "consumer-tarballs"],
   // Replays the generated failures the test shards reported.
   "exploration-base-replay": [PLAN_JOB, "tests"],
 };
@@ -1292,6 +1293,7 @@ describe("CI plan", () => {
   test("packed consumer scenarios follow the pull-request package plan", () => {
     const condition =
       "needs.ci-plan.outputs.packaged_consumer_required == 'true'";
+    expect(jobs["consumer-tarballs"]?.if).toBe(condition);
     expect(jobs["consumer-scenarios"]?.if).toBe(condition);
     expect(jobs["consumer-scenarios-minimum"]?.if).toBe(condition);
 
@@ -1323,6 +1325,9 @@ describe("CI plan", () => {
     if (!isRecord(evaluation) || !isRecord(evaluation["env"]))
       throw new TypeError("Missing CI result environment");
     const scopes = JSON.parse(String(evaluation["env"]["JOB_SCOPES"]));
+    expect(scopes["consumer-tarballs"]).toEqual({
+      area: "packaged_consumer_required",
+    });
     expect(scopes["consumer-scenarios"]).toEqual({
       area: "packaged_consumer_required",
     });
