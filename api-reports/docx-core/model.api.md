@@ -961,6 +961,9 @@ export const MAX_RETAINED_PARSE_WARNINGS_PER_CODE = 20;
 export const MAX_REVISION_ID = 2147483647;
 
 // @public
+export const MAX_TABLE_GEOMETRY_HISTORY_LENGTH: number;
+
+// @public
 export const MAX_TABLE_GRID_COLUMNS = 4096;
 
 // @public

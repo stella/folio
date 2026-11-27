@@ -6,6 +6,7 @@ import {
   type Document,
   finalizeParagraphFormatting,
   MAX_REVISION_ID,
+  MAX_TABLE_GEOMETRY_HISTORY_LENGTH,
   type Paragraph,
   type ParagraphContent,
   type Table,
@@ -1845,22 +1846,29 @@ const columnEdit = ({
     gridStamp !== undefined &&
     propertyStamp !== undefined
   ) {
+    const geometryChange = recordsGeometry
+      ? {
+          type: "deleteColumn" as const,
+          revisionIds: stamps.value
+            .filter(({ id }) => id !== gridStamp.id)
+            .map(({ id }) => id),
+        }
+      : undefined;
+    if (
+      geometryChange !== undefined &&
+      JSON.stringify(geometryChange).length > MAX_TABLE_GEOMETRY_HISTORY_LENGTH
+    )
+      return mismatch(
+        op,
+        "The combined column review exceeds the saved history limit.",
+      );
     next.formatting = {
       ...table.formatting,
       // A grid the file states no widths for is recorded as its columns,
       // each without a measure, as the file states them.
       gridChange: {
         id: gridStamp.id,
-        ...(recordsGeometry
-          ? {
-              geometryChange: {
-                type: "deleteColumn",
-                revisionIds: stamps.value
-                  .filter(({ id }) => id !== gridStamp.id)
-                  .map(({ id }) => id),
-              },
-            }
-          : {}),
+        ...(geometryChange === undefined ? {} : { geometryChange }),
         columnWidths:
           table.columnWidths === undefined
             ? Array.from({ length: grid.width }, () => undefined)
