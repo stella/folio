@@ -1,7 +1,7 @@
 import {
   CANONICAL_DOCX_PARSE_OPTIONS,
   holdsUniqueSeedIds,
-  openCanonicalDocx,
+  openOwnedCanonicalDocx,
   prepareCanonicalDocumentInput,
 } from "../docx/canonicalSessionInput";
 /**
@@ -171,7 +171,8 @@ export class DocumentLoaderManager {
           ...CANONICAL_DOCX_PARSE_OPTIONS,
           password: options.password,
         };
-        const opened = await openCanonicalDocx(buffer, parseOptions);
+        // The loader keeps the document to itself until the editor seeds it.
+        const opened = await openOwnedCanonicalDocx(buffer, parseOptions);
         if (opened.isErr()) throw opened.error;
         doc = opened.value.document;
       } finally {

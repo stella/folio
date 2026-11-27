@@ -90,7 +90,7 @@ import {
 } from "@stll/folio-core/display-list/editor/pageRenderer";
 import {
   holdsUniqueParagraphIds,
-  openCanonicalDocx,
+  openOwnedCanonicalDocx,
   prepareCanonicalDocumentInput,
 } from "@stll/folio-core/docx/canonicalSessionInput";
 import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
@@ -1315,7 +1315,8 @@ export function useDocxEditor(
     parseError.value = null;
     isReady.value = false;
     try {
-      const opened = await openCanonicalDocx(buffer, {
+      // The editor keeps the document to itself until it seeds a session.
+      const opened = await openOwnedCanonicalDocx(buffer, {
         password: toValue(password),
       });
       if (opened.isErr()) throw opened.error;

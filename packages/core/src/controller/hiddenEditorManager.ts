@@ -57,12 +57,14 @@ import {
   CanonicalSessionError,
   type CanonicalSessionMode,
   createCanonicalSession,
+  createCanonicalSessionTaking,
   publishCanonicalProjection,
 } from "../canonical/canonicalSession";
 import {
   derivedFieldOps,
   fieldInsertionParagraph,
 } from "../canonical/derivedFields";
+import { takeOwnedDocument } from "../docx/canonicalSessionInput";
 import { parseDocx } from "../docx/parser";
 import { clipboardTransformPlugin } from "../internal/clipboardTransformPlugin";
 import {
@@ -561,7 +563,11 @@ export const createHiddenEditorManager = (
       refuse(reason, { condition: CANONICAL_CONDITION.notReady });
       return false;
     }
-    const result = createCanonicalSession(document, deps.getStyles());
+    // A document the editor opened for itself goes to its first session
+    // without a copy; any other, and a second session, take a copy.
+    const result = takeOwnedDocument(document)
+      ? createCanonicalSessionTaking(document, deps.getStyles())
+      : createCanonicalSession(document, deps.getStyles());
     if (result.isErr()) {
       editorSession = {
         type: "refused",

@@ -83,11 +83,14 @@ import {
 } from "../docx/commentAnchorIndex";
 import {
   copyHeaderFooterBaselineHandles,
+  copyHeaderFooterPackageBaselines,
   getDocumentSourceBaseline,
 } from "../docx/headerFooterVerbatim";
 import { ListNormalizationCache } from "../docx/listModelNormalization";
+import { copyNormalizedSourceParts } from "../docx/normalizedSourceParts";
 import {
   cloneDocumentWithParagraphPropertySources,
+  copyDocumentParagraphPropertySourceContract,
   getProseParagraphPropertySourceToken,
   markParagraphPropertySourceTransfers,
 } from "../docx/paragraphPropertySource";
@@ -138,7 +141,11 @@ import type {
   Paragraph,
   StyleDefinitions,
 } from "../types/document";
-import type { DeepReadonly, ReadonlyDocument } from "../types/documentModel";
+import {
+  type DeepReadonly,
+  readModel,
+  type ReadonlyDocument,
+} from "../types/documentModel";
 import { canonicalJson } from "../utils/canonicalJson";
 import { itemBefore } from "../utils/listItems";
 import { CanonicalIdLease } from "./canonicalIdLease";
@@ -4696,9 +4703,49 @@ export { project as projectCanonicalStory };
 export const createCanonicalSession = (
   document: ReadonlyDocument,
   styles?: DeepReadonly<StyleDefinitions> | null,
-  { idLease, newOpId }: CanonicalSessionOptions = {},
+  options: CanonicalSessionOptions = {},
+): Result<CanonicalSession, CanonicalSessionError> =>
+  seedCanonicalSession(
+    cloneDocumentWithParagraphPropertySources(document),
+    styles,
+    options,
+  );
+
+/**
+ * {@link createCanonicalSession} on a document the caller hands over: no one
+ * else writes its model again, so the session reads the model without a copy,
+ * and never writes a document it reads. The package's bytes are the one part
+ * a host may still hold and hand on, or transfer away, so the session keeps a
+ * copy of them, with what the package registries keep for them.
+ */
+export const createCanonicalSessionTaking = (
+  document: ReadonlyDocument,
+  styles?: DeepReadonly<StyleDefinitions> | null,
+  options: CanonicalSessionOptions = {},
+): Result<CanonicalSession, CanonicalSessionError> =>
+  seedCanonicalSession(
+    withOwnPackageBytes(readModel(document)),
+    styles,
+    options,
+  );
+
+const withOwnPackageBytes = (document: Document): Document => {
+  if (document.originalBuffer === undefined) return document;
+  const owned: Document = {
+    ...document,
+    originalBuffer: document.originalBuffer.slice(0),
+  };
+  copyDocumentParagraphPropertySourceContract(owned, document);
+  copyHeaderFooterPackageBaselines(owned, document);
+  copyNormalizedSourceParts(owned, document);
+  return owned;
+};
+
+const seedCanonicalSession = (
+  owned: Document,
+  styles: DeepReadonly<StyleDefinitions> | null | undefined,
+  { idLease, newOpId }: CanonicalSessionOptions,
 ): Result<CanonicalSession, CanonicalSessionError> => {
-  const owned = cloneDocumentWithParagraphPropertySources(document);
   const source = normalizeCanonicalSource(owned);
   const unsupported = unsupportedSeedReason(source.document);
   // A document the reader wrote never holds one: it keeps loose field markup
