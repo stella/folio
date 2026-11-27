@@ -107,6 +107,7 @@ import {
   canReplayHeaderFooterVerbatim,
   captureDocumentSourceBaseline,
   captureHeaderFooterPackageBaselines,
+  type DocumentSourceBody,
   getHeaderFooterVerbatimXml,
   refreshHeaderFooterVerbatimFingerprint,
 } from "./headerFooterVerbatim";
@@ -476,6 +477,12 @@ export async function parseDocxWithPreviewBudget(
   input: DocxInput,
   options: ParseOptions,
   previewBudget: PreviewBudgetOverrides,
+  /**
+   * How the save keeps the parsed body to compare against: a copy, as any
+   * caller that may write the document in place needs, or the body itself,
+   * for a caller that never writes it (see {@link DocumentSourceBody}).
+   */
+  sourceBody: DocumentSourceBody = "copy",
 ): Promise<Document> {
   // Normalize any supported input type to ArrayBuffer
   const buffer =
@@ -1167,7 +1174,11 @@ export async function parseDocxWithPreviewBudget(
 
     onProgress("Complete", 100);
     captureHeaderFooterPackageBaselines(document);
-    captureDocumentSourceBaseline(document, raw.documentXml ?? undefined);
+    captureDocumentSourceBaseline(
+      document,
+      raw.documentXml ?? undefined,
+      sourceBody,
+    );
     return document;
   } catch (error) {
     if (

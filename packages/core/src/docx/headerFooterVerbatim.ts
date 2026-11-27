@@ -301,10 +301,19 @@ const freezeSourceStyles = (
   Object.freeze(value);
 };
 
+/**
+ * How a parse keeps the body a save compares against: a `"copy"` of it, or,
+ * for a document no one writes in place, the parsed body `"itself"`. Either
+ * is fingerprinted on the first save, and a body changed in place after that
+ * reads as a mismatch, which saves the package in full.
+ */
+export type DocumentSourceBody = "copy" | "itself";
+
 /** Capture parsed resources on the same trusted handle, including an absent main part. */
 export const captureDocumentSourceBaseline = (
   document: Document,
   xml: string | undefined,
+  sourceBody: DocumentSourceBody = "copy",
 ): void => {
   const handle = {};
   const resourceStyles = structuredClone(document.package.styles);
@@ -334,7 +343,10 @@ export const captureDocumentSourceBaseline = (
       kind: "mainPart",
       fingerprint: { type: "pending" },
       xml,
-      body: structuredClone(document.package.document),
+      body:
+        sourceBody === "itself"
+          ? document.package.document
+          : structuredClone(document.package.document),
       resourceStyles,
       styleIds,
       numberingIds,
