@@ -589,6 +589,7 @@ const operationFields = {
     patch: paragraphPatch,
     expected: optional(paragraphPatch),
     whenEmpty,
+    newIds,
     revision,
   } satisfies OperationFields<"setParagraphProps">,
   splitBlock: {

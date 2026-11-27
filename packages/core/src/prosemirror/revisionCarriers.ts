@@ -357,6 +357,17 @@ export const getFolioNodeRevisionCarriers = (
   const carriers: FolioNodeRevisionCarrier[] = [];
 
   if (node.type.name === "paragraph") {
+    const markProperties: unknown = node.attrs["_markPropertyChange"];
+    if (markProperties !== undefined) {
+      appendPropertyCarriers({
+        carriers,
+        changes: [markProperties],
+        type: "paragraphPropertiesChanged",
+        node,
+        from: nodePos + node.nodeSize - 1,
+        to: nodePos + node.nodeSize,
+      });
+    }
     const paragraphMark = node.attrs["pPrMark"];
     const paragraphMarkKind =
       isObjectRecord(paragraphMark) &&

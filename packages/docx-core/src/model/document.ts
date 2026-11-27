@@ -365,6 +365,8 @@ export type {
   BlockCustomXml,
   ParagraphContent,
   Paragraph,
+  ParagraphMarkFormatting,
+  ParagraphMarkPropertyChange,
   ParagraphMarkChange,
   ParagraphMarkChangeKind,
   ParagraphMarkDeletion,

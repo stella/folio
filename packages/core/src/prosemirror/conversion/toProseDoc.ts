@@ -2446,6 +2446,13 @@ function paragraphFormattingToAttrs(
                 }),
           };
   }
+  if (paragraph.markPropertyChange !== undefined) {
+    const change = paragraph.markPropertyChange;
+    attrs._markPropertyChange = {
+      ...change,
+      info: suggestedRevisionInfo(change.info),
+    };
+  }
 
   // Helper: assign a value only when defined
   const set = <K extends keyof ParagraphAttrs>(

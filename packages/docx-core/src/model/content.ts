@@ -2561,6 +2561,16 @@ export type ParagraphMarkDeletion = WritableRecord & {
   info: TrackedChangeInfo;
 };
 
+/** Run properties belonging to the paragraph mark. */
+export type ParagraphMarkFormatting = WritableRecord &
+  Pick<ParagraphFormatting, "runProperties" | "runInWithNext">;
+
+/** Previous run properties of a paragraph mark (`w:pPr/w:rPr/w:rPrChange`). */
+export type ParagraphMarkPropertyChange = WritableRecord & {
+  info: PropertyChangeInfo;
+  previousFormatting?: ParagraphMarkFormatting;
+};
+
 export const REVIEW_CARRIERS = {
   TERMINAL_TABLE: "terminal-table",
 } as const;
@@ -2580,6 +2590,8 @@ export type Paragraph = WritableRecord & {
   formatting?: ParagraphFormatting;
   /** Paragraph-level tracked property changes (w:pPrChange) */
   propertyChanges?: ParagraphPropertyChange[];
+  /** Tracked run properties of this paragraph's mark (w:pPr/w:rPr/w:rPrChange). */
+  markPropertyChange?: ParagraphMarkPropertyChange;
   /** Paragraph-mark insertion / deletion (w:pPr / w:rPr / w:ins | w:del) */
   pPrMark?: ParagraphMarkChange;
   /** Folio-private review-resolution carrier; ignored by standard OOXML consumers. */

@@ -1139,6 +1139,7 @@ export type Paragraph = WritableRecord & {
     textId?: string;
     formatting?: ParagraphFormatting;
     propertyChanges?: ParagraphPropertyChange[];
+    markPropertyChange?: ParagraphMarkPropertyChange;
     pPrMark?: ParagraphMarkChange;
     reviewCarrier?: ReviewCarrier;
     content: ParagraphContent[];
@@ -1243,6 +1244,15 @@ export type ParagraphMarkChangeKind = (typeof PARAGRAPH_MARK_CHANGE_KINDS)[numbe
 // @public
 export type ParagraphMarkDeletion = WritableRecord & {
     info: TrackedChangeInfo;
+};
+
+// @public
+export type ParagraphMarkFormatting = WritableRecord & Pick<ParagraphFormatting, "runProperties" | "runInWithNext">;
+
+// @public
+export type ParagraphMarkPropertyChange = WritableRecord & {
+    info: PropertyChangeInfo;
+    previousFormatting?: ParagraphMarkFormatting;
 };
 
 // @public

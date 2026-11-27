@@ -16,6 +16,8 @@ import {
   type Paragraph,
   type ParagraphContent,
   type ParagraphFormatting,
+  type ParagraphMarkFormatting,
+  type ParagraphMarkPropertyChange,
   type ParagraphPropertyChange,
   type RunPropertyChange,
   type TrackedChangeInfo,
@@ -115,6 +117,8 @@ export const isRemovedRevisionNode = (node: InlineNode): boolean =>
 const revisionInfosOf = (paragraph: Paragraph): TrackedChangeInfo[] => {
   const out: TrackedChangeInfo[] = [];
   for (const change of paragraph.propertyChanges ?? []) out.push(change.info);
+  if (paragraph.markPropertyChange !== undefined)
+    out.push(paragraph.markPropertyChange.info);
   if (paragraph.pPrMark !== undefined) out.push(paragraph.pPrMark.info);
   if (paragraph.pPrMark?.deletion !== undefined)
     out.push(paragraph.pPrMark.deletion.info);
@@ -246,6 +250,12 @@ export const namesMarkFormatting = (formatting: object): boolean =>
     ([key, value]) => value !== undefined && MARK_KEYS.has(key),
   );
 
+/** Whether a patch names any paragraph properties outside the mark. */
+export const namesParagraphFormatting = (formatting: object): boolean =>
+  Object.entries(formatting).some(
+    ([key, value]) => value !== undefined && !MARK_KEYS.has(key),
+  );
+
 const pick = (
   formatting: ParagraphFormatting | undefined,
   keep: (key: string) => boolean,
@@ -268,11 +278,24 @@ export const paragraphPropertiesOf = (
 /** The paragraph mark's run properties of a property set; `undefined` when it states none. */
 const markFormattingOf = (
   formatting: ParagraphFormatting | undefined,
-): ParagraphFormatting | undefined => {
+): ParagraphMarkFormatting | undefined => {
   const marks = pick(formatting, (key) => MARK_KEYS.has(key));
   return marks === undefined || Object.keys(marks).length === 0
     ? undefined
     : marks;
+};
+
+/** Snapshot the authored run properties a mark revision replaces. */
+export const paragraphMarkPropertyChange = (
+  info: TrackedChangeInfo,
+  paragraph: Paragraph,
+): ParagraphMarkPropertyChange => {
+  const previousFormatting = markFormattingOf(
+    getParagraphPropertySnapshot(paragraph),
+  );
+  return previousFormatting === undefined
+    ? { info }
+    : { info, previousFormatting };
 };
 
 /** Whether two property sets state the same paragraph properties. */
@@ -370,6 +393,19 @@ export const paragraphPropertyFoldConflict = (
 export const RUN_FOLD_INTO_OTHER_SUGGESTION_MESSAGE =
   "A suggestion cannot take over another pending run property change.";
 
+/** A pending record's attribution once a later edit folds into it: its id stays. */
+export const foldedRecordInfo = <Info extends TrackedChangeInfo>(
+  existing: Info,
+  stamp: RevisionStamp,
+): Info => {
+  const info: Info = { ...existing, ...stampInfo(stamp), id: existing.id };
+  if (stamp.initials === undefined) delete info.initials;
+  if (stamp.suggestionId === undefined) delete info.suggestionId;
+  // A companion date belongs to the previous attribution, not the new stamp.
+  delete info.utcDate;
+  return info;
+};
+
 /** Fold paragraph formatting into one review, retaining its id and original baseline. */
 export const foldedParagraphPropertyChange = ({
   paragraph,
@@ -379,12 +415,7 @@ export const foldedParagraphPropertyChange = ({
   const existing = paragraph.propertyChanges?.at(0);
   if (existing === undefined)
     return paragraphPropertyChange(stampInfo(stamp), paragraph, formatting);
-  const info = { ...existing.info, ...stampInfo(stamp), id: existing.info.id };
-  if (stamp.initials === undefined) delete info.initials;
-  if (stamp.suggestionId === undefined) delete info.suggestionId;
-  // A companion date belongs to the previous attribution, not the new stamp.
-  delete info.utcDate;
-  const change = { ...existing, info };
+  const change = { ...existing, info: foldedRecordInfo(existing.info, stamp) };
   // The properties the paragraph now has, as a reopened file reads them.
   if (formatting === undefined) delete change.currentFormatting;
   else change.currentFormatting = formatting;
@@ -400,6 +431,8 @@ export const reviewFieldsOf = (
   if (formatting !== undefined) fields.formatting = formatting;
   if (paragraph.propertyChanges !== undefined)
     fields.propertyChanges = paragraph.propertyChanges;
+  if (paragraph.markPropertyChange !== undefined)
+    fields.markPropertyChange = paragraph.markPropertyChange;
   if (paragraph.pPrMark !== undefined) fields.pPrMark = paragraph.pPrMark;
   return fields;
 };
@@ -415,11 +448,14 @@ export const withReviewFields = (
   const next: Paragraph = { ...paragraph };
   delete next.formatting;
   delete next.propertyChanges;
+  delete next.markPropertyChange;
   delete next.pPrMark;
   const formatting = finalizeParagraphFormatting(review.formatting);
   if (formatting !== undefined) next.formatting = formatting;
   if (review.propertyChanges !== undefined)
     next.propertyChanges = review.propertyChanges;
+  if (review.markPropertyChange !== undefined)
+    next.markPropertyChange = review.markPropertyChange;
   if (review.pPrMark !== undefined) next.pPrMark = review.pPrMark;
   transferParagraphPropertySnapshot({ source: review, target: next });
   return next;

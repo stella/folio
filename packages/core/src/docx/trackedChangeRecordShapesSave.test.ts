@@ -3,8 +3,9 @@
  * a point comment's reference inside a deleted paragraph's `w:del`, a comment
  * anchor in a `w:hyperlink` or `w:sdt` there, a `w:ins`/`w:del` inside
  * `w:fldSimple`, a deleted or inserted paragraph mark that carries
- * `w:sectPr`, and a `w:sectPrChange` on the body's final `w:sectPr`. Each reopens as the same pending change and resolves
- * as it did before the save.
+ * `w:sectPr`, a `w:sectPrChange` on the body's final `w:sectPr`, and a
+ * `w:rPrChange` on a paragraph mark's `w:pPr/w:rPr`. Each reopens as the same
+ * pending change and resolves as it did before the save.
  */
 import { expect, test } from "bun:test";
 
@@ -20,7 +21,11 @@ import {
 } from "@stll/docx-core/ops";
 import { ZipArchive } from "@stll/docx-core/zip";
 
-import type { Document, Paragraph } from "../types/document";
+import type {
+  Document,
+  Paragraph,
+  ParagraphFormatting,
+} from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { repackWithCanonicalStoryRemovals } from "./canonicalStoryRepack";
 import { parseDocx } from "./parser";
@@ -497,3 +502,52 @@ test("a property change on a field's instruction run resolves after a save", asy
     { bold: false, pending: 0 },
   ]);
 });
+
+const MARK_PATCHES: [string, ParagraphFormatting][] = [
+  ["the mark's run properties", { runProperties: { italic: true } }],
+  [
+    "paragraph and mark properties",
+    { alignment: "center", runProperties: { italic: true } },
+  ],
+];
+
+test.each(MARK_PATCHES)(
+  "a suggested change to %s saves its mark record under w:pPr/w:rPr and resolves after a save",
+  async (_name, patch) => {
+    const document = await open(
+      '<w:p w14:paraId="00000001"><w:pPr><w:rPr><w:b/></w:rPr></w:pPr><w:r><w:t>Title</w:t></w:r></w:p>' +
+        '<w:p w14:paraId="00000002"><w:r><w:t>Body.</w:t></w:r></w:p>',
+    );
+    const suggested = suggest(document, {
+      type: "formatParagraph",
+      at: { story: OP_STORIES.MAIN, blockId: "00000001", offset: 0 },
+      patch,
+    });
+    const zip = await ZipArchive.read(await saved(suggested.document));
+    const xml = (await zip.entry("word/document.xml")?.text()) ?? "";
+    expect(xml).toMatch(
+      /<w:pPr>(?:(?!<\/w:pPr>).)*<w:rPr><w:i\/><w:rPrChange [^>]*><w:rPr><w:b\/><\/w:rPr><\/w:rPrChange><\/w:rPr>/su,
+    );
+    const reread = await assertSurvivesSave(suggested);
+    const mark = (resolved: Document) => {
+      const [paragraph] = resolved.package.document.content;
+      if (paragraph?.type !== "paragraph")
+        throw new TypeError("Expected a paragraph.");
+      return {
+        alignment: paragraph.formatting?.alignment ?? "none",
+        runProperties: paragraph.formatting?.runProperties ?? {},
+        previous: paragraph.markPropertyChange?.previousFormatting ?? {},
+        paragraphChanges: paragraph.propertyChanges?.length ?? 0,
+      };
+    };
+    expect(mark(reread)).toEqual(mark(suggested.document));
+    expect(mark(reread).previous).toEqual({ runProperties: { bold: true } });
+    for (const decision of Object.values(REVISION_DECISIONS))
+      expect(mark(resolve(reread, suggested.revisions, decision))).toEqual(
+        mark(resolve(suggested.document, suggested.revisions, decision)),
+      );
+    expect(
+      mark(resolve(reread, suggested.revisions, REVISION_DECISIONS.REJECT)),
+    ).toEqual(mark(document));
+  },
+);

@@ -39,6 +39,7 @@ import type {
   ParagraphContent,
   ParagraphFormatting,
   ParagraphMarkChange,
+  ParagraphMarkPropertyChange,
   ParagraphPropertyChange,
   RecordField,
   SdtProperties,
@@ -568,9 +569,9 @@ export type SetRunPropsOp = {
  * With `revision`, the paragraph records a tracked property change
  * (`w:pPrChange`) whose previous formatting is its own property set before
  * the patch, or folds into the one it already carries: its original baseline and
- * id stay, and its author/date become the latest stamp. A property change holds
- * paragraph properties only, not the paragraph mark's run properties, so a
- * tracked patch of {@link PARAGRAPH_MARK_FORMATTING_KEYS} is refused.
+ * id stay, and its author/date become the latest stamp. A patch also records
+ * changed mark properties as `w:pPr/w:rPr/w:rPrChange`. When both records
+ * are new, `newIds` supplies a distinct id for the mark properties.
  */
 export type SetParagraphPropsOp = {
   type: typeof DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS;
@@ -579,6 +580,7 @@ export type SetParagraphPropsOp = {
   patch: ParagraphPropsPatch;
   whenEmpty?: EmptyPropertySet;
   expected?: ParagraphPropsPatch;
+  newIds?: NewIds;
   revision?: RevisionStamp;
 };
 
@@ -774,6 +776,7 @@ export type ReplaceBlocksOp = {
 export type ParagraphReviewFields = {
   formatting?: ParagraphFormatting;
   propertyChanges?: ParagraphPropertyChange[];
+  markPropertyChange?: ParagraphMarkPropertyChange;
   pPrMark?: ParagraphMarkChange;
 };
 

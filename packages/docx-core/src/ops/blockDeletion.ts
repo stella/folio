@@ -305,6 +305,8 @@ const takenOverBreakRecords = ({
       if (item.type === "insertion") ids.push(item.info.id);
     for (const change of paragraph.propertyChanges ?? [])
       ids.push(change.info.id);
+    if (paragraph.markPropertyChange !== undefined)
+      ids.push(paragraph.markPropertyChange.info.id);
   }
   return ids;
 };

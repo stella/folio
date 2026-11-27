@@ -272,8 +272,10 @@ const decisionOverEdit = (
         over.sectionBoundary !== undefined ||
         over.expectedRetired === undefined ||
         over.expectedRetired.propertyChanges !== undefined ||
+        over.expectedRetired.markPropertyChange !== undefined ||
         over.expectedSurvivor === undefined ||
         over.expectedSurvivor.propertyChanges !== undefined ||
+        over.expectedSurvivor.markPropertyChange !== undefined ||
         over.expectedSurvivor.pPrMark !== undefined
       )
         return undefined;

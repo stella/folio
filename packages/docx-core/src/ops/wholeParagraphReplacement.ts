@@ -85,6 +85,7 @@ export const planWholeParagraphReplacement = ({
       (paragraph.pPrMark !== undefined &&
         (paragraph.pPrMark.kind !== "ins" ||
           !retires(paragraph.pPrMark.info))) ||
+      paragraph.markPropertyChange !== undefined ||
       (paragraph.propertyChanges?.length ?? 0) > 0
     )
       return Result.ok(null);

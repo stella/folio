@@ -2430,6 +2430,13 @@ function convertPMParagraph(
   if (attrs.pPrMark) {
     paragraph.pPrMark = paragraphMarkFromAttrs(attrs.pPrMark);
   }
+  if (attrs._markPropertyChange !== undefined) {
+    const change = attrs._markPropertyChange;
+    paragraph.markPropertyChange = {
+      ...change,
+      info: withoutReviewProvenance(change.info),
+    };
+  }
 
   // The attribute remainder, by reference: `keepOneRecordCarriedByIdentity`
   // below is what decides whether this paragraph is the one that authored it.

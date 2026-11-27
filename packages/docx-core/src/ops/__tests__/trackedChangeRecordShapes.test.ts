@@ -2,14 +2,20 @@
  * Suggested changes over records a tracked change has to hold: a point
  * comment's reference in a deleted paragraph, a comment anchor a hyperlink or
  * content control holds there, a tracked change inside a simple field's
- * result, a deleted or inserted paragraph mark that ends a section, and a
- * contents list over paragraphs under review.
+ * result, a deleted or inserted paragraph mark that ends a section, a
+ * contents list over paragraphs under review, and a paragraph mark's own run
+ * properties.
  * Each is recorded, accepted and rejected as its direct edit and its source
  * state are, and every step undoes.
  */
 import { describe, expect, test } from "bun:test";
 
-import type { Document, Paragraph } from "../../model/document";
+import type {
+  Document,
+  Paragraph,
+  ParagraphFormatting,
+  TextFormatting,
+} from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { compileEditorIntent, type EditorIntent } from "../editorIntent";
 import { planTrackedReplace } from "../rangeReplacement";
@@ -20,6 +26,7 @@ import {
   OP_STORIES,
   REVISION_DECISIONS,
   type RevisionDecision,
+  type RevisionStamp,
 } from "../types";
 
 const STAMP = { id: 100, author: "Reviewer", date: "2026-02-03T04:05:06Z" };
@@ -923,5 +930,191 @@ describe("a pasted paragraph holding review and control records of its own", () 
       paragraphs: [pasted],
     });
     expect(suggested.revisions).not.toContain(91);
+  });
+});
+
+describe("a paragraph mark's run properties", () => {
+  const mark: Paragraph = {
+    type: "paragraph",
+    paraId: "00000001",
+    formatting: { styleId: "Heading1", runProperties: { bold: true } },
+    content: [run("Title")],
+  };
+  const body: Paragraph = {
+    type: "paragraph",
+    paraId: "00000002",
+    content: [run("Body.")],
+  };
+  const document: Document = {
+    package: { document: { content: [mark, body] } },
+  };
+  const blockAt = (from: Document, index: number): Paragraph => {
+    const block = from.package.document.content.at(index);
+    if (block?.type !== "paragraph")
+      throw new TypeError("Expected a paragraph.");
+    return block;
+  };
+  const formatMark = (patch: ParagraphFormatting): EditorIntent => ({
+    type: "formatParagraph",
+    at: at(0),
+    patch,
+  });
+  const setMark = (
+    runProperties: TextFormatting,
+    revision: RevisionStamp,
+  ): DocumentOp => ({
+    type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
+    story: OP_STORIES.MAIN,
+    blockId: "00000001",
+    patch: { runProperties },
+    revision,
+  });
+
+  test("a suggested change records the mark's previous run properties and resolves as the direct edit", () => {
+    const { direct, suggested } = assertSuggestionLaws(
+      document,
+      formatMark({ runProperties: { italic: true }, runInWithNext: true }),
+    );
+    const changed = blockAt(suggested.document, 0);
+    expect(changed.propertyChanges).toBeUndefined();
+    expect(changed.markPropertyChange).toEqual({
+      info: expect.objectContaining({ author: STAMP.author }),
+      previousFormatting: { runProperties: { bold: true } },
+    });
+    expect(blockAt(direct.document, 0).formatting).toStrictEqual({
+      styleId: "Heading1",
+      runProperties: { italic: true },
+      runInWithNext: true,
+    });
+  });
+
+  test("a mixed change records paragraph and mark properties apart, each rejected on its own", () => {
+    const { suggested } = assertSuggestionLaws(
+      document,
+      formatMark({ alignment: "center", runProperties: { italic: true } }),
+    );
+    const changed = blockAt(suggested.document, 0);
+    const markId = changed.markPropertyChange?.info.id;
+    const paragraphId = changed.propertyChanges?.at(0)?.info.id;
+    if (markId === undefined || paragraphId === undefined)
+      throw new TypeError("Expected both property records.");
+    expect(markId).not.toBe(paragraphId);
+    expect([...suggested.revisions].toSorted((a, b) => a - b)).toEqual(
+      [markId, paragraphId].toSorted((a, b) => a - b),
+    );
+    const markRejected = resolve(
+      suggested.document,
+      [markId],
+      REVISION_DECISIONS.REJECT,
+    );
+    expect(blockAt(markRejected.document, 0).formatting).toStrictEqual({
+      styleId: "Heading1",
+      alignment: "center",
+      runProperties: { bold: true },
+    });
+    const paragraphRejected = resolve(
+      suggested.document,
+      [paragraphId],
+      REVISION_DECISIONS.REJECT,
+    );
+    expect(blockAt(paragraphRejected.document, 0).formatting).toStrictEqual({
+      styleId: "Heading1",
+      runProperties: { italic: true },
+    });
+  });
+
+  test("a later suggestion folds into the pending change, and returning to the previous properties cancels it", () => {
+    const first = apply(document, [setMark({ italic: true }, STAMP)]);
+    const later = { ...STAMP, id: 200, date: "2026-02-04T00:00:00Z" };
+    const folded = apply(first.document, [
+      setMark({ bold: true, italic: true }, later),
+    ]);
+    expect(blockAt(folded.document, 0).markPropertyChange).toStrictEqual({
+      info: { ...later, id: STAMP.id },
+      previousFormatting: { runProperties: { bold: true } },
+    });
+    expect(apply(folded.document, folded.inverse).document).toStrictEqual(
+      first.document,
+    );
+    const cancelled = apply(folded.document, [setMark({ bold: true }, later)]);
+    expect(cancelled.document).toStrictEqual(document);
+    const other = applyDocumentOp(
+      first.document,
+      setMark({ bold: true, italic: true }, { ...later, suggestionId: "o" }),
+    );
+    expect(other.isErr() && other.error.reason).toBe(
+      DOCUMENT_OP_REFUSAL_REASONS.PENDING_RUN_PROPERTY_CHANGE,
+    );
+  });
+
+  test("a tracked paragraph that takes over the mark records its other run properties", () => {
+    const beforeControl: Document = {
+      package: {
+        document: {
+          content: [
+            mark,
+            {
+              type: "blockSdt",
+              properties: { sdtType: "richText" },
+              content: [body],
+            },
+          ],
+        },
+      },
+    };
+    const inserted: Paragraph = {
+      type: "paragraph",
+      paraId: "00000003",
+      formatting: { styleId: "Heading1", runProperties: { italic: true } },
+      content: [run("New")],
+    };
+    const insertion = {
+      type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+      story: OP_STORIES.MAIN,
+      at: { type: "after", blockId: "00000001" },
+      blocks: [inserted],
+    } satisfies DocumentOp;
+    const { suggested } = assertOpLaws(beforeControl, insertion, {
+      ...insertion,
+      revision: STAMP,
+      newIds: NEW_IDS,
+    });
+    const taker = blockAt(suggested.document, 1);
+    expect(taker.propertyChanges).toBeUndefined();
+    expect(taker.markPropertyChange).toEqual({
+      info: expect.objectContaining({ author: STAMP.author }),
+      previousFormatting: { runProperties: { bold: true } },
+    });
+  });
+
+  test("a pasted paragraph keeps the mark change it was copied with", () => {
+    const copied: Paragraph = {
+      type: "paragraph",
+      paraId: "0000000C",
+      formatting: { runProperties: { italic: true } },
+      markPropertyChange: {
+        info: { id: 92, author: "Earlier", date: "2026-01-01T00:00:00Z" },
+        previousFormatting: { runProperties: { bold: true } },
+      },
+      content: [run("Copied")],
+    };
+    const tail: Paragraph = { type: "paragraph", content: [run("tail")] };
+    const { direct, suggested } = assertSuggestionLaws(document, {
+      type: "replaceFragment",
+      from: at(5),
+      to: at(5),
+      openStart: 0,
+      openEnd: 0,
+      paragraphs: [copied, tail],
+    });
+    for (const pasted of [direct, suggested])
+      expect(
+        pasted.document.package.document.content.some(
+          (block) =>
+            block.type === "paragraph" &&
+            block.markPropertyChange?.previousFormatting?.runProperties
+              ?.bold === true,
+        ),
+      ).toBe(true);
   });
 });

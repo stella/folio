@@ -137,6 +137,8 @@ import {
 } from "./offsets";
 import { findStoryParagraph } from "./paragraphLocator";
 import {
+  getParagraphPropertySnapshot,
+  registerParagraphPropertySnapshot,
   registerStatedParagraphFormatting,
   transferParagraphPropertySnapshot,
 } from "./paragraphPropertySnapshot";
@@ -6955,6 +6957,7 @@ const resolveParagraphReview = (
 ): ParagraphReviewFields | undefined => {
   const review = reviewFieldsOf(paragraph);
   let changed = false;
+  let restoresParagraphProperties = false;
   const changes = paragraph.propertyChanges ?? [];
   const selected = (change: (typeof changes)[number]): boolean =>
     ids.has(change.info.id);
@@ -6967,6 +6970,7 @@ const resolveParagraphReview = (
         remaining = removed.remaining;
       }
       if (removed.kind === "restore") {
+        restoresParagraphProperties = true;
         // A property change records paragraph properties: the mark's run properties stay.
         const restored = withMarkFormatting(
           removed.previous,
@@ -6988,6 +6992,30 @@ const resolveParagraphReview = (
       delete review.propertyChanges;
     }
   }
+  const markProperties = paragraph.markPropertyChange;
+  if (markProperties !== undefined && ids.has(markProperties.info.id)) {
+    changed = true;
+    delete review.markPropertyChange;
+    if (decision === REVISION_DECISIONS.REJECT) {
+      const authored = restoresParagraphProperties
+        ? review.formatting
+        : getParagraphPropertySnapshot(paragraph);
+      const restored = withMarkFormatting(
+        review.formatting,
+        markProperties.previousFormatting,
+      );
+      if (restored === undefined || Object.keys(restored).length === 0)
+        delete review.formatting;
+      else review.formatting = restored;
+      const snapshot = withMarkFormatting(
+        authored,
+        markProperties.previousFormatting,
+      );
+      if (structurallyEqual(snapshot, review.formatting))
+        registerStatedParagraphFormatting(review);
+      else registerParagraphPropertySnapshot({ paragraph: review, snapshot });
+    }
+  }
   if (keepsBreak) {
     changed = true;
     delete review.pPrMark;
@@ -6999,6 +7027,8 @@ const resolveParagraphReview = (
 const reachableIds = (paragraph: Paragraph): Set<number> => {
   const out = new Set<number>();
   for (const change of paragraph.propertyChanges ?? []) out.add(change.info.id);
+  if (paragraph.markPropertyChange !== undefined)
+    out.add(paragraph.markPropertyChange.info.id);
   if (paragraph.pPrMark !== undefined) out.add(paragraph.pPrMark.info.id);
   if (paragraph.pPrMark?.deletion !== undefined)
     out.add(paragraph.pPrMark.deletion.info.id);
@@ -7346,6 +7376,7 @@ const emptyParagraphAfterControl = (
       follower.content.length === 0 &&
       follower.pPrMark === undefined &&
       follower.sectionProperties === undefined &&
+      follower.markPropertyChange === undefined &&
       (follower.propertyChanges?.length ?? 0) === 0
       ? { blocks, index: position + 1, follower }
       : undefined;
@@ -9726,6 +9757,7 @@ export const resolveIndependentTextParagraphs = (
       paragraph.type !== "paragraph" ||
       paragraph.reviewCarrier !== undefined ||
       paragraph.pPrMark !== undefined ||
+      paragraph.markPropertyChange !== undefined ||
       (paragraph.propertyChanges?.length ?? 0) > 0 ||
       (paragraph.sectionProperties?.propertyChanges?.length ?? 0) > 0
     )

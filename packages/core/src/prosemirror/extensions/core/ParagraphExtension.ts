@@ -497,6 +497,7 @@ const paragraphNodeSpec: NodeSpec = {
     _autospacingBase: { default: null },
     _sectionProperties: { default: null },
     _propertyChanges: { default: null },
+    _markPropertyChange: { default: undefined },
     _preservedAttributes: { default: null },
     pPrMark: { default: null },
     _suggestedInsert: { default: null },

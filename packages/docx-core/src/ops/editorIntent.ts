@@ -4112,6 +4112,7 @@ const compileInStory = (
         // The compiler owns these cloned paragraphs. Open edges join the
         // destination mark, keeping their authored inline content.
         delete paragraph.propertyChanges;
+        delete paragraph.markPropertyChange;
         delete paragraph.pPrMark;
         delete paragraph.reviewCarrier;
         delete paragraph.sectionProperties;
@@ -4168,6 +4169,7 @@ const compileInStory = (
         tail !== undefined &&
         (tail.sectionProperties !== undefined ||
           tail.pPrMark !== undefined ||
+          tail.markPropertyChange !== undefined ||
           (tail.propertyChanges?.length ?? 0) > 0)
       ) {
         return Result.err(
@@ -4328,8 +4330,10 @@ const compileInStory = (
       // Closed pasted marks are applied after structural allocation, when
       // their exact destination paragraph and existing review are known.
       for (const [index, paragraph] of paragraphs.entries()) {
+        const copiedMarkChange = paragraph.markPropertyChange;
         if (
           paragraph.pPrMark === undefined &&
+          copiedMarkChange === undefined &&
           (paragraph.propertyChanges?.length ?? 0) === 0 &&
           paragraph.sectionProperties === undefined
         )
@@ -4347,7 +4351,12 @@ const compileInStory = (
         });
         if (current === undefined)
           panic("An allocated clipboard paragraph must remain present.");
-        if (paragraph.pPrMark !== undefined && current.pPrMark !== undefined) {
+        if (
+          (paragraph.pPrMark !== undefined && current.pPrMark !== undefined) ||
+          (copiedMarkChange !== undefined &&
+            current.markPropertyChange !== undefined &&
+            !structurallyEqual(current.markPropertyChange, copiedMarkChange))
+        ) {
           return Result.err(
             new DocumentOpRefusal({
               reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
@@ -4378,9 +4387,15 @@ const compileInStory = (
         const changes = [
           ...(paragraph.propertyChanges ?? current.propertyChanges ?? []),
         ];
-        if (paragraph.pPrMark !== undefined || copiedChange !== undefined) {
+        if (
+          paragraph.pPrMark !== undefined ||
+          copiedChange !== undefined ||
+          copiedMarkChange !== undefined
+        ) {
           const review = reviewFieldsOf(current);
           if (changes.length > 0) review.propertyChanges = changes;
+          if (copiedMarkChange !== undefined)
+            review.markPropertyChange = copiedMarkChange;
           if (paragraph.pPrMark !== undefined)
             review.pPrMark = paragraph.pPrMark;
           ops.push({
@@ -4946,9 +4961,6 @@ const compileInStory = (
             story: at.story,
             blockId: at.blockId,
             patch: { numPr: paragraphNumberingReference({ numId, ilvl }) },
-            ...(mode.type === "suggesting"
-              ? { propertyReview: PROPERTY_REVIEW_POLICIES.APPEND }
-              : {}),
             ...(mode.type === "suggesting" ? { revision: mode.revision } : {}),
           }) as const,
       );
@@ -4981,9 +4993,6 @@ const compileInStory = (
             createParagraphMarkOwnerLookup(document)(intent.at)?.paraId ??
             intent.at.blockId,
           patch: intent.patch,
-          ...(mode.type === "suggesting"
-            ? { propertyReview: PROPERTY_REVIEW_POLICIES.APPEND }
-            : {}),
           ...(mode.type === "suggesting" ? { revision: mode.revision } : {}),
         },
       ];

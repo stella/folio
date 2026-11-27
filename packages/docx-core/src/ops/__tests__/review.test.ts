@@ -13,6 +13,7 @@ import type {
   Document,
   Paragraph,
   ParagraphContent,
+  ParagraphMarkFormatting,
   Table,
   TextFormatting,
 } from "../../model/document";
@@ -23,10 +24,13 @@ import {
 } from "../apply";
 import { isCommentExhausted } from "../comments";
 import { contractViolation, normalizeForOps } from "../contract";
+import { compileEditorIntent, type EditorIntent } from "../editorIntent";
 import * as leavesModule from "../leaves";
 import { planTrackedDeletion, revisionIdDemand } from "../plan";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
+import { parseDocumentBatch } from "../sequencing/envelope";
 import {
+  DOCUMENT_OP_SCHEMA_VERSION,
   DOCUMENT_OP_TYPES,
   type DocumentOp,
   OP_STORIES,
@@ -981,11 +985,116 @@ describe("C8: tracked formatting is recorded, not applied directly", () => {
         type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
         story: OP_STORIES.MAIN,
         blockId: "00000001",
-        patch: { runProperties: { italic: true } },
+        patch: { alignment: "center", runProperties: { italic: true } },
         revision: stamp(1),
       }),
-    ).toBe(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE);
+    ).toBe(DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS);
   });
+
+  test("a mixed paragraph patch uses distinct physical records and the intent trims its id pool", () => {
+    const source = paragraph("00000001", [run("ab")], {
+      formatting: { styleId: "Heading1", runProperties: { bold: true } },
+    });
+    const document = documentOf(source);
+    const intent: EditorIntent = {
+      type: "formatParagraph",
+      at: at("00000001", 0),
+      patch: { alignment: "center", runProperties: { italic: true } },
+    };
+    const compiled = compileEditorIntent(document, {
+      intent,
+      mode: {
+        type: "suggesting",
+        revision: stamp(1),
+        newIds: { revision: [2, 3] },
+      },
+    });
+    if (compiled.isErr()) throw compiled.error;
+    const operation = compiled.value.ops.at(0);
+    if (operation?.type !== DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS)
+      throw new Error("Expected the compiled formatting edit.");
+    expect(operation.newIds?.revision).toEqual([2]);
+    expect(revisionIdDemand(document, operation).unwrapOr(-1)).toBe(1);
+    const wire = parseDocumentBatch(
+      JSON.stringify({
+        schema: DOCUMENT_OP_SCHEMA_VERSION,
+        opId: "mixed-format",
+        actor: "reviewer",
+        baseRev: 0,
+        ops: compiled.value.ops,
+      }),
+    );
+    if (wire.isErr()) throw wire.error;
+    const replay = wire.value.ops.at(0);
+    if (replay === undefined) throw new Error("Expected a journaled edit.");
+    const tracked = applied(document, replay);
+    const direct = applied(document, directly(operation));
+    const marked = blocks(tracked.document).at(0);
+    if (marked?.type !== "paragraph") throw new Error("Expected paragraph.");
+    expect(marked.propertyChanges?.at(0)?.info.id).toBe(1);
+    expect(marked.markPropertyChange).toStrictEqual({
+      info: stamp(2),
+      previousFormatting: { runProperties: { bold: true } },
+    });
+    expect(tracked.revisions).toEqual([1, 2]);
+    expect(
+      resolved(tracked.document, [1, 2], REVISION_DECISIONS.ACCEPT),
+    ).toStrictEqual(direct.document);
+    expect(
+      resolved(tracked.document, [1, 2], REVISION_DECISIONS.REJECT),
+    ).toStrictEqual(document);
+    for (const [first, second] of [
+      [1, 2],
+      [2, 1],
+    ] as const) {
+      const separatelyRejected = resolved(
+        tracked.document,
+        [first],
+        REVISION_DECISIONS.REJECT,
+      );
+      expect(
+        resolved(separatelyRejected, [second], REVISION_DECISIONS.REJECT),
+      ).toStrictEqual(document);
+    }
+  });
+
+  const marks: ParagraphMarkFormatting[] = [
+    {},
+    { runProperties: { bold: true }, runInWithNext: true },
+  ];
+  test.each(marks)(
+    "tracks a paragraph mark's run properties independently of the paragraph properties",
+    (mark) => {
+      const document = documentOf(
+        paragraph("00000001", [run("ab")], {
+          formatting: { styleId: "Heading1", ...mark },
+        }),
+        paragraph("00000002", [run("cd")]),
+      );
+      const operation = {
+        type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
+        story: OP_STORIES.MAIN,
+        blockId: "00000001",
+        patch: { runProperties: { italic: true }, runInWithNext: false },
+      } satisfies DocumentOp;
+      const direct = applied(document, operation);
+      const tracked = applied(document, { ...operation, revision: stamp(1) });
+      const first = blocks(tracked.document).at(0);
+      if (first?.type !== "paragraph") throw new Error("Expected paragraph.");
+      expect(first.markPropertyChange).toStrictEqual({
+        info: stamp(1),
+        ...(Object.keys(mark).length === 0 ? {} : { previousFormatting: mark }),
+      });
+      expect(first.propertyChanges).toBeUndefined();
+      expect(tracked.revisions).toEqual([1]);
+      expect(
+        resolved(tracked.document, [1], REVISION_DECISIONS.ACCEPT),
+      ).toStrictEqual(direct.document);
+      expect(
+        resolved(tracked.document, [1], REVISION_DECISIONS.REJECT),
+      ).toStrictEqual(document);
+    },
+  );
 });
 
 describe("C9: Enter and Delete record paragraph marks", () => {
@@ -1291,7 +1400,7 @@ describe("C6: a tracked split's new paragraph has exactly the direct split's fie
   });
 });
 
-describe("a tracked split's new second half keeps the paragraph mark's run properties", () => {
+describe("a tracked split records the new half's changed paragraph mark formatting", () => {
   const pending = {
     type: "paragraphPropertyChange" as const,
     info: { id: 1, author: "Other" },
@@ -1311,7 +1420,7 @@ describe("a tracked split's new second half keeps the paragraph mark's run prope
     newIds: { revision: [3] },
   });
 
-  test("other mark run properties are refused: rejecting could not give them back", () => {
+  test("a new second half's changed mark resolves independently of an earlier paragraph property change", () => {
     for (const fields of [{}, { propertyChanges: [pending] }]) {
       const document = documentOf(
         source(fields),
@@ -1326,11 +1435,74 @@ describe("a tracked split's new second half keeps the paragraph mark's run prope
           runInWithNext: true,
         },
       ]) {
-        expect(refusalOf(document, splitAtEnd(formatting))).toBe(
-          DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-        );
+        const operation = splitAtEnd(formatting);
+        const direct = applied(document, directly(operation));
+        const tracked = applied(document, operation);
+        const half = blocks(tracked.document).at(1);
+        if (half?.type !== "paragraph")
+          throw new Error("Expected second half.");
+        expect(half.markPropertyChange).toStrictEqual({
+          info: stamp(3),
+          previousFormatting: { runProperties: { bold: true } },
+        });
+        expect(tracked.revisions).toEqual([2, 3]);
+        expect(
+          resolved(tracked.document, [2, 3], REVISION_DECISIONS.ACCEPT),
+        ).toStrictEqual(direct.document);
+        expect(
+          resolved(tracked.document, [2, 3], REVISION_DECISIONS.REJECT),
+        ).toStrictEqual(document);
       }
     }
+  });
+
+  test("a new second half records both previous property sets with distinct ids", () => {
+    const document = documentOf(source({}));
+    const operation = {
+      ...splitAtEnd({ alignment: "center", runProperties: { italic: true } }),
+      newIds: { revision: [3, 4] },
+    };
+    const direct = applied(document, directly(operation));
+    const tracked = applied(document, operation);
+    const half = blocks(tracked.document).at(1);
+    if (half?.type !== "paragraph") throw new Error("Expected second half.");
+    expect(half.propertyChanges?.at(0)?.info.id).toBe(3);
+    expect(half.markPropertyChange?.info.id).toBe(4);
+    expect(tracked.revisions).toEqual([2, 3, 4]);
+    expect(
+      resolved(tracked.document, [2, 3, 4], REVISION_DECISIONS.ACCEPT),
+    ).toStrictEqual(direct.document);
+    expect(
+      resolved(tracked.document, [2, 3, 4], REVISION_DECISIONS.REJECT),
+    ).toStrictEqual(document);
+  });
+
+  test("a new first half's mark owns its authored run properties", () => {
+    const document = documentOf(source({}));
+    const operation = {
+      type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+      at: at("00000001", 1),
+      newBlockId: "00000002",
+      newHalf: "first",
+      newParagraph: {
+        formatting: { alignment: "center", runInWithNext: true },
+      },
+      revision: stamp(2),
+      newIds: { revision: [3] },
+    } satisfies DocumentOp;
+    const direct = applied(document, directly(operation));
+    const tracked = applied(document, operation);
+    const half = blocks(tracked.document).at(0);
+    if (half?.type !== "paragraph") throw new Error("Expected first half.");
+    expect(half.pPrMark?.info.id).toBe(3);
+    expect(half.propertyChanges?.at(0)?.info.id).toBe(2);
+    expect(half.markPropertyChange).toBeUndefined();
+    expect(
+      resolved(tracked.document, [2, 3], REVISION_DECISIONS.ACCEPT),
+    ).toStrictEqual(direct.document);
+    expect(
+      resolved(tracked.document, [2, 3], REVISION_DECISIONS.REJECT),
+    ).toStrictEqual(document);
   });
 
   test("rejecting a split with the same mark run properties gives the paragraph back", () => {

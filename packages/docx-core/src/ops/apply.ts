@@ -203,9 +203,12 @@ import {
 import { type ApplyOps, resolveRevision } from "./resolve";
 import {
   foldedParagraphPropertyChange,
+  foldedRecordInfo,
   foldedRevisionIds,
   isRemovedRevisionNode,
   namesMarkFormatting,
+  namesParagraphFormatting,
+  paragraphMarkPropertyChange,
   paragraphPropertiesOf,
   paragraphPropertyChange,
   paragraphPropertyFoldConflict,
@@ -1737,16 +1740,6 @@ const setParagraphProps = (
     );
   }
   const { revision } = op;
-  // OOXML records this as `w:rPrChange` under `w:pPr/w:rPr`, but the model has
-  // no record for it yet: a mark's run property change is read and written
-  // back as captured markup, which no review operation can create or resolve.
-  if (revision !== undefined && namesMarkFormatting(op.patch)) {
-    return refuse(
-      op,
-      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      "A paragraph property change does not record the paragraph mark's run properties.",
-    );
-  }
   const formatting = finalizeParagraphFormatting(
     patchedSet(paragraph.formatting, op.patch, op.whenEmpty),
   );
@@ -1764,37 +1757,63 @@ const setParagraphProps = (
     ),
   });
   if (revision !== undefined) {
-    const conflict = paragraphPropertyFoldConflict(paragraph, revision);
-    if (conflict !== undefined)
-      return refuse(
-        op,
-        DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_PROPERTY_CHANGE,
-        conflict,
-      );
-    const authored = authoredParagraphFormatting(next);
-    const pending = paragraph.propertyChanges;
-    // Stated, not effective, properties: an explicit value still holds if the
-    // style changes, so it is not the inherited default.
+    const pendingMark = paragraph.markPropertyChange;
     if (
-      pending?.length === 1 &&
-      structurallyEqual(
-        finalizeParagraphFormatting(pending.at(0)?.previousFormatting),
-        authored,
-      )
+      namesMarkFormatting(op.patch) &&
+      !sameMarkFormatting(formatting, currentFormatting)
     ) {
-      // Back to the properties the pending change started from: nothing is
-      // left to review, so the change goes.
-      delete next.propertyChanges;
-    } else {
-      // The change records what the paragraph now states as its current
-      // properties, as a reopened file reads them.
-      next.propertyChanges = [
-        foldedParagraphPropertyChange({
+      if (takesOverOtherSuggestion(pendingMark, revision))
+        return refuse(
+          op,
+          DOCUMENT_OP_REFUSAL_REASONS.PENDING_RUN_PROPERTY_CHANGE,
+          RUN_FOLD_INTO_OTHER_SUGGESTION_MESSAGE,
+        );
+      // A later edit folds into the pending change, keeping its id and
+      // previous properties; returning to those cancels it.
+      if (pendingMark === undefined)
+        next.markPropertyChange = paragraphMarkPropertyChange(
+          stampInfo(revision),
           paragraph,
-          formatting: authored,
-          stamp: revision,
-        }),
-      ];
+        );
+      else if (sameMarkFormatting(formatting, pendingMark.previousFormatting))
+        delete next.markPropertyChange;
+      else
+        next.markPropertyChange = {
+          ...pendingMark,
+          info: foldedRecordInfo(pendingMark.info, revision),
+        };
+    }
+    if (
+      namesParagraphFormatting(op.patch) &&
+      !sameParagraphProperties(formatting, currentFormatting)
+    ) {
+      const conflict = paragraphPropertyFoldConflict(paragraph, revision);
+      if (conflict !== undefined)
+        return refuse(
+          op,
+          DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_PROPERTY_CHANGE,
+          conflict,
+        );
+      const authored = authoredParagraphFormatting(next);
+      const pending = paragraph.propertyChanges;
+      // Returning to the pending change's authored baseline cancels it.
+      if (
+        pending?.length === 1 &&
+        structurallyEqual(
+          finalizeParagraphFormatting(pending.at(0)?.previousFormatting),
+          finalizeParagraphFormatting(paragraphPropertiesOf(authored)),
+        )
+      ) {
+        delete next.propertyChanges;
+      } else {
+        next.propertyChanges = [
+          foldedParagraphPropertyChange({
+            paragraph,
+            formatting: authored,
+            stamp: revision,
+          }),
+        ];
+      }
     }
     return editOne(
       {
@@ -1803,7 +1822,7 @@ const setParagraphProps = (
         story: op.story,
         at: located.value,
         paragraph: next,
-        newIds: undefined,
+        newIds: op.newIds,
       },
       (result) => Result.ok([reviewRestoring(op.story, result, paragraph)]),
     );
@@ -1899,6 +1918,8 @@ const joinedReview = (
   if (formatting !== undefined) review.formatting = formatting;
   if (second.propertyChanges !== undefined)
     review.propertyChanges = second.propertyChanges;
+  if (second.markPropertyChange !== undefined)
+    review.markPropertyChange = second.markPropertyChange;
   if (second.pPrMark !== undefined) review.pPrMark = second.pPrMark;
   return review;
 };
@@ -1942,8 +1963,8 @@ type TrackSplitOptions = {
  * Record a split as tracked: the new mark is an insertion, and the new
  * paragraph records a property change from the source's properties when it
  * states other ones and carries no change already. Returns the refusal when
- * the operation states a mark or property change of its own, or other run
- * properties for the paragraph's own mark: no tracked change records those.
+ * the operation states a mark or property change of its own. The changed
+ * mark run properties are recorded separately from paragraph properties.
  */
 const trackSplit = ({
   op,
@@ -1956,7 +1977,8 @@ const trackSplit = ({
 }: TrackSplitOptions): DocumentOpRefusal | undefined => {
   if (
     op.firstMark !== undefined ||
-    (op.newParagraph?.propertyChanges?.length ?? 0) > 0
+    (op.newParagraph?.propertyChanges?.length ?? 0) > 0 ||
+    op.newParagraph?.markPropertyChange !== undefined
   ) {
     return refusal(
       op,
@@ -1964,15 +1986,21 @@ const trackSplit = ({
       "A tracked split records its own mark and property change.",
     );
   }
-  // A new second half ends with the paragraph's mark, which rejecting the split keeps.
+  // The first half's new mark already owns its formatting. Only changes to
+  // the surviving original mark on a new second half need a previous state.
   if (
     madeSecond &&
     !sameMarkFormatting(made.formatting, paragraph.formatting)
   ) {
-    return refusal(
-      op,
-      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      "A paragraph property change does not record the paragraph mark's run properties.",
+    if (paragraph.markPropertyChange !== undefined)
+      return refusal(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.PENDING_RUN_PROPERTY_CHANGE,
+        "Resolve the paragraph mark's existing run-property change first.",
+      );
+    made.markPropertyChange = paragraphMarkPropertyChange(
+      stampInfo(stamp),
+      paragraph,
     );
   }
   first.pPrMark = {
@@ -2041,7 +2069,8 @@ const splitBlock = (document: Document, op: SplitBlockOp): Applied => {
       : SPLIT_HALVES.FIRST);
   if (
     newHalf === SPLIT_HALVES.SECOND &&
-    (op.newParagraph?.propertyChanges?.length ?? 0) > 0
+    ((op.newParagraph?.propertyChanges?.length ?? 0) > 0 ||
+      op.newParagraph?.markPropertyChange !== undefined)
   ) {
     return refuse(
       op,
@@ -2075,9 +2104,12 @@ const splitBlock = (document: Document, op: SplitBlockOp): Applied => {
     delete first.sectionProperties;
     delete first.pPrMark;
     delete first.propertyChanges;
+    delete first.markPropertyChange;
     second = { ...made, content: cut.after };
     if (paragraph.propertyChanges !== undefined)
       second.propertyChanges = paragraph.propertyChanges;
+    if (paragraph.markPropertyChange !== undefined)
+      second.markPropertyChange = paragraph.markPropertyChange;
     if (paragraph.sectionProperties !== undefined) {
       second.sectionProperties = paragraph.sectionProperties;
     }
@@ -2588,6 +2620,7 @@ const joinBlocks = (
   if (newHalf === SPLIT_HALVES.SECOND) {
     // The second half takes the property changes back with its mark.
     delete retiredFields.propertyChanges;
+    delete retiredFields.markPropertyChange;
   }
   const split: SplitBlockOp = {
     type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
@@ -2613,6 +2646,7 @@ const joinBlocks = (
   const splitReview: ParagraphReviewFields = reviewFieldsOf(joined);
   if (survivorSide === SPLIT_HALVES.FIRST) {
     delete splitReview.propertyChanges;
+    delete splitReview.markPropertyChange;
     delete splitReview.pPrMark;
     if (leading.pPrMark !== undefined) splitReview.pPrMark = leading.pPrMark;
   }

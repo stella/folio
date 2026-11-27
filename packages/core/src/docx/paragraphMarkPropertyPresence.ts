@@ -16,6 +16,7 @@ export const serializeEmptyMarkProperties = (
   const properties = paragraph.formatting?.runProperties;
   const hasCarrier =
     paragraph.pPrMark !== undefined ||
+    paragraph.markPropertyChange !== undefined ||
     paragraph.formatting?.runInWithNext !== undefined;
   if (
     !hasCarrier ||
@@ -32,6 +33,7 @@ export const restoreEmptyMarkProperties = (
 ): void => {
   if (
     (paragraph.pPrMark === undefined &&
+      paragraph.markPropertyChange === undefined &&
       paragraph.formatting?.runInWithNext === undefined) ||
     getAttributeByNamespaceUri(
       element,

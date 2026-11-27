@@ -30,6 +30,7 @@ import type {
   ParagraphAlignment,
   ParagraphFormatting,
   ParagraphMarkChange,
+  ParagraphMarkPropertyChange,
   ParagraphPropertyChange,
   PositionalTab,
   PositionedBookmarkMarker,
@@ -419,6 +420,8 @@ export type ParagraphAttrs = {
    *  `w:pPrChange` history Word relies on for "show previous formatting"
    *  and for reverting an accepted property change. */
   _propertyChanges?: ParagraphPropertyChangeAttrs[];
+  /** Previous run properties of the paragraph mark. */
+  _markPropertyChange?: ParagraphMarkPropertyChange;
 
   /** Paragraph-mark insertion / deletion (`<w:pPr><w:rPr><w:ins/>` /
    *  `<w:del/>`). Word emits this when the paragraph break itself was

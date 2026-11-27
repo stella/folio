@@ -1830,6 +1830,7 @@ const revisionRange = (
     });
     if (
       paragraph.propertyChanges?.some(({ info }) => info.id === revisionId) ||
+      paragraph.markPropertyChange?.info.id === revisionId ||
       paragraph.pPrMark?.info.id === revisionId ||
       paragraph.pPrMark?.deletion?.info.id === revisionId
     ) {

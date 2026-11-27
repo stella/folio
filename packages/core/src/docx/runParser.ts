@@ -227,6 +227,11 @@ const OWNED_BY_A_SIBLING_RECORD = {
     }),
   },
   paragraphMark: {
+    rPrChange: ownedElsewhere({
+      container: "run-properties",
+      child: "rPrChange",
+      reader: "paragraphParser#parseParagraphMarkPropertyChange",
+    }),
     specVanish: ownedElsewhere({
       container: "run-properties",
       child: "specVanish",
