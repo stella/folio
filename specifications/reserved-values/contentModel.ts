@@ -1328,6 +1328,7 @@ export const PARAGRAPH_RESERVED = {
   textId: NO_RESERVED_VALUE,
   formatting: NO_RESERVED_VALUE,
   propertyChanges: NO_RESERVED_VALUE,
+  markPropertyChange: NO_RESERVED_VALUE,
   pPrMark: NO_RESERVED_VALUE,
   reviewCarrier: NO_RESERVED_VALUE,
   content: NO_RESERVED_VALUE,
