@@ -129,6 +129,14 @@ const ANNOTATION_RELATIONSHIP_PARTS: ReadonlySet<string> = new Set([
   "comments",
 ]);
 
+/** A header or footer part, keyed by the main relationship naming it. */
+const HEADER_FOOTER_RELATIONSHIP_PART = /^(?:header|footer):\S+$/u;
+
+/** Whether the model keeps a part's relationships under `key`. */
+const isPartRelationshipsKey = (key: string): boolean =>
+  ANNOTATION_RELATIONSHIP_PARTS.has(key) ||
+  HEADER_FOOTER_RELATIONSHIP_PART.test(key);
+
 /** Whether a map change changes nothing: its presence stays and it carries no entry. */
 const unchangedMap = <Value>(change: PackageResourceMapChange<Value>) =>
   change.expected === change.next && change.entries.length === 0;
@@ -368,12 +376,12 @@ const resourceViolation = ({
     annotationRelationshipChange !== undefined &&
     presentEntries(annotationRelationshipChange).some(
       ([key, list]) =>
-        !ANNOTATION_RELATIONSHIP_PARTS.has(key) ||
+        !isPartRelationshipsKey(key) ||
         duplicates(list.map(({ id }) => id)) ||
         list.some(({ id }) => id.length === 0),
     )
   )
-    return "Note or comment part relationships contain invalid parts or ids.";
+    return "Story part relationships contain invalid parts or ids.";
   for (const [, relationship] of changedRelationships) {
     if (
       !relationship.type.endsWith("/image") ||

@@ -324,8 +324,8 @@ const footprintOf = (op: DocumentOp): OpFootprint => {
           op.copiedParts.expected === op.copiedParts.next
             ? []
             : [write(EXCLUSIVE_PARTS.MEDIA)]),
-          // A note or comment part's relationships, keyed apart from the
-          // main document's relationship ids.
+          // A note, comment, header or footer part's relationships, keyed
+          // apart from the main document's relationship ids.
           ...(op.annotationRelationships?.entries.map(({ key }) =>
             write(EXCLUSIVE_PARTS.RELATIONSHIPS, `${key}.xml.rels`),
           ) ?? []),
@@ -344,6 +344,11 @@ const footprintOf = (op: DocumentOp): OpFootprint => {
           write(EXCLUSIVE_PARTS.SECTIONS),
           write(EXCLUSIVE_PARTS.HEADERS_FOOTERS, op.story.rId),
           write(EXCLUSIVE_PARTS.RELATIONSHIPS, op.story.rId),
+          // A removed part's own relationships go with it.
+          write(
+            EXCLUSIVE_PARTS.RELATIONSHIPS,
+            `${op.story.kind}:${op.story.rId}.xml.rels`,
+          ),
         ],
       );
     case DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS:

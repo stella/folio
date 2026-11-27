@@ -1,7 +1,6 @@
 /** Remaining seams to retire before the canonical session becomes the only authority. */
 export const CANONICAL_GAP = {
   trackedTableStructure: "tracked-table-structure",
-  storyContentProjection: "story-content-projection",
   trackedChangeRecords: "tracked-change-records",
 } as const;
 
@@ -162,12 +161,6 @@ export const CANONICAL_CAPABILITIES: {
     readonly adapters: readonly ["react", "vue"];
     readonly summary: "Suggested table changes refuse markup the tracked table records cannot express: a row insertion or deletion in a table holding captured markup, wrapper stacks or row content controls; a column or cell edit in a table whose rows keep captured markup between their cells; a table inserted or deleted with captured markup, bookmarks, wrapper stacks or property revisions; a column deletion through a cell spanning other columns.";
   };
-  readonly "story-content-projection": {
-    readonly owner: "controller";
-    readonly kind: "refusal";
-    readonly adapters: readonly ["react", "vue"];
-    readonly summary: "A paste of content whose package parts the model does not carry refuses where those parts cannot be read or placed: an opaque drawing, embedded object or kept block markup from another package whose copy did not read its source package's parts (a clipboard from outside the editor) or names a part outside the main document's folder, or that is pasted into a header, footer or note edited on its own.";
-  };
   readonly "tracked-change-records": {
     readonly owner: "document-operations";
     readonly kind: "refusal";
@@ -181,13 +174,6 @@ export const CANONICAL_CAPABILITIES: {
     adapters: ["react", "vue"],
     summary:
       "Suggested table changes refuse markup the tracked table records cannot express: a row insertion or deletion in a table holding captured markup, wrapper stacks or row content controls; a column or cell edit in a table whose rows keep captured markup between their cells; a table inserted or deleted with captured markup, bookmarks, wrapper stacks or property revisions; a column deletion through a cell spanning other columns.",
-  },
-  [CANONICAL_GAP.storyContentProjection]: {
-    owner: "controller",
-    kind: "refusal",
-    adapters: ["react", "vue"],
-    summary:
-      "A paste of content whose package parts the model does not carry refuses where those parts cannot be read or placed: an opaque drawing, embedded object or kept block markup from another package whose copy did not read its source package's parts (a clipboard from outside the editor) or names a part outside the main document's folder, or that is pasted into a header, footer or note edited on its own.",
   },
   [CANONICAL_GAP.trackedChangeRecords]: {
     owner: "document-operations",

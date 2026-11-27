@@ -131,6 +131,8 @@ export const createFolioEditor = (deps: FolioEditorDeps): FolioEditor => {
       deps.getEditorApi()?.applyCanonicalStoryStructure(options) ?? false,
     cutCanonicalStory: (options) =>
       deps.getEditorApi()?.cutCanonicalStory(options) ?? false,
+    pasteCanonicalStory: (options) =>
+      deps.getEditorApi()?.pasteCanonicalStory(options) ?? false,
     noteCanonicalStoryView: (options) => {
       deps.getEditorApi()?.noteCanonicalStoryView(options);
     },

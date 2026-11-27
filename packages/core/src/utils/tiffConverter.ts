@@ -1,12 +1,22 @@
 import { base64ToBytes } from "./textEncoding";
+import {
+  type DecodedTiff,
+  decodeFirstTiffImage,
+  isDecodedTiff,
+  type TiffDecoder,
+  tiffDecoderOf,
+} from "./tiffDecode";
+
 /**
  * TIFF to PNG Converter
  *
  * Browsers don't support TIFF in `<img>` tags, so DOCX-embedded TIFFs are
- * decoded with utif2 and re-encoded as PNG via the Canvas API. Returns
- * null in environments without Canvas (Node.js parsing); callers fall
- * back to the raw TIFF data URL, which won't render in browsers but is
- * fine for headless round-trips.
+ * decoded and re-encoded as PNG via the Canvas API. The decoder runs in a
+ * worker (`tiffDecoder.worker.ts`) fetched the first time a document holds a
+ * TIFF, so no editor bundle carries it; a host that cannot load the worker
+ * (a single-file bundle, a Content Security Policy) hands the decoder over
+ * through {@link configureTiffDecoding}. Returns null in environments without
+ * Canvas (Node.js parsing) and when decoding fails; callers keep the TIFF.
  */
 
 /**
@@ -26,16 +36,114 @@ const MAX_TIFF_PIXELS = 64_000_000;
  */
 export const MAX_PACKAGE_TIFF_PIXELS = 256_000_000;
 
+/**
+ * How long a worker may take to decode one image before the conversion gives
+ * up, so a worker that never answers cannot hold a document's opening.
+ */
+const TIFF_WORKER_TIMEOUT_MS = 30_000;
+
+export type TiffDecodingOptions = {
+  /**
+   * Decode on the calling thread with this decoder instead of in the
+   * packaged worker: the module `await import("utif2")` gives, for hosts
+   * that cannot load the worker (offline, a Content Security Policy without
+   * `worker-src`, a single-file bundle).
+   */
+  readonly decoder?: TiffDecoder | { readonly default: TiffDecoder };
+};
+
+let decodingOptions: TiffDecodingOptions = {};
+
+/** Set how TIFF images are decoded; each call replaces the previous options. */
+export const configureTiffDecoding = (options: TiffDecodingOptions): void => {
+  decodingOptions = options;
+};
+
+/**
+ * What a TIFF paints as when it cannot be decoded: a plain box filling the
+ * image's frame, in place of the browser's broken-image icon. The package
+ * keeps the TIFF itself.
+ */
+export const TIFF_PLACEHOLDER_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" preserveAspectRatio="none"><rect width="100" height="100" fill="#f1f3f4" stroke="#c4c7c5" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>';
+
 export function isTiffMimeType(mimeType: string): boolean {
   const lower = mimeType.toLowerCase();
   return lower === "image/tiff" || lower === "image/tif";
 }
+
+/** Whether this environment can paint a converted TIFF at all. */
+export const canConvertTiff = (): boolean =>
+  typeof document !== "undefined" &&
+  typeof document.createElement === "function";
 
 export type ConvertedTiff = {
   dataUrl: string;
   data: ArrayBuffer;
   /** Pixels decoded, so callers can draw down a package-wide budget. */
   pixels: number;
+};
+
+const decodeInWorker = (
+  tiff: ArrayBuffer,
+  maxPixels: number,
+): Promise<DecodedTiff | null> => {
+  if (typeof Worker === "undefined") {
+    return Promise.resolve(null);
+  }
+  return new Promise((resolve) => {
+    let worker: Worker;
+    try {
+      // Bundlers resolve the worker URL at build time and emit the worker
+      // with its decoder as a chunk of its own.
+      worker = new Worker(new URL("tiffDecoder.worker.js", import.meta.url), {
+        type: "module",
+      });
+    } catch {
+      resolve(null);
+      return;
+    }
+    const settle = (decoded: DecodedTiff | null): void => {
+      clearTimeout(timer);
+      worker.terminate();
+      resolve(decoded);
+    };
+    const timer = setTimeout(() => settle(null), TIFF_WORKER_TIMEOUT_MS);
+    worker.addEventListener("message", (event: MessageEvent<unknown>) => {
+      settle(isDecodedTiff(event.data) ? event.data : null);
+    });
+    worker.addEventListener("error", () => settle(null));
+    worker.addEventListener("messageerror", () => settle(null));
+    // Copied, not transferred: the package keeps its bytes.
+    // eslint-disable-next-line unicorn/require-post-message-target-origin -- Worker.postMessage takes no targetOrigin.
+    worker.postMessage({ tiff, maxPixels });
+  });
+};
+
+const decodeOnThisThread = (
+  supplied: NonNullable<TiffDecodingOptions["decoder"]>,
+  tiff: ArrayBuffer,
+  maxPixels: number,
+): DecodedTiff | null => {
+  const decoder = tiffDecoderOf(supplied);
+  if (decoder === undefined) {
+    return null;
+  }
+  try {
+    return decodeFirstTiffImage(decoder, tiff, maxPixels);
+  } catch {
+    return null;
+  }
+};
+
+const decodeTiff = (
+  tiff: ArrayBuffer,
+  maxPixels: number,
+): Promise<DecodedTiff | null> => {
+  const supplied = decodingOptions.decoder;
+  return supplied === undefined
+    ? decodeInWorker(tiff, maxPixels)
+    : Promise.resolve(decodeOnThisThread(supplied, tiff, maxPixels));
 };
 
 export async function convertTiffToPngDataUrl(
@@ -45,48 +153,19 @@ export async function convertTiffToPngDataUrl(
   // Bail out before any decode if Canvas isn't available — without it we
   // can't produce a PNG anyway, and TIFF decoding + RGBA conversion would
   // allocate hundreds of MB and burn CPU for nothing in headless parses.
-  if (
-    typeof document === "undefined" ||
-    typeof document.createElement !== "function"
-  ) {
+  if (!canConvertTiff()) {
     return null;
   }
 
   try {
-    const UTIF = await import("utif2");
-    const ifds = UTIF.decode(tiffData);
-    const firstImage = ifds[0];
-    if (!firstImage) {
+    const decoded = await decodeTiff(
+      tiffData,
+      Math.min(maxPixels, MAX_TIFF_PIXELS),
+    );
+    if (decoded === null) {
       return null;
     }
-
-    // `UTIF.decode()` returns IFDs where dimensions are stored as raw
-    // tags (`t256` = ImageWidth, `t257` = ImageLength); the `width` /
-    // `height` properties on the IFD are populated only after
-    // `UTIF.decodeImage()`. Read from the tags so we can enforce the
-    // pixel cap BEFORE the eager `toRGBA8` allocation runs.
-    const declaredWidth = readTiffTagNumber(firstImage["t256"]);
-    const declaredHeight = readTiffTagNumber(firstImage["t257"]);
-    if (!declaredWidth || !declaredHeight) {
-      return null;
-    }
-    if (declaredWidth * declaredHeight > Math.min(maxPixels, MAX_TIFF_PIXELS)) {
-      return null;
-    }
-
-    UTIF.decodeImage(tiffData, firstImage);
-    const rgba = UTIF.toRGBA8(firstImage);
-    if (rgba.length === 0) {
-      return null;
-    }
-
-    // Use the post-decodeImage dimensions for the canvas — they may
-    // differ from the IFD tags after orientation/strip handling.
-    const width = firstImage.width;
-    const height = firstImage.height;
-    if (!width || !height) {
-      return null;
-    }
+    const { width, height, rgba } = decoded;
 
     const canvas = document.createElement("canvas");
     canvas.width = width;
@@ -110,28 +189,6 @@ export async function convertTiffToPngDataUrl(
   } catch {
     return null;
   }
-}
-
-/**
- * Read a numeric TIFF tag value. utif2 stores tag values as arrays
- * (typed or plain), so the cap-check helpers only need the first element.
- */
-function readTiffTagNumber(tag: unknown): number | undefined {
-  if (typeof tag === "number") {
-    return tag;
-  }
-  if (
-    Array.isArray(tag) ||
-    tag instanceof Uint8Array ||
-    tag instanceof Uint16Array ||
-    tag instanceof Uint32Array
-  ) {
-    const first = tag[0];
-    if (typeof first === "number") {
-      return first;
-    }
-  }
-  return undefined;
 }
 
 function dataUrlToArrayBuffer(dataUrl: string): ArrayBuffer | null {

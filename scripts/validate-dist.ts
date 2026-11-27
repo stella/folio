@@ -402,6 +402,7 @@ const runtimeExpect: Record<string, Record<string, string[]>> = {
       "subsetTrueType",
       "BIDI_DIRECTION",
     ],
+    "@stll/folio-core/tiff-decoding": ["configureTiffDecoding"],
     "@stll/folio-core/hyphenation": [
       "configureHyphenationAssets",
       "preloadHyphenationDictionaries",

@@ -3,6 +3,7 @@ import { panic, Result } from "better-result";
 
 import {
   type BlockContent,
+  type BlockCustomXml,
   type Document,
   finalizeParagraphFormatting,
   MAX_REVISION_ID,
@@ -71,11 +72,13 @@ import {
   markEmptyTableMove,
   markNestedTableMove,
   markTableMove,
+  movableCustomXmlBlock,
   moveRangeAllocator,
   type NestedTableMoveSource,
   nestedTableMoveSource,
   type TableMoveSource,
   tableMoveSource,
+  tablePictureIdAllocator,
 } from "./tableCellMove";
 import {
   reachesPastRemovedCell,
@@ -2340,34 +2343,48 @@ type MergeOptions = {
   grid: TableGrid;
 };
 
-type MergeMoveSource =
+type MergeMoveSource = { wrappers: readonly BlockCustomXml[] } & (
   | { type: "paragraph"; source: TableMoveSource }
-  | { type: "table"; source: NestedTableMoveSource };
+  | { type: "table"; source: NestedTableMoveSource }
+);
 
 const mergeMoveSources = (
   selection: readonly GridCell[][],
 ): MergeMoveSource[] | undefined => {
   const moves: MergeMoveSource[] = [];
-  for (const { cell } of selection.flat().slice(1)) {
-    if (isEmptyCell(cell)) continue;
-    for (const block of cell.content) {
-      switch (block.type) {
-        case "paragraph": {
-          const source = tableMoveSource(block);
-          if (source === undefined) return undefined;
-          moves.push({ type: "paragraph", source });
-          break;
-        }
-        case "table": {
-          const source = nestedTableMoveSource(block);
-          if (source === undefined) return undefined;
-          moves.push({ type: "table", source });
-          break;
-        }
-        default:
-          return undefined;
+  const collect = (
+    block: BlockContent,
+    wrappers: readonly BlockCustomXml[],
+  ): boolean => {
+    switch (block.type) {
+      case "paragraph": {
+        const source = tableMoveSource(block);
+        if (source === undefined) return false;
+        moves.push({ type: "paragraph", source, wrappers });
+        return true;
       }
+      case "table": {
+        const source = nestedTableMoveSource(block);
+        if (source === undefined) return false;
+        moves.push({ type: "table", source, wrappers });
+        return true;
+      }
+      case "blockCustomXml": {
+        if (block.content.length === 0 || !movableCustomXmlBlock(block))
+          return false;
+        const inside = [...wrappers, block];
+        return block.content.every((child) => collect(child, inside));
+      }
+      default:
+        return false;
     }
+  };
+  for (const { cell } of selection.flat().slice(1)) {
+    if (
+      !isEmptyCell(cell) &&
+      !cell.content.every((block) => collect(block, []))
+    )
+      return undefined;
   }
   return moves;
 };
@@ -2503,11 +2520,33 @@ const suggestMerge = ({
   >();
   const nestedMoves: TableGeometryNestedMove[] = [];
   const destinationBlocks: BlockContent[] = [];
+  const wrappers = new Map<BlockCustomXml, BlockCustomXml>();
+  const appendDestination = (
+    scope: readonly BlockCustomXml[],
+    block: BlockContent,
+  ) => {
+    let target = destinationBlocks;
+    for (const source of scope) {
+      let wrapper = wrappers.get(source);
+      if (wrapper === undefined) {
+        wrapper = { ...source, content: [] };
+        wrappers.set(source, wrapper);
+        target.push(wrapper);
+      }
+      target = wrapper.content;
+    }
+    target.push(block);
+  };
   const takeMoveRange = moves.some(
     (move) =>
       move.type === "paragraph" && move.source.paragraph.content.length !== 0,
   )
     ? moveRangeAllocator(document.package)
+    : undefined;
+  const takePictureId = moves.some(
+    (move) => move.type === "paragraph" && move.source.pictures.size > 0,
+  )
+    ? tablePictureIdAllocator(document.package)
     : undefined;
   let nextBlockId = continuationCount;
   let nextStamp = 0;
@@ -2530,7 +2569,7 @@ const suggestMerge = ({
       nextBlockId = endBlockId;
       nextStamp = endStamp;
       nestedMoves.push(nested.record);
-      destinationBlocks.push(nested.destination);
+      appendDestination(move.wrappers, nested.destination);
       continue;
     }
     const { source } = move;
@@ -2546,7 +2585,7 @@ const suggestMerge = ({
         );
       const marked = markEmptyTableMove({ source, destination, mark });
       moved.set(idKey(source.id), marked);
-      destinationBlocks.push(marked.destination);
+      appendDestination(move.wrappers, marked.destination);
       continue;
     }
     const [from, to, mark] = moveStamps.slice(nextStamp, nextStamp + 3);
@@ -2575,6 +2614,17 @@ const suggestMerge = ({
         return mismatch(op, "A moved control needs a temporary id.");
       controls.push([id, temporary]);
     }
+    const pictures: [number, number][] = [];
+    for (const id of source.pictures) {
+      const temporary = takePictureId?.();
+      if (temporary === undefined)
+        return refuse({
+          op,
+          reason: DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
+          message: "The picture identity space is exhausted.",
+        });
+      pictures.push([id, temporary]);
+    }
     const marked = markTableMove({
       source,
       destination,
@@ -2583,9 +2633,10 @@ const suggestMerge = ({
       mark,
       ranges,
       controls,
+      pictures,
     });
     moved.set(idKey(source.id), marked);
-    destinationBlocks.push(marked.destination);
+    appendDestination(move.wrappers, marked.destination);
   }
   const ownerParagraph = first.cell.content.at(0);
   // An earlier tracked edit can empty the owner's only paragraph before the
@@ -2609,12 +2660,14 @@ const suggestMerge = ({
       },
     ],
   };
-  const markSource = (cell: TableCell) =>
-    cell.content.map((block) =>
-      block.type === "paragraph" && block.paraId !== undefined
-        ? (moved.get(idKey(block.paraId))?.source ?? block)
-        : block,
-    );
+  const markBlock = (block: BlockContent): BlockContent => {
+    if (block.type === "blockCustomXml")
+      return { ...block, content: block.content.map(markBlock) };
+    return block.type === "paragraph" && block.paraId !== undefined
+      ? (moved.get(idKey(block.paraId))?.source ?? block)
+      : block;
+  };
+  const markSource = (cell: TableCell) => cell.content.map(markBlock);
   for (const [index, entry] of top.slice(1).entries()) {
     const stamp = structuralStamps[index];
     if (stamp === undefined)

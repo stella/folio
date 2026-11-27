@@ -9,6 +9,7 @@ import { escapeXmlAttribute } from "@stll/docx-core";
 import {
   MAX_REVISION_ID,
   MAX_TABLE_GEOMETRY_HISTORY_LENGTH,
+  MAX_TABLE_PICTURE_ID,
 } from "@stll/docx-core/model";
 import {
   type CopyOriginAncestorList,
@@ -839,7 +840,12 @@ type TableMove = NonNullable<
 type NestedTableMove = NonNullable<
   Extract<GeometryChange, { type: "mergeCells" }>["nestedMoves"]
 >[number];
-const validControlHandoffs = (value: unknown): boolean => {
+type ValidHandoff = (source: number, destination: number) => boolean;
+
+const validIdentityHandoffs = (
+  value: unknown,
+  valid: ValidHandoff,
+): boolean => {
   if (value === undefined) return true;
   if (!Array.isArray(value) || value.length === 0) return false;
   const authored = new Set<number>();
@@ -849,10 +855,8 @@ const validControlHandoffs = (value: unknown): boolean => {
     const [source, destination] = pair;
     if (
       typeof source !== "number" ||
-      !Number.isInteger(source) ||
-      source < -MAX_REVISION_ID - 1 ||
-      source > MAX_REVISION_ID ||
-      !isRevisionId(destination) ||
+      typeof destination !== "number" ||
+      !valid(source, destination) ||
       source === destination ||
       authored.has(source) ||
       temporary.has(destination)
@@ -863,18 +867,31 @@ const validControlHandoffs = (value: unknown): boolean => {
   }
   return [...authored].every((source) => !temporary.has(source));
 };
+const validControlHandoff: ValidHandoff = (source, destination) =>
+  Number.isInteger(source) &&
+  source >= -MAX_REVISION_ID - 1 &&
+  source <= MAX_REVISION_ID &&
+  isRevisionId(destination);
+const validPictureId = (id: number) =>
+  Number.isInteger(id) && id > 0 && id <= MAX_TABLE_PICTURE_ID;
+const validPictureHandoff: ValidHandoff = (source, destination) =>
+  validPictureId(source) && validPictureId(destination);
+
 const isTableMove = (value: unknown): value is TableMove =>
   record(value) &&
   typeof value["source"] === "string" &&
   typeof value["destination"] === "string" &&
   isRevisionId(value["destinationMark"]) &&
-  ((value["kind"] === "empty" && value["controls"] === undefined) ||
+  ((value["kind"] === "empty" &&
+    value["controls"] === undefined &&
+    value["pictures"] === undefined) ||
     (value["kind"] === undefined &&
       isRevisionId(value["fromRevision"]) &&
       isRevisionId(value["toRevision"]) &&
       isRevisionId(value["fromRange"]) &&
       isRevisionId(value["toRange"]) &&
-      validControlHandoffs(value["controls"])));
+      validIdentityHandoffs(value["controls"], validControlHandoff) &&
+      validIdentityHandoffs(value["pictures"], validPictureHandoff)));
 const isNestedTableMove = (value: unknown): value is NestedTableMove => {
   if (!record(value)) return false;
   const rows = value["rows"];

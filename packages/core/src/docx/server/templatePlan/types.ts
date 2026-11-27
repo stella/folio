@@ -206,6 +206,12 @@ export type DocxBlock = {
    */
   endsSection?: true;
   /**
+   * The paragraph's mark is always hidden (`w:specVanish` in the mark's run
+   * properties, a style separator): the paragraph runs on into the one
+   * after it, on the same line, as a heading run into its text.
+   */
+  runsIn?: true;
+  /**
    * The paragraph alignment in effect (`w:jc`, as written: `both`, `center`,
    * ...): the paragraph's own, else its style's with inheritance resolved.
    * Absent when neither states one.

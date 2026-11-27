@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "title": "PINNED #1757, reported seed 2125039558: a paragraph after an emptied paragraph whose join leaves the next one, and one after that next paragraph, keep the batch's order",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "plain",
+  "mode": "tracked-changes",
+  "seed": 1117110551,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 3324747246,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "5E88C024"
+        }
+      ],
+      "atomic": false
+    },
+    {
+      "action": "accept one",
+      "seed": 3764759325
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 2493534432,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "5E88C024",
+          "text": "Goods supplier payment buyer goods period.",
+          "alignment": "right"
+        },
+        {
+          "type": "insertAfterBlock",
+          "blockId": "483CD5EB",
+          "text": "Supplier agreement period invoice term invoice clause.",
+          "numbering": {
+            "kind": "newList",
+            "format": "numbered"
+          }
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from splice of 511fbb412498615a"
+}

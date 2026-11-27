@@ -184,7 +184,6 @@
   "suggestions beside pending joins save, restage, reject and accept as the laws say": [
     {
       "seed": 99,
-      "path": "398:5:7:10:10:10:10:10:10:10:10:10",
       "note": "#2891: a suggested removal of a numbered paragraph before a table, whose mark is another reviewer's pending insertion, is recorded beside that insertion, so accepting both removes the paragraph whole and renumbers the list as the direct removal does.",
       "date": "2026-11-27"
     }

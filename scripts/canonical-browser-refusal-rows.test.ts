@@ -75,7 +75,7 @@ test("a condition row takes a refusal under its condition, never one under a gap
     matchCanonicalRefusalRow({
       rows: imeOverCells,
       refusal: {
-        gap: CANONICAL_GAP.storyContentProjection,
+        gap: CANONICAL_GAP.trackedChangeRecords,
         message: cleanup.message,
       },
     }),
@@ -116,7 +116,7 @@ test("typing, pasting and deleting over selected cells stay strict; IME replacem
 test("canonical browser refusal rows reject retired ledger gaps", () => {
   const row = {
     id: "retired-gap-row",
-    gap: CANONICAL_GAP.storyContentProjection,
+    gap: CANONICAL_GAP.trackedChangeRecords,
     message: "refused",
   };
   expect(() => validateHarnessRefusalRows([row], {})).toThrow(

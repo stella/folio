@@ -35,6 +35,7 @@ import type {
   FolioAutocompleteApi,
   FolioAutocompleteState,
 } from "@stll/folio-core/controller/autocompleteSuggestion";
+import type { CanonicalPasteWarning } from "@stll/folio-core/controller/canonicalClipboard";
 import type { CanonicalRoomCollaboration } from "@stll/folio-core/controller/canonicalRoomEditor";
 import type {
   FolioEditor,
@@ -352,6 +353,15 @@ export type DocxEditorProps = {
    * own undo stack removes as many.
    */
   onCanonicalHistoryDrop?: (drop: CanonicalHistoryDrop) => void;
+  /**
+   * A paste put something else in place of content whose package parts could
+   * not come with it (a chart, an embedded object, kept block markup copied
+   * from outside the editor): its preview picture, the text it holds, or
+   * nothing. Each warning names what it did, the part and the element.
+   */
+  onCanonicalPasteWarnings?: (
+    warnings: readonly CanonicalPasteWarning[],
+  ) => void;
   /**
    * Fires when the live ProseMirror view is captured (or torn down). The host
    * wires this to drive the AI suggestion overlay (decoration meta, apply,

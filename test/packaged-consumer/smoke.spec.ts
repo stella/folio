@@ -115,6 +115,21 @@ test("packaged consumer mounts, lays out via the worker, and logs no errors", as
     "worker must return a measured width > 0",
   ).toBeGreaterThan(0);
 
+  // --- TIFF: the decoding worker ships with its decoder and runs. ----------
+  const tiff = await page.evaluate(() =>
+    globalThis.__folioSmoke?.convertTiff(),
+  );
+  expect(tiff?.pixels, "the TIFF worker must decode both pixels").toBe(2);
+  expect(tiff?.dataUrl.startsWith("data:image/png;")).toBe(true);
+
+  // --- Hyphenation: the dictionary data files ship and are fetched. --------
+  const hyphenation = await page.evaluate(() =>
+    globalThis.__folioSmoke?.loadHyphenation(),
+  );
+  expect(hyphenation, "the en-US dictionary must load from its data file").toBe(
+    "loaded",
+  );
+
   // --- Surface 2: the toolbar renders (chrome + catalog strings). -----------
   await expect(page.getByRole("toolbar").first()).toBeVisible();
 

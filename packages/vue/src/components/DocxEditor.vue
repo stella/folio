@@ -987,6 +987,8 @@ const {
   historyShortcuts: historyShortcutOwner(props.hostShortcuts ?? []),
   onCanonicalHistory: (effect) => props.onCanonicalHistory?.(effect),
   onCanonicalHistoryDrop: (drop) => props.onCanonicalHistoryDrop?.(drop),
+  onCanonicalPasteWarnings: (warnings) =>
+    props.onCanonicalPasteWarnings?.(warnings),
   collaboration: () => props.collaboration,
   // Template directives are driven by the overlay components below; this
   // threads the directive gate. Highlights read the host's terms.

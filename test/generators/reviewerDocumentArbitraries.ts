@@ -111,6 +111,8 @@ type PendingJoinPiece =
       changed: boolean;
       /** No list, list 1, or list 2, which restarts the numbering. */
       list: 0 | 1 | 2;
+      /** Whether the paragraph ends a section before the body's last one. */
+      section: boolean;
     }
   | { type: "bookmark" | "altChunk" | "table" };
 
@@ -124,6 +126,7 @@ const pendingJoinPieceArbitrary: fc.Arbitrary<PendingJoinPiece> = fc.oneof(
       mark: fc.constantFrom("none" as const, "ins" as const, "del" as const),
       changed: fc.boolean(),
       list: fc.constantFrom(0 as const, 0 as const, 1 as const, 2 as const),
+      section: fc.constantFrom(false, false, false, true),
     }),
   },
   {
@@ -164,9 +167,10 @@ const pendingJoinContent = (
 /**
  * Short bodies around pending paragraph joins: paragraphs that are empty, hold
  * only range boundaries, a note reference or words, in lists or not, under
- * pending insertions or deletions of their marks and property changes, beside
- * block-level bookmarks, preserved blocks and a one-cell table. As a review
- * leaves them, a paragraph ending the body has no pending mark.
+ * pending insertions or deletions of their marks and property changes, ending
+ * sections or not, beside block-level bookmarks, preserved blocks and a
+ * one-cell table. As a review leaves them, a paragraph ending the body has no
+ * pending mark and ends no section of its own.
  */
 export const pendingJoinDocumentArbitrary: fc.Arbitrary<Document> = fc
   .array(pendingJoinPieceArbitrary, { minLength: 2, maxLength: 5 })
@@ -222,6 +226,8 @@ export const pendingJoinDocumentArbitrary: fc.Arbitrary<Document> = fc
         ];
       if (piece.mark !== "none" && index < pieces.length - 1)
         paragraph.pPrMark = { kind: piece.mark, info: info() };
+      if (piece.section && index < pieces.length - 1)
+        paragraph.sectionProperties = { pageWidth: 11906 };
       return paragraph;
     });
     return withCoherentSyntheticReviewComments({

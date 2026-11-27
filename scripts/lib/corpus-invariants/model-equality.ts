@@ -32,6 +32,10 @@
 
 import { panic } from "better-result";
 
+import {
+  keptMarkupIn,
+  relationshipIdsInMarkup,
+} from "@stll/folio-core/docx/copiedPackageParts";
 import type { Document } from "@stll/folio-core/types/document";
 
 import {
@@ -72,14 +76,57 @@ const isErased = (key: string): boolean =>
   VOLATILE_KEYS.has(key) || CAPTURE_KEYS.has(key);
 
 /**
- * Relationship types a save allocates afresh in a note or comment part, for
- * the pictures and links the model holds there. Every other relationship in
- * those parts (the parts kept markup names) must survive a save as it is.
+ * Relationship types a save allocates afresh in a note, comment, header or
+ * footer part, for the pictures and links the model holds there. Every other
+ * relationship in those parts (the parts kept markup names) must survive a
+ * save as it is, and so must a picture or a link kept markup names that no
+ * model value holds.
  */
 const SAVE_ALLOCATED_TYPE_SUFFIXES = ["/image", "/hyperlink"] as const;
 
-const isSaveAllocated = (type: string): boolean =>
+const isSaveAllocatedType = (type: string): boolean =>
   SAVE_ALLOCATED_TYPE_SUFFIXES.some((suffix) => type.endsWith(suffix));
+
+/** The content of the story part whose relationships are kept under `key`. */
+const partContent = (document: Document, key: string): unknown => {
+  const { package: pkg } = document;
+  if (key === "footnotes") return pkg.footnotes;
+  if (key === "endnotes") return pkg.endnotes;
+  if (key === "comments") return pkg.document.comments;
+  const separator = key.indexOf(":");
+  const kind = key.slice(0, separator);
+  const rId = key.slice(separator + 1);
+  if (kind === "header") return pkg.headers?.get(rId)?.content;
+  if (kind === "footer") return pkg.footers?.get(rId)?.content;
+  return undefined;
+};
+
+/** Every relationship id a model value holds, in a field naming one. */
+const collectModelIds = (value: unknown, ids: Set<string>): void => {
+  if (typeof value !== "object" || value === null) return;
+  if (Array.isArray(value)) {
+    for (const item of value) collectModelIds(item, ids);
+    return;
+  }
+  for (const [key, item] of Object.entries(value)) {
+    if (typeof item === "string" && /rid$/iu.test(key)) ids.add(item);
+    else collectModelIds(item, ids);
+  }
+};
+
+/**
+ * The ids of a part's pictures and links a save allocates afresh: those of
+ * the given types that kept markup in the part does not name, or that a
+ * model value holds, whose relationship the save writes from the model.
+ */
+const saveAllocatedIds = (content: unknown): ((id: string) => boolean) => {
+  const named = new Set(
+    keptMarkupIn(content).flatMap((xml) => relationshipIdsInMarkup(xml) ?? []),
+  );
+  const held = new Set<string>();
+  collectModelIds(content, held);
+  return (id) => !named.has(id) || held.has(id);
+};
 
 const normalizeValue = (value: unknown): unknown => {
   if (value instanceof Uint8Array) {
@@ -144,8 +191,10 @@ export const normalizeDocumentPackage = (document: Document): unknown => {
   const keptAnnotationTables = [
     ...(document.package.annotationRelationships ?? []),
   ].flatMap(([part, table]) => {
+    const allocated = saveAllocatedIds(partContent(document, part));
     const kept = [...table].filter(
-      ([, relationship]) => !isSaveAllocated(relationship.type),
+      ([id, relationship]) =>
+        !isSaveAllocatedType(relationship.type) || !allocated(id),
     );
     return kept.length === 0 ? [] : [[part, new Map(kept)] as const];
   });

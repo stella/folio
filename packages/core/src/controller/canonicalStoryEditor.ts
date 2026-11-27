@@ -1,3 +1,4 @@
+import type { Slice } from "prosemirror-model";
 import { TextSelection, type Transaction } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
@@ -194,6 +195,23 @@ export const createCanonicalStoryEditor = ({
       ): boolean => boundary.handleTextInput(view, from, to, text),
       handleKeyPress: (view: EditorView, event: KeyboardEvent): boolean =>
         boundary.handleKeyPress(view, event),
+      // A paste makes the same journalled change in the story as in the body.
+      handlePaste: (
+        view: EditorView,
+        event: ClipboardEvent,
+        slice: Slice,
+      ): boolean => {
+        const api = getApi();
+        if (!api) {
+          refuse("The document is not ready for a paste.", {
+            condition: CANONICAL_CONDITION.notReady,
+          });
+          return true;
+        }
+        const handled = api.pasteCanonicalStory({ view, story, event, slice });
+        if (!view.isDestroyed) onSelectionChange();
+        return handled;
+      },
       handleDOMEvents: {
         keydown: (view: EditorView, event: KeyboardEvent): boolean => {
           if (!isCompositionKeyDown(event)) syncNativeSelection(view);

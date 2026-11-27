@@ -1,6 +1,6 @@
 {
   "name": "@stll/folio-core",
-  "version": "0.79.0",
+  "version": "0.80.0",
   "description": "Headless DOCX engine: reads .docx into a typed OOXML model, applies every edit as a validated operation, paginates it, and writes .docx back with untouched parts byte for byte.",
   "keywords": [
     "document-model",
@@ -68,6 +68,7 @@
     "./docx/document-clone": "./src/docx/documentClone.ts",
     "./text-shaping": "./src/text-shaping.ts",
     "./text-shaping/wasm": "./src/generated/text_shaper_bg.wasm",
+    "./tiff-decoding": "./src/tiff-decoding.ts",
     "./hyphenation": "./src/hyphenation.ts",
     "./hyphenation/*.json": "./assets/hyphenation/*.json",
     "./docx/paragraphPropertySource": null,

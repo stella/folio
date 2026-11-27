@@ -7565,6 +7565,28 @@ const cutGoesOn = ({
 };
 
 /**
+ * Whether the paragraph at `index` opens a section: the block before it ends
+ * one. Paragraphs right before it whose marks this resolution also takes
+ * (`joinsBefore`) join it first, so the block before them is the one that
+ * decides.
+ */
+const opensSection = (
+  blocks: readonly BlockContent[],
+  index: number,
+  joinsBefore: ReadonlySet<string>,
+): boolean => {
+  const before = blocks.findLast(
+    (block, at) =>
+      at < index &&
+      !isBlockBoundary(block) &&
+      !(
+        block.type === "paragraph" && joinsBefore.has(idKey(block.paraId ?? ""))
+      ),
+  );
+  return before?.type === "paragraph" && before.sectionProperties !== undefined;
+};
+
+/**
  * An added paragraph that opens a section before trailing range boundaries
  * can disappear on rejection. The original section break and the trailing
  * boundaries keep the same placement.
@@ -7572,14 +7594,12 @@ const cutGoesOn = ({
 const opensSectionBeforeTrailingBoundaries = (
   blocks: readonly BlockContent[],
   index: number,
+  joinsBefore: ReadonlySet<string> = new Set(),
 ): boolean => {
   const follower = blockFollower(blocks, index);
   if (follower.block !== undefined || follower.standing.length === 0)
     return false;
-  const before = blocks.findLast(
-    (block, at) => at < index && !isBlockBoundary(block),
-  );
-  return before?.type === "paragraph" && before.sectionProperties !== undefined;
+  return opensSection(blocks, index, joinsBefore);
 };
 
 const joinOps = (
@@ -7601,6 +7621,11 @@ const joinOps = (
   joinsBefore: ReadonlySet<string> = new Set(),
   /** Ids the joins retire, each with the id of the piece it merged into. */
   rejoined: Map<number, number> = new Map(),
+  /**
+   * Paragraphs a rejected added mark of this resolution left empty, standing
+   * only for what joins them.
+   */
+  vacated: ReadonlySet<string> = new Set(),
 ): Result<ParagraphMarkPlan, DocumentOpRefusal> => {
   const body = storyBody(document, story);
   const location = findStoryParagraph(body, paraId);
@@ -7635,6 +7660,30 @@ const joinOps = (
     block: follower,
     standing,
   } = blockFollower(blocks, location.index);
+  // A rejected added paragraph left with nothing, opening a section, goes
+  // from before the range boundaries after it, which stand where they stood
+  // before it was added: the section break before them never moves content
+  // across them, and the next paragraph keeps its content as it was.
+  if (
+    added &&
+    standing.length > 0 &&
+    follower?.type === "paragraph" &&
+    paragraph.content.length === 0 &&
+    paragraph.pPrMark?.survivor !== "first" &&
+    opensSection(blocks, location.index, joinsBefore)
+  )
+    return paragraphMarkPlan(
+      [
+        {
+          type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+          story,
+          blockId: follower.paraId ?? paraId,
+          expected: blocks,
+          blocks: blocks.toSpliced(location.index, 1),
+        },
+      ],
+      [{ type: "paragraph-join", receiver: follower }],
+    );
   const standingBeforeBlock = isOpaqueFollower(follower) ? standing : [];
   const next =
     standing.length > 0 && follower?.type === "paragraph"
@@ -7715,6 +7764,17 @@ const joinOps = (
       }))
         rejoined.set(id, into);
     const keepsFirst = paragraph.pPrMark?.survivor === "first";
+    // Joining a paragraph a rejected added mark left empty, a paragraph with
+    // content of its own keeps its properties, as when that one goes first:
+    // it is what stands where the two did, under the identity a join keeps.
+    const intoVacated =
+      added &&
+      vacated.has(nextId) &&
+      next.content.length === 0 &&
+      next.pPrMark === undefined &&
+      next.sectionProperties === undefined &&
+      paragraph.content.length > 0 &&
+      holdingParagraph(paragraph.content) === undefined;
     // A record left as it was keeps its identity through the merge; an emptied
     // one folded into its neighbour is rebuilt, and is no longer empty. The
     // joined paragraph is found again under the id it keeps.
@@ -7732,6 +7792,20 @@ const joinOps = (
     let survivor: Paragraph;
     if (keepsFirst)
       survivor = joinedKeepingFirst(paragraph, next, mergedContent);
+    else if (intoVacated) {
+      const {
+        pPrMark: _resolved,
+        paraId: _paraId,
+        textId: _textId,
+        ...first
+      } = paragraph;
+      survivor = {
+        ...first,
+        content: mergedContent,
+        ...(next.paraId === undefined ? {} : { paraId: next.paraId }),
+        ...(next.textId === undefined ? {} : { textId: next.textId }),
+      };
+    }
     // An unchanged follower keeps its identity.
     else if (structurallyEqual(mergedContent, next.content)) survivor = next;
     else survivor = { ...next, content: mergedContent };
@@ -7804,7 +7878,7 @@ const joinOps = (
     added &&
     next === undefined &&
     standing.length > 0 &&
-    opensSectionBeforeTrailingBoundaries(blocks, location.index);
+    opensSectionBeforeTrailingBoundaries(blocks, location.index, joinsBefore);
   const tableBoundary =
     next?.type === "table"
       ? paragraphTableRunInBoundary(paragraph, next)
@@ -7917,11 +7991,13 @@ const joinOps = (
       next?.type !== "table" ||
       (tableBoundary !== undefined &&
         (markBeforeTableResolves({ blocks, boundary: tableBoundary }) ||
-          // A story another producer ended with a table already: resolving
-          // this mark leaves its end as it was, only the run-in crosses.
+          // A story another producer ended with a table or another block
+          // already: resolving this mark leaves its end as it was, only the
+          // run-in crosses. A block stays before it, past the paragraphs this
+          // resolution joins into it first.
           (!location.list.some((step) => step.kind === "tableCell") &&
-            location.index > 0 &&
-            lastBlockPastBoundaries(blocks)?.type === "table" &&
+            previous !== undefined &&
+            lastBlockPastBoundaries(blocks)?.type !== "paragraph" &&
             tableBoundary.type === "receiver"))),
     emptyInsertedTableBoundary:
       tableBoundary?.type === "blocked" && tableBoundary.reason === "review"
@@ -7972,11 +8048,12 @@ const joinOps = (
     );
     if (anchor === undefined) {
       return Result.err(
-        refusal(
-          op,
-          DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-          `Resolving the mark of ${paraId} leaves no structural inverse anchor.`,
-        ),
+        new DocumentOpRefusal({
+          opType: op.type,
+          reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+          message: `Resolving the mark of ${paraId} leaves no structural inverse anchor.`,
+          blockedParagraphMarkRevisionId: revisionId,
+        }),
       );
     }
     if (tableOutcome === "remove") {
@@ -9560,6 +9637,7 @@ const planSingleRecordResolution = (
   const joinsBefore = new Set(joins.map(({ paraId }) => idKey(paraId)));
   const rejoined = new Map(resolution.rejoined);
   const controlEnds: string[] = [];
+  const vacated = new Set<string>();
   for (const join of joins.toReversed()) {
     joinsBefore.delete(idKey(join.paraId));
     if (removedParagraphs.has(idKey(join.paraId))) continue;
@@ -9576,10 +9654,18 @@ const planSingleRecordResolution = (
       ranInto,
       joinsBefore,
       rejoined,
+      vacated,
     );
     if (planned.isErr()) {
       return Result.err(planned.error);
     }
+    const { holdsInsertions } = planned.value;
+    if (
+      holdsInsertions !== undefined &&
+      findStoryParagraph(storyBody(current, op.story), holdsInsertions)
+        ?.paragraph.content.length === 0
+    )
+      vacated.add(idKey(holdsInsertions));
     receiverEffects.push(...planned.value.receiverEffects);
     for (const effect of planned.value.receiverEffects)
       if (effect.type === "table-run-in" || effect.type === "block-run-in")

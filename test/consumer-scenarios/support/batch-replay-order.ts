@@ -44,23 +44,38 @@ const insertsBefore = (operation: AnyOperation): boolean =>
   (operation.type === "insertTable" && operation["position"] === "before");
 
 /**
+ * The row of `preRows` a block put after an anchor they lack follows, when
+ * the anchor reads as one paragraph with it: an emptied paragraph whose
+ * pending join leaves that row, say.
+ */
+export type LandsAfter = (operation: AnyOperation) => string | undefined;
+
+/**
  * The gap among `preRows` that an insertion anchored on a block they lack
  * lands in: a block accepting removes, or a cell of a row or table it
- * removes, named from `liveRows`. Beside a cell it goes beside the outermost
- * table, at its first or last row that stays; with none staying, and beside
- * a removed block outside tables, it goes before the next row that stays,
- * the one gap the blocks around the removed ones share.
+ * removes, named from `liveRows`. Put after a block that reads as one
+ * paragraph with a row that stays (`landsAfter`), it goes right after that
+ * row. Beside a cell it goes beside the outermost table, at its first or
+ * last row that stays; with none staying, and beside a removed block outside
+ * tables, it goes before the next row that stays, the one gap the blocks
+ * around the removed ones share.
  */
 const absentAnchorGap = (
   operation: AnyOperation,
   preRows: readonly Row[],
   liveRows: readonly Row[],
+  landsAfter?: LandsAfter,
 ): number | undefined => {
   const id = blockIdOf(operation);
   if (!INSERTIONS.has(operation.type) || preRows.some((row) => row.id === id))
     return undefined;
   const at = liveRows.findIndex((row) => row.id === id);
   if (at < 0) return undefined;
+  const preIndex = new Map(preRows.map((row, index) => [row.id, index]));
+  const follows = insertsBefore(operation)
+    ? undefined
+    : preIndex.get(landsAfter?.(operation) ?? "");
+  if (follows !== undefined) return follows + 1;
   const outer = liveRows[at]?.table?.outerTableIndex;
   const span =
     outer === undefined
@@ -68,7 +83,6 @@ const absentAnchorGap = (
       : liveRows.flatMap((row, index) =>
           row.table?.outerTableIndex === outer ? [index] : [],
         );
-  const preIndex = new Map(preRows.map((row, index) => [row.id, index]));
   const staying = span.flatMap((index) => {
     const kept = preIndex.get(liveRows[index]?.id ?? "");
     return kept === undefined ? [] : [kept];
@@ -117,12 +131,13 @@ const placement = (
   preRows: readonly Row[],
   joinsInto: ReadonlyMap<string, PendingJoinTarget> = new Map(),
   liveRows: readonly Row[] = preRows,
+  landsAfter?: LandsAfter,
 ): [number, number, number] => {
   const index = preRows.findIndex((row) => row.id === blockIdOf(operation));
   const text = preRows[index]?.text ?? "";
   const handle = handleOf(operation);
   if (handle) return [index, 1, handle.startOffset];
-  const absentGap = absentAnchorGap(operation, preRows, liveRows);
+  const absentGap = absentAnchorGap(operation, preRows, liveRows, landsAfter);
   if (absentGap !== undefined) return [absentGap, 0, 0];
   // A block added beside a table cell, a paragraph or a whole table, goes
   // outside the table: before its first row or after its last, so every
@@ -309,6 +324,8 @@ type SequentialGroupsOptions = {
   goWhole?: ReadonlySet<string>;
   /** Paragraphs whose live marks are pending insertion. */
   markInserted?: ReadonlySet<string>;
+  /** Where a block put after an anchor `preRows` lack lands (`LandsAfter`). */
+  landsAfter?: LandsAfter;
 };
 
 export const sequentialGroups = ({
@@ -319,7 +336,10 @@ export const sequentialGroups = ({
   joinsInto = new Map(),
   goWhole = new Set(),
   markInserted = new Set(),
+  landsAfter,
 }: SequentialGroupsOptions): AnyOperation[][] => {
+  const place = (operation: AnyOperation) =>
+    placement(operation, preRows, joinsInto, liveRows, landsAfter);
   /**
    * Where the gap at `at` starts: before the blank paragraphs right before
    * it that accepting removes whole.
@@ -339,12 +359,7 @@ export const sequentialGroups = ({
    * block's walk back across the blanks.
    */
   const insertionGapKey = (operation: AnyOperation): number => {
-    const [block, inside, offset] = placement(
-      operation,
-      preRows,
-      joinsInto,
-      liveRows,
-    );
+    const [block, inside, offset] = place(operation);
     if (inside !== 0)
       return block * 1_000_000_000 + inside * 100_000_000 + offset;
     const id = blockIdOf(operation);
@@ -407,7 +422,7 @@ export const sequentialGroups = ({
       if (!INSERTIONS.has(operation.type)) return false;
       const anchor = preRows.find((row) => row.id === blockIdOf(operation));
       if (anchor === undefined) return false;
-      const [index] = placement(operation, preRows, joinsInto, liveRows);
+      const [index] = place(operation);
       if (index < start || index > lastAt) return false;
       // A paragraph placed beside a cell goes outside the table, into the
       // container the table stands in.
@@ -546,12 +561,7 @@ export const sequentialGroups = ({
         operation.type === "deleteBlock"
           ? suggestedClosingRuns.get(blockIdOf(operation))
           : undefined;
-      const [block, inside, offset] = placement(
-        closesRun ?? operation,
-        preRows,
-        joinsInto,
-        liveRows,
-      );
+      const [block, inside, offset] = place(closesRun ?? operation);
       const hasDeletedSplit = deletedSplitTargets.has(blockIdOf(operation));
       const position =
         hasDeletedSplit && operation.type === "deleteBlock"

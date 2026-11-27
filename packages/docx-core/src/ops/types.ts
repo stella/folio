@@ -1010,8 +1010,9 @@ export type SetPackageResourcesOp = {
   /** Carried only when the operation changes the copied parts. */
   copiedParts?: PackageResourceMapChange<PackageResourceCopiedPart>;
   /**
-   * Carried only when the operation changes a note or comment part's
-   * relationships: each entry is one part's relationships, whole.
+   * Carried only when the operation changes a note, comment, header or
+   * footer part's relationships: each entry is one part's relationships,
+   * whole.
    */
   annotationRelationships?: PackageResourceMapChange<readonly Relationship[]>;
 };
