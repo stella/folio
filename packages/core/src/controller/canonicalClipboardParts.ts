@@ -173,7 +173,13 @@ export const readClipboardPackageParts = async ({
   const roots = [
     ...rootsOf(markup, document.package.relationships),
     ...[...annotationMarkup].flatMap(([part, kept]) =>
-      rootsOf(kept, document.package.annotationRelationships?.get(part)),
+      // A part without its own relationships resolves through the main
+      // document's, as the parser reads it.
+      rootsOf(
+        kept,
+        document.package.annotationRelationships?.get(part) ??
+          document.package.relationships,
+      ),
     ),
   ];
   // Markup naming only external targets copies its relationships alone.

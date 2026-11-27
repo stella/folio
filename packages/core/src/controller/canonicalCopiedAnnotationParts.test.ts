@@ -126,6 +126,12 @@ type PackageOptions = {
     target: string;
   }[];
   parts: Record<string, { type: string; body: string }>;
+  /**
+   * Whether the footnotes part has a relationships file of its own; without
+   * one its relationships sit in the main document's, which its ids then
+   * resolve through.
+   */
+  ownNoteRelationships?: boolean;
 };
 
 /** A package with a footnotes part, optionally a comments part, and `parts`. */
@@ -138,6 +144,7 @@ const packageOf = async ({
   comments,
   commentRelationships = [],
   parts,
+  ownNoteRelationships = true,
 }: PackageOptions): Promise<Document> => {
   const zip = new ZipArchive();
   // Each paragraph takes an id of its own across the package's parts.
@@ -193,6 +200,7 @@ const packageOf = async ({
               target: "comments.xml",
             },
           ]),
+      ...(ownNoteRelationships ? [] : footnoteRelationships),
     ]),
   );
   zip.set(
@@ -203,10 +211,11 @@ const packageOf = async ({
     `word/${footnotesName}.xml`,
     `${XML_DECLARATION}<w:footnotes ${NAMESPACES}>${identified(separators + footnotes)}</w:footnotes>`,
   );
-  zip.set(
-    `word/_rels/${footnotesName}.xml.rels`,
-    relationships(footnoteRelationships),
-  );
+  if (ownNoteRelationships)
+    zip.set(
+      `word/_rels/${footnotesName}.xml.rels`,
+      relationships(footnoteRelationships),
+    );
   if (comments !== undefined) {
     zip.set(
       "word/comments.xml",
@@ -620,6 +629,46 @@ test("a copy reads the parts its notes' and comments' markup reaches through the
     "comments",
     "footnotes",
   ]);
+  const parts = await readClipboardPackageParts({
+    document: copiedFrom,
+    markup: sliceKeptMarkup(slice),
+    annotationMarkup,
+  });
+  expect([...(parts?.parts.keys() ?? [])].toSorted()).toEqual(
+    Object.keys(CHART_PARTS).toSorted(),
+  );
+});
+
+test("a copy reads the parts a note's markup reaches through the main document when the note part has no relationships of its own", async () => {
+  const copiedFrom = readModel(
+    createCanonicalSession(
+      await packageOf({
+        paraIdBase: 3,
+        footnotesName: "footnotes",
+        body:
+          '<w:p><w:r><w:t xml:space="preserve">Copied </w:t></w:r>' +
+          '<w:r><w:footnoteReference w:id="1"/></w:r></w:p>' +
+          "<w:p><w:r><w:t>After</w:t></w:r></w:p>",
+        footnotes:
+          `<w:footnote w:id="1"><w:p><w:r><w:t xml:space="preserve">Note </w:t></w:r>${chart("rId11", 31)}</w:p>` +
+          `${chunk("rId12")}<w:p><w:r><w:t>Tail</w:t></w:r></w:p></w:footnote>`,
+        footnoteRelationships: [
+          { id: "rId11", type: CHART_TYPE, target: "charts/chart1.xml" },
+          { id: "rId12", type: CHUNK_TYPE, target: "chunk1.html" },
+        ],
+        parts: CHART_PARTS,
+        ownNoteRelationships: false,
+      }),
+    ).unwrap().document,
+  );
+  expect(
+    copiedFrom.package.annotationRelationships?.has("footnotes") ?? false,
+  ).toBe(false);
+  const slice = copiedSlice(
+    createCanonicalSession(copiedFrom).unwrap().projection.doc,
+  );
+  const annotationMarkup = sliceAnnotationMarkup(slice, copiedFrom);
+  expect([...annotationMarkup.keys()]).toEqual(["footnotes"]);
   const parts = await readClipboardPackageParts({
     document: copiedFrom,
     markup: sliceKeptMarkup(slice),
