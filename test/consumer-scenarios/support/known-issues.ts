@@ -164,6 +164,9 @@ export const VACUOUS_CHECKED_IN_FLOWS: Readonly<
   // The recorded seed now draws atomic=true; the overlapping split refuses
   // the whole batch. known-issues.test.ts checks atomic and non-atomic intent.
   "delete-split-and-merge.json": [0],
+  // The atomic opening merges are refused (the second takes over the first's
+  // property change); the later batch beside them is what it guards.
+  "issue-1356-9d2ba4fb6c7a7388.json": [0],
   // The original recorded flow starts by accepting a change before any exists.
   "tracked-final-retirement-spacing.json": [0],
   // These three recorded accept-one steps have no pending suggestion to accept.

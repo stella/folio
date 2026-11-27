@@ -746,6 +746,23 @@ const regressions: [string, Case][] = [
       deletionAt: 0,
     },
   ],
+  // A paragraph and a table put after a table's cell land once the deletion
+  // has run: the deleted paragraph still stands between that table and the
+  // one after it, and directly the table keeps its side of it too.
+  [
+    "a paragraph between a pending table and a table, deleted as a paragraph and a table go after the first table's cell",
+    {
+      ...singleBatch,
+      before: "paragraph",
+      after: "table",
+      earlier: [anchorInsertion("table", "before")],
+      insertions: [
+        { kind: "paragraph", side: "after", target: "precursor" },
+        { kind: "table", side: "after", target: "precursor" },
+      ],
+      deletionAt: 0,
+    },
+  ],
 ];
 
 const examples: [Case][] = [

@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "title": "PINNED #1356, reported seed 1136799258: step 2: [batchSequential] the batch (tracked-changes: insertTable, deleteBlock, insertTable) leaves otherwise than its operations one at a time",
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "styleNumbered",
+  "mode": "tracked-changes",
+  "seed": 1518300418,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 1,
+      "operations": [
+        {
+          "type": "splitBlock",
+          "blockId": "1BF99289",
+          "offset": 8
+        }
+      ],
+      "atomic": true
+    },
+    {
+      "action": "core batch",
+      "seed": 2,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "7B806329"
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 3,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "7B806329",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "1BF99289"
+        },
+        {
+          "type": "insertTable",
+          "blockId": "1BF99289",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from unpin of 4061c41ca83e4a92"
+}
