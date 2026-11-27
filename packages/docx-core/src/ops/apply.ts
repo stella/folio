@@ -3737,17 +3737,28 @@ const applyAddressedOp = ({
     op.type === DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW ||
     op.type === DOCUMENT_OP_TYPES.RESOLVE_REVISION ||
     edit.touched.removed.length === 0
-      ? []
+      ? undefined
       : takenOverMarkReleases({
           before: document,
           after: edit.document,
           touched: edit.touched,
           story: addressedStory(op),
         });
-  if (releases.length > 0) {
+  // A paragraph an operation inside this one released is modified by this
+  // one too, however narrowly it reports the blocks it changed: a save that
+  // writes only modified paragraphs would otherwise keep the retired rule.
+  if (releases !== undefined && releases.released.length > 0)
+    edit = combineEditEffects(edit.document, [
+      edit,
+      {
+        inverse: [],
+        touched: { modified: releases.released, inserted: [], removed: [] },
+      },
+    ]);
+  if (releases !== undefined && releases.ops.length > 0) {
     const released = applyDocumentOpsForPurpose({
       document: edit.document,
-      ops: releases,
+      ops: releases.ops,
       purpose,
     });
     if (released.isErr()) return released;

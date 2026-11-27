@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "title": "PINNED #1762, reported seed 1491991081: rejecting a split inserted paragraph whose half was deleted after a save keeps the original paragraph id after another save",
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "unusedNumbering",
+  "mode": "tracked-changes",
+  "seed": 1491991081,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 2812027318,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "412DDC7F",
+          "text": "Second added clause."
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 916520308,
+      "operations": [
+        {
+          "type": "splitBlock",
+          "blockId": "@0",
+          "offset": 6
+        }
+      ]
+    },
+    {
+      "action": "save and reopen",
+      "seed": 852579111
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 2684144924,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "@1"
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from collisions flow seed 1491991081"
+}
