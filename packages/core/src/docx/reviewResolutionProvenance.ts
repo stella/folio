@@ -876,6 +876,8 @@ const validPictureId = (id: number) =>
   Number.isInteger(id) && id > 0 && id <= MAX_TABLE_PICTURE_ID;
 const validPictureHandoff: ValidHandoff = (source, destination) =>
   validPictureId(source) && validPictureId(destination);
+const validRevisionHandoff: ValidHandoff = (source, destination) =>
+  isRevisionId(source) && isRevisionId(destination);
 
 const isTableMove = (value: unknown): value is TableMove =>
   record(value) &&
@@ -898,17 +900,19 @@ const isNestedTableMove = (value: unknown): value is NestedTableMove => {
   const paragraphs = value["paragraphs"];
   return (
     Array.isArray(rows) &&
-    rows.length > 0 &&
     rows.every(isRevisionId) &&
     new Set(rows).size === rows.length &&
     Array.isArray(paragraphs) &&
-    paragraphs.length > 0 &&
+    (rows.length > 0 || paragraphs.length > 0) &&
     paragraphs.every(
       (pair) =>
         Array.isArray(pair) &&
         pair.length === 2 &&
         pair.every((id) => typeof id === "string" && /^[\da-f]{8}$/iu.test(id)),
-    )
+    ) &&
+    validIdentityHandoffs(value["revisions"], validRevisionHandoff) &&
+    validIdentityHandoffs(value["controls"], validControlHandoff) &&
+    validIdentityHandoffs(value["pictures"], validPictureHandoff)
   );
 };
 const isTableGeometryChange = (value: unknown): value is GeometryChange => {

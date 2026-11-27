@@ -2,6 +2,7 @@ import { isNoteReferenceId } from "../model/content";
 import {
   type BlockContent,
   type BlockCustomXml,
+  type BlockSdt,
   type DocxPackage,
   type InlineSdt,
   type MathEquation,
@@ -12,7 +13,10 @@ import {
   type PreservedXmlContent,
   type Run,
   type RunContent,
+  type SdtProperties,
   type Table,
+  type TableCell,
+  type TableRow,
 } from "../model/document";
 import {
   MAX_TABLE_PICTURE_ID,
@@ -20,6 +24,7 @@ import {
   type TableGeometryNestedMove,
   type TableGridChange,
 } from "../model/formatting";
+import { nestedTableCopyByAnchors } from "../model/nestedTableRevisionHandoffs";
 import { readXml, type XmlElement } from "../xml/streamingXmlParser";
 import {
   OOXML_NAMESPACE_SCOPE,
@@ -28,12 +33,15 @@ import {
   XML_NAMESPACE_URI,
 } from "../xml/xmlNamespaceContext";
 import { blockListEndsInParagraph } from "./blocks";
+import { structurallyEqual } from "./equality";
 import {
+  IDENTITY_SPACES,
   identityKeysIn,
   idKey,
   packageDrawingIds,
   packageMoveRangeCensus,
   paragraphIdsIn,
+  slotKey,
 } from "./ids";
 import {
   asParagraphContent,
@@ -43,6 +51,7 @@ import {
 } from "./leaves";
 import { stampInfo } from "./review";
 import { reachesPastRemovedCell } from "./tableEditDependencies";
+import { rowHasCellsOrOmissions } from "./tableGrid";
 import {
   movableTablePictureId,
   withTablePictureIdentity,
@@ -55,7 +64,14 @@ export type TableMoveSource = {
   controls: number[];
   pictures: ReadonlySet<number>;
 };
-export type NestedTableMoveSource = { table: Table; paragraphs: string[] };
+export type NestedTableMoveSource = {
+  table: Table;
+  paragraphs: string[];
+  revisions: number[];
+  insertedRows: number;
+  controls: number[];
+  pictures: ReadonlySet<number>;
+};
 
 const movableAtom = (leaf: RunContent): boolean =>
   leaf.type === "text" ||
@@ -216,7 +232,7 @@ const emptyElement = (xml: string) => {
 export const movableCustomXmlBlock = ({
   openingXml,
   closingXml,
-}: BlockCustomXml): boolean => {
+}: Pick<BlockCustomXml, "openingXml" | "closingXml">): boolean => {
   const parsed = emptyElement(`${openingXml}${closingXml}`);
   return (
     parsed?.localName === "customXml" &&
@@ -320,6 +336,14 @@ const movableControlId = (
   }
   return id;
 };
+
+const movableUnlockedControlId = (properties: SdtProperties) =>
+  properties.lock === undefined || properties.lock === "unlocked"
+    ? movableControlId(properties)
+    : undefined;
+
+export const movableBlockControl = ({ properties }: BlockSdt): boolean =>
+  movableUnlockedControlId(properties) !== undefined;
 
 type ProofingKind = "spelling" | "grammar";
 
@@ -442,59 +466,284 @@ export const tableMoveSource = (
 export const nestedTableMoveSource = (
   table: Table,
 ): NestedTableMoveSource | undefined => {
-  if (identityKeysIn(table).length !== 0 || reachesPastRemovedCell(table))
-    return undefined;
   const paragraphs: string[] = [];
-  const collect = (nested: Table): boolean =>
-    nested.bookmarks === undefined &&
-    nested.carrierStack === undefined &&
-    nested.rows.length > 0 &&
-    nested.rows.every(
-      (row) =>
-        row.bookmarks === undefined &&
-        row.contentControls === undefined &&
-        row.carrierStack === undefined &&
-        row.cells.length > 0 &&
-        row.cells.every(
-          (cell) =>
-            cell.contentControls === undefined &&
-            cell.carrierStack === undefined &&
-            blockListEndsInParagraph(cell.content) &&
-            cell.content.every(collectBlock),
-        ),
-    );
+  const revisions: number[] = [];
+  const gridMembers: number[] = [];
+  const controls = new Set<number>();
+  const pictures = new Set<number>();
+  const collectControl = (properties: SdtProperties): boolean => {
+    const id = movableUnlockedControlId(properties);
+    if (id === undefined) return false;
+    controls.add(id);
+    return true;
+  };
+  const collectCarriers = ({
+    contentControls,
+    carrierStack,
+  }: TableRow | TableCell): boolean =>
+    (contentControls?.every(collectControl) ?? true) &&
+    (carrierStack?.every((carrier) =>
+      carrier.type === "customXml"
+        ? movableCustomXmlBlock(carrier.wrapper)
+        : collectControl(carrier.properties),
+    ) ??
+      true);
+  const collectProperties = (
+    changes: readonly { info: { id: number } }[] | undefined,
+  ) => {
+    for (const { info } of changes ?? []) revisions.push(info.id);
+  };
+  const collect = ({ rows, ...tableProperties }: Table): boolean => {
+    const grid = tableProperties.formatting?.gridChange;
+    const geometry = grid?.geometryChange;
+    if (
+      tableProperties.bookmarks !== undefined ||
+      tableProperties.carrierStack !== undefined ||
+      reachesPastRemovedCell(tableProperties) ||
+      (geometry?.type === "mergeCells" &&
+        (geometry.moves !== undefined ||
+          geometry.nestedMoves !== undefined ||
+          geometry.emptyOwner !== undefined)) ||
+      rows.length === 0
+    )
+      return false;
+    if (grid !== undefined) {
+      revisions.push(grid.id);
+      for (const id of geometry?.revisionIds ?? []) gridMembers.push(id);
+    }
+    collectProperties(tableProperties.propertyChanges);
+    return rows.every((row) => {
+      const {
+        cells,
+        contentControls: _rowControls,
+        carrierStack: _rowStack,
+        ...rowProperties
+      } = row;
+      if (
+        rowProperties.bookmarks !== undefined ||
+        !collectCarriers(row) ||
+        reachesPastRemovedCell(rowProperties) ||
+        !rowHasCellsOrOmissions(row)
+      )
+        return false;
+      if (row.structuralChange !== undefined)
+        revisions.push(row.structuralChange.info.id);
+      collectProperties(row.propertyChanges);
+      collectProperties(row.tablePropertyExceptionChanges);
+      return cells.every((cell) => {
+        const {
+          content,
+          contentControls: _cellControls,
+          carrierStack: _cellStack,
+          ...cellProperties
+        } = cell;
+        if (
+          !collectCarriers(cell) ||
+          reachesPastRemovedCell(cellProperties) ||
+          !blockListEndsInParagraph(content)
+        )
+          return false;
+        const change = cell.structuralChange;
+        if (change !== undefined) {
+          if (
+            change.type === "tableRowInsertion" ||
+            change.type === "tableRowDeletion"
+          )
+            return false;
+          revisions.push(change.info.id);
+        }
+        collectProperties(cell.propertyChanges);
+        for (const { previousStructuralChange } of cell.propertyChanges ?? []) {
+          if (previousStructuralChange === undefined) continue;
+          if (
+            previousStructuralChange.type === "tableRowInsertion" ||
+            previousStructuralChange.type === "tableRowDeletion"
+          )
+            return false;
+          revisions.push(previousStructuralChange.info.id);
+        }
+        return content.every(collectBlock);
+      });
+    });
+  };
   const collectBlock = (block: BlockContent): boolean => {
     if (block.type === "table") return collect(block);
     if (block.type === "blockCustomXml")
       return movableCustomXmlBlock(block) && block.content.every(collectBlock);
+    if (block.type === "blockSdt") {
+      return (
+        collectControl(block.properties) && block.content.every(collectBlock)
+      );
+    }
     if (block.type !== "paragraph") return false;
     const source = tableMoveSource(block);
-    if (source === undefined || source.pictures.size > 0) return false;
+    if (source === undefined) return false;
     paragraphs.push(source.id);
+    for (const id of source.controls) controls.add(id);
+    for (const id of source.pictures) {
+      if (pictures.has(id)) return false;
+      pictures.add(id);
+    }
     return true;
   };
-  return collect(table) ? { table, paragraphs } : undefined;
+  const insertedRows = table.rows.filter(
+    ({ structuralChange }) => structuralChange === undefined,
+  ).length;
+  if (!collect(table) || (paragraphs.length === 0 && insertedRows === 0))
+    return undefined;
+  const revisionIds = new Set(revisions);
+  if (gridMembers.some((id) => !revisionIds.has(id))) return undefined;
+  const allowed = new Set([
+    ...revisions.map((id) => slotKey({ space: IDENTITY_SPACES.REVISION, id })),
+    ...[...controls].map((id) =>
+      slotKey({ space: IDENTITY_SPACES.CONTROL, id }),
+    ),
+  ]);
+  const actual = identityKeysIn(table);
+  return revisions.length + controls.size === allowed.size &&
+    actual.length === allowed.size &&
+    actual.every((key) => allowed.has(key))
+    ? {
+        table,
+        paragraphs,
+        revisions,
+        controls: [...controls],
+        pictures,
+        insertedRows,
+      }
+    : undefined;
 };
 
-const withNestedParagraphIds = (
+type NestedMoveIdentities = {
+  paragraphs: ReadonlyMap<string, string>;
+  revisions: ReadonlyMap<number, number>;
+  controls: ReadonlyMap<number, number>;
+  pictures: ReadonlyMap<number, number>;
+};
+
+const withNestedMoveIdentities = (
   table: Table,
-  ids: ReadonlyMap<string, string>,
+  ids: NestedMoveIdentities,
 ): Table => {
+  const restampControl = (properties: SdtProperties): SdtProperties => {
+    const id =
+      properties.id === undefined ? undefined : ids.controls.get(properties.id);
+    return id === undefined ? properties : { ...properties, id };
+  };
+  const carrierIdentities = <T extends TableRow | TableCell>(item: T): T => ({
+    ...item,
+    ...(item.contentControls === undefined
+      ? {}
+      : {
+          contentControls: item.contentControls.map(restampControl),
+        }),
+    ...(item.carrierStack === undefined
+      ? {}
+      : {
+          carrierStack: item.carrierStack.map((carrier) =>
+            carrier.type === "sdt"
+              ? { ...carrier, properties: restampControl(carrier.properties) }
+              : carrier,
+          ),
+        }),
+  });
+  const restamp = <Change extends { info: { id: number } }>(
+    record: Change,
+  ): Change => {
+    const id = ids.revisions.get(record.info.id);
+    return id === undefined
+      ? record
+      : { ...record, info: { ...record.info, id } };
+  };
   const rewrite = (block: BlockContent): BlockContent => {
-    if (block.type === "table") return withNestedParagraphIds(block, ids);
+    if (block.type === "table") return withNestedMoveIdentities(block, ids);
     if (block.type === "blockCustomXml")
       return { ...block, content: block.content.map(rewrite) };
+    if (block.type === "blockSdt") {
+      return {
+        ...block,
+        properties: restampControl(block.properties),
+        content: block.content.map(rewrite),
+      };
+    }
     if (block.type !== "paragraph" || block.paraId === undefined) return block;
-    const paraId = ids.get(idKey(block.paraId));
-    return paraId === undefined ? block : { ...block, paraId };
+    const paraId = ids.paragraphs.get(idKey(block.paraId));
+    return paraId === undefined
+      ? block
+      : {
+          ...block,
+          paraId,
+          content: withMoveIdentities({
+            content: block.content,
+            controls: ids.controls,
+            pictures: ids.pictures,
+          }),
+        };
   };
+  const grid = table.formatting?.gridChange;
+  const gridId = grid === undefined ? undefined : ids.revisions.get(grid.id);
   return {
     ...table,
+    ...(grid === undefined || gridId === undefined
+      ? {}
+      : {
+          formatting: {
+            ...table.formatting,
+            gridChange: {
+              ...grid,
+              id: gridId,
+              ...(grid.geometryChange !== undefined
+                ? {
+                    geometryChange: {
+                      ...grid.geometryChange,
+                      revisionIds: grid.geometryChange.revisionIds.map(
+                        (id) => ids.revisions.get(id) ?? id,
+                      ),
+                    },
+                  }
+                : {}),
+            },
+          },
+        }),
+    ...(table.propertyChanges === undefined
+      ? {}
+      : { propertyChanges: table.propertyChanges.map(restamp) }),
     rows: table.rows.map((row) => ({
-      ...row,
-      cells: row.cells.map((cell) =>
-        Object.assign({}, cell, { content: cell.content.map(rewrite) }),
-      ),
+      ...carrierIdentities(row),
+      ...(row.structuralChange === undefined
+        ? {}
+        : { structuralChange: restamp(row.structuralChange) }),
+      ...(row.propertyChanges === undefined
+        ? {}
+        : { propertyChanges: row.propertyChanges.map(restamp) }),
+      ...(row.tablePropertyExceptionChanges === undefined
+        ? {}
+        : {
+            tablePropertyExceptionChanges:
+              row.tablePropertyExceptionChanges.map(restamp),
+          }),
+      cells: row.cells.map((cell) => ({
+        ...carrierIdentities(cell),
+        ...(cell.propertyChanges === undefined
+          ? {}
+          : {
+              propertyChanges: cell.propertyChanges.map((change) => {
+                const updated = restamp(change);
+                return change.previousStructuralChange === undefined
+                  ? updated
+                  : {
+                      ...updated,
+                      previousStructuralChange: restamp(
+                        change.previousStructuralChange,
+                      ),
+                    };
+              }),
+            }),
+        ...(cell.structuralChange === undefined
+          ? {}
+          : { structuralChange: restamp(cell.structuralChange) }),
+        content: cell.content.map(rewrite),
+      })),
     })),
   };
 };
@@ -503,6 +752,9 @@ type MarkNestedTableMoveOptions = {
   source: NestedTableMoveSource;
   destinations: readonly string[];
   rowStamps: readonly RevisionStamp[];
+  recordStamps: readonly RevisionStamp[];
+  controls: readonly (readonly [number, number])[];
+  pictures: readonly (readonly [number, number])[];
 };
 type MarkedNestedTableMove = {
   destination: Table;
@@ -512,10 +764,14 @@ export const markNestedTableMove = ({
   source,
   destinations,
   rowStamps,
+  recordStamps,
+  controls,
+  pictures,
 }: MarkNestedTableMoveOptions): MarkedNestedTableMove | undefined => {
   if (
     destinations.length !== source.paragraphs.length ||
-    rowStamps.length !== source.table.rows.length
+    rowStamps.length !== source.insertedRows ||
+    recordStamps.length !== source.revisions.length
   )
     return undefined;
   const paragraphs: [string, string][] = [];
@@ -524,17 +780,27 @@ export const markNestedTableMove = ({
     if (destination === undefined) return undefined;
     paragraphs.push([original, destination]);
   }
-  const table = withNestedParagraphIds(
-    source.table,
-    new Map(
+  const revisions: [number, number][] = [];
+  for (const [index, original] of source.revisions.entries()) {
+    const temporary = recordStamps[index];
+    if (temporary === undefined) return undefined;
+    revisions.push([original, temporary.id]);
+  }
+  const table = withNestedMoveIdentities(source.table, {
+    paragraphs: new Map(
       paragraphs.map(([original, destination]) => [
         idKey(original),
         destination,
       ]),
     ),
-  );
-  const rows = table.rows.map((row, index) => {
-    const stamp = rowStamps[index];
+    revisions: new Map(revisions),
+    controls: new Map(controls),
+    pictures: new Map(pictures),
+  });
+  let nextStamp = 0;
+  const rows = table.rows.map((row) => {
+    if (row.structuralChange !== undefined) return row;
+    const stamp = rowStamps[nextStamp++];
     return stamp === undefined
       ? row
       : {
@@ -550,6 +816,9 @@ export const markNestedTableMove = ({
     record: {
       rows: rowStamps.map(({ id }) => id),
       paragraphs,
+      ...(revisions.length === 0 ? {} : { revisions }),
+      ...(controls.length === 0 ? {} : { controls }),
+      ...(pictures.length === 0 ? {} : { pictures }),
     } satisfies TableGeometryNestedMove,
   };
 };
@@ -754,6 +1023,7 @@ export const tableMoveOwnershipMatches = (
   const members = new Set(geometry.revisionIds);
   const sources = new Map<string, Paragraph>();
   const destinations = new Map<string, Paragraph>();
+  const destinationTables = new Set<Table>();
   const movedRows = new Map<number, Table>();
   const nestedSources = new Map<string, string[]>();
   const collectMovedTables = (
@@ -764,10 +1034,10 @@ export const tableMoveOwnershipMatches = (
       if (block.type === "table") {
         if (side === "source") {
           const ids = paragraphIdsIn(block).map(idKey);
-          const first = ids.at(0);
-          if (first !== undefined) nestedSources.set(first, ids);
+          for (const id of ids) nestedSources.set(id, ids);
           continue;
         }
+        destinationTables.add(block);
         for (const { structuralChange } of block.rows) {
           if (structuralChange?.type === "tableRowInsertion")
             movedRows.set(structuralChange.info.id, block);
@@ -820,34 +1090,53 @@ export const tableMoveOwnershipMatches = (
   )
     return false;
   const nestedTables = new Set<Table>();
-  const claimedSources = new Set<string>();
+  const claimedSources = new Set<readonly string[]>();
+  const surviving = new Set(
+    geometry.nestedMoves === undefined ? [] : paragraphIdsIn(table).map(idKey),
+  );
   for (const move of geometry.nestedMoves ?? []) {
     const first = move.rows.at(0);
-    const destination = first === undefined ? undefined : movedRows.get(first);
+    const destination =
+      first === undefined
+        ? nestedTableCopyByAnchors(table, move.paragraphs)
+        : movedRows.get(first);
+    // An earlier review can remove paired paragraphs from both copies.
+    const pairs = move.paragraphs
+      .map(([source, target]) => [idKey(source), idKey(target)] as const)
+      .filter(
+        ([source, target]) => surviving.has(source) || surviving.has(target),
+      );
+    if (
+      destination === undefined &&
+      first === undefined &&
+      move.paragraphs.length > 0 &&
+      pairs.length === 0
+    )
+      continue;
     if (
       destination === undefined ||
+      !destinationTables.has(destination) ||
       nestedTables.has(destination) ||
       new Set(move.rows).size !== move.rows.length ||
       move.rows.some((id) => movedRows.get(id) !== destination)
     )
       return false;
-    const firstSource = move.paragraphs.at(0)?.at(0);
-    if (firstSource === undefined) return false;
-    const sourceId = idKey(firstSource);
-    const sourceIds = nestedSources.get(sourceId);
     const destinationIds = paragraphIdsIn(destination).map(idKey);
-    if (
-      claimedSources.has(sourceId) ||
-      sourceIds?.length !== move.paragraphs.length ||
-      destinationIds.length !== move.paragraphs.length ||
-      move.paragraphs.some(
-        ([from, to], index) =>
-          sourceIds[index] !== idKey(from) ||
-          destinationIds[index] !== idKey(to),
+    if (destinationIds.length !== pairs.length) return false;
+    const firstSource = pairs.at(0)?.at(0);
+    if (firstSource !== undefined) {
+      const sourceIds = nestedSources.get(firstSource);
+      if (
+        sourceIds?.length !== pairs.length ||
+        claimedSources.has(sourceIds) ||
+        pairs.some(
+          ([from, to], index) =>
+            sourceIds[index] !== from || destinationIds[index] !== to,
+        )
       )
-    )
-      return false;
-    claimedSources.add(sourceId);
+        return false;
+      claimedSources.add(sourceIds);
+    }
     nestedTables.add(destination);
   }
   const seen = new Set<string>();
@@ -903,9 +1192,90 @@ export const tableMoveOwnershipMatches = (
   return true;
 };
 
-/** Settle paragraph identity at the same time as the cell topology, keeping
- * the source id at the destination on acceptance. */
-export const resolveTableMoves = (table: Table, reject: boolean): Table => {
+/** The control shells on opposite sides of the recorded paragraph moves. */
+export const tableBlockControlHandoffs = (
+  table: Table,
+): ReadonlyMap<number, number> => {
+  const controls = new Map<number, number>();
+  const geometry = table.formatting?.gridChange?.geometryChange;
+  if (geometry?.type !== "mergeCells") return controls;
+  const pairs = [
+    ...(geometry.moves ?? []).map(
+      ({ source, destination }) => [source, destination] as const,
+    ),
+    ...(geometry.nestedMoves ?? []).flatMap(({ paragraphs }) => paragraphs),
+  ];
+  if (pairs.length === 0) return controls;
+  const anchors = new Map<string, readonly BlockSdt[]>();
+  const collect = (
+    blocks: readonly BlockContent[],
+    scope: readonly BlockSdt[],
+  ): void => {
+    for (const block of blocks) {
+      if (block.type === "blockSdt") collect(block.content, [...scope, block]);
+      else if (block.type === "blockCustomXml") collect(block.content, scope);
+      else if (block.type === "table") {
+        for (const row of block.rows)
+          for (const cell of row.cells) collect(cell.content, scope);
+      } else if (
+        block.type === "paragraph" &&
+        block.paraId !== undefined &&
+        scope.length > 0
+      ) {
+        anchors.set(idKey(block.paraId), scope);
+      }
+    }
+  };
+  for (const row of table.rows)
+    for (const cell of row.cells) collect(cell.content, []);
+  for (const [source, destination] of pairs) {
+    const originals = anchors.get(idKey(source));
+    const copies = anchors.get(idKey(destination));
+    if (
+      originals === undefined ||
+      copies === undefined ||
+      originals.length !== copies.length
+    )
+      continue;
+    for (const [index, original] of originals.entries()) {
+      const copy = copies[index];
+      if (
+        copy === undefined ||
+        !movableBlockControl(original) ||
+        !movableBlockControl(copy)
+      )
+        continue;
+      const { id: from, ...originalProperties } = original.properties;
+      const { id: to, ...copyProperties } = copy.properties;
+      if (
+        from !== undefined &&
+        to !== undefined &&
+        from !== to &&
+        structurallyEqual(originalProperties, copyProperties)
+      )
+        controls.set(to, from);
+    }
+  }
+  return controls;
+};
+
+type ResolveTableMovesOptions = {
+  table: Table;
+  reject: boolean;
+  handoffs: TableMoveHandoffs;
+};
+
+export type TableMoveHandoffs = {
+  revisions: ReadonlyMap<number, number>;
+  controls: ReadonlyMap<number, number>;
+};
+
+/** Settle copied identities with the cell topology. */
+export const resolveTableMoves = ({
+  table,
+  reject,
+  handoffs,
+}: ResolveTableMovesOptions): Table => {
   const geometry = table.formatting?.gridChange?.geometryChange;
   if (
     geometry?.type !== "mergeCells" ||
@@ -923,6 +1293,12 @@ export const resolveTableMoves = (table: Table, reject: boolean): Table => {
       move.rows.map((id) => [id, move] as const),
     ),
   );
+  const nestedAnchors = new Map<Table, TableGeometryNestedMove>();
+  for (const move of geometry.nestedMoves ?? []) {
+    if (move.rows.length > 0) continue;
+    const copy = nestedTableCopyByAnchors(table, move.paragraphs);
+    if (copy !== undefined) nestedAnchors.set(copy, move);
+  }
   const emptyOwner =
     geometry.emptyOwner === undefined ? undefined : idKey(geometry.emptyOwner);
   const rows = table.rows.map((row) =>
@@ -931,13 +1307,27 @@ export const resolveTableMoves = (table: Table, reject: boolean): Table => {
         Object.assign({}, cell, {
           content: cell.content.flatMap(
             function restore(block): BlockContent[] {
-              if (block.type === "blockCustomXml") {
+              if (
+                block.type === "blockCustomXml" ||
+                block.type === "blockSdt"
+              ) {
                 const content = block.content.flatMap(restore);
                 // A destination wrapper whose copied children are all gone
                 // goes with them. Keep pre-existing empty wrappers.
-                return content.length === 0 && block.content.length > 0
-                  ? []
-                  : [{ ...block, content }];
+                if (content.length === 0 && block.content.length > 0) return [];
+                const id =
+                  block.type === "blockSdt" && block.properties.id !== undefined
+                    ? handoffs.controls.get(block.properties.id)
+                    : undefined;
+                if (!reject && block.type === "blockSdt" && id !== undefined)
+                  return [
+                    {
+                      ...block,
+                      properties: { ...block.properties, id },
+                      content,
+                    },
+                  ];
+                return [{ ...block, content }];
               }
               if (block.type === "table") {
                 const move = block.rows
@@ -948,18 +1338,32 @@ export const resolveTableMoves = (table: Table, reject: boolean): Table => {
                       nested.has(change.info.id),
                   );
                 const record =
-                  move === undefined ? undefined : nested.get(move.info.id);
+                  move === undefined
+                    ? nestedAnchors.get(block)
+                    : nested.get(move.info.id);
                 if (record === undefined) return [block];
                 if (reject) return [];
-                const placed = withNestedParagraphIds(
-                  block,
-                  new Map(
+                const placed = withNestedMoveIdentities(block, {
+                  paragraphs: new Map(
                     record.paragraphs.map(([source, destination]) => [
                       idKey(destination),
                       source,
                     ]),
                   ),
-                );
+                  revisions: handoffs.revisions,
+                  controls: new Map(
+                    record.controls?.map(([old, temporary]) => [
+                      temporary,
+                      old,
+                    ]),
+                  ),
+                  pictures: new Map(
+                    record.pictures?.map(([old, temporary]) => [
+                      temporary,
+                      old,
+                    ]),
+                  ),
+                });
                 const stamps = new Set(record.rows);
                 placed.rows = placed.rows.map((child) => {
                   const change = child.structuralChange;

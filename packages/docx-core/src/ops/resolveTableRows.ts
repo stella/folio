@@ -11,6 +11,7 @@ import type {
   TableStructuralChangeInfo,
 } from "../model/document";
 import { maxOf } from "../model/extremes";
+import { activeNestedTableRevisionHandoffs } from "../model/nestedTableRevisionHandoffs";
 import { TABLE_CELL_VERTICAL_MERGES } from "../model/tableCellVerticalMerge";
 import {
   declaredUnmeasuredColumnCount,
@@ -30,6 +31,8 @@ import type { ApplyOps } from "./resolve";
 import { reviewFieldsOf } from "./review";
 import {
   resolveTableMoves,
+  tableBlockControlHandoffs,
+  type TableMoveHandoffs,
   tableMoveOwnershipMatches,
   tableMoveRevisionIds,
 } from "./tableCellMove";
@@ -98,7 +101,27 @@ export const withBelongingTableGeometry = (
 ): Result<ResolveRevisionOp, DocumentOpRefusal> => {
   const ids = new Set(op.revisionIds);
   const uniqueCount = ids.size;
-  for (const table of tablesIn(document, op.story)) {
+  const tables = tablesIn(document, op.story);
+  for (const table of tables) {
+    const grid = table.formatting?.gridChange;
+    const geometry = grid?.geometryChange;
+    if (
+      geometry?.type === "mergeCells" &&
+      Array.isArray(geometry.nestedMoves)
+    ) {
+      for (const move of geometry.nestedMoves) {
+        for (const [source, temporary] of activeNestedTableRevisionHandoffs(
+          table,
+          move,
+        )) {
+          if (!ids.has(source) && !ids.has(temporary)) continue;
+          ids.add(source);
+          ids.add(temporary);
+        }
+      }
+    }
+  }
+  for (const table of tables) {
     const grid = table.formatting?.gridChange;
     const geometry = grid?.geometryChange;
     const members = geometry?.revisionIds;
@@ -607,11 +630,23 @@ const holdsCellContentOrReview = (cell: TableCell): boolean => {
   );
 };
 
-const cellReviewRemovesRow = (row: TableRow, cells: TableCell[]): boolean => {
+type CellReviewRemovesRowOptions = {
+  row: TableRow;
+  cells: TableCell[];
+  /** Row insertions that exist only to carry a nested-table move. */
+  moveRows: ReadonlySet<number> | undefined;
+};
+const cellReviewRemovesRow = ({
+  row,
+  cells,
+  moveRows,
+}: CellReviewRemovesRowOptions): boolean => {
   if (cells.length === 0) return row.cells.length > 0;
   return (
     editRemovesRow({ before: row.cells, after: cells }) &&
-    row.structuralChange === undefined &&
+    (row.structuralChange === undefined ||
+      (row.structuralChange.type === "tableRowInsertion" &&
+        moveRows?.has(row.structuralChange.info.id) === true)) &&
     (row.propertyChanges?.length ?? 0) === 0 &&
     (row.tablePropertyExceptionChanges?.length ?? 0) === 0 &&
     !holdsPositionedRowMarkup(row) &&
@@ -633,12 +668,14 @@ type ResolveCellColumnsOptions = {
   ids: ReadonlySet<number>;
   reject: boolean;
   mergeOwners: ReadonlyMap<TableCell, TableCell>;
+  moveRows: ReadonlySet<number> | undefined;
 };
 const resolveCellColumns = ({
   table,
   ids,
   reject,
   mergeOwners,
+  moveRows,
 }: ResolveCellColumnsOptions): Result<
   { table: Table; holdsRemovedColumns: boolean },
   CellReviewRefusal
@@ -799,7 +836,7 @@ const resolveCellColumns = ({
       // way as its direct edit. Selective review keeps authored survivors
       // when another row still uses the columns the removed cells occupied.
       const closes = holdsRemovedColumnsInRow
-        ? cellReviewRemovesRow(row, survivors)
+        ? cellReviewRemovesRow({ row, cells: survivors, moveRows })
         : editRemovesRow({ before: row.cells, after: survivors });
       if (closes && !cells.some((cell) => retainedOwners.has(cell))) continue;
     }
@@ -928,12 +965,16 @@ const endAdjacentMerges = ({
 
 type ResolveCellChangesOptions = {
   table: Table;
+  moveHandoffs?: TableMoveHandoffs | undefined;
+  moveRows?: ReadonlySet<number>;
   ids: ReadonlySet<number>;
   reject: boolean;
   selectedGridChange: boolean;
 };
 const resolveCellChanges = ({
   table,
+  moveHandoffs,
+  moveRows,
   ids,
   reject,
   selectedGridChange,
@@ -994,7 +1035,7 @@ const resolveCellChanges = ({
         (!reject &&
           (compoundGrid
             ? editRemovesRow({ before: row.cells, after: cells })
-            : cellReviewRemovesRow(row, cells)))
+            : cellReviewRemovesRow({ row, cells, moveRows })))
         ? []
         : [{ ...row, cells }];
     }),
@@ -1007,14 +1048,15 @@ const resolveCellChanges = ({
   const hasRemovedCells = table.rows.some((row) => row.cells.some(removes));
   if (compoundGrid)
     return Result.ok({
-      table: resolveTableMoves(
-        endAdjacentMerges({
+      table: resolveTableMoves({
+        table: endAdjacentMerges({
           before: table,
           after: structureResolved,
           selected: mergeRows,
         }),
         reject,
-      ),
+        handoffs: moveHandoffs ?? tableMoveHandoffs(table),
+      }),
       holdsRemovedColumns: false,
     });
   if (!hasRemovedCells)
@@ -1060,6 +1102,7 @@ const resolveCellChanges = ({
   // Historical cell marks without a grid snapshot can represent complete
   // column edits. This fallback removes those slots from the explicit grid.
   const columns = resolveCellColumns({
+    moveRows,
     table: propertiesResolved,
     ids,
     reject,
@@ -1210,6 +1253,28 @@ const replaceUnaddressedTable = ({
     : Result.ok(replacement);
 };
 
+const nestedTableRevisionHandoffs = (
+  table: Table,
+): ReadonlyMap<number, number> => {
+  const geometry = table.formatting?.gridChange?.geometryChange;
+  const handoffs = new Map<number, number>();
+  if (geometry?.type !== "mergeCells" || !Array.isArray(geometry.nestedMoves))
+    return handoffs;
+  for (const move of geometry.nestedMoves) {
+    for (const [source, temporary] of activeNestedTableRevisionHandoffs(
+      table,
+      move,
+    ))
+      handoffs.set(temporary, source);
+  }
+  return handoffs;
+};
+
+const tableMoveHandoffs = (table: Table): TableMoveHandoffs => ({
+  revisions: nestedTableRevisionHandoffs(table),
+  controls: tableBlockControlHandoffs(table),
+});
+
 export const resolveTableRows = ({
   document,
   op,
@@ -1219,6 +1284,8 @@ export const resolveTableRows = ({
   const reject = op.decision === REVISION_DECISIONS.REJECT;
   let current = document;
   const edits: DocumentEdit[] = [];
+  const moveHandoffs = new Map<number, TableMoveHandoffs>();
+  const moveRows = new Set<number>();
 
   const settled = marksInRemovedStructure(document, op);
   if (settled.length > 0) {
@@ -1231,6 +1298,14 @@ export const resolveTableRows = ({
   // Keep row insertion/deletion on its established primitive, which also
   // removes an emptied table. Table property and cell changes use setTable.
   for (const originalTable of tablesIn(document, op.story)) {
+    // Match both copies before row decisions remove one of them.
+    const grid = originalTable.formatting?.gridChange;
+    const geometry = grid?.geometryChange;
+    if (geometry?.type === "mergeCells")
+      for (const move of geometry.nestedMoves ?? [])
+        for (const id of move.rows) moveRows.add(id);
+    if (grid !== undefined && ids.has(grid.id))
+      moveHandoffs.set(grid.id, tableMoveHandoffs(originalTable));
     // A merge already records the replacement cell topology. Applying its
     // row deletions separately would carry old merge owners into that topology.
     const mergeRows = reject
@@ -1347,6 +1422,8 @@ export const resolveTableRows = ({
     const selectedGridChange = grid !== undefined && ids.has(grid.id);
     const cellsResolved = resolveCellChanges({
       table,
+      moveRows,
+      moveHandoffs: selectedGridChange ? moveHandoffs.get(grid.id) : undefined,
       ids,
       reject,
       selectedGridChange,

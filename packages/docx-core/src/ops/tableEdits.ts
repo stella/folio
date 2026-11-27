@@ -4,6 +4,7 @@ import { panic, Result } from "better-result";
 import {
   type BlockContent,
   type BlockCustomXml,
+  type BlockSdt,
   type Document,
   finalizeParagraphFormatting,
   MAX_REVISION_ID,
@@ -72,6 +73,7 @@ import {
   markEmptyTableMove,
   markNestedTableMove,
   markTableMove,
+  movableBlockControl,
   movableCustomXmlBlock,
   moveRangeAllocator,
   type NestedTableMoveSource,
@@ -2343,7 +2345,8 @@ type MergeOptions = {
   grid: TableGrid;
 };
 
-type MergeMoveSource = { wrappers: readonly BlockCustomXml[] } & (
+type MergeWrapper = BlockCustomXml | BlockSdt;
+type MergeMoveSource = { wrappers: readonly MergeWrapper[] } & (
   | { type: "paragraph"; source: TableMoveSource }
   | { type: "table"; source: NestedTableMoveSource }
 );
@@ -2354,7 +2357,7 @@ const mergeMoveSources = (
   const moves: MergeMoveSource[] = [];
   const collect = (
     block: BlockContent,
-    wrappers: readonly BlockCustomXml[],
+    wrappers: readonly MergeWrapper[],
   ): boolean => {
     switch (block.type) {
       case "paragraph": {
@@ -2371,6 +2374,12 @@ const mergeMoveSources = (
       }
       case "blockCustomXml": {
         if (block.content.length === 0 || !movableCustomXmlBlock(block))
+          return false;
+        const inside = [...wrappers, block];
+        return block.content.every((child) => collect(child, inside));
+      }
+      case "blockSdt": {
+        if (block.content.length === 0 || !movableBlockControl(block))
           return false;
         const inside = [...wrappers, block];
         return block.content.every((child) => collect(child, inside));
@@ -2396,12 +2405,18 @@ const mergeMoveParagraphCount = (moves: readonly MergeMoveSource[]): number =>
     0,
   );
 
+const mergeMoveBlockControls = (
+  moves: readonly MergeMoveSource[],
+): Set<BlockSdt> => {
+  const controls = new Set<BlockSdt>();
+  for (const move of moves)
+    for (const wrapper of move.wrappers)
+      if (wrapper.type === "blockSdt") controls.add(wrapper);
+  return controls;
+};
+
 const mergeMoveControlCount = (moves: readonly MergeMoveSource[]): number =>
-  moves.reduce(
-    (count, move) =>
-      count + (move.type === "paragraph" ? move.source.controls.length : 0),
-    0,
-  );
+  moves.reduce((count, move) => count + move.source.controls.length, 0);
 
 type SuggestMergeOptions = MergeOptions & {
   selected: readonly GridCell[][];
@@ -2471,12 +2486,14 @@ const suggestMerge = ({
     );
   let moveCount = 0;
   for (const move of moves) {
-    if (move.type === "table") moveCount += move.source.table.rows.length;
+    if (move.type === "table")
+      moveCount += move.source.insertedRows + move.source.revisions.length;
     else moveCount += move.source.paragraph.content.length === 0 ? 1 : 3;
   }
   const stamps = stampsFor(op, structuralCount + 3 + moveCount);
   if (stamps.isErr()) return Result.err(stamps.error);
-  const controlCount = mergeMoveControlCount(moves);
+  const blockControls = mergeMoveBlockControls(moves);
+  const controlCount = blockControls.size + mergeMoveControlCount(moves);
   const controlIds = (op.newIds?.control ?? []).slice(0, controlCount);
   if (controlIds.length !== controlCount)
     return refuse({
@@ -2520,16 +2537,33 @@ const suggestMerge = ({
   >();
   const nestedMoves: TableGeometryNestedMove[] = [];
   const destinationBlocks: BlockContent[] = [];
-  const wrappers = new Map<BlockCustomXml, BlockCustomXml>();
+  const wrappers = new Map<MergeWrapper, MergeWrapper>();
+  const copiedControls = new Map<BlockSdt, number>();
+  let nextControl = 0;
+  for (const control of blockControls) {
+    const temporary = controlIds[nextControl++];
+    if (temporary === undefined)
+      return mismatch(op, "A moved control needs a temporary id.");
+    copiedControls.set(control, temporary);
+  }
   const appendDestination = (
-    scope: readonly BlockCustomXml[],
+    scope: readonly MergeWrapper[],
     block: BlockContent,
   ) => {
     let target = destinationBlocks;
     for (const source of scope) {
       let wrapper = wrappers.get(source);
       if (wrapper === undefined) {
-        wrapper = { ...source, content: [] };
+        const temporary =
+          source.type === "blockSdt" ? copiedControls.get(source) : undefined;
+        wrapper =
+          source.type === "blockSdt" && temporary !== undefined
+            ? {
+                ...source,
+                properties: { ...source.properties, id: temporary },
+                content: [],
+              }
+            : { ...source, content: [] };
         wrappers.set(source, wrapper);
         target.push(wrapper);
       }
@@ -2543,23 +2577,42 @@ const suggestMerge = ({
   )
     ? moveRangeAllocator(document.package)
     : undefined;
-  const takePictureId = moves.some(
-    (move) => move.type === "paragraph" && move.source.pictures.size > 0,
-  )
+  const takePictureId = moves.some(({ source }) => source.pictures.size > 0)
     ? tablePictureIdAllocator(document.package)
     : undefined;
   let nextBlockId = continuationCount;
   let nextStamp = 0;
-  let nextControl = 0;
   for (const move of moves) {
+    const controls: [number, number][] = [];
+    for (const id of move.source.controls) {
+      const temporary = controlIds[nextControl++];
+      if (temporary === undefined)
+        return mismatch(op, "A moved control needs a temporary id.");
+      controls.push([id, temporary]);
+    }
+    const pictures: [number, number][] = [];
+    for (const id of move.source.pictures) {
+      const temporary = takePictureId?.();
+      if (temporary === undefined)
+        return refuse({
+          op,
+          reason: DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
+          message: "The picture identity space is exhausted.",
+        });
+      pictures.push([id, temporary]);
+    }
     if (move.type === "table") {
       const { source } = move;
       const endBlockId = nextBlockId + source.paragraphs.length;
-      const endStamp = nextStamp + source.table.rows.length;
+      const endStamp = nextStamp + source.insertedRows;
+      const endRevisions = endStamp + source.revisions.length;
       const nested = markNestedTableMove({
         source,
         destinations: op.newBlockIds.slice(nextBlockId, endBlockId),
         rowStamps: moveStamps.slice(nextStamp, endStamp),
+        recordStamps: moveStamps.slice(endStamp, endRevisions),
+        controls,
+        pictures,
       });
       if (nested === undefined)
         return mismatch(
@@ -2567,7 +2620,7 @@ const suggestMerge = ({
           "A moved table needs its row stamps and destination paragraph ids.",
         );
       nextBlockId = endBlockId;
-      nextStamp = endStamp;
+      nextStamp = endRevisions;
       nestedMoves.push(nested.record);
       appendDestination(move.wrappers, nested.destination);
       continue;
@@ -2607,24 +2660,6 @@ const suggestMerge = ({
         reason: DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
         message: "The move range identity space is exhausted.",
       });
-    const controls: [number, number][] = [];
-    for (const id of source.controls) {
-      const temporary = controlIds[nextControl++];
-      if (temporary === undefined)
-        return mismatch(op, "A moved control needs a temporary id.");
-      controls.push([id, temporary]);
-    }
-    const pictures: [number, number][] = [];
-    for (const id of source.pictures) {
-      const temporary = takePictureId?.();
-      if (temporary === undefined)
-        return refuse({
-          op,
-          reason: DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
-          message: "The picture identity space is exhausted.",
-        });
-      pictures.push([id, temporary]);
-    }
     const marked = markTableMove({
       source,
       destination,
@@ -2661,7 +2696,7 @@ const suggestMerge = ({
     ],
   };
   const markBlock = (block: BlockContent): BlockContent => {
-    if (block.type === "blockCustomXml")
+    if (block.type === "blockCustomXml" || block.type === "blockSdt")
       return { ...block, content: block.content.map(markBlock) };
     return block.type === "paragraph" && block.paraId !== undefined
       ? (moved.get(idKey(block.paraId))?.source ?? block)
@@ -3181,20 +3216,28 @@ const pendingGeometry = (table: Table, op: TableIntentOperation) =>
           "Resolve the pending geometry change before editing this table's grid or properties.",
       });
 
-/** Count identities from the same topology/selection decisions the operation applies. */
-export const tableEditControlDemand = (
+/** Additional identities the selected records need when a tracked merge copies them. */
+export const tableEditCopyIdentityDemand = (
   location: TableRowLocation,
   op: TableIntentOperation,
-): number => {
-  if (op.type !== DOCUMENT_OP_TYPES.MERGE_CELLS) return 0;
+): { controls: number; revisions: number } => {
+  const none = { controls: 0, revisions: 0 };
+  if (op.type !== DOCUMENT_OP_TYPES.MERGE_CELLS) return none;
   const { table } = location;
   const grid = statedGrid(table, op);
-  if (grid.isErr()) return 0;
+  if (grid.isErr()) return none;
   const selection = mergeSelection({ table, grid: grid.value, op });
-  if (selection.isErr() || selection.value.verticalOnly) return 0;
-  return mergeMoveControlCount(
-    mergeMoveSources(selection.value.selected) ?? [],
-  );
+  if (selection.isErr() || selection.value.verticalOnly) return none;
+  const moves = mergeMoveSources(selection.value.selected);
+  if (moves === undefined) return none;
+  return {
+    controls: mergeMoveBlockControls(moves).size + mergeMoveControlCount(moves),
+    revisions: moves.reduce(
+      (total, move) =>
+        total + (move.type === "table" ? move.source.revisions.length : 0),
+      0,
+    ),
+  };
 };
 
 export const tableEditParagraphDemand = (

@@ -3,6 +3,8 @@ import { expect, test } from "bun:test";
 import {
   applyDocumentOp,
   applyDocumentOps,
+  compileEditorIntent,
+  createEditorIntentIdAllocator,
   DOCUMENT_OP_REFUSAL_REASONS,
   DOCUMENT_OP_TYPES,
   type DocumentOp,
@@ -114,6 +116,31 @@ const trackedMerge = {
   newIds: { revision: [101, 102, 103, 104, 105, 106] },
 } as const;
 
+const allocateTrackedMerge = (document: Document) => {
+  const { newBlockIds: _fresh, ...operation } = directMerge;
+  const intent = { type: "table", operation } as const;
+  const { revisionId, newIds } = createEditorIntentIdAllocator()(
+    document,
+    intent,
+  );
+  const { ops } = compileEditorIntent(document, {
+    intent,
+    mode: {
+      type: "suggesting",
+      revision: {
+        id: revisionId,
+        author: "Reviewer",
+        date: "2026-11-27T00:00:00Z",
+      },
+      newIds,
+    },
+  }).unwrap();
+  const merge = ops.at(0);
+  if (merge?.type !== DOCUMENT_OP_TYPES.MERGE_CELLS)
+    throw new TypeError("Expected a tracked merge.");
+  return { merge, controlIds: newIds.control ?? [] };
+};
+
 test.each([
   '<m:oMath><w:bookmarkStart w:id="42" w:name="Formula"/><m:r><m:t>x</m:t></m:r><w:bookmarkEnd w:id="42"/></m:oMath>',
   '<w:proofErr w:type="spellStart"/><w:r><w:t>A</w:t></w:r>',
@@ -136,6 +163,13 @@ const assertSavedMove = (
 ) => {
   const direct = applyDocumentOp(original, directMerge).unwrap().document;
   const pending = applyDocumentOp(original, operation).unwrap();
+  const grid = tableOf(pending.document).formatting?.gridChange;
+  if (grid?.geometryChange?.type !== "mergeCells")
+    throw new TypeError("Expected a tracked merge geometry.");
+  const move = grid.geometryChange.moves?.at(0);
+  const reviewId =
+    (move?.kind === "empty" ? move.destinationMark : move?.fromRevision) ??
+    grid.id;
   expect(
     applyDocumentOps(pending.document, pending.inverse).unwrap().document,
   ).toEqual(original);
@@ -160,7 +194,7 @@ const assertSavedMove = (
       const resolved = applyDocumentOp(document, {
         type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
         story: OP_STORIES.MAIN,
-        revisionIds: [104],
+        revisionIds: [reviewId],
         decision,
       }).unwrap().document;
       if (document === pending.document) {
@@ -234,6 +268,65 @@ test("a copied nested table keeps its tagged cell paragraph and stable identity"
     newBlockIds: ["00000004", "00000006"],
   });
   expect(xml.match(/<w:customXml\b/gu)).toHaveLength(2);
+});
+
+test("a moved table with only omitted rows uses its native insertion record as an anchor", () => {
+  const original = sourceWith({
+    content: plain,
+    wrap: (paragraph) =>
+      '<w:tbl><w:tblGrid><w:gridCol w:w="500"/><w:gridCol w:w="500"/></w:tblGrid>' +
+      '<w:tr><w:trPr><w:gridBefore w:val="2"/></w:trPr></w:tr></w:tbl>' +
+      paragraph,
+  });
+  const { merge } = allocateTrackedMerge(original);
+  const xml = assertSavedMove(original, merge);
+  expect(xml.match(/<w:gridBefore w:val="2"/gu)).toHaveLength(2);
+  expect(xml).toMatch(/<w:trPr><w:gridBefore w:val="2"\/><w:ins /u);
+});
+
+test("a moved nested table preserves drawing and rich-text control identities", () => {
+  const original = sourceWith({
+    owner: inlinePicture.replace('docPr id="27"', 'docPr id="1"'),
+    content: `<w:sdt><w:sdtPr><w:id w:val="72"/></w:sdtPr><w:sdtContent>${inlinePicture}</w:sdtContent></w:sdt>`,
+    wrap: (paragraph) =>
+      '<w:tbl><w:tblGrid><w:gridCol w:w="500"/></w:tblGrid><w:tr><w:tc>' +
+      `<w:sdt><w:sdtPr><w:id w:val="71"/></w:sdtPr><w:sdtContent>${paragraph}</w:sdtContent></w:sdt>` +
+      '</w:tc></w:tr></w:tbl><w:p w14:paraId="00000005"/>',
+  });
+  const { merge, controlIds } = allocateTrackedMerge(original);
+  expect(controlIds).toHaveLength(2);
+  const xml = assertSavedMove(original, merge);
+  expect(xml.match(/r:embed="rIdLogo"/gu)).toHaveLength(3);
+  expect(xml.match(/<wp:docPr id="1"/gu)).toHaveLength(1);
+  expect(xml.match(/<wp:docPr id="2"/gu)).toHaveLength(1);
+  expect(xml.match(/<wp:docPr id="27"/gu)).toHaveLength(1);
+  for (const id of [71, 72, ...controlIds])
+    expect(xml.match(new RegExp(`<w:id w:val="${id}"`, "gu"))).toHaveLength(1);
+});
+
+test("a moved nested table preserves controls shared by rows and cells", () => {
+  const original = sourceWith({
+    content: plain,
+    wrap: (paragraph) =>
+      '<w:tbl><w:tblGrid><w:gridCol w:w="500"/><w:gridCol w:w="500"/></w:tblGrid>' +
+      '<w:customXml w:element="controlledRows"><w:sdt><w:sdtPr><w:id w:val="73"/>' +
+      '<w:dataBinding w:storeItemID="{D39198F2-3D48-4B86-A920-A76E2D16312A}" w:xpath="/form/term[1]"/>' +
+      "</w:sdtPr><w:sdtContent>" +
+      '<w:tr><w:sdt><w:sdtPr><w:id w:val="74"/></w:sdtPr><w:sdtContent>' +
+      `<w:tc>${paragraph}</w:tc><w:tc><w:p w14:paraId="00000007"/></w:tc>` +
+      "</w:sdtContent></w:sdt></w:tr>" +
+      '<w:tr><w:tc><w:p w14:paraId="00000008"/></w:tc><w:tc><w:p w14:paraId="00000009"/></w:tc></w:tr>' +
+      '</w:sdtContent></w:sdt></w:customXml></w:tbl><w:p w14:paraId="00000005"/>',
+  });
+  const { merge, controlIds } = allocateTrackedMerge(original);
+  expect(controlIds).toHaveLength(2);
+  const xml = assertSavedMove(original, merge);
+  expect(xml.match(/<w:customXml w:element="controlledRows"/gu)).toHaveLength(
+    2,
+  );
+  expect(xml.match(/w:xpath="\/form\/term\[1\]"/gu)).toHaveLength(2);
+  for (const id of [73, 74, ...controlIds])
+    expect(xml.match(new RegExp(`<w:id w:val="${id}"`, "gu"))).toHaveLength(1);
 });
 
 test("the saved picture is available after each public table review decision", async () => {

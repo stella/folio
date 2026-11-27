@@ -17,7 +17,12 @@ import {
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
-import type { Document, ParagraphContent, Table } from "../types/document";
+import type {
+  BlockContent,
+  Document,
+  ParagraphContent,
+  Table,
+} from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { parseDocx } from "./parser";
 import { createDocx } from "./rezip";
@@ -72,15 +77,16 @@ const tableOf = (document: Document): Table => {
   return table;
 };
 
+const contentOf = (block: BlockContent): unknown => {
+  if (block.type === "paragraph")
+    return { id: block.paraId, content: block.content };
+  if (block.type === "blockSdt")
+    return { ...block, content: block.content.map(contentOf) };
+  return block;
+};
 const cellContentOf = (document: Document) =>
   tableOf(document).rows.map((row) =>
-    row.cells.map((cell) =>
-      cell.content.map((block) =>
-        block.type === "paragraph"
-          ? { id: block.paraId, content: block.content }
-          : block,
-      ),
-    ),
+    row.cells.map((cell) => cell.content.map(contentOf)),
   );
 
 const allocate = createEditorIntentIdAllocator();
@@ -408,5 +414,86 @@ test("a tracked move keeps both control copies bound to the same saved custom XM
     expect(
       cellContentOf(applyDocumentOp(reopened, op).unwrap().document),
     ).toEqual(cellContentOf(expected));
+  }
+});
+
+test("tracked table merges keep a block content control and restore its ID after reopening", async () => {
+  const source = documentWith([]);
+  const cell = tableOf(source).rows.at(0)?.cells.at(1);
+  if (cell === undefined) throw new TypeError("Expected a source cell.");
+  const paragraph = (id: string, text: string) => ({
+    type: "paragraph" as const,
+    paraId: id,
+    content: [
+      { type: "run" as const, content: [{ type: "text" as const, text }] },
+    ],
+  });
+  cell.content = [
+    {
+      type: "blockSdt",
+      properties: { sdtType: "richText", id: -42, tag: "provisions" },
+      content: [
+        paragraph("00000002", "First controlled paragraph"),
+        {
+          type: "blockSdt",
+          properties: { sdtType: "richText", id: 91, alias: "Nested" },
+          content: [paragraph("00000004", "Nested paragraph")],
+        },
+        paragraph("00000006", "Last controlled paragraph"),
+      ],
+    },
+    { type: "paragraph", paraId: "00000005", content: [] },
+  ];
+  const original = await read(await createDocx(source));
+  const ids = allocate(original, intent);
+  expect(ids.newIds.control).toHaveLength(2);
+  const compiled = compileEditorIntent(original, {
+    intent,
+    mode: {
+      type: "suggesting",
+      revision: { ...revision, id: ids.revisionId },
+      newIds: ids.newIds,
+    },
+  }).unwrap();
+  const pending = applyDocumentOps(original, compiled.ops).unwrap();
+  expect(
+    applyDocumentOps(pending.document, pending.inverse).unwrap().document,
+  ).toStrictEqual(original);
+  const direct = applyDocumentOp(original, {
+    ...operation,
+    newBlockIds: [],
+  }).unwrap().document;
+  const file = await createDocx(pending.document);
+  const xml = await (
+    await ZipArchive.read(file)
+  )
+    .entry("word/document.xml")
+    ?.text();
+  expect(xml?.match(/<w:sdt>/gu)).toHaveLength(4);
+  for (const id of [-42, 91, ...ids.newIds.control])
+    expect(xml?.split(`<w:id w:val="${id}"/>`)).toHaveLength(2);
+  const reopened = await read(file);
+  const grid = tableOf(reopened).formatting?.gridChange;
+  if (grid === undefined) throw new TypeError("Expected a tracked merge.");
+  for (const decision of [
+    REVISION_DECISIONS.ACCEPT,
+    REVISION_DECISIONS.REJECT,
+  ]) {
+    const decide = (input: Document) =>
+      applyDocumentOp(input, {
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story: OP_STORIES.MAIN,
+        revisionIds: [grid.id],
+        decision,
+      }).unwrap();
+    const expected = decision === REVISION_DECISIONS.ACCEPT ? direct : original;
+    const resolved = decide(pending.document);
+    expect(resolved.document).toStrictEqual(expected);
+    expect(cellContentOf(decide(reopened).document)).toStrictEqual(
+      cellContentOf(expected),
+    );
+    expect(
+      applyDocumentOps(resolved.document, resolved.inverse).unwrap().document,
+    ).toStrictEqual(pending.document);
   }
 });
