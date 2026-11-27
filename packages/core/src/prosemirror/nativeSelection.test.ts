@@ -225,3 +225,79 @@ test("without the plugin ProseMirror reads that Home as a focus reset and undoes
   expect(native.anchorNode).toBe(text);
   expect(native.anchorOffset).toBe(11);
 });
+
+/**
+ * Stand in for the browser's line-boundary move: `modify` puts the DOM caret
+ * at the paragraph text's start or end, and records the calls.
+ */
+const stubLineBoundary = (text: Node) => {
+  const native = document.getSelection();
+  if (!native) throw new TypeError("The rig needs a selection.");
+  const calls: string[] = [];
+  const length = text.textContent?.length ?? 0;
+  Object.defineProperty(native, "modify", {
+    configurable: true,
+    value: (alter: string, direction: string, granularity: string) => {
+      calls.push(`${alter} ${direction} ${granularity}`);
+      const offset = direction === "backward" ? 0 : length;
+      if (alter === "extend") native.extend(text, offset);
+      else native.collapse(text, offset);
+    },
+  });
+  return { native, calls };
+};
+
+const keyDown = (
+  view: EditorView,
+  key: string,
+  init: KeyboardEventInit = {},
+) => {
+  const event = new KeyboardEvent("keydown", {
+    key,
+    bubbles: true,
+    cancelable: true,
+    ...init,
+  });
+  view.dom.dispatchEvent(event);
+  return event;
+};
+
+test("Home sets the line's start in the state as the key is handled, before any selectionchange", () => {
+  const { view, text } = navigationRig([createNativeNavigationPlugin()]);
+  const { calls } = stubLineBoundary(text);
+  const event = keyDown(view, "Home");
+  expect(calls).toEqual(["move backward lineboundary"]);
+  expect(event.defaultPrevented).toBe(true);
+  expect(view.state.selection.from).toBe(1);
+  expect(view.state.selection.empty).toBe(true);
+  // A write of the editor's selection afterwards keeps the moved caret.
+  view.dispatch(view.state.tr);
+  expect(view.state.selection.from).toBe(1);
+});
+
+test("End and Shift+Home move and extend from the caret", () => {
+  const { view, text } = navigationRig([createNativeNavigationPlugin()]);
+  const { calls } = stubLineBoundary(text);
+  keyDown(view, "Home");
+  keyDown(view, "End");
+  expect(view.state.selection.from).toBe(12);
+  keyDown(view, "Home", { shiftKey: true });
+  expect(calls).toEqual([
+    "move backward lineboundary",
+    "move forward lineboundary",
+    "extend backward lineboundary",
+  ]);
+  expect(view.state.selection.anchor).toBe(12);
+  expect(view.state.selection.head).toBe(1);
+});
+
+test("Home with Ctrl, Cmd or Alt is left to its own command", () => {
+  const { view, text } = navigationRig([createNativeNavigationPlugin()]);
+  const { calls } = stubLineBoundary(text);
+  for (const init of [{ ctrlKey: true }, { metaKey: true }, { altKey: true }]) {
+    const event = keyDown(view, "Home", init);
+    expect(event.defaultPrevented).toBe(false);
+  }
+  expect(calls).toEqual([]);
+  expect(view.state.selection.from).toBe(12);
+});
