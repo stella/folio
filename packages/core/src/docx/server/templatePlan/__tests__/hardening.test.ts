@@ -1467,85 +1467,6 @@ describe("a slot that drops the name of a field the template shows", () => {
   });
 });
 
-describe("checkbox content controls", () => {
-  const W14 = "http://schemas.microsoft.com/office/word/2010/wordml";
-  const box = (id: number, checked: 0 | 1): string =>
-    `<w:sdt><w:sdtPr><w:id w:val="${String(id)}"/><w14:checkbox xmlns:w14="${W14}"><w14:checked w14:val="${String(checked)}"/><w14:checkedState w14:val="2612" w14:font="MS Gothic"/><w14:uncheckedState w14:val="2610" w14:font="MS Gothic"/></w14:checkbox></w:sdtPr><w:sdtEndPr/><w:sdtContent>${r(checked === 1 ? "\u2612" : "\u2610")}</w:sdtContent></w:sdt>`;
-  const BODY = [
-    p(
-      `${box(11, 0)}${r(" If this box is checked, the appendix is not used.")}`,
-    ),
-    p(`${r("Agreed: ")}${box(12, 1)}`),
-    // A plain character that only looks like a box.
-    p(r("\u2610 Not a control.")),
-  ].join("");
-
-  test("the mark of a checkbox goes back into its control, in the body and in a slot", async () => {
-    const source = await buildMinimalDocx(BODY);
-    const plan = await planFor({
-      source,
-      template,
-      items: ([first, second, third]) => [
-        { kind: "template", templateBlockIds: [TEMPLATE_IDS.signatures] },
-        {
-          kind: "slot",
-          templateBlockId: TEMPLATE_IDS.signatureLeft,
-          sourceBlockIds: second === undefined ? [] : [second.id],
-        },
-        ...[first, third].flatMap((block): TemplatePlanItem[] =>
-          block === undefined
-            ? []
-            : [
-                {
-                  kind: "source",
-                  blockId: block.id,
-                  hash: block.hash,
-                  styleId: "HouseBody",
-                },
-              ],
-        ),
-      ],
-    });
-    const { docx, report } = unwrap(
-      await applyTemplatePlan({ source, template, plan }),
-    );
-    const document = await documentOf(docx);
-
-    expect(report.ok).toBe(true);
-    // Both controls with their properties, the text as it was.
-    expect(document.split("<w:sdt>")).toHaveLength(3);
-    expect(document).toMatch(
-      /<w:sdt><w:sdtPr[^>]*><w:id w:val="11"\/><w14:checkbox[^>]*><w14:checked w14:val="0"\/>.*?<\/w:sdtPr><w:sdtContent><w:r>(?:<w:rPr>.*?<\/w:rPr>)?<w:t[^>]*>\u2610<\/w:t><\/w:r><\/w:sdtContent><\/w:sdt>/u,
-    );
-    expect(document).toMatch(
-      /Agreed: <\/w:t><\/w:r><w:sdt><w:sdtPr[^>]*><w:id w:val="12"\/><w14:checkbox[^>]*><w14:checked w14:val="1"\/>/u,
-    );
-    const texts = unwrap(await analyzeDocxBlocks(docx)).blocks.flatMap(
-      (block) => [block, ...(block.nested ?? [])].map(({ text }) => text),
-    );
-    expect(texts).toContain(
-      "\u2610 If this box is checked, the appendix is not used.",
-    );
-    expect(texts).toContain("Agreed: \u2612");
-    // A box that became a plain character is not what the plan placed.
-    const flattened = document.replace(
-      /<w:sdt><w:sdtPr[^>]*><w:id w:val="11"\/>.*?<w:sdtContent>(.*?)<\/w:sdtContent><\/w:sdt>/u,
-      "$1",
-    );
-    expect(flattened).not.toBe(document);
-    expect(
-      (
-        await verifyFor({
-          source,
-          template,
-          output: await replacePart(docx, "word/document.xml", flattened),
-          plan,
-        })
-      ).ok,
-    ).toBe(false);
-  });
-});
-
 describe("labels written as text", () => {
   const level = (
     ilvl: number,
@@ -3018,5 +2939,84 @@ describe("the fixture source still applies whole", () => {
 
     expect(report.ok).toBe(true);
     expect(report.counts.textMismatch).toBe(0);
+  });
+});
+
+describe("checkbox content controls", () => {
+  const W14 = "http://schemas.microsoft.com/office/word/2010/wordml";
+  const box = (id: number, checked: 0 | 1): string =>
+    `<w:sdt><w:sdtPr><w:id w:val="${String(id)}"/><w14:checkbox xmlns:w14="${W14}"><w14:checked w14:val="${String(checked)}"/><w14:checkedState w14:val="2612" w14:font="MS Gothic"/><w14:uncheckedState w14:val="2610" w14:font="MS Gothic"/></w14:checkbox></w:sdtPr><w:sdtEndPr/><w:sdtContent>${r(checked === 1 ? "\u2612" : "\u2610")}</w:sdtContent></w:sdt>`;
+  const BODY = [
+    p(
+      `${box(11, 0)}${r(" If this box is checked, the appendix is not used.")}`,
+    ),
+    p(`${r("Agreed: ")}${box(12, 1)}`),
+    // A plain character that only looks like a box.
+    p(r("\u2610 Not a control.")),
+  ].join("");
+
+  test("the mark of a checkbox goes back into its control, in the body and in a slot", async () => {
+    const source = await buildMinimalDocx(BODY);
+    const plan = await planFor({
+      source,
+      template,
+      items: ([first, second, third]) => [
+        { kind: "template", templateBlockIds: [TEMPLATE_IDS.signatures] },
+        {
+          kind: "slot",
+          templateBlockId: TEMPLATE_IDS.signatureLeft,
+          sourceBlockIds: second === undefined ? [] : [second.id],
+        },
+        ...[first, third].flatMap((block): TemplatePlanItem[] =>
+          block === undefined
+            ? []
+            : [
+                {
+                  kind: "source",
+                  blockId: block.id,
+                  hash: block.hash,
+                  styleId: "HouseBody",
+                },
+              ],
+        ),
+      ],
+    });
+    const { docx, report } = unwrap(
+      await applyTemplatePlan({ source, template, plan }),
+    );
+    const document = await documentOf(docx);
+
+    expect(report.ok).toBe(true);
+    // Both controls with their properties, the text as it was.
+    expect(document.split("<w:sdt>")).toHaveLength(3);
+    expect(document).toMatch(
+      /<w:sdt><w:sdtPr[^>]*><w:id w:val="11"\/><w14:checkbox[^>]*><w14:checked w14:val="0"\/>.*?<\/w:sdtPr><w:sdtContent><w:r>(?:<w:rPr>.*?<\/w:rPr>)?<w:t[^>]*>\u2610<\/w:t><\/w:r><\/w:sdtContent><\/w:sdt>/u,
+    );
+    expect(document).toMatch(
+      /Agreed: <\/w:t><\/w:r><w:sdt><w:sdtPr[^>]*><w:id w:val="12"\/><w14:checkbox[^>]*><w14:checked w14:val="1"\/>/u,
+    );
+    const texts = unwrap(await analyzeDocxBlocks(docx)).blocks.flatMap(
+      (block) => [block, ...(block.nested ?? [])].map(({ text }) => text),
+    );
+    expect(texts).toContain(
+      "\u2610 If this box is checked, the appendix is not used.",
+    );
+    expect(texts).toContain("Agreed: \u2612");
+    // A box that became a plain character is not what the plan placed.
+    const flattened = document.replace(
+      /<w:sdt><w:sdtPr[^>]*><w:id w:val="11"\/>.*?<w:sdtContent>(.*?)<\/w:sdtContent><\/w:sdt>/u,
+      "$1",
+    );
+    expect(flattened).not.toBe(document);
+    expect(
+      (
+        await verifyFor({
+          source,
+          template,
+          output: await replacePart(docx, "word/document.xml", flattened),
+          plan,
+        })
+      ).ok,
+    ).toBe(false);
   });
 });
