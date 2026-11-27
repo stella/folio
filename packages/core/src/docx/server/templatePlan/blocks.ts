@@ -43,6 +43,7 @@ import type {
   DocxNote,
   DocxSection,
   DocxTableCell,
+  TemplatePlanLineRule,
   TemplatePlanTrackedChanges,
 } from "./types";
 import { TemplatePlanError } from "./types";
@@ -115,9 +116,19 @@ type StoryResources = {
 /** A side of `w:spacing`: a measure in twentieths of a point, a side set
  *  but not as such a measure (auto spacing, counted in lines), or unset. */
 type SpacingSide = number | "unmeasured" | null;
-type SpacingSides = { before: SpacingSide; after: SpacingSide };
+/** A line spacing as written: its value and how it is counted. */
+type LineSpacing = { line: number; lineRule: TemplatePlanLineRule };
+type SpacingSides = {
+  before: SpacingSide;
+  after: SpacingSide;
+  line: LineSpacing | null;
+};
 
-const NO_SPACING: SpacingSides = { before: null, after: null };
+const NO_SPACING: SpacingSides = { before: null, after: null, line: null };
+
+const LINE_RULES: ReadonlySet<string> = new Set(["auto", "exact", "atLeast"]);
+/** Word's line spacing where nothing states one: single. */
+const SINGLE_LINE: LineSpacing = { line: 240, lineRule: "auto" };
 
 const SPACING_SWITCHED_ON: ReadonlySet<string> = new Set(["1", "true", "on"]);
 
@@ -132,7 +143,16 @@ const spacingSides = (spacing: XmlElement | null): SpacingSides => {
     }
     return twipsOrNull(wAttr(spacing, name));
   };
-  return { before: side("before"), after: side("after") };
+  const line = twipsOrNull(wAttr(spacing, "line"));
+  const rule = wAttr(spacing, "lineRule") ?? "auto";
+  return {
+    before: side("before"),
+    after: side("after"),
+    line:
+      line === null || line <= 0 || !LINE_RULES.has(rule)
+        ? null
+        : { line, lineRule: rule as TemplatePlanLineRule },
+  };
 };
 
 type OpenTable = {
@@ -321,7 +341,10 @@ export const statedSpacings = (
   for (const style of wChildren(part?.root, "style")) {
     const styleId = wAttr(style, "styleId");
     const sides = spacingSides(wChild(wChild(style, "pPr"), "spacing"));
-    if (styleId !== null && (sides.before !== null || sides.after !== null)) {
+    if (
+      styleId !== null &&
+      (sides.before !== null || sides.after !== null || sides.line !== null)
+    ) {
       styles.set(styleId, sides);
     }
   }
@@ -336,8 +359,8 @@ export const statedSpacings = (
  * The space in effect in front of a paragraph and behind it: each side its
  * own, else that of the nearest style in the `basedOn` chain that sets it,
  * else the document defaults', else none. A side that is decided by auto
- * spacing or a count of lines is no measure and is left out; undefined when
- * both are.
+ * spacing or a count of lines is no measure and is left out. The line
+ * spacing comes from the first of them that states one, single without.
  */
 const spacingInEffect = (
   own: SpacingSides,
@@ -345,30 +368,31 @@ const spacingInEffect = (
   styles: StyleMap,
   stated: ReadonlyMap<string, SpacingSides>,
   defaults: SpacingSides,
-): { before?: number; after?: number } | undefined => {
-  const side = (name: "before" | "after"): SpacingSide => {
-    if (own[name] !== null) {
-      return own[name];
+): NonNullable<DocxBlock["spacingInEffect"]> => {
+  // The paragraph, then its styles nearest first, then the defaults.
+  const levels: SpacingSides[] = [own];
+  const seen = new Set<string>();
+  let cursor: string | undefined = styleId ?? undefined;
+  while (cursor !== undefined && !seen.has(cursor)) {
+    seen.add(cursor);
+    const sides = stated.get(cursor);
+    if (sides !== undefined) {
+      levels.push(sides);
     }
-    const seen = new Set<string>();
-    let cursor: string | undefined = styleId ?? undefined;
-    while (cursor !== undefined && !seen.has(cursor)) {
-      seen.add(cursor);
-      const value = stated.get(cursor)?.[name] ?? null;
-      if (value !== null) {
-        return value;
-      }
-      cursor = styles.get(cursor)?.basedOn;
-    }
-    return defaults[name] ?? 0;
-  };
+    cursor = styles.get(cursor)?.basedOn;
+  }
+  levels.push(defaults);
+  const side = (name: "before" | "after"): SpacingSide =>
+    levels.find((level) => level[name] !== null)?.[name] ?? 0;
   const before = side("before");
   const after = side("after");
-  const sides = {
+  const line = levels.find((level) => level.line !== null)?.line ?? SINGLE_LINE;
+  return {
     ...(typeof before === "number" ? { before } : {}),
     ...(typeof after === "number" ? { after } : {}),
+    line: line.line,
+    lineRule: line.lineRule,
   };
-  return Object.keys(sides).length === 0 ? undefined : sides;
 };
 
 /** What a style states of the look of its text; null where it states

@@ -2241,13 +2241,54 @@ describe("page starts", () => {
         ["paragraph-format-mismatch", "p3"],
       ]);
     }
+    // A line spacing is written with its rule, and held to the plan.
+    const lined = await planFor({
+      source,
+      template,
+      items: (blocks) =>
+        blocks
+          .filter(({ id }) => id !== "p3")
+          .map(({ id, hash }): TemplatePlanItem => {
+            const item: TemplatePlanItem = {
+              kind: "source",
+              blockId: id,
+              hash,
+            };
+            if (id === "p0") {
+              item.spacing = { after: 0, line: 276 };
+            }
+            if (id === "p1") {
+              item.spacing = { line: 280, lineRule: "exact" };
+            }
+            return item;
+          }),
+    });
+    const linedOutput = unwrap(
+      await applyTemplatePlan({ source, template, plan: lined }),
+    ).docx;
+    const linedDocument =
+      (await readPart(linedOutput, "word/document.xml")) ?? "";
+    expect(linedDocument).toContain(
+      '<w:spacing w:after="0" w:line="276" w:lineRule="auto"/>',
+    );
+    expect(linedDocument).toContain(
+      '<w:spacing w:line="280" w:lineRule="exact"/>',
+    );
+    expect(
+      (await verifyFor({ source, template, output: linedOutput, plan: lined }))
+        .issues,
+    ).toEqual([]);
     // A spacing without a side, with another key, with a fraction or below
-    // zero is no spacing a plan may state.
+    // zero, a line spacing of none, a rule without a line spacing or a rule
+    // Word does not know is no spacing a plan may state.
     for (const spacing of [
       {},
-      { line: 240 },
+      { gap: 240 },
       { before: 1.5 },
       { after: -20 },
+      { line: 0 },
+      { lineRule: "exact" },
+      { line: 240, lineRule: "double" },
     ]) {
       const malformed = await planFor({
         source,

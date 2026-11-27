@@ -312,6 +312,8 @@ export type DocxBlock = {
     spacingInEffect?: {
         before?: number;
         after?: number;
+        line?: number;
+        lineRule?: TemplatePlanLineRule;
     };
     indent?: {
         left: number;
@@ -2324,6 +2326,9 @@ export type TemplatePlanItem = {
     };
 };
 
+// @public
+export type TemplatePlanLineRule = "auto" | "exact" | "atLeast";
+
 // @public (undocumented)
 export type TemplatePlanMerge = "lineBreak" | "space" | "none";
 
@@ -2521,6 +2526,8 @@ export type TemplatePlanSourceItem = {
 export type TemplatePlanSpacing = {
     before?: number;
     after?: number;
+    line?: number;
+    lineRule?: TemplatePlanLineRule;
 };
 
 // @public (undocumented)

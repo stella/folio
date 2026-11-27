@@ -222,10 +222,16 @@ export type DocxBlock = {
    * twentieths of a point: each side its own, else its style's with
    * inheritance resolved, else the document defaults', else none (0). A
    * side that whichever of these decides it sets to follow the application
-   * or counts in lines is no such measure and is left out. Present on
-   * paragraphs of the body with at least one measured side.
+   * or counts in lines is no such measure and is left out. The line
+   * spacing (`line`, `lineRule`) is resolved the same way; with nothing
+   * stating it, single (`240`, `auto`). Present on paragraphs of the body.
    */
-  spacingInEffect?: { before?: number; after?: number };
+  spacingInEffect?: {
+    before?: number;
+    after?: number;
+    line?: number;
+    lineRule?: TemplatePlanLineRule;
+  };
   /**
    * The paragraph's indent in effect, in twentieths of a point: `left` is
    * where its lines start, `firstLine` what its first line adds to that
@@ -542,11 +548,22 @@ export type TemplatePlanNestedParagraph = {
 /** How a paragraph's lines are set between the margins (`w:jc`). */
 export type TemplatePlanAlignment = "left" | "center" | "right" | "both";
 
+/** How a paragraph's line spacing is counted (`w:lineRule`): `auto` in
+ *  240ths of a line, `exact` and `atLeast` in twentieths of a point. */
+export type TemplatePlanLineRule = "auto" | "exact" | "atLeast";
+
 /**
  * The space in front of a paragraph and behind it (`w:spacing`), in
- * twentieths of a point: at least one side. A side left out is the style's.
+ * twentieths of a point, and the spacing of its lines (`line`, counted by
+ * `lineRule`, `auto` when left out): at least one of them. What is left out
+ * is the style's.
  */
-export type TemplatePlanSpacing = { before?: number; after?: number };
+export type TemplatePlanSpacing = {
+  before?: number;
+  after?: number;
+  line?: number;
+  lineRule?: TemplatePlanLineRule;
+};
 
 /** A page other than the template's, in twentieths of a point. */
 export type TemplatePlanSectionPage = {

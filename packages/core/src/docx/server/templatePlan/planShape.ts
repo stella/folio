@@ -203,25 +203,32 @@ const ALIGNMENTS: ReadonlySet<string> = new Set([
 const isAlignment = (value: unknown): boolean =>
   isString(value) && ALIGNMENTS.has(value);
 
-const SPACING_KEYS: ReadonlySet<string> = new Set(["before", "after"]);
+const SPACING_SIDES: ReadonlySet<string> = new Set(["before", "after", "line"]);
+const LINE_RULES: ReadonlySet<string> = new Set(["auto", "exact", "atLeast"]);
 
 /**
- * Whether `value` is a spacing a plan may state: `before`, `after` or
- * both, each a whole number of twentieths of a point.
+ * Whether `value` is a spacing a plan may state: `before`, `after` and the
+ * line spacing `line`, each a whole number (a line spacing above 0), and
+ * `lineRule` only beside `line`.
  */
 const isSpacing = (value: unknown): boolean => {
   if (!isObject(value)) {
     return false;
   }
   const keys = Object.keys(value);
+  const rule = value["lineRule"];
   return (
-    keys.length > 0 &&
+    keys.some((key) => SPACING_SIDES.has(key)) &&
     keys.every(
       (key) =>
-        SPACING_KEYS.has(key) &&
-        isCount(value[key]) &&
-        value[key] <= MAX_INDENT,
-    )
+        key === "lineRule" ||
+        (SPACING_SIDES.has(key) &&
+          isCount(value[key]) &&
+          value[key] <= MAX_INDENT),
+    ) &&
+    (value["line"] === undefined || (value["line"] as number) > 0) &&
+    (rule === undefined ||
+      (value["line"] !== undefined && isString(rule) && LINE_RULES.has(rule)))
   );
 };
 

@@ -538,10 +538,12 @@ const indentKey = (
 const spacingKey = (
   before: number | null,
   after: number | null,
+  line: number | null = null,
+  lineRule: string | null = null,
 ): string | null =>
-  before === null && after === null
+  before === null && after === null && line === null
     ? null
-    : `${before === null ? "" : String(before)}:${after === null ? "" : String(after)}`;
+    : `${before === null ? "" : String(before)}:${after === null ? "" : String(after)}${line === null ? "" : `:${String(line)}/${lineRule ?? "auto"}`}`;
 
 /** The sides of an indent counted in characters: they override the
  *  measured ones, so a paragraph that states one is another paragraph. */
@@ -582,6 +584,8 @@ const statedProperties = (paragraph: XmlElement): StatedProperties => {
     spacing: spacingKey(
       twipsOrNull(wAttr(wChild(properties, "spacing"), "before")),
       twipsOrNull(wAttr(wChild(properties, "spacing"), "after")),
+      twipsOrNull(wAttr(wChild(properties, "spacing"), "line")),
+      wAttr(wChild(properties, "spacing"), "lineRule"),
     ),
     endsSection: wChild(properties, "sectPr") !== null,
   };
@@ -719,6 +723,10 @@ export const reportTemplatePlanOutput = async ({
         : spacingKey(
             paragraph.spacing.before ?? null,
             paragraph.spacing.after ?? null,
+            paragraph.spacing.line ?? null,
+            paragraph.spacing.line === undefined
+              ? null
+              : (paragraph.spacing.lineRule ?? "auto"),
           );
     const endsSection = paragraph.endsSection !== null;
     const indent =
