@@ -3094,10 +3094,13 @@ type InsertionGapOptions = {
   operation: FolioDocumentOperation;
   intents: readonly EditorIntent[];
   projection: CanonicalProjection;
+  /** `BesidePendingJoinOptions.landedEarlier`, for the gap of a block put before. */
+  landedEarlier?: ReadonlySet<number>;
 };
 
 /** The physical anchor and accepted source gap, before this batch inserts. */
 const canonicalInsertionGap = ({
+  landedEarlier,
   operation,
   intents,
   projection,
@@ -3172,6 +3175,10 @@ const canonicalInsertionGap = ({
     source.start - 1,
   );
   const blockSide = operation.type === "insertBeforeBlock" ? "before" : "after";
+  const gapOf = (at: number, side: "before" | "after") =>
+    side === "before"
+      ? gapStartAsTheBatchRuns(projection.doc, at, landedEarlier)
+      : insertionGap(projection.doc, at, side);
   const requestedSide = isBlockInsertion(operation)
     ? blockSide
     : (operation.position ?? "after");
@@ -3179,15 +3186,14 @@ const canonicalInsertionGap = ({
     anchor,
     boundary,
     // Lowering an insertion after a table to before its next paragraph
-    // changes its physical anchor, not its accepted source gap.
-    gap:
-      sourceTable === null
-        ? insertionGap(projection.doc, boundary, anchor.at.type)
-        : insertionGap(
-            projection.doc,
-            sourceTable[requestedSide],
-            requestedSide,
-          ),
+    // changes its physical anchor, not its accepted source gap. Before a
+    // block, the gap stops where the placement does: at a paragraph an
+    // earlier operation puts among the blocks accepting removes
+    // (`gapStartAsTheBatchRuns`).
+    gap: gapOf(
+      sourceTable === null ? boundary : sourceTable[requestedSide],
+      sourceTable === null ? anchor.at.type : requestedSide,
+    ),
   };
 };
 
@@ -6638,6 +6644,7 @@ export class CanonicalPublicOperations {
         operation: member.operation,
         intents: member.intents,
         projection: projected.value,
+        landedEarlier: besideDeletions.landedEarlier(member.operation.id),
       });
       if (place === undefined)
         panic("A resolved block insertion lost its placement.");
