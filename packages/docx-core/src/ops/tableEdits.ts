@@ -2415,14 +2415,8 @@ const mergeMoveBlockControls = (
   return controls;
 };
 
-const mergeMoveInlineControlCount = (
-  moves: readonly MergeMoveSource[],
-): number =>
-  moves.reduce(
-    (count, move) =>
-      count + (move.type === "paragraph" ? move.source.controls.length : 0),
-    0,
-  );
+const mergeMoveControlCount = (moves: readonly MergeMoveSource[]): number =>
+  moves.reduce((count, move) => count + move.source.controls.length, 0);
 
 type SuggestMergeOptions = MergeOptions & {
   selected: readonly GridCell[][];
@@ -2499,7 +2493,7 @@ const suggestMerge = ({
   const stamps = stampsFor(op, structuralCount + 3 + moveCount);
   if (stamps.isErr()) return Result.err(stamps.error);
   const blockControls = mergeMoveBlockControls(moves);
-  const controlCount = blockControls.size + mergeMoveInlineControlCount(moves);
+  const controlCount = blockControls.size + mergeMoveControlCount(moves);
   const controlIds = (op.newIds?.control ?? []).slice(0, controlCount);
   if (controlIds.length !== controlCount)
     return refuse({
@@ -2583,14 +2577,30 @@ const suggestMerge = ({
   )
     ? moveRangeAllocator(document.package)
     : undefined;
-  const takePictureId = moves.some(
-    (move) => move.type === "paragraph" && move.source.pictures.size > 0,
-  )
+  const takePictureId = moves.some(({ source }) => source.pictures.size > 0)
     ? tablePictureIdAllocator(document.package)
     : undefined;
   let nextBlockId = continuationCount;
   let nextStamp = 0;
   for (const move of moves) {
+    const controls: [number, number][] = [];
+    for (const id of move.source.controls) {
+      const temporary = controlIds[nextControl++];
+      if (temporary === undefined)
+        return mismatch(op, "A moved control needs a temporary id.");
+      controls.push([id, temporary]);
+    }
+    const pictures: [number, number][] = [];
+    for (const id of move.source.pictures) {
+      const temporary = takePictureId?.();
+      if (temporary === undefined)
+        return refuse({
+          op,
+          reason: DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
+          message: "The picture identity space is exhausted.",
+        });
+      pictures.push([id, temporary]);
+    }
     if (move.type === "table") {
       const { source } = move;
       const endBlockId = nextBlockId + source.paragraphs.length;
@@ -2601,6 +2611,8 @@ const suggestMerge = ({
         destinations: op.newBlockIds.slice(nextBlockId, endBlockId),
         rowStamps: moveStamps.slice(nextStamp, endStamp),
         recordStamps: moveStamps.slice(endStamp, endRevisions),
+        controls,
+        pictures,
       });
       if (nested === undefined)
         return mismatch(
@@ -2648,24 +2660,6 @@ const suggestMerge = ({
         reason: DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
         message: "The move range identity space is exhausted.",
       });
-    const controls: [number, number][] = [];
-    for (const id of source.controls) {
-      const temporary = controlIds[nextControl++];
-      if (temporary === undefined)
-        return mismatch(op, "A moved control needs a temporary id.");
-      controls.push([id, temporary]);
-    }
-    const pictures: [number, number][] = [];
-    for (const id of source.pictures) {
-      const temporary = takePictureId?.();
-      if (temporary === undefined)
-        return refuse({
-          op,
-          reason: DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
-          message: "The picture identity space is exhausted.",
-        });
-      pictures.push([id, temporary]);
-    }
     const marked = markTableMove({
       source,
       destination,
@@ -3237,8 +3231,7 @@ export const tableEditCopyIdentityDemand = (
   const moves = mergeMoveSources(selection.value.selected);
   if (moves === undefined) return none;
   return {
-    controls:
-      mergeMoveBlockControls(moves).size + mergeMoveInlineControlCount(moves),
+    controls: mergeMoveBlockControls(moves).size + mergeMoveControlCount(moves),
     revisions: moves.reduce(
       (total, move) =>
         total + (move.type === "table" ? move.source.revisions.length : 0),

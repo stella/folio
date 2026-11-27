@@ -3,6 +3,8 @@ import { expect, test } from "bun:test";
 import {
   applyDocumentOp,
   applyDocumentOps,
+  compileEditorIntent,
+  createEditorIntentIdAllocator,
   DOCUMENT_OP_REFUSAL_REASONS,
   DOCUMENT_OP_TYPES,
   type DocumentOp,
@@ -136,6 +138,13 @@ const assertSavedMove = (
 ) => {
   const direct = applyDocumentOp(original, directMerge).unwrap().document;
   const pending = applyDocumentOp(original, operation).unwrap();
+  const grid = tableOf(pending.document).formatting?.gridChange;
+  if (grid?.geometryChange?.type !== "mergeCells")
+    throw new TypeError("Expected a tracked merge geometry.");
+  const move = grid.geometryChange.moves?.at(0);
+  const reviewId =
+    (move?.kind === "empty" ? move.destinationMark : move?.fromRevision) ??
+    grid.id;
   expect(
     applyDocumentOps(pending.document, pending.inverse).unwrap().document,
   ).toEqual(original);
@@ -160,7 +169,7 @@ const assertSavedMove = (
       const resolved = applyDocumentOp(document, {
         type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
         story: OP_STORIES.MAIN,
-        revisionIds: [104],
+        revisionIds: [reviewId],
         decision,
       }).unwrap().document;
       if (document === pending.document) {
@@ -234,6 +243,42 @@ test("a copied nested table keeps its tagged cell paragraph and stable identity"
     newBlockIds: ["00000004", "00000006"],
   });
   expect(xml.match(/<w:customXml\b/gu)).toHaveLength(2);
+});
+
+test("a moved nested table preserves drawing and rich-text control identities", () => {
+  const original = sourceWith({
+    owner: inlinePicture.replace('docPr id="27"', 'docPr id="1"'),
+    content: `<w:sdt><w:sdtPr><w:id w:val="72"/></w:sdtPr><w:sdtContent>${inlinePicture}</w:sdtContent></w:sdt>`,
+    wrap: (paragraph) =>
+      '<w:tbl><w:tblGrid><w:gridCol w:w="500"/></w:tblGrid><w:tr><w:tc>' +
+      `<w:sdt><w:sdtPr><w:id w:val="71"/></w:sdtPr><w:sdtContent>${paragraph}</w:sdtContent></w:sdt>` +
+      '</w:tc></w:tr></w:tbl><w:p w14:paraId="00000005"/>',
+  });
+  const { newBlockIds: _fresh, ...operation } = directMerge;
+  const intent = { type: "table", operation } as const;
+  const { revisionId, newIds } = createEditorIntentIdAllocator()(
+    original,
+    intent,
+  );
+  expect(newIds.control).toHaveLength(2);
+  const { ops } = compileEditorIntent(original, {
+    intent,
+    mode: {
+      type: "suggesting",
+      revision: { id: revisionId, author: "Reviewer" },
+      newIds,
+    },
+  }).unwrap();
+  const merge = ops.at(0);
+  if (merge?.type !== DOCUMENT_OP_TYPES.MERGE_CELLS)
+    throw new TypeError("Expected a tracked merge.");
+  const xml = assertSavedMove(original, merge);
+  expect(xml.match(/r:embed="rIdLogo"/gu)).toHaveLength(3);
+  expect(xml.match(/<wp:docPr id="1"/gu)).toHaveLength(1);
+  expect(xml.match(/<wp:docPr id="2"/gu)).toHaveLength(1);
+  expect(xml.match(/<wp:docPr id="27"/gu)).toHaveLength(1);
+  for (const id of [71, 72, ...(newIds.control ?? [])])
+    expect(xml.match(new RegExp(`<w:id w:val="${id}"`, "gu"))).toHaveLength(1);
 });
 
 test("the saved picture is available after each public table review decision", async () => {

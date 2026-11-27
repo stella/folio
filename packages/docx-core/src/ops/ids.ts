@@ -510,13 +510,16 @@ const CONTENT_CONTROL_STACK = "contentControls";
 const ownReservedKeys: OwnKeys = (entries, { heldBy }) => {
   const keys: string[] = [];
   if (heldBy === "nestedMoves") {
-    const revisions = fieldOf(entries, "revisions");
-    if (Array.isArray(revisions)) {
-      for (const pair of revisions) {
+    for (const [field, space] of [
+      ["revisions", IDENTITY_SPACES.REVISION],
+      ["controls", IDENTITY_SPACES.CONTROL],
+    ] as const) {
+      const records = fieldOf(entries, field);
+      if (!Array.isArray(records)) continue;
+      for (const pair of records) {
         if (!Array.isArray(pair) || pair.length !== 2) continue;
         for (const id of pair)
-          if (typeof id === "number")
-            keys.push(slotKey({ space: IDENTITY_SPACES.REVISION, id }));
+          if (typeof id === "number") keys.push(slotKey({ space, id }));
       }
     }
     return { keys, shareable: true };
