@@ -72,6 +72,7 @@ import type { Document } from "../types/document";
 import {
   createFreshRenderRig,
   defineFreshRenderEventKind,
+  docFromParagraphs,
   LOAD_LAYOUT,
   loadDocumentEventKind,
   pageGeometryEventKind,
@@ -645,6 +646,48 @@ const runScenario = async (
  * the last paragraph's text from before the second join.
  */
 const PINNED_SCENARIOS: MarkupViewScenario[] = [
+  {
+    document: {
+      paragraphs: [
+        {
+          segments: [{ kind: "plain", text: "the " }],
+          mark: "inserted",
+          justified: false,
+          alignmentChange: false,
+        },
+      ],
+      move: null,
+      table: null,
+    },
+    mode: "suggesting",
+    initialView: "all-markup",
+    leadingFrame: false,
+    events: [
+      {
+        kind: "loadDocument",
+        apply: (rig) =>
+          rig.loadDocument(docFromParagraphs([""]), {
+            layout: LOAD_LAYOUT.immediate,
+          }),
+      },
+      {
+        kind: "markupView",
+        apply: (rig) =>
+          rig.updateExt(
+            () => ({ view: "simple-markup" }),
+            LOAD_LAYOUT.immediate,
+          ),
+      },
+      {
+        kind: "textblockEdit",
+        apply: (rig) => rig.edit((state) => state.tr.insertText("new ", 1)),
+      },
+      {
+        kind: "textblockEdit",
+        apply: (rig) => rig.edit((state) => state.tr.delete(1, 2)),
+      },
+    ],
+  },
   {
     document: {
       paragraphs: [

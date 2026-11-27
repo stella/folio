@@ -33,8 +33,11 @@ import type {
   RunPropertyChange,
   SectionProperties,
   Table,
+  TrackedRunContent,
 } from "../model/document";
 import { getSingularRunPropertyChange } from "../model/runPropertyReview";
+import { hasIllegalXmlCharacters } from "../serialize/xmlEscape";
+import type { OperationExecutionPurpose } from "./apply";
 import {
   isOpaqueFollower,
   markBeforeTableResolves,
@@ -51,6 +54,7 @@ import {
   type ParagraphLocation,
   storyBody,
   storyParagraphs,
+  withBodyContent,
 } from "./blocks";
 import { linksEmptiedByRetirement, newlyExhaustedCommentIds } from "./comments";
 import { planContiguousResolutionJoins } from "./contiguousResolutionJoins";
@@ -78,6 +82,7 @@ import { joinParagraphSeam } from "./inline";
 import {
   changeAtEdge,
   holdsKeptCut,
+  isRevisionId,
   KEPT_CUT_EDGES,
   keptCutFrom,
   keptCutHeldBy,
@@ -112,6 +117,7 @@ import {
   ownRunPropertyChanges,
   rebuildNode,
   sameOwnFields,
+  textsIn,
   withFieldResult,
 } from "./leaves";
 import { itemBefore } from "./listItems";
@@ -129,7 +135,10 @@ import {
   paragraphHoldsContentOnceAccepted,
 } from "./offsets";
 import { findStoryParagraph } from "./paragraphLocator";
-import { registerStatedParagraphFormatting } from "./paragraphPropertySnapshot";
+import {
+  registerStatedParagraphFormatting,
+  transferParagraphPropertySnapshot,
+} from "./paragraphPropertySnapshot";
 import {
   blockFollower,
   isBlockBoundary,
@@ -227,6 +236,43 @@ const runParagraphIntoTable = (
   if (replacement.type !== "table")
     panic("A table receiver has a nonempty table path.");
   return replacement;
+};
+
+/** A rejected deletion keeps its receiver. Other pending structures block it. */
+const authoredTableReceiverIsPending = ({
+  table,
+  decision,
+  selected,
+}: {
+  table: Table;
+  decision: RevisionDecision;
+  selected: ReadonlySet<number>;
+}): boolean => {
+  const deletionStays = (id: number) =>
+    decision === REVISION_DECISIONS.REJECT && selected.has(id);
+  let current = table;
+  for (;;) {
+    const row = current.rows.at(0);
+    const rowChange = row?.structuralChange;
+    if (
+      rowChange?.type === "tableRowInsertion" ||
+      (rowChange?.type === "tableRowDeletion" &&
+        !deletionStays(rowChange.info.id))
+    )
+      return true;
+    const cell = row?.cells.at(0);
+    const cellChange = cell?.structuralChange;
+    if (
+      cellChange?.type === "tableCellInsertion" ||
+      cellChange?.type === "tableCellMerge" ||
+      (cellChange?.type === "tableCellDeletion" &&
+        !deletionStays(cellChange.info.id))
+    )
+      return true;
+    const first = cell?.content.at(0);
+    if (first?.type !== "table") return false;
+    current = first;
+  }
 };
 
 const NO_COMMENT_RANGES: ReadonlySet<number> = new Set();
@@ -7343,7 +7389,16 @@ const opensSectionBeforeTrailingBoundaries = (
 
 const joinOps = (
   document: Document,
-  { op, story, paraId, revisionId, added, depth, holders }: JoinPlan,
+  {
+    op,
+    story,
+    paraId,
+    revisionId,
+    added,
+    depth,
+    holders,
+    pendingReceiverTableIds,
+  }: JoinPlan,
   ends: EmptiedEndsById,
   /** Table receivers a later paragraph of this resolution already ran into. */
   ranInto: ReadonlySet<string> = new Set(),
@@ -7555,8 +7610,21 @@ const joinOps = (
     next?.type === "table"
       ? paragraphTableRunInBoundary(paragraph, next)
       : undefined;
+  // Table review runs first. A surviving table cannot gain a receiver just
+  // because that phase resolves its authored first row or cell. A different
+  // table reached past a wholly removed table offers its own receiver.
+  const stillPendingReceiver =
+    pendingReceiverTableIds !== undefined &&
+    next?.type === "table" &&
+    storyParagraphs({ content: [next] }).some(
+      ({ paragraph: { paraId: receiverId } }) =>
+        receiverId !== undefined &&
+        pendingReceiverTableIds.has(idKey(receiverId)),
+    );
   const tableTarget =
-    tableBoundary?.type === "receiver" ? tableBoundary.target : undefined;
+    tableBoundary?.type === "receiver" && !stillPendingReceiver
+      ? tableBoundary.target
+      : undefined;
   const blockTarget =
     next !== undefined && followsBlock
       ? paragraphBlockRunInTarget(paragraph, next)
@@ -8318,6 +8386,7 @@ type RevisionResolutionPlanOptions = {
   document: Document;
   op: ResolveRevisionOp;
   applyOps: ApplyOps;
+  purpose?: OperationExecutionPurpose;
 };
 
 /**
@@ -8447,14 +8516,13 @@ export const planRevisionResolution = (
   const { document, applyOps } = options;
   const op = withBelongingPropertyChanges(document, options.op);
   const sections = settleSectionRecords(document, op);
-  if (sections.ops.length === 0)
-    return planMarkResolution({ document, op, applyOps });
+  if (sections.ops.length === 0) return planMarkResolution({ ...options, op });
   const settled = applyOps(document, sections.ops);
   if (settled.isErr()) return Result.err(settled.error);
   const rest = planMarkResolution({
+    ...options,
     document: settled.value.document,
     op: { ...op, revisionIds: sections.ids },
-    applyOps,
   });
   if (rest.isErr()) return Result.err(rest.error);
   return Result.ok({
@@ -8595,9 +8663,9 @@ const planMarkResolution = (
   if (marks.isErr()) return Result.err(marks.error);
   const rest = planSingleRecordResolution(
     {
+      ...options,
       document: marks.value.document,
       op: { ...op, revisionIds: settled.ids },
-      applyOps,
     },
     storyParagraphs(storyBody(marks.value.document, op.story)),
   );
@@ -8609,7 +8677,7 @@ const planMarkResolution = (
 };
 
 const planSingleRecordResolution = (
-  { document, op, applyOps }: RevisionResolutionPlanOptions,
+  { document, op, applyOps, purpose }: RevisionResolutionPlanOptions,
   paragraphs: readonly ParagraphLocation[],
 ): Result<RevisionResolutionPlan, DocumentOpRefusal> => {
   if (!Object.values(REVISION_DECISIONS).includes(op.decision)) {
@@ -9110,14 +9178,31 @@ const planSingleRecordResolution = (
       markResolved && added === (op.decision === REVISION_DECISIONS.ACCEPT);
     if (markResolved && !keepsBreak) {
       let depth = retiredCutDepths.get(idKey(paraId)) ?? mark.resolutionJoin;
+      const blocks = blockListAt(body.content, location.list);
+      const following =
+        purpose === "markup-view"
+          ? blockFollower(blocks, location.index).block
+          : undefined;
+      const pendingReceiverTableIds =
+        following?.type === "table" &&
+        authoredTableReceiverIsPending({
+          table: following,
+          decision: op.decision,
+          selected: ids,
+        })
+          ? new Set(
+              storyParagraphs({ content: [following] }).flatMap(
+                ({ paragraph: { paraId: receiverId } }) =>
+                  receiverId === undefined ? [] : [idKey(receiverId)],
+              ),
+            )
+          : undefined;
       if (
         added &&
         depth !== undefined &&
         op.decision === REVISION_DECISIONS.REJECT
       ) {
-        const next = blockListAt(body.content, location.list).at(
-          location.index + 1,
-        );
+        const next = blocks.at(location.index + 1);
         // A deletion can have cut the source run before a later paragraph
         // split. Rejecting its wrapper exposes that source seam at the edge;
         // carry the recorded depth across the removed inserted break.
@@ -9137,6 +9222,9 @@ const planSingleRecordResolution = (
         added,
         depth,
         holders,
+        ...(pendingReceiverTableIds === undefined
+          ? {}
+          : { pendingReceiverTableIds }),
       });
     }
     let review = resolveParagraphReview(paragraph, resolution, keepsBreak);
@@ -9463,9 +9551,109 @@ const rejoinedRevisions = ({
   return absorptions;
 };
 
+/** Source coordinates of the inline text a resolved view omitted. */
+export type IndependentMarkupParagraph = {
+  index: number;
+  sourceLength: number;
+  omitted: readonly { from: number; to: number }[];
+};
+
+/**
+ * Resolve an independent text story with the same inline planner. With no
+ * structural records, anchors or cut provenance, a paragraph's resolution
+ * cannot change the next one. A view can keep every unchanged block and skip
+ * building write operations and inverses for the parallel replacements.
+ */
+export const resolveIndependentTextParagraphs = (
+  body: DocumentBody,
+  decision: RevisionDecision,
+):
+  | { body: DocumentBody; changes: readonly IndependentMarkupParagraph[] }
+  | undefined => {
+  if ((body.finalSectionProperties?.propertyChanges?.length ?? 0) > 0)
+    return undefined;
+  const revised: {
+    paragraph: Paragraph;
+    ids: Set<number>;
+    change: IndependentMarkupParagraph;
+  }[] = [];
+  const plainRunWidth = (node: TrackedRunContent): number => {
+    if (node.type !== "run" || (node.propertyChanges?.length ?? 0) > 0)
+      return 0;
+    let width = 0;
+    for (const leaf of node.content) {
+      if (leaf.type !== "text" || leaf.text.length === 0) return 0;
+      width += leaf.text.length;
+    }
+    return width;
+  };
+  for (const [index, paragraph] of body.content.entries()) {
+    if (
+      paragraph.type !== "paragraph" ||
+      paragraph.reviewCarrier !== undefined ||
+      paragraph.pPrMark !== undefined ||
+      (paragraph.propertyChanges?.length ?? 0) > 0 ||
+      (paragraph.sectionProperties?.propertyChanges?.length ?? 0) > 0
+    )
+      return undefined;
+    let ids: Set<number> | undefined;
+    let omitted: IndependentMarkupParagraph["omitted"][number][] | undefined;
+    let sourceLength = 0;
+    for (const inline of paragraph.content) {
+      if (inline.type === "run") {
+        const width = plainRunWidth(inline);
+        if (width === 0) return undefined;
+        sourceLength += width;
+        continue;
+      }
+      if (
+        (inline.type !== "insertion" && inline.type !== "deletion") ||
+        inline.resolutionJoins !== undefined ||
+        !isRevisionId(inline.info.id) ||
+        inline.content.length === 0
+      )
+        return undefined;
+      const from = sourceLength;
+      for (const run of inline.content) {
+        const width = plainRunWidth(run);
+        if (width === 0) return undefined;
+        sourceLength += width;
+      }
+      if (removesContent(inline, decision))
+        (omitted ??= []).push({ from, to: sourceLength });
+      (ids ??= new Set()).add(inline.info.id);
+    }
+    if (ids !== undefined)
+      revised.push({
+        paragraph,
+        ids,
+        change: { index, sourceLength, omitted: omitted ?? [] },
+      });
+  }
+  if (revised.length === 0) return { body, changes: [] };
+  const content = [...body.content];
+  for (const { paragraph, ids, change } of revised) {
+    const resolved = resolveList({
+      nodes: paragraph.content,
+      resolution: createResolution(ids, decision),
+      path: [],
+    });
+    const resolvedContent = asParagraphContent(resolved.nodes);
+    // The ordinary resolver validates replaced text. A view of malformed
+    // imported text must get the same refusal and keep the authored story.
+    if (textsIn(resolvedContent).some(hasIllegalXmlCharacters))
+      return undefined;
+    const target = { ...paragraph, content: resolvedContent };
+    transferParagraphPropertySnapshot({ source: paragraph, target });
+    content[change.index] = target;
+  }
+  return {
+    body: withBodyContent(body, content),
+    changes: revised.map(({ change }) => change),
+  };
+};
+
 export const resolveRevision = (
-  document: Document,
-  op: ResolveRevisionOp,
-  applyOps: ApplyOps,
+  options: RevisionResolutionPlanOptions,
 ): Result<DocumentEdit, DocumentOpRefusal> =>
-  planRevisionResolution({ document, op, applyOps }).map(({ edit }) => edit);
+  planRevisionResolution(options).map(({ edit }) => edit);

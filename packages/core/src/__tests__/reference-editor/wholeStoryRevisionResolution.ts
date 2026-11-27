@@ -10,52 +10,52 @@ import {
 import { REVIEW_CARRIERS } from "@stll/docx-core/model";
 import { paragraphMarkOutcome } from "@stll/docx-core/ops";
 
-import type { NumberingMap } from "../docx/numberingParser";
+import type { NumberingMap } from "../../docx/numberingParser";
 import {
   getProseParagraphPropertySourceToken,
   recreateProseNodeWithParagraphPropertySource as rebuild,
-} from "../docx/paragraphPropertySource";
+} from "../../docx/paragraphPropertySource";
+import type { RemovedSectionReference } from "../../internal/sectionEndpointResolution";
 import {
   anchoredTextBoxId,
   droppedTextBoxAnchorIds,
   moveTextBoxesPastNextParagraph,
-} from "../prosemirror/anchoredTextBoxes";
-import { expectParagraphAttrs } from "../prosemirror/attrs";
-import { inlineBookmarksOf } from "../prosemirror/commands/paragraphBookmarkJoin";
-import { resolveAllTableChanges } from "../prosemirror/commands/resolveAllTableChanges";
-import { resolveAllNodePropertyChangeAttrs } from "../prosemirror/commands/resolveNodePropertyChangeAttrs";
-import { resolveParagraphChangeAttrs } from "../prosemirror/commands/resolveParagraphProperties";
-import { resolveCommentReferences } from "../prosemirror/commentReferenceIntegrity";
+} from "../../prosemirror/anchoredTextBoxes";
+import { expectParagraphAttrs } from "../../prosemirror/attrs";
+import { inlineBookmarksOf } from "../../prosemirror/commands/paragraphBookmarkJoin";
+import { resolveParagraphChangeAttrs } from "../../prosemirror/commands/resolveParagraphProperties";
+import { resolveCommentReferences } from "../../prosemirror/commentReferenceIntegrity";
 import {
   isBlockBoundaryNode,
   paragraphRemainsOf,
-} from "../prosemirror/keptRangeBoundaries";
-import { joinedParagraphAttrs } from "../prosemirror/paragraphMarkJoin";
-import { rebaseParagraphRunContent } from "../prosemirror/rebaseParagraphRuns";
-import { createResolvedCommentPointCollector } from "../prosemirror/replacedAnnotations";
-import { expandRunFormattingCarrier } from "../prosemirror/runFormattingInlineCarriers";
+} from "../../prosemirror/keptRangeBoundaries";
+import { joinedParagraphAttrs } from "../../prosemirror/paragraphMarkJoin";
+import { rebaseParagraphRunContent } from "../../prosemirror/rebaseParagraphRuns";
+import { createResolvedCommentPointCollector } from "../../prosemirror/replacedAnnotations";
+import { expandRunFormattingCarrier } from "../../prosemirror/runFormattingInlineCarriers";
 import {
   readAuthoredRunFormatting,
   reconcileRunFormattingMarks,
-} from "../prosemirror/runFormattingReconciliation";
+} from "../../prosemirror/runFormattingReconciliation";
 import {
   paragraphRunStyleContext,
   type RunStyleResolver,
-} from "../prosemirror/runStyleFormatting";
-import { sectionRecordCopyPositions } from "../prosemirror/sectionCarrier";
+} from "../../prosemirror/runStyleFormatting";
+import { sectionRecordCopyPositions } from "../../prosemirror/sectionCarrier";
 import {
   paragraphBeforeRemovedBlock,
   runParagraphsIntoTables,
   runsIntoFollowingTable,
-} from "../prosemirror/tableRunIn";
-import { paragraphContentOf } from "../prosemirror/zeroWidthAnchors";
+} from "../../prosemirror/tableRunIn";
+import { paragraphContentOf } from "../../prosemirror/zeroWidthAnchors";
+import { resolveAllTableChanges } from "./resolveAllTableChanges";
+import { resolveAllNodePropertyChangeAttrs } from "./resolveNodePropertyChangeAttrs";
 import { recordNodeResolution } from "./revisionResolutionEdits";
 import {
   resolveInlineRevisions,
   type RevisionResolutionMode,
 } from "./revisionResolutionInline";
-import { composeRevisionResolutionMaps } from "./revisionResolutionStep";
-import type { RemovedSectionReference } from "./sectionEndpointResolution";
+import { composeRevisionResolutionMaps } from "./revisionResolutionMaps";
 
 // Property changes do not change positions. Resolve their style context before
 // visiting the runs whose inherited formatting depends on it.

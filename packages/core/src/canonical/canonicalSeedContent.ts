@@ -10,10 +10,37 @@ import {
 import type { BlockContent, Document, Paragraph } from "../types/document";
 import { canonicalInlineSourceIssue } from "./canonicalInlineProjection";
 
-const STRUCTURE_ISSUE =
-  "Canonical sessions currently require paragraphs, tables and supported inline atoms.";
-const REVIEW_CARRIER_ISSUE =
-  "Canonical sessions currently require plain paragraphs and supported inline atoms.";
+/**
+ * What makes a story one the session cannot hold:
+ *
+ * - `comments`: the comments and their anchors are not a valid set, as
+ *   `commentDocumentIssue` judges them;
+ * - `emptyStory`: a story holds no block;
+ * - `content`: a block or inline item no document operation writes, such as
+ *   unstructured field characters or text holding a tab or a line feed. The
+ *   reader keeps loose field markup as preserved XML, so only a document
+ *   built by hand holds one.
+ */
+export type CanonicalSeedIssue = {
+  kind: "comments" | "emptyStory" | "content";
+  message: string;
+};
+
+const STRUCTURE_ISSUE: CanonicalSeedIssue = {
+  kind: "content",
+  message:
+    "Canonical sessions currently require paragraphs, tables and supported inline atoms.",
+};
+const EMPTY_STORY_ISSUE: CanonicalSeedIssue = {
+  kind: "emptyStory",
+  message: "Canonical sessions require a nonempty paragraph story.",
+};
+const contentIssue = (message: string | null): CanonicalSeedIssue | null =>
+  message === null ? null : { kind: "content", message };
+const commentIssueOf = (
+  message: string | undefined,
+): CanonicalSeedIssue | null =>
+  message === undefined ? null : { kind: "comments", message };
 
 /** Range markers may open or close between blocks; they hold no text. */
 const BETWEEN_BLOCK_MARKERS = new Set<BlockContent["type"]>([
@@ -29,14 +56,16 @@ const BETWEEN_BLOCK_MARKERS = new Set<BlockContent["type"]>([
 
 type BlockIssues = {
   /** The first block the session cannot hold, in document order. */
-  structure: string | null;
+  structure: CanonicalSeedIssue | null;
   /** The first paragraph whose content the session cannot hold. */
-  paragraph: string | null;
+  paragraph: CanonicalSeedIssue | null;
 };
 
 const issuesIn = (block: BlockContent): BlockIssues => {
   const paragraphs: Paragraph[] = [];
-  const collect = (blocks: readonly BlockContent[]): string | null => {
+  const collect = (
+    blocks: readonly BlockContent[],
+  ): CanonicalSeedIssue | null => {
     for (const child of blocks) {
       if (child.type === "paragraph") {
         paragraphs.push(child);
@@ -63,12 +92,12 @@ const issuesIn = (block: BlockContent): BlockIssues => {
     return null;
   };
   const structure = collect([block]);
-  let paragraph: string | null = null;
+  let paragraph: CanonicalSeedIssue | null = null;
+  // A review carrier is an ordinary paragraph with a role in resolving a
+  // table's review, which the operations keep: its content is judged as any
+  // paragraph's is.
   for (const candidate of paragraphs) {
-    paragraph =
-      candidate.reviewCarrier === undefined
-        ? canonicalInlineSourceIssue(candidate.content)
-        : REVIEW_CARRIER_ISSUE;
+    paragraph = contentIssue(canonicalInlineSourceIssue(candidate.content));
     if (paragraph !== null) break;
   }
   return { structure, paragraph };
@@ -95,9 +124,9 @@ const issuesOf = (block: BlockContent): BlockIssues => {
 export const unsupportedSeedReason = (
   document: Document,
   stories = documentStories(document),
-): string | null => {
-  const commentIssue = commentDocumentIssue(document, "all");
-  if (commentIssue !== undefined) return commentIssue;
+): CanonicalSeedIssue | null => {
+  const commentIssue = commentIssueOf(commentDocumentIssue(document, "all"));
+  if (commentIssue !== null) return commentIssue;
   for (const story of stories) {
     const body = findStoryBody(document, story);
     if (
@@ -112,8 +141,7 @@ export const unsupportedSeedReason = (
       if (note?.noteType !== undefined && note.noteType !== "normal") continue;
     }
     const content = body?.content;
-    if (!content || content.length === 0)
-      return "Canonical sessions require a nonempty paragraph story.";
+    if (!content || content.length === 0) return EMPTY_STORY_ISSUE;
     const issues = content.map(issuesOf);
     const structure = issues.find((issue) => issue.structure !== null);
     if (structure !== undefined) return structure.structure;
@@ -188,7 +216,7 @@ export const unsupportedEditReason = ({
   previous,
   document,
   stories,
-}: UnsupportedEditOptions): string | null => {
+}: UnsupportedEditOptions): CanonicalSeedIssue | null => {
   const windows = stories.map((story) => ({
     story,
     content: findStoryBody(document, story)?.content,
@@ -207,13 +235,12 @@ export const unsupportedEditReason = ({
       ),
     );
   if (!anchorsKept) {
-    const commentIssue = commentDocumentIssue(document, "all");
-    if (commentIssue !== undefined) return commentIssue;
+    const commentIssue = commentIssueOf(commentDocumentIssue(document, "all"));
+    if (commentIssue !== null) return commentIssue;
   }
   for (const { story, content, added } of windows) {
     if (skippedNote(document, story)) continue;
-    if (!content || content.length === 0)
-      return "Canonical sessions require a nonempty paragraph story.";
+    if (!content || content.length === 0) return EMPTY_STORY_ISSUE;
     const issues = added.map(issuesOf);
     const structure = issues.find((issue) => issue.structure !== null);
     if (structure !== undefined) return structure.structure;
@@ -230,9 +257,9 @@ export const unsupportedEditReason = ({
 export const unsupportedSeedReasonWholeDocument = (
   document: Document,
   stories = documentStories(document),
-): string | null => {
-  const commentIssue = commentDocumentIssue(document, "all");
-  if (commentIssue !== undefined) return commentIssue;
+): CanonicalSeedIssue | null => {
+  const commentIssue = commentIssueOf(commentDocumentIssue(document, "all"));
+  if (commentIssue !== null) return commentIssue;
   for (const story of stories) {
     const body = findStoryBody(document, story);
     if (
@@ -247,10 +274,11 @@ export const unsupportedSeedReasonWholeDocument = (
       if (note?.noteType !== undefined && note.noteType !== "normal") continue;
     }
     const content = body?.content;
-    if (!content || content.length === 0)
-      return "Canonical sessions require a nonempty paragraph story.";
+    if (!content || content.length === 0) return EMPTY_STORY_ISSUE;
     const paragraphs: Paragraph[] = [];
-    const collect = (blocks: readonly BlockContent[]): string | null => {
+    const collect = (
+      blocks: readonly BlockContent[],
+    ): CanonicalSeedIssue | null => {
       for (const block of blocks) {
         if (block.type === "paragraph") {
           paragraphs.push(block);
@@ -277,8 +305,7 @@ export const unsupportedSeedReasonWholeDocument = (
           if (issue !== null) return issue;
           continue;
         }
-        if (block.type !== "table")
-          return "Canonical sessions currently require paragraphs, tables and supported inline atoms.";
+        if (block.type !== "table") return STRUCTURE_ISSUE;
         for (const row of block.rows) {
           for (const cell of row.cells) {
             const issue = collect(cell.content);
@@ -291,9 +318,7 @@ export const unsupportedSeedReasonWholeDocument = (
     const blockIssue = collect(content);
     if (blockIssue !== null) return blockIssue;
     for (const paragraph of paragraphs) {
-      if (paragraph.reviewCarrier !== undefined)
-        return "Canonical sessions currently require plain paragraphs and supported inline atoms.";
-      const issue = canonicalInlineSourceIssue(paragraph.content);
+      const issue = contentIssue(canonicalInlineSourceIssue(paragraph.content));
       if (issue !== null) return issue;
     }
   }

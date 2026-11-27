@@ -9,8 +9,8 @@ import {
   StepMap,
 } from "prosemirror-transform";
 
+import { composeRevisionResolutionMaps } from "../__tests__/reference-editor/revisionResolutionMaps";
 import { RevisionResolutionStep } from "../__tests__/reference-editor/revisionResolutionStep";
-import { composeRevisionResolutionMaps } from "./revisionResolutionStep";
 
 const schema = new Schema({
   nodes: {

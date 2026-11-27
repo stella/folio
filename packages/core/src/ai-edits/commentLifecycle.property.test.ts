@@ -18,7 +18,15 @@
  * - live and reopened `getComments()` agree on every thread: id, text,
  *   anchored text, the block it starts in, replies;
  * - the saved package has balanced ranges, and lists no thread that nothing
- *   in any story references (a ghost).
+ *   in any story references (a ghost);
+ * - accepting or rejecting everything still projects: no comment's marks
+ *   disagree with its explicit boundary nodes.
+ *
+ * Every other paragraph ends in a link a range may start or end inside, and a
+ * batch mixes paragraph, row and table structure edits, so a rejected split
+ * can join a range's boundary into the link its other half left. A comment
+ * added on any block (body, cell, inserted or beside a retracted one) anchors
+ * the block's text.
  */
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
@@ -38,6 +46,7 @@ import type {
   Document,
   Paragraph,
   ParagraphContent,
+  Run,
 } from "../types/document";
 import { FolioDocxReviewer, type FolioReviewComment } from "./headless";
 import type { FolioAIEditOperation } from "./types";
@@ -56,24 +65,40 @@ const EDIT_KINDS = [
   "replaceBlock",
   "insertAfterBlock",
   "deleteBlock",
+  "splitBlock",
+  "mergeBlockWithNext",
+  "insertTableRow",
+  "deleteTableRow",
+  "insertTable",
+  "deleteTable",
 ] as const;
+/** Slots whose paragraph ends in a link: body prose, a cell, a note paragraph. */
+const LINK_SLOTS = new Set([1, 3, 5]);
 
+type EditKind = (typeof EDIT_KINDS)[number];
 type Story = "body" | "note";
 type GeneratedComment = {
   story: Story;
   first: number;
   last: number;
   text: string;
+  /** Whether each boundary sits inside its paragraph's link, when it has one. */
+  startInLink: boolean;
+  endInLink: boolean;
 };
 type Step =
   | {
       type: "edit";
       story: Story;
-      kind: (typeof EDIT_KINDS)[number];
+      mode: (typeof EDIT_MODES)[number];
+      edits: readonly { kind: EditKind; pick: number; at: number }[];
+    }
+  | {
+      type: "comment";
+      story: Story;
       mode: (typeof EDIT_MODES)[number];
       pick: number;
     }
-  | { type: "comment"; story: Story; pick: number }
   | { type: "reply"; pick: number }
   | { type: "resolveAll"; how: "accept" | "reject" }
   | { type: "resolveOne"; how: "accept" | "reject"; pick: number };
@@ -94,28 +119,54 @@ const span = (slots: number) =>
       })),
   );
 
-const commentArbitrary: fc.Arbitrary<GeneratedComment> = fc
-  .oneof(
-    {
-      weight: 3,
-      arbitrary: fc.record({
-        story: fc.constant<Story>("body"),
-        span: span(BODY_SLOTS),
-      }),
-    },
-    {
-      weight: 1,
-      arbitrary: fc.record({
-        story: fc.constant<Story>("note"),
-        span: span(NOTE_SLOTS),
-      }),
-    },
-  )
-  .chain(({ story, span: { first, last } }) =>
-    fc
-      .stringMatching(/^[A-Za-z]{1,10}$/u)
-      .map((text) => ({ story, first, last, text })),
-  );
+/**
+ * `structure` sessions place boundaries inside links and batch structure
+ * edits; without it a session draws exactly what the pinned seeds replay.
+ */
+const commentArbitrary = (structure: boolean): fc.Arbitrary<GeneratedComment> =>
+  fc
+    .oneof(
+      {
+        weight: 3,
+        arbitrary: fc.record({
+          story: fc.constant<Story>("body"),
+          span: span(BODY_SLOTS),
+        }),
+      },
+      {
+        weight: 1,
+        arbitrary: fc.record({
+          story: fc.constant<Story>("note"),
+          span: span(NOTE_SLOTS),
+        }),
+      },
+    )
+    .chain(({ story, span: { first, last } }) => {
+      const text = fc.stringMatching(/^[A-Za-z]{1,10}$/u);
+      return structure
+        ? fc
+            .record({
+              text,
+              startInLink: fc.boolean(),
+              endInLink: fc.boolean(),
+            })
+            .map(({ text: value, startInLink, endInLink }) => ({
+              story,
+              first,
+              last,
+              text: value,
+              startInLink,
+              endInLink,
+            }))
+        : text.map((value) => ({
+            story,
+            first,
+            last,
+            text: value,
+            startInLink: false,
+            endInLink: false,
+          }));
+    });
 
 const storyArbitrary = fc.oneof(
   { weight: 3, arbitrary: fc.constant<Story>("body") },
@@ -123,60 +174,97 @@ const storyArbitrary = fc.oneof(
 );
 const pick = fc.nat({ max: 50 });
 const how = fc.constantFrom("accept" as const, "reject" as const);
+const modeArbitrary = fc.constantFrom(...EDIT_MODES);
 
-const stepArbitrary: fc.Arbitrary<Step> = fc.oneof(
-  {
-    weight: 4,
-    arbitrary: fc.record({
-      type: fc.constant("edit" as const),
-      story: storyArbitrary,
-      kind: fc.constantFrom(...EDIT_KINDS),
-      mode: fc.constantFrom(...EDIT_MODES),
-      pick,
-    }),
-  },
-  {
-    weight: 2,
-    arbitrary: fc.record({
-      type: fc.constant("comment" as const),
-      story: storyArbitrary,
-      pick,
-    }),
-  },
-  {
-    weight: 1,
-    arbitrary: fc.record({ type: fc.constant("reply" as const), pick }),
-  },
-  {
-    weight: 2,
-    arbitrary: fc.record({ type: fc.constant("resolveAll" as const), how }),
-  },
-  {
-    weight: 2,
-    arbitrary: fc.record({
-      type: fc.constant("resolveOne" as const),
-      how,
-      pick,
-    }),
-  },
-);
+const editArbitrary = (structure: boolean): fc.Arbitrary<Step> =>
+  structure
+    ? fc.record({
+        type: fc.constant("edit" as const),
+        story: storyArbitrary,
+        mode: modeArbitrary,
+        edits: fc.array(
+          fc.record({ kind: fc.constantFrom(...EDIT_KINDS), pick, at: pick }),
+          { minLength: 1, maxLength: 3 },
+        ),
+      })
+    : fc
+        .record({
+          type: fc.constant("edit" as const),
+          story: storyArbitrary,
+          kind: fc.constantFrom(...EDIT_KINDS.slice(0, 4)),
+          mode: modeArbitrary,
+          pick,
+        })
+        .map(({ type, story, kind, mode, pick: at }) => ({
+          type,
+          story,
+          mode,
+          edits: [{ kind, pick: at, at: 0 }],
+        }));
 
-const sessionArbitrary: fc.Arbitrary<GeneratedSession> = fc.record({
-  comments: fc.array(commentArbitrary, { minLength: 1, maxLength: 4 }),
-  steps: fc.array(fc.record({ step: stepArbitrary, reopen: fc.boolean() }), {
-    minLength: 1,
-    maxLength: 4,
-  }),
-});
+const commentStepArbitrary = (structure: boolean): fc.Arbitrary<Step> =>
+  structure
+    ? fc.record({
+        type: fc.constant("comment" as const),
+        story: storyArbitrary,
+        mode: modeArbitrary,
+        pick,
+      })
+    : fc
+        .record({
+          type: fc.constant("comment" as const),
+          story: storyArbitrary,
+          pick,
+        })
+        .map(({ type, story, pick: at }) => ({
+          type,
+          story,
+          mode: "direct" as const,
+          pick: at,
+        }));
 
-const run = (text: string): ParagraphContent => ({
+const stepArbitrary = (structure: boolean): fc.Arbitrary<Step> =>
+  fc.oneof(
+    { weight: 4, arbitrary: editArbitrary(structure) },
+    { weight: 2, arbitrary: commentStepArbitrary(structure) },
+    {
+      weight: 1,
+      arbitrary: fc.record({ type: fc.constant("reply" as const), pick }),
+    },
+    {
+      weight: 2,
+      arbitrary: fc.record({ type: fc.constant("resolveAll" as const), how }),
+    },
+    {
+      weight: 2,
+      arbitrary: fc.record({
+        type: fc.constant("resolveOne" as const),
+        how,
+        pick,
+      }),
+    },
+  );
+
+const sessionArbitrary = (structure: boolean): fc.Arbitrary<GeneratedSession> =>
+  fc.record({
+    comments: fc.array(commentArbitrary(structure), {
+      minLength: 1,
+      maxLength: 4,
+    }),
+    steps: fc.array(
+      fc.record({ step: stepArbitrary(structure), reopen: fc.boolean() }),
+      { minLength: 1, maxLength: 4 },
+    ),
+  });
+
+const run = (text: string): Run => ({
   type: "run",
   content: [{ type: "text", text }],
 });
 
 const slotText = (story: Story, index: number): string => {
   if (story === "note") {
-    return `Note paragraph ${index}.`;
+    return `Note paragraph ${index} of the note.`;
   }
   return TABLE_SLOTS.has(index)
     ? `Cell ${index} of the schedule.`
@@ -192,24 +280,41 @@ const storyParagraphs = (
 ): Paragraph[] =>
   Array.from({ length: slots }, (_, index) => {
     const content: ParagraphContent[] = [];
-    for (const [id, comment] of comments.entries()) {
-      if (comment.story === story && comment.first === index) {
-        content.push({ type: "commentRangeStart", id });
-      }
-    }
-    content.push(run(slotText(story, index)));
+    const ours = [...comments.entries()].filter(
+      ([, comment]) => comment.story === story,
+    );
+    const linked = LINK_SLOTS.has(index);
+    const starts = (inLink: boolean) =>
+      ours.flatMap(([id, comment]) =>
+        comment.first === index && (linked && comment.startInLink) === inLink
+          ? [{ type: "commentRangeStart" as const, id }]
+          : [],
+      );
+    const ends = (inLink: boolean) =>
+      ours.flatMap(([id, comment]) =>
+        comment.last === index && (linked && comment.endInLink) === inLink
+          ? [{ type: "commentRangeEnd" as const, id }]
+          : [],
+      );
+    content.push(...starts(false));
+    const [head, tail] = slotText(story, index).split(" of ");
+    if (linked)
+      content.push(run(`${head} `), {
+        type: "hyperlink",
+        href: "https://example.com/terms",
+        children: [...starts(true), run(`of ${tail}`), ...ends(true)],
+      });
+    else content.push(run(slotText(story, index)));
     if (story === "body" && index === BODY_SLOTS - 1) {
       content.push({
         type: "run",
         content: [{ type: "footnoteRef", id: FOOTNOTE_ID }],
       });
     }
-    for (const [id, comment] of comments.entries()) {
-      if (comment.story === story && comment.last === index) {
-        content.push(
-          { type: "commentRangeEnd", id },
-          { type: "commentReference", id },
-        );
+    content.push(...ends(false));
+    for (const [id, comment] of ours) {
+      if (comment.last === index) {
+        content.push({ type: "commentReference", id });
       }
     }
     return { type: "paragraph", paraId: `${paraIdPrefix}${index}`, content };
@@ -261,36 +366,44 @@ const blocksOf = (reviewer: FolioDocxReviewer, story: Story) =>
     ?.blocks ?? [];
 
 const editFor = (
-  { kind }: Extract<Step, { type: "edit" }>,
+  { kind, at }: { kind: EditKind; at: number },
   block: { id: string; text: string },
+  id: string,
 ): FolioAIEditOperation | null => {
+  const blockId = block.id;
   switch (kind) {
     case "replaceInBlock":
       return block.text.length === 0
         ? null
-        : {
-            id: "edit",
-            type: "replaceInBlock",
-            blockId: block.id,
-            find: block.text,
-            replace: "Revised.",
-          };
+        : { id, type: kind, blockId, find: block.text, replace: "Revised." };
     case "replaceBlock":
-      return {
-        id: "edit",
-        type: "replaceBlock",
-        blockId: block.id,
-        text: "Revised.",
-      };
+      return { id, type: kind, blockId, text: "Revised." };
     case "insertAfterBlock":
+      return { id, type: kind, blockId, text: "Inserted clause." };
+    case "splitBlock":
+      return block.text.length < 2
+        ? null
+        : {
+            id,
+            type: kind,
+            blockId,
+            offset: 1 + (at % (block.text.length - 1)),
+          };
+    case "insertTableRow":
       return {
-        id: "edit",
-        type: "insertAfterBlock",
-        blockId: block.id,
-        text: "Inserted clause.",
+        id,
+        type: kind,
+        blockId,
+        position: at % 2 === 0 ? "before" : "after",
+        cellTexts: ["Row cell one", "Row cell two"],
       };
+    case "insertTable":
+      return { id, type: kind, blockId, rows: [["Term", "Value"]] };
     case "deleteBlock":
-      return { id: "edit", type: "deleteBlock", blockId: block.id };
+    case "mergeBlockWithNext":
+    case "deleteTableRow":
+    case "deleteTable":
+      return { id, type: kind, blockId };
     default: {
       const unreachable: never = kind;
       throw new Error(`Unhandled edit kind: ${String(unreachable)}`);
@@ -303,38 +416,53 @@ const applyStep = (reviewer: FolioDocxReviewer, step: Step): void => {
     case "edit":
     case "comment": {
       const blocks = blocksOf(reviewer, step.story);
-      const block = blocks[step.pick % Math.max(blocks.length, 1)];
+      const blockAt = (at: number) => blocks[at % Math.max(blocks.length, 1)];
+      const block = blockAt(step.type === "edit" ? 0 : step.pick);
       if (!block) {
         return;
       }
-      const operation =
+      const operations =
         step.type === "edit"
-          ? editFor(step, block)
-          : ({
-              id: "comment",
-              type: "commentOnBlock",
-              blockId: block.id,
-              comment: { text: "Added in session." },
-            } satisfies FolioAIEditOperation);
-      if (!operation) {
-        return;
-      }
-      const mode = step.type === "edit" ? step.mode : "direct";
-      if (step.story === "body") {
-        reviewer.applyOperations([operation], {
-          undefinedReferences: "refuse",
-          mode,
-        });
-      } else {
-        reviewer.applyDocumentOperationsToStory({
-          undefinedReferences: "refuse",
-          story: NOTE,
-          batch: {
-            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-            mode,
-            operations: [operation],
-          },
-        });
+          ? step.edits.flatMap((edit, index) => {
+              const target = blockAt(edit.pick);
+              const operation =
+                target && editFor(edit, target, `edit-${index}`);
+              return operation ? [operation] : [];
+            })
+          : [
+              {
+                id: "comment",
+                type: "commentOnBlock",
+                blockId: block.id,
+                comment: { text: "Added in session." },
+              } satisfies FolioAIEditOperation,
+            ];
+      const before = new Set(reviewer.getComments().map(({ id }) => id));
+      const { mode } = step;
+      const applied =
+        step.story === "body"
+          ? reviewer.applyOperations(operations, {
+              undefinedReferences: "refuse",
+              mode,
+            }).applied
+          : reviewer.applyDocumentOperationsToStory({
+              undefinedReferences: "refuse",
+              story: NOTE,
+              batch: {
+                version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+                mode,
+                operations,
+              },
+            }).applied;
+      // A comment on a block anchors that block's text, wherever it sits.
+      if (step.type === "comment" && applied.length > 0) {
+        const added = reviewer
+          .getComments()
+          .filter(({ id }) => !before.has(id))
+          .map(({ blockId, anchoredText }) => ({ blockId, anchoredText }));
+        expect(added).toEqual([
+          { blockId: block.id, anchoredText: block.text },
+        ]);
       }
       return;
     }
@@ -451,9 +579,10 @@ const expectPackageConsistent = async (
 
 describe("live comment threads match the saved package after every step", () => {
   test("deleting a replied-to paragraph retires its entire thread", async () => {
+    const plain = { startInLink: false, endInLink: false };
     const comments: GeneratedComment[] = [
-      { story: "body", first: 1, last: 1, text: "A" },
-      { story: "body", first: 0, last: 0, text: "A" },
+      { story: "body", first: 1, last: 1, text: "A", ...plain },
+      { story: "body", first: 0, last: 0, text: "A", ...plain },
     ];
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await createDocx(buildDocument(comments)),
@@ -484,45 +613,136 @@ describe("live comment threads match the saved package after every step", () => 
     applyStep(reviewer, {
       type: "edit",
       story: "body",
-      kind: "deleteBlock",
       mode: "direct",
-      pick: 7,
+      edits: [{ kind: "deleteBlock", pick: 7, at: 0 }],
     });
     await expectSavedRoots([1]);
     applyStep(reviewer, { type: "resolveAll", how: "accept" });
     await expectSavedRoots([1]);
   });
 
+  const checkSession = async ({ comments, steps }: GeneratedSession) => {
+    let reviewer = await FolioDocxReviewer.fromBuffer(
+      await createDocx(buildDocument(comments)),
+      { author: "Editor" },
+    );
+    for (const [index, { step, reopen }] of steps.entries()) {
+      applyStep(reviewer, step);
+      for (const decision of ["accept", "reject"] as const)
+        reviewer.toResolvedDocument(decision);
+      const live = threadsOf(reviewer.getComments());
+      const saved = await reviewer.toBuffer();
+      const reopened = await FolioDocxReviewer.fromBuffer(saved, {
+        author: "Editor",
+      });
+      const persisted = threadsOf(reopened.getComments());
+      await expectPackageConsistent(saved, persisted);
+      expect({ step: index, threads: persisted }).toEqual({
+        step: index,
+        threads: live,
+      });
+      if (reopen) {
+        reviewer = reopened;
+      }
+    }
+  };
+
+  const inLink = (
+    first: number,
+    last: number,
+    startInLink: boolean,
+    endInLink: boolean,
+  ): GeneratedComment => ({
+    story: "body",
+    first,
+    last,
+    text: "A",
+    startInLink,
+    endInLink,
+  });
+
+  test("a range with one boundary inside a link opens and saves", async () => {
+    await checkSession({ comments: [inLink(1, 1, true, false)], steps: [] });
+    await checkSession({ comments: [inLink(1, 1, false, true)], steps: [] });
+  });
+
+  test("a range runs across a paragraph whose own range sits in its link", async () => {
+    await checkSession({
+      comments: [inLink(0, 4, false, false), inLink(1, 1, true, true)],
+      steps: [],
+    });
+  });
+
+  test("deleting a table keeps the reference of a range that ends in it", async () => {
+    // The first range ends in the table's first cell, where the second
+    // starts: both boundaries stay, and so does the first's reference.
+    await checkSession({
+      comments: [inLink(0, 2, false, false), inLink(2, 4, false, false)],
+      steps: [
+        {
+          step: {
+            type: "edit",
+            story: "body",
+            mode: "direct",
+            edits: [{ kind: "deleteTable", pick: 2, at: 0 }],
+          },
+          reopen: false,
+        },
+      ],
+    });
+  });
+
+  test("rejecting a split joins a comment's start into the link it divided", async () => {
+    // Split slot 1 inside its link, comment on the tail (it opens before the
+    // tail's link), then reject: the start lands inside the joined link.
+    await checkSession({
+      comments: [inLink(0, 0, false, false)],
+      steps: [
+        {
+          step: {
+            type: "edit",
+            story: "body",
+            mode: "tracked-changes",
+            edits: [{ kind: "splitBlock", pick: 1, at: 14 }],
+          },
+          reopen: false,
+        },
+        {
+          step: {
+            type: "comment",
+            story: "body",
+            mode: "tracked-changes",
+            pick: 2,
+          },
+          reopen: false,
+        },
+        { step: { type: "resolveAll", how: "reject" }, reopen: false },
+      ],
+    });
+  });
+
   test(
     "over generated sessions across a table and a note",
     async () => {
       await assertProperty(
-        fc.asyncProperty(sessionArbitrary, async ({ comments, steps }) => {
-          let reviewer = await FolioDocxReviewer.fromBuffer(
-            await createDocx(buildDocument(comments)),
-            { author: "Editor" },
-          );
-          for (const [index, { step, reopen }] of steps.entries()) {
-            applyStep(reviewer, step);
-            const live = threadsOf(reviewer.getComments());
-            const saved = await reviewer.toBuffer();
-            const reopened = await FolioDocxReviewer.fromBuffer(saved, {
-              author: "Editor",
-            });
-            const persisted = threadsOf(reopened.getComments());
-            await expectPackageConsistent(saved, persisted);
-            expect({ step: index, threads: persisted }).toEqual({
-              step: index,
-              threads: live,
-            });
-            if (reopen) {
-              reviewer = reopened;
-            }
-          }
-        }),
+        fc.asyncProperty(sessionArbitrary(false), checkSession),
         {
           numRuns: 40,
           id: "over generated sessions across a table and a note",
+        },
+      );
+    },
+    propertyTestTimeout(240_000),
+  );
+
+  test(
+    "over structure batches beside ranges that start or end inside links",
+    async () => {
+      await assertProperty(
+        fc.asyncProperty(sessionArbitrary(true), checkSession),
+        {
+          numRuns: 40,
+          id: "over structure batches beside ranges that start or end inside links",
         },
       );
     },

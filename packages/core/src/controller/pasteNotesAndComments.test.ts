@@ -116,7 +116,7 @@ test.each(["editing", "suggesting"] as const)(
   },
 );
 
-test("a slice like the copy, but not the clipboard the editor wrote, refuses", () => {
+test("a slice like the copy, but not the clipboard the editor wrote, pastes its text without the markers", () => {
   const driver = createCanonicalEditorHarness(source(), "editing");
   try {
     const first = driver.state.doc.child(0);
@@ -127,10 +127,24 @@ test("a slice like the copy, but not the clipboard the editor wrote, refuses", (
     );
     driver.copy();
     const slice = driver.state.selection.content();
-    const before = driver.state.doc;
+    const end = driver.state.doc.content.size - 1;
+    driver.dispatch(
+      driver.state.tr.setSelection(TextSelection.create(driver.state.doc, end)),
+    );
     driver.paste(slice);
-    expect(driver.refusals).toHaveLength(1);
-    expect(driver.state.doc.eq(before)).toBe(true);
+    expect(driver.refusals).toEqual([]);
+    const pasted = driver.snapshot();
+    // Nothing names a comment or note the copy could not carry.
+    expect(stories(pasted)).toEqual({
+      notes: [[1, true]],
+      comments: [[1, true]],
+    });
+    const target = pasted.package.document.content.at(1);
+    expect(target?.type).toBe("paragraph");
+    const json = JSON.stringify(target);
+    expect(json).not.toContain("footnoteRef");
+    expect(json).not.toContain("comment");
+    expect(json).toContain('"text":"Noted"');
   } finally {
     driver.dispose();
   }

@@ -6,6 +6,7 @@
  * per-page footnote area heights for layout space reservation.
  */
 
+import { expectNoteMarkerAttrs } from "../../internal/noteMarkerAttrs";
 import { getExactTableRowBottomMargins } from "../../layout-engine/measure/tableCellGrid";
 import { layoutTextBoxContent } from "../../layout-engine/measure/textBoxParagraphLayout";
 import type {
@@ -30,6 +31,7 @@ import {
   resolveTableWidthPx,
 } from "../../layout-engine/types";
 import type { DisplayMode } from "../../managers/EditorModeManager";
+import { markupViewSources } from "../../prosemirror/conversion/markupViewSource";
 import { footnoteToProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import { projectStoryMarkupView } from "../../prosemirror/markupViewProjection";
 import type {
@@ -453,14 +455,34 @@ export function convertNoteStoryToFlowBlocks(
   }
   // The story's own `w:footnoteRef` shows the number where it sits; only a
   // story without one gets a number put in front of its first paragraph.
+  const markupView = options.markupView ?? "all-markup";
+  const kind = noteReferenceKind(pmDoc);
+  if (markupView !== "all-markup" && kind !== undefined) {
+    // A standalone note has no package id. Give the isolated story one so
+    // canonical resolution recognizes its automatic note mark.
+    const id = 0;
+    markupViewSources.set(pmDoc, {
+      document: {
+        package: {
+          document: { content: [] },
+          ...(kind === "footnote"
+            ? { footnotes: [{ type: kind, id, content }] }
+            : { endnotes: [{ type: kind, id, content }] }),
+        },
+      },
+      story: { kind, id },
+      options: proseOptions,
+    });
+  }
   const projection = projectStoryMarkupView({
     doc: pmDoc,
-    markupView: options.markupView ?? "all-markup",
+    markupView,
     styles: options.styles,
     numbering: options.numbering,
   });
   const viewDoc = projection.type === "resolved" ? projection.doc : pmDoc;
-  const hasReferenceMark = containsNoteReferenceMark(viewDoc);
+  const hasReferenceMark =
+    (viewDoc === pmDoc ? kind : noteReferenceKind(viewDoc)) !== undefined;
   if (hasReferenceMark && referenceMarkText !== undefined) {
     flowOptions.noteReferenceMarkText = referenceMarkText;
   }
@@ -473,20 +495,17 @@ export function convertNoteStoryToFlowBlocks(
   return { flowBlocks, hasReferenceMark };
 }
 
-function containsNoteReferenceMark(
+function noteReferenceKind(
   doc: ReturnType<typeof footnoteToProseDoc>,
-): boolean {
-  let found = false;
+): Footnote["type"] | Endnote["type"] | undefined {
+  let kind: Footnote["type"] | Endnote["type"] | undefined;
   doc.descendants((node) => {
-    if (found) {
-      return false;
-    }
-    if (node.type.name === "noteMarker") {
-      found = true;
-    }
-    return !found;
+    if (kind !== undefined) return false;
+    if (node.type.name === "noteMarker")
+      kind = expectNoteMarkerAttrs(node).kind;
+    return kind === undefined;
   });
-  return found;
+  return kind;
 }
 
 /** Restore an authored footnote line that the body-only terminal-table policy collapsed. */

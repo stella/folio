@@ -8928,6 +8928,14 @@ export class CanonicalPublicOperations {
       intent.type === "joinParagraphs"
         ? projection.value.paragraph(intent.nextBlockId)
         : undefined;
+    // A merge plans with its second paragraph's address: one the projection
+    // cannot align is no paragraph to merge with.
+    if (
+      operation.type === "mergeBlockWithNext" &&
+      intent.type === "joinParagraphs" &&
+      nextParagraph === undefined
+    )
+      return refusal("unsupportedBlock", undefined, INVALID_REQUEST);
     let claimedTo = range.to;
     if (operation.type === "mergeBlockWithNext")
       claimedTo = paragraph.start + paragraph.node.content.size;

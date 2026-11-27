@@ -1,8 +1,8 @@
 import { panic } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
 
-import { itemBefore } from "../utils/listItems";
-import { indexedPositionMap } from "./indexedPositionMap";
+import { indexedPositionMap } from "../../internal/indexedPositionMap";
+import { itemBefore } from "../../utils/listItems";
 import type { resolveWholeStory } from "./wholeStoryRevisionResolution";
 
 type Resolution = ReturnType<typeof resolveWholeStory>;

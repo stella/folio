@@ -181,7 +181,7 @@ const nativePolicies = new Map<string, NativePolicy>(
 const InlineProjectionErrorBase: TaggedErrorClass<"InlineProjectionError"> =
   TaggedError("InlineProjectionError");
 
-class InlineProjectionError extends InlineProjectionErrorBase<{
+export class InlineProjectionError extends InlineProjectionErrorBase<{
   message: string;
 }> {}
 const refuse = (message: string) =>
@@ -502,7 +502,7 @@ export type CanonicalInlineCommentContext = {
   openIds: ReadonlySet<number>;
 };
 
-type CanonicalInlineProjectionArgs = {
+export type CanonicalInlineProjectionArgs = {
   source: Paragraph;
   paragraph: PMNode;
   pairedBookmarkIds: StoryIdMembership;
@@ -604,7 +604,13 @@ const commentMarkTransitions = ({
     previous = current;
   };
   const visit = (node: PMNode, position: number): void => {
-    if (issue !== undefined) return;
+    // A boundary node covers nothing: a range open across it, as the save
+    // leg reads it, neither ends nor starts there.
+    if (
+      issue !== undefined ||
+      node.type.name === COMMENT_RANGE_BOUNDARY_NODE_NAME
+    )
+      return;
     // An inline content control's edges are gaps of its content, as its
     // native cells place them: the comment marks are on what it holds, so
     // the transitions are read there. An empty control carries its own.

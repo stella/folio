@@ -101,6 +101,16 @@ const BUILTIN_NORMAL_STYLE: Style = {
   pPr: BUILT_IN_DEFAULT_PARAGRAPH_FORMATTING,
 };
 
+const sourceDefinitions = new WeakMap<
+  StyleResolver,
+  DeepReadonly<StyleDefinitions>
+>();
+
+export const styleResolverSource = (
+  resolver: StyleResolver,
+): DeepReadonly<StyleDefinitions> | undefined =>
+  sourceDefinitions.get(resolver);
+
 /**
  * StyleResolver provides efficient access to resolved style properties
  */
@@ -113,6 +123,8 @@ export class StyleResolver {
   private readonly defaultTableStyle: ReadonlyStyle | undefined;
 
   constructor(styleDefinitions: DeepReadonly<StyleDefinitions> | undefined) {
+    if (styleDefinitions !== undefined)
+      sourceDefinitions.set(this, styleDefinitions);
     this.stylesById = new Map();
     this.docDefaults = styleDefinitions?.docDefaults;
 

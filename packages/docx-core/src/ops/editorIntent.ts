@@ -16,6 +16,7 @@ import {
   type ParagraphContent,
   type ParagraphFormatting,
   type RunContent,
+  type SdtProperties,
   type TabContent,
   type Table,
   type TableRow,
@@ -118,6 +119,12 @@ import {
   placedPasteAnchors,
   withPasteAnchors,
 } from "./pasteAnchors";
+import {
+  blockParagraphsOf,
+  isPastedBlock,
+  mapPastedBlockParagraphs,
+  type PastedBlock,
+} from "./pastedBlocks";
 import {
   holdsMoveRange,
   withoutRepeatedMoveRangesIn,
@@ -355,13 +362,20 @@ export type EditorIntent =
        * Clipboard blocks, tables among them, over a range: the range is
        * cleared, an open first or last paragraph joins the text at its edge,
        * and the blocks between go in before the caret's paragraph, split at
-       * the caret when text stands before it. Without a table it is
-       * `replaceFragment`.
+       * the caret when text stands before it. Only when every block is a
+       * paragraph is it `replaceFragment`; a table, a container or kept
+       * block markup among them is placed as a block.
        */
       type: "pasteBlocks";
       from: TextPosition;
       to: TextPosition;
-      blocks: readonly (Paragraph | Table)[];
+      /**
+       * A block content control or custom XML element goes in whole, its own
+       * paragraphs identified as the others are, and so does block markup
+       * kept as it was read; neither has a tracked record, so suggesting
+       * refuses them.
+       */
+      blocks: readonly PastedBlock[];
       openStart: 0 | 1;
       openEnd: 0 | 1;
       /**
@@ -381,18 +395,22 @@ export type EditorIntent =
     }
   | {
       /**
-       * Blocks, tables among them, dragged from a range to a target. The
-       * tables standing wholly between `from` and `to` are removed, or in
-       * suggesting mode recorded as deleted, the text of the range is
-       * deleted as `moveFragment` deletes it, and the blocks go in at the
-       * target as `pasteBlocks` places them, a suggestion recording them as
-       * inserted. Without a table it is `moveFragment`.
+       * Blocks, tables and containers among them, dragged from a range to a
+       * target. The tables and containers standing wholly between `from`
+       * and `to` are removed, a table in suggesting mode recorded as
+       * deleted, the text of the range is deleted as `moveFragment` deletes
+       * it, and the blocks go in at the target as `pasteBlocks` places them,
+       * a suggestion recording them as inserted. A container has no tracked
+       * record, so a suggestion moving one refuses. Only when every block
+       * is a paragraph is it `moveFragment`. A direct move keeps the notes
+       * and comments the blocks' references and markers name, under their
+       * own ids.
        */
       type: "moveBlocks";
       from: TextPosition;
       to: TextPosition;
       target: TextPosition;
-      blocks: readonly (Paragraph | Table)[];
+      blocks: readonly PastedBlock[];
       openStart: 0 | 1;
       openEnd: 0 | 1;
     }
@@ -514,6 +532,12 @@ type CompileEditorIntentOptions = {
   replacementFormattingDocument?: Document;
   /** Lowest candidate for compiler-owned pasted block IDs, including retired session IDs. */
   firstBlockId?: number;
+  /**
+   * Pasted blocks a direct move took from this story: their note references
+   * and comment markers keep naming the notes and comments they named, which
+   * the move leaves in place, rather than naming copies.
+   */
+  moved?: true;
 };
 type CompiledEditorIntent = {
   ops: DocumentOp[];
@@ -766,12 +790,7 @@ export const createEditorIntentIdAllocator = ({
       for (const block of intent.blocks) {
         if (intent.type === "moveBlocks" && block.type === "table")
           demand += 2 + block.rows.length;
-        const paragraphs =
-          block.type === "table"
-            ? storyParagraphs({ content: [block] }).map(
-                ({ paragraph }) => paragraph,
-              )
-            : [block];
+        const paragraphs = blockParagraphs(block);
         if (block.type === "table") demand += 2 + block.rows.length;
         for (const paragraph of paragraphs) {
           demand += PARAGRAPH_REVISION_DEMAND;
@@ -1316,7 +1335,9 @@ const bookmarkIdsIn = (items: readonly ParagraphContent[]): number[] =>
   });
 
 /** Whether a pasted table, or one nested in it, holds bookmarks or records of its own. */
-const holdsTableLevelIdentities = (block: Paragraph | Table): boolean => {
+const holdsTableLevelIdentities = (block: BlockContent): boolean => {
+  if (block.type === "blockSdt" || block.type === "blockCustomXml")
+    return block.content.some(holdsTableLevelIdentities);
   if (block.type !== "table") return false;
   if (
     (block.bookmarks?.length ?? 0) > 0 ||
@@ -1333,34 +1354,78 @@ const holdsTableLevelIdentities = (block: Paragraph | Table): boolean => {
         (cell) =>
           (cell.propertyChanges?.length ?? 0) > 0 ||
           (cell.carrierStack?.length ?? 0) > 0 ||
-          cell.content.some(
-            (inner) =>
-              (inner.type === "paragraph" || inner.type === "table") &&
-              holdsTableLevelIdentities(inner),
-          ),
+          cell.content.some(holdsTableLevelIdentities),
       ),
   );
 };
 
-/** A pasted block's paragraphs in document order, a table's cells' among them. */
-const blockParagraphs = (block: Paragraph | Table): Paragraph[] =>
-  block.type === "paragraph"
-    ? [block]
-    : block.rows.flatMap((row) =>
-        row.cells.flatMap((cell) =>
-          cell.content.flatMap((inner) =>
-            inner.type === "paragraph" || inner.type === "table"
-              ? blockParagraphs(inner)
-              : [],
-          ),
-        ),
-      );
+/**
+ * A pasted block's paragraphs in document order, a table's cells' and a
+ * container's among them.
+ */
+const blockParagraphs = (block: PastedBlock): Paragraph[] =>
+  blockParagraphsOf(block);
+
+/** The properties of every block content control `blocks` hold, at any depth. */
+const blockControlsOf = (blocks: readonly BlockContent[]): SdtProperties[] =>
+  blocks.flatMap((block) => {
+    switch (block.type) {
+      case "blockSdt":
+        return [block.properties, ...blockControlsOf(block.content)];
+      case "blockCustomXml":
+        return blockControlsOf(block.content);
+      case "table":
+        return block.rows.flatMap((row) =>
+          row.cells.flatMap((cell) => blockControlsOf(cell.content)),
+        );
+      default:
+        return [];
+    }
+  });
+
+/** `blocks` with their block content controls' properties, in order, from `controls`. */
+const withBlockControls = (
+  blocks: readonly BlockContent[],
+  controls: SdtProperties[],
+): BlockContent[] =>
+  blocks.map((block) => {
+    switch (block.type) {
+      case "blockSdt": {
+        const properties =
+          controls.shift() ?? panic("An identified control is missing.");
+        return {
+          ...block,
+          properties,
+          content: withBlockControls(block.content, controls),
+        };
+      }
+      case "blockCustomXml":
+        return {
+          ...block,
+          content: withBlockControls(block.content, controls),
+        };
+      case "table":
+        return {
+          ...block,
+          rows: block.rows.map((row) => ({
+            ...row,
+            cells: row.cells.map((cell) => ({
+              ...cell,
+              content: withBlockControls(cell.content, controls),
+            })),
+          })),
+        };
+      default:
+        return block;
+    }
+  });
 
 type BlockPasteIntent = Extract<EditorIntent, { type: "pasteBlocks" }>;
 type BlockPasteOptions = {
   intent: BlockPasteIntent;
   mode: EditorIntentMode;
   firstBlockId?: number;
+  moved?: true | undefined;
 };
 type BlockPlacementOptions = {
   intent: Omit<BlockPasteIntent, "annotations">;
@@ -1375,7 +1440,7 @@ type AnchoredPlacement = {
 };
 type AnchoredPlacementOptions = BlockPlacementOptions & {
   /** The blocks without their placeholders. */
-  plain: readonly (Paragraph | Table)[];
+  plain: readonly PastedBlock[];
   /** The name prefix, bookmark ids and number of this paste's placeholders. */
   prefix: string;
   ids: ReadonlySet<number>;
@@ -1518,14 +1583,16 @@ type CopiedAnnotation =
  */
 const compileBlockPaste = (
   document: Document,
-  { intent, mode, firstBlockId }: BlockPasteOptions,
+  { intent, mode, firstBlockId, moved }: BlockPasteOptions,
 ): Result<CompiledEditorIntent, DocumentOpRefusal> => {
   const { annotations, ...placement } = intent;
   const anchored = withPasteAnchors(
     intent.blocks,
     bookmarksIn(document.package),
   );
-  if (anchored.anchors.length === 0)
+  // Moved directly, the references and markers go with their blocks and keep
+  // the notes and comments the source left in place: there is nothing to copy.
+  if (anchored.anchors.length === 0 || moved === true)
     return compileBlockPlacement(document, {
       intent: placement,
       mode,
@@ -1796,6 +1863,141 @@ const compileBlockPaste = (
  * the document the last left and, suggesting, taking the revision ids the
  * steps before it left unused.
  */
+type PlaceContainerBlockOptions = {
+  document: Document;
+  story: OpStory;
+  /** The paragraph the block goes in before. */
+  anchor: string;
+  block: Extract<
+    PastedBlock,
+    { type: "blockSdt" | "blockCustomXml" | "preservedBlock" }
+  >;
+  mode: EditorIntentMode;
+};
+
+/**
+ * A block content control, custom XML element or kept block markup put in
+ * before `anchor`, in the block list holding it, as its exact list. Neither
+ * has a tracked record of its own: Word records a control's insertion on the
+ * runs inside it, and kept markup is not read, so a suggestion refuses.
+ */
+const placeContainerBlock = ({
+  document,
+  story,
+  anchor,
+  block,
+  mode,
+}: PlaceContainerBlockOptions): Result<
+  { op: DocumentOp; document: Document },
+  DocumentOpRefusal
+> => {
+  if (mode.type === "suggesting")
+    return Result.err(
+      new DocumentOpRefusal({
+        reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+        message:
+          "A suggested paste cannot record a block content control, custom XML element or kept block markup.",
+        opType: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+      }),
+    );
+  const body = storyBody(document, story);
+  const located = storyParagraphs(body).find(
+    ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(anchor),
+  );
+  if (located === undefined)
+    return Result.err(
+      new DocumentOpRefusal({
+        reason: DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
+        message: "The clipboard destination paragraph does not exist.",
+        opType: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+      }),
+    );
+  const expected = blockListAt(body.content, located.list);
+  const op: DocumentOp = {
+    type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+    story,
+    blockId: anchor,
+    expected,
+    blocks: [
+      ...expected.slice(0, located.index),
+      block,
+      ...expected.slice(located.index),
+    ],
+  };
+  const applied = applyDocumentOps(document, [op]);
+  if (applied.isErr()) return Result.err(applied.error);
+  return Result.ok({ op, document: applied.value.document });
+};
+
+/**
+ * A block content control, custom XML element or kept block markup taken out
+ * of the block list holding `anchor`, as its exact list; a suggestion has no
+ * record for it and refuses.
+ */
+const removeContainerBlock = ({
+  document,
+  story,
+  anchor,
+  block,
+  mode,
+}: {
+  document: Document;
+  story: OpStory;
+  anchor: string;
+  block: BlockContent;
+  mode: EditorIntentMode;
+}): Result<
+  { op: DocumentOp; document: Document; inverse: readonly DocumentOp[] },
+  DocumentOpRefusal
+> => {
+  const refuse = (
+    reason: DocumentOpRefusal["reason"],
+    message: string,
+  ): Result<never, DocumentOpRefusal> =>
+    Result.err(
+      new DocumentOpRefusal({
+        reason,
+        message,
+        opType: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+      }),
+    );
+  if (mode.type === "suggesting")
+    return refuse(
+      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      "A suggested move cannot record a block content control, custom XML element or kept block markup.",
+    );
+  const body = storyBody(document, story);
+  const located = storyParagraphs(body).find(
+    ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(anchor),
+  );
+  if (located === undefined)
+    return refuse(
+      DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
+      "The moved range names a paragraph the story does not hold.",
+    );
+  const expected = blockListAt(body.content, located.list);
+  const index = expected.indexOf(block);
+  if (index < 0)
+    return refuse(
+      DOCUMENT_OP_REFUSAL_REASONS.STALE,
+      "The moved block is no longer where the range found it.",
+    );
+  const op: DocumentOp = {
+    type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+    story,
+    blockId: anchor,
+    expected,
+    blocks: [...expected.slice(0, index), ...expected.slice(index + 1)],
+  };
+  const applied = applyDocumentOps(document, [op]);
+  if (applied.isErr()) return Result.err(applied.error);
+  return Result.ok({
+    op,
+    document: applied.value.document,
+    inverse: applied.value.inverse,
+  });
+};
+
 const compileBlockPlacement = (
   document: Document,
   { intent, mode, firstBlockId }: BlockPlacementOptions,
@@ -1817,37 +2019,37 @@ const compileBlockPlacement = (
       mode,
       ...(firstBlockId === undefined ? {} : { firstBlockId }),
     });
-  // Every pasted paragraph, a table's among them, takes the identities a
-  // clipboard paragraph takes: its copied bookmarks and records renamed.
-  const identified = identifyClipboardParagraphs({
+  // Every pasted paragraph, a table's and a container's among them, takes
+  // the identities a clipboard paragraph takes: its copied bookmarks and
+  // records renamed. A block content control takes a fresh control id.
+  const lastBlock = intent.blocks.at(-1);
+  const identified = identifyClipboardContent({
     document,
     paragraphs: intent.blocks.flatMap(blockParagraphs),
+    controls: blockControlsOf(intent.blocks),
+    // A last paragraph or table keeps its last paragraph for the join or
+    // the insertion to identify; inside a container, every paragraph needs
+    // its id here.
+    identifyLast:
+      lastBlock?.type !== "paragraph" && lastBlock?.type !== "table",
     mode,
     firstBlockId,
   });
   if (identified.isErr()) return Result.err(identified.error);
   let next = 0;
   const take = (): Paragraph =>
-    identified.value[next++] ??
+    identified.value.paragraphs[next++] ??
     panic("An identified clipboard paragraph is missing.");
-  const rebuilt = (block: Paragraph | Table): Paragraph | Table =>
-    block.type === "paragraph"
-      ? take()
-      : {
-          ...block,
-          rows: block.rows.map((row) => ({
-            ...row,
-            cells: row.cells.map((cell) => ({
-              ...cell,
-              content: cell.content.map((inner) =>
-                inner.type === "paragraph" || inner.type === "table"
-                  ? rebuilt(inner)
-                  : inner,
-              ),
-            })),
-          })),
-        };
-  const blocks = intent.blocks.map(rebuilt);
+  const controls = [...identified.value.controls];
+  const blocks = intent.blocks.map((block): PastedBlock => {
+    const placed = mapPastedBlockParagraphs(block, take);
+    if (placed.type === "paragraph" || placed.type === "preservedBlock")
+      return placed;
+    const [withControls] = withBlockControls([placed], controls);
+    return withControls !== undefined && isPastedBlock(withControls)
+      ? withControls
+      : panic("A pasted block lost its kind.");
+  });
   const refuseIdentities = (message: string) =>
     Result.err(
       new DocumentOpRefusal({
@@ -1973,9 +2175,15 @@ const compileBlockPlacement = (
     to: caret.offset,
   });
   if (textBefore) {
+    // The pasted paragraphs' ids are not in the document yet: the split
+    // takes one none of them holds.
+    const reserved = new Set(mode.reservedBlockIds);
+    for (const block of blocks)
+      for (const { paraId } of blockParagraphs(block))
+        if (paraId !== undefined) reserved.add(paraId);
     const fresh = freshParagraphIds({
       document: current,
-      reserved: mode.reservedBlockIds,
+      reserved,
       lease: mode.idLease,
       count: 1,
       opType: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
@@ -1988,6 +2196,23 @@ const compileBlockPlacement = (
   }
   const anchor = caret.blockId;
   for (const block of blocks) {
+    if (
+      block.type === "blockSdt" ||
+      block.type === "blockCustomXml" ||
+      block.type === "preservedBlock"
+    ) {
+      const placed = placeContainerBlock({
+        document: current,
+        story: caret.story,
+        anchor,
+        block,
+        mode,
+      });
+      if (placed.isErr()) return Result.err(placed.error);
+      ops.push(placed.value.op);
+      current = placed.value.document;
+      continue;
+    }
     const placed = step(
       block.type === "paragraph"
         ? {
@@ -2399,16 +2624,35 @@ type IdentifyClipboardParagraphsOptions = {
   firstBlockId: number | undefined;
 };
 
-const identifyClipboardParagraphs = ({
+const identifyClipboardParagraphs = (
+  options: IdentifyClipboardParagraphsOptions,
+): Result<Paragraph[], DocumentOpRefusal> =>
+  identifyClipboardContent({
+    ...options,
+    controls: [],
+    identifyLast: false,
+  }).map(({ paragraphs }) => paragraphs);
+
+type IdentifyClipboardContentOptions = IdentifyClipboardParagraphsOptions & {
+  /** The properties of the block content controls holding pasted paragraphs. */
+  controls: readonly SdtProperties[];
+  /** Whether the last paragraph takes a new id too. */
+  identifyLast: boolean;
+};
+
+const identifyClipboardContent = ({
   document,
   paragraphs,
+  controls,
+  identifyLast,
   mode,
   firstBlockId,
-}: IdentifyClipboardParagraphsOptions): Result<
-  Paragraph[],
+}: IdentifyClipboardContentOptions): Result<
+  { paragraphs: Paragraph[]; controls: SdtProperties[] },
   DocumentOpRefusal
 > => {
   const copy = cloneModel([...paragraphs]);
+  const controlCopies = cloneModel([...controls]);
   let occupancy: ReturnType<typeof packageIdOccupancy> | undefined;
   const packageOccupancy = () =>
     (occupancy ??= packageIdOccupancy(document.package));
@@ -2487,7 +2731,11 @@ const identifyClipboardParagraphs = ({
       from: nextBlock,
       taken: (candidate) => {
         const key = formatParaId(candidate);
-        return blockIds.has(key) || packageOccupancy().paragraphs.has(key);
+        return (
+          blockIds.has(key) ||
+          packageOccupancy().paragraphs.has(key) ||
+          (mode.reservedBlockIds?.has(key) ?? false)
+        );
       },
     }).at(0);
     if (fresh === undefined) return undefined;
@@ -2537,7 +2785,7 @@ const identifyClipboardParagraphs = ({
   };
   const remintedControls = new WeakSet<object>();
   const keptMarkers: { keptCut: unknown }[] = [];
-  visit(copy, (value) => {
+  visit([copy, controlCopies], (value) => {
     if ("keptCut" in value) keptMarkers.push(value);
     if (
       "type" in value &&
@@ -2601,7 +2849,7 @@ const identifyClipboardParagraphs = ({
   // destination identity, including when the session has exhausted block IDs.
   for (const [index, paragraph] of copy.entries()) {
     delete paragraph.paraId;
-    if (index === copy.length - 1) continue;
+    if (index === copy.length - 1 && !identifyLast) continue;
     const id = freshBlock();
     if (id === undefined) {
       return Result.err(
@@ -2614,7 +2862,7 @@ const identifyClipboardParagraphs = ({
     }
     paragraph.paraId = id;
   }
-  return Result.ok(copy);
+  return Result.ok({ paragraphs: copy, controls: controlCopies });
 };
 
 type JoinParagraphPropertyAlignmentOptions = {
@@ -3028,6 +3276,55 @@ type RangeMoveOptions = {
  * deletion), and the moved content goes in where the target stands once
  * the deletion is made. A target inside the range moves nothing.
  */
+/**
+ * The note bodies a direct deletion pruned as it took their references away,
+ * from its inverse: a move puts the references back at its target, so it
+ * restores the bodies the deletion removed.
+ */
+const noteBodyRestorations = (inverse: readonly DocumentOp[]): DocumentOp[] =>
+  inverse.flatMap((op): DocumentOp[] =>
+    op.type === DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS &&
+    (op.parts.footnotes !== undefined || op.parts.endnotes !== undefined)
+      ? [
+          {
+            type: DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS,
+            expected: {
+              ...(op.expected.footnotes === undefined
+                ? {}
+                : { footnotes: op.expected.footnotes }),
+              ...(op.expected.endnotes === undefined
+                ? {}
+                : { endnotes: op.expected.endnotes }),
+            },
+            parts: {
+              ...(op.parts.footnotes === undefined
+                ? {}
+                : { footnotes: op.parts.footnotes }),
+              ...(op.parts.endnotes === undefined
+                ? {}
+                : { endnotes: op.parts.endnotes }),
+            },
+          },
+        ]
+      : [],
+  );
+
+/**
+ * The document with the note bodies of `restorations` back, and the ops that
+ * put them back. Each restoration expects the note parts its own deletion
+ * left, so they undo the deletions newest first.
+ */
+const withNoteBodiesRestored = (
+  document: Document,
+  restorations: readonly DocumentOp[],
+): Result<{ document: Document; ops: DocumentOp[] }, DocumentOpRefusal> => {
+  if (restorations.length === 0) return Result.ok({ document, ops: [] });
+  const ops = restorations.toReversed();
+  const restored = applyDocumentOps(document, ops);
+  if (restored.isErr()) return Result.err(restored.error);
+  return Result.ok({ document: restored.value.document, ops });
+};
+
 const compileRangeMove = (
   document: Document,
   { intent, mode, insert }: RangeMoveOptions,
@@ -3200,42 +3497,12 @@ const compileRangeMove = (
     if (applied.isErr()) return Result.err(applied.error);
     afterDeletion = applied.value.document;
     deletionOps.push(op);
-    for (const inverse of applied.value.inverse) {
-      if (
-        inverse.type === DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS &&
-        (inverse.parts.footnotes !== undefined ||
-          inverse.parts.endnotes !== undefined)
-      )
-        movedNoteBodies.push({
-          type: DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS,
-          expected: {
-            ...(inverse.expected.footnotes === undefined
-              ? {}
-              : { footnotes: inverse.expected.footnotes }),
-            ...(inverse.expected.endnotes === undefined
-              ? {}
-              : { endnotes: inverse.expected.endnotes }),
-          },
-          parts: {
-            ...(inverse.parts.footnotes === undefined
-              ? {}
-              : { footnotes: inverse.parts.footnotes }),
-            ...(inverse.parts.endnotes === undefined
-              ? {}
-              : { endnotes: inverse.parts.endnotes }),
-          },
-        });
-    }
+    movedNoteBodies.push(...noteBodyRestorations(applied.value.inverse));
   }
-  if (movedNoteBodies.length > 0) {
-    // Each restoration expects the note parts its own deletion left, so
-    // they undo the deletions newest first.
-    const restorations = movedNoteBodies.toReversed();
-    const restored = applyDocumentOps(afterDeletion, restorations);
-    if (restored.isErr()) return Result.err(restored.error);
-    afterDeletion = restored.value.document;
-    deletionOps.push(...restorations);
-  }
+  const restored = withNoteBodiesRestored(afterDeletion, movedNoteBodies);
+  if (restored.isErr()) return Result.err(restored.error);
+  afterDeletion = restored.value.document;
+  deletionOps.push(...restored.value.ops);
   let target = intent.target;
   for (const op of logicalDeletions) {
     if (
@@ -3319,26 +3586,12 @@ const withoutParagraphMoveAnchors = (paragraph: Paragraph): Paragraph =>
     content: asParagraphContent(withoutMoveAnchors(paragraph.content)),
   });
 
-/** A block without move range markers, a table's cell paragraphs among them. */
-const withoutBlockMoveAnchors = (
-  block: Paragraph | Table,
-): Paragraph | Table =>
-  block.type === "paragraph"
-    ? withoutParagraphMoveAnchors(block)
-    : {
-        ...block,
-        rows: block.rows.map((row) => ({
-          ...row,
-          cells: row.cells.map((cell) => ({
-            ...cell,
-            content: cell.content.map((inner) =>
-              inner.type === "paragraph" || inner.type === "table"
-                ? withoutBlockMoveAnchors(inner)
-                : inner,
-            ),
-          })),
-        })),
-      };
+/**
+ * A block without move range markers, a table's cell paragraphs and a
+ * container's among them.
+ */
+const withoutBlockMoveAnchors = (block: PastedBlock): PastedBlock =>
+  mapPastedBlockParagraphs(block, withoutParagraphMoveAnchors);
 
 type BlockMoveIntent = Extract<EditorIntent, { type: "moveBlocks" }>;
 type BlockMoveOptions = {
@@ -3402,7 +3655,13 @@ const compileBlockMove = (
     return Result.ok({ ops: [], selection: intent.target });
   const covered = blockListAt(body.content, start.list)
     .slice(start.index + 1, end.index)
-    .filter((block): block is Table => block.type === "table");
+    .filter(
+      (block) =>
+        block.type === "table" ||
+        block.type === "blockSdt" ||
+        block.type === "blockCustomXml" ||
+        block.type === "preservedBlock",
+    );
   const reserved =
     mode.reservedBlockIds === undefined
       ? {}
@@ -3410,8 +3669,25 @@ const compileBlockMove = (
   const ops: DocumentOp[] = [];
   let current = document;
   let currentMode = mode;
-  // The latest table first, so that no removal moves the place of another.
+  // The note bodies a direct removal pruned with their references, which
+  // the moved blocks carry to the target.
+  const movedNoteBodies: DocumentOp[] = [];
+  // The latest block first, so that no removal moves the place of another.
   for (const table of covered.toReversed()) {
+    if (table.type !== "table") {
+      const removed = removeContainerBlock({
+        document: current,
+        story,
+        anchor: start.paragraph.paraId ?? "",
+        block: table,
+        mode: currentMode,
+      });
+      if (removed.isErr()) return removed;
+      ops.push(removed.value.op);
+      current = removed.value.document;
+      movedNoteBodies.push(...noteBodyRestorations(removed.value.inverse));
+      continue;
+    }
     const blockId = storyParagraphs({ content: [table] }).at(0)?.paragraph
       .paraId;
     if (blockId === undefined)
@@ -3434,8 +3710,14 @@ const compileBlockMove = (
     if (applied.isErr()) return Result.err(applied.error);
     ops.push(...removed.value.ops);
     current = applied.value.document;
+    if (mode.type === "editing")
+      movedNoteBodies.push(...noteBodyRestorations(applied.value.inverse));
     currentMode = { ...modeAfterOps(current, currentMode), ...reserved };
   }
+  const restored = withNoteBodiesRestored(current, movedNoteBodies);
+  if (restored.isErr()) return Result.err(restored.error);
+  current = restored.value.document;
+  ops.push(...restored.value.ops);
   const moved = compileRangeMove(current, {
     intent: range,
     mode: currentMode,
@@ -3454,6 +3736,9 @@ const compileBlockMove = (
         },
         mode: { ...insertMode, ...reserved },
         ...(firstBlockId === undefined ? {} : { firstBlockId }),
+        // A suggestion records a copy at the target and leaves the source's
+        // references where they stand.
+        ...(mode.type === "editing" ? { moved: true as const } : {}),
       }),
   });
   if (moved.isErr()) return moved;
@@ -3628,6 +3913,7 @@ const compileInStory = (
     firstBlockId,
     typedFormatting = TYPED_TEXT_FORMATTING.CARET,
     replacementFormattingDocument,
+    moved,
   }: CompileEditorIntentOptions,
 ): Result<CompiledEditorIntent, DocumentOpRefusal> => {
   if (
@@ -3693,6 +3979,7 @@ const compileInStory = (
         intent,
         mode,
         ...(firstBlockId === undefined ? {} : { firstBlockId }),
+        ...(moved === undefined ? {} : { moved }),
       });
     case "replaceFragment": {
       if (intent.paragraphs.length === 0)

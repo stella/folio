@@ -589,7 +589,7 @@ test.each(["caret-middle", "document"] as const)(
 );
 
 for (const mode of ["editing", "suggesting"] as const) {
-  test(`copied point-comment anchors declare their story import independently in ${mode}`, async () => {
+  test(`point-comment anchors copied outside the editor paste without the comment in ${mode}`, async () => {
     const source = await parseShapeDocument(
       new Uint8Array(await shapeArrayBuffer("plain-markdown")),
     );
@@ -603,16 +603,18 @@ for (const mode of ["editing", "suggesting"] as const) {
       });
       const paragraph = driver.state.schema.node("paragraph", null, anchor);
       const before = driver.snapshot();
-      const state = driver.state;
       driver.paste(new Slice(Fragment.from(paragraph), 0, 0));
-      expect(driver.refusals).toHaveLength(1);
-      expect(driver.refusals.at(0)).toMatchObject({
-        expectation: "declared",
-        row: "clipboard-story-parts",
-      });
-      assertExactModel(driver.snapshot(), before);
-      expect(driver.state).toBe(state);
-      expect(driver.history.canUndo()).toBe(false);
+      expect(driver.refusals).toEqual([]);
+      // The paragraph pastes; the anchors, which name no comment the copy
+      // carried, do not.
+      const after = driver.snapshot();
+      expect(after.package.document.comments ?? []).toEqual(
+        before.package.document.comments ?? [],
+      );
+      expect(JSON.stringify(after.package.document.content)).not.toContain(
+        "commentRange",
+      );
+      expect(driver.history.canUndo()).toBe(true);
     } finally {
       driver.dispose();
     }

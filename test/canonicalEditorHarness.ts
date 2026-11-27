@@ -24,12 +24,8 @@ import {
 import { serializeCanonicalSave } from "../packages/core/src/docx/canonicalSave";
 import { cloneDocumentWithParagraphPropertySources } from "../packages/core/src/docx/paragraphPropertySource";
 import { executeEditorCommand } from "../packages/core/src/prosemirror/executeEditorCommand";
-import { expectRangeAnchorAttrs } from "../packages/core/src/prosemirror/rangeAnchorAttrs";
 import { selectionBounds } from "../packages/core/src/prosemirror/selectionBounds";
-import {
-  CANONICAL_GAP,
-  type CanonicalRefusalGround,
-} from "../packages/core/src/types/canonicalCapabilities";
+import type { CanonicalRefusalGround } from "../packages/core/src/types/canonicalCapabilities";
 import type { CanonicalSaveSnapshot } from "../packages/core/src/types/canonicalSave";
 import type { Document } from "../packages/core/src/types/document";
 import {
@@ -268,71 +264,11 @@ export const createCanonicalEditorHarness = (
       cancelable: true,
       ...(clipboardData === undefined ? {} : { clipboardData }),
     });
-    let blocksOnly = true;
-    let inlineOnly = true;
-    // Copied cells, rows or cells without their table, paste as a table.
-    const cellRoles = new Set(["row", "cell", "header_cell"]);
-    slice.content.forEach((node) => {
-      blocksOnly &&=
-        node.type.name === "paragraph" ||
-        node.type.name === "table" ||
-        cellRoles.has(String(node.type.spec["tableRole"]));
-      inlineOnly &&= node.isInline;
-    });
-    // An edge open inside a table closes at the table, which pastes the
-    // cells it holds; any other open container is the story content's.
-    const opensInside = (open: number, edge: PMNode | null) =>
-      open > 1 &&
-      edge?.type.name !== "table" &&
-      !cellRoles.has(String(edge?.type.spec["tableRole"]));
-    const blockGap = CANONICAL_GAP.storyContentProjection;
-    let row: HarnessRefusalRow | undefined;
-    if (
-      opensInside(slice.openStart, slice.content.firstChild) ||
-      opensInside(slice.openEnd, slice.content.lastChild)
-    )
-      row = {
-        id: "clipboard-nested-blocks",
-        gap: blockGap,
-        message:
-          "Clipboard tables and nested block containers require canonical table editing.",
-      };
-    else if (!blocksOnly && !inlineOnly)
-      row = {
-        id: "clipboard-table",
-        gap: blockGap,
-        message:
-          "Clipboard tables and embedded blocks require canonical table editing.",
-      };
-    if (row === undefined) {
-      // Read clipboard carriers independently of the production preflight.
-      // A numbered paragraph alone never imports another story's payload.
-      let importsStoryParts = false;
-      slice.content.descendants((node) => {
-        if (
-          (node.type.name === "rangeAnchor" &&
-            expectRangeAnchorAttrs(node).markers.some(
-              (marker) => marker.type === "commentRangeStart",
-            )) ||
-          node.type.name === "commentReference" ||
-          node.marks.some(
-            ({ type }) =>
-              type.name === "comment" || type.name === "footnoteRef",
-          )
-        )
-          importsStoryParts = true;
-      });
-      // The editor reads them from the document it last copied from, so
-      // only a slice it did not copy itself refuses.
-      if (importsStoryParts && clipboardData === undefined)
-        row = {
-          id: "clipboard-story-parts",
-          gap: CANONICAL_GAP.storyContentProjection,
-          message:
-            "Clipboard comments and note references require the document they were copied from.",
-        };
-    }
-    const rows = row ? [row] : caseRefusalRows;
+    // Every block pastes: a copy opening inside a table pastes the table
+    // of its cells, one opening through another container the content it
+    // copied, and one made outside the editor its text without comment and
+    // note markers.
+    const rows = caseRefusalRows;
     withRefusalRows(rows, () =>
       editorView.someProp("handlePaste", (handler) =>
         handler(editorView, event, slice),
