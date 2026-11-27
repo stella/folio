@@ -206,7 +206,7 @@ describe("loadFolioMessages", () => {
       readFileSync(path.join(import.meta.dir, "messages/de.json"), "utf8"),
     );
     configureFolioMessageAssets({ catalogs: { de: german } });
-    expect((await loadFolioMessages("de")).folio.bold).toBe("Fett");
+    expect((await loadFolioMessages("de")).folio["bold"]).toBe("Fett");
   });
 
   test("reports a failed catalog preload as a tagged error", async () => {

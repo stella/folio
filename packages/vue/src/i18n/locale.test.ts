@@ -68,10 +68,13 @@ test("a locale switch hides translated UI until its catalog arrives", async () =
   configureFolioMessageAssets({ baseUrl: new URL("https://catalogs.test/") });
   const originalFetch = globalThis.fetch;
   let release: ((response: Response) => void) | undefined;
-  globalThis.fetch = () =>
-    new Promise<Response>((resolve) => {
-      release = resolve;
-    });
+  globalThis.fetch = Object.assign(
+    () =>
+      new Promise<Response>((resolve) => {
+        release = resolve;
+      }),
+    { preconnect: originalFetch.preconnect },
+  );
   const locale = ref("en");
   const errors: Error[] = [];
   const EditorLabel = {
@@ -112,7 +115,10 @@ test("a failed locale switch reports the error and paints English", async () => 
   resetFolioMessageAssets();
   configureFolioMessageAssets({ baseUrl: new URL("https://catalogs.test/") });
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = () => Promise.resolve(new Response(null, { status: 503 }));
+  globalThis.fetch = Object.assign(
+    () => Promise.resolve(new Response(null, { status: 503 })),
+    { preconnect: originalFetch.preconnect },
+  );
   const locale = ref("en");
   const errors: Error[] = [];
   const EditorLabel = {
