@@ -182,8 +182,8 @@ test.each(["horizontal", "rectangular", "retained"] as const)(
       ).toStrictEqual(projection(tableOf(expected)));
     }
 
-    const corrupt = structuredClone(parsed);
-    const grid = corrupt.formatting?.gridChange;
+    const mismatched = structuredClone(parsed);
+    const grid = mismatched.formatting?.gridChange;
     const history = grid?.geometryChange;
     const nestedMove =
       history?.type === "mergeCells" ? history.nestedMoves?.at(0) : undefined;
@@ -204,27 +204,50 @@ test.each(["horizontal", "rectangular", "retained"] as const)(
       formatting: { gridChange: { id: foreignId, columnWidths: [500] } },
       columnWidths: [600],
     };
-    const contaminated = withTable(corrupt);
-    contaminated.package.document.content.splice(1, 0, foreign);
+    const withPeer = withTable(mismatched);
+    withPeer.package.document.content.splice(1, 0, foreign);
     const review = {
       type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
       story: OP_STORIES.MAIN,
       decision: REVISION_DECISIONS.ACCEPT,
     } as const;
-    const isolated = applyDocumentOp(contaminated, {
+    const isolated = applyDocumentOp(withPeer, {
       ...review,
       revisionIds: [foreignId],
     }).unwrap().document;
-    expect(tableOf(isolated)).toStrictEqual(corrupt);
+    expect(tableOf(isolated)).toStrictEqual(mismatched);
     const reviewedForeign = isolated.package.document.content.at(1);
     if (reviewedForeign?.type !== "table")
       throw new Error("Expected a peer table.");
     expect(reviewedForeign.formatting?.gridChange).toBeUndefined();
-    const stale = applyDocumentOp(contaminated, {
+    const stale = applyDocumentOp(withPeer, {
       ...review,
       revisionIds: [grid.id],
     });
     expect(stale.isErr() && stale.error.reason).toBe(
+      DOCUMENT_OP_REFUSAL_REASONS.STALE,
+    );
+
+    const [firstPair, secondPair] = nestedMove.paragraphs;
+    if (firstPair === undefined || secondPair === undefined)
+      throw new Error("Expected two nested paragraph pairs.");
+    grid.geometryChange = {
+      ...history,
+      nestedMoves: [
+        {
+          ...nestedMove,
+          paragraphs: [
+            [firstPair[0], secondPair[1]],
+            [secondPair[0], firstPair[1]],
+          ],
+        },
+      ],
+    };
+    const crossed = applyDocumentOp(withPeer, {
+      ...review,
+      revisionIds: [grid.id],
+    });
+    expect(crossed.isErr() && crossed.error.reason).toBe(
       DOCUMENT_OP_REFUSAL_REASONS.STALE,
     );
   },

@@ -11,7 +11,12 @@ import type {
   TableGeometryNestedMove,
   TableGridChange,
 } from "../model/formatting";
-import { identityKeysIn, idKey, packageMoveRangeCensus } from "./ids";
+import {
+  identityKeysIn,
+  idKey,
+  packageMoveRangeCensus,
+  paragraphIdsIn,
+} from "./ids";
 import { stampInfo } from "./review";
 import { reachesPastRemovedCell } from "./tableEditDependencies";
 import type { RevisionStamp } from "./types";
@@ -328,15 +333,25 @@ export const tableMoveOwnershipMatches = (
   const sources = new Map<string, Paragraph>();
   const destinations = new Map<string, Paragraph>();
   const movedRows = new Map<number, Table>();
-  const collectMovedRows = (blocks: readonly BlockContent[]): void => {
+  const nestedSources = new Map<string, string[]>();
+  const collectMovedTables = (
+    blocks: readonly BlockContent[],
+    side: "source" | "destination",
+  ): void => {
     for (const block of blocks) {
       if (block.type === "table") {
+        if (side === "source") {
+          const ids = paragraphIdsIn(block).map(idKey);
+          const first = ids.at(0);
+          if (first !== undefined) nestedSources.set(first, ids);
+          continue;
+        }
         for (const { structuralChange } of block.rows) {
           if (structuralChange?.type === "tableRowInsertion")
             movedRows.set(structuralChange.info.id, block);
         }
       } else if (block.type === "blockCustomXml" || block.type === "blockSdt") {
-        collectMovedRows(block.content);
+        collectMovedTables(block.content, side);
       }
     }
   };
@@ -359,8 +374,8 @@ export const tableMoveOwnershipMatches = (
       }
       const first = cell.content.at(0);
       if (owned && first?.type === "paragraph") emptyOwner = first.paraId;
-      if (owned && geometry.nestedMoves !== undefined)
-        collectMovedRows(cell.content);
+      if (geometry.nestedMoves !== undefined)
+        collectMovedTables(cell.content, owned ? "destination" : "source");
       const paragraphs = owned ? destinations : sources;
       for (const paragraph of cell.content) {
         if (paragraph.type === "paragraph" && paragraph.paraId !== undefined)
@@ -376,6 +391,7 @@ export const tableMoveOwnershipMatches = (
   )
     return false;
   const nestedTables = new Set<Table>();
+  const claimedSources = new Set<string>();
   for (const move of geometry.nestedMoves ?? []) {
     const first = move.rows.at(0);
     const destination = first === undefined ? undefined : movedRows.get(first);
@@ -386,6 +402,23 @@ export const tableMoveOwnershipMatches = (
       move.rows.some((id) => movedRows.get(id) !== destination)
     )
       return false;
+    const firstSource = move.paragraphs.at(0)?.at(0);
+    if (firstSource === undefined) return false;
+    const sourceId = idKey(firstSource);
+    const sourceIds = nestedSources.get(sourceId);
+    const destinationIds = paragraphIdsIn(destination).map(idKey);
+    if (
+      claimedSources.has(sourceId) ||
+      sourceIds?.length !== move.paragraphs.length ||
+      destinationIds.length !== move.paragraphs.length ||
+      move.paragraphs.some(
+        ([from, to], index) =>
+          sourceIds[index] !== idKey(from) ||
+          destinationIds[index] !== idKey(to),
+      )
+    )
+      return false;
+    claimedSources.add(sourceId);
     nestedTables.add(destination);
   }
   const seen = new Set<string>();
