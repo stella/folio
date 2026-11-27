@@ -116,6 +116,7 @@ import {
   createDocumentStyleContextPlugin,
   createDocumentStylesPlugin,
 } from "../prosemirror/plugins/documentStyles";
+import { createHiddenEditorLayoutWindowPlugin } from "../prosemirror/plugins/hiddenEditorLayoutWindow";
 import { schema } from "../prosemirror/schema";
 import {
   CANONICAL_CONDITION,
@@ -303,6 +304,7 @@ export function createHiddenEditorState(
     createCommentRecordsPlugin(document?.package.document.comments ?? []),
     ...externalPlugins,
     styleResolverPlugin,
+    createHiddenEditorLayoutWindowPlugin(),
   ];
 
   const startedAt = performance.now();
@@ -603,6 +605,7 @@ export const createHiddenEditorManager = (
         createDocumentNumberingPlugin(document.package.numbering),
         createNativeSelectionRefreshPlugin(),
         createNativeNavigationPlugin(),
+        createHiddenEditorLayoutWindowPlugin(),
         createDocumentStyleContextPlugin(
           deps.getStyles() ?? document.package.styles,
         ),

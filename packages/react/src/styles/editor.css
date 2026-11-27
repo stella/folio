@@ -641,6 +641,17 @@
   z-index: 100;
 }
 
+/* The pages paint the document, so the hidden body editor lays out only the
+ * blocks around the selection, which core marks `folio-hidden-laid-out`; a
+ * block keeps the size it last had, so the blocks after it stay where they
+ * were when the selection leaves it. The host's one child is the editor's
+ * root; naming it by its own class would confine the rule to hosts inside
+ * `.folio-root`. */
+.paged-editor__hidden-pm > * > :not(.folio-hidden-laid-out) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto none;
+}
+
 /* Hidden ProseMirror layer — keep spans alive but invisible for
  * selection mapping; tooltips are handled by the rendered layer above. */
 .paged-editor__hidden-pm .docx-insertion,

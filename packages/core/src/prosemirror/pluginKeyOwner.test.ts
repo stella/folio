@@ -29,6 +29,7 @@ import {
   createDocumentStyleContextPlugin,
   createDocumentStylesPlugin,
 } from "./plugins/documentStyles";
+import { createHiddenEditorLayoutWindowPlugin } from "./plugins/hiddenEditorLayoutWindow";
 import { createSelectionTrackerPlugin } from "./plugins/selectionTracker";
 import { createTemplateDirectivesPlugin } from "./plugins/templateDirectives";
 import * as directives from "./plugins/templateDirectives";
@@ -85,6 +86,7 @@ const FACTORIES = {
   aiSuggestionDecorations: [createAISuggestionDecorationsPlugin],
   contentControlWidgets: [() => createContentControlWidgetsPlugin()],
   documentNumbering: [() => createDocumentNumberingPlugin(null)],
+  hiddenEditorLayoutWindow: [createHiddenEditorLayoutWindowPlugin],
   documentStyles: [
     () => createDocumentStyleContextPlugin(null),
     () => createDocumentStylesPlugin(undefined),
