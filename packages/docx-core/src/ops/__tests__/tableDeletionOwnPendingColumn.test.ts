@@ -1,8 +1,8 @@
 /**
  * A tracked deletion of a table holding its author's own pending column: the
  * column goes outright, as deleting over one's own insertion removes it, and
- * the rest of the table is suggested for deletion. A column another author
- * suggested keeps the refusal.
+ * the rest of the table is suggested for deletion. Another author's column
+ * keeps its own review records while the table deletion is pending.
  */
 import { expect, test } from "bun:test";
 
@@ -116,7 +116,32 @@ test("a tracked table deletion removes the author's own pending column first", (
   expect(undone.value.document).toStrictEqual(document);
 });
 
-test("another author's pending column keeps the table deletion refused", () => {
-  const result = applyDocumentOp(withPendingColumn("Other"), deletion);
-  expect(result.isErr()).toBe(true);
+test("another author's pending column remains independent during table review", () => {
+  const document = withPendingColumn("Other");
+  const pending = applyDocumentOp(document, deletion).unwrap();
+  for (const row of tableIn(pending.document).rows) {
+    expect(row.structuralChange?.type).toBe("tableRowDeletion");
+    const column = row.cells.at(-1)?.structuralChange;
+    expect(column?.type).toBe("tableCellInsertion");
+    expect(column?.info.author).toBe("Other");
+  }
+  const direct = applyDocumentOp(document, {
+    type: DOCUMENT_OP_TYPES.DELETE_TABLE,
+    story: OP_STORIES.MAIN,
+    blockId: deletion.blockId,
+  }).unwrap();
+  for (const decision of Object.values(REVISION_DECISIONS)) {
+    const edited = applyDocumentOp(pending.document, {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: pending.revisions,
+      decision,
+    }).unwrap();
+    expect(edited.document).toStrictEqual(
+      decision === REVISION_DECISIONS.ACCEPT ? direct.document : document,
+    );
+    expect(
+      applyDocumentOps(edited.document, edited.inverse).unwrap().document,
+    ).toStrictEqual(pending.document);
+  }
 });
