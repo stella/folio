@@ -44,7 +44,6 @@ import {
   pictureAndLink,
   sourceText,
   STORY_PARTS,
-  type StoryPartName,
   storyRelationshipPackage,
 } from "./__fixtures__/storyRelationshipPackage";
 
@@ -76,6 +75,25 @@ const placementArbitrary: fc.Arbitrary<Placement> = fc
     selectiveSave: fc.boolean(),
   })
   .filter(({ source, destination }) => source.name !== destination.name);
+
+/**
+ * Every ordered pair of parts, as fixed examples every run checks, with the
+ * route, review and save kind turning over between them.
+ */
+const EVERY_PAIR: [Placement][] = STORY_PARTS.flatMap((source) =>
+  STORY_PARTS.filter(({ name }) => name !== source.name).map((destination) => ({
+    source,
+    destination,
+  })),
+).map(({ source, destination }, index): [Placement] => [
+  {
+    source,
+    destination,
+    route: index % 2 === 0 ? "intent" : "operation",
+    suggesting: index % 4 < 2,
+    selectiveSave: index % 3 === 0,
+  },
+]);
 
 /** The paragraph of a story placed content goes after. */
 const anchorOf = (document: Document, story: OpStory): string => {
@@ -175,7 +193,7 @@ const placeInto = (
   };
 };
 
-const placements = (tally: Map<string, number>) =>
+const placements = () =>
   fc.asyncProperty(placementArbitrary, async (placement) => {
     const { source, destination, route, suggesting, selectiveSave } = placement;
     const opened = await read(await storyRelationshipPackage());
@@ -229,28 +247,17 @@ const placements = (tally: Map<string, number>) =>
     }
     session.prepareUndo(after, story).unwrap().publish().unwrap();
     assertExactModel(session.captureSaveSnapshot().document, before);
-    const key = `${source.name}->${destination.name}`;
-    tally.set(key, (tally.get(key) ?? 0) + 1);
   });
 
 describe("content placed across parts", () => {
   test(
     "a picture and a link placed from one part into another resolve to their own after a save and reopen, and undo restores the document",
     async () => {
-      const tally = new Map<string, number>();
-      await assertProperty(placements(tally), {
+      await assertProperty(placements(), {
         id: "a picture and a link placed from one part into another resolve to their own after a save and reopen, and undo restores the document",
         numRuns: 60,
+        examples: EVERY_PAIR,
       });
-      const names = new Set<StoryPartName>(
-        [...tally.keys()].flatMap((key) => {
-          const [from, to] = key.split("->");
-          return STORY_PARTS.filter(
-            ({ name }) => name === from || name === to,
-          ).map(({ name }) => name);
-        }),
-      );
-      expect(names.size).toBe(STORY_PARTS.length);
     },
     propertyTestTimeout(240_000),
   );
