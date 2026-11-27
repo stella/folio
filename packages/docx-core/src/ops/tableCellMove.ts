@@ -1023,6 +1023,7 @@ export const tableMoveOwnershipMatches = (
   const members = new Set(geometry.revisionIds);
   const sources = new Map<string, Paragraph>();
   const destinations = new Map<string, Paragraph>();
+  const destinationTables = new Set<Table>();
   const movedRows = new Map<number, Table>();
   const nestedSources = new Map<string, string[]>();
   const collectMovedTables = (
@@ -1033,10 +1034,10 @@ export const tableMoveOwnershipMatches = (
       if (block.type === "table") {
         if (side === "source") {
           const ids = paragraphIdsIn(block).map(idKey);
-          const first = ids.at(0);
-          if (first !== undefined) nestedSources.set(first, ids);
+          for (const id of ids) nestedSources.set(id, ids);
           continue;
         }
+        destinationTables.add(block);
         for (const { structuralChange } of block.rows) {
           if (structuralChange?.type === "tableRowInsertion")
             movedRows.set(structuralChange.info.id, block);
@@ -1089,34 +1090,53 @@ export const tableMoveOwnershipMatches = (
   )
     return false;
   const nestedTables = new Set<Table>();
-  const claimedSources = new Set<string>();
+  const claimedSources = new Set<readonly string[]>();
+  const surviving = new Set(
+    geometry.nestedMoves === undefined ? [] : paragraphIdsIn(table).map(idKey),
+  );
   for (const move of geometry.nestedMoves ?? []) {
     const first = move.rows.at(0);
-    const destination = first === undefined ? undefined : movedRows.get(first);
+    const destination =
+      first === undefined
+        ? nestedTableCopyByAnchors(table, move.paragraphs)
+        : movedRows.get(first);
+    // An earlier review can remove paired paragraphs from both copies.
+    const pairs = move.paragraphs
+      .map(([source, target]) => [idKey(source), idKey(target)] as const)
+      .filter(
+        ([source, target]) => surviving.has(source) || surviving.has(target),
+      );
+    if (
+      destination === undefined &&
+      first === undefined &&
+      move.paragraphs.length > 0 &&
+      pairs.length === 0
+    )
+      continue;
     if (
       destination === undefined ||
+      !destinationTables.has(destination) ||
       nestedTables.has(destination) ||
       new Set(move.rows).size !== move.rows.length ||
       move.rows.some((id) => movedRows.get(id) !== destination)
     )
       return false;
-    const firstSource = move.paragraphs.at(0)?.at(0);
-    if (firstSource === undefined) return false;
-    const sourceId = idKey(firstSource);
-    const sourceIds = nestedSources.get(sourceId);
     const destinationIds = paragraphIdsIn(destination).map(idKey);
-    if (
-      claimedSources.has(sourceId) ||
-      sourceIds?.length !== move.paragraphs.length ||
-      destinationIds.length !== move.paragraphs.length ||
-      move.paragraphs.some(
-        ([from, to], index) =>
-          sourceIds[index] !== idKey(from) ||
-          destinationIds[index] !== idKey(to),
+    if (destinationIds.length !== pairs.length) return false;
+    const firstSource = pairs.at(0)?.at(0);
+    if (firstSource !== undefined) {
+      const sourceIds = nestedSources.get(firstSource);
+      if (
+        sourceIds?.length !== pairs.length ||
+        claimedSources.has(sourceIds) ||
+        pairs.some(
+          ([from, to], index) =>
+            sourceIds[index] !== from || destinationIds[index] !== to,
+        )
       )
-    )
-      return false;
-    claimedSources.add(sourceId);
+        return false;
+      claimedSources.add(sourceIds);
+    }
     nestedTables.add(destination);
   }
   const seen = new Set<string>();
