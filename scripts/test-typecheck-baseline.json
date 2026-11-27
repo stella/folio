@@ -242,9 +242,6 @@
   "packages/core/src/ai-edits/headlessCanonicalStoryLocks.test.ts": {
     "TS2769": 1
   },
-  "packages/core/src/ai-edits/headlessCanonicalSuggestions.property.test.ts": {
-    "TS2322": 1
-  },
   "packages/core/src/ai-edits/headlessDirectJoinSurvivor.property.test.ts": {
     "TS2538": 1,
     "TS4104": 1
@@ -2536,11 +2533,6 @@
   "packages/docx-core/src/ops/__tests__/insertContentRangeOrder.test.ts": {
     "TS2322": 1,
     "TS2741": 3
-  },
-  "packages/docx-core/src/ops/__tests__/insertedMarkBeforeOpaque.test.ts": {
-    "TS2322": 9,
-    "TS2345": 2,
-    "TS2769": 4
   },
   "packages/docx-core/src/ops/__tests__/insertionBoundaryInverse.test.ts": {
     "TS1360": 1,
