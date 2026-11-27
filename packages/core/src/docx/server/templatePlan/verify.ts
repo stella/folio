@@ -79,7 +79,7 @@ import {
   type StoryOrigin,
   type StoryResources,
 } from "./resources";
-import { DELETED_PARAGRAPH_MARK } from "./revisions";
+import { DELETED_PARAGRAPH_MARK, tableRowRevisions } from "./revisions";
 import {
   type AtomKind,
   type AtomLink,
@@ -174,13 +174,15 @@ type ContentUnit = {
  * that read the same then show the same changes by the same hands.
  */
 const revisionMarks = (
-  { kind, author, date, deleted, mark }: AtomRevision,
+  { kind, author, date, deleted, mark, within }: AtomRevision,
   at: number,
   length: number,
 ): string[] => {
   const by = `${author}:${date ?? ""}`;
   if (kind === "del") {
-    return [`${at}:del:${by}:${deleted ?? ""}`];
+    const inside =
+      within === undefined ? "" : `:in:${within.author}:${within.date ?? ""}`;
+    return [`${at}:del:${by}:${deleted ?? ""}${inside}`];
   }
   if (mark === true) {
     return [`${at}:mark:${by}`];
@@ -839,6 +841,19 @@ export const reportTemplatePlanOutput = async ({
   ): void => {
     const tableId = sourceTable.block.id;
     tableOutputs.set(tableId, outputTable.block.id);
+    // Rows a kept source records as inserted or deleted are on record in
+    // the output too, at their place and by the same hands.
+    if (
+      !sameList(
+        tableRowRevisions(sourceTable.element),
+        tableRowRevisions(outputTable.element),
+      )
+    ) {
+      missing(
+        `Source table ${tableId} does not keep its inserted and deleted rows.`,
+      );
+      return;
+    }
     const sourceCells = sourceTable.block.cells ?? [];
     const outputCells = outputTable.block.cells ?? [];
     if (

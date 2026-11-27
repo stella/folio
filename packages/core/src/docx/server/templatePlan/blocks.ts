@@ -994,9 +994,10 @@ export const viewOf = (
 /**
  * A source read with its tracked changes kept: the blocks are those of the
  * accepted view, and the atoms of an insertion or a deletion carry its tag,
- * a paragraph mark's among them. A change that is not carried yet (a table
- * row or cell, a move) or cannot be tagged is refused with what stands in
- * the way, for the caller to offer one view instead.
+ * a paragraph mark's among them; an inserted table row keeps its record and
+ * a deleted one is set aside whole. A change that is not carried yet (a
+ * table cell, a move) or cannot be tagged is refused with what stands in the
+ * way, for the caller to offer one view instead.
  */
 /**
  * A document read with its tracked changes kept, source or output alike:
@@ -1039,9 +1040,8 @@ const analyzeKeeping = async (
     story.state.untaggedRevisions +
     footnotes.state.untaggedRevisions +
     endnotes.state.untaggedRevisions;
-  const { tableRows, tableCells, moves } = obstacles.value.obstacles;
+  const { tableCells, moves } = obstacles.value.obstacles;
   const found = [
-    [tableRows, "inserted or deleted table row(s)"],
     [tableCells, "table cell change(s)"],
     [moves, "move(s)"],
     [

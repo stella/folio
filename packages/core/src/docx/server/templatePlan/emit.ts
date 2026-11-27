@@ -37,7 +37,13 @@ import {
   type ResolvedParagraph,
   type SignatureContext,
 } from "./plan";
-import { DELETED_PARAGRAPH_MARK } from "./revisions";
+import {
+  DELETED_PARAGRAPH_MARK,
+  deletedRowMarkOf,
+  insertedRowMarkOf,
+  keptDeletedRowOf,
+  rowTextOf,
+} from "./revisions";
 import type { AtomLink, AtomRevision, StoryField } from "./story";
 import { TemplatePlanError } from "./types";
 import {
@@ -462,8 +468,12 @@ const pieceRunXml = (
       rStyle: linked ? context.styles.hyperlink : null,
       escapeAttribute: escapeXmlAttribute,
     });
+    const deletion = `<${w}:del${attributes}><${w}:r>${properties}${deletedContentXml(revision.deleted ?? "", w)}</${w}:r></${w}:del>`;
+    // Deleted out of an insertion: the insertion is on record around it.
     return Result.ok(
-      `<${w}:del${attributes}><${w}:r>${properties}${deletedContentXml(revision.deleted ?? "", w)}</${w}:r></${w}:del>`,
+      revision.within === undefined
+        ? deletion
+        : `<${w}:ins${revisionAttributesXml({ kind: "ins", ...revision.within }, context)}>${deletion}</${w}:ins>`,
     );
   }
   return plainPieceRunXml(piece, context, linked).map((runs) =>
@@ -878,6 +888,53 @@ const keptChildrenXml = (
     })
     .join("");
 
+/** The attributes a kept row or mark revision is written with, read off the
+ *  source's own record. */
+const markAttributesXml = (mark: XmlElement, context: EmitContext): string =>
+  revisionAttributesXml(
+    {
+      kind: "del",
+      author: wAttr(mark, "author") ?? "",
+      date: wAttr(mark, "date"),
+    },
+    context,
+  );
+
+/**
+ * A row the source records as deleted, written back as one: its cells with
+ * their spans, and in each cell its paragraphs' text as deleted text with a
+ * deleted paragraph mark. The accepted view has no such row, so no plan
+ * places its paragraphs; they take no style of their own.
+ */
+const deletedRowXml = (
+  row: XmlElement,
+  keepsBorders: boolean,
+  context: EmitContext,
+): string => {
+  const { w } = context.prefixes;
+  const mark = deletedRowMarkOf(row);
+  const attributes = (): string =>
+    mark === null ? "" : markAttributesXml(mark, context);
+  const deletedParagraphXml = (text: string): string =>
+    `<${w}:p><${w}:pPr><${w}:rPr><${w}:del${attributes()}/></${w}:rPr></${w}:pPr>${text === "" ? "" : `<${w}:del${attributes()}><${w}:r>${deletedContentXml(text, w)}</${w}:r></${w}:del>`}</${w}:p>`;
+  const cells: string[] = [];
+  const stack = [...elementChildren(row)].toReversed();
+  for (let next = stack.pop(); next !== undefined; next = stack.pop()) {
+    if (wName(next) === "tc") {
+      const properties = wChild(next, "tcPr");
+      const kept = `${keptChildrenXml(properties, CELL_SPAN_PROPERTIES, w)}${keepsBorders ? keptChildrenXml(properties, ["tcBorders"], w) : ""}`;
+      // The cell's text as one row text gives it: a paragraph per line.
+      const lines = rowTextOf({ ...row, elements: [next] }).split("\n");
+      cells.push(
+        `<${w}:tc>${kept === "" ? "" : `<${w}:tcPr>${kept}</${w}:tcPr>`}${lines.map(deletedParagraphXml).join("")}</${w}:tc>`,
+      );
+    } else if (wName(next) !== "trPr") {
+      stack.push(...elementChildren(next).toReversed());
+    }
+  }
+  return `<${w}:tr><${w}:trPr><${w}:del${attributes()}/></${w}:trPr>${cells.join("")}</${w}:tr>`;
+};
+
 export type TableEmit = {
   table: XmlElement;
   /** A table style of the template, or null to keep the source's own borders. */
@@ -957,8 +1014,13 @@ export const tableXml = (
     const out: string[] = [];
     for (const child of elementChildren(container)) {
       const name = wName(child);
-      if (name === "tr") {
-        const kept = keptChildrenXml(wChild(child, "trPr"), ROW_PROPERTIES, w);
+      const deleted = keptDeletedRowOf(child);
+      if (deleted !== null) {
+        out.push(deletedRowXml(deleted, styleId === null, context));
+      } else if (name === "tr") {
+        const inserted = insertedRowMarkOf(child);
+        // A row the source records as inserted keeps that record.
+        const kept = `${keptChildrenXml(wChild(child, "trPr"), ROW_PROPERTIES, w)}${inserted === null ? "" : `<${w}:ins${markAttributesXml(inserted, context)}/>`}`;
         const cells = cellsXml(child);
         if (Result.isError(cells)) {
           return cells;
