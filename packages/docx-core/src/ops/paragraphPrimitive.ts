@@ -336,6 +336,7 @@ const refuse = (
 const reviewKeysOf = (review: ParagraphReviewFields): string[] =>
   identityKeysIn({
     propertyChanges: review.propertyChanges,
+    markPropertyChange: review.markPropertyChange,
     pPrMark: review.pPrMark,
   });
 

@@ -223,6 +223,7 @@ export const tryTrackedInsertionGroup = ({
       added.sectionProperties !== undefined ||
       added.paraId === undefined ||
       paragraphIds.count(idKey(added.paraId)) !== 0 ||
+      added.markPropertyChange !== undefined ||
       (added.propertyChanges?.length ?? 0) > 1
     )
       return fallback("effectShape");

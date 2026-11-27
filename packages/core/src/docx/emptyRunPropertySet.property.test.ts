@@ -89,6 +89,7 @@ const saveParagraphMark = (xml: string): string => {
     paragraph.formatting,
     paragraph.propertyChanges,
     paragraph.pPrMark,
+    paragraph.markPropertyChange,
   );
 };
 
@@ -114,6 +115,7 @@ const saveParagraphMarkThroughEditor = (xml: string): string => {
     roundTripped.formatting,
     roundTripped.propertyChanges,
     roundTripped.pPrMark,
+    roundTripped.markPropertyChange,
   );
 };
 

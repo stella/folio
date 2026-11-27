@@ -1225,6 +1225,7 @@ export type ParagraphPropsPatch = FormattingPatch<ParagraphFormatting>;
 export type ParagraphReviewFields = {
     formatting?: ParagraphFormatting;
     propertyChanges?: ParagraphPropertyChange[];
+    markPropertyChange?: ParagraphMarkPropertyChange;
     pPrMark?: ParagraphMarkChange;
 };
 
@@ -1572,6 +1573,7 @@ export type SetParagraphPropsOp = {
     patch: ParagraphPropsPatch;
     whenEmpty?: EmptyPropertySet;
     expected?: ParagraphPropsPatch;
+    newIds?: NewIds;
     revision?: RevisionStamp;
 };
 

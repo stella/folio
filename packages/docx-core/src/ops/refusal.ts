@@ -119,16 +119,16 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
   readonly INSIDE_INLINE_CONTROL: "insideInlineControl";
   /**
    * No tracked change can record the edit, or no resolution op can carry it
-   * out yet: the paragraph mark's run properties, a section-ending mark
-   * resolved across a standing range boundary, a change inside a simple
-   * field holding content the field cannot hold, content a `w:ins` or
-   * `w:del` cannot hold (CT_RunTrackChange takes run-level content only), a
-   * block-level `w:sdt` or `w:customXml` pasted or moved as a suggestion
-   * (neither takes a revision of its own), an insertion after a pending
-   * paragraph mark without its former snapshot, a tracked paragraph deletion
-   * that would record nothing, the table-side insertions and paragraph
-   * removals beside a table, and removing a block content control's only
-   * paragraph (no operation addresses a block list without a paragraph).
+   * out yet: a section-ending mark resolved across a standing range
+   * boundary, a change inside a simple field holding content the field
+   * cannot hold, content a `w:ins` or `w:del` cannot hold
+   * (CT_RunTrackChange takes run-level content only), a block-level `w:sdt`
+   * or `w:customXml` pasted or moved as a suggestion (neither takes a
+   * revision of its own), an insertion after a pending paragraph mark
+   * without its former snapshot, a tracked paragraph deletion that would
+   * record nothing, the table-side insertions and paragraph removals beside
+   * a table, and removing a block content control's only paragraph (no
+   * operation addresses a block list without a paragraph).
    */
   readonly UNTRACKABLE: "untrackable";
   /**
@@ -296,16 +296,16 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
   INSIDE_INLINE_CONTROL: "insideInlineControl",
   /**
    * No tracked change can record the edit, or no resolution op can carry it
-   * out yet: the paragraph mark's run properties, a section-ending mark
-   * resolved across a standing range boundary, a change inside a simple
-   * field holding content the field cannot hold, content a `w:ins` or
-   * `w:del` cannot hold (CT_RunTrackChange takes run-level content only), a
-   * block-level `w:sdt` or `w:customXml` pasted or moved as a suggestion
-   * (neither takes a revision of its own), an insertion after a pending
-   * paragraph mark without its former snapshot, a tracked paragraph deletion
-   * that would record nothing, the table-side insertions and paragraph
-   * removals beside a table, and removing a block content control's only
-   * paragraph (no operation addresses a block list without a paragraph).
+   * out yet: a section-ending mark resolved across a standing range
+   * boundary, a change inside a simple field holding content the field
+   * cannot hold, content a `w:ins` or `w:del` cannot hold
+   * (CT_RunTrackChange takes run-level content only), a block-level `w:sdt`
+   * or `w:customXml` pasted or moved as a suggestion (neither takes a
+   * revision of its own), an insertion after a pending paragraph mark
+   * without its former snapshot, a tracked paragraph deletion that would
+   * record nothing, the table-side insertions and paragraph removals beside
+   * a table, and removing a block content control's only paragraph (no
+   * operation addresses a block list without a paragraph).
    */
   UNTRACKABLE: "untrackable",
   /** A second tracked column insertion beside a pending grid change. */

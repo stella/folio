@@ -184,6 +184,7 @@ const JOINED_PARAGRAPH_ATTRS = {
   // the removed mark ended.
   _sectionProperties: "next",
   _propertyChanges: "next",
+  _markPropertyChange: "next",
   // The words: a page break after the text is the next paragraph's last; a
   // paragraph holding only a page break is one only if this one held nothing.
   _trailingPageBreak: "next",

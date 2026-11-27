@@ -196,6 +196,7 @@ export const tryMaterializeResolution = ({
       if (!op.content.every(isTextRun)) return fallback("primitiveShape");
     } else if (
       op.review.propertyChanges !== undefined ||
+      op.review.markPropertyChange !== undefined ||
       op.review.pPrMark !== undefined
     ) {
       return fallback("primitiveShape");

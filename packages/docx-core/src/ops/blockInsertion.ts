@@ -7,6 +7,7 @@ import {
   finalizeParagraphFormatting,
   type Paragraph,
   type ParagraphMarkChange,
+  type ParagraphMarkPropertyChange,
   type ParagraphPropertyChange,
 } from "../model/document";
 import {
@@ -26,7 +27,6 @@ import {
 } from "./blocks";
 import { validateOpsDocument } from "./contract";
 import type { DocumentEdit, DocumentEditEffects } from "./edits";
-import { structurallyEqual } from "./equality";
 import { firstSurvivorFields } from "./firstSurvivor";
 import { freshenIdentities } from "./identity";
 import {
@@ -52,7 +52,10 @@ import {
 import type { ApplyOps } from "./resolve";
 import {
   foldedParagraphPropertyChange,
+  paragraphMarkPropertyChange,
   paragraphPropertyFoldConflict,
+  sameMarkFormatting,
+  sameParagraphProperties,
   stampInfo,
   WRAP_KINDS,
   wrapTracked,
@@ -68,15 +71,6 @@ import {
   type RevisionStamp,
   SECTION_BOUNDARY_POLICIES,
 } from "./types";
-
-const sameFormatting = (
-  left: Paragraph["formatting"],
-  right: Paragraph["formatting"],
-): boolean =>
-  structurallyEqual(
-    finalizeParagraphFormatting(left) ?? {},
-    finalizeParagraphFormatting(right) ?? {},
-  );
 
 type InsertedContentOptions = {
   paragraph: Paragraph;
@@ -178,7 +172,13 @@ const takenOverPropertyChanges = ({
     (source.propertyChanges?.length ?? 0) > 0
       ? source.propertyChanges
       : undefined;
-  if (sameFormatting(source.formatting, current)) return Result.ok(pending);
+  if (
+    sameParagraphProperties(
+      finalizeParagraphFormatting(source.formatting),
+      current,
+    )
+  )
+    return Result.ok(pending);
   if (pending === undefined)
     return Result.ok([
       {
@@ -205,6 +205,33 @@ const takenOverPropertyChanges = ({
       stamp: revision,
     }),
   ]);
+};
+
+/**
+ * The run-property change of the mark the last new paragraph takes over:
+ * `source`'s own while the mark keeps its run properties, else a new one
+ * from them. A pending one is resolved first, as a split's is.
+ */
+const takenOverMarkChange = ({
+  source,
+  current,
+  revision,
+}: TakenOverPropertyChangesOptions): Result<
+  ParagraphMarkPropertyChange | undefined,
+  DocumentOpRefusal
+> => {
+  if (sameMarkFormatting(source.formatting, current))
+    return Result.ok(source.markPropertyChange);
+  if (source.markPropertyChange !== undefined)
+    return Result.err(
+      new DocumentOpRefusal({
+        opType: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+        reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_RUN_PROPERTY_CHANGE,
+        message:
+          "Resolve the paragraph mark's existing run-property change first.",
+      }),
+    );
+  return Result.ok(paragraphMarkPropertyChange(stampInfo(revision), source));
 };
 
 type TakenOverMarksOptions = {
@@ -276,9 +303,11 @@ const trackedParagraphReplacement = ({
 > => {
   const refuse = (reason: DocumentOpRefusal["reason"], message: string) =>
     Result.err(new DocumentOpRefusal({ reason, message, opType: op.type }));
+  const taker = canonicalBlocks.at(-1);
   if (
     takesOverMark &&
-    (canonicalBlocks.at(-1)?.propertyChanges?.length ?? 0) > 0
+    ((taker?.propertyChanges?.length ?? 0) > 0 ||
+      taker?.markPropertyChange !== undefined)
   )
     return refuse(
       DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_PROPERTY_CHANGE,
@@ -320,18 +349,24 @@ const trackedParagraphReplacement = ({
     // The anchor's former mark, with the review records it holds, as a
     // split's second half takes them: its properties before are the
     // anchor's, and other properties fold into a pending change of them.
-    const propertyChanges = takenOverPropertyChanges({
+    const taken = {
       source,
       current: finalizeParagraphFormatting(paragraph.formatting),
       revision,
-    });
+    };
+    const propertyChanges = takenOverPropertyChanges(taken);
     if (propertyChanges.isErr()) return propertyChanges;
+    const markChange = takenOverMarkChange(taken);
+    if (markChange.isErr()) return markChange;
     blocks.push({
       ...paragraph,
       content,
       ...(propertyChanges.value === undefined
         ? {}
         : { propertyChanges: propertyChanges.value }),
+      ...(markChange.value === undefined
+        ? {}
+        : { markPropertyChange: markChange.value }),
       ...(marks.value.taker === undefined
         ? {}
         : { pPrMark: marks.value.taker }),
@@ -340,7 +375,11 @@ const trackedParagraphReplacement = ({
   const anchorBlocks: Paragraph[] = [];
   if (takesOverMark) {
     // Its property changes went with its former mark.
-    const { propertyChanges: _moved, ...kept } = source;
+    const {
+      propertyChanges: _moved,
+      markPropertyChange: _markMoved,
+      ...kept
+    } = source;
     anchorBlocks.push({ ...kept, pPrMark: marks.value.anchor });
   }
   // The anchor's own records are carried over and keep their ids, those of
@@ -417,8 +456,9 @@ type FinalMarkTakeoverRefusal = {
 /**
  * Why a tracked insertion after a container's final paragraph cannot take
  * over that paragraph's mark, by the record it would move: a mark under
- * review or a pending property change, each refused by its own reason. A
- * review carrier's role does not move to another paragraph yet.
+ * review or a pending property or mark run-property change, each refused by
+ * its own reason. A review carrier's role does not move to another paragraph
+ * yet.
  */
 const finalMarkTakeoverRefusal = (
   paragraph: Paragraph,
@@ -434,6 +474,12 @@ const finalMarkTakeoverRefusal = (
       reason: pendingParagraphMarkReason(paragraph.pPrMark),
       message:
         "A tracked insertion after a paragraph no paragraph follows needs the anchor's mark free of a pending change.",
+    };
+  if ((paragraph.propertyChanges?.length ?? 0) === 0)
+    return {
+      reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_RUN_PROPERTY_CHANGE,
+      message:
+        "A tracked insertion after a paragraph no paragraph follows needs the anchor's mark run properties free of a pending change.",
     };
   return {
     reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_PROPERTY_CHANGE,
@@ -478,6 +524,7 @@ export const prepareTrackedParagraphInsertion = ({
     incoming.sectionProperties !== undefined ||
     incoming.pPrMark !== undefined ||
     incoming.propertyChanges !== undefined ||
+    incoming.markPropertyChange !== undefined ||
     incoming.reviewCarrier !== undefined ||
     !incoming.content.every(
       (node) =>
@@ -490,6 +537,7 @@ export const prepareTrackedParagraphInsertion = ({
     takesOverMark &&
     (source.pPrMark !== undefined ||
       source.reviewCarrier !== undefined ||
+      source.markPropertyChange !== undefined ||
       (source.propertyChanges?.length ?? 0) > 0)
   )
     return Result.err(
@@ -945,6 +993,7 @@ export const insertBlocks = ({
     (location.paragraph.reviewCarrier !== undefined ||
       (following === undefined &&
         (location.paragraph.pPrMark !== undefined ||
+          location.paragraph.markPropertyChange !== undefined ||
           (location.paragraph.propertyChanges?.length ?? 0) > 0)))
   ) {
     const { reason, message } = finalMarkTakeoverRefusal(location.paragraph);
@@ -987,9 +1036,16 @@ export const insertBlocks = ({
     (document.package.footnotes?.length ?? 0) === 0 &&
     (document.package.endnotes?.length ?? 0) === 0 &&
     canonicalBlocks.every(
-      ({ pPrMark, propertyChanges, reviewCarrier, content }) =>
+      ({
+        pPrMark,
+        propertyChanges,
+        markPropertyChange,
+        reviewCarrier,
+        content,
+      }) =>
         pPrMark === undefined &&
         propertyChanges === undefined &&
+        markPropertyChange === undefined &&
         reviewCarrier === undefined &&
         content.every(
           (node) =>

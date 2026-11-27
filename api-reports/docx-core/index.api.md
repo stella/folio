@@ -280,6 +280,7 @@ export type Paragraph = WritableRecord & {
     textId?: string;
     formatting?: ParagraphFormatting;
     propertyChanges?: ParagraphPropertyChange[];
+    markPropertyChange?: ParagraphMarkPropertyChange;
     pPrMark?: ParagraphMarkChange;
     reviewCarrier?: ReviewCarrier;
     content: ParagraphContent[];

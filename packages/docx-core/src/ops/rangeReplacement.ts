@@ -412,6 +412,7 @@ export const planTrackedReplacement = (
       sectionProperties: _section,
       pPrMark: _mark,
       propertyChanges: _changes,
+      markPropertyChange: _markChange,
       ...newParagraph
     } = paragraph;
     const split = plan.append({

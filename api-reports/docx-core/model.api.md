@@ -1139,6 +1139,7 @@ export type Paragraph = WritableRecord & {
     textId?: string;
     formatting?: ParagraphFormatting;
     propertyChanges?: ParagraphPropertyChange[];
+    markPropertyChange?: ParagraphMarkPropertyChange;
     pPrMark?: ParagraphMarkChange;
     reviewCarrier?: ReviewCarrier;
     content: ParagraphContent[];
@@ -1243,6 +1244,16 @@ export type ParagraphMarkChangeKind = (typeof PARAGRAPH_MARK_CHANGE_KINDS)[numbe
 // @public
 export type ParagraphMarkDeletion = WritableRecord & {
     info: TrackedChangeInfo;
+};
+
+// @public
+export type ParagraphMarkFormatting = WritableRecord & Pick<ParagraphFormatting, "runProperties" | "runInWithNext">;
+
+// @public
+export type ParagraphMarkPropertyChange = WritableRecord & {
+    type: "paragraphMarkPropertyChange";
+    info: PropertyChangeInfo;
+    previousFormatting?: ParagraphMarkFormatting;
 };
 
 // @public
@@ -1475,6 +1486,7 @@ export type PreviewShape = {
 export const PROPERTY_REVISION_KINDS: Readonly<{
     readonly runPropertyChange: "runPropertyChange";
     readonly paragraphPropertyChange: "paragraphPropertyChange";
+    readonly paragraphMarkPropertyChange: "paragraphMarkPropertyChange";
     readonly sectionPropertyChange: "sectionPropertyChange";
     readonly tablePropertyChange: "tablePropertyChange";
     readonly tablePropertyExceptionChange: "tablePropertyExceptionChange";
@@ -1483,7 +1495,7 @@ export const PROPERTY_REVISION_KINDS: Readonly<{
 }>;
 
 // @public
-export type PropertyChange = RunPropertyChange | ParagraphPropertyChange | SectionPropertyChange | TablePropertyChange | TablePropertyExceptionChange | TableRowPropertyChange | TableCellPropertyChange;
+export type PropertyChange = RunPropertyChange | ParagraphPropertyChange | ParagraphMarkPropertyChange | SectionPropertyChange | TablePropertyChange | TablePropertyExceptionChange | TableRowPropertyChange | TableCellPropertyChange;
 
 // @public
 export type PropertyChangeInfo = WritableRecord & {

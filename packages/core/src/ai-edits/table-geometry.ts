@@ -148,6 +148,7 @@ const PROPERTY_REVISION_DISPOSITIONS = {
   // would leave a row rejecting to a third document.
   tablePropertyExceptionChange: "carried-whole-not-compared",
   paragraphPropertyChange: "owned-by-the-block-comparison",
+  paragraphMarkPropertyChange: "owned-by-the-block-comparison",
   sectionPropertyChange: "owned-by-the-section-comparison",
   runPropertyChange: "owned-by-the-inline-comparison",
 } as const satisfies Record<PropertyRevisionKind, string>;

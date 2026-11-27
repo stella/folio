@@ -12,7 +12,11 @@
 
 import { panic, TaggedError, type TaggedErrorClass } from "better-result";
 
-import { escapeXmlAttribute, escapeXmlText } from "@stll/docx-core";
+import {
+  escapeXmlAttribute,
+  escapeXmlText,
+  serializeOnOffElement,
+} from "@stll/docx-core";
 import {
   finalizeParagraphFormatting,
   PARAGRAPH_MARK_CHANGE_KINDS,
@@ -33,6 +37,7 @@ import type {
   ParagraphContent,
   ParagraphFormatting,
   ParagraphMarkChange,
+  ParagraphMarkPropertyChange,
   ParagraphPropertyChange,
   PreservedInline,
   Run,
@@ -55,12 +60,12 @@ import {
   paragraphPropertySourceMatchesEmission,
 } from "../paragraphPropertySource";
 import {
-  paragraphMarkResolutionJoinAttributes,
   serializeParagraphMarkResolutionJoin,
   serializeParagraphPropertyChangeOwner,
   serializeResolutionJoins,
   serializeSplitResolutionPiece,
 } from "../reviewResolutionProvenance";
+import { serializePreviousRunProperties } from "../runPropertyPresence";
 import {
   DATE_UTC_ATTRIBUTE,
   DATE_UTC_NAMESPACE_URI,
@@ -92,10 +97,7 @@ import { serializeRun, serializeShapeTextBody } from "./runSerializer";
 import { serializeSdtWrapper } from "./sdtPropertiesSerializer";
 import { serializeSectionProperties } from "./sectionPropertiesSerializer";
 import { serializeTextFormatting } from "./textFormattingSerializer";
-import {
-  serializeTrackedChangeAttributes,
-  trackedChangeAttributeRecord,
-} from "./trackedChangeAttributes";
+import { serializeTrackedChangeAttributes } from "./trackedChangeAttributes";
 
 // ============================================================================
 // PARAGRAPH PROPERTIES SERIALIZATION
@@ -113,9 +115,24 @@ function serializeParagraphMarkChange(mark: ParagraphMarkChange): string {
   return mark.kind === "moveTo" ? deletion + own : own + deletion;
 }
 
+const serializeParagraphMarkPropertyChange = ({
+  info,
+  previousFormatting,
+}: ParagraphMarkPropertyChange): string => {
+  const { runProperties, runInWithNext } = previousFormatting ?? {};
+  const previous = serializeTextFormatting(
+    runProperties,
+    runInWithNext === undefined
+      ? []
+      : [["specVanish", serializeOnOffElement(runInWithNext, "specVanish")]],
+  );
+  return `<w:rPrChange ${serializeTrackedChangeAttributes(info)}${serializePreviousRunProperties(runProperties)}>${previous || "<w:rPr/>"}</w:rPrChange>`;
+};
+
 type SerializeParagraphFormattingOptions = {
   propertyChanges?: ParagraphPropertyChange[] | undefined;
   paragraphMarkChange?: ParagraphMarkChange | undefined;
+  markPropertyChange?: ParagraphMarkPropertyChange | undefined;
   propertySource?: ParagraphPropertySource | undefined;
   sourceParagraph?: Paragraph | undefined;
   sectionProperties?: SectionProperties | undefined;
@@ -422,9 +439,10 @@ const withTrailingParagraphPropertyChildren = (
     : `${sourceXml.slice(0, close)}${written}${sourceXml.slice(close)}`;
 };
 
+type ParagraphMarkRevisionXml = { prefix: string; suffix: string };
 const withParagraphMarkChange = (
   sourceXml: string,
-  mark: ParagraphMarkChange,
+  { prefix, suffix }: ParagraphMarkRevisionXml,
 ): string => {
   const root = parseXml(sourceXml, OOXML_NAMESPACE_SCOPE).elements?.at(0);
   if (!root || root.type !== "element") {
@@ -432,26 +450,10 @@ const withParagraphMarkChange = (
       "A validated paragraph-property capture could not be parsed for composition",
     );
   }
-  const attributes = {
-    ...trackedChangeAttributeRecord(mark.info),
-    ...paragraphMarkResolutionJoinAttributes(mark),
-  };
-  const ownElement = cloneElement(root, {
-    name: `w:${mark.kind}`,
-    attributes,
-    elements: [],
-  });
-  const markElements = [ownElement];
-  if (mark.deletion !== undefined) {
-    const deletionElement = cloneElement(root, {
-      name: "w:del",
-      attributes: trackedChangeAttributeRecord(mark.deletion.info),
-      elements: [],
-    });
-    // The schema orders the mark's records ins, del, moveFrom, moveTo.
-    if (mark.kind === "moveTo") markElements.unshift(deletionElement);
-    else markElements.push(deletionElement);
-  }
+  const elementsOf = (xml: string) =>
+    xml === "" ? [] : (parseXml(xml, OOXML_NAMESPACE_SCOPE).elements ?? []);
+  const start = elementsOf(prefix);
+  const end = elementsOf(suffix);
   const elements = [...(root.elements ?? [])];
   const paragraphMarkIndex = elements.findIndex(
     (child) =>
@@ -464,7 +466,7 @@ const withParagraphMarkChange = (
       cloneElement(root, {
         name: "w:rPr",
         attributes: {},
-        elements: markElements,
+        elements: [...start, ...end],
       }),
     );
   } else {
@@ -478,7 +480,7 @@ const withParagraphMarkChange = (
       );
     }
     elements[paragraphMarkIndex] = cloneElement(paragraphMarkProperties, {
-      elements: [...markElements, ...(paragraphMarkProperties.elements ?? [])],
+      elements: [...start, ...(paragraphMarkProperties.elements ?? []), ...end],
     });
   }
   return captureVerbatimXml(cloneElement(root, { elements }));
@@ -489,6 +491,7 @@ const serializeParagraphFormattingWithOptions = (
   {
     propertyChanges,
     paragraphMarkChange,
+    markPropertyChange,
     propertySource,
     sourceParagraph,
     sectionProperties,
@@ -506,12 +509,16 @@ const serializeParagraphFormattingWithOptions = (
   const paragraphMarkXml = paragraphMarkChange
     ? serializeParagraphMarkChange(paragraphMarkChange)
     : "";
+  const markPropertyChangeXml = markPropertyChange
+    ? serializeParagraphMarkPropertyChange(markPropertyChange)
+    : "";
   const sectionPropertiesXml = serializeSectionProperties(sectionProperties);
   const propertyChangesXml = (propertyChanges ?? []).map((change) =>
     serializeParagraphPropertyChange(change),
   );
   const composedChildrenUseDateUtc = [
     paragraphMarkXml,
+    markPropertyChangeXml,
     sectionPropertiesXml,
     ...propertyChangesXml,
   ].some((xml) => xml.includes(`${DATE_UTC_ATTRIBUTE}=`));
@@ -524,9 +531,13 @@ const serializeParagraphFormattingWithOptions = (
     verifiedSource !== null &&
     (!composedChildrenUseDateUtc || !sourceShadowsDateUtcPrefix(verifiedSource))
   ) {
-    const sourceWithMark = paragraphMarkChange
-      ? withParagraphMarkChange(verifiedSource, paragraphMarkChange)
-      : verifiedSource;
+    const sourceWithMark =
+      paragraphMarkXml || markPropertyChangeXml
+        ? withParagraphMarkChange(verifiedSource, {
+            prefix: paragraphMarkXml,
+            suffix: markPropertyChangeXml,
+          })
+        : verifiedSource;
     return withTrailingParagraphPropertyChildren(sourceWithMark, [
       sectionPropertiesXml,
       ...propertyChangesXml,
@@ -538,6 +549,7 @@ const serializeParagraphFormattingWithOptions = (
       ? paragraphFormattingWithAuthoredIndentation(sourceParagraph)
       : formatting,
     markPropertiesPrefixXml: paragraphMarkXml,
+    markPropertiesSuffixXml: markPropertyChangeXml,
     sectionPropertiesXml,
     propertyChangesXml,
   });
@@ -547,10 +559,12 @@ export function serializeParagraphFormatting(
   formatting: ParagraphFormatting | undefined,
   propertyChanges?: ParagraphPropertyChange[],
   paragraphMarkChange?: ParagraphMarkChange,
+  markPropertyChange?: ParagraphMarkPropertyChange,
 ): string {
   return serializeParagraphFormattingWithOptions(formatting, {
     propertyChanges,
     paragraphMarkChange,
+    markPropertyChange,
   });
 }
 
@@ -1506,6 +1520,7 @@ export function serializeParagraph(paragraph: Paragraph): string {
     serializeParagraphFormattingWithOptions(paragraph.formatting, {
       propertyChanges: paragraph.propertyChanges,
       paragraphMarkChange: paragraph.pPrMark,
+      markPropertyChange: paragraph.markPropertyChange,
       propertySource: getParagraphPropertySource(paragraph),
       sourceParagraph: paragraph,
       sectionProperties: paragraph.sectionProperties,

@@ -560,6 +560,7 @@ export const modelParagraphFormattingEmission = (
 type ParagraphPropertySetOptions = {
   formatting: ParagraphFormatting | undefined;
   markPropertiesPrefixXml?: string;
+  markPropertiesSuffixXml?: string;
   sectionPropertiesXml?: string;
   propertyChangesXml?: readonly string[];
 };
@@ -568,14 +569,15 @@ type ParagraphPropertySetOptions = {
 export const serializeParagraphPropertySet = ({
   formatting,
   markPropertiesPrefixXml = "",
+  markPropertiesSuffixXml = "",
   sectionPropertiesXml = "",
   propertyChangesXml = [],
 }: ParagraphPropertySetOptions): string => {
   const modeled = modelParagraphFormattingEmission(formatting);
   const markProperties = modeled.paragraphMarkPropertiesInnerXml;
-  const markInner = `${markPropertiesPrefixXml}${markProperties ?? ""}`;
+  const markInner = `${markPropertiesPrefixXml}${markProperties ?? ""}${markPropertiesSuffixXml}`;
   let markXml = "";
-  if (markPropertiesPrefixXml !== "" || markProperties !== undefined) {
+  if (markInner !== "" || markProperties !== undefined) {
     markXml = markInner === "" ? "<w:rPr/>" : `<w:rPr>${markInner}</w:rPr>`;
   }
   const inner = [

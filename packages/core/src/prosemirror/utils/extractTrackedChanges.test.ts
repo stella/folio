@@ -24,6 +24,7 @@ const schema = new Schema({
         pPrIns: { default: null },
         pPrDel: { default: null },
         _propertyChanges: { default: null },
+        _markPropertyChange: { default: null },
         _sectionProperties: { default: null },
       },
       toDOM: () => ["p", 0],

@@ -26,6 +26,7 @@ import type {
   ParagraphContent,
   ParagraphFormatting,
   ParagraphMarkChange,
+  ParagraphMarkPropertyChange,
   ParagraphPropertyChange,
   RecordField,
   Relationship,
@@ -254,6 +255,14 @@ export const paragraphPropertyChange: Validator = object({
   currentFormatting: optional(paragraphProperties),
 } satisfies RecordFields<ParagraphPropertyChange>);
 
+const paragraphMarkPropertyChange: Validator = object({
+  type: literal("paragraphMarkPropertyChange"),
+  info: present,
+  previousFormatting: optional(
+    properties({ runProperties, runInWithNext: boolean }),
+  ),
+} satisfies RecordFields<ParagraphMarkPropertyChange>);
+
 const runContentKinds = {
   text: { type: string, text: string },
   tab: { type: string, positional: boundedJson },
@@ -419,6 +428,7 @@ const paragraphFields = {
   textId: optional(blockId),
   formatting: optional(paragraphProperties),
   propertyChanges: optional(array(paragraphPropertyChange)),
+  markPropertyChange: optional(paragraphMarkPropertyChange),
   pPrMark: optional(paragraphMarkChange),
   reviewCarrier: boundedJson,
   content: inlines,
@@ -455,6 +465,7 @@ export const splitParagraphFields: Validator = object(
 export const paragraphReviewFields: Validator = object({
   formatting: optional(paragraphProperties),
   propertyChanges: optional(array(paragraphPropertyChange)),
+  markPropertyChange: optional(paragraphMarkPropertyChange),
   pPrMark: optional(paragraphMarkChange),
 });
 

@@ -169,6 +169,7 @@ const rebuildParagraphMark = (properties: string): string => {
     paragraph.formatting,
     paragraph.propertyChanges,
     paragraph.pPrMark,
+    paragraph.markPropertyChange,
   );
 };
 

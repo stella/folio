@@ -31,6 +31,7 @@ import type {
   ParagraphContent,
   ParagraphFormatting,
   ParagraphMarkChange,
+  ParagraphMarkPropertyChange,
   ParagraphPropertyChange,
   RelationshipMap,
   Run,
@@ -129,8 +130,9 @@ import {
   versionOneKeptMarkers,
 } from "./reviewResolutionProvenance";
 import { consolidateParagraphContent } from "./runConsolidator";
-import { parseRun } from "./runParser";
+import { parseRun, parseRunProperties, RUN_PROPERTY_OWNERS } from "./runParser";
 import { runHoldsPayload } from "./runPayload";
+import { omitsPreviousRunProperties } from "./runPropertyPresence";
 import { captureSdtSiblingMarkers, parseSdtProperties } from "./sdtProperties";
 import { parseSectionProperties } from "./sectionParser";
 import { splitPieces, tagSplitPiece } from "./splitRevisionPieces";
@@ -158,6 +160,7 @@ import {
   mergeXmlnsDeclarations,
   parseBooleanElement,
   parseNumericAttribute,
+  parseOnOffChild,
   selectAlternateContentBranch,
   WORDPROCESSINGML_NAMESPACE_URIS,
 } from "./xmlParser";
@@ -226,9 +229,10 @@ const captureParagraphPropertySource = (
             !WORDPROCESSINGML_NAMESPACE_URIS.has(
               runProperty.namespaceUri ?? "",
             ) ||
-            !PARAGRAPH_MARK_CHANGE_KINDS.some(
-              (kind) => kind === runPropertyName,
-            )
+            (runPropertyName !== "rPrChange" &&
+              !PARAGRAPH_MARK_CHANGE_KINDS.some(
+                (kind) => kind === runPropertyName,
+              ))
           );
         });
         // Removing sibling-owned revisions must not author an empty property set.
@@ -509,6 +513,39 @@ function parseParagraphMarkChange(
   }
   return undefined;
 }
+
+export const parseParagraphMarkPropertyChange = (
+  pPr: XmlElement,
+  theme: DeepReadonly<Theme> | null,
+): ParagraphMarkPropertyChange | undefined => {
+  const change = findChild(findChild(pPr, "w", "rPr"), "w", "rPrChange");
+  if (change === null) return undefined;
+  const previous = findChild(change, "w", "rPr");
+  const oldRun = parseRunProperties(
+    previous,
+    theme,
+    RUN_PROPERTY_OWNERS.paragraphMarkOriginal,
+  );
+  let runProperties = previous === null ? undefined : (oldRun ?? {});
+  if (
+    omitsPreviousRunProperties(change) &&
+    (oldRun === undefined || Object.keys(oldRun).length === 0)
+  )
+    runProperties = undefined;
+  const runInWithNext = parseOnOffChild(previous, "w", "specVanish");
+  const info = parsePropertyChangeInfo(change);
+  const type = "paragraphMarkPropertyChange";
+  if (runProperties === undefined && runInWithNext === undefined)
+    return { type, info };
+  return {
+    type,
+    info,
+    previousFormatting: {
+      ...(runProperties === undefined ? {} : { runProperties }),
+      ...(runInWithNext === undefined ? {} : { runInWithNext }),
+    },
+  };
+};
 
 type PushTrackedChangeWrapperParams = {
   contents: ParagraphContent[];
@@ -2744,6 +2781,9 @@ export function parseParagraph(
     if (pPrMarkResult !== undefined) {
       paragraph.pPrMark = pPrMarkResult;
     }
+    const markPropertyChange = parseParagraphMarkPropertyChange(pPr, theme);
+    if (markPropertyChange !== undefined)
+      paragraph.markPropertyChange = markPropertyChange;
 
     // Check for section properties within paragraph (marks end of a section)
     const sectPr = findChild(pPr, "w", "sectPr");
