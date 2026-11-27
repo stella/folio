@@ -138,6 +138,47 @@ test.each([
   },
 );
 
+test.each(["ins", "del"] as const)(
+  "native row review preserves a fully omitted row (%s)",
+  (mark) => {
+    const table = readTable(
+      [
+        '<w:tbl><w:tblGrid><w:gridCol w:w="600"/><w:gridCol w:w="700"/></w:tblGrid>',
+        '<w:tr><w:tc><w:tcPr><w:gridSpan w:val="2"/></w:tcPr><w:p w14:paraId="00000001"/></w:tc></w:tr>',
+        `<w:tr><w:trPr><w:gridBefore w:val="2"/><w:${mark} w:id="7" w:author="Editor"/></w:trPr></w:tr>`,
+        "</w:tbl>",
+      ].join(""),
+    );
+    const document = { package: { document: { content: [table] } } };
+    for (const decision of [
+      REVISION_DECISIONS.ACCEPT,
+      REVISION_DECISIONS.REJECT,
+    ]) {
+      const resolved = applyDocumentOp(document, {
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story: OP_STORIES.MAIN,
+        revisionIds: [7],
+        decision,
+      }).unwrap();
+      const result = resolved.document.package.document.content.at(0);
+      if (result?.type !== "table")
+        throw new TypeError("Expected a retained table.");
+      const keepsRow =
+        (mark === "ins") === (decision === REVISION_DECISIONS.ACCEPT);
+      const reopened = readTable(serializeTable(result, serializeParagraph));
+      expect(reopened.rows).toHaveLength(keepsRow ? 2 : 1);
+      if (keepsRow) {
+        expect(reopened.rows.at(1)?.cells).toEqual([]);
+        expect(reopened.rows.at(1)?.formatting?.gridBefore).toBe(2);
+        expect(reopened.rows.at(1)?.structuralChange).toBeUndefined();
+      }
+      expect(
+        applyDocumentOps(resolved.document, resolved.inverse).unwrap().document,
+      ).toStrictEqual(document);
+    }
+  },
+);
+
 test.each([
   { cut: 0, last: 1, expected: [undefined, undefined] },
   { cut: 0, last: 2, expected: [undefined, "restart", "continue"] },

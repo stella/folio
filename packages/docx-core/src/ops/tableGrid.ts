@@ -1,7 +1,7 @@
 /** Logical slots, including omitted cells and vertical continuation ownership. */
 import { Result } from "better-result";
 
-import type { Table, TableCell } from "../model/document";
+import type { Table, TableCell, TableRow } from "../model/document";
 import { maxOf } from "../model/extremes";
 import {
   TABLE_CELL_VERTICAL_MERGES,
@@ -35,6 +35,14 @@ export type TableGrid = {
 
 const nonnegative = (value: number) =>
   Number.isSafeInteger(value) && value >= 0;
+
+/** A row can explicitly omit every slot in the grid. */
+export const rowHasCellsOrOmissions = (row: TableRow): boolean => {
+  if (row.cells.length > 0) return true;
+  const before = row.formatting?.gridBefore ?? 0;
+  const after = row.formatting?.gridAfter ?? 0;
+  return nonnegative(before) && nonnegative(after) && before + after > 0;
+};
 
 /**
  * Each row covers one common grid, as wide as the widest row or the table's

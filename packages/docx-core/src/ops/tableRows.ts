@@ -44,6 +44,7 @@ import {
   type RevisionOwner,
 } from "./revisionOwner";
 import { replaceStoryBody } from "./stories";
+import { rowHasCellsOrOmissions } from "./tableGrid";
 import {
   locateTableRow,
   tableRowAnchor,
@@ -144,7 +145,7 @@ const commitRows = ({
   if (
     rows.some(
       (row) =>
-        row.cells.length === 0 ||
+        !rowHasCellsOrOmissions(row) ||
         row.cells.some(
           (cell) => storyParagraphs({ content: cell.content }).length === 0,
         ),
@@ -153,7 +154,8 @@ const commitRows = ({
     return refused({
       op: op,
       reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
-      message: "Every row has cells, and every cell has a paragraph.",
+      message:
+        "Every row has cells or stated omissions, and every cell has a paragraph.",
     });
   }
   if (
