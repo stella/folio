@@ -351,6 +351,7 @@
       "showDocumentOutline": "Plan du document",
       "suggesting": "Suivi des modifications",
       "suggestingDescription": "Les modifications sont enregistrées comme modifications suivies",
+      "suggestionUnavailable": "Cette modification ne peut pas être suivie. Faites-la en mode Modification.",
       "viewing": "Affichage",
       "viewingDescription": "Lire ou imprimer le document final"
     },

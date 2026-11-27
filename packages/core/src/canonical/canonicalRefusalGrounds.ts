@@ -15,9 +15,10 @@ const INVALID_REQUEST = {
 /**
  * The ground of every document operation refusal: a moved-on document is
  * stale, an exhausted id space names it, a link suggestion review records
- * cannot hold is the document's rule, content the tracked-change records
- * cannot express is a gap, and every other reason describes a request the
- * document does not allow.
+ * cannot hold and content OOXML has no revision record for are the
+ * document's rules, content the tracked-change records cannot express yet is
+ * a gap, and every other reason describes a request the document does not
+ * allow.
  */
 const DOCUMENT_OP_REFUSAL_GROUNDS = {
   unsupportedSchema: INVALID_REQUEST,
@@ -56,6 +57,7 @@ const DOCUMENT_OP_REFUSAL_GROUNDS = {
   pendingParagraphJoin: INVALID_REQUEST,
   pendingGridChange: INVALID_REQUEST,
   unrecordableLinkSuggestion: { rule: CANONICAL_RULE.linkSuggestionShape },
+  noRevisionRecord: { rule: CANONICAL_RULE.revisionContentShape },
   missingBlockId: INVALID_REQUEST,
   duplicateBlockId: INVALID_REQUEST,
   duplicateRecordId: INVALID_REQUEST,

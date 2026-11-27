@@ -1656,6 +1656,10 @@ export const deleteBlocks = ({
   // taken, a further one records nothing on: no reader or file would show it.
   // Where the direct deletion changes nothing either, as for an empty
   // paragraph alone in its container, recording nothing is that deletion.
+  // Where the direct deletion still changes something, as for a container's
+  // last paragraph, which keeps its mark, holding only content a pending
+  // deletion already takes, the suggestion records nothing a reviewer could
+  // see or decide: a request that changes nothing.
   if (tracked.every((paragraph, index) => paragraph === reviewed[index])) {
     if (changesNothing) return unchanged(document);
     const pending = selected.find(keepsDeletedMark)?.pPrMark;
@@ -1665,7 +1669,7 @@ export const deleteBlocks = ({
         "The paragraph's pending deletion already owns the break.",
       );
     return refuse(
-      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE,
       "A tracked paragraph deletion would record nothing.",
     );
   }

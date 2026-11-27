@@ -880,15 +880,16 @@ const trackedContent = (
   const out: TrackedRunContent[] = [];
   for (const node of nodes) {
     // `w:ins` and `w:del` hold run-level content only (CT_RunTrackChange):
-    // anything else cannot go inside one. A point comment reference already
-    // inside a tracked change stays there, but a new tracked change takes one
-    // in only when it owns the comment ({@link takesReference}).
-    if (
-      !isParagraphContent(node) ||
-      !isTrackedChild(node) ||
-      (node.type === "commentReference" && !takesReference(node, state))
-    ) {
-      state.refusal = DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE;
+    // anything else cannot go inside one, which is the format's rule.
+    if (!isParagraphContent(node) || !isTrackedChild(node)) {
+      state.refusal = DOCUMENT_OP_REFUSAL_REASONS.NO_REVISION_RECORD;
+      return undefined;
+    }
+    // A point comment reference already inside a tracked change stays there,
+    // but a new tracked change takes one in only when it owns the comment
+    // ({@link takesReference}), as a bare comment anchor is refused.
+    if (node.type === "commentReference" && !takesReference(node, state)) {
+      state.refusal = DOCUMENT_OP_REFUSAL_REASONS.DEPENDENT_RECORDS;
       return undefined;
     }
     out.push(node);
@@ -957,7 +958,7 @@ const groupCovered = (
       const adjustedContent: TrackedRunContent[] = [];
       for (const node of adjusted) {
         if (!isTrackedRunContent(node)) {
-          state.refusal = DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE;
+          state.refusal = DOCUMENT_OP_REFUSAL_REASONS.NO_REVISION_RECORD;
           return false;
         }
         adjustedContent.push(node);
@@ -1307,10 +1308,12 @@ export const wrapTracked = ({
   }
   const out: ParagraphContent[] = [];
   for (const node of content) {
+    // Run content outside a run has no place in the paragraph, nor in a
+    // tracked change (CT_RunTrackChange holds runs, not their children).
     if (!isParagraphContent(node)) {
       return {
         kind: "refused",
-        reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+        reason: DOCUMENT_OP_REFUSAL_REASONS.NO_REVISION_RECORD,
       };
     }
     out.push(node);

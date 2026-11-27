@@ -287,6 +287,7 @@ export const messages: FolioMessages = localeMessages([
   "Estrutura de tópicos do documento",
   "Controle de Alterações",
   "As edições são registradas como alterações controladas",
+  "Esta alteração não pode ser controlada. Faça-a no modo Editando.",
   "Visualizando",
   "Leia ou imprima o documento final",
   "Fechar pesquisa",

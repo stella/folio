@@ -351,6 +351,7 @@
       "showDocumentOutline": "Dokumenta struktūra",
       "suggesting": "Izmaiņu reģistrēšana",
       "suggestingDescription": "Labojumi tiek reģistrēti kā izsekotas izmaiņas",
+      "suggestionUnavailable": "Šīs izmaiņas nevar reģistrēt. Veiciet tās rediģēšanas režīmā.",
       "viewing": "Skatīšana",
       "viewingDescription": "Lasiet vai drukājiet gatavo dokumentu"
     },

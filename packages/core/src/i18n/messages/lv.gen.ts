@@ -287,6 +287,7 @@ export const messages: FolioMessages = localeMessages([
   "Dokumenta struktūra",
   "Izmaiņu reģistrēšana",
   "Labojumi tiek reģistrēti kā izsekotas izmaiņas",
+  "Šīs izmaiņas nevar reģistrēt. Veiciet tās rediģēšanas režīmā.",
   "Skatīšana",
   "Lasiet vai drukājiet gatavo dokumentu",
   "Aizvērt meklēšanu",

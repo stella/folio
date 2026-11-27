@@ -1193,7 +1193,7 @@ test.each(
       expect(tracked.error.reason).toBe(
         pending
           ? DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_DELETION
-          : DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+          : DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE,
       );
       expect(direct.document).not.toBe(document);
       return;
@@ -1208,6 +1208,33 @@ test.each(
     }
   },
 );
+
+test("a suggested deletion of a final paragraph whose content a pending deletion already takes changes nothing", () => {
+  // The body's last paragraph keeps its mark, and its only content is
+  // another author's pending deletion: a further deletion has nothing to
+  // record, while the direct deletion removes that content.
+  const document = documentOf([
+    {
+      type: "paragraph",
+      paraId: "00000001",
+      content: [
+        {
+          type: "deletion",
+          info: { id: 5, author: "Other", date: "2026-01-02T03:04:05Z" },
+          content: [{ type: "run", content: [{ type: "text", text: "Gone" }] }],
+        },
+      ],
+    },
+  ]);
+  const suggested = applyDocumentOp(document, deletion(["00000001"]));
+  expect(suggested.isErr() && suggested.error.reason).toBe(
+    DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE,
+  );
+  const direct = apply(document, directDeletion(["00000001"]));
+  expect(direct.document.package.document.content).toEqual([
+    { type: "paragraph", paraId: "00000001", content: [] },
+  ]);
+});
 
 test("a tracked deletion of another author's inserted paragraph records its deletion beside the insertion", () => {
   const inserted: Paragraph = {

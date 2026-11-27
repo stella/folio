@@ -97,12 +97,23 @@ const paraIds = (blocks: readonly BlockContent[]): string[] =>
     return [];
   });
 
+// A block-level `w:sdt` takes no revision of its own (CT_SdtBlock records
+// none), so OOXML has no record for its suggested paste or move. A block
+// `w:customXml` has range records the model does not carry yet, and kept
+// markup is not read.
+const NO_RECORD = DOCUMENT_OP_REFUSAL_REASONS.NO_REVISION_RECORD;
+const NOT_YET = DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE;
+
 describe.each([
-  { kind: "block content control", blocks: [control()] },
-  { kind: "custom XML element", blocks: [customXml()] },
-  { kind: "kept block markup", blocks: [preserved()] },
-  { kind: "every kind", blocks: [control(), customXml(), preserved()] },
-])("pasting a $kind", ({ blocks }) => {
+  { kind: "block content control", blocks: [control()], suggested: NO_RECORD },
+  { kind: "custom XML element", blocks: [customXml()], suggested: NOT_YET },
+  { kind: "kept block markup", blocks: [preserved()], suggested: NOT_YET },
+  {
+    kind: "every kind",
+    blocks: [control(), customXml(), preserved()],
+    suggested: NO_RECORD,
+  },
+])("pasting a $kind", ({ blocks, suggested }) => {
   test("places it whole between the split halves, and undoes", () => {
     const { document, compiled } = pasted(blocks, DIRECT);
     if (compiled.isErr()) throw compiled.error;
@@ -152,10 +163,7 @@ describe.each([
       },
     });
     expect(compiled.isErr()).toBe(true);
-    if (compiled.isErr())
-      expect(compiled.error.reason).toBe(
-        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      );
+    if (compiled.isErr()) expect(compiled.error.reason).toBe(suggested);
   });
 });
 
@@ -253,10 +261,7 @@ describe("dragging a block content control", () => {
       },
     });
     expect(compiled.isErr()).toBe(true);
-    if (compiled.isErr())
-      expect(compiled.error.reason).toBe(
-        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      );
+    if (compiled.isErr()) expect(compiled.error.reason).toBe(NO_RECORD);
   });
 });
 
@@ -307,7 +312,7 @@ describe.each([
   {
     kind: "block content control",
     wrap: inControl,
-    suggested: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+    suggested: NO_RECORD,
   },
   // A suggestion keeps the source's reference; its copy would need a note.
   {

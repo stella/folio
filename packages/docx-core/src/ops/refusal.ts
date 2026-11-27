@@ -118,17 +118,17 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
    */
   readonly INSIDE_INLINE_CONTROL: "insideInlineControl";
   /**
-   * No tracked change can record the edit, or no resolution op can carry it
-   * out yet: a section-ending mark resolved across a standing range
-   * boundary, a change inside a simple field holding content the field
-   * cannot hold, content a `w:ins` or `w:del` cannot hold
-   * (CT_RunTrackChange takes run-level content only), a block-level `w:sdt`
-   * or `w:customXml` pasted or moved as a suggestion (neither takes a
-   * revision of its own), an insertion after a pending paragraph mark
-   * without its former snapshot, a tracked paragraph deletion that would
-   * record nothing, the table-side insertions and paragraph removals beside
-   * a table, and removing a block content control's only paragraph (no
-   * operation addresses a block list without a paragraph).
+   * No tracked change can record the edit yet, or no resolution op can carry
+   * it out yet: a section-ending mark resolved across a standing range
+   * boundary, a change inside a simple field holding content the field's
+   * model cannot hold, a block-level `w:customXml` or kept block markup
+   * pasted or moved as a suggestion, a copied paragraph mark or review
+   * carrier a tracked paste cannot attach, copy-origin records nested past
+   * their limit, a tracked deletion of a record holding a comment anchor
+   * that records no joins, an insertion after a pending paragraph mark
+   * without its former snapshot, the table-side insertions and paragraph
+   * removals beside a table, and removing a block content control's only
+   * paragraph (no operation addresses a block list without a paragraph).
    */
   readonly UNTRACKABLE: "untrackable";
   /** A table snapshot cannot distinguish an own undefined field from an omitted field in OOXML. */
@@ -176,6 +176,15 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
    * note holding a tracked change, comment or bookmark).
    */
   readonly UNRECORDABLE_LINK_SUGGESTION: "unrecordableLinkSuggestion";
+  /**
+   * OOXML has no revision record for the content a suggestion would track:
+   * a `w:ins`, `w:del`, `w:moveFrom` or `w:moveTo` holds run-level content
+   * only (CT_RunTrackChange), and a block-level `w:sdt` takes no revision of
+   * its own (CT_SdtBlock records none; an insertion is recorded only on the
+   * runs and paragraph marks inside it, so rejecting would leave the empty
+   * control standing). The same change made directly applies.
+   */
+  readonly NO_REVISION_RECORD: "noRevisionRecord";
   /** Seed contract: a main-story paragraph has no `paraId`. */
   readonly MISSING_BLOCK_ID: "missingBlockId";
   /** Seed contract: two paragraphs in the package carry one id. */
@@ -297,17 +306,17 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
    */
   INSIDE_INLINE_CONTROL: "insideInlineControl",
   /**
-   * No tracked change can record the edit, or no resolution op can carry it
-   * out yet: a section-ending mark resolved across a standing range
-   * boundary, a change inside a simple field holding content the field
-   * cannot hold, content a `w:ins` or `w:del` cannot hold
-   * (CT_RunTrackChange takes run-level content only), a block-level `w:sdt`
-   * or `w:customXml` pasted or moved as a suggestion (neither takes a
-   * revision of its own), an insertion after a pending paragraph mark
-   * without its former snapshot, a tracked paragraph deletion that would
-   * record nothing, the table-side insertions and paragraph removals beside
-   * a table, and removing a block content control's only paragraph (no
-   * operation addresses a block list without a paragraph).
+   * No tracked change can record the edit yet, or no resolution op can carry
+   * it out yet: a section-ending mark resolved across a standing range
+   * boundary, a change inside a simple field holding content the field's
+   * model cannot hold, a block-level `w:customXml` or kept block markup
+   * pasted or moved as a suggestion, a copied paragraph mark or review
+   * carrier a tracked paste cannot attach, copy-origin records nested past
+   * their limit, a tracked deletion of a record holding a comment anchor
+   * that records no joins, an insertion after a pending paragraph mark
+   * without its former snapshot, the table-side insertions and paragraph
+   * removals beside a table, and removing a block content control's only
+   * paragraph (no operation addresses a block list without a paragraph).
    */
   UNTRACKABLE: "untrackable",
   TABLE_SNAPSHOT_PRESENCE: "tableSnapshotPresence",
@@ -349,6 +358,15 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
    * note holding a tracked change, comment or bookmark).
    */
   UNRECORDABLE_LINK_SUGGESTION: "unrecordableLinkSuggestion",
+  /**
+   * OOXML has no revision record for the content a suggestion would track:
+   * a `w:ins`, `w:del`, `w:moveFrom` or `w:moveTo` holds run-level content
+   * only (CT_RunTrackChange), and a block-level `w:sdt` takes no revision of
+   * its own (CT_SdtBlock records none; an insertion is recorded only on the
+   * runs and paragraph marks inside it, so rejecting would leave the empty
+   * control standing). The same change made directly applies.
+   */
+  NO_REVISION_RECORD: "noRevisionRecord",
   /** Seed contract: a main-story paragraph has no `paraId`. */
   MISSING_BLOCK_ID: "missingBlockId",
   /** Seed contract: two paragraphs in the package carry one id. */
@@ -421,6 +439,7 @@ export const DOCUMENT_OP_REFUSAL_SCOPES: Readonly<
   pendingParagraphJoin: ANY,
   pendingGridChange: TRACKED,
   unrecordableLinkSuggestion: TRACKED,
+  noRevisionRecord: TRACKED,
   missingBlockId: ANY,
   duplicateBlockId: ANY,
   duplicateRecordId: ANY,

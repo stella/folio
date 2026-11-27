@@ -351,6 +351,7 @@
       "showDocumentOutline": "חלונית הניווט במסמך",
       "suggesting": "מעקב אחר שינויים",
       "suggestingDescription": "עריכות נרשמות כשינויים במעקב",
+      "suggestionUnavailable": "לא ניתן לעקוב אחר שינוי זה. בצעו אותו במצב עריכה.",
       "viewing": "תצוגה",
       "viewingDescription": "קרא או הדפס את המסמך הסופי"
     },

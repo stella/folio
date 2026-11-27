@@ -287,6 +287,7 @@ export const messages: FolioMessages = localeMessages([
   "Belge ana hattı",
   "Değişiklik izleme",
   "Düzenlemeler izlenen değişiklikler olarak kaydedilir",
+  "Bu değişiklik izlenemez. Değişikliği Düzenleme modunda yapın.",
   "Görüntüleme",
   "Son belgeyi okuyun veya yazdırın",
   "Aramayı kapat",

@@ -1893,12 +1893,32 @@ type PlaceContainerBlockOptions = {
 };
 
 /**
+ * A suggestion's refusal of a container block it would paste or move. A
+ * block-level `w:sdt` takes no revision of its own (CT_SdtBlock records none:
+ * an insertion is recorded only on the runs and paragraph marks inside it, so
+ * rejecting would leave the empty control standing), which is the format's
+ * rule. A block-level `w:customXml` has range records of its own
+ * (`w:customXmlInsRangeStart` and its kin) that the model does not carry yet,
+ * and kept markup is not read.
+ */
+const containerBlockSuggestionRefusal = (
+  block: { type: BlockContent["type"] },
+  message: string,
+): DocumentOpRefusal =>
+  new DocumentOpRefusal({
+    reason:
+      block.type === "blockSdt"
+        ? DOCUMENT_OP_REFUSAL_REASONS.NO_REVISION_RECORD
+        : DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+    message,
+    opType: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+  });
+
+/**
  * A block content control, custom XML element or kept block markup put in
- * before `anchor`, in the block list holding it, as its exact list. Neither
- * has a tracked record of its own: a block-level `w:sdt` or `w:customXml`
- * takes no `w:ins` or `w:del` (an insertion is recorded only on the runs and
- * paragraph marks inside it, so rejecting would leave the empty container
- * standing), and kept markup is not read, so a suggestion refuses.
+ * before `anchor`, in the block list holding it, as its exact list. None has
+ * a tracked record the model carries, so a suggestion refuses
+ * ({@link containerBlockSuggestionRefusal}).
  */
 const placeContainerBlock = ({
   document,
@@ -1912,12 +1932,10 @@ const placeContainerBlock = ({
 > => {
   if (mode.type === "suggesting")
     return Result.err(
-      new DocumentOpRefusal({
-        reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-        message:
-          "A suggested paste cannot record a block content control, custom XML element or kept block markup.",
-        opType: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
-      }),
+      containerBlockSuggestionRefusal(
+        block,
+        "A suggested paste cannot record a block content control, custom XML element or kept block markup.",
+      ),
     );
   const body = storyBody(document, story);
   const located = storyParagraphs(body).find(
@@ -1981,9 +1999,11 @@ const removeContainerBlock = ({
       }),
     );
   if (mode.type === "suggesting")
-    return refuse(
-      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      "A suggested move cannot record a block content control, custom XML element or kept block markup.",
+    return Result.err(
+      containerBlockSuggestionRefusal(
+        block,
+        "A suggested move cannot record a block content control, custom XML element or kept block markup.",
+      ),
     );
   const body = storyBody(document, story);
   const located = storyParagraphs(body).find(

@@ -351,6 +351,7 @@
       "showDocumentOutline": "Dokumentgliederung",
       "suggesting": "Änderungen nachverfolgen",
       "suggestingDescription": "Bearbeitungen werden als nachverfolgte Änderungen aufgezeichnet",
+      "suggestionUnavailable": "Diese Änderung kann nicht nachverfolgt werden. Nehmen Sie sie im Modus Bearbeiten vor.",
       "viewing": "Anzeigen",
       "viewingDescription": "Endgültiges Dokument lesen oder drucken"
     },

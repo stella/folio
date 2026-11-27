@@ -14,6 +14,7 @@ export type CanonicalGap = (typeof CANONICAL_GAP)[keyof typeof CANONICAL_GAP];
 export const CANONICAL_RULE: {
   readonly contentControlLock: "contentControlLock";
   readonly linkSuggestionShape: "linkSuggestionShape";
+  readonly revisionContentShape: "revisionContentShape";
   readonly tableSnapshotPresence: "tableSnapshotPresence";
 } = {
   contentControlLock: "contentControlLock",
@@ -25,6 +26,14 @@ export const CANONICAL_RULE: {
    * directly applies.
    */
   linkSuggestionShape: "linkSuggestionShape",
+  /**
+   * OOXML has no revision record for the content a suggestion would track:
+   * a `w:ins`, `w:del`, `w:moveFrom` or `w:moveTo` holds run-level content
+   * only (CT_RunTrackChange), and a block-level `w:sdt` takes no revision of
+   * its own (CT_SdtBlock records none), so a suggested paste or move of a
+   * block content control is refused. The same change made directly applies.
+   */
+  revisionContentShape: "revisionContentShape",
   /** Review snapshots cannot store JavaScript's distinction between omitted and own undefined fields. */
   tableSnapshotPresence: "tableSnapshotPresence",
 } as const;
@@ -36,10 +45,12 @@ export type CanonicalRule =
 export const CANONICAL_RULE_MESSAGE_KEYS: {
   readonly contentControlLock: "editor.contentLocked";
   readonly linkSuggestionShape: "editor.linkSuggestionUnavailable";
+  readonly revisionContentShape: "editor.suggestionUnavailable";
   readonly tableSnapshotPresence: "editor.changeNotApplied";
 } = {
   contentControlLock: "editor.contentLocked",
   linkSuggestionShape: "editor.linkSuggestionUnavailable",
+  revisionContentShape: "editor.suggestionUnavailable",
   tableSnapshotPresence: "editor.changeNotApplied",
 } as const satisfies Record<CanonicalRule, string>;
 
@@ -161,7 +172,7 @@ export const CANONICAL_CAPABILITIES: {
     readonly owner: "document-operations";
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "A suggested change whose content the tracked-change records cannot express is refused: a section-ending mark resolved across a standing range boundary, a change inside a simple field holding content the field cannot hold, content a w:ins or w:del cannot hold, a block content control or custom XML element pasted or moved, an insertion after a pending paragraph mark without its former snapshot, and the removal of a block content control's only paragraph.";
+    readonly summary: "A suggested change whose content the tracked-change records cannot express yet is refused: a section-ending mark resolved across a standing range boundary, a change inside a simple field holding content the field's model cannot hold, a custom XML element or kept block markup pasted or moved, a copied paragraph mark or review carrier a tracked paste cannot attach, copy-origin records nested past their limit, a tracked deletion without joins of a record holding a comment anchor, an insertion after a pending paragraph mark without its former snapshot, and the removal of a block content control's only paragraph.";
   };
 } = {
   [CANONICAL_GAP.trackedTableStructure]: {
@@ -183,7 +194,7 @@ export const CANONICAL_CAPABILITIES: {
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
-      "A suggested change whose content the tracked-change records cannot express is refused: a section-ending mark resolved across a standing range boundary, a change inside a simple field holding content the field cannot hold, content a w:ins or w:del cannot hold, a block content control or custom XML element pasted or moved, an insertion after a pending paragraph mark without its former snapshot, and the removal of a block content control's only paragraph.",
+      "A suggested change whose content the tracked-change records cannot express yet is refused: a section-ending mark resolved across a standing range boundary, a change inside a simple field holding content the field's model cannot hold, a custom XML element or kept block markup pasted or moved, a copied paragraph mark or review carrier a tracked paste cannot attach, copy-origin records nested past their limit, a tracked deletion without joins of a record holding a comment anchor, an insertion after a pending paragraph mark without its former snapshot, and the removal of a block content control's only paragraph.",
   },
 } as const satisfies Record<CanonicalGap, CanonicalCapability>;
 

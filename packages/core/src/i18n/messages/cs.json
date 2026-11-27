@@ -351,6 +351,7 @@
       "showDocumentOutline": "Osnova dokumentu",
       "suggesting": "Sledování změn",
       "suggestingDescription": "Úpravy se zaznamenají jako sledované změny",
+      "suggestionUnavailable": "Tuto změnu nelze sledovat. Proveďte ji v režimu Úpravy.",
       "viewing": "Prohlížení",
       "viewingDescription": "Číst nebo tisknout konečný dokument"
     },

@@ -351,6 +351,7 @@
       "showDocumentOutline": "Esquema del documento",
       "suggesting": "Control de cambios",
       "suggestingDescription": "Las ediciones se registran como cambios controlados",
+      "suggestionUnavailable": "Este cambio no se puede controlar. Hazlo en modo Edición.",
       "viewing": "Visualización",
       "viewingDescription": "Leer o imprimir el documento final"
     },

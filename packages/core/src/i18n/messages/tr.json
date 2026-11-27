@@ -351,6 +351,7 @@
       "showDocumentOutline": "Belge ana hattı",
       "suggesting": "Değişiklik izleme",
       "suggestingDescription": "Düzenlemeler izlenen değişiklikler olarak kaydedilir",
+      "suggestionUnavailable": "Bu değişiklik izlenemez. Değişikliği Düzenleme modunda yapın.",
       "viewing": "Görüntüleme",
       "viewingDescription": "Son belgeyi okuyun veya yazdırın"
     },

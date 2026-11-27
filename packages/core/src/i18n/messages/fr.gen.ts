@@ -287,6 +287,7 @@ export const messages: FolioMessages = localeMessages([
   "Plan du document",
   "Suivi des modifications",
   "Les modifications sont enregistrées comme modifications suivies",
+  "Cette modification ne peut pas être suivie. Faites-la en mode Modification.",
   "Affichage",
   "Lire ou imprimer le document final",
   "Fermer la recherche",

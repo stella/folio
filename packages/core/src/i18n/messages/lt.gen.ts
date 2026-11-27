@@ -287,6 +287,7 @@ export const messages: FolioMessages = localeMessages([
   "Dokumento struktūra",
   "Keitimų sekimas",
   "Taisymai įrašomi kaip sekami keitimai",
+  "Šio pakeitimo negalima sekti. Atlikite jį redagavimo režimu.",
   "Peržiūra",
   "Skaitykite arba spausdinkite galutinį dokumentą",
   "Uždaryti paiešką",
