@@ -745,7 +745,7 @@ export const IMPORTED_ID_COLLISION_KINDS: {
 export type ImportedIdCollisionKind = (typeof IMPORTED_ID_COLLISION_KINDS)[keyof typeof IMPORTED_ID_COLLISION_KINDS];
 
 // @public (undocumented)
-export const inferredTableColumnCount: ({ rows, }: Pick<Table, "rows">) => number;
+export const inferredTableColumnCount: (input: Pick<Table, "rows">) => number;
 
 // @public
 export type InlineSdt = WritableRecord & {

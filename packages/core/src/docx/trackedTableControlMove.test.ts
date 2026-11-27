@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
 import {
@@ -13,11 +13,16 @@ import {
 } from "@stll/docx-core/ops";
 import { ZipArchive } from "@stll/docx-core/zip";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import type { Document, ParagraphContent, Table } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { parseDocx } from "./parser";
 import { createDocx } from "./rezip";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const read = (buffer: ArrayBuffer) =>
   parseDocx(buffer, { detectVariables: false, preloadFonts: false });
