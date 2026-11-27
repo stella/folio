@@ -105,16 +105,24 @@ test.each([
   "retained",
   "horizontal with earlier properties",
   "rectangular with earlier properties",
+  "rectangular with an earlier grid",
 ] as const)(
   "a %s merge moves a nested table and closing paragraph through native review",
   (shape) => {
     const rectangular = shape.startsWith("rectangular") || shape === "retained";
     const retained = shape === "retained";
     const priorProperties = shape.endsWith("with earlier properties");
+    const priorGrid = shape.endsWith("with an earlier grid");
+    let nestedSource: Table = priorProperties ? nestedWithProperties : nested;
+    if (priorGrid)
+      nestedSource = {
+        ...nested,
+        formatting: { gridChange: { id: 44, columnWidths: [700] } },
+      };
     const owner = cell(paragraph("00000001", retained ? undefined : "Owner"));
     const other = cell(
       paragraph("00000002", "Before"),
-      priorProperties ? nestedWithProperties : nested,
+      nestedSource,
       paragraph("00000005"),
     );
     const first = {
@@ -208,7 +216,7 @@ test.each([
     if (element === null) throw new Error("Expected well-formed XML.");
     const parsed = parseTable(element, new Map(), null, null, null, null);
     if (parsed === undefined) throw new Error("Expected a reopened table.");
-    if (priorProperties) {
+    if (priorProperties || priorGrid) {
       const fact = parsed.formatting?.gridChange?.geometryChange;
       const aliases =
         fact?.type === "mergeCells"
@@ -216,7 +224,9 @@ test.each([
           : undefined;
       if (aliases === undefined)
         throw new TypeError("Expected saved property handoffs.");
-      expect(aliases.map(([source]) => source)).toEqual([41, 42, 43]);
+      expect(aliases.map(([source]) => source)).toEqual(
+        priorGrid ? [44] : [41, 42, 43],
+      );
       const doc = toProseDoc(withTable(parsed), {
         tableReviewGeometry: "physical",
       });
@@ -242,14 +252,26 @@ test.each([
         ),
       );
       expect(nestedTables).toHaveLength(2);
-      expect(
-        nestedTables.map(({ formatting }) => formatting?.justification),
-      ).toEqual(["right", "right"]);
-      expect(
-        nestedTables.every(
-          ({ propertyChanges }) => propertyChanges === undefined,
-        ),
-      ).toBe(true);
+      if (priorGrid) {
+        expect(nestedTables.map(({ columnWidths }) => columnWidths)).toEqual([
+          [700],
+          [700],
+        ]);
+        expect(
+          nestedTables.every(
+            ({ formatting }) => formatting?.gridChange === undefined,
+          ),
+        ).toBe(true);
+      } else {
+        expect(
+          nestedTables.map(({ formatting }) => formatting?.justification),
+        ).toEqual(["right", "right"]);
+        expect(
+          nestedTables.every(
+            ({ propertyChanges }) => propertyChanges === undefined,
+          ),
+        ).toBe(true);
+      }
       expect(existing.formatting?.gridChange?.geometryChange).toBeDefined();
     }
 

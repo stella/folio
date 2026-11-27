@@ -39,6 +39,9 @@ const propertySlots = (table: Table): ReadonlyMap<number, string> => {
     if (block.type === "table") owners.push(block);
   });
   for (const [index, owner] of owners.entries()) {
+    const grid = owner.formatting?.gridChange;
+    if (grid !== undefined && grid.geometryChange === undefined)
+      slots.set(grid.id, `${index}:grid`);
     record(owner.propertyChanges, `${index}:table`);
     for (const [rowIndex, row] of owner.rows.entries()) {
       const position = `${index}:row:${rowIndex}`;

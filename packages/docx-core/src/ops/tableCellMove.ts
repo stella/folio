@@ -457,13 +457,15 @@ export const nestedTableMoveSource = (
     for (const { info } of changes ?? []) properties.push(info.id);
   };
   const collect = (nested: Table): boolean => {
+    const grid = nested.formatting?.gridChange;
     if (
       nested.bookmarks !== undefined ||
       nested.carrierStack !== undefined ||
-      nested.formatting?.gridChange !== undefined ||
+      grid?.geometryChange !== undefined ||
       nested.rows.length === 0
     )
       return false;
+    if (grid !== undefined) properties.push(grid.id);
     collectProperties(nested.propertyChanges);
     return nested.rows.every((row) => {
       if (
@@ -537,8 +539,18 @@ const withNestedMoveIdentities = (
     const paraId = ids.paragraphs.get(idKey(block.paraId));
     return paraId === undefined ? block : { ...block, paraId };
   };
+  const grid = table.formatting?.gridChange;
+  const gridId = grid === undefined ? undefined : ids.properties.get(grid.id);
   return {
     ...table,
+    ...(grid === undefined || gridId === undefined
+      ? {}
+      : {
+          formatting: {
+            ...table.formatting,
+            gridChange: { ...grid, id: gridId },
+          },
+        }),
     ...(table.propertyChanges === undefined
       ? {}
       : { propertyChanges: changes(table.propertyChanges) }),
