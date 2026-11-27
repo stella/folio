@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 
-import type { Document, Paragraph } from "../../model/document";
+import type { BlockContent, Document, Paragraph } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import {
   DOCUMENT_OP_TYPES,
@@ -178,6 +178,83 @@ for (const { story, paraId, id } of STORIES)
       expect(sectionEnd(result.value.document)?.propertyChanges).toHaveLength(
         1,
       );
+      const undone = applyDocumentOps(
+        result.value.document,
+        result.value.inverse,
+      );
+      if (undone.isErr()) throw undone.error;
+      expect(undone.value.document).toEqual(before);
+    });
+
+type NestedCase = {
+  name: string;
+  wrap: (paragraph: Paragraph) => BlockContent;
+  inner: (document: Document) => BlockContent | undefined;
+};
+
+/** Main-story containers whose paragraphs end no section. */
+const NESTED: readonly NestedCase[] = [
+  {
+    name: "a block content control",
+    wrap: (paragraph) => ({
+      type: "blockSdt",
+      properties: { sdtType: "richText", id: 40 },
+      content: [paragraph],
+    }),
+    inner: (document) => {
+      const control = document.package.document.content.at(0);
+      return control?.type === "blockSdt" ? control.content.at(0) : undefined;
+    },
+  },
+  {
+    name: "a table cell",
+    wrap: (paragraph) => ({
+      type: "table",
+      rows: [
+        {
+          type: "tableRow",
+          cells: [{ type: "tableCell", content: [paragraph] }],
+        },
+      ],
+    }),
+    inner: (document) => {
+      const table = document.package.document.content.at(0);
+      return table?.type === "table"
+        ? table.rows.at(0)?.cells.at(0)?.content.at(0)
+        : undefined;
+    },
+  },
+];
+
+// A main-story paragraph nested in a container ends no section, but a file
+// may still give it section properties with a record: they resolve on it.
+for (const { name, wrap, inner } of NESTED)
+  for (const [decision, sectionStart] of [
+    [REVISION_DECISIONS.ACCEPT, "nextPage"],
+    [REVISION_DECISIONS.REJECT, "continuous"],
+  ] as const)
+    test(`a section change on a paragraph in ${name} resolves on that paragraph (${decision})`, () => {
+      const before: Document = {
+        package: {
+          document: {
+            content: [
+              wrap(storyParagraphWithSection("00000021", 11)),
+              text("00000022", "After"),
+            ],
+          },
+        },
+      };
+      const result = applyDocumentOp(before, {
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story: OP_STORIES.MAIN,
+        revisionIds: [11],
+        decision,
+      });
+      if (result.isErr()) throw result.error;
+      expect(inner(result.value.document)).toEqual({
+        ...text("00000021", "Story paragraph"),
+        sectionProperties: { sectionStart },
+      });
       const undone = applyDocumentOps(
         result.value.document,
         result.value.inverse,

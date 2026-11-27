@@ -44,6 +44,7 @@ import {
   paragraphBlockRunInTarget,
   paragraphMarkOutcome,
   paragraphTableRunInBoundary,
+  sectionBreakTakenFirst,
   sectionEndpointRemoval,
   type TableRunInTarget,
 } from "./blockDeletion";
@@ -7756,8 +7757,9 @@ const joinOps = (
       // A section-ending mark goes with the break it carries: its section
       // and the one after it become one under the later section's
       // properties. The break is removed first, explicitly, so the join and
-      // both inverses keep every other section as it stands.
-      const breakRemoval = sectionEndpointRemoval({ story, location });
+      // both inverses keep every other section as it stands. Outside the
+      // main body's own list the paragraph is replaced without it.
+      const breakRemoval = sectionBreakTakenFirst(story, location);
       return paragraphMarkPlan(
         [
           ...breakRemoval.ops,
@@ -8706,9 +8708,7 @@ const withBelongingPropertyChanges = (
 /**
  * Resolve tracked changes by revision id, applied as the primitive
  * operations it expands to. An id no record in the story carries is
- * skipped; one carried by a record resolution does not reach yet (a table,
- * cell or section change, or a change inside a simple field holding content
- * the field cannot hold) is refused.
+ * skipped; every record that carries one is reached.
  */
 export const planRevisionResolution = (
   options: RevisionResolutionPlanOptions,
@@ -8789,8 +8789,9 @@ const withoutSection = (story: OpStory, paragraph: Paragraph): DocumentOp => {
  * calculation every reviewer applies, with the revision ids left to resolve.
  * A section's records travel on the paragraph that ends it or on the main
  * story's final section record. A header, footer or note has no
- * sections, but a paragraph there may still carry section properties with
- * records: they resolve by the same calculation, on that paragraph.
+ * sections, nor has a content control, custom XML or table cell of the
+ * main story, but a paragraph there may still carry section properties
+ * with records: they resolve by the same calculation, on that paragraph.
  */
 const settleSectionRecords = (
   document: Document,
@@ -8842,30 +8843,33 @@ const settleSectionRecords = (
     }
     // A removed section renumbers the sections after it: settle those first.
     ops.reverse();
-  } else {
-    for (const { paragraph } of storyParagraphs(
-      storyBody(document, op.story),
-    )) {
-      const properties = paragraph.sectionProperties;
-      if (properties === undefined) continue;
-      const resolved = resolveSectionRecords({
-        properties,
-        ids,
-        decision: op.decision,
-      });
-      if (resolved === properties) continue;
-      ops.push(
-        isEmptySectionRecord(resolved)
-          ? withoutSection(op.story, paragraph)
-          : {
-              type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
-              story: op.story,
-              expected: [paragraph],
-              blocks: [{ ...paragraph, sectionProperties: resolved }],
-              sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE,
-            },
-      );
-    }
+  }
+  for (const { list, paragraph } of storyParagraphs(
+    storyBody(document, op.story),
+  )) {
+    const properties = paragraph.sectionProperties;
+    if (
+      (op.story === OP_STORIES.MAIN && list.length === 0) ||
+      properties === undefined
+    )
+      continue;
+    const resolved = resolveSectionRecords({
+      properties,
+      ids,
+      decision: op.decision,
+    });
+    if (resolved === properties) continue;
+    ops.push(
+      isEmptySectionRecord(resolved)
+        ? withoutSection(op.story, paragraph)
+        : {
+            type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+            story: op.story,
+            expected: [paragraph],
+            blocks: [{ ...paragraph, sectionProperties: resolved }],
+            sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE,
+          },
+    );
   }
   return { ops, ids: op.revisionIds.filter((id) => ids.has(id)) };
 };
@@ -8943,16 +8947,17 @@ const planSingleRecordResolution = (
     ...paragraphs.flatMap(({ paragraph }) => [...reachableIds(paragraph)]),
     ...reachableRowIds(document, op.story),
   ]);
+  // Every record a story's census counts a revision id for is reached: a
+  // tracked change, run or paragraph property change or paragraph mark
+  // through the paragraphs, a table, row or cell record or grid change
+  // through the tables, and a section's records, settled before this on the
+  // paragraph or final record that carries them. A text box's records are
+  // resolved in its own story.
   const unreachable = [...ids].find((id) => !reachable.has(id));
-  if (unreachable !== undefined) {
-    return Result.err(
-      refusal(
-        op,
-        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-        `Revision ${unreachable} is not an inline change, property change, row change or paragraph mark.`,
-      ),
+  if (unreachable !== undefined)
+    return panic(
+      `Revision ${unreachable} is counted in the story but held by no record resolution reaches.`,
     );
-  }
 
   const blockerIds = seamHolderIds(
     paragraphs.flatMap(({ paragraph }) => paragraph.content),

@@ -1121,9 +1121,12 @@ export const insertBlocks = ({
       after: list.slice(location.index + 1),
       blocks: canonicalBlocks,
     });
+    // Any other difference is one only a property change of the pending
+    // insertion records, and a direct edit records none: the insertion is
+    // resolved first.
     if (moved === undefined)
       return refuse(
-        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+        DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_INSERTION,
         "Insertion after a pending paragraph mark would change what rejecting that mark leaves.",
       );
     movedBreak = {

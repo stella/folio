@@ -1388,6 +1388,173 @@ describe("deleting a paragraph that ends a section", () => {
   });
 });
 
+describe("deleting a paragraph with no paragraph right after it", () => {
+  const sectioned = (paraId: string, text: string): Paragraph => ({
+    ...paragraph(paraId, text),
+    sectionProperties: { pageWidth: 10_000 },
+  });
+  const opening: BlockContent = { type: "bookmarkStart", id: 3, name: "B" };
+  const closing: BlockContent = { type: "bookmarkEnd", id: 3 };
+  const control = (id: number, content: BlockContent[]): BlockContent => ({
+    type: "blockSdt",
+    properties: { sdtType: "richText", id },
+    content,
+  });
+  const breaks = (document: Document) =>
+    storyParagraphs(document.package.document).filter(
+      ({ paragraph: located }) => located.sectionProperties !== undefined,
+    ).length;
+
+  // Range boundaries after a paragraph that ends a section stand where it
+  // meets the paragraph past them: deleting it takes its break, and its
+  // tracked deletion records the mark deleted with the break on it.
+  test.each([
+    { name: "the paragraph past them", ids: ["00000002"] },
+    {
+      name: "the paragraph past them, with the one before",
+      ids: ["00000001", "00000002"],
+    },
+  ])("a section-ending paragraph before boundaries joins $name", ({ ids }) => {
+    const document = documentOf([
+      paragraph("00000001", "first"),
+      sectioned("00000002", "ends a section"),
+      opening,
+      paragraph("00000003", "next"),
+      closing,
+      paragraph("00000004", "final"),
+    ]);
+    const { tracked, direct } = assertLaws(document, deletion(ids));
+    expect(breaks(tracked.document)).toBe(1);
+    expect(breaks(direct.document)).toBe(0);
+    const joined = direct.document.package.document.content.find(
+      (block) => block.type === "paragraph" && block.paraId === "00000003",
+    );
+    if (joined?.type !== "paragraph")
+      throw new TypeError("The paragraph past the boundaries stays.");
+    expect(joined.content.at(0)).toEqual(opening);
+  });
+
+  test.each([
+    {
+      name: "the container's end",
+      content: [
+        paragraph("00000001", "first"),
+        sectioned("00000002", "ends a section"),
+        opening,
+        closing,
+      ],
+    },
+    {
+      name: "a block content control",
+      content: [
+        paragraph("00000001", "first"),
+        sectioned("00000002", "ends a section"),
+        opening,
+        control(5, [paragraph("00000003", "inside")]),
+        paragraph("00000004", "final"),
+        closing,
+      ],
+    },
+    {
+      name: "the next paragraph, in a block content control",
+      content: [
+        control(5, [
+          sectioned("00000002", "ends a section"),
+          opening,
+          paragraph("00000003", "next"),
+          closing,
+        ]),
+        paragraph("00000004", "final"),
+      ],
+    },
+    {
+      name: "a table",
+      content: [
+        paragraph("00000001", "first"),
+        sectioned("00000002", "ends a section"),
+        opening,
+        cell([paragraph("00000003", "cell")]),
+        paragraph("00000004", "final"),
+        closing,
+      ],
+    },
+  ])(
+    "a section-ending paragraph before boundaries and $name meets the laws",
+    ({ content }) => {
+      assertLaws(documentOf(content), deletion(["00000002"]));
+    },
+  );
+
+  // Resolving the mark of a paragraph before a block, in a container that
+  // ends with a block, keeps the paragraph: deleting it empties it in place,
+  // as one ending its container, and the tracked deletion records only its
+  // words.
+  test.each([
+    {
+      name: "a body ending with a block content control",
+      content: [
+        paragraph("00000009", "first"),
+        paragraph("00000008", "joined"),
+        paragraph("00000001", "kept"),
+        control(5, [paragraph("00000003", "inside")]),
+      ],
+    },
+    {
+      name: "a block content control ending with another",
+      content: [
+        control(5, [
+          paragraph("00000008", "joined"),
+          paragraph("00000001", "kept"),
+          control(6, [paragraph("00000003", "inside")]),
+        ]),
+        paragraph("00000002", "final"),
+      ],
+    },
+    {
+      name: "a body ending with a preserved block",
+      content: [
+        paragraph("00000009", "first"),
+        paragraph("00000008", "joined"),
+        paragraph("00000001", "kept"),
+        { type: "preservedBlock", xml: "<w:altChunk/>" },
+      ],
+    },
+    {
+      name: "a section-ending paragraph before a block that ends the body",
+      content: [
+        paragraph("00000009", "first"),
+        paragraph("00000008", "joined"),
+        sectioned("00000001", "kept"),
+        control(5, [paragraph("00000003", "inside")]),
+      ],
+    },
+  ])(
+    "in $name, the paragraph before the block keeps its place",
+    ({ content }) => {
+      for (const ids of [["00000001"], ["00000008", "00000001"]]) {
+        const document = documentOf(content);
+        const { tracked, direct } = assertLaws(document, deletion(ids));
+        const kept = storyParagraphs(direct.document.package.document).find(
+          ({ paragraph: located }) => located.paraId === "00000001",
+        )?.paragraph;
+        if (kept === undefined)
+          throw new TypeError("The paragraph before the block stays.");
+        expect(kept.content).toEqual([]);
+        expect(
+          storyParagraphs(direct.document.package.document).some(
+            ({ paragraph: located }) => located.paraId === "00000008",
+          ),
+        ).toBe(!ids.includes("00000008"));
+        const marked = storyParagraphs(tracked.document.package.document).find(
+          ({ paragraph: located }) => located.paraId === "00000001",
+        )?.paragraph;
+        expect(marked?.pPrMark).toBeUndefined();
+        expect(breaks(direct.document)).toBe(breaks(document));
+      }
+    },
+  );
+});
+
 // A content control in a deleted paragraph is deleted whole with it: tracked,
 // the deletion holds it, accepting removes it as the direct deletion does, and
 // rejecting gives it back.
