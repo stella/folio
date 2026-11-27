@@ -4,7 +4,7 @@ import * as UTIF from "utif2";
 import {
   configureTiffDecoding,
   convertTiffToPngDataUrl,
-  TIFF_PLACEHOLDER_DATA_URL,
+  TIFF_PLACEHOLDER_SVG,
 } from "./tiffConverter";
 import {
   decodeFirstTiffImage,
@@ -86,9 +86,7 @@ describe("convertTiffToPngDataUrl", () => {
     }
   });
 
-  test("the placeholder is an image source a painter accepts", () => {
-    expect(TIFF_PLACEHOLDER_DATA_URL.startsWith("data:image/svg+xml,")).toBe(
-      true,
-    );
+  test("the placeholder is a drawing that fills the image frame", () => {
+    expect(TIFF_PLACEHOLDER_SVG).toContain('preserveAspectRatio="none"');
   });
 });

@@ -58,7 +58,7 @@ import {
   convertTiffToPngDataUrl,
   isTiffMimeType,
   MAX_PACKAGE_TIFF_PIXELS,
-  TIFF_PLACEHOLDER_DATA_URL,
+  TIFF_PLACEHOLDER_SVG,
 } from "../utils/tiffConverter";
 import {
   ALT_CHUNK_PLAIN_TEXT_LIMIT_BYTES,
@@ -153,6 +153,7 @@ import {
   createPackagePreviewBudget,
   type PreviewBudgetOverrides,
   type PreviewLedger,
+  svgPreviewDataUrl,
 } from "./previewBudget";
 import { detectRasterMimeType } from "./rasterMime";
 import {
@@ -1313,7 +1314,7 @@ async function buildMediaMap(
         filename,
         mimeType,
         data,
-        dataUrl: TIFF_PLACEHOLDER_DATA_URL,
+        dataUrl: svgPreviewDataUrl(TIFF_PLACEHOLDER_SVG),
       };
       media.set(path, mediaFile);
       const normalizedPath = path.replace(/^word\//u, "");

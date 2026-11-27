@@ -64,9 +64,8 @@ export const configureTiffDecoding = (options: TiffDecodingOptions): void => {
  * image's frame, in place of the browser's broken-image icon. The package
  * keeps the TIFF itself.
  */
-export const TIFF_PLACEHOLDER_DATA_URL = `data:image/svg+xml,${encodeURIComponent(
-  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" preserveAspectRatio="none"><rect width="100" height="100" fill="#f1f3f4" stroke="#c4c7c5" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>',
-)}`;
+export const TIFF_PLACEHOLDER_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" preserveAspectRatio="none"><rect width="100" height="100" fill="#f1f3f4" stroke="#c4c7c5" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>';
 
 export function isTiffMimeType(mimeType: string): boolean {
   const lower = mimeType.toLowerCase();
