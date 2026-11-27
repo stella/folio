@@ -524,8 +524,7 @@ export const nestedTableMoveSource = (
       tableProperties.carrierStack !== undefined ||
       reachesPastRemovedCell(tableProperties) ||
       (geometry?.type === "mergeCells" &&
-        (geometry.nestedMoves !== undefined ||
-          !tableMoveOwnershipMatches(candidate, geometry))) ||
+        !tableMoveOwnershipMatches(candidate, geometry)) ||
       rows.length === 0
     )
       return false;
@@ -804,6 +803,8 @@ const withNestedMoveIdentities = (
   };
   const grid = table.formatting?.gridChange;
   const gridId = grid === undefined ? undefined : ids.revisions.get(grid.id);
+  const revisionId = (id: number) => ids.revisions.get(id) ?? id;
+  const paragraphId = (id: string) => ids.paragraphs.get(idKey(id)) ?? id;
   const rewriteResources = (
     pairs: MoveResourcePairs,
     aliases: ReadonlyMap<number, number>,
@@ -814,18 +815,16 @@ const withNestedMoveIdentities = (
     );
   const rewriteMove = (move: TableGeometryMove): TableGeometryMove => {
     const addresses = {
-      source: ids.paragraphs.get(idKey(move.source)) ?? move.source,
-      destination:
-        ids.paragraphs.get(idKey(move.destination)) ?? move.destination,
-      destinationMark:
-        ids.revisions.get(move.destinationMark) ?? move.destinationMark,
+      source: paragraphId(move.source),
+      destination: paragraphId(move.destination),
+      destinationMark: revisionId(move.destinationMark),
     };
     if (move.kind === "empty") return { ...addresses, kind: "empty" };
     return {
       ...move,
       ...addresses,
-      fromRevision: ids.revisions.get(move.fromRevision) ?? move.fromRevision,
-      toRevision: ids.revisions.get(move.toRevision) ?? move.toRevision,
+      fromRevision: revisionId(move.fromRevision),
+      toRevision: revisionId(move.toRevision),
       fromRange: ids.ranges.get(move.fromRange)?.id ?? move.fromRange,
       toRange: ids.ranges.get(move.toRange)?.id ?? move.toRange,
       ...(move.controls === undefined
@@ -836,28 +835,67 @@ const withNestedMoveIdentities = (
         : { pictures: rewriteResources(move.pictures, ids.pictures) }),
     };
   };
+  const rewriteRanges = (ranges: TableMoveRanges): TableMoveRanges => {
+    const from = ids.ranges.get(ranges.fromRange);
+    const to = ids.ranges.get(ranges.toRange);
+    return {
+      fromRange: from?.id ?? ranges.fromRange,
+      toRange: to?.id ?? ranges.toRange,
+      name: from?.name ?? to?.name ?? ranges.name,
+    };
+  };
+  const rewriteNested = (
+    move: TableGeometryNestedMove,
+  ): TableGeometryNestedMove => ({
+    rows: move.rows.map(revisionId),
+    paragraphs: move.paragraphs.map(([from, to]) => [
+      paragraphId(from),
+      paragraphId(to),
+    ]),
+    ...(move.omittedTable === undefined
+      ? {}
+      : {
+          omittedTable: [
+            revisionId(move.omittedTable[0]),
+            revisionId(move.omittedTable[1]),
+          ] as const,
+        }),
+    ...(move.revisions === undefined
+      ? {}
+      : { revisions: rewriteResources(move.revisions, ids.revisions) }),
+    ...(move.controls === undefined
+      ? {}
+      : { controls: rewriteResources(move.controls, ids.controls) }),
+    ...(move.pictures === undefined
+      ? {}
+      : { pictures: rewriteResources(move.pictures, ids.pictures) }),
+    ...(move.moveRanges === undefined
+      ? {}
+      : {
+          moveRanges: move.moveRanges.map(
+            ([from, to]) => [rewriteRanges(from), rewriteRanges(to)] as const,
+          ),
+        }),
+  });
   const geometry = grid?.geometryChange;
   const rewrittenGeometry =
     geometry === undefined
       ? undefined
       : {
           ...geometry,
-          revisionIds: geometry.revisionIds.map(
-            (id) => ids.revisions.get(id) ?? id,
-          ),
+          revisionIds: geometry.revisionIds.map(revisionId),
           ...(geometry.type !== "mergeCells"
             ? {}
             : {
                 ...(geometry.moves === undefined
                   ? {}
                   : { moves: geometry.moves.map(rewriteMove) }),
+                ...(geometry.nestedMoves === undefined
+                  ? {}
+                  : { nestedMoves: geometry.nestedMoves.map(rewriteNested) }),
                 ...(geometry.emptyOwner === undefined
                   ? {}
-                  : {
-                      emptyOwner:
-                        ids.paragraphs.get(idKey(geometry.emptyOwner)) ??
-                        geometry.emptyOwner,
-                    }),
+                  : { emptyOwner: paragraphId(geometry.emptyOwner) }),
               }),
         };
   return {

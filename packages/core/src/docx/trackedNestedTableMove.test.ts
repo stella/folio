@@ -774,9 +774,15 @@ test.each([
   },
 );
 
-test.each(["deleteColumn", "mergeCells", "merge with moved words"] as const)(
+test.each([
+  "deleteColumn",
+  "mergeCells",
+  "merge with moved words",
+  "merge with a nested move",
+] as const)(
   "a moved nested table keeps its earlier grouped geometry actionable (%s)",
   (kind) => {
+    const innermostRevision = 51;
     const inner = {
       type: "table",
       columnWidths: [700, 900],
@@ -795,6 +801,27 @@ test.each(["deleteColumn", "mergeCells", "merge with moved words"] as const)(
           cells: [
             cell(paragraph("00000004", "Removed")),
             cell(
+              ...(kind === "merge with a nested move"
+                ? [
+                    {
+                      type: "table",
+                      formatting: { justification: "center" },
+                      propertyChanges: [
+                        {
+                          type: "tablePropertyChange",
+                          info: { id: innermostRevision, author: "Earlier" },
+                          previousFormatting: { justification: "left" },
+                        },
+                      ],
+                      rows: [
+                        {
+                          type: "tableRow",
+                          cells: [cell(paragraph("00000009", "Innermost"))],
+                        },
+                      ],
+                    } satisfies Table,
+                  ]
+                : []),
               ...(kind === "merge with moved words"
                 ? [paragraph("00000008")]
                 : []),
@@ -931,6 +958,39 @@ test.each(["deleteColumn", "mergeCells", "merge with moved words"] as const)(
       earlier,
     );
     let earlierRevision = priorCopy[1];
+    if (kind === "merge with a nested move") {
+      const priorMove =
+        prior.geometryChange.type === "mergeCells"
+          ? prior.geometryChange.nestedMoves?.at(0)
+          : undefined;
+      const earlierCopy = priorMove?.revisions?.find(
+        ([id]) => id === innermostRevision,
+      );
+      const latestCopy =
+        earlierCopy === undefined ? undefined : members.get(earlierCopy[1]);
+      if (latestCopy === undefined)
+        throw new TypeError("Expected the innermost revision's copied record.");
+      for (const decision of [
+        REVISION_DECISIONS.ACCEPT,
+        REVISION_DECISIONS.REJECT,
+      ]) {
+        const settled = reopen(resolve(reopened, [latestCopy], decision));
+        const innerCopies = nestedTables(settled).flatMap((item) =>
+          item.rows.flatMap(({ cells }) =>
+            cells.flatMap(({ content }) =>
+              content.filter((block) => block.type === "table"),
+            ),
+          ),
+        );
+        expect(innerCopies).toHaveLength(4);
+        for (const table of innerCopies) {
+          expect(table.propertyChanges).toBeUndefined();
+          expect(table.formatting?.justification).toBe(
+            decision === REVISION_DECISIONS.ACCEPT ? "center" : "left",
+          );
+        }
+      }
+    }
     if (kind === "merge with moved words") {
       const ranges = nestedMove?.moveRanges?.at(0);
       if (nestedMove === undefined || ranges === undefined)
