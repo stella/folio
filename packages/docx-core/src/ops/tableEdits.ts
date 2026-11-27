@@ -2575,9 +2575,10 @@ const suggestMerge = ({
     }
     target.push(block);
   };
-  const takeMoveRange = moves.some(
-    (move) =>
-      move.type === "paragraph" && move.source.paragraph.content.length !== 0,
+  const takeMoveRange = moves.some((move) =>
+    move.type === "paragraph"
+      ? move.source.paragraph.content.length !== 0
+      : move.source.ranges.length !== 0,
   )
     ? moveRangeAllocator(document.package)
     : undefined;
@@ -2611,12 +2612,24 @@ const suggestMerge = ({
       const endStamp = nextStamp + source.insertedRows;
       const endRevisions = endStamp + source.revisions.length;
       const endAnchors = endRevisions + source.omittedAnchorCount;
+      const moveRanges = [];
+      for (const original of source.ranges) {
+        const temporary = takeMoveRange?.();
+        if (temporary === undefined)
+          return refuse({
+            op,
+            reason: DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
+            message: "The move range identity space is exhausted.",
+          });
+        moveRanges.push([original, temporary] as const);
+      }
       const nested = markNestedTableMove({
         source,
         destinations: op.newBlockIds.slice(nextBlockId, endBlockId),
         rowStamps: moveStamps.slice(nextStamp, endStamp),
         recordStamps: moveStamps.slice(endStamp, endRevisions),
         anchorStamps: moveStamps.slice(endRevisions, endAnchors),
+        moveRanges,
         controls,
         pictures,
       });

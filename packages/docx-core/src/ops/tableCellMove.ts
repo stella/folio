@@ -23,6 +23,7 @@ import {
   type TableGeometryMove,
   type TableGeometryNestedMove,
   type TableGridChange,
+  type TableMoveRanges,
 } from "../model/formatting";
 import {
   nestedTableCopyByAnchors,
@@ -35,7 +36,7 @@ import {
   resolveNamespaceUri,
   XML_NAMESPACE_URI,
 } from "../xml/xmlNamespaceContext";
-import { blockListEndsInParagraph } from "./blocks";
+import { blockListEndsInParagraph, storyParagraphs } from "./blocks";
 import { structurallyEqual } from "./equality";
 import {
   IDENTITY_SPACES,
@@ -71,6 +72,7 @@ export type NestedTableMoveSource = {
   table: Table;
   paragraphs: string[];
   revisions: number[];
+  ranges: TableMoveRanges[];
   insertedRows: number;
   omittedAnchorCount: 0 | 2;
   controls: number[];
@@ -472,6 +474,8 @@ export const nestedTableMoveSource = (
 ): NestedTableMoveSource | undefined => {
   const paragraphs: string[] = [];
   const revisions: number[] = [];
+  const ranges: TableMoveRanges[] = [];
+  const earlierMoves = new Map<string, TableGeometryMove>();
   const gridMembers: number[] = [];
   const controls = new Set<number>();
   const pictures = new Set<number>();
@@ -497,7 +501,8 @@ export const nestedTableMoveSource = (
   ) => {
     for (const { info } of changes ?? []) revisions.push(info.id);
   };
-  const collect = ({ rows, ...tableProperties }: Table): boolean => {
+  const collect = (candidate: Table): boolean => {
+    const { rows, ...tableProperties } = candidate;
     const grid = tableProperties.formatting?.gridChange;
     const geometry = grid?.geometryChange;
     if (
@@ -505,15 +510,25 @@ export const nestedTableMoveSource = (
       tableProperties.carrierStack !== undefined ||
       reachesPastRemovedCell(tableProperties) ||
       (geometry?.type === "mergeCells" &&
-        (geometry.moves !== undefined ||
-          geometry.nestedMoves !== undefined ||
-          geometry.emptyOwner !== undefined)) ||
+        (geometry.nestedMoves !== undefined ||
+          !tableMoveOwnershipMatches(candidate, geometry))) ||
       rows.length === 0
     )
       return false;
     if (grid !== undefined) {
       revisions.push(grid.id);
       for (const id of geometry?.revisionIds ?? []) gridMembers.push(id);
+    }
+    if (geometry?.type === "mergeCells") {
+      for (const move of geometry.moves ?? []) {
+        if (
+          move.kind !== "empty" &&
+          (move.controls !== undefined || move.pictures !== undefined)
+        )
+          return false;
+        earlierMoves.set(idKey(move.source), move);
+        earlierMoves.set(idKey(move.destination), move);
+      }
     }
     collectProperties(tableProperties.propertyChanges);
     return rows.every((row) => {
@@ -580,8 +595,48 @@ export const nestedTableMoveSource = (
       );
     }
     if (block.type !== "paragraph") return false;
-    const source = tableMoveSource(block);
+    const move =
+      block.paraId === undefined
+        ? undefined
+        : earlierMoves.get(idKey(block.paraId));
+    let plain = block;
+    if (move !== undefined) {
+      const { pPrMark, ...paragraph } = block;
+      if (pPrMark !== undefined) {
+        if (idKey(block.paraId ?? "") !== idKey(move.destination)) return false;
+        revisions.push(pPrMark.info.id);
+      }
+      plain = paragraph;
+      if (move.kind !== "empty") {
+        const [start, tracked, end] = block.content;
+        if (
+          (start?.type !== "moveFromRangeStart" &&
+            start?.type !== "moveToRangeStart") ||
+          (tracked?.type !== "moveFrom" && tracked?.type !== "moveTo") ||
+          (end?.type !== "moveFromRangeEnd" &&
+            end?.type !== "moveToRangeEnd") ||
+          start.copyOriginAncestors !== undefined ||
+          end.copyOriginAncestors !== undefined ||
+          tracked.resolutionJoins !== undefined
+        )
+          return false;
+        revisions.push(tracked.info.id);
+        if (start.type === "moveFromRangeStart")
+          ranges.push({
+            fromRange: move.fromRange,
+            toRange: move.toRange,
+            name: start.name,
+          });
+        plain = { ...paragraph, content: tracked.content };
+      }
+    }
+    const source = tableMoveSource(plain);
     if (source === undefined) return false;
+    if (
+      move !== undefined &&
+      (source.controls.length > 0 || source.pictures.size > 0)
+    )
+      return false;
     paragraphs.push(source.id);
     for (const id of source.controls) controls.add(id);
     for (const id of source.pictures) {
@@ -610,6 +665,7 @@ export const nestedTableMoveSource = (
         table,
         paragraphs,
         revisions,
+        ranges,
         controls: [...controls],
         pictures,
         insertedRows,
@@ -624,6 +680,22 @@ type NestedMoveIdentities = {
   revisions: ReadonlyMap<number, number>;
   controls: ReadonlyMap<number, number>;
   pictures: ReadonlyMap<number, number>;
+  ranges: ReadonlyMap<number, { id: number; name: string }>;
+};
+
+type NestedMoveRanges = NonNullable<TableGeometryNestedMove["moveRanges"]>;
+const nestedMoveRangeMap = (
+  pairs: NestedMoveRanges,
+  reverse: boolean,
+): NestedMoveIdentities["ranges"] => {
+  const map = new Map<number, { id: number; name: string }>();
+  for (const [original, temporary] of pairs) {
+    const before = reverse ? temporary : original;
+    const after = reverse ? original : temporary;
+    map.set(before.fromRange, { id: after.fromRange, name: after.name });
+    map.set(before.toRange, { id: after.toRange, name: after.name });
+  }
+  return map;
 };
 
 const withNestedMoveIdentities = (
@@ -660,6 +732,25 @@ const withNestedMoveIdentities = (
       ? record
       : { ...record, info: { ...record.info, id } };
   };
+  const rewriteMoveContent = (content: ParagraphContent): ParagraphContent => {
+    switch (content.type) {
+      case "moveFrom":
+      case "moveTo":
+        return restamp(content);
+      case "moveFromRangeStart":
+      case "moveToRangeStart": {
+        const range = ids.ranges.get(content.id);
+        return range === undefined ? content : { ...content, ...range };
+      }
+      case "moveFromRangeEnd":
+      case "moveToRangeEnd": {
+        const range = ids.ranges.get(content.id);
+        return range === undefined ? content : { ...content, id: range.id };
+      }
+      default:
+        return content;
+    }
+  };
   const rewrite = (block: BlockContent): BlockContent => {
     if (block.type === "table") return withNestedMoveIdentities(block, ids);
     if (block.type === "blockCustomXml")
@@ -678,8 +769,14 @@ const withNestedMoveIdentities = (
       : {
           ...block,
           paraId,
+          ...(block.pPrMark === undefined
+            ? {}
+            : { pPrMark: restamp(block.pPrMark) }),
           content: withMoveIdentities({
-            content: block.content,
+            content:
+              ids.ranges.size === 0
+                ? block.content
+                : block.content.map(rewriteMoveContent),
             controls: ids.controls,
             pictures: ids.pictures,
           }),
@@ -687,6 +784,48 @@ const withNestedMoveIdentities = (
   };
   const grid = table.formatting?.gridChange;
   const gridId = grid === undefined ? undefined : ids.revisions.get(grid.id);
+  const rewriteMove = (move: TableGeometryMove): TableGeometryMove => {
+    const addresses = {
+      source: ids.paragraphs.get(idKey(move.source)) ?? move.source,
+      destination:
+        ids.paragraphs.get(idKey(move.destination)) ?? move.destination,
+      destinationMark:
+        ids.revisions.get(move.destinationMark) ?? move.destinationMark,
+    };
+    if (move.kind === "empty") return { ...addresses, kind: "empty" };
+    return {
+      ...move,
+      ...addresses,
+      fromRevision: ids.revisions.get(move.fromRevision) ?? move.fromRevision,
+      toRevision: ids.revisions.get(move.toRevision) ?? move.toRevision,
+      fromRange: ids.ranges.get(move.fromRange)?.id ?? move.fromRange,
+      toRange: ids.ranges.get(move.toRange)?.id ?? move.toRange,
+    };
+  };
+  const geometry = grid?.geometryChange;
+  const rewrittenGeometry =
+    geometry === undefined
+      ? undefined
+      : {
+          ...geometry,
+          revisionIds: geometry.revisionIds.map(
+            (id) => ids.revisions.get(id) ?? id,
+          ),
+          ...(geometry.type !== "mergeCells"
+            ? {}
+            : {
+                ...(geometry.moves === undefined
+                  ? {}
+                  : { moves: geometry.moves.map(rewriteMove) }),
+                ...(geometry.emptyOwner === undefined
+                  ? {}
+                  : {
+                      emptyOwner:
+                        ids.paragraphs.get(idKey(geometry.emptyOwner)) ??
+                        geometry.emptyOwner,
+                    }),
+              }),
+        };
   return {
     ...table,
     ...(grid === undefined || gridId === undefined
@@ -697,16 +836,9 @@ const withNestedMoveIdentities = (
             gridChange: {
               ...grid,
               id: gridId,
-              ...(grid.geometryChange !== undefined
-                ? {
-                    geometryChange: {
-                      ...grid.geometryChange,
-                      revisionIds: grid.geometryChange.revisionIds.map(
-                        (id) => ids.revisions.get(id) ?? id,
-                      ),
-                    },
-                  }
-                : {}),
+              ...(rewrittenGeometry === undefined
+                ? {}
+                : { geometryChange: rewrittenGeometry }),
             },
           },
         }),
@@ -759,6 +891,7 @@ type MarkNestedTableMoveOptions = {
   rowStamps: readonly RevisionStamp[];
   recordStamps: readonly RevisionStamp[];
   anchorStamps: readonly RevisionStamp[];
+  moveRanges: NestedMoveRanges;
   controls: readonly (readonly [number, number])[];
   pictures: readonly (readonly [number, number])[];
 };
@@ -789,6 +922,7 @@ export const markNestedTableMove = ({
   rowStamps,
   recordStamps,
   anchorStamps,
+  moveRanges,
   controls,
   pictures,
 }: MarkNestedTableMoveOptions): MarkedNestedTableMove | undefined => {
@@ -821,6 +955,7 @@ export const markNestedTableMove = ({
     revisions: new Map(revisions),
     controls: new Map(controls),
     pictures: new Map(pictures),
+    ranges: nestedMoveRangeMap(moveRanges, false),
   });
   let nextStamp = 0;
   const rows = table.rows.map((row) => {
@@ -852,13 +987,13 @@ export const markNestedTableMove = ({
         ? {}
         : { omittedTable: [from.id, to.id] as const }),
       ...(revisions.length === 0 ? {} : { revisions }),
+      ...(moveRanges.length === 0 ? {} : { moveRanges }),
       ...(controls.length === 0 ? {} : { controls }),
       ...(pictures.length === 0 ? {} : { pictures }),
     } satisfies TableGeometryNestedMove,
   };
 };
 
-type TableMoveRanges = { fromRange: number; toRange: number; name: string };
 type MarkTableMoveOptions = {
   source: TableMoveSource;
   destination: string;
@@ -1044,6 +1179,80 @@ type MergeGeometry = Extract<
   { type: "mergeCells" }
 >;
 
+const nestedRangeStarts = (table: Table) => {
+  const starts = new Map<
+    number,
+    {
+      type: "moveFromRangeStart" | "moveToRangeStart";
+      name: string;
+      paragraph: string;
+    }
+  >();
+  for (const { paragraph } of storyParagraphs({ content: [table] })) {
+    const start = paragraph.content.at(0);
+    if (
+      paragraph.paraId !== undefined &&
+      (start?.type === "moveFromRangeStart" ||
+        start?.type === "moveToRangeStart")
+    )
+      starts.set(start.id, {
+        type: start.type,
+        name: start.name,
+        paragraph: idKey(paragraph.paraId),
+      });
+  }
+  return starts;
+};
+
+type NestedRangeOwnershipOptions = {
+  source: Table;
+  target: Table;
+  paragraphs: readonly (readonly [string, string])[];
+  ranges: NestedMoveRanges;
+};
+const nestedRangeOwnershipMatches = ({
+  source,
+  target,
+  paragraphs,
+  ranges,
+}: NestedRangeOwnershipOptions): boolean => {
+  const original = nestedRangeStarts(source);
+  const copies = nestedRangeStarts(target);
+  if (original.size !== copies.size) return false;
+  const ids = new Map(paragraphs);
+  for (const [from, to] of ranges) {
+    const originalFrom = original.get(from.fromRange);
+    const originalTo = original.get(from.toRange);
+    const copyFrom = copies.get(to.fromRange);
+    const copyTo = copies.get(to.toRange);
+    if (
+      originalFrom === undefined &&
+      originalTo === undefined &&
+      copyFrom === undefined &&
+      copyTo === undefined
+    )
+      continue;
+    if (
+      originalFrom?.type !== "moveFromRangeStart" ||
+      originalTo?.type !== "moveToRangeStart" ||
+      copyFrom?.type !== "moveFromRangeStart" ||
+      copyTo?.type !== "moveToRangeStart" ||
+      originalFrom.name !== from.name ||
+      originalTo.name !== from.name ||
+      copyFrom.name !== to.name ||
+      copyTo.name !== to.name ||
+      ids.get(originalFrom.paragraph) !== copyFrom.paragraph ||
+      ids.get(originalTo.paragraph) !== copyTo.paragraph
+    )
+      return false;
+    original.delete(from.fromRange);
+    original.delete(from.toRange);
+    copies.delete(to.fromRange);
+    copies.delete(to.toRange);
+  }
+  return original.size === 0 && copies.size === 0;
+};
+
 /** Check the move's saved anchors against the native records in this merge. */
 export const tableMoveOwnershipMatches = (
   table: Table,
@@ -1060,7 +1269,7 @@ export const tableMoveOwnershipMatches = (
   const destinations = new Map<string, Paragraph>();
   const destinationTables = new Set<Table>();
   const movedRows = new Map<number, Table>();
-  const nestedSources = new Map<string, string[]>();
+  const nestedSources = new Map<string, { table: Table; ids: string[] }>();
   const sourceOmittedTables = new Map<number, Table>();
   const targetOmittedTables = new Map<number, Table>();
   const collectMovedTables = (
@@ -1077,7 +1286,8 @@ export const tableMoveOwnershipMatches = (
           );
         if (side === "source") {
           const ids = paragraphIdsIn(block).map(idKey);
-          for (const id of ids) nestedSources.set(id, ids);
+          const source = { table: block, ids };
+          for (const id of ids) nestedSources.set(id, source);
           continue;
         }
         destinationTables.add(block);
@@ -1198,17 +1408,23 @@ export const tableMoveOwnershipMatches = (
     if (destinationIds.length !== pairs.length) return false;
     const firstSource = pairs.at(0)?.at(0);
     if (firstSource !== undefined) {
-      const sourceIds = nestedSources.get(firstSource);
+      const source = nestedSources.get(firstSource);
       if (
-        sourceIds?.length !== pairs.length ||
-        claimedSources.has(sourceIds) ||
+        source?.ids.length !== pairs.length ||
+        claimedSources.has(source.ids) ||
         pairs.some(
           ([from, to], index) =>
-            sourceIds[index] !== from || destinationIds[index] !== to,
-        )
+            source.ids[index] !== from || destinationIds[index] !== to,
+        ) ||
+        !nestedRangeOwnershipMatches({
+          source: source.table,
+          target: destination,
+          paragraphs: pairs,
+          ranges: move.moveRanges ?? [],
+        })
       )
         return false;
-      claimedSources.add(sourceIds);
+      claimedSources.add(source.ids);
     }
     nestedTables.add(destination);
   }
@@ -1464,6 +1680,7 @@ export const resolveTableMoves = ({
                       old,
                     ]),
                   ),
+                  ranges: nestedMoveRangeMap(record.moveRanges ?? [], true),
                 });
                 const stamps = new Set(record.rows);
                 placed.rows = placed.rows.map((child) => {

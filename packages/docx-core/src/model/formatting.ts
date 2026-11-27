@@ -599,6 +599,13 @@ export type TableGeometryMove = {
 /** Upper bound for generated inline drawing IDs in DOCX. */
 export const MAX_TABLE_PICTURE_ID = 2_147_483_646;
 
+/** Native move-range records share a name between the source and destination. */
+export type TableMoveRanges = {
+  readonly fromRange: number;
+  readonly toRange: number;
+  readonly name: string;
+};
+
 /** Native table-row records and stable paragraph identities for a nested move. */
 export type TableGeometryNestedMove = {
   readonly rows: readonly number[];
@@ -608,6 +615,11 @@ export type TableGeometryNestedMove = {
   readonly omittedTable?: readonly [number, number];
   /** Authored table revisions paired with their temporary copies. */
   readonly revisions?: readonly (readonly [number, number])[];
+  /** Authored inner paragraph moves paired with their temporary range identities. */
+  readonly moveRanges?: readonly (readonly [
+    TableMoveRanges,
+    TableMoveRanges,
+  ])[];
   /** Authored content-control IDs paired with temporary destination IDs. */
   readonly controls?: readonly (readonly [number, number])[];
   /** Authored drawing IDs paired with temporary destination IDs. */

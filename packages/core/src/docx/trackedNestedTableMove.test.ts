@@ -774,7 +774,7 @@ test.each([
   },
 );
 
-test.each(["deleteColumn", "mergeCells"] as const)(
+test.each(["deleteColumn", "mergeCells", "merge with moved words"] as const)(
   "a moved nested table keeps its earlier grouped geometry actionable (%s)",
   (kind) => {
     const inner = {
@@ -797,7 +797,7 @@ test.each(["deleteColumn", "mergeCells"] as const)(
             cell(
               paragraph(
                 "00000007",
-                kind === "deleteColumn" ? "Survivor" : undefined,
+                kind === "mergeCells" ? undefined : "Survivor",
               ),
             ),
           ],
@@ -882,16 +882,20 @@ test.each(["deleteColumn", "mergeCells"] as const)(
       kind === "deleteColumn" ? deletion : innerMerge,
     );
     const prior = nestedTables(earlier).at(0)?.formatting?.gridChange;
-    if (prior?.geometryChange?.type !== kind)
+    if (
+      prior?.geometryChange?.type !==
+      (kind === "deleteColumn" ? kind : "mergeCells")
+    )
       throw new TypeError("Expected earlier grid geometry.");
 
     const moved = suggest(earlier, merge);
     const reopened = reopen(moved);
     const outer = tableOf(reopened).formatting?.gridChange;
-    const aliases =
+    const nestedMove =
       outer?.geometryChange?.type === "mergeCells"
-        ? outer.geometryChange.nestedMoves?.at(0)?.revisions
+        ? outer.geometryChange.nestedMoves?.at(0)
         : undefined;
+    const aliases = nestedMove?.revisions;
     const priorCopy = aliases?.find(([original]) => original === prior.id);
     if (outer === undefined || aliases === undefined || priorCopy === undefined)
       throw new TypeError("Expected grid geometry handoffs.");
@@ -923,6 +927,44 @@ test.each(["deleteColumn", "mergeCells"] as const)(
     expect(resolve(moved, [outer.id], REVISION_DECISIONS.REJECT)).toStrictEqual(
       earlier,
     );
+    if (kind === "merge with moved words") {
+      const ranges = nestedMove?.moveRanges?.at(0);
+      if (nestedMove === undefined || ranges === undefined)
+        throw new TypeError("Expected tracked paragraph range handoffs.");
+      const [authored, temporary] = ranges;
+      expect(
+        new Set([
+          authored.fromRange,
+          authored.toRange,
+          temporary.fromRange,
+          temporary.toRange,
+        ]).size,
+      ).toBe(4);
+      expect(authored.name).not.toBe(temporary.name);
+      const changed = structuredClone(reopened);
+      const grid = tableOf(changed).formatting?.gridChange;
+      const geometry = grid?.geometryChange;
+      if (grid === undefined || geometry?.type !== "mergeCells")
+        throw new TypeError("Expected enclosing merge geometry.");
+      grid.geometryChange = {
+        ...geometry,
+        nestedMoves: [
+          {
+            ...nestedMove,
+            moveRanges: [[{ ...authored, name: "PeerMove" }, temporary]],
+          },
+        ],
+      };
+      const wrongName = applyDocumentOp(changed, {
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story: OP_STORIES.MAIN,
+        revisionIds: [outer.id],
+        decision: REVISION_DECISIONS.ACCEPT,
+      });
+      expect(wrongName.isErr() && wrongName.error.reason).toBe(
+        DOCUMENT_OP_REFUSAL_REASONS.STALE,
+      );
+    }
     for (const decision of [
       REVISION_DECISIONS.ACCEPT,
       REVISION_DECISIONS.REJECT,
@@ -943,6 +985,22 @@ test.each(["deleteColumn", "mergeCells"] as const)(
       expect(projection(tableOf(restored))).toEqual(
         projection(tableOf(expected)),
       );
+      for (const placement of [
+        REVISION_DECISIONS.ACCEPT,
+        REVISION_DECISIONS.REJECT,
+      ]) {
+        const first = reopen(resolve(reopened, [outer.id], placement));
+        const completed = resolve(first, [prior.id], decision);
+        expect(projection(tableOf(completed))).toEqual(
+          projection(
+            tableOf(
+              placement === REVISION_DECISIONS.ACCEPT
+                ? directMerge(expected)
+                : expected,
+            ),
+          ),
+        );
+      }
       const together = resolve(reopened, [outer.id, prior.id], decision);
       expect(projection(tableOf(together))).toEqual(
         projection(
