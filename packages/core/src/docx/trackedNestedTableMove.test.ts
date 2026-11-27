@@ -9,6 +9,7 @@ import {
   DOCUMENT_OP_TYPES,
   OP_STORIES,
   REVISION_DECISIONS,
+  type TableIntentOperation,
 } from "@stll/docx-core/ops";
 
 import { getTrackedChangeGroupsForIds } from "../ai-edits/read";
@@ -343,7 +344,9 @@ test.each([
       const doc = toProseDoc(withTable(parsed), {
         tableReviewGeometry: "physical",
       });
-      expect(getTrackedChangeGroupsForIds(doc, [44]).at(0)).toEqual(deletion);
+      expect(getTrackedChangeGroupsForIds(doc, [44]).at(0)).toEqual([
+        ...deletion,
+      ]);
       const descriptor = {
         type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
         story: OP_STORIES.MAIN,
@@ -786,10 +789,7 @@ test.each(["deleteColumn", "mergeCells"] as const)(
       right: 2,
     } as const;
     const innerMerge = { ...merge, blockId: "00000004", top: 1, bottom: 2 };
-    const suggest = (
-      document: Document,
-      operation: typeof deletion | typeof merge,
-    ) => {
+    const suggest = (document: Document, operation: TableIntentOperation) => {
       const intent = { type: "table", operation } as const;
       const { revisionId, newIds } = createEditorIntentIdAllocator()(
         document,
