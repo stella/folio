@@ -569,8 +569,8 @@ const resolveCellColumns = ({
     if (layout === undefined) return Result.err("unsupported");
     if (layout.emptied) continue;
     const cells: TableCell[] = [];
-    // Columns a removed cell held that other rows keep, waiting for the
-    // next kept cell when nothing before it in the row can take them.
+    // Columns still occupied in other rows can move to the following cell
+    // when the previous cell cannot grow without changing its merge.
     let carried = 0;
     let omittedBefore = 0;
     let omittedAfter = 0;
@@ -599,8 +599,8 @@ const resolveCellColumns = ({
         }
         const widened = widen(previous, kept);
         if (widened === undefined) {
-          if (index < lastKept) return Result.err("unsupported");
-          omittedAfter += kept;
+          if (index < lastKept) carried += kept;
+          else omittedAfter += kept;
           continue;
         }
         cells[cells.length - 1] = widened;
@@ -618,7 +618,10 @@ const resolveCellColumns = ({
       }
       // A kept cell holds no column every row loses.
       const widened = widen(next, carried);
-      if (widened === undefined) omittedBefore = carried;
+      if (widened === undefined) {
+        if (cells.length !== 0) return Result.err("unsupported");
+        omittedBefore = carried;
+      }
       carried = 0;
       cells.push(widened ?? next);
     }

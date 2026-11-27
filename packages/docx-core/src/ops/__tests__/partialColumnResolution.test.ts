@@ -138,8 +138,8 @@ describe("rejecting the rest of a partly accepted column insertion", () => {
   });
 });
 
-test.each(["before", "after"] as const)(
-  "partly rejecting cell insertion records leaves a grid omission %s a vertical merge",
+test.each(["before", "after", "interior"] as const)(
+  "partly rejecting cell insertion records preserves the vertical merge (%s)",
   (edge) => {
     assertProperty(
       fc.property(
@@ -149,6 +149,7 @@ test.each(["before", "after"] as const)(
           const grid = edge === "before" ? "gridBefore" : "gridAfter";
           const width = edge === "before" ? "widthBefore" : "widthAfter";
           const omitted = measurement === "unset" ? 0 : 1;
+          const hasNextCell = edge === "interior";
           const rowFormatting =
             measurement === "unset"
               ? undefined
@@ -156,7 +157,7 @@ test.each(["before", "after"] as const)(
           const table: Table = {
             type: "table",
             columnWidths: Array.from(
-              { length: span + 1 + omitted },
+              { length: span + 1 + omitted + Number(hasNextCell) },
               (_, slot) => 300 + slot * 100,
             ),
             rows: [0, 1, 2].map((row) => {
@@ -174,9 +175,12 @@ test.each(["before", "after"] as const)(
                       },
                     }),
               };
+              const cells =
+                edge === "before" ? [added, merged] : [merged, added];
+              if (hasNextCell) cells.push(cell(`0000${row}0C0`));
               const result: TableRow = {
                 type: "tableRow",
-                cells: edge === "before" ? [added, merged] : [merged, added],
+                cells,
               };
               if (rowFormatting !== undefined)
                 result.formatting = rowFormatting;
@@ -196,25 +200,28 @@ test.each(["before", "after"] as const)(
           }).unwrap();
           const resolved = tableOf(settled.document);
           expect(resolved.columnWidths).toEqual(table.columnWidths);
-          const settledFormatting = {
-            ...rowFormatting,
-            [grid]: omitted + span,
-          };
+          const settledFormatting = hasNextCell
+            ? rowFormatting
+            : { ...rowFormatting, [grid]: omitted + span };
           expect(resolved.rows.map((row) => row.formatting)).toEqual([
             settledFormatting,
             settledFormatting,
             rowFormatting,
           ]);
+          const widenedFollowing = hasNextCell ? [{ gridSpan: span + 1 }] : [];
+          const retainedRow =
+            edge === "before"
+              ? [{ gridSpan: span }, undefined]
+              : [undefined, { gridSpan: span }];
+          if (hasNextCell) retainedRow.push(undefined);
           expect(
             resolved.rows.map(({ cells }) =>
               cells.map(({ formatting }) => formatting),
             ),
           ).toEqual([
-            [{ vMerge: "restart" }],
-            [{ vMerge: "continue" }],
-            edge === "before"
-              ? [{ gridSpan: span }, undefined]
-              : [undefined, { gridSpan: span }],
+            [{ vMerge: "restart" }, ...widenedFollowing],
+            [{ vMerge: "continue" }, ...widenedFollowing],
+            retainedRow,
           ]);
           expect(tableGrid(resolved, DOCUMENT_OP_TYPES.SET_TABLE).isOk()).toBe(
             true,
@@ -226,7 +233,7 @@ test.each(["before", "after"] as const)(
         },
       ),
       {
-        id: `partly rejecting cell insertion records leaves a ${edge} grid omission`,
+        id: `partly rejecting cell insertion records preserves the vertical merge (${edge})`,
       },
     );
   },
