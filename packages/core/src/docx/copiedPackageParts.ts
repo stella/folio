@@ -292,8 +292,8 @@ export const storyPartPath = (
   story: OpStory,
 ): string | undefined => {
   if (story === OP_STORIES.MAIN) return MAIN_DOCUMENT_PART;
-  if (story.kind === "footnote") return "word/footnotes.xml";
-  if (story.kind === "endnote") return "word/endnotes.xml";
+  if (story.kind === "footnote" || story.kind === "endnote")
+    return `word/${story.kind}s.xml`;
   const relationship = document.package.relationships?.get(story.rId);
   return relationship === undefined || relationship.targetMode === "External"
     ? undefined

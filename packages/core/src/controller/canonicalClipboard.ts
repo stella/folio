@@ -1019,7 +1019,11 @@ type PrepareCanonicalPasteOptions = {
  * come with it: a clipboard from outside the editor, or a copy whose source
  * package could not be read.
  */
-export const CANONICAL_PASTE_WARNING_CODES = {
+export const CANONICAL_PASTE_WARNING_CODES: {
+  readonly keptMarkupAsPicture: "kept-markup-as-picture";
+  readonly keptMarkupAsText: "kept-markup-as-text";
+  readonly keptMarkupDropped: "kept-markup-dropped";
+} = {
   /** A drawing or embedded object pasted as the picture that previews it. */
   keptMarkupAsPicture: "kept-markup-as-picture",
   /** Kept block markup pasted as the paragraphs of text it holds. */
