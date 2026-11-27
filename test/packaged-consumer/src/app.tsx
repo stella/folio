@@ -26,6 +26,7 @@ import {
   canPrefetchMeasurement,
   prefetchMeasurement,
 } from "@stll/folio-core/layout-engine/measure/measureWorker";
+import { convertTiffToPngDataUrl } from "@stll/folio-core/utils/tiffConverter";
 import { DocxEditor } from "@stll/folio-react";
 import type { DocxEditorRef } from "@stll/folio-react";
 import { getFolioMessages } from "@stll/folio-react/messages";
@@ -112,12 +113,29 @@ async function measureRoundTrip(): Promise<{ width: number; alive: boolean }> {
   );
 }
 
+// Decode a two-pixel TIFF through the packaged decoding worker, which the
+// production build must emit with its decoder and the browser must spawn.
+async function convertTiff(): Promise<{
+  dataUrl: string;
+  pixels: number;
+} | null> {
+  const response = await fetch("/two-pixels.tif");
+  if (!response.ok) {
+    throw new Error(`TIFF fixture fetch failed: HTTP ${response.status}`);
+  }
+  const converted = await convertTiffToPngDataUrl(await response.arrayBuffer());
+  return converted === null
+    ? null
+    : { dataUrl: converted.dataUrl, pixels: converted.pixels };
+}
+
 declare global {
   var __folioFeatureFlags: { workerFontMetrics?: boolean } | undefined;
   var __folioSmoke:
     | {
         getEditorRef: () => DocxEditorRef | null;
         measureRoundTrip: () => Promise<{ width: number; alive: boolean }>;
+        convertTiff: typeof convertTiff;
         projectFixture: () => Promise<DocxProjectionWire>;
         projectionSchemaVersion: typeof docxProjectionSchemaVersion;
         hostEditor: typeof hostEditor;
@@ -152,6 +170,7 @@ function App() {
     globalThis.__folioSmoke = {
       getEditorRef: () => editorRef.current,
       measureRoundTrip,
+      convertTiff,
       projectFixture: () => {
         if (projectionPromise === undefined) {
           throw new Error("DOCX projection has not started");

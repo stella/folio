@@ -161,17 +161,18 @@ const measure = async (adapter: Adapter): Promise<Metrics> => {
         metrics.docxOps += input.bytesInOutput;
     }
   }
-  // Hyphenation patterns are data files fetched when a document needs them;
-  // no chunk, eager or lazy, may carry a pattern set.
+  // Hyphenation patterns are data files and the TIFF decoder loads with its
+  // worker, both fetched when a document needs them; no chunk, eager or lazy,
+  // may carry either.
   for (const output of Object.values(buildResult.metafile.outputs)) {
     for (const [source, input] of Object.entries(output.inputs)) {
-      if (
-        source.includes("node_modules/hyphen/patterns/") &&
-        input.bytesInOutput > 0
-      )
+      if (input.bytesInOutput === 0) continue;
+      if (source.includes("node_modules/hyphen/patterns/"))
         throw new Error(
           `${packageName} bundled hyphenation patterns (${source})`,
         );
+      if (source.includes("node_modules/utif2/"))
+        throw new Error(`${packageName} bundled the TIFF decoder (${source})`);
     }
   }
   if (metrics.docxOps === 0)
