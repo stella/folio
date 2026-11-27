@@ -231,6 +231,58 @@ const insertionOracle = (table: Table, column: number, firstId: number) => {
 };
 
 describe("independent table forward oracles", () => {
+  test.each(["accept", "reject"] as const)(
+    "a geometry group ignores a revision on another table (%s)",
+    (decision) => {
+      const table: Table = {
+        type: "table",
+        columnWidths: [1200, 1200],
+        rows: [
+          { type: "tableRow", cells: [cell(10, 2)] },
+          { type: "tableRow", cells: [cell(20), cell(21)] },
+        ],
+      };
+      const pending = applyDocumentOp(documentOf(table), {
+        type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
+        ...address(targetOf(table)),
+        column: 0,
+        revision: {
+          id: 100_000,
+          author: "Reviewer",
+          date: "2026-11-26T00:00:00Z",
+        },
+        newIds: { revision: [100_001, 100_002, 100_003] },
+      }).unwrap().document;
+      const tracked = tableOf(pending);
+      const grid = tracked.formatting?.gridChange;
+      const group = grid?.geometryChange;
+      if (grid === undefined || group === undefined)
+        throw new Error("Fixture geometry missing.");
+      const foreignId = 200_000;
+      grid.geometryChange = {
+        ...group,
+        revisionIds: [...group.revisionIds, foreignId],
+      };
+      pending.package.document.content.splice(-1, 0, {
+        type: "table",
+        columnWidths: [2400],
+        formatting: { gridChange: { id: foreignId, columnWidths: [1800] } },
+        rows: [{ type: "tableRow", cells: [cell(30)] }],
+      });
+
+      const resolved = applyDocumentOp(pending, {
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story: OP_STORIES.MAIN,
+        revisionIds: [foreignId],
+        decision,
+      }).unwrap().document;
+      expect(tableOf(resolved)).toStrictEqual(tracked);
+      const foreign = resolved.package.document.content.at(-2);
+      if (foreign?.type !== "table") throw new Error("Fixture table missing.");
+      expect(foreign.formatting?.gridChange).toBeUndefined();
+    },
+  );
+
   test(
     "column edits preserve every surviving slot, including vertical owners, spans, omissions and nested contents",
     () => {

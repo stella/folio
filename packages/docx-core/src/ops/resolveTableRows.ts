@@ -76,8 +76,12 @@ export const withBelongingTableGeometry = (
     const grid = table.formatting?.gridChange;
     const members = grid?.geometryChange?.revisionIds;
     if (grid === undefined || !Array.isArray(members)) continue;
-    if (!ids.has(grid.id) && !members.some((id) => ids.has(id))) continue;
     const local = reachableOnTable(table);
+    if (
+      !ids.has(grid.id) &&
+      !members.some((id) => local.has(id) && ids.has(id))
+    )
+      continue;
     ids.add(grid.id);
     for (const id of members) if (local.has(id)) ids.add(id);
   }
