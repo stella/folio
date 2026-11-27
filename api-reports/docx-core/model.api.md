@@ -231,6 +231,9 @@ export const COUNTER_FORMATS: readonly ["decimal", "upperRoman", "lowerRoman", "
 // @public (undocumented)
 export type CounterFormat = (typeof COUNTER_FORMATS)[number];
 
+// @public (undocumented)
+export const declaredUnmeasuredColumnCount: (unmeasuredColumnCount: number | undefined) => number | undefined;
+
 // @public
 export type DeepReadonly<Value> = Value extends ((...args: never[]) => unknown) ? Value : Value extends ArrayBuffer ? Value : Value extends Date ? ReadonlyDate : Value extends ReadonlyMap<infer Key, infer Entry> ? ReadonlyMap<DeepReadonly<Key>, DeepReadonly<Entry>> : Value extends ReadonlySet<infer Entry> ? ReadonlySet<DeepReadonly<Entry>> : Value extends readonly (infer Element)[] ? readonly DeepReadonly<Element>[] : Value extends object ? { readonly [Key in keyof Value]: DeepReadonly<Value[Key]>; } : Value;
 
@@ -740,6 +743,9 @@ export const IMPORTED_ID_COLLISION_KINDS: {
 
 // @public (undocumented)
 export type ImportedIdCollisionKind = (typeof IMPORTED_ID_COLLISION_KINDS)[keyof typeof IMPORTED_ID_COLLISION_KINDS];
+
+// @public (undocumented)
+export const inferredTableColumnCount: ({ rows, }: Pick<Table, "rows">) => number;
 
 // @public
 export type InlineSdt = WritableRecord & {
@@ -1881,6 +1887,7 @@ export type SpacingExplicit = WritableRecord & {
 export const statedTableColumnWidths: (input: {
     columnWidths?: readonly number[];
     omittedColumnWidthIndices?: readonly number[];
+    unmeasuredColumnCount?: number;
 }) => (number | undefined)[] | undefined;
 
 // @public
@@ -1956,6 +1963,7 @@ export type Table = WritableRecord & {
     propertyChanges?: TablePropertyChange[];
     columnWidths?: number[];
     omittedColumnWidthIndices?: number[];
+    unmeasuredColumnCount?: number;
     rows: TableRow[];
     preserved?: TablePreservedMarkup;
     bookmarks?: PositionedBookmarkMarker[];
@@ -2030,7 +2038,7 @@ export type TableCellPropertyChange = WritableRecord & {
 };
 
 // @public
-export const tableColumnWidthFields: (stated: readonly (number | undefined)[]) => TableColumnWidths;
+export const tableColumnWidthFields: (stated: readonly (number | undefined)[], inferColumnCount?: () => number) => TableColumnWidths;
 
 // @public
 export type TableContentCarrier = WritableRecord & ({
