@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "title": "PINNED #1842, fingerprint 1a88266b1f7c0f08: a comment on the paragraph another reviewer joins an inserted paragraph into quotes that paragraph's own words",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "trackedChanges",
+  "mode": "tracked-changes",
+  "seed": 22650019,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 1,
+      "operations": [
+        {
+          "type": "splitBlock",
+          "blockId": "31617F9A",
+          "offset": 10
+        }
+      ],
+      "atomic": true
+    },
+    {
+      "action": "story batch",
+      "seed": 1612296950,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "@6",
+          "text": "Schedule term goods term written goods schedule warranty."
+        }
+      ]
+    },
+    {
+      "action": "new reviewer",
+      "seed": 3947816039
+    },
+    {
+      "action": "story batch",
+      "seed": 1484414556,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "@6",
+          "separator": " "
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 1860485438,
+      "operations": [
+        {
+          "type": "commentOnRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "@7",
+            "startOffset": 7,
+            "endOffset": 10,
+            "selectedTextHash": "h37734t"
+          },
+          "comment": {
+            "text": "Warranty period payment warranty notice written."
+          }
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from swap+splice of f0908062b4005987"
+}
