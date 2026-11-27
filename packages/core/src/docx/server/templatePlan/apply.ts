@@ -8,7 +8,7 @@ import { Result } from "better-result";
 import { ZipArchive } from "@stll/docx-core/zip";
 
 import { registerContentTypeParts } from "../../contentTypeRegistry";
-import { RELATIONSHIP_TYPES } from "../../relsParser";
+import { RELATIONSHIP_TYPES, resolveRelativePath } from "../../relsParser";
 import { getLocalName, NAMESPACES, type XmlElement } from "../../xmlParser";
 import { appendToXmlRoot } from "../../xmlRootInsertion";
 import {
@@ -55,6 +55,11 @@ import {
   resolvePlan,
 } from "./plan";
 import { readStoryResources } from "./resources";
+import {
+  copyPartContent,
+  type HeaderFamily,
+  plannedHeaderWrites,
+} from "./sourceHeaders";
 import type {
   ApplyTemplatePlanArgs,
   ApplyTemplatePlanResult,
@@ -87,6 +92,12 @@ import {
 } from "./xml";
 
 const CONTENT_TYPES_PATH = "[Content_Types].xml";
+const FAMILY_CONTENT_TYPES: Record<HeaderFamily, string> = {
+  header:
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml",
+  footer:
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml",
+};
 const WORDPROCESSINGML_CONTENT_TYPE_PREFIX =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.";
 const RELATIONSHIPS_NAMESPACE =
@@ -818,6 +829,83 @@ const writeOutput = async ({
           template.body,
           bodySection,
         );
+  // The source's headers and footers: their content appended to the
+  // template's for the same pages, or held by a new part every section
+  // names where the template has none for those pages.
+  const carriedParts: {
+    family: HeaderFamily;
+    path: string;
+    /** Null for a part the template holds; its markup is appended. */
+    createdXml: string | null;
+    markup: string;
+    relationships: RelationshipsEditor;
+  }[] = [];
+  const sectionReferences = [...inherited];
+  if (plan.sourceHeaders === "keep") {
+    const planned = await plannedHeaderWrites(source, template);
+    if (Result.isError(planned)) {
+      return planned;
+    }
+    const { w, wUri, r } = documentPrefixes;
+    for (const write of planned.value.writes) {
+      let path = write.templatePath;
+      if (path === null) {
+        let index = 1;
+        const free = (candidate: string): boolean =>
+          !pkg.paths.has(candidate) &&
+          carriedParts.every((carried) => carried.path !== candidate);
+        while (!free(`${documentDirectory}${write.family}${index}.xml`)) {
+          index += 1;
+        }
+        path = `${documentDirectory}${write.family}${index}.xml`;
+        const id = documentRelationships.add({
+          type: RELATIONSHIP_TYPES[write.family],
+          target: `${write.family}${index}.xml`,
+          external: false,
+        });
+        sectionReferences.push(
+          `<${w}:${write.family}Reference ${w}:type="${write.kind}" ${r}:id="${escapeXmlAttribute(id)}"/>`,
+        );
+      }
+      const relationshipsPath = relationshipsPathFor(path);
+      const existing =
+        write.templatePath === null || !pkg.paths.has(relationshipsPath)
+          ? Result.ok(null)
+          : await readTemplateText(relationshipsPath);
+      if (Result.isError(existing)) {
+        return existing;
+      }
+      const relationships = createRelationshipsEditor(
+        relationshipsPath,
+        existing.value,
+      );
+      if (relationships === null) {
+        return Result.err(
+          unreadable(relationshipsPath, "A relationships part is not one."),
+        );
+      }
+      const copy = await copyPartContent(write.source, {
+        relationships,
+        addMedia: shared.addMedia,
+        nextDrawingId: shared.nextDrawingId,
+        readSourceBytes: async (target) => await source.pkg.readBytes(target),
+        resolveSourceTarget: (fromPart, target) =>
+          resolveRelativePath(relationshipsPathFor(fromPart), target),
+        hasStyle: (styleId) => template.styles.has(styleId),
+      });
+      const root = write.family === "header" ? "hdr" : "ftr";
+      carriedParts.push({
+        family: write.family,
+        path,
+        createdXml:
+          write.templatePath === null
+            ? `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><${w}:${root} xmlns:${w}="${wUri}" xmlns:${r}="${NAMESPACES.r}">${copy.markup}</${w}:${root}>`
+            : null,
+        markup: copy.markup,
+        relationships,
+      });
+    }
+  }
   const sectionEnds = resolved.items.flatMap((item) =>
     item.kind === "paragraph" && item.paragraph.endsSection !== null
       ? [item.paragraph]
@@ -837,7 +925,7 @@ const writeOutput = async ({
               first: position === 0,
               page: section.page,
               start: position === 0 ? null : (section.start ?? "nextPage"),
-              inherited,
+              inherited: sectionReferences,
             },
           );
     if (xml === null) {
@@ -997,7 +1085,7 @@ const writeOutput = async ({
     const { lastSection } = plan;
     const split = sectionEnds.length > 0 || lastSection !== undefined;
     const rebuilt =
-      split || inherited.length > 0
+      split || sectionReferences.length > 0
         ? sectionPropertiesXml(
             template.document.xml,
             bodySection,
@@ -1007,7 +1095,7 @@ const writeOutput = async ({
               page: lastSection?.page,
               start:
                 sectionEnds.length === 0 ? null : (lastSection?.start ?? null),
-              inherited,
+              inherited: sectionReferences,
             },
           )
         : null;
@@ -1128,6 +1216,14 @@ const writeOutput = async ({
       }),
     );
   }
+  for (const { family, path, createdXml } of carriedParts) {
+    if (createdXml !== null) {
+      newContentTypes.push({
+        partName: `/${path}`,
+        contentType: FAMILY_CONTENT_TYPES[family],
+      });
+    }
+  }
   for (const { path, media: item } of media.values()) {
     parts.set(path, item.bytes);
     newContentTypes.push({
@@ -1209,6 +1305,44 @@ const writeOutput = async ({
         );
       }
       parts.set(part.path, frozen);
+    }
+  }
+
+  for (const { path, createdXml, markup, relationships } of carriedParts) {
+    let xml = createdXml;
+    if (xml === null) {
+      const part = headerFooterParts.find(
+        (candidate) => candidate.path === path,
+      );
+      const current = parts.get(path);
+      if (part === undefined) {
+        return Result.err(
+          unreadable(
+            path,
+            "A header or footer could not be read to append to.",
+          ),
+        );
+      }
+      xml = appendToXmlRoot(typeof current === "string" ? current : part.xml, {
+        rootName: part.root.name ?? "",
+        markup,
+      });
+    }
+    // A carried field of a kind the plan freezes is frozen as well.
+    const written = readRawPart(path, xml);
+    const frozen =
+      written === null || resolved.freezeKinds.size === 0
+        ? xml
+        : spliceXml(xml, freezeFields(written, resolved.freezeKinds).splices);
+    if (written === null || frozen === null) {
+      return Result.err(
+        unreadable(path, "A header or footer could not be written."),
+      );
+    }
+    parts.set(path, frozen);
+    const relationshipsXml = relationships.xml();
+    if (relationshipsXml !== null) {
+      parts.set(relationships.path, relationshipsXml);
     }
   }
 

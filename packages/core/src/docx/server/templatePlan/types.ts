@@ -802,6 +802,43 @@ export type TemplatePlan = {
    * anything is never touched. `keep` writes those parts as they are.
    */
   textEffects?: "normalize" | "keep";
+  /**
+   * What becomes of the source's page headers and footers. `drop`, the
+   * default, gives the output the template's alone. `keep` adds the
+   * content of those the source's first section shows (text, tables,
+   * pictures, fields) after the template's own content, in the header or
+   * footer that shows on the same pages (first page, other pages, even
+   * pages); where the template has none for those pages a new part holds
+   * it. The report says where each went and what had no place.
+   */
+  sourceHeaders?: "drop" | "keep";
+};
+
+/** What the output's headers and footers carry of the source's, and what
+ *  had no place. */
+export type TemplatePlanSourceHeaders = {
+  /** Each output header or footer that took a source part's content.
+   *  `created` when the template had none for those pages. */
+  kept: {
+    family: "header" | "footer";
+    kind: "first" | "default" | "even";
+    part: string;
+    paragraphs: number;
+    created: boolean;
+  }[];
+  /** Counts of source parts and objects the output does not carry. */
+  leftOut: {
+    /** Parts only the source's first page shows, where the output shows
+     *  its first page as the others. */
+    firstPageParts: number;
+    /** The same for even pages. */
+    evenPageParts: number;
+    /** Parts for a header or footer whose template part serves other
+     *  pages that take other content. */
+    sharedParts: number;
+    /** Blocks that refer to an embedded object other than a picture. */
+    unsupportedObjects: number;
+  };
 };
 
 export type TemplatePlanEffectCount = {
@@ -898,6 +935,7 @@ export type TemplatePlanIssue = {
     | "revision-left"
     | "section-mismatch"
     | "template-mismatch"
+    | "header-mismatch"
     | "prompting-field-left"
     | "field-not-frozen"
     | "update-fields-mismatch"
@@ -993,6 +1031,8 @@ export type TemplatePlanReport = {
     left: TemplatePlanEffectCount[];
   };
   updateFields: "set" | "cleared" | "unchanged";
+  /** Present when the plan keeps the source's headers and footers. */
+  sourceHeaders?: TemplatePlanSourceHeaders;
   conformance: {
     status: "conformant" | "invalid" | "indeterminate";
     /** The template's own status; the output may not be worse. */
