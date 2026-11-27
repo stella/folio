@@ -22,6 +22,7 @@
     "hooks:install": "lefthook install",
     "hooks:uninstall": "lefthook uninstall",
     "audit": "bun scripts/audit.ts",
+    "check:pr-guards": "bun scripts/check-pr-guards.ts",
     "check:parity-contract": "node scripts/check-parity-contract.mjs",
     "check:export-parity": "node scripts/check-export-parity.mjs",
     "check:react-compiler": "bun scripts/react-compiler-bailouts.ts --check",

@@ -15,9 +15,16 @@
  *   bun scripts/identity-attribute-baseline.ts                  report per file
  *   bun scripts/identity-attribute-baseline.ts --write-baseline regenerate baseline
  *   bun scripts/identity-attribute-baseline.ts --check          CI gate
+ *   ... --check --files <path>...                               only these files
  */
 
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -38,7 +45,7 @@ type Diagnostic = { code?: unknown; filename?: unknown };
  * oxlint's JSON report goes to a file, not a pipe: a piped stdout truncates
  * around 768 KiB and the report is bigger than that when other rules fire.
  */
-const lintReport = (): string => {
+const lintReport = (targets: readonly string[]): string => {
   const directory = mkdtempSync(
     path.join(tmpdir(), "folio-identity-attributes-"),
   );
@@ -53,7 +60,7 @@ const lintReport = (): string => {
         LINT_CONFIG,
         "--format",
         "json",
-        "packages",
+        ...targets,
       ],
       { cwd: REPO_ROOT, stdout: Bun.file(reportPath), stderr: "pipe" },
     );
@@ -111,7 +118,42 @@ const modeFromArgv = (): "check" | "report" | "write" => {
 
 const mode = modeFromArgv();
 
-const current = countsByFile(lintReport());
+/**
+ * `--files <path>...` checks only these repository files against their own
+ * baseline entries, for a run over the files a change touches. A listed file
+ * that no longer exists holds none.
+ */
+const scopeFromArgv = (): readonly string[] | undefined => {
+  const index = process.argv.indexOf("--files");
+  if (index === -1) {
+    return undefined;
+  }
+  return process.argv
+    .slice(index + 1)
+    .map((file) => file.replaceAll("\\", "/"));
+};
+
+const scope = scopeFromArgv();
+
+if (scope !== undefined && mode === "write") {
+  console.error("--files checks part of the baseline; it cannot write it.");
+  process.exit(2);
+}
+
+const LINTED_SOURCE = /\.(?:[cm]?[jt]sx?)$/u;
+
+const lintTargets =
+  scope === undefined
+    ? ["packages"]
+    : scope.filter(
+        (file) =>
+          file.startsWith("packages/") &&
+          LINTED_SOURCE.test(file) &&
+          existsSync(path.join(REPO_ROOT, file)),
+      );
+
+const current =
+  lintTargets.length === 0 ? {} : countsByFile(lintReport(lintTargets));
 
 if (mode === "write") {
   writeFileSync(BASELINE_PATH, `${JSON.stringify(current, null, 2)}\n`);
@@ -131,10 +173,16 @@ if (mode === "report") {
   process.exit(0);
 }
 
-const baseline = JSON.parse(readFileSync(BASELINE_PATH, "utf8")) as Record<
+const fullBaseline = JSON.parse(readFileSync(BASELINE_PATH, "utf8")) as Record<
   string,
   number
 >;
+const baseline =
+  scope === undefined
+    ? fullBaseline
+    : Object.fromEntries(
+        Object.entries(fullBaseline).filter(([file]) => scope.includes(file)),
+      );
 const failures: string[] = [];
 
 for (const [file, count] of Object.entries(current)) {

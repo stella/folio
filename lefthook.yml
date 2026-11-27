@@ -1,4 +1,4 @@
-# Opt-in pre-commit hooks.
+# Opt-in pre-commit and pre-push hooks.
 # To activate: bun run hooks:install
 # To deactivate: bun run hooks:uninstall
 #
@@ -27,6 +27,13 @@ pre-commit:
       glob: "packages/core/src/i18n/messages/*.{json,ts}"
       run: bun run i18n:sync
       stage_fixed: true
+
+pre-push:
+  commands:
+    pr-guards:
+      # The source guards pull-request CI runs, over the files the branch
+      # touches against origin/main: a few seconds, not a CI round trip.
+      run: bun run check:pr-guards
 
 # Heavy checks run in CI. Use the repository scripts when you want to run
 # lint, typecheck, tests, builds, or full formatting locally before pushing.
