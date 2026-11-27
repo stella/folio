@@ -512,8 +512,15 @@ describe("a contents list over paragraphs under review", () => {
       resolved.package.document.content.find(
         (block) => block.type === "paragraph" && block.paraId === "00000002",
       );
-    const bookmarked = {
-      ...document.package.document.content[1],
+    const [intro, headingBlock, body] = document.package.document.content;
+    if (
+      intro === undefined ||
+      body === undefined ||
+      headingBlock?.type !== "paragraph"
+    )
+      throw new TypeError("The fixture is intro, heading and body");
+    const bookmarked: Paragraph = {
+      ...headingBlock,
       content: [
         { type: "bookmarkStart", id: 1, name: "_Toc1" },
         ...headingContent,
@@ -533,7 +540,6 @@ describe("a contents list over paragraphs under review", () => {
       suggested.revisions,
       REVISION_DECISIONS.REJECT,
     );
-    const [intro, , body] = document.package.document.content;
     expect(rejected.document.package.document.content).toStrictEqual([
       intro,
       bookmarked,
