@@ -2044,6 +2044,10 @@ export type TableFormatting = WritableRecord & {
 export type TableGridChange = WritableRecord & {
     id: number;
     columnWidths: readonly (number | undefined)[];
+    geometryChange?: {
+        readonly type: "deleteColumn" | "mergeCells";
+        readonly revisionIds: readonly number[];
+    };
 };
 
 // @public
@@ -2144,6 +2148,9 @@ export type TableStructuralChangeInfo = WritableRecord & ({
 
 // @public
 export type TableWidthType = "auto" | "dxa" | "nil" | "pct";
+
+// @public
+export const tableWithPhysicalColumns: (table: Table) => Table;
 
 // @public
 export type TabStop = WritableRecord & {

@@ -763,6 +763,7 @@ export type ToProseDocOptions = {
     theme?: DeepReadonly<import__stll_docx_core_model.Theme> | null;
     warn?: ParseContext["warn"];
     blockCache?: ProjectionBlockCache;
+    tableReviewGeometry?: "physical";
     textBoxGroupSalt?: string;
 };
 
