@@ -34,7 +34,12 @@ import {
   tableMoveRevisionIds,
 } from "./tableCellMove";
 import { editRemovesRow, type TableGrid, tableGrid } from "./tableGrid";
-import { locateTableRow, tableRowAnchor } from "./tableLocation";
+import {
+  locateTableRow,
+  tableBlockLocation,
+  tableContainerEdit,
+  tableRowAnchor,
+} from "./tableLocation";
 import { CELL_GRID_FIELDS, restatedCell } from "./tablePropertyGeometry";
 import {
   removalOrphansAMerge,
@@ -1171,6 +1176,36 @@ const marksInRemovedStructure = (
   return [...settled.values()];
 };
 
+type ReplaceUnaddressedTableOptions = {
+  document: Document;
+  op: ResolveRevisionOp;
+  source: Table;
+  table: Table | undefined;
+};
+const replaceUnaddressedTable = ({
+  document,
+  op,
+  source,
+  table,
+}: ReplaceUnaddressedTableOptions): Result<DocumentOp, DocumentOpRefusal> => {
+  const body = storyBody(document, op.story);
+  const location = tableBlockLocation(body, source);
+  const replacement =
+    location === undefined
+      ? undefined
+      : tableContainerEdit({ body, story: op.story, location, table });
+  return replacement === undefined
+    ? Result.err(
+        new DocumentOpRefusal({
+          opType: op.type,
+          reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+          message:
+            "Review requires a surviving paragraph to address the table.",
+        }),
+      )
+    : Result.ok(replacement);
+};
+
 export const resolveTableRows = ({
   document,
   op,
@@ -1207,22 +1242,18 @@ export const resolveTableRows = ({
     )
       continue;
     const blockId = tableRowAnchor(originalTable.rows);
-    if (blockId === undefined)
-      return Result.err(
-        refusal(op, "The table has no paragraph that can address its rows."),
-      );
-    const target = {
-      type: DOCUMENT_OP_TYPES.SET_TABLE_ROWS,
-      story: op.story,
-      blockId,
-      expected: originalTable.rows,
-      rows: originalTable.rows,
-    } as const;
-    const located = locateTableRow(current, target);
+    const located =
+      blockId === undefined
+        ? Result.ok(originalTable)
+        : locateTableRow(current, {
+            type: DOCUMENT_OP_TYPES.SET_TABLE_ROWS,
+            story: op.story,
+            blockId,
+          }).map(({ table }) => table);
     if (located.isErr()) return Result.err(located.error);
     // A row the decision takes out hands the merges it starts to the next
     // row, as removing it directly does, so a merged cell keeps its content.
-    const table = located.value.table;
+    const table = located.value;
     const rows = [...table.rows];
     let rowIndex = 0;
     while (rowIndex < rows.length) {
@@ -1255,15 +1286,23 @@ export const resolveTableRows = ({
           "A removed row hands the merges it starts to the next row with their content.",
         ),
       );
-    const applied = applyOps(current, [
-      {
-        type: DOCUMENT_OP_TYPES.SET_TABLE_ROWS,
-        story: op.story,
-        blockId,
-        expected: located.value.table.rows,
-        rows,
-      },
-    ]);
+    const replacement =
+      blockId === undefined
+        ? replaceUnaddressedTable({
+            document: current,
+            op,
+            source: table,
+            table: rows.length === 0 ? undefined : { ...table, rows },
+          })
+        : Result.ok({
+            type: DOCUMENT_OP_TYPES.SET_TABLE_ROWS,
+            story: op.story,
+            blockId,
+            expected: table.rows,
+            rows,
+          } as const);
+    if (replacement.isErr()) return Result.err(replacement.error);
+    const applied = applyOps(current, [replacement.value]);
     if (applied.isErr()) return Result.err(applied.error);
     edits.push(applied.value);
     current = applied.value.document;
@@ -1273,24 +1312,19 @@ export const resolveTableRows = ({
     const originalIds = reachableOnTable(originalTable);
     if (![...originalIds].some((id) => ids.has(id))) continue;
     const blockId = tableRowAnchor(originalTable.rows);
-    if (blockId === undefined)
-      return Result.err(
-        refusal(
-          op,
-          "The table has no paragraph that can address its review records.",
-        ),
-      );
-    const target = {
-      type: DOCUMENT_OP_TYPES.SET_TABLE,
-      story: op.story,
-      blockId,
-    } as const;
-    const located = locateTableRow(current, target);
+    const located =
+      blockId === undefined
+        ? Result.ok(originalTable)
+        : locateTableRow(current, {
+            type: DOCUMENT_OP_TYPES.SET_TABLE,
+            story: op.story,
+            blockId,
+          }).map(({ table }) => table);
     if (located.isErr()) return Result.err(located.error);
-    const table = located.value.table;
+    const table = located.value;
     // A decision that takes every cell away takes the table with them, as
     // removing its last row does; no grid is left to describe.
-    if (removesEveryCell({ table, ids, reject })) {
+    if (blockId !== undefined && removesEveryCell({ table, ids, reject })) {
       const applied = applyOps(current, [
         {
           type: DOCUMENT_OP_TYPES.SET_TABLE_ROWS,
@@ -1344,15 +1378,23 @@ export const resolveTableRows = ({
         ? { freshCellRevisions: new Set(geometry.revisionIds) }
         : {}),
     });
-    const applied = applyOps(current, [
-      {
-        type: DOCUMENT_OP_TYPES.SET_TABLE,
-        story: op.story,
-        blockId,
-        expected: table,
-        table: nextTable,
-      },
-    ]);
+    const replacement =
+      blockId === undefined
+        ? replaceUnaddressedTable({
+            document: current,
+            op,
+            source: table,
+            table: nextTable,
+          })
+        : Result.ok({
+            type: DOCUMENT_OP_TYPES.SET_TABLE,
+            story: op.story,
+            blockId,
+            expected: table,
+            table: nextTable,
+          } as const);
+    if (replacement.isErr()) return Result.err(replacement.error);
+    const applied = applyOps(current, [replacement.value]);
     if (applied.isErr()) return Result.err(applied.error);
     edits.push(applied.value);
     current = applied.value.document;

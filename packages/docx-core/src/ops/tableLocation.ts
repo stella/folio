@@ -21,7 +21,7 @@ import {
 import { idKey } from "./ids";
 import { itemBefore } from "./listItems";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
-import { OP_STORIES } from "./types";
+import { DOCUMENT_OP_TYPES, OP_STORIES } from "./types";
 import type {
   DeleteRowOp,
   DeleteTableOp,
@@ -29,6 +29,7 @@ import type {
   InsertRowOp,
   InsertTableOp,
   OpStory,
+  SetContainerBlocksOp,
   SetTableOp,
   SetTableRowsOp,
   TableEditOp,
@@ -54,9 +55,12 @@ type TableTarget =
       blockId: string;
     };
 
-export type TableRowLocation = {
+type TableBlockLocation = {
   list: ParagraphLocation["list"];
   index: number;
+};
+
+export type TableRowLocation = TableBlockLocation & {
   rowIndex: number;
   cellIndex: number;
   table: Table;
@@ -98,6 +102,74 @@ export const tableRemovalAddress = ({
   const content = updateBlockList(body.content, list, () => remaining);
   const anchor = survivingBlockListAnchor({ ...body, content }, list);
   return anchor === undefined ? undefined : { anchor };
+};
+
+/** Find a table that may have no paragraph anchor, such as an omitted row. */
+export const tableBlockLocation = (
+  body: DocumentBody,
+  target: Table,
+): TableBlockLocation | undefined => {
+  const visit = (
+    blocks: readonly BlockContent[],
+    list: ParagraphLocation["list"],
+  ): TableBlockLocation | undefined => {
+    for (const [index, block] of blocks.entries()) {
+      if (block === target) return { list, index };
+      if (block.type === "table") {
+        for (const [row, { cells }] of block.rows.entries()) {
+          for (const [cell, item] of cells.entries()) {
+            const result = visit(item.content, [
+              ...list,
+              { kind: "tableCell", block: index, row, cell },
+            ]);
+            if (result !== undefined) return result;
+          }
+        }
+      } else if (block.type === "blockSdt" || block.type === "blockCustomXml") {
+        const result = visit(block.content, [
+          ...list,
+          { kind: block.type, block: index },
+        ]);
+        if (result !== undefined) return result;
+      }
+    }
+    return undefined;
+  };
+  return visit(body.content, []);
+};
+
+type TableContainerEditOptions = {
+  body: DocumentBody;
+  story: OpStory;
+  location: TableBlockLocation;
+  table: Table | undefined;
+};
+
+/** Address a table replacement through a surviving surrounding list. */
+export const tableContainerEdit = ({
+  body,
+  story,
+  location: { list, index },
+  table,
+}: TableContainerEditOptions): SetContainerBlocksOp | undefined => {
+  const content = updateBlockList(body.content, list, (blocks) => {
+    const next = [...blocks];
+    if (table === undefined) next.splice(index, 1);
+    else next[index] = table;
+    return next;
+  });
+  const anchor = survivingBlockListAnchor({ content }, list);
+  if (anchor === undefined) return undefined;
+  return {
+    type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+    story,
+    blockId: anchor.blockId,
+    ...(anchor.ancestorDepth === undefined
+      ? {}
+      : { ancestorDepth: anchor.ancestorDepth }),
+    expected: blockListAt(body.content, anchor.list),
+    blocks: blockListAt(content, anchor.list),
+  };
 };
 
 /** A paragraph selects its innermost table, even through block wrappers. */

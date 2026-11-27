@@ -95,6 +95,89 @@ const rowAt = (table: Table, index: number): TableRow => {
 };
 
 describe("table row review", () => {
+  test.each(["direct", "wrapped"] as const)(
+    "reviews omitted rows after removing the table's only paragraph (%s)",
+    (location) => {
+      const place = (table: Table | undefined): Document => {
+        const content = table === undefined ? [] : [table];
+        const blocks =
+          location === "wrapped"
+            ? [{ type: "blockCustomXml" as const, content }]
+            : content;
+        return {
+          package: {
+            document: {
+              content: [
+                makeParagraph("00000001", "before"),
+                ...blocks,
+                makeParagraph("00000002", "after"),
+              ],
+            },
+          },
+        };
+      };
+      const deletion = {
+        ...makeRow("00000010"),
+        structuralChange: { type: "tableRowDeletion", info: revision },
+      } satisfies TableRow;
+      const omitted = {
+        type: "tableRow",
+        cells: [],
+        formatting: { gridBefore: 1, cantSplit: true },
+        structuralChange: {
+          type: "tableRowInsertion",
+          info: { ...revision, id: 101 },
+        },
+        propertyChanges: [
+          {
+            type: "tableRowPropertyChange",
+            info: { ...revision, id: 102 },
+            previousFormatting: { gridBefore: 1 },
+          },
+        ],
+      } satisfies TableRow;
+      const review = (
+        document: Document,
+        id: number,
+        decision: "accept" | "reject",
+      ) =>
+        applied(document, {
+          type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+          story: OP_STORIES.MAIN,
+          revisionIds: [id],
+          decision,
+        }).document;
+      const source = place(tableOf(deletion, omitted));
+      const onlyOmitted = review(source, 100, REVISION_DECISIONS.ACCEPT);
+      expect(onlyOmitted).toStrictEqual(place(tableOf(omitted)));
+
+      const reviewedProperties = review(
+        onlyOmitted,
+        102,
+        REVISION_DECISIONS.REJECT,
+      );
+      const baseRow = {
+        type: "tableRow",
+        cells: [],
+        formatting: { gridBefore: 1 },
+      } satisfies TableRow;
+      expect(reviewedProperties).toStrictEqual(
+        place(
+          tableOf({
+            ...baseRow,
+            structuralChange: omitted.structuralChange,
+          }),
+        ),
+      );
+      expect(
+        review(reviewedProperties, 101, REVISION_DECISIONS.ACCEPT),
+      ).toStrictEqual(place(tableOf(baseRow)));
+      expect(
+        review(reviewedProperties, 101, REVISION_DECISIONS.REJECT),
+      ).toStrictEqual(place(undefined));
+    },
+  );
+
   test("resolves a row insertion without changing cell paragraph marks", () => {
     const inserted: TableRow = {
       ...makeRow("00000011"),
