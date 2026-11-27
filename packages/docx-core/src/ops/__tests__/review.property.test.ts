@@ -2001,7 +2001,7 @@ describe("tracked operations and their resolution", () => {
       type: "run",
       content: [{ type: "text", text: value }],
     });
-    const link = (content: ParagraphContent[]): Hyperlink => ({
+    const link = (content: Hyperlink["children"]): Hyperlink => ({
       type: "hyperlink",
       rId: "rId9",
       href: "https://example.org",
