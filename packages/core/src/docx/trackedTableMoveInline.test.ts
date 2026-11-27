@@ -291,7 +291,9 @@ test("a moved nested table preserves controls shared by rows and cells", () => {
     content: plain,
     wrap: (paragraph) =>
       '<w:tbl><w:tblGrid><w:gridCol w:w="500"/><w:gridCol w:w="500"/></w:tblGrid>' +
-      '<w:customXml w:element="controlledRows"><w:sdt><w:sdtPr><w:id w:val="73"/></w:sdtPr><w:sdtContent>' +
+      '<w:customXml w:element="controlledRows"><w:sdt><w:sdtPr><w:id w:val="73"/>' +
+      '<w:dataBinding w:storeItemID="{D39198F2-3D48-4B86-A920-A76E2D16312A}" w:xpath="/form/term[1]"/>' +
+      "</w:sdtPr><w:sdtContent>" +
       '<w:tr><w:sdt><w:sdtPr><w:id w:val="74"/></w:sdtPr><w:sdtContent>' +
       `<w:tc>${paragraph}</w:tc><w:tc><w:p w14:paraId="00000007"/></w:tc>` +
       "</w:sdtContent></w:sdt></w:tr>" +
@@ -304,6 +306,7 @@ test("a moved nested table preserves controls shared by rows and cells", () => {
   expect(xml.match(/<w:customXml w:element="controlledRows"/gu)).toHaveLength(
     2,
   );
+  expect(xml.match(/w:xpath="\/form\/term\[1\]"/gu)).toHaveLength(2);
   for (const id of [73, 74, ...controlIds])
     expect(xml.match(new RegExp(`<w:id w:val="${id}"`, "gu"))).toHaveLength(1);
 });

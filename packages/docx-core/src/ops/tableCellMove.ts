@@ -465,7 +465,6 @@ export const tableMoveSource = (
 export const nestedTableMoveSource = (
   table: Table,
 ): NestedTableMoveSource | undefined => {
-  if (reachesPastRemovedCell(table)) return undefined;
   const paragraphs: string[] = [];
   const revisions: number[] = [];
   const gridMembers: number[] = [];
@@ -493,43 +492,58 @@ export const nestedTableMoveSource = (
   ) => {
     for (const { info } of changes ?? []) revisions.push(info.id);
   };
-  const collect = (nested: Table): boolean => {
-    const grid = nested.formatting?.gridChange;
+  const collect = ({ rows, ...tableProperties }: Table): boolean => {
+    const grid = tableProperties.formatting?.gridChange;
     const geometry = grid?.geometryChange;
     if (
-      nested.bookmarks !== undefined ||
-      nested.carrierStack !== undefined ||
+      tableProperties.bookmarks !== undefined ||
+      tableProperties.carrierStack !== undefined ||
+      reachesPastRemovedCell(tableProperties) ||
       (geometry?.type === "mergeCells" &&
         (geometry.moves !== undefined ||
           geometry.nestedMoves !== undefined ||
           geometry.emptyOwner !== undefined)) ||
-      nested.rows.length === 0
+      rows.length === 0
     )
       return false;
     if (grid !== undefined) {
       revisions.push(grid.id);
       for (const id of geometry?.revisionIds ?? []) gridMembers.push(id);
     }
-    collectProperties(nested.propertyChanges);
-    return nested.rows.every((row) => {
+    collectProperties(tableProperties.propertyChanges);
+    return rows.every((row) => {
+      const {
+        cells,
+        contentControls: _rowControls,
+        carrierStack: _rowStack,
+        ...rowProperties
+      } = row;
       if (
-        row.bookmarks !== undefined ||
+        rowProperties.bookmarks !== undefined ||
         !collectCarriers(row) ||
-        row.cells.length === 0
+        reachesPastRemovedCell(rowProperties) ||
+        cells.length === 0
       )
         return false;
       if (row.structuralChange !== undefined)
         revisions.push(row.structuralChange.info.id);
       collectProperties(row.propertyChanges);
       collectProperties(row.tablePropertyExceptionChanges);
-      return row.cells.every((cell) => {
+      return cells.every((cell) => {
+        const {
+          content,
+          contentControls: _cellControls,
+          carrierStack: _cellStack,
+          ...cellProperties
+        } = cell;
         if (
           !collectCarriers(cell) ||
+          reachesPastRemovedCell(cellProperties) ||
           cell.propertyChanges?.some(
             ({ previousStructuralChange }) =>
               previousStructuralChange !== undefined,
           ) ||
-          !blockListEndsInParagraph(cell.content)
+          !blockListEndsInParagraph(content)
         )
           return false;
         const change = cell.structuralChange;
@@ -542,7 +556,7 @@ export const nestedTableMoveSource = (
           revisions.push(change.info.id);
         }
         collectProperties(cell.propertyChanges);
-        return cell.content.every(collectBlock);
+        return content.every(collectBlock);
       });
     });
   };
