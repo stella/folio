@@ -517,6 +517,11 @@ export const planShapeIssue = (plan: unknown): string | null => {
     plan["textEffects"] === "normalize" ||
     plan["textEffects"] === "keep"
       ? null
-      : "The plan's choice for text effects is unknown.")
+      : "The plan's choice for text effects is unknown.") ??
+    (plan["sourceHeaders"] === undefined ||
+    plan["sourceHeaders"] === "drop" ||
+    plan["sourceHeaders"] === "keep"
+      ? null
+      : "The plan's choice for the source's headers and footers is unknown.")
   );
 };

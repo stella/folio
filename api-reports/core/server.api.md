@@ -2239,6 +2239,7 @@ export type TemplatePlan = {
     emptyTemplateBlockIds?: string[];
     trackedChanges?: TemplatePlanTrackedChanges;
     textEffects?: "normalize" | "keep";
+    sourceHeaders?: "drop" | "keep";
 };
 
 // @public
@@ -2307,7 +2308,7 @@ export type TemplatePlanIndent = {
 
 // @public (undocumented)
 export type TemplatePlanIssue = {
-    code: "text-mismatch" | "emphasis-mismatch" | "note-mismatch" | "block-missing" | "reference-broken" | "bookmark-dangling" | "field-unbalanced" | "relationship-dangling" | "note-dangling" | "numbering-dangling" | "style-dangling" | "style-mismatch" | "numbering-mismatch" | "page-start-mismatch" | "paragraph-format-mismatch" | "revision-left" | "section-mismatch" | "template-mismatch" | "prompting-field-left" | "field-not-frozen" | "update-fields-mismatch" | "compat-mismatch" | "conformance";
+    code: "text-mismatch" | "emphasis-mismatch" | "note-mismatch" | "block-missing" | "reference-broken" | "bookmark-dangling" | "field-unbalanced" | "relationship-dangling" | "note-dangling" | "numbering-dangling" | "style-dangling" | "style-mismatch" | "numbering-mismatch" | "page-start-mismatch" | "paragraph-format-mismatch" | "revision-left" | "section-mismatch" | "template-mismatch" | "header-mismatch" | "prompting-field-left" | "field-not-frozen" | "update-fields-mismatch" | "compat-mismatch" | "conformance";
     message: string;
     blockId?: string;
     part?: string;
@@ -2472,6 +2473,7 @@ export type TemplatePlanReport = {
         left: TemplatePlanEffectCount[];
     };
     updateFields: "set" | "cleared" | "unchanged";
+    sourceHeaders?: TemplatePlanSourceHeaders;
     conformance: {
         status: "conformant" | "invalid" | "indeterminate";
         templateStatus: "conformant" | "invalid" | "indeterminate";
@@ -2497,6 +2499,23 @@ export type TemplatePlanSectionPage = {
         right: number;
         bottom: number;
         left: number;
+    };
+};
+
+// @public
+export type TemplatePlanSourceHeaders = {
+    kept: {
+        family: "header" | "footer";
+        kind: "first" | "default" | "even";
+        part: string;
+        paragraphs: number;
+        created: boolean;
+    }[];
+    leftOut: {
+        firstPageParts: number;
+        evenPageParts: number;
+        sharedParts: number;
+        unsupportedObjects: number;
     };
 };
 

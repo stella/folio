@@ -394,6 +394,7 @@ export {
   type TemplatePlanReport,
   type TemplatePlanSection,
   type TemplatePlanSectionPage,
+  type TemplatePlanSourceHeaders,
   type TemplatePlanSourceItem,
   type TemplatePlanSpacing,
   type TemplatePlanSpanCounts,

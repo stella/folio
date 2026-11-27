@@ -81,6 +81,7 @@ import {
   type StoryResources,
 } from "./resources";
 import { tableRowRevisions } from "./revisions";
+import { verifyCarriedHeaders } from "./sourceHeaders";
 import {
   type AtomKind,
   type AtomLink,
@@ -106,6 +107,7 @@ import type {
   TemplatePlanReferenceResult,
   TemplatePlanReport,
   TemplatePlanSectionPage,
+  TemplatePlanSourceHeaders,
   TemplatePlanSpanCounts,
   VerifyTemplatePlanOutputArgs,
 } from "./types";
@@ -1867,6 +1869,25 @@ export const reportTemplatePlanOutput = async ({
       ),
     })),
   ];
+  // The source's headers and footers the plan keeps, where they went.
+  let sourceHeaders: TemplatePlanSourceHeaders | undefined;
+  if (plan.sourceHeaders === "keep") {
+    const carried = await verifyCarriedHeaders({
+      source,
+      template,
+      output: out,
+    });
+    if (Result.isError(carried)) {
+      return carried;
+    }
+    sourceHeaders = carried.value.report;
+    for (const kind of carried.value.mismatched) {
+      issues.push({
+        code: "header-mismatch",
+        message: `The output's ${kind} does not read as the template's followed by the source's.`,
+      });
+    }
+  }
   const textEffects: TemplatePlanReport["textEffects"] = {
     removed: [],
     left: [],
@@ -2239,6 +2260,7 @@ export const reportTemplatePlanOutput = async ({
     },
     textEffects,
     updateFields,
+    ...(sourceHeaders === undefined ? {} : { sourceHeaders }),
     conformance: {
       status: conformance.status,
       templateStatus: templateConformance.status,
