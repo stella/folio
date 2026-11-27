@@ -355,6 +355,43 @@ describe("a table whose properties changed and whose words did not", () => {
     expect(rejected).toEqual(expectedBase);
   });
 
+  test("a cell whose paragraph sits in a block content control is addressed through it", async () => {
+    // The cell's only paragraph is inside `w:sdt`, so no paragraph sits
+    // directly in the cell.
+    const wrapped = async (fill: string): Promise<ArrayBuffer> => {
+      const buffer = await buildBodySequenceDocx([
+        INTRO,
+        {
+          kind: "table",
+          rows: [[{ content: "Delivery", width: 2400, shadingFill: fill }]],
+        },
+        OUTRO,
+      ]);
+      const zip = await ZipArchive.read(buffer);
+      const xml = await documentXml(buffer);
+      const controlled = xml.replace(
+        /(<w:tc>(?:<w:tcPr>.*?<\/w:tcPr>)?)(<w:p\b.*?<\/w:p>)(<\/w:tc>)/u,
+        '$1<w:sdt><w:sdtPr><w:id w:val="5"/></w:sdtPr><w:sdtContent>$2</w:sdtContent></w:sdt>$3',
+      );
+      expect(controlled).not.toBe(xml);
+      zip.set("word/document.xml", controlled);
+      return (await zip.generate({ compression: "store" })).buffer;
+    };
+
+    const {
+      xml,
+      accepted,
+      target: expected,
+      rejected,
+      base: expectedBase,
+    } = await roundTrip(await wrapped("FFF2CC"), await wrapped("C6E0B4"));
+
+    expect(xml).toContain("<w:tcPrChange ");
+    expect(xml).toContain('w:fill="C6E0B4"');
+    expect(accepted).toEqual(expected);
+    expect(rejected).toEqual(expectedBase);
+  });
+
   test("a changed row property is written as w:trPrChange", async () => {
     const taller = {
       ...TWO_ROW_TABLE,

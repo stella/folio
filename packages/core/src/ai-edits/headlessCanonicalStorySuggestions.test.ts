@@ -17,7 +17,7 @@ import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { createDocx } from "../docx/rezip";
 import { paragraph, run } from "../docx/server/build";
 import { fromMarkdown } from "../markdown/fromMarkdown";
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
+import { CANONICAL_CONDITION } from "../types/canonicalCapabilities";
 import { FolioDocxReviewer } from "./headless";
 
 beforeEach(() => setSystemTime(new Date("2026-01-02T03:04:05Z")));
@@ -254,7 +254,7 @@ const observeResolution = (mode: "observe" | "refuse") => {
         return Result.err(
           new canonicalSession.CanonicalSessionError({
             reason: "refused",
-            ground: { gap: CANONICAL_GAP.publicHeadlessSession },
+            ground: { condition: CANONICAL_CONDITION.stale },
             message: "Refused staged resolution.",
           }),
         );
@@ -296,3 +296,110 @@ test("a refused bulk preparation leaves every staged story and export record int
     observer.restore();
   }
 });
+
+const BODY = STORIES[0];
+const FOOTNOTE = STORIES[3];
+
+/** One suggestion with a part in the body and a part in the footnote. */
+const stageAcrossStories = async () => {
+  const bytes = await fixture();
+  const reviewer = await open(bytes);
+  for (const story of [BODY, FOOTNOTE]) {
+    const result = apply(reviewer, story, {
+      id: `proposal-${story.type}`,
+      suggestionId: "shared",
+      type: "insertAfterBlock",
+      blockId: anchor(reviewer, story),
+      text: `Added ${story.type}.`,
+      comment: { text: `Comment ${story.type}.` },
+    });
+    expect(result.applied).toHaveLength(1);
+  }
+  const records = reviewer.exportPendingSuggestions();
+  expect(
+    records.map(({ suggestionId, story }) => ({ suggestionId, story })),
+  ).toEqual([
+    { suggestionId: "shared", story: BODY },
+    { suggestionId: "shared", story: FOOTNOTE },
+  ]);
+  return { bytes, reviewer };
+};
+
+const pendingIn = (reviewer: FolioDocxReviewer, story: Story) =>
+  reviewer.readReviewedStory({ story, view: "current-markup" })?.changes ?? [];
+
+const restagedView = (reviewer: FolioDocxReviewer) => ({
+  stories: STORIES.map((story) => reviewer.readStory(story)?.text),
+  pending: STORIES.map((story) =>
+    pendingIn(reviewer, story).map(({ type, text }) => ({ type, text })),
+  ),
+  comments: reviewer
+    .getComments()
+    .map(({ text, anchoredText }) => ({ text, anchoredText }))
+    .toSorted((left, right) => left.text.localeCompare(right.text)),
+});
+
+for (const view of ["final", "original"] as const)
+  for (const [first, second] of [
+    [BODY, FOOTNOTE],
+    [FOOTNOTE, BODY],
+  ] as const)
+    for (const later of ["story", "suggestion"] as const)
+      test(`${view}: resolving the ${first.type} part of a suggestion in ${first.type} and ${second.type} leaves the ${second.type} part pending, then resolves it by ${later}`, async () => {
+        const { bytes, reviewer } = await stageAcrossStories();
+        const staged = await open(bytes);
+        for (const story of [BODY, FOOTNOTE])
+          apply(staged, story, {
+            id: `proposal-${story.type}`,
+            suggestionId: "shared",
+            type: "insertAfterBlock",
+            blockId: anchor(staged, story),
+            text: `Added ${story.type}.`,
+            comment: { text: `Comment ${story.type}.` },
+          });
+        const pendingSecond = pendingIn(staged, second);
+        const added = (story: Story) =>
+          reviewer.readStory(story)?.text.includes(`Added ${story.type}.`);
+        const comments = () => reviewer.getComments().map(({ text }) => text);
+
+        expect(reviewer.resolveReviewedStory({ story: first, view })).toBe(
+          true,
+        );
+        expect(pendingIn(reviewer, first)).toEqual([]);
+        expect(added(first)).toBe(view === "final");
+        expect(pendingIn(reviewer, second)).toEqual(pendingSecond);
+        expect(pendingIn(reviewer, second)).not.toEqual([]);
+        expect(comments()).toEqual(
+          view === "final"
+            ? ["Comment main.", "Comment footnote."]
+            : [`Comment ${second.type}.`],
+        );
+        // Only the pending part exports, and it restages on a saved copy.
+        const records = reviewer.exportPendingSuggestions();
+        expect(
+          records.map(({ suggestionId, story }) => ({ suggestionId, story })),
+        ).toEqual([{ suggestionId: "shared", story: second }]);
+        const reopened = await open(await reviewer.toBuffer());
+        expect(
+          reopened.loadPendingSuggestions(records).map(({ status }) => status),
+        ).toEqual(["restaged"]);
+        // Restaging allocates fresh revision and comment ids.
+        expect(restagedView(reopened)).toEqual(restagedView(reviewer));
+
+        if (later === "story")
+          expect(reviewer.resolveReviewedStory({ story: second, view })).toBe(
+            true,
+          );
+        else if (view === "final") {
+          expect(reviewer.acceptSuggestion("shared")).toBe(true);
+          expect(reviewer.acceptAll().skipped).toEqual([]);
+        } else expect(reviewer.rejectSuggestion("shared")).toBe(true);
+        for (const story of [BODY, FOOTNOTE]) {
+          expect(pendingIn(reviewer, story)).toEqual([]);
+          expect(added(story)).toBe(view === "final");
+        }
+        expect(comments()).toEqual(
+          view === "final" ? ["Comment main.", "Comment footnote."] : [],
+        );
+        expect(reviewer.exportPendingSuggestions()).toEqual([]);
+      });

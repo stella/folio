@@ -170,7 +170,7 @@ export const CANONICAL_CAPABILITIES: {
     readonly owner: "document-operations";
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "A reviewer refuses to resolve one story of a suggestion that reaches several, which resolves only whole.";
+    readonly summary: "A reviewer refuses a resolved view, a comparison projection or a story resolution that leaves a staged suggestion pending, because the suggestion's resolution refused without stating its ground.";
   };
 } = {
   [CANONICAL_GAP.trackedTableStructure]: {
@@ -206,7 +206,7 @@ export const CANONICAL_CAPABILITIES: {
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
-      "A reviewer refuses to resolve one story of a suggestion that reaches several, which resolves only whole.",
+      "A reviewer refuses a resolved view, a comparison projection or a story resolution that leaves a staged suggestion pending, because the suggestion's resolution refused without stating its ground.",
   },
 } as const satisfies Record<CanonicalGap, CanonicalCapability>;
 

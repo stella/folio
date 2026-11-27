@@ -304,6 +304,39 @@ export const IMPORTED_ID_COLLISION_REGISTRY: {
   },
 } as const satisfies Record<ImportedIdCollisionKind, CollisionRule>;
 
+/**
+ * The rules naming each element local name, in registry order, each with the
+ * namespaces it names that local name in: most elements of a part are named by
+ * no rule, and are passed over without resolving their namespace.
+ */
+const RULES_BY_LOCAL_NAME: ReadonlyMap<
+  string,
+  readonly { rule: CollisionRule; namespaces: ReadonlySet<string> }[]
+> = (() => {
+  const index = new Map<
+    string,
+    { rule: CollisionRule; namespaces: Set<string> }[]
+  >();
+  for (const rule of Object.values(IMPORTED_ID_COLLISION_REGISTRY)) {
+    for (const site of rule.sites) {
+      for (const localName of site.elements) {
+        let rules = index.get(localName);
+        if (rules === undefined) {
+          rules = [];
+          index.set(localName, rules);
+        }
+        let entry = rules.find((candidate) => candidate.rule === rule);
+        if (entry === undefined) {
+          entry = { rule, namespaces: new Set() };
+          rules.push(entry);
+        }
+        entry.namespaces.add(site.namespace);
+      }
+    }
+  }
+  return index;
+})();
+
 const normalizedIdentity = (
   value: string,
   encoding: CollisionRule["encoding"],
@@ -324,7 +357,6 @@ export const diagnoseImportedIdCollisions = (
   parts: ReadonlyMap<string, string>,
   context: ParseContext,
 ): void => {
-  const rules = Object.values(IMPORTED_ID_COLLISION_REGISTRY);
   const packageSeen = new Map<string, { part: string; offset: number }>();
   for (const [part, xml] of parts) {
     const partSeen = new Map<string, { part: string; offset: number }>();
@@ -333,19 +365,14 @@ export const diagnoseImportedIdCollisions = (
       xml,
       ({ element, attributeValueSpans }) => {
         if (element.name === undefined) return;
+        const candidates = RULES_BY_LOCAL_NAME.get(getLocalName(element.name));
+        if (candidates === undefined) return;
         const namespace = toTransitionalNamespaceUri(
           getNamespaceUri(element) ?? "",
         );
-        const localName = getLocalName(element.name);
-        for (const rule of rules) {
+        for (const { rule, namespaces } of candidates) {
           const kind = rule.kind;
-          if (
-            !rule.sites.some(
-              (site) =>
-                namespace === site.namespace && site.elements.has(localName),
-            )
-          )
-            continue;
+          if (!namespaces.has(namespace)) continue;
           const paragraphIdentity = paragraphIdentityForKind(kind, element);
           const seen = rule.scope === "package" ? packageSeen : partSeen;
           for (const [name, rawValue] of Object.entries(

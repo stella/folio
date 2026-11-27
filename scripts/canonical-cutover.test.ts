@@ -134,19 +134,17 @@ describe("canonical cutover guard", () => {
     ).toContain(`${command}: reference engine plugins belong in test support`);
   });
 
-  test("the headless session factory requires its capability marker", () => {
+  test("the headless session factory is no gap source", () => {
     const gap = CANONICAL_GAP.publicHeadlessSession;
     const file = "packages/core/src/ai-edits/headless.ts";
     const method = "static fromBuffer() {}";
-    expect(failuresOf(`class Reviewer {\n${method}\n}`, file)).toContain(
-      `${file}:2: ${gap} source needs its ledger marker`,
-    );
+    expect(failuresOf(`class Reviewer {\n${method}\n}`, file)).toEqual([]);
     expect(
       failuresOf(
         `class Reviewer {\n// canonical-gap: ${gap}\n${method}\n}`,
         file,
       ),
-    ).toEqual([]);
+    ).toContain(`${file}: orphan canonical gap marker ${gap}`);
   });
 
   test("production callers cannot reconstruct a document from PM", () => {

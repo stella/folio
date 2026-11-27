@@ -227,6 +227,33 @@ const HOST_TRANSACTION: CanonicalRefusalGround = {
 const editIssueGround = (issue: CanonicalSeedIssue): CanonicalRefusalGround =>
   issue.kind === "content" ? INTERNAL : INVALID_REQUEST;
 
+/** The ids of the comments whose range or reference lies in a story. */
+const commentIdsAnchoredIn = (
+  document: Document,
+  story: OpStory,
+): Set<number> => {
+  const ids = new Set<number>();
+  const visit = (value: unknown): void => {
+    if (typeof value !== "object" || value === null) return;
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item);
+      return;
+    }
+    const record = value as Record<string, unknown>;
+    const id = record["id"];
+    if (
+      (record["type"] === "commentRangeStart" ||
+        record["type"] === "commentRangeEnd" ||
+        record["type"] === "commentReference") &&
+      typeof id === "number"
+    )
+      ids.add(id);
+    for (const child of Object.values(record)) visit(child);
+  };
+  visit(findStoryBody(document, story)?.content);
+  return ids;
+};
+
 /** A refusal under the gap, rule or condition it belongs to. */
 const refuse = (message: string, ground: CanonicalRefusalGround) =>
   Result.err(new CanonicalSessionError({ ground, message, reason: "refused" }));
@@ -3950,6 +3977,10 @@ class CanonicalSession {
    * revisions as ordinary tracked changes by `author`, keeping their ids, as
    * the editor does: the change then waits for review like any other. Its
    * comments stay as ordinary comments.
+   *
+   * With `story`, only the suggestion's part in that story resolves: its
+   * revisions there and the comments it anchors there. Its records in other
+   * stories stay pending, and resolve later the same way or whole.
    */
   prepareSuggestion(
     state: EditorState,
@@ -3958,14 +3989,17 @@ class CanonicalSession {
       resolution,
       author,
       date,
+      story: only,
     }: {
       suggestionId: string;
       resolution: "accept" | "reject";
       author: string;
       date: string;
+      story?: OpStory;
     },
   ): Result<CanonicalCommit, CanonicalSessionError> {
     const revisions = documentStories(this.currentDocument)
+      .filter((story) => only === undefined || sameStory(story, only))
       .map((story) => ({
         story,
         infos: suggestionRevisionInfos(
@@ -3975,7 +4009,14 @@ class CanonicalSession {
         ),
       }))
       .filter(({ infos }) => infos.length > 0);
-    const commentIds = suggestedCommentIds(this.currentDocument, suggestionId);
+    const anchored =
+      only === undefined
+        ? undefined
+        : commentIdsAnchoredIn(this.currentDocument, only);
+    const commentIds = suggestedCommentIds(
+      this.currentDocument,
+      suggestionId,
+    ).filter((id) => anchored === undefined || anchored.has(id));
     if (revisions.length === 0 && commentIds.length === 0)
       return noChange(`No pending suggestion ${suggestionId}.`);
     if (resolution === "reject")
