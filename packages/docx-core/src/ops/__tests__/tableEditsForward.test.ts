@@ -1337,7 +1337,11 @@ describe("independent table forward oracles", () => {
     delete moved.pPrMark;
     const group = grid.geometryChange;
     const move = group?.type === "mergeCells" ? group.moves?.at(0) : undefined;
-    if (group?.type !== "mergeCells" || move === undefined)
+    if (
+      group?.type !== "mergeCells" ||
+      move === undefined ||
+      move.kind === "empty"
+    )
       throw new TypeError("Expected a saved paragraph move.");
     for (const revisionId of [grid.id, move.fromRevision]) {
       const result = applyDocumentOp(pending, {

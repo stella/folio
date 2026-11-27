@@ -96,8 +96,15 @@ export const withBelongingTableGeometry = (
     if (grid === undefined || !Array.isArray(members)) continue;
     const local = reachableOnTable(table);
     const moves =
-      geometry?.type === "mergeCells" && Array.isArray(geometry.moves)
-        ? tableMoveRevisionIds(geometry.moves)
+      geometry?.type === "mergeCells"
+        ? [
+            ...(Array.isArray(geometry.moves)
+              ? tableMoveRevisionIds(geometry.moves)
+              : []),
+            ...(Array.isArray(geometry.nestedMoves)
+              ? geometry.nestedMoves.flatMap((move) => move.rows)
+              : []),
+          ]
         : [];
     const selectsGeometry =
       ids.has(grid.id) || members.some((id) => local.has(id) && ids.has(id));
@@ -122,7 +129,7 @@ export const withBelongingTableGeometry = (
           opType: op.type,
           reason: DOCUMENT_OP_REFUSAL_REASONS.STALE,
           message:
-            "The tracked table merge no longer matches its paragraph move records.",
+            "The tracked table merge no longer matches its native move records.",
         }),
       );
     }

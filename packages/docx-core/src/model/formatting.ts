@@ -580,11 +580,23 @@ export const MAX_TABLE_GEOMETRY_HISTORY_LENGTH: number = 32_768 - 32;
 export type TableGeometryMove = {
   readonly source: string;
   readonly destination: string;
-  readonly fromRevision: number;
-  readonly toRevision: number;
-  readonly fromRange: number;
-  readonly toRange: number;
   readonly destinationMark: number;
+} & (
+  | {
+      readonly kind?: undefined;
+      readonly fromRevision: number;
+      readonly toRevision: number;
+      readonly fromRange: number;
+      readonly toRange: number;
+    }
+  | { readonly kind: "empty" }
+);
+
+/** Native table-row records and stable paragraph identities for a nested move. */
+export type TableGeometryNestedMove = {
+  readonly rows: readonly number[];
+  /** Original and temporary destination paragraph IDs, respectively. */
+  readonly paragraphs: readonly (readonly [string, string])[];
 };
 
 /**
@@ -611,6 +623,7 @@ export type TableGridChange = WritableRecord & {
     | {
         readonly type: "mergeCells";
         readonly moves?: readonly TableGeometryMove[];
+        readonly nestedMoves?: readonly TableGeometryNestedMove[];
         /** The original owner paragraph, discarded if empty when accepted. */
         readonly emptyOwner?: string;
       }

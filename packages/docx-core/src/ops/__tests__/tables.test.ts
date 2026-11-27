@@ -361,7 +361,7 @@ describe("whole table operations", () => {
     },
   );
 
-  test("deletion without a surviving paragraph in its block list is untrackable", () => {
+  test("deletion requires a surviving block list anchor", () => {
     const original = table();
     refused(
       documentOf([original]),
@@ -370,7 +370,7 @@ describe("whole table operations", () => {
         story: OP_STORIES.MAIN,
         blockId: "00000010",
       },
-      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      DOCUMENT_OP_REFUSAL_REASONS.EMPTY_BLOCK_LIST,
     );
   });
 

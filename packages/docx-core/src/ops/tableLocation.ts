@@ -9,10 +9,13 @@ import type {
   TableRow,
 } from "../model/document";
 import {
+  type BlockListAnchor,
   blockListAt,
   type ParagraphLocation,
   storyBody,
   storyParagraphs,
+  survivingBlockListAnchor,
+  updateBlockList,
 } from "./blocks";
 import { idKey } from "./ids";
 import { itemBefore } from "./listItems";
@@ -57,24 +60,19 @@ export type TableRowLocation = {
   table: Table;
 };
 
-/** A paragraph beside a table or in an enclosing transparent wrapper's list. */
-export const survivingTableAnchor = (
+/** The stable paragraph a table's removal can address in the surrounding tree. */
+export const tableRemovalAnchor = (
   body: DocumentBody,
-  list: ParagraphLocation["list"],
-): ParagraphLocation | undefined => {
-  let current = list;
-  for (;;) {
-    const blocks = blockListAt(body.content, current);
-    const index = blocks.findLastIndex(
-      (block) => block.type === "paragraph" && block.paraId !== undefined,
-    );
-    const paragraph = blocks[index];
-    if (paragraph?.type === "paragraph")
-      return { list: current, index, paragraph };
-    const step = current.at(-1);
-    if (step === undefined || step.kind === "tableCell") return undefined;
-    current = current.slice(0, -1);
-  }
+  { list, index }: Pick<TableRowLocation, "list" | "index">,
+): BlockListAnchor | undefined => {
+  const remaining = blockListAt(body.content, list).filter(
+    (_, position) => position !== index,
+  );
+  // Keep the first direct paragraph used by existing structural inverses.
+  const direct = remaining.find((block) => block.type === "paragraph")?.paraId;
+  if (direct !== undefined) return { list, blockId: direct };
+  const content = updateBlockList(body.content, list, () => remaining);
+  return survivingBlockListAnchor({ ...body, content }, list);
 };
 
 /** A paragraph selects its innermost table, even through block wrappers. */

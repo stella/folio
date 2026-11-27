@@ -1076,8 +1076,8 @@ export type DeleteTableOp = {
 };
 
 /**
- * Exact structural inverse for table edits. The addressed paragraph must
- * remain in the same block list; unrelated edits in that list make it stale.
+ * Exact structural inverse for table edits. The addressed paragraph stays in
+ * the edited list or a descendant. Unrelated edits in that list make it stale.
  * Section boundaries and story-final marks are preserved; cell-ending marks
  * are exact model data, including after independent row resolution.
  */
@@ -1085,6 +1085,8 @@ export type SetContainerBlocksOp = {
   type: typeof DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS;
   story: OpStory;
   blockId: string;
+  /** Number of enclosing lists between the anchor and the target list. */
+  ancestorDepth?: number;
   expected: readonly BlockContent[];
   blocks: readonly BlockContent[];
 };

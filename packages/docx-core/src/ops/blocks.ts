@@ -192,6 +192,49 @@ export const blockListAt = (
   return current;
 };
 
+export type BlockListAnchor = {
+  list: ParagraphLocation["list"];
+  blockId: string;
+  ancestorDepth?: number;
+};
+
+export const ownBlockListAnchor = ({
+  list,
+  paragraph,
+}: ParagraphLocation): BlockListAnchor => ({
+  list,
+  blockId: paragraph.paraId ?? "",
+});
+
+/** Find a surviving paragraph that addresses the changed list or a surrounding wrapper's list. */
+export const survivingBlockListAnchor = (
+  body: DocumentBody,
+  list: ParagraphLocation["list"],
+): BlockListAnchor | undefined => {
+  let current = list;
+  for (;;) {
+    const blocks = blockListAt(body.content, current);
+    const paragraph = blocks.findLast(
+      (block): block is Paragraph =>
+        block.type === "paragraph" && block.paraId !== undefined,
+    );
+    if (paragraph?.paraId !== undefined)
+      return { list: current, blockId: paragraph.paraId };
+    const nested = storyParagraphs({ content: [...blocks] }).find(
+      (location) => location.paragraph.paraId !== undefined,
+    );
+    if (nested?.paragraph.paraId !== undefined)
+      return {
+        list: current,
+        blockId: nested.paragraph.paraId,
+        ancestorDepth: nested.list.length,
+      };
+    const step = current.at(-1);
+    if (step === undefined || step.kind === "tableCell") return undefined;
+    current = current.slice(0, -1);
+  }
+};
+
 /** The paragraph terminator of a block list, through transparent block wrappers. */
 export const blockListEndsInParagraph = (
   blocks: readonly BlockContent[],
