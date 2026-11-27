@@ -1,31 +1,37 @@
-import { panic } from "better-result";
-
+import { CATALOG_SHAPE } from "./catalogShape.gen";
 import type { FolioMessages } from "./messages";
-import { messages as english } from "./messages/en.gen";
+
+type Shape = { readonly [key: string]: 0 | Shape };
 
 /**
  * A locale's catalog from its strings alone, in the order the English
  * catalog holds its keys: every catalog has the English catalog's shape, so
- * the shape ships once and each locale carries only its strings.
+ * the shape ships once and each locale carries only its strings. A locale
+ * entry reads no other locale and no package.
  */
 export const localeMessages = (values: readonly string[]): FolioMessages => {
   let next = 0;
-  const build = (shape: Readonly<Record<string, unknown>>) => {
+  const build = (shape: Shape) => {
     const built: Record<string, unknown> = {};
     for (const key of Object.keys(shape)) {
       const value = shape[key];
-      if (typeof value === "string") {
-        built[key] = values[next] ?? panic("A locale catalog lacks a string.");
+      if (value === 0) {
+        const string = values[next];
+        if (string === undefined)
+          throw new Error("A locale catalog lacks a string.");
+        built[key] = string;
         next += 1;
-      } else {
-        built[key] = build(value as Readonly<Record<string, unknown>>);
+      } else if (value !== undefined) {
+        built[key] = build(value);
       }
     }
     return built;
   };
-  const messages = build(english);
+  const messages = build(CATALOG_SHAPE);
   if (next !== values.length)
-    panic("A locale catalog holds more strings than the English one.");
+    throw new Error(
+      "A locale catalog holds more strings than the English one.",
+    );
   // SAFETY: built from the English catalog's shape, one string a key.
   return messages as FolioMessages;
 };
