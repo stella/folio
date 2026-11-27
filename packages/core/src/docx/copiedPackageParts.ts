@@ -63,6 +63,50 @@ export const relativeTarget = (partPath: string, absolute: string): string => {
   return `${"../".repeat(from.length - shared)}${to.slice(shared).join("/")}`;
 };
 
+/** A target as a part name: percent escapes decoded where they decode. */
+export const decodedTarget = (target: string): string =>
+  Result.try(() => decodeURIComponent(target)).unwrapOr(target);
+
+/** The package path a relationship of the part at `partPath` targets. */
+export const relationshipTargetPath = (
+  partPath: string,
+  target: string,
+): string =>
+  resolveRelativePath(relationshipsPartOf(partPath), decodedTarget(target));
+
+/** A relationship, with the path of the part whose relationships hold it. */
+export type OwnedRelationship = {
+  relationship: Relationship | undefined;
+  part: string | undefined;
+};
+
+/**
+ * Whether two relationships name the same target in the same way: an
+ * internal target resolved against the part each belongs to, since the same
+ * relative target names another part from another folder.
+ */
+export const sameRelationship = (
+  left: OwnedRelationship,
+  right: OwnedRelationship,
+): boolean => {
+  const { relationship: one, part: onePart } = left;
+  const { relationship: other, part: otherPart } = right;
+  if (
+    one === undefined ||
+    other === undefined ||
+    one.type !== other.type ||
+    one.targetMode !== other.targetMode
+  )
+    return false;
+  if (one.targetMode === "External") return one.target === other.target;
+  return (
+    onePart !== undefined &&
+    otherPart !== undefined &&
+    relationshipTargetPath(onePart, one.target).toLowerCase() ===
+      relationshipTargetPath(otherPart, other.target).toLowerCase()
+  );
+};
+
 /** Visit every office relationship attribute in `element` and below it. */
 const visitRelationshipAttributes = (
   element: XmlElement,
@@ -126,6 +170,19 @@ export const withRelationshipIds = (
     : xml;
 };
 
+/**
+ * The model fields holding markup kept verbatim, whose office relationship
+ * attributes name relationships of the part holding it: a drawing's or a
+ * shape's capture, kept block and inline markup, an image's click and hover
+ * links, and a shape's alternate content.
+ */
+export const KEPT_MARKUP_KEYS: ReadonlySet<string> = new Set([
+  "rawXml",
+  "xml",
+  "verbatimXml",
+  "hlinkHoverXml",
+]);
+
 /** Every piece of markup kept verbatim below `value`. */
 const collectKeptMarkup = (value: unknown, found: string[]): void => {
   if (typeof value !== "object" || value === null) return;
@@ -135,7 +192,7 @@ const collectKeptMarkup = (value: unknown, found: string[]): void => {
   }
   for (const [key, item] of Object.entries(value)) {
     if (
-      (key === "rawXml" || key === "xml") &&
+      KEPT_MARKUP_KEYS.has(key) &&
       typeof item === "string" &&
       item.startsWith("<")
     )

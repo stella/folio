@@ -19,12 +19,14 @@ import { OP_STORIES, type OpStory } from "@stll/docx-core/ops";
 import { ZipArchive, type ZipEntry } from "@stll/docx-core/zip";
 
 import {
+  decodedTarget,
   keptMarkupIn,
   MAIN_DOCUMENT_PART,
   partRelationshipsOf,
   relationshipIdsInMarkup,
   RELATIONSHIPS_CONTENT_TYPE,
   relationshipsPartOf,
+  relationshipTargetPath,
   relativeTarget,
   storyPartPath,
   storyRelationshipsKey,
@@ -112,17 +114,6 @@ export const sliceAnnotationMarkup = (
     if (comments.has(comment.id)) add("comments", comment);
   return markup;
 };
-
-/** A target as a part name: percent escapes decoded where they decode. */
-const decodedTarget = (target: string): string =>
-  Result.try(() => decodeURIComponent(target)).unwrapOr(target);
-
-/** The package path a relationship of the part at `partPath` targets. */
-export const relationshipTargetPath = (
-  partPath: string,
-  target: string,
-): string =>
-  resolveRelativePath(relationshipsPartOf(partPath), decodedTarget(target));
 
 /**
  * The relationships kept markup in `story` names its parts by, with the path
