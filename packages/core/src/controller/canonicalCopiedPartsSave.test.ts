@@ -61,7 +61,7 @@ const OBJECT_XML =
   '<v:rect style="width:72pt;height:36pt" fillcolor="#336699" stroked="f"/>' +
   '<o:OLEObject Type="Embed" ProgID="Package" ShapeID="_x0000_i1025" ' +
   'DrawAspect="Content" ObjectID="_1700000001" r:id="rIdObject"/></w:object>';
-/** An embedded object drawn by a picture of it, the form Word writes. */
+/** An embedded object drawn by a VML picture of it, its usual saved form. */
 const PICTURED_OBJECT_XML =
   `<w:object ${NS} xmlns:v="urn:schemas-microsoft-com:vml" ` +
   'xmlns:o="urn:schemas-microsoft-com:office:office" w:dxaOrig="1440" w:dyaOrig="720">' +
@@ -90,7 +90,7 @@ const SOURCE_PARTS: Record<string, Part> = {
     type: "application/vnd.openxmlformats-package.relationships+xml",
     body:
       '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
-      `<Relationship Id="rId1" Type="${RELATIONSHIP_TYPE}/package" Target="../embeddings/Microsoft_Excel_Worksheet.xlsx"/>` +
+      `<Relationship Id="rId1" Type="${RELATIONSHIP_TYPE}/package" Target="../embeddings/embeddedWorkbook.xlsx"/>` +
       '<Relationship Id="rId2" Type="http://schemas.microsoft.com/office/2011/relationships/chartColorStyle" Target="colors1.xml"/>' +
       '<Relationship Id="rId3" Type="http://schemas.microsoft.com/office/2011/relationships/chartStyle" Target="style1.xml"/>' +
       "</Relationships>",
@@ -103,7 +103,7 @@ const SOURCE_PARTS: Record<string, Part> = {
     type: "application/vnd.ms-office.chartstyle+xml",
     body: '<cs:chartStyle xmlns:cs="http://schemas.microsoft.com/office/drawing/2012/chartStyle" id="201"/>',
   },
-  "word/embeddings/Microsoft_Excel_Worksheet.xlsx": {
+  "word/embeddings/embeddedWorkbook.xlsx": {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     body: "PK workbook bytes",
   },
@@ -346,7 +346,7 @@ const COPIED_PATHS = new Set([
   "word/charts/_rels/chart2.xml.rels",
   "word/charts/colors1.xml",
   "word/charts/style1.xml",
-  "word/embeddings/Microsoft_Excel_Worksheet1.xlsx",
+  "word/embeddings/embeddedWorkbook1.xlsx",
   "word/embeddings/oleObject1.bin",
   "word/embeddings/oleObject2.bin",
   "word/media/image1.png",
@@ -437,15 +437,12 @@ describe.each(["editing", "suggesting"] as const)("in %s", (mode) => {
           resolveRelativePath("word/charts/_rels/chart2.xml.rels", target),
         ),
       ).toEqual([
-        "word/embeddings/Microsoft_Excel_Worksheet1.xlsx",
+        "word/embeddings/embeddedWorkbook1.xlsx",
         "word/charts/colors1.xml",
         "word/charts/style1.xml",
       ]);
-      expect(
-        await textOf(zip, "word/embeddings/Microsoft_Excel_Worksheet1.xlsx"),
-      ).toBe(
-        SOURCE_PARTS["word/embeddings/Microsoft_Excel_Worksheet.xlsx"]?.body ??
-          "",
+      expect(await textOf(zip, "word/embeddings/embeddedWorkbook1.xlsx")).toBe(
+        SOURCE_PARTS["word/embeddings/embeddedWorkbook.xlsx"]?.body ?? "",
       );
       const registry = await textOf(zip, "[Content_Types].xml");
       expect(contentTypeOf(registry, "word/charts/chart2.xml")).toBe(
