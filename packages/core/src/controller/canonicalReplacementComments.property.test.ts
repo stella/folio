@@ -32,7 +32,7 @@ import { fromMarkdown } from "../markdown/fromMarkdown";
 import type { Document, InlineSdt, Run } from "../types/document";
 import { readModel } from "../types/documentModel";
 
-test("compiler-created boundary points survive native replacement or refuse unchanged", async () => {
+test("compiler-created boundary points survive native replacement, accepted, rejected and undone", async () => {
   setSystemTime(new Date("2026-01-02T03:04:05Z"));
   const sourceText = "alpha beta";
   const markerFacts = (document: Document) => {
@@ -131,57 +131,81 @@ test("compiler-created boundary points survive native replacement or refuse unch
           const before = session.document;
           const anchors = getCommentAnchorsFromDoc(state.doc);
           const markers = markerFacts(created.document);
-          const snapshot = session.captureSaveSnapshot();
-          const saved = await serializeCanonicalSave({ snapshot });
-          let committed = 0;
-          session.onCommitted(() => committed++);
           expect(
             before.package.document.comments?.map(({ id, anchorKind }) => ({
               id,
               anchorKind,
             })),
           ).toEqual([{ id: 0, anchorKind: "point" }]);
-          const prepared = session.prepareReplace(state, {
-            ...range,
-            text: "new",
-          });
-          if (prepared.isErr()) {
-            expect(prepared.error.ground).toEqual({
-              gap: "comment-replacement-alignment",
+          // The characters before the point, read off the live projection.
+          const pointAt = () => {
+            let found: number | undefined;
+            state.doc.descendants((node, position) => {
+              if (
+                found === undefined &&
+                (node.type.name === "rangeAnchor" ||
+                  node.type.name === "commentReference")
+              )
+                found = state.doc.textBetween(0, position).length;
             });
-            expect(session.document).toBe(before);
-            expect(session.version).toBe(0);
-            expect(session.canUndo).toBe(false);
-            expect(committed).toBe(0);
-            expect(session.captureSaveSnapshot()).toEqual(snapshot);
-            expect(
-              new Uint8Array(
-                (
-                  await serializeCanonicalSave({
-                    snapshot: session.captureSaveSnapshot(),
-                  })
-                ).buffer,
-              ),
-            ).toEqual(new Uint8Array(saved.buffer));
-            continue;
-          }
-          publish(prepared.value);
-          if (mode === "suggesting")
-            publish(
-              session
-                .prepareResolve(state, {
-                  revisionIds: getTrackedChangesFromDoc(state.doc).map(
-                    ({ id }) => id,
-                  ),
-                  resolution: "accept",
-                })
-                .unwrap(),
-            );
+            return found;
+          };
+          expect(pointAt()).toBe(offset);
+          // A point inside the replaced words moves to the start of the new
+          // words; one the replacement only touches stays where it is.
+          const moved = (() => {
+            if (offset === 0) return 0;
+            switch (scope) {
+              case "whole":
+                return 0;
+              case "boundary":
+                return sourceText.indexOf(" ") + 1;
+              case "carrier":
+                return offset;
+              default: {
+                const unhandled: never = scope;
+                return panic(String(unhandled));
+              }
+            }
+          })();
+          publish(
+            session.prepareReplace(state, { ...range, text: "new" }).unwrap(),
+          );
           expect(session.document.package.document.comments).toEqual(
             before.package.document.comments,
           );
           expect(markerFacts(readModel(session.document))).toEqual(markers);
-          expect(getCommentAnchorsFromDoc(state.doc)).toEqual(anchors);
+          if (mode === "suggesting") {
+            // Pending, the point stays among the deleted words.
+            expect(pointAt()).toBe(offset);
+            const revisionIds = getTrackedChangesFromDoc(state.doc).map(
+              ({ id }) => id,
+            );
+            // Rejected, the deleted words keep the point where it was.
+            publish(
+              session
+                .prepareResolve(state, { revisionIds, resolution: "reject" })
+                .unwrap(),
+            );
+            expect(state.doc.textContent).toBe(sourceText);
+            expect(session.document.package.document.comments).toEqual(
+              before.package.document.comments,
+            );
+            expect(markerFacts(readModel(session.document))).toEqual(markers);
+            expect(getCommentAnchorsFromDoc(state.doc)).toEqual(anchors);
+            publish(session.prepareUndo(state).unwrap());
+            publish(
+              session
+                .prepareResolve(state, { revisionIds, resolution: "accept" })
+                .unwrap(),
+            );
+          }
+          expect(session.document.package.document.comments).toEqual(
+            before.package.document.comments,
+          );
+          expect(markerFacts(readModel(session.document))).toEqual(markers);
+          expect(pointAt()).toBe(moved);
+          const accepted = getCommentAnchorsFromDoc(state.doc);
           const reopened = createCanonicalSession(
             await parseDocx(
               (
@@ -199,8 +223,10 @@ test("compiler-created boundary points survive native replacement or refuse unch
           ).toEqual([{ id: 0, anchorKind: "point" }]);
           expect(markerFacts(readModel(reopened.document))).toEqual(markers);
           expect(getCommentAnchorsFromDoc(reopened.projection.doc)).toEqual(
-            anchors,
+            accepted,
           );
+          while (session.canUndo) publish(session.prepareUndo(state).unwrap());
+          expect(session.document).toEqual(before);
         }
 });
 
@@ -412,7 +438,7 @@ const comments = (reviewer: FolioDocxReviewer) =>
 
 describe("canonical replacement comments from the public producer", () => {
   for (const offset of [0, 4, SOURCE.length]) {
-    test(`point at ${offset}: replacement retains its carriers or refuses unchanged`, async () => {
+    test(`point at ${offset}: replacement keeps the point at the start of the new words, accepted, rejected and undone`, async () => {
       setSystemTime(new Date("2026-01-02T03:04:05Z"));
       const model = fromMarkdown(SOURCE);
       const paragraph = model.package.document.content.at(0);
@@ -445,7 +471,6 @@ describe("canonical replacement comments from the public producer", () => {
           const original = comments(reviewer);
           expect(original).toHaveLength(1);
           const before = reviewer.toDocument();
-          const saved = await reviewer.toBuffer();
           const result = reviewer.applyDocumentOperations(
             {
               version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -461,31 +486,48 @@ describe("canonical replacement comments from the public producer", () => {
             },
             { undefinedReferences: "refuse" },
           );
-          if (result.applied.length === 0) {
-            expect(result.skipped).toMatchObject([
-              {
-                reason: "unsupportedBlock",
-                canonicalRefusal: { gap: "comment-replacement-alignment" },
-              },
-            ]);
-            expect(reviewer.toDocument()).toEqual(before);
-            expect(new Uint8Array(await reviewer.toBuffer())).toEqual(
-              new Uint8Array(saved),
-            );
-            continue;
-          }
+          expect(result.applied).toHaveLength(1);
           expect(result.skipped).toEqual([]);
           const pending = await reviewer.toBuffer();
           expect(reviewer.acceptAll().skipped).toEqual([]);
-          expect(comments(reviewer)).toEqual(original);
+          // A point inside the changed words moves to the start of the new
+          // ones and reads no text before it; the word diff keeps the shared
+          // final period, so a point after it stays after it.
+          const moved = original.map((comment) => ({
+            ...comment,
+            anchoredText: offset === SOURCE.length && text !== "" ? "." : "",
+          }));
+          expect(comments(reviewer)).toEqual(moved);
           expect(comments(await open(await reviewer.toBuffer()))).toEqual(
-            original,
+            moved,
           );
           if (mode === "tracked-changes") {
             const rejected = await open(pending);
             expect(rejected.rejectAll().skipped).toEqual([]);
             expect(comments(rejected)).toEqual(original);
           }
+          const undone = await open(prepared.value.slice().buffer);
+          const again = undone.applyDocumentOperations(
+            {
+              version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+              mode,
+              operations: [
+                {
+                  id: "replace",
+                  type: "replaceBlock",
+                  blockId: paragraph.paraId,
+                  text,
+                },
+              ],
+            },
+            { undefinedReferences: "refuse" },
+          );
+          if (again.undoHandle === null)
+            throw new Error("Replacement must have an undo handle");
+          expect(undone.undoDocumentOperations(again.undoHandle).status).toBe(
+            "undone",
+          );
+          expect(undone.toDocument()).toEqual(before);
         }
       }
     });

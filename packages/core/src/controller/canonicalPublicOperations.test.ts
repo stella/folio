@@ -221,7 +221,7 @@ describe("canonical public operation batches", () => {
   });
 
   test(
-    "generated source comment ranges retain aligned replacement coverage or refuse atomically",
+    "generated source comment ranges go with their words directly, accepted, and come back rejected",
     () => {
       assertProperty(
         fc.property(
@@ -246,7 +246,6 @@ describe("canonical public operation batches", () => {
               ]).applied,
             ).toHaveLength(1);
             const before = editor.session.document;
-            const version = editor.session.version;
             const result = editor.apply(
               [
                 {
@@ -258,35 +257,30 @@ describe("canonical public operation batches", () => {
               ],
               { mode },
             );
-            if (result.applied.length === 0) {
-              // Only a suggestion that must move the comment refuses: a
-              // direct replacement takes a comment with its words, and a
-              // tracked one keeps it on them.
-              expect(mode).toBe("suggested");
-              expect(result.skipped).toMatchObject([
-                {
-                  reason: "unsupportedBlock",
-                  canonicalRefusal: { gap: "comment-replacement-alignment" },
-                },
-              ]);
-              expect(editor.session.document).toBe(before);
-              expect(editor.session.version).toBe(version);
-              return;
-            }
+            expect(result.applied).toHaveLength(1);
             expect(result.skipped).toEqual([]);
-            if (mode === "tracked-changes") {
+            if (mode !== "direct") {
               // The comment stays on the words the replacement deletes:
               // rejecting gives it back, accepting keeps it only where the
               // replacement took it over.
-              const ids = getTrackedChangesFromDoc(editor.state().doc).map(
-                ({ id }) => id,
-              );
-              const rejected = editor.session
-                .prepareResolve(editor.state(), {
-                  revisionIds: ids,
-                  resolution: "reject",
-                })
-                .unwrap();
+              const rejected =
+                mode === "suggested"
+                  ? editor.session
+                      .prepareSuggestion(editor.state(), {
+                        suggestionId: "replace",
+                        resolution: "reject",
+                        author: "Reviewer",
+                        date: "2026-01-02T03:04:05Z",
+                      })
+                      .unwrap()
+                  : editor.session
+                      .prepareResolve(editor.state(), {
+                        revisionIds: getTrackedChangesFromDoc(
+                          editor.state().doc,
+                        ).map(({ id }) => id),
+                        resolution: "reject",
+                      })
+                      .unwrap();
               expect(editor.publish(rejected)).toBe(true);
               expect(
                 getCommentAnchorsFromDoc(editor.state().doc).map(
@@ -327,10 +321,19 @@ describe("canonical public operation batches", () => {
             // The replacement takes every source word, and with them the
             // comment: the new words never inherit its range.
             expect(anchors).toEqual([]);
+            // Undone step by step, the comment is back as it was.
+            const steps = { direct: 1, "tracked-changes": 2, suggested: 3 };
+            for (let step = 0; step < steps[mode]; step++)
+              expect(
+                editor.publish(
+                  editor.session.prepareUndo(editor.state()).unwrap(),
+                ),
+              ).toBe(true);
+            expect(editor.session.document).toEqual(before);
           },
         ),
         {
-          id: "generated replacement comment alignment is preserved or refused",
+          id: "generated replacement comment alignment is preserved",
           seed: 1683001,
           numRuns: 48,
         },
@@ -459,9 +462,8 @@ describe("canonical public operation batches", () => {
         },
       ]);
     expect(comment("time").applied).toHaveLength(1);
-    const firstComment = editor.session.document;
     expect(comment("The").applied).toHaveLength(1);
-    return { editor, firstComment };
+    return { editor };
   };
 
   for (const text of [
@@ -503,39 +505,57 @@ describe("canonical public operation batches", () => {
       }
     });
 
-    test(`suggested/${text === "" ? "empty" : "nonempty"}: comment alignment refusal preserves the live document and journal`, () => {
+    test(`suggested/${text === "" ? "empty" : "nonempty"}: a suggested whole-block replacement keeps the comments on its deleted words until it is resolved`, () => {
       for (const type of REPLACEMENT_TYPES) {
-        const { editor, firstComment } = commentedReplacementSource();
+        const { editor } = commentedReplacementSource();
         const before = editor.session.document;
-        const version = editor.session.version;
-        const selection = editor.session.selection;
-        const save = editor.session.captureSaveSnapshot();
-        let committed = 0;
-        let dropped = 0;
-        editor.session.onCommitted(() => committed++);
-        editor.session.onHistoryDrop(() => dropped++);
+        const quotes = () =>
+          getCommentAnchorsFromDoc(editor.state().doc).map(
+            ({ quote }) => quote,
+          );
+        const original = quotes();
         const operation = wholeBlockReplacement({ type, text });
         const result = editor.apply([operation], { mode: "suggested" });
-        expect(result.applied).toEqual([]);
-        expect(result.undoHandle).toBeNull();
-        expect(result.skipped).toMatchObject([
-          {
-            reason: "unsupportedBlock",
-            canonicalRefusal: { gap: "comment-replacement-alignment" },
-          },
-        ]);
-        expect(editor.session.document).toBe(before);
-        expect(editor.session.version).toBe(version);
-        expect(editor.session.selection).toEqual(selection);
-        expect(editor.session.captureSaveSnapshot()).toEqual(save);
-        expect(editor.session.canUndo).toBe(true);
-        expect(editor.session.canRedo).toBe(false);
-        expect(committed).toBe(0);
-        expect(dropped).toBe(0);
+        expect(result.skipped).toEqual([]);
+        expect(result.applied).toHaveLength(1);
+        const resolve = (resolution: "accept" | "reject") =>
+          editor.publish(
+            editor.session
+              .prepareSuggestion(editor.state(), {
+                suggestionId: operation.id,
+                resolution,
+                author: "Reviewer",
+                date: "2026-01-02T03:04:05Z",
+              })
+              .unwrap(),
+          );
+        expect(resolve("reject")).toBe(true);
+        expect(quotes()).toEqual(original);
+        expect(editor.session.document).toEqual(before);
         expect(
           editor.publish(editor.session.prepareUndo(editor.state()).unwrap()),
         ).toBe(true);
-        expect(editor.session.document).toEqual(firstComment);
+        expect(resolve("accept")).toBe(true);
+        const pending = getTrackedChangesFromDoc(editor.state().doc).map(
+          ({ id }) => id,
+        );
+        if (pending.length > 0)
+          expect(
+            editor.publish(
+              editor.session
+                .prepareResolve(editor.state(), {
+                  revisionIds: pending,
+                  resolution: "accept",
+                })
+                .unwrap(),
+            ),
+          ).toBe(true);
+        // Accepted, the comments go with their words, as directly.
+        expect(editor.state().doc.textContent).toBe(text);
+        expect(quotes()).toEqual([]);
+        expect(editor.session.document.package.document.comments ?? []).toEqual(
+          [],
+        );
       }
     });
   }

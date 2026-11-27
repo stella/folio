@@ -17,9 +17,9 @@
  * span. It can propose a point at the replacement start for an emptied range;
  * downstream ranged-comment exhaustion may retire that comment. The applier
  * decides alignment once for direct and tracked edits.
- * Canonical replacements accept only coverage the source anchors already
- * express. Pure deletion follows ranged-comment exhaustion; unproven point
- * transitions refuse before mutation.
+ * Canonical replacements place comment anchors by the docx-core policy
+ * beside `rangeEndAfterDeletion`: markers inside the replaced words stay,
+ * in order, before the new words, and a range left covering nothing goes.
  *
  * - `comment` mark: carried over its aligned replacement span.
  * - `hyperlink` mark: the replacement carries the first link the span held, so
@@ -59,11 +59,9 @@
  *   already gives the replacement the formatting of the text it replaces.
  *
  * Removing the owning block removes its comment. Point anchors proposed by
- * the alignment helper do not override ranged-comment retirement; the
- * canonical guard refuses point transitions whose outcome is not proven.
+ * the alignment helper do not override ranged-comment retirement.
  */
 
-import { panic } from "better-result";
 import {
   Fragment,
   Mark,
@@ -72,13 +70,9 @@ import {
 } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
 
-import { isCommentExhausted, withoutCommentThreads } from "@stll/docx-core/ops";
+import { isCommentExhausted } from "@stll/docx-core/ops";
 
-import {
-  commentAnchorIdsForNode,
-  isCommentAnchorCarrier,
-} from "../ai-edits/comment-lifecycle";
-import type { Comment } from "../types/document";
+import { isCommentAnchorCarrier } from "../ai-edits/comment-lifecycle";
 import { minOf } from "../utils/extremes";
 import {
   expectParagraphAttrs,
@@ -330,12 +324,11 @@ type SurveyOptions = {
   from: number;
   to: number;
   content: ReplacedContent;
-  containers: "preserve" | "descend";
 };
 
 const surveyAnnotations = (
   doc: PMNode,
-  { from, to, content, containers }: SurveyOptions,
+  { from, to, content }: SurveyOptions,
 ): ReplacedAnnotations => {
   if (to <= from) {
     return NOTHING_REPLACED;
@@ -360,9 +353,7 @@ const surveyAnnotations = (
       position < from ||
       position + node.nodeSize > to
     ) {
-      return (
-        containers === "descend" && !node.isLeaf && lendsMarks(node, content)
-      );
+      return false;
     }
     (opensRange(node, placement) ? leading : trailing).push(node);
     return false;
@@ -385,7 +376,6 @@ export const surveyReplacedAnnotations = (
     from,
     to,
     content: "asWritten",
-    containers: "preserve",
   });
 
 /**
@@ -402,356 +392,7 @@ export const surveyAcceptedReplacedAnnotations = (
     from,
     to,
     content: "asAccepted",
-    containers: "preserve",
   });
-
-/**
- * How a replacement removes the words it changes, which decides what becomes
- * of a comment on them.
- */
-export type ReplacementRemoval =
-  | {
-      /**
-       * Removed outright: a thread whose root keeps no accepted word outside
-       * the changes goes with its words, markers and replies, as the direct
-       * edit retires every thread it exhausts, so its markers need no
-       * alignment.
-       */
-      type: "direct";
-      comments: readonly Comment[];
-    }
-  | {
-      /**
-       * Tracked: the deleted words keep their comment ranges, so rejecting
-       * gives every range back and accepting drops a comment whose words all
-       * went. Only a point comment or a selected marker still needs the
-       * comment to move.
-       */
-      type: "tracked";
-    }
-  | {
-      /**
-       * Recorded as a suggestion: its changes neither keep a comment on the
-       * words they remove nor retire one, so every comment they reach must
-       * already align.
-       */
-      type: "suggested";
-    };
-
-type ReplacementChange = {
-  from: number;
-  to: number;
-  text: string;
-  markers: "retained" | "selected";
-};
-
-type ReplacementCommentAlignmentOptions = {
-  doc: PMNode;
-  source: { from: number; to: number };
-  retiredCommentIds?: ReadonlySet<number> | undefined;
-  removal: ReplacementRemoval;
-  changes: readonly ReplacementChange[];
-};
-
-type ThreadsTakenOptions = {
-  doc: PMNode;
-  changes: readonly ReplacementChange[];
-  comments: readonly Comment[];
-};
-
-/**
- * A walker over the accepted leaves that carry words, handing each one's
- * ranged comment ids and extent to `visit`.
- */
-const rangedCommentLeaves =
-  (visit: (ids: readonly number[], from: number, to: number) => void) =>
-  (node: PMNode, position: number): boolean => {
-    if (!node.isInline) return true;
-    if (!node.isLeaf) return lendsMarks(node, "asAccepted");
-    if (isZeroWidthAnchor(node) || !lendsMarks(node, "asAccepted"))
-      return false;
-    const ids: number[] = [];
-    for (const mark of node.marks) {
-      const id: unknown = mark.attrs["commentId"];
-      if (
-        mark.type.name === "comment" &&
-        mark.attrs["point"] !== true &&
-        typeof id === "number"
-      )
-        ids.push(id);
-    }
-    visit(ids, position, position + node.nodeSize);
-    return false;
-  };
-
-/**
- * Whether every word each of `ids` covers lies inside a change, so that
- * accepting the tracked replacement leaves those comments nothing to cover.
- */
-const coveredOnlyInside = ({
-  doc,
-  changes,
-  ids,
-}: {
-  doc: PMNode;
-  changes: readonly ReplacementChange[];
-  ids: ReadonlySet<number>;
-}): boolean => {
-  let outside = false;
-  doc.descendants(
-    rangedCommentLeaves((leafIds, from, to) => {
-      if (
-        !changes.some((change) => change.from <= from && to <= change.to) &&
-        leafIds.some((id) => ids.has(id))
-      )
-        outside = true;
-    }),
-  );
-  return !outside;
-};
-
-/**
- * The comment threads a direct replacement takes with its words: each root
- * whose every accepted covered word lies inside a change, with its replies.
- * Accepting the tracked replacement leaves such a root nothing to cover, so
- * it drops the same threads.
- */
-const threadsTakenBy = ({
-  doc,
-  changes,
-  comments,
-}: ThreadsTakenOptions): ReadonlySet<number> => {
-  const inside = (from: number, to: number) =>
-    changes.some((change) => change.from <= from && to <= change.to);
-  const candidates = new Set<number>();
-  for (const change of changes)
-    doc.nodesBetween(
-      change.from,
-      change.to,
-      rangedCommentLeaves((ids, from, to) => {
-        if (inside(from, to)) for (const id of ids) candidates.add(id);
-      }),
-    );
-  // Only a comment with words inside a change can be taken, so the rest of
-  // the document is read only when one has.
-  if (candidates.size === 0) return candidates;
-  const surviving = new Set<number>();
-  doc.descendants(
-    rangedCommentLeaves((ids, from, to) => {
-      if (!inside(from, to)) for (const id of ids) surviving.add(id);
-    }),
-  );
-  const roots = new Set(
-    comments
-      .filter(
-        ({ id, parentId }) =>
-          parentId === undefined && candidates.has(id) && !surviving.has(id),
-      )
-      .map(({ id }) => id),
-  );
-  if (roots.size === 0) return roots;
-  const kept = new Set(
-    withoutCommentThreads(comments, roots).map(({ id }) => id),
-  );
-  return new Set(
-    comments.filter(({ id }) => !kept.has(id)).map(({ id }) => id),
-  );
-};
-
-type DirectReplacementSplit<Change extends ReplacementChange> = {
-  changes: Change[];
-  /** Threads the unsplit replacement takes whole. */
-  retiredCommentIds: ReadonlySet<number>;
-};
-
-/**
- * A direct replacement's changes cut at each boundary of a comment it keeps
- * that stands inside a changed stretch: the words before the boundary go, and
- * the new words follow every such boundary, where accepting the tracked
- * replacement leaves them. A range ending in the stretch ends before the new
- * words; one starting in it holds them.
- */
-export const splitAtKeptCommentBoundaries = <Change extends ReplacementChange>({
-  doc,
-  changes,
-  comments,
-}: {
-  doc: PMNode;
-  changes: readonly Change[];
-  comments: readonly Comment[];
-}): DirectReplacementSplit<Change> => {
-  const retired = threadsTakenBy({ doc, changes, comments });
-  const split: Change[] = [];
-  for (const change of changes) {
-    const cuts: number[] = [];
-    doc.nodesBetween(change.from, change.to, (node, position) => {
-      if (
-        isCommentAnchorCarrier(node) &&
-        change.from < position &&
-        position < change.to &&
-        commentAnchorIdsForNode(node).some((id) => !retired.has(id)) &&
-        cuts.at(-1) !== position
-      )
-        cuts.push(position);
-      return !node.isLeaf && lendsMarks(node, "asAccepted");
-    });
-    let from = change.from;
-    for (const cut of cuts) {
-      split.push({ ...change, from, to: cut, text: "" });
-      from = cut;
-    }
-    split.push({ ...change, from });
-  }
-  return { changes: split, retiredCommentIds: retired };
-};
-
-/**
- * Whether source boundaries already express the replacement's aligned ranges.
- * A changed stretch lends no comment to its replacement: the new words go
- * past the end of every range the stretch reaches, and a direct replacement
- * takes every thread it leaves nothing to cover. Pure deletions within
- * surviving source content follow the ranged-comment exhaustion owner; other
- * collapses need a point policy. Decide over the whole replacement, before
- * any of its fragments are applied.
- */
-export const preservesReplacementCommentAlignment = ({
-  doc,
-  source,
-  changes,
-  retiredCommentIds,
-  removal,
-}: ReplacementCommentAlignmentOptions): boolean => {
-  let previousEnd = source.from;
-  for (const change of changes) {
-    if (
-      change.from < previousEnd ||
-      change.to < change.from ||
-      change.to > source.to
-    )
-      panic(
-        "Replacement changes must be ordered inside their source coverage.",
-      );
-    previousEnd = change.to;
-  }
-  const retired = new Set(retiredCommentIds);
-  if (removal.type === "direct")
-    for (const id of threadsTakenBy({
-      doc,
-      changes,
-      comments: removal.comments,
-    }))
-      retired.add(id);
-  const collapsing: Mark[] = [];
-  const continued: Mark[] = [];
-  for (const change of changes) {
-    const annotations = surveyAnnotations(doc, {
-      from: change.from,
-      to: change.to,
-      content: "asAccepted",
-      containers: "descend",
-    });
-    const comments = annotations.carried.filter(
-      (mark) =>
-        mark.type.name === "comment" && !retired.has(mark.attrs["commentId"]),
-    );
-    if (comments.some((mark) => mark.attrs["point"] === true)) return false;
-    // A suggestion within one paragraph over a comment's own markers deletes
-    // them with its words; accepted, that leaves the comment nothing to cover
-    // only when every word it covers is inside the changes, which drops it as
-    // a direct replacement does.
-    if (
-      change.markers === "selected" &&
-      comments.length > 0 &&
-      (removal.type === "direct" ||
-        !doc.resolve(change.from).sameParent(doc.resolve(change.to)) ||
-        !coveredOnlyInside({
-          doc,
-          changes,
-          ids: new Set(comments.map((mark) => Number(mark.attrs["commentId"]))),
-        }))
-    )
-      return false;
-    if (removal.type === "tracked") continue;
-    let internalCarrier = false;
-    doc.nodesBetween(change.from, change.to, (node, position) => {
-      if (
-        isCommentAnchorCarrier(node) &&
-        change.from < position &&
-        position < change.to
-      ) {
-        const ids = commentAnchorIdsForNode(node);
-        if (ids.length === 0 || ids.some((id) => !retired.has(id)))
-          internalCarrier = true;
-      }
-      return !node.isLeaf && lendsMarks(node, "asAccepted");
-    });
-    if (internalCarrier) return false;
-    if (change.text === "") {
-      for (const mark of comments)
-        if (!mark.isInSet(collapsing)) collapsing.push(mark);
-      continue;
-    }
-    // The new words take no comment from the words they replace: they go past
-    // the end of a range the change reaches, and one it covers wholly goes
-    // with its words. A range starting in the change keeps them, as accepting
-    // the tracked replacement leaves them in it.
-    for (const mark of comments)
-      if (!mark.isInSet(continued)) continued.push(mark);
-  }
-  const candidates = collapsing.filter((mark) => !mark.isInSet(continued));
-  if (candidates.length === 0) return true;
-  const retained: Mark[] = [];
-  let sourceContentSurvives = false;
-  let changeIndex = 0;
-  doc.descendants((node, position) => {
-    if (!node.isInline) return true;
-    if (!node.isLeaf) return lendsMarks(node, "asAccepted");
-    if (isZeroWidthAnchor(node) || !lendsMarks(node, "asAccepted"))
-      return false;
-    const from = position;
-    const to = position + node.nodeSize;
-    const sourceFrom = Math.max(source.from, from);
-    const sourceTo = Math.min(source.to, to);
-    while ((changes[changeIndex]?.to ?? Infinity) <= from) changeIndex++;
-    let removed = 0;
-    let sourceRemoved = 0;
-    for (let index = changeIndex; index < changes.length; index++) {
-      const change = changes[index];
-      if (change === undefined || change.from >= to) break;
-      removed += Math.max(
-        0,
-        Math.min(to, change.to) - Math.max(from, change.from),
-      );
-      sourceRemoved += Math.max(
-        0,
-        Math.min(sourceTo, change.to) - Math.max(sourceFrom, change.from),
-      );
-    }
-    if (sourceFrom < sourceTo && sourceRemoved < sourceTo - sourceFrom)
-      sourceContentSurvives = true;
-    if (removed < to - from)
-      for (const mark of candidates)
-        if (mark.isInSet(node.marks) && !mark.isInSet(retained))
-          retained.push(mark);
-    return false;
-  });
-  const deletesOnly = changes.every(({ text }) => text === "");
-  return candidates.every((mark) => {
-    const survivingNonCarrierContent = mark.isInSet(retained);
-    // Candidates are non-point marks. The whole-document scan proves each
-    // range's remaining coverage, including coverage outside the edited source.
-    return (
-      survivingNonCarrierContent ||
-      (deletesOnly &&
-        sourceContentSurvives &&
-        isCommentExhausted({
-          type: "coverage",
-          anchorKind: "range",
-          survivingNonCarrierContent,
-        }))
-    );
-  });
-};
 
 /**
  * Whether the span already contributed this mark, or one the mark would evict.

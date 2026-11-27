@@ -56,7 +56,6 @@ import {
   packageParagraphIds,
   paragraphIdsIn,
   paragraphsThroughTextBoxes,
-  planWholeParagraphReplacement,
   type RecordedRevisionIds,
   sameStory,
   suggestedCommentIds,
@@ -122,11 +121,6 @@ import {
 } from "../prosemirror/conversion/toProseDoc";
 import { COMMENT_RANGE_BOUNDARY_NODE_NAME } from "../prosemirror/extensions/nodes/CommentRangeBoundaryExtension";
 import { heldUnreferencedNotes as notesHeldWithoutReference } from "../prosemirror/noteReferenceReview";
-import {
-  preservesReplacementCommentAlignment,
-  type ReplacementRemoval,
-  splitAtKeptCommentBoundaries,
-} from "../prosemirror/replacedAnnotations";
 import { runFormattingPatchFromMarks } from "../prosemirror/runFormattingFromMarks";
 import {
   CANONICAL_CONDITION,
@@ -2484,110 +2478,6 @@ class CanonicalSession {
     );
   }
 
-  /** How a replacement in the current mode removes the words it changes. */
-  /**
-   * A replacement cut into pieces at the comment boundaries it keeps, within
-   * one paragraph: the last piece takes the text, the others are cleared, and
-   * each is compiled after the ones behind it, so no earlier address moves.
-   * The caret follows the new text, moved back by what the pieces before it
-   * cleared.
-   */
-  private compileReplacementPieces({
-    projection,
-    pieces,
-    start,
-    end,
-    intent,
-  }: {
-    projection: CanonicalProjection;
-    pieces: readonly { from: number; to: number; text: string }[];
-    start: TextPosition;
-    end: TextPosition;
-    intent: Extract<EditorIntent, { type: "replaceText" }>;
-  }): Result<
-    { ops: DocumentOp[]; selection: TextPosition; applied?: undefined },
-    CanonicalSessionError
-  > {
-    const refused = (message: string) =>
-      refuse(message, { gap: CANONICAL_GAP.commentReplacementAlignment });
-    const addressed: { from: TextPosition; to: TextPosition; text: string }[] =
-      [];
-    for (const [index, piece] of pieces.entries()) {
-      const from =
-        index === 0
-          ? Result.ok(start)
-          : projection.inputAddressAt(piece.from, "afterMarkers");
-      const to =
-        index === pieces.length - 1
-          ? Result.ok(end)
-          : projection.inputAddressAt(piece.to, "beforeMarkers");
-      if (from.isErr() || to.isErr())
-        return refused("A replacement piece has no address.");
-      if (
-        from.value.blockId !== start.blockId ||
-        to.value.blockId !== start.blockId
-      )
-        return refused(
-          "A replacement cut at comment boundaries stays in one paragraph.",
-        );
-      addressed.push({ from: from.value, to: to.value, text: piece.text });
-    }
-    let document = this.currentDocument;
-    const ops: DocumentOp[] = [];
-    let caret: TextPosition | undefined;
-    let cleared = 0;
-    const { inside, ...shared } = intent;
-    for (const [index, piece] of [...addressed.entries()].reverse()) {
-      const last = index === addressed.length - 1;
-      // Only the text's own end can stand inside a control's closing edge.
-      const step = {
-        ...shared,
-        from: piece.from,
-        to: piece.to,
-        text: piece.text,
-        ...(last && inside?.end === true ? { inside: { end: true } } : {}),
-      } satisfies EditorIntent;
-      // The pieces stand in for a replacement the alignment refused, so a
-      // piece that cannot compile leaves that refusal standing.
-      const compiled = compileEditorIntent(document, {
-        intent: step,
-        mode: this.intentMode(document, step),
-      });
-      if (compiled.isErr()) return refused(compiled.error.message);
-      const applied =
-        compiled.value.applied === undefined
-          ? applyDocumentOps(document, compiled.value.ops)
-          : Result.ok(compiled.value.applied);
-      if (applied.isErr()) return refused(applied.error.message);
-      document = applied.value.document;
-      ops.push(...compiled.value.ops);
-      if (last) caret = compiled.value.selection;
-      else cleared += piece.to.offset - piece.from.offset;
-    }
-    if (caret === undefined)
-      return refused("A replacement cut at comment boundaries lost its text.");
-    return Result.ok({
-      ops,
-      selection: { ...caret, offset: caret.offset - cleared },
-    });
-  }
-
-  private replacementRemoval(): ReplacementRemoval {
-    switch (this.mode.type) {
-      case "editing":
-        return {
-          type: "direct",
-          comments: this.currentDocument.package.document.comments ?? [],
-        };
-      case "suggesting":
-        return { type: "tracked" };
-      default: {
-        const unhandled: never = this.mode;
-        return panic(`Unknown canonical session mode ${String(unhandled)}`);
-      }
-    }
-  }
-
   private advanceBlockId(): void {
     while (
       this.allocatedBlockIds.has(
@@ -3151,15 +3041,12 @@ class CanonicalSession {
       // Typing over selected cells clears each of them and writes the text
       // into the first, as the editor does.
       const ranges = canonicalCellSelectionRanges(state.selection);
-      const firstRange = ranges.at(0);
-      const lastRange = ranges.at(-1);
-      if (firstRange === undefined || lastRange === undefined)
+      if (ranges.length === 0)
         return refuse(
           "The selected cells contain no editable text.",
           INVALID_REQUEST,
         );
       const intents: EditorIntent[] = [];
-      const commentChanges = [];
       let first = true;
       for (const range of ranges) {
         const edges = projection.rangeEdgesAt(range.from, range.to);
@@ -3173,30 +3060,8 @@ class CanonicalSession {
           to: cellTo.value,
           text: first ? text : "",
         });
-        commentChanges.push({
-          from: range.from,
-          to: range.to,
-          text: first ? text : "",
-          markers:
-            edges.start === "beforeMarkers" || edges.end === "afterMarkers"
-              ? ("selected" as const)
-              : ("retained" as const),
-        });
         first = false;
       }
-      if (
-        text !== "" &&
-        !preservesReplacementCommentAlignment({
-          doc: state.doc,
-          source: { from: firstRange.from, to: lastRange.to },
-          changes: commentChanges,
-          removal: this.replacementRemoval(),
-        })
-      )
-        return refuse(
-          "Canonical replacement cannot preserve the aligned comment ranges.",
-          { gap: CANONICAL_GAP.commentReplacementAlignment },
-        );
       return this.prepareIntents(state, { intents, semantic });
     }
     const range = canonicalSelectionRange(state);
@@ -3220,70 +3085,6 @@ class CanonicalSession {
         ? Result.ok(editCaret)
         : projection.inputAddressAt(inputTo, edges.end);
     if (end.isErr()) return end;
-    // A direct replacement cut at each comment boundary it keeps: the words
-    // before a boundary go, and the new words follow the last one.
-    let pieces: readonly { from: number; to: number; text: string }[] = [];
-    if (inputFrom < inputTo && text !== "") {
-      const retirement = planWholeParagraphReplacement({
-        document: this.currentDocument,
-        from: start.value,
-        to: end.value,
-        suggesting:
-          this.mode.type === "suggesting"
-            ? { author: this.mode.author }
-            : undefined,
-      });
-      if (retirement.isErr()) return refuseOp(retirement.error);
-      const removal = this.replacementRemoval();
-      const whole = [
-        {
-          from: inputFrom,
-          to: inputTo,
-          text,
-          markers:
-            edges.start === "beforeMarkers" || edges.end === "afterMarkers"
-              ? ("selected" as const)
-              : ("retained" as const),
-        },
-      ];
-      const aligned = (
-        changes: typeof whole,
-        retiredCommentIds: ReadonlySet<number> | undefined,
-      ) =>
-        preservesReplacementCommentAlignment({
-          doc: state.doc,
-          retiredCommentIds,
-          removal,
-          source: { from: inputFrom, to: inputTo },
-          changes,
-        });
-      if (!aligned(whole, retirement.value?.commentIds)) {
-        // A direct replacement whole would leave its new words inside a
-        // comment it keeps, so it is cut at the comment's boundaries.
-        const split =
-          removal.type === "direct"
-            ? splitAtKeptCommentBoundaries({
-                doc: state.doc,
-                changes: whole,
-                comments: removal.comments,
-              })
-            : undefined;
-        const retired = new Set([
-          ...(retirement.value?.commentIds ?? []),
-          ...(split?.retiredCommentIds ?? []),
-        ]);
-        if (
-          split === undefined ||
-          split.changes.length < 2 ||
-          !aligned(split.changes, retired)
-        )
-          return refuse(
-            "Canonical replacement cannot preserve the aligned comment ranges.",
-            { gap: CANONICAL_GAP.commentReplacementAlignment },
-          );
-        pieces = split.changes;
-      }
-    }
     const preSelection = projection.selectionAt(state);
     if (preSelection.isErr()) return preSelection;
     const inside = controlEdgesAt(state.doc, inputFrom, inputTo);
@@ -3302,23 +3103,11 @@ class CanonicalSession {
             ),
           }),
     } as const satisfies EditorIntent;
-    const compiled =
-      pieces.length > 1
-        ? this.compileReplacementPieces({
-            projection,
-            pieces,
-            start: start.value,
-            end: end.value,
-            intent,
-          })
-        : compileEditorIntent(this.currentDocument, {
-            intent,
-            mode: this.intentMode(this.currentDocument, intent),
-          });
+    const compiled = compileEditorIntent(this.currentDocument, {
+      intent,
+      mode: this.intentMode(this.currentDocument, intent),
+    });
     if (compiled.isErr()) {
-      // The pieces refuse under their own ground.
-      if (compiled.error instanceof CanonicalSessionError)
-        return Result.err(compiled.error);
       return compiled.error.reason === DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE
         ? noChange(compiled.error.message)
         : refuseOp(compiled.error);

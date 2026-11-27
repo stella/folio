@@ -63,6 +63,27 @@ type RangeEndAfterDeletionOptions = {
 };
 
 /**
+ * Where a text replacement leaves the comment anchors it reaches. The direct
+ * edit and the accepted suggestion give the same answer, so a comment's fate
+ * never depends on the mode:
+ *
+ * - A comment marker (range start, range end or reference) inside the
+ *   replaced stretch is not deleted with the words. It stays, in its order,
+ *   and the new words follow it (this gap). A comment straddling an edge
+ *   keeps its outer marker: one ending inside now ends where the new words
+ *   start, one starting inside now covers the new words and the rest of its
+ *   own.
+ * - A ranged comment whose every word went has nothing left to cover, and
+ *   its thread goes, replies included, directly and once the suggestion is
+ *   accepted (`newlyExhaustedCommentIds`). A point comment, or a range that
+ *   covered nothing before, keeps its thread and stands where the new words
+ *   start.
+ * - Tracked, the struck words keep every marker among them
+ *   (`replacementDeletionSegments` ends a stretch at each), so rejecting
+ *   restores each anchor exactly and accepting leaves the direct result.
+ * - A replacement across paragraphs joins them: the markers of every
+ *   paragraph it reaches gather, in order, before the new words.
+ *
  * The gap just after a range deletion, where what replaces the range goes:
  * after the struck content in a redline, and after whatever a deletion keeps
  * in place, so that accepting a tracked replacement gives the direct one.

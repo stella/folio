@@ -20,7 +20,6 @@ import { serializeCanonicalSave } from "../docx/canonicalSave";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { cloneDocumentWithParagraphPropertySources } from "../docx/paragraphPropertySource";
 import { parseDocx } from "../docx/parser";
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 
 const DATE = "2026-01-02T03:04:05Z";
 afterEach(() => setSystemTime());
@@ -243,6 +242,11 @@ for (const endpoint of ["whole", "partial-last"] as const)
     expect(outcomes.at(0)).toStrictEqual(outcomes.at(1));
   });
 
+// What typing over the hosts leaves, per boundary, directly or accepted.
+const typedOutcomes = new Map<
+  string,
+  ReturnType<typeof cloneDocumentWithParagraphPropertySources>
+>();
 for (const boundary of [
   "partial-first",
   "surviving-host-comment",
@@ -254,7 +258,7 @@ for (const boundary of [
   for (const mode of boundary === "pending-host-mark"
     ? (["suggesting"] as const)
     : (["editing", "suggesting"] as const))
-    test(`${mode}/${boundary}: ${mode === "editing" && boundary === "surviving-host-comment" ? "typing over every word of the surviving host's comment takes it" : "unproven comment-host ownership refuses with all state unchanged"}`, async () => {
+    test(`${mode}/${boundary}: typing over the hosts keeps the point and outside threads, accepted, rejected, saved and undone`, async () => {
       setSystemTime(new Date(DATE));
       let document = await fixture();
       const first = document.package.document.content.at(0);
@@ -340,69 +344,95 @@ for (const boundary of [
             : new AllSelection(state.doc),
         ),
       );
-      const before = session.document;
-      const version = session.version;
-      const blocks = [...session.reservedBlockIds];
-      // The writer may assign missing thread paragraph ids in its owned snapshot copy.
+      const original = cloneDocumentWithParagraphPropertySources(
+        session.document,
+      );
+      const sourceIds = new Set(getTrackedChangeStatsFromDoc(state.doc).ids);
+      const commit = session
+        .prepareReplace(state, {
+          from: state.selection.from,
+          to: state.selection.to,
+          text: "xyz",
+          semantic: "typing",
+        })
+        .unwrap();
+      state = publishCanonicalProjection({ session, state, commit }).unwrap()
+        .state;
+      if (mode === "suggesting") {
+        const ids = getTrackedChangeStatsFromDoc(state.doc).ids.filter(
+          (id) => !sourceIds.has(id),
+        );
+        // Rejected, the deleted words give every anchor back where it was.
+        const rejected = createCanonicalSession(session.document).unwrap();
+        const rejectedState = EditorState.create({
+          doc: rejected.projection.doc,
+        });
+        publishCanonicalProjection({
+          session: rejected,
+          state: rejectedState,
+          commit: rejected
+            .prepareResolve(rejectedState, {
+              revisionIds: ids,
+              resolution: "reject",
+            })
+            .unwrap(),
+        }).unwrap();
+        expect(
+          cloneDocumentWithParagraphPropertySources(rejected.document),
+        ).toStrictEqual(original);
+        state = publishCanonicalProjection({
+          session,
+          state,
+          commit: session
+            .prepareResolve(state, { revisionIds: ids, resolution: "accept" })
+            .unwrap(),
+        }).unwrap().state;
+      }
+      // The ranged threads whose words all went go with them; the point
+      // thread moves to the start of the typed text, and the thread outside
+      // the selection stays.
+      expect(state.doc.textContent).toBe(
+        boundary === "partial-first" ? "Ixyz" : "xyz",
+      );
+      const threads = session
+        .getCommittedComments()
+        .map(({ id, parentId }) => ({ id, parentId }))
+        .sort((left, right) => left.id - right.id);
+      expect(threads).toEqual([
+        { id: 3, parentId: undefined },
+        { id: 20, parentId: undefined },
+        { id: 120, parentId: 20 },
+      ]);
+      const final = cloneDocumentWithParagraphPropertySources(session.document);
+      const sameEdit = typedOutcomes.get(boundary);
+      if (sameEdit === undefined) typedOutcomes.set(boundary, final);
+      // Accepting the suggestion leaves what typing directly leaves.
+      else expect(final).toStrictEqual(sameEdit);
       const saved = await serializeCanonicalSave({
         snapshot: session.captureSaveSnapshot(),
       });
-      const snapshot = session.captureSaveSnapshot();
-      let events = 0;
-      const off = session.onCommitted(() => events++);
-      const result = session.prepareReplace(state, {
-        from: state.selection.from,
-        to: state.selection.to,
-        text: "xyz",
-        semantic: "typing",
-      });
-      if (mode === "editing" && boundary === "surviving-host-comment") {
-        // The selection takes every word of the surviving host's comment
-        // too, so the direct edit takes the comment with them, as it takes
-        // the hosts' own ranged threads; point threads keep their places.
-        state = publishCanonicalProjection({
-          session,
-          state,
-          commit: result.unwrap(),
-        }).unwrap().state;
-        expect(state.doc.textContent).toBe("xyz");
-        expect(
-          session.document.package.document.comments?.map(({ id }) => id),
-        ).toEqual([3, 20, 120]);
-        const undo = session.prepareUndo(state).unwrap();
-        state = publishCanonicalProjection({
-          session,
-          state,
-          commit: undo,
-        }).unwrap().state;
-        expect(session.document).toStrictEqual(before);
-        off();
-        return;
-      }
-      expect(result.isErr()).toBe(true);
-      if (result.isErr())
-        expect(result.error.ground).toEqual({
-          gap: CANONICAL_GAP.commentReplacementAlignment,
-        });
-      expect(session.document).toBe(before);
-      expect(session.version).toBe(version);
-      expect([...session.reservedBlockIds]).toEqual(blocks);
-      expect({ undo: session.canUndo, redo: session.canRedo, events }).toEqual({
-        undo: false,
-        redo: false,
-        events: 0,
-      });
-      expect(session.captureSaveSnapshot()).toEqual(snapshot);
+      const reopened = createCanonicalSession(
+        await parseDocx(saved.buffer, {
+          preloadFonts: false,
+          detectVariables: false,
+        }),
+      ).unwrap();
+      expect(reopened.projection.doc.textContent).toBe(state.doc.textContent);
       expect(
-        new Uint8Array(
-          (
-            await serializeCanonicalSave({
-              snapshot: session.captureSaveSnapshot(),
-            })
-          ).buffer,
-        ),
-      ).toEqual(new Uint8Array(saved.buffer));
-      off();
+        reopened
+          .getCommittedComments()
+          .map(({ id, parentId }) => ({ id, parentId }))
+          .sort((left, right) => left.id - right.id),
+      ).toEqual(threads);
+      while (session.canUndo)
+        state = publishCanonicalProjection({
+          session,
+          state,
+          commit: session.prepareUndo(state).unwrap(),
+        }).unwrap().state;
+      expect(
+        cloneDocumentWithParagraphPropertySources(session.document),
+      ).toStrictEqual(original);
     });
 
 test("editing: a host's pending words and break retire with it, and undo restores them", async () => {
