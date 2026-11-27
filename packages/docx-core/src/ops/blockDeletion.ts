@@ -1272,15 +1272,20 @@ export const deleteBlocks = ({
       });
     }
   }
-  // Directly, paragraphs a table or another block follows, with no table
-  // before them, go whole, as accepting their tracked deletion removes them:
-  // the container still ends with a paragraph, and no two tables meet.
+  // Directly, paragraphs a table or another block follows go whole, as
+  // accepting their tracked deletion removes them: the container still ends
+  // with a paragraph, before a table through a control ending it too, and no
+  // two tables meet past the range boundaries between.
+  const blockBeforeFirst = list.findLast(
+    (block, index) => index < first.index && !isBlockBoundary(block),
+  );
   const directBeforeBlock =
     op.revision === undefined &&
     following !== undefined &&
     following.type !== "paragraph" &&
-    endsWithParagraph &&
-    (first.index === 0 || list[first.index - 1]?.type === "paragraph") &&
+    (endsWithParagraph ||
+      (following.type === "table" && blockListEndsInParagraph(list))) &&
+    !(blockBeforeFirst?.type === "table" && following.type === "table") &&
     endsNoSection;
   if (
     following?.type !== "paragraph" &&

@@ -505,10 +505,177 @@ const DELETIONS_BESIDE_NUMBERED_PARAGRAPHS: Record<
     ],
 };
 
+/**
+ * Deletions of an empty numbered paragraph a block follows, past block
+ * bookmarks: generated cases, shrunk, and their kin. Directly the paragraph
+ * goes whole, after a paragraph or a block, as accepting its tracked
+ * deletion removes it, so the list item after it is numbered alike.
+ */
+const DELETIONS_BESIDE_BLOCKS: Record<string, [BlockContent[], OperationDraw]> =
+  {
+    "deleting an empty numbered paragraph after a block bookmark opening the body, before a preserved block":
+      [
+        [
+          blockBookmark,
+          numbered(pending(1, []), 2),
+          altChunk,
+          numbered(pending(2, noteReference)),
+          blockBookmark,
+        ],
+        deleting(0),
+      ],
+    "deleting an empty numbered paragraph after a block bookmark opening the body, before a table":
+      [
+        [
+          blockBookmark,
+          numbered(pending(1, []), 2),
+          oneCellTable(2),
+          pending(3, []),
+          numbered(pending(4, noteReference)),
+        ],
+        deleting(0),
+      ],
+    "deleting an empty numbered paragraph after a block bookmark opening the body, before a content control":
+      [
+        [
+          blockBookmark,
+          numbered(pending(1, []), 2),
+          groupControl(pending(2, [])),
+          numbered(pending(3, noteReference)),
+        ],
+        deleting(0),
+      ],
+    "deleting an empty numbered paragraph a block bookmark parts from the paragraph before, before a preserved block":
+      [
+        [
+          numbered(pending(1, noteReference)),
+          blockBookmark,
+          numbered(pending(2, []), 2),
+          altChunk,
+          numbered(pending(3, noteReference)),
+        ],
+        deleting(1),
+      ],
+    "deleting an empty numbered paragraph after a table, before a preserved block":
+      [
+        [
+          oneCellTable(1),
+          numbered(pending(2, []), 2),
+          altChunk,
+          numbered(pending(3, noteReference)),
+        ],
+        deleting(1),
+      ],
+    "deleting an empty numbered paragraph after a content control, before another":
+      [
+        [
+          groupControl(pending(1, [])),
+          numbered(pending(2, []), 2),
+          groupControl(pending(3, [])),
+          numbered(pending(4, noteReference)),
+        ],
+        deleting(1),
+      ],
+    "deleting an empty numbered paragraph before a table, in a body ending in a content control":
+      [
+        [
+          numbered(pending(1, []), 2),
+          oneCellTable(2),
+          numbered(pending(3, noteReference)),
+          groupControl(pending(4, [])),
+        ],
+        deleting(0),
+      ],
+  };
+
 const inserting = (
   kind: "insertBeforeBlock" | "insertAfterBlock",
   block: number,
 ): OperationDraw => ({ kind, block, word: 0, text: "revised" });
+
+/**
+ * Bodies with a paragraph whose break was added before a table, ending in a
+ * content control, a table, a preserved block, a block bookmark or a
+ * paragraph, with the draw naming a paragraph put after it (the first a
+ * generated case, shrunk). Rejected, the paragraph runs into the table, as
+ * it does with the new one never put there.
+ */
+const AFTER_ADDED_BREAKS_BEFORE_TABLES: Record<
+  string,
+  [BlockContent[], OperationDraw]
+> = {
+  "after a paragraph holding a range whose break was added, after a block bookmark, before a table, in a body ending in a content control":
+    [
+      [
+        pending(1, [], "del"),
+        blockBookmark,
+        pending(2, commentRange, "ins"),
+        oneCellTable(3),
+        groupControl(pending(4, [])),
+      ],
+      inserting("insertAfterBlock", 1),
+    ],
+  "after a paragraph holding a note reference whose break was added, before a table, in a body ending in a content control":
+    [
+      [
+        pending(1, alpha),
+        pending(2, noteReference, "ins"),
+        oneCellTable(3),
+        groupControl(pending(4, [])),
+      ],
+      inserting("insertAfterBlock", 1),
+    ],
+  "after an empty paragraph whose break was added, before a table, in a body ending in a content control":
+    [
+      [
+        pending(1, alpha),
+        pending(2, [], "ins"),
+        oneCellTable(3),
+        groupControl(pending(4, [])),
+      ],
+      inserting("insertAfterBlock", 1),
+    ],
+  "after a paragraph holding a range whose break was added, before a table, in a body ending in a table":
+    [
+      [
+        pending(1, alpha),
+        pending(2, commentRange, "ins"),
+        oneCellTable(3),
+        oneCellTable(4),
+      ],
+      inserting("insertAfterBlock", 1),
+    ],
+  "after a paragraph holding a range whose break was added, before a table, in a body ending in a preserved block":
+    [
+      [
+        pending(1, alpha),
+        pending(2, commentRange, "ins"),
+        oneCellTable(3),
+        altChunk,
+      ],
+      inserting("insertAfterBlock", 1),
+    ],
+  "after a paragraph holding a range whose break was added, before a table, in a body ending in a block bookmark":
+    [
+      [
+        pending(1, alpha),
+        pending(2, commentRange, "ins"),
+        oneCellTable(3),
+        blockBookmark,
+      ],
+      inserting("insertAfterBlock", 1),
+    ],
+  "after a paragraph holding a range whose break was added, before a table, in a body ending in a paragraph":
+    [
+      [
+        pending(1, alpha),
+        pending(2, commentRange, "ins"),
+        oneCellTable(3),
+        pending(4, []),
+      ],
+      inserting("insertAfterBlock", 1),
+    ],
+};
 
 /**
  * Bodies around pending paragraph joins, with the draw naming a paragraph
@@ -763,6 +930,8 @@ describe("a canonical reviewer's pending suggestions", () => {
       ...BEFORE_UNRESOLVED_MARKS,
       ...DELETIONS_BESIDE_NUMBERED_JOINS,
       ...DELETIONS_BESIDE_NUMBERED_PARAGRAPHS,
+      ...DELETIONS_BESIDE_BLOCKS,
+      ...AFTER_ADDED_BREAKS_BEFORE_TABLES,
     }),
   )("a suggestion %s follows the laws", async (_shape, [content, draw]) => {
     const buffer = await packaged(bodyOf(content));
@@ -770,6 +939,44 @@ describe("a canonical reviewer's pending suggestions", () => {
     if (buffer === null) return;
     expect(await suggestionLaws(buffer, draw)).toBe("suggested");
   });
+
+  // Between two tables a block bookmark parts from it, an empty paragraph
+  // stays in every mode, so they do not meet: deleting it changes nothing.
+  test("a suggested deletion of an empty paragraph between two tables past a block bookmark is refused", async () => {
+    const buffer = await packaged(
+      bodyOf([
+        oneCellTable(1),
+        blockBookmark,
+        numbered(pending(2, []), 2),
+        oneCellTable(3),
+        numbered(pending(4, noteReference)),
+      ]),
+    );
+    expect(buffer).not.toBeNull();
+    if (buffer === null) return;
+    expect(await suggestionLaws(buffer, deleting(1))).toBe("refusedOperation");
+  });
+
+  // A tracked paragraph put after one whose break was added before a table
+  // applies, and Reject All gives back what rejecting every change of the
+  // original does, whatever the body ends in.
+  test.each(Object.entries(AFTER_ADDED_BREAKS_BEFORE_TABLES))(
+    "a tracked paragraph %s rejects back to the original",
+    async (_shape, [content, draw]) => {
+      const buffer = await packaged(bodyOf(content));
+      expect(buffer).not.toBeNull();
+      if (buffer === null) return;
+      const original = await open(buffer);
+      const operation = operationFor(original, draw);
+      expect(operation?.type).toBe(draw.kind);
+      if (operation === null) return;
+      const tracked = await open(buffer);
+      expect(apply(tracked, operation, "tracked-changes").skipped).toEqual([]);
+      expect(tracked.rejectAll().skipped).toEqual([]);
+      expect(original.rejectAll().skipped).toEqual([]);
+      expect(reads(tracked)).toEqual(reads(original));
+    },
+  );
 
   // A suggested deletion whose accepted join would run a numbered paragraph's
   // words into a last paragraph keeping another reviewer's pending property

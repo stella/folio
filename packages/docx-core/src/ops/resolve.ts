@@ -7559,16 +7559,21 @@ const withAbsorptions = (
  * that paragraph into this one first, which keeps it all, empty inline
  * containers too. Where nothing around those joined paragraphs can take what
  * they leave, this one stays, as it would once they had joined it: its
- * identity and properties are the ones the joins keep.
+ * identity and properties are the ones the joins keep. Holding nothing,
+ * before a table or block they run into (`runsIn`), it goes: they then stand
+ * before that block as they did with it never added, and run in. Holding
+ * content of its own, it stays as above.
  */
 const removalBesideJoin = ({
   blocks,
   index,
   joinsBefore,
+  runsIn,
 }: {
   blocks: readonly BlockContent[];
   index: number;
   joinsBefore: ReadonlySet<string>;
+  runsIn: boolean;
 }): ReturnType<typeof planParagraphBoundaryRemoval> => {
   const paragraph = blocks[index];
   const previous = blocks[index - 1];
@@ -7585,6 +7590,7 @@ const removalBesideJoin = ({
       .flatMap((block) => (block.type === "paragraph" ? block.content : [])),
   };
   if (
+    !(runsIn && paragraph.content.length === 0) &&
     planParagraphBoundaryRemoval({
       blocks: [...blocks.slice(0, start), chained, ...blocks.slice(index + 1)],
       index: start,
@@ -8137,6 +8143,7 @@ const joinOps = (
         blocks,
         index: location.index,
         joinsBefore,
+        runsIn: runInReceiver !== undefined,
       });
       if (removal.type === "removed") {
         // The mark goes with the break it carries: its section and the one
@@ -8226,6 +8233,7 @@ const joinOps = (
       blocks,
       index: location.index,
       joinsBefore,
+      runsIn: runInReceiver !== undefined,
     });
     // No other paragraph names the list, as in a content control holding a
     // table and this paragraph: an empty replacement removes it, and its

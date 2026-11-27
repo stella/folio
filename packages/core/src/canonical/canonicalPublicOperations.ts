@@ -2826,6 +2826,15 @@ const nodePastBoundaries = ($pos: ResolvedPos): PMNode | null => {
   return null;
 };
 
+/** The node before `$pos` past any block-level range boundaries, if any. */
+const nodeBeforeBoundaries = ($pos: ResolvedPos): PMNode | null => {
+  for (let index = $pos.index() - 1; index >= 0; index -= 1) {
+    const node = $pos.parent.child(index);
+    if (!isBlockBoundaryNode(node)) return node;
+  }
+  return null;
+};
+
 /**
  * Whether only paragraphs accepting removes whole stand in `blocks`, one of
  * them at least pending removal: a join before them, once accepted, has no
@@ -7551,16 +7560,23 @@ export class CanonicalPublicOperations {
     // words.
     if (!tracked) {
       // Before a table or another block, first in its container or after a
-      // paragraph, it goes whole, as accepting its tracked deletion removes
-      // it: the paragraph before it keeps its own mark, and with it any
-      // section break. A section break of its own is resolved by the join
-      // below. This also applies beside a removed table when the paragraph
-      // no longer keeps surviving tables apart.
+      // paragraph or a block, it goes whole, as accepting its tracked
+      // deletion removes it: what stands before it keeps its own mark, and
+      // with it any section break. A section break of its own is resolved by
+      // the join below. Between two tables it stays, unless the batch removes
+      // one, so they do not meet. Block-level range boundaries hold nothing:
+      // the blocks past them decide.
+      const blockBefore = nodeBeforeBoundaries(
+        doc.resolve(paragraph.start - 1),
+      );
+      const betweenTables =
+        blockBefore?.type.name === "table" &&
+        nodePastBoundaries(doc.resolve(end + 1))?.type.name === "table";
       if (
         after !== null &&
         !followsInsertedTable &&
-        (before === null ||
-          ((before.type.name === "paragraph" || bordersRemovedTable) &&
+        (blockBefore === null ||
+          ((!betweenTables || bordersRemovedTable) &&
             paragraph.node.attrs["_sectionProperties"] == null))
       )
         return tracking({
@@ -8054,9 +8070,18 @@ export class CanonicalPublicOperations {
       let afterPos = beforePos + paragraph.node.nodeSize;
       let before = blockBefore;
       let after = blockAfter;
-      while (before !== null && tableWillBeRemoved(before)) {
+      // Block-level range boundaries hold nothing: the blocks past them
+      // border it.
+      while (
+        before !== null &&
+        (isBlockBoundaryNode(before) || tableWillBeRemoved(before))
+      ) {
         beforePos -= before.nodeSize;
         before = state.doc.resolve(beforePos).nodeBefore;
+      }
+      while (after !== null && isBlockBoundaryNode(after)) {
+        afterPos += after.nodeSize;
+        after = state.doc.resolve(afterPos).nodeAfter;
       }
       while (after !== null && tableWillBeRemoved(after)) {
         const beyond = state.doc.resolve(afterPos + after.nodeSize).nodeAfter;

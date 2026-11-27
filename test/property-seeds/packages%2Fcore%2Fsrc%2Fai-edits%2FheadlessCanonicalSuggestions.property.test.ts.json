@@ -186,6 +186,21 @@
       "seed": 99,
       "note": "#2891: a suggested removal of a numbered paragraph before a table, whose mark is another reviewer's pending insertion, is recorded beside that insertion, so accepting both removes the paragraph whole and renumbers the list as the direct removal does.",
       "date": "2026-11-27"
+    },
+    {
+      "seed": 5150,
+      "note": "An accepted suggested removal of an empty numbered paragraph after a block bookmark opening the body, before a preserved block, numbers the next list item as the direct removal does.",
+      "date": "2026-11-27"
+    },
+    {
+      "seed": 424242,
+      "note": "An accepted suggested removal of an empty numbered paragraph after a block bookmark opening the body, before a table, numbers the next list item as the direct removal does.",
+      "date": "2026-11-27"
+    },
+    {
+      "seed": 31337,
+      "note": "A paragraph suggested after one whose break was added, before a table in a body ending in a content control, applies as the tracked one: rejecting both runs that paragraph into the table, as rejecting its own change does.",
+      "date": "2026-11-27"
     }
   ]
 }
