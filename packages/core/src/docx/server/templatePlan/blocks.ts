@@ -816,6 +816,13 @@ export const analyzeStory = ({
       if (read.hasSectionBreak) {
         block.endsSection = true;
       }
+      if (
+        toggleOf(
+          wChild(wChild(wChild(read.element, "pPr"), "rPr"), "specVanish"),
+        ) === true
+      ) {
+        block.runsIn = true;
+      }
       const alignment =
         read.alignment ??
         (resources.alignments === undefined
