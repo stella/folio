@@ -572,6 +572,8 @@ const resolveCellColumns = ({
     // Columns still occupied in other rows can move to the following cell
     // when the previous cell cannot grow without changing its merge.
     let carried = 0;
+    let carriedFrom: TableCell | undefined;
+    let insertedPlaceholder = false;
     let omittedBefore = 0;
     let omittedAfter = 0;
     const lastKept = layout.cells.findLastIndex(({ cell }) => !removes(cell));
@@ -599,8 +601,10 @@ const resolveCellColumns = ({
         }
         const widened = widen(previous, kept);
         if (widened === undefined) {
-          if (index < lastKept) carried += kept;
-          else omittedAfter += kept;
+          if (index < lastKept) {
+            carried += kept;
+            carriedFrom ??= cell;
+          } else omittedAfter += kept;
           continue;
         }
         cells[cells.length - 1] = widened;
@@ -619,17 +623,37 @@ const resolveCellColumns = ({
       // A kept cell holds no column every row loses.
       const widened = widen(next, carried);
       if (widened === undefined) {
-        if (cells.length !== 0) return Result.err("unsupported");
-        omittedBefore = carried;
+        if (cells.length === 0) {
+          omittedBefore = carried;
+        } else {
+          // An interior slot between vertical merges needs a real cell.
+          // Its original paragraph's address remains on an empty terminator.
+          const paraId =
+            carriedFrom === undefined
+              ? undefined
+              : tableRowAnchor([{ type: "tableRow", cells: [carriedFrom] }]);
+          if (paraId === undefined) return Result.err("unsupported");
+          cells.push({
+            type: "tableCell",
+            content: [{ type: "paragraph", paraId, content: [] }],
+            ...(carried === 1 ? {} : { formatting: { gridSpan: carried } }),
+          });
+          insertedPlaceholder = true;
+        }
       }
       carried = 0;
+      carriedFrom = undefined;
       cells.push(widened ?? next);
     }
     if (carried > 0) return Result.err("unsupported");
     // Accepting a deletion that leaves the row nothing it starts removes
     // the row, as the direct deletion does.
-    if (!reject && editRemovesRow({ before: row.cells, after: cells }))
-      continue;
+    if (!reject) {
+      const survivors = insertedPlaceholder
+        ? row.cells.filter((cell) => !removes(cell))
+        : cells;
+      if (editRemovesRow({ before: row.cells, after: survivors })) continue;
+    }
     // Preserve the occupied columns of a vertical merge. Unoccupied slots
     // at the row edges can be expressed as native gridBefore/gridAfter.
     rows.push({

@@ -239,3 +239,86 @@ test.each(["before", "after", "interior"] as const)(
   },
   propertyTestTimeout(10_000),
 );
+
+test("selective cell review keeps a blank interior slot between vertical merges", () => {
+  assertProperty(
+    fc.property(
+      fc.integer({ min: 1, max: 4 }),
+      fc.constantFrom(REVISION_DECISIONS.ACCEPT, REVISION_DECISIONS.REJECT),
+      (span, decision) => {
+        const middle = {
+          ...cell("000010B0"),
+          formatting: { gridSpan: span },
+          content: [
+            {
+              type: "paragraph",
+              paraId: "000010B0",
+              content: [
+                {
+                  type: "run",
+                  content: [{ type: "text", text: "Reviewed text" }],
+                },
+              ],
+            },
+          ],
+          structuralChange: {
+            type:
+              decision === "accept"
+                ? "tableCellDeletion"
+                : "tableCellInsertion",
+            info: { id: 7, author: "Reviewer" },
+          },
+        } satisfies TableCell;
+        const table = {
+          type: "table",
+          columnWidths: Array.from({ length: span + 3 }, () => 600),
+          rows: [
+            {
+              type: "tableRow",
+              cells: [
+                { ...cell("000010A0"), formatting: { vMerge: "restart" } },
+                middle,
+                { ...cell("000010C0"), formatting: { vMerge: "restart" } },
+                cell("000010D0"),
+              ],
+            },
+            {
+              type: "tableRow",
+              cells: [
+                { ...cell("000020A0"), formatting: { vMerge: "continue" } },
+                { ...cell("000020B0"), formatting: { gridSpan: span } },
+                { ...cell("000020C0"), formatting: { vMerge: "continue" } },
+                cell("000020D0"),
+              ],
+            },
+          ],
+        } satisfies Table;
+        const source = documentOf(table);
+        const settled = applyDocumentOp(source, {
+          type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+          story: OP_STORIES.MAIN,
+          revisionIds: [7],
+          decision,
+        }).unwrap();
+        const resolved = tableOf(settled.document);
+        expect(resolved.rows.at(0)?.cells.at(1)).toEqual({
+          ...cell("000010B0"),
+          ...(span === 1 ? {} : { formatting: { gridSpan: span } }),
+        });
+        expect(
+          tableGrid(resolved, DOCUMENT_OP_TYPES.SET_TABLE).unwrap().width,
+        ).toBe(span + 3);
+        expect(resolved.rows.at(0)?.cells.at(2)).toEqual(
+          table.rows.at(0)?.cells.at(2),
+        );
+        expect(resolved.rows.at(1)).toEqual(table.rows.at(1));
+        expect(
+          applyDocumentOps(settled.document, settled.inverse).unwrap().document,
+        ).toStrictEqual(source);
+      },
+    ),
+    {
+      id: "selective cell review keeps a blank interior slot between vertical merges",
+    },
+  );
+});
