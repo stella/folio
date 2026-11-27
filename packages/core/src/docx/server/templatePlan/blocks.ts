@@ -43,6 +43,7 @@ import type {
   DocxNote,
   DocxSection,
   DocxTableCell,
+  TemplatePlanLineRule,
   TemplatePlanTrackedChanges,
 } from "./types";
 import { TemplatePlanError } from "./types";
@@ -106,6 +107,52 @@ type StoryResources = {
   levelIndents?: ReadonlyMap<string, IndentSides>;
   /** The indent the document's defaults give every paragraph. */
   defaultIndent?: IndentSides;
+  /** The space in front and behind each paragraph style states for itself. */
+  spacings?: ReadonlyMap<string, SpacingSides>;
+  /** The space in front and behind the document's defaults give. */
+  defaultSpacing?: SpacingSides;
+};
+
+/** A side of `w:spacing`: a measure in twentieths of a point, a side set
+ *  but not as such a measure (auto spacing, counted in lines), or unset. */
+type SpacingSide = number | "unmeasured" | null;
+/** A line spacing as written: its value and how it is counted. */
+type LineSpacing = { line: number; lineRule: TemplatePlanLineRule };
+type SpacingSides = {
+  before: SpacingSide;
+  after: SpacingSide;
+  line: LineSpacing | null;
+};
+
+const NO_SPACING: SpacingSides = { before: null, after: null, line: null };
+
+const LINE_RULES: ReadonlySet<string> = new Set(["auto", "exact", "atLeast"]);
+/** The line spacing where nothing states one: single. */
+const SINGLE_LINE: LineSpacing = { line: 240, lineRule: "auto" };
+
+const SPACING_SWITCHED_ON: ReadonlySet<string> = new Set(["1", "true", "on"]);
+
+/** The sides a `w:spacing` element sets, measured or not. */
+const spacingSides = (spacing: XmlElement | null): SpacingSides => {
+  const side = (name: "before" | "after"): SpacingSide => {
+    if (
+      SPACING_SWITCHED_ON.has(wAttr(spacing, `${name}Autospacing`) ?? "") ||
+      wAttr(spacing, `${name}Lines`) !== null
+    ) {
+      return "unmeasured";
+    }
+    return twipsOrNull(wAttr(spacing, name));
+  };
+  const line = twipsOrNull(wAttr(spacing, "line"));
+  const rule = wAttr(spacing, "lineRule") ?? "auto";
+  return {
+    before: side("before"),
+    after: side("after"),
+    line:
+      line === null || line <= 0 || !LINE_RULES.has(rule)
+        ? null
+        : { line, lineRule: rule as TemplatePlanLineRule },
+  };
 };
 
 type OpenTable = {
@@ -275,6 +322,77 @@ export const styleAlignment = (
     cursor = styles.get(cursor)?.basedOn;
   }
   return null;
+};
+
+/**
+ * The space in front and behind each style of a styles part states for
+ * itself (`w:spacing`), and what the document's defaults state. A side a
+ * style does not state as a measure is null.
+ */
+export const statedSpacings = (
+  stylesPath: string | null,
+  stylesXml: string | null,
+): { styles: Map<string, SpacingSides>; defaults: SpacingSides } => {
+  const styles = new Map<string, SpacingSides>();
+  const part =
+    stylesPath === null || stylesXml === null
+      ? null
+      : readRawPart(stylesPath, stylesXml);
+  for (const style of wChildren(part?.root, "style")) {
+    const styleId = wAttr(style, "styleId");
+    const sides = spacingSides(wChild(wChild(style, "pPr"), "spacing"));
+    if (
+      styleId !== null &&
+      (sides.before !== null || sides.after !== null || sides.line !== null)
+    ) {
+      styles.set(styleId, sides);
+    }
+  }
+  const defaults = wChild(wChild(part?.root, "docDefaults"), "pPrDefault");
+  return {
+    styles,
+    defaults: spacingSides(wChild(wChild(defaults, "pPr"), "spacing")),
+  };
+};
+
+/**
+ * The space in effect in front of a paragraph and behind it: each side its
+ * own, else that of the nearest style in the `basedOn` chain that sets it,
+ * else the document defaults', else none. A side that is decided by auto
+ * spacing or a count of lines is no measure and is left out. The line
+ * spacing comes from the first of them that states one, single without.
+ */
+const spacingInEffect = (
+  own: SpacingSides,
+  styleId: string | null,
+  styles: StyleMap,
+  stated: ReadonlyMap<string, SpacingSides>,
+  defaults: SpacingSides,
+): NonNullable<DocxBlock["spacingInEffect"]> => {
+  // The paragraph, then its styles nearest first, then the defaults.
+  const levels: SpacingSides[] = [own];
+  const seen = new Set<string>();
+  let cursor: string | undefined = styleId ?? undefined;
+  while (cursor !== undefined && !seen.has(cursor)) {
+    seen.add(cursor);
+    const sides = stated.get(cursor);
+    if (sides !== undefined) {
+      levels.push(sides);
+    }
+    cursor = styles.get(cursor)?.basedOn;
+  }
+  levels.push(defaults);
+  const side = (name: "before" | "after"): SpacingSide =>
+    levels.find((level) => level[name] !== null)?.[name] ?? 0;
+  const before = side("before");
+  const after = side("after");
+  const line = levels.find((level) => level.line !== null)?.line ?? SINGLE_LINE;
+  return {
+    ...(typeof before === "number" ? { before } : {}),
+    ...(typeof after === "number" ? { after } : {}),
+    line: line.line,
+    lineRule: line.lineRule,
+  };
 };
 
 /** What a style states of the look of its text; null where it states
@@ -692,6 +810,19 @@ export const analyzeStory = ({
           ...(after === null ? {} : { after }),
         };
       }
+      const inEffect =
+        resources.spacings === undefined
+          ? undefined
+          : spacingInEffect(
+              spacingSides(wChild(wChild(read.element, "pPr"), "spacing")),
+              styleId ?? resources.defaultStyleId,
+              resources.styles,
+              resources.spacings,
+              resources.defaultSpacing ?? NO_SPACING,
+            );
+      if (inEffect !== undefined) {
+        block.spacingInEffect = inEffect;
+      }
       // A list the paragraph names itself gives its level's indent over
       // the style's; a list the style brings is part of the style, whose
       // own indent then stands over the level's.
@@ -1065,6 +1196,7 @@ export const analyzeDocument = async (
         )?.styleId ?? null;
       const numbering =
         numberingXml === null ? null : parseNumbering(numberingXml);
+      const spacings = statedSpacings(stylesPath, stylesXml);
       const story = analyzeStory({
         container: body,
         resources: {
@@ -1077,6 +1209,8 @@ export const analyzeDocument = async (
           alignments: statedAlignments(stylesPath, stylesXml),
           levelIndents: statedLevelIndents(numberingPath, numberingXml),
           defaultIndent: statedDefaultIndent(stylesPath, stylesXml),
+          spacings: spacings.styles,
+          defaultSpacing: spacings.defaults,
         },
         keepsRevisions,
       });

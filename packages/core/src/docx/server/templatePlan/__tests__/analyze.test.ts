@@ -243,6 +243,69 @@ describe("analyzeDocxBlocks", () => {
     ]);
   });
 
+  test("a block says the space in effect around it: its own, its style's, the defaults'", async () => {
+    const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:pPrDefault><w:pPr><w:spacing w:after="160"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style><w:style w:type="paragraph" w:styleId="Cell"><w:name w:val="Cell"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="0" w:line="276" w:lineRule="auto"/></w:pPr></w:style><w:style w:type="paragraph" w:styleId="CellNarrow"><w:name w:val="Cell Narrow"/><w:basedOn w:val="Cell"/><w:pPr><w:spacing w:before="40"/></w:pPr></w:style><w:style w:type="paragraph" w:styleId="Web"><w:name w:val="Web"/><w:basedOn w:val="Cell"/><w:pPr><w:spacing w:before="100" w:beforeAutospacing="1" w:after="100" w:afterAutospacing="1"/></w:pPr></w:style></w:styles>`;
+    const { blocks } = unwrap(
+      await analyzeDocxBlocks(
+        await buildMinimalDocx(
+          [
+            p(r("plain")),
+            p(r("tight by its style"), '<w:pStyle w:val="Cell"/>'),
+            p(
+              r("each side by another style"),
+              '<w:pStyle w:val="CellNarrow"/>',
+            ),
+            p(
+              r("its own over its style's"),
+              '<w:pStyle w:val="Cell"/><w:spacing w:after="120"/>',
+            ),
+            p(
+              r("a side in lines"),
+              '<w:spacing w:after="200" w:afterLines="50"/>',
+            ),
+            p(r("auto spacing by its style"), '<w:pStyle w:val="Web"/>'),
+            p(
+              r("its own measure over its style's auto spacing"),
+              '<w:pStyle w:val="Web"/><w:spacing w:before="0"/>',
+            ),
+            `<w:tbl><w:tr><w:tc>${p(r("in a cell"), '<w:pStyle w:val="Cell"/>')}</w:tc></w:tr></w:tbl>`,
+          ].join(""),
+          {
+            "[Content_Types].xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>`,
+            "word/_rels/document.xml.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`,
+            "word/styles.xml": styles,
+          },
+        ),
+      ),
+    );
+
+    const single = { line: 240, lineRule: "auto" } as const;
+    const cell = { line: 276, lineRule: "auto" } as const;
+    expect(blocks.slice(0, 7).map((block) => block.spacingInEffect)).toEqual([
+      // The defaults' space behind; nothing states one in front, nor a line
+      // spacing: single.
+      { before: 0, after: 160, ...single },
+      { before: 0, after: 0, ...cell },
+      // In front from the style itself, behind and the lines from the one
+      // it is based on.
+      { before: 40, after: 0, ...cell },
+      { before: 0, after: 120, ...cell },
+      // A side counted in lines is no measure: it is left out.
+      { before: 0, ...single },
+      // Auto spacing, decided by the style, is no measure either.
+      { ...cell },
+      { before: 0, ...cell },
+    ]);
+    // What the paragraph sets by hand is still apart.
+    expect(blocks.at(1)?.spacing).toBeUndefined();
+    expect(blocks.at(3)?.spacing).toEqual({ after: 120 });
+    expect(blocks.at(7)?.nested?.at(0)?.spacingInEffect).toEqual({
+      before: 0,
+      after: 0,
+      ...cell,
+    });
+  });
+
   test("a paragraph numbered without a numbering part has no label", async () => {
     const { blocks } = unwrap(
       await analyzeDocxBlocks(
