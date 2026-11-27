@@ -6,7 +6,7 @@ import { type NumberingMap, parseNumbering } from "../../numberingParser";
 import { parseSectionProperties } from "../../sectionParser";
 import { parseStylesPackage, type StyleMap } from "../../styleParser";
 import type { XmlElement } from "../../xmlParser";
-import { keepsShiftReturnSpacing } from "./builders";
+import { fieldBookmarkOf, keepsShiftReturnSpacing } from "./builders";
 import { defaultsBaseline, type Emphasis } from "./emphasis";
 import {
   createLabelCounter,
@@ -37,6 +37,7 @@ import {
 } from "./story";
 import type {
   DocxBlock,
+  DocxBlockCrossReference,
   DocxBlockManifest,
   DocxBlockRevision,
   DocxNote,
@@ -417,6 +418,115 @@ const selfNumbersOf = ({ atoms }: ParagraphRead): number[] => {
 };
 
 /**
+ * Whether a bookmark of `read` holds all of the paragraph's content. In a
+ * reading that keeps tracked changes the paragraph's own content begins
+ * behind the last paragraph mark deleted in it (what stands in front is the
+ * paragraph the mark ended) and ends in front of a mark somebody inserted.
+ */
+export const bookmarkEncloses = (
+  read: ParagraphRead | null,
+  name: string,
+): boolean => {
+  const start = read?.bookmarks.find((bookmark) => bookmark.name === name);
+  const end =
+    start === undefined
+      ? undefined
+      : read?.bookmarkEnds.find(({ id }) => id === start.id);
+  if (read === null || start === undefined || end === undefined) {
+    return false;
+  }
+  const own =
+    read.atoms.findLastIndex(
+      ({ revision }) => revision?.deleted === DELETED_PARAGRAPH_MARK,
+    ) + 1;
+  const marked = read.atoms.at(-1)?.revision?.mark === true ? 1 : 0;
+  return (
+    start.atomIndex === own && end.atomIndex === read.atoms.length - marked
+  );
+};
+
+/** A cross-reference field before the paragraph its bookmark marks is known. */
+type FieldToBookmark = Omit<
+  DocxBlockCrossReference,
+  "targetBlockId" | "targetWhole"
+>;
+
+/**
+ * The `REF` fields of a paragraph whose result stands in its text: begun
+ * and ended in it, in the code of no field and in the result of no other.
+ */
+const crossReferencesOf = (
+  read: ParagraphRead,
+  state: StoryState,
+): FieldToBookmark[] => {
+  const spans = new Map<
+    number,
+    { start: number; end: number; outermost: boolean }
+  >();
+  let at = 0;
+  for (const { text, fields } of read.atoms) {
+    const start = at;
+    at += text.length;
+    for (const [depth, index] of fields.entries()) {
+      const span = spans.get(index);
+      if (span === undefined) {
+        spans.set(index, { start, end: at, outermost: depth === 0 });
+      } else {
+        span.end = at;
+        span.outermost &&= depth === 0;
+      }
+    }
+  }
+  const found: FieldToBookmark[] = [];
+  for (const [index, { start, end, outermost }] of spans) {
+    const field = state.fields[index];
+    const bookmark =
+      field === undefined ? null : fieldBookmarkOf(field.instruction);
+    if (
+      field === undefined ||
+      bookmark === null ||
+      field.kind !== "REF" ||
+      !field.closed ||
+      field.nestedInCode ||
+      !outermost ||
+      start === end ||
+      field.paragraphOrdinal !== read.ordinal ||
+      field.endParagraphOrdinal !== read.ordinal
+    ) {
+      continue;
+    }
+    found.push({ start, end, instruction: field.instruction, bookmark });
+  }
+  return found;
+};
+
+/**
+ * Where each bookmark of a story stands: the paragraph it starts and ends
+ * in, and whether it holds all of its content. Null for one that ends in
+ * another paragraph or not at all. The first bookmark of a name counts.
+ */
+const bookmarkTargetsOf = (
+  story: AnalyzedStory,
+): Map<string, { blockId: string; whole: boolean } | null> => {
+  const targets = new Map<string, { blockId: string; whole: boolean } | null>();
+  for (const { block, read } of story.order) {
+    for (const start of read?.bookmarks ?? []) {
+      if (targets.has(start.name)) {
+        continue;
+      }
+      const end = read?.bookmarkEnds.find(({ id }) => id === start.id);
+      targets.set(
+        start.name,
+        end === undefined || end.atomIndex < start.atomIndex
+          ? null
+          : { blockId: block.id, whole: bookmarkEncloses(read, start.name) },
+      );
+    }
+  }
+  return targets;
+};
+
+/**
  * The tracked changes a paragraph read with them kept holds, by where they
  * sit in its text. Neighbouring pieces of one change are one entry.
  */
@@ -488,6 +598,9 @@ export const analyzeStory = ({
   let index = 0;
   let sectionIndex = 0;
   const unread = new Map<string, number>();
+  // A field may name a bookmark further down: the targets are looked up
+  // once the whole story is read.
+  const fieldsToBookmarks = new Map<DocxBlock, FieldToBookmark[]>();
 
   const register = (analyzed: AnalyzedBlock): void => {
     story.order.push(analyzed);
@@ -549,6 +662,10 @@ export const analyzeStory = ({
       const revisions = revisionsOf(read);
       if (revisions.length > 0) {
         block.revisions = revisions;
+      }
+      const references = crossReferencesOf(read, state);
+      if (references.length > 0) {
+        fieldsToBookmarks.set(block, references);
       }
       if (read.pageBreakBefore ?? style?.pPr?.pageBreakBefore === true) {
         block.pageBreakBefore = true;
@@ -691,6 +808,25 @@ export const analyzeStory = ({
       state.trackedChanges += 1;
     },
   });
+
+  if (fieldsToBookmarks.size > 0) {
+    const targets = bookmarkTargetsOf(story);
+    for (const [block, references] of fieldsToBookmarks) {
+      block.crossReferences = references.map(
+        ({ start, end, instruction, bookmark }) => {
+          const target = targets.get(bookmark) ?? null;
+          return {
+            start,
+            end,
+            instruction,
+            bookmark,
+            targetBlockId: target?.blockId ?? null,
+            targetWhole: target?.whole ?? false,
+          };
+        },
+      );
+    }
+  }
 
   const bodySection = wChild(container, "sectPr");
   if (bodySection !== null) {

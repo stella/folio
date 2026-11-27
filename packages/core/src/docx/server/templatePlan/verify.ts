@@ -32,6 +32,7 @@ import {
   type AnalyzedStory,
   analyzeKeptForm,
   analyzeSource,
+  bookmarkEncloses,
   viewOf,
 } from "./blocks";
 import {
@@ -79,7 +80,7 @@ import {
   type StoryOrigin,
   type StoryResources,
 } from "./resources";
-import { DELETED_PARAGRAPH_MARK, tableRowRevisions } from "./revisions";
+import { tableRowRevisions } from "./revisions";
 import {
   type AtomKind,
   type AtomLink,
@@ -589,34 +590,6 @@ const sameStated = (before: StatedProperties, after: StatedProperties) =>
   before.endsSection === after.endsSection &&
   before.numId === after.numId &&
   before.ilvl === after.ilvl;
-
-/**
- * Whether a bookmark of `read` holds all of the paragraph's content. In a
- * reading that keeps tracked changes the paragraph's own content begins
- * behind the last paragraph mark deleted in it (what stands in front is the
- * paragraph the mark ended) and ends in front of a mark somebody inserted.
- */
-const bookmarkEncloses = (
-  read: ParagraphRead | null,
-  name: string,
-): boolean => {
-  const start = read?.bookmarks.find((bookmark) => bookmark.name === name);
-  const end =
-    start === undefined
-      ? undefined
-      : read?.bookmarkEnds.find(({ id }) => id === start.id);
-  if (read === null || start === undefined || end === undefined) {
-    return false;
-  }
-  const own =
-    read.atoms.findLastIndex(
-      ({ revision }) => revision?.deleted === DELETED_PARAGRAPH_MARK,
-    ) + 1;
-  const marked = read.atoms.at(-1)?.revision?.mark === true ? 1 : 0;
-  return (
-    start.atomIndex === own && end.atomIndex === read.atoms.length - marked
-  );
-};
 
 const segmentLength = (segment: ExpectedSegment): number =>
   piecesContent(segment.kind === "piece" ? [segment.piece] : segment.pieces)
@@ -1359,7 +1332,12 @@ export const reportTemplatePlanOutput = async ({
       let predictedText: string | null = null;
       if (targetBlock !== undefined) {
         if (!hasNumberSwitch) {
-          predictedText = targetBlock.block.text;
+          // A number a field counts itself is in no text, so the text
+          // shows what such a heading prints only where it has none.
+          predictedText =
+            targetBlock.block.selfNumbers === undefined
+              ? targetBlock.block.text
+              : null;
         } else if (usesNumber) {
           const number = /\\t\b/u.test(entry.reference.instruction)
             ? (targetBlock.label?.numberOnly ?? null)

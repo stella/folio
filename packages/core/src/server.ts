@@ -353,6 +353,7 @@ export {
   type ApplyTemplatePlanOptions,
   type ApplyTemplatePlanResult,
   type DocxBlock,
+  type DocxBlockCrossReference,
   type DocxBlockManifest,
   type DocxBlockNumbering,
   type DocxBlockRevision,

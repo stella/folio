@@ -186,6 +186,18 @@ describe("complexFieldXml", () => {
     expect(refFieldInstruction("_Ref1", "MERGEFORMAT")).toBeNull();
     expect(refFieldInstruction("_Ref1", "")).toBe(" REF _Ref1 ");
   });
+
+  test("keeps a format that keeps the result's look, beside a letter case", () => {
+    expect(refFieldInstruction("_Ref1", "\\h \\* MERGEFORMAT")).toBe(
+      " REF _Ref1 \\h \\* MERGEFORMAT ",
+    );
+    expect(
+      refFieldInstruction("_Ref1", "\\n \\* lower \\* CHARFORMAT \\h"),
+    ).toBe(" REF _Ref1 \\n \\* lower \\* CHARFORMAT \\h ");
+    expect(
+      refFieldInstruction("_Ref1", "\\h \\* MERGEFORMAT \\* MERGEFORMAT"),
+    ).toBeNull();
+  });
 });
 
 describe("setUpdateFieldsOnOpen", () => {
