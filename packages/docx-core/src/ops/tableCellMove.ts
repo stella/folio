@@ -51,6 +51,7 @@ import {
 } from "./leaves";
 import { stampInfo } from "./review";
 import { reachesPastRemovedCell } from "./tableEditDependencies";
+import { rowHasCellsOrOmissions } from "./tableGrid";
 import {
   movableTablePictureId,
   withTablePictureIdentity,
@@ -522,7 +523,7 @@ export const nestedTableMoveSource = (
         rowProperties.bookmarks !== undefined ||
         !collectCarriers(row) ||
         reachesPastRemovedCell(rowProperties) ||
-        cells.length === 0
+        !rowHasCellsOrOmissions(row)
       )
         return false;
       if (row.structuralChange !== undefined)
@@ -585,7 +586,11 @@ export const nestedTableMoveSource = (
     }
     return true;
   };
-  if (!collect(table)) return undefined;
+  const insertedRows = table.rows.filter(
+    ({ structuralChange }) => structuralChange === undefined,
+  ).length;
+  if (!collect(table) || (paragraphs.length === 0 && insertedRows === 0))
+    return undefined;
   const revisionIds = new Set(revisions);
   if (gridMembers.some((id) => !revisionIds.has(id))) return undefined;
   const allowed = new Set([
@@ -604,9 +609,7 @@ export const nestedTableMoveSource = (
         revisions,
         controls: [...controls],
         pictures,
-        insertedRows: table.rows.filter(
-          ({ structuralChange }) => structuralChange === undefined,
-        ).length,
+        insertedRows,
       }
     : undefined;
 };

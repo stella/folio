@@ -266,6 +266,20 @@ test("a copied nested table keeps its tagged cell paragraph and stable identity"
   expect(xml.match(/<w:customXml\b/gu)).toHaveLength(2);
 });
 
+test("a moved table with only omitted rows uses its native insertion record as an anchor", () => {
+  const original = sourceWith({
+    content: plain,
+    wrap: (paragraph) =>
+      '<w:tbl><w:tblGrid><w:gridCol w:w="500"/><w:gridCol w:w="500"/></w:tblGrid>' +
+      '<w:tr><w:trPr><w:gridBefore w:val="2"/></w:trPr></w:tr></w:tbl>' +
+      paragraph,
+  });
+  const { merge } = allocateTrackedMerge(original);
+  const xml = assertSavedMove(original, merge);
+  expect(xml.match(/<w:gridBefore w:val="2"/gu)).toHaveLength(2);
+  expect(xml).toMatch(/<w:trPr><w:gridBefore w:val="2"\/><w:ins /u);
+});
+
 test("a moved nested table preserves drawing and rich-text control identities", () => {
   const original = sourceWith({
     owner: inlinePicture.replace('docPr id="27"', 'docPr id="1"'),

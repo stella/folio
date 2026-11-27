@@ -531,12 +531,25 @@ test.each([
   },
 );
 
-test.each(["some rows", "every row", "all deleted rows"] as const)(
+test.each([
+  "some rows",
+  "every row",
+  "all deleted rows",
+  "omitted row",
+  "fully omitted rows",
+] as const)(
   "earlier nested row revisions remain independent when a merge moves %s",
   (coverage) => {
-    const sourceRows = nested.rows.map((row, index) => ({
-      ...row,
-      cells:
+    const sourceRows = nested.rows.map((row, index) => {
+      const omitted =
+        coverage === "fully omitted rows" ||
+        (coverage === "omitted row" && index === 1);
+      const sourceRow = omitted
+        ? { ...row, cells: [], formatting: { gridBefore: 1 } }
+        : row;
+      if (index === 1 && (omitted || coverage === "some rows"))
+        return sourceRow;
+      const cells =
         coverage === "every row" && index === 0
           ? [
               cell(
@@ -552,19 +565,19 @@ test.each(["some rows", "every row", "all deleted rows"] as const)(
                 paragraph("00000003", "Nested 1"),
               ),
             ]
-          : row.cells,
-      ...(index === 1 && coverage === "some rows"
-        ? {}
-        : {
-            structuralChange: {
-              type:
-                index === 0 || coverage === "all deleted rows"
-                  ? "tableRowDeletion"
-                  : "tableRowInsertion",
-              info: { id: 51 + index, author: "Earlier" },
-            },
-          }),
-    })) satisfies Table["rows"];
+          : sourceRow.cells;
+      return {
+        ...sourceRow,
+        cells,
+        structuralChange: {
+          type:
+            index === 0 || coverage === "all deleted rows"
+              ? "tableRowDeletion"
+              : "tableRowInsertion",
+          info: { id: 51 + index, author: "Earlier" },
+        },
+      };
+    }) satisfies Table["rows"];
     const start = paragraph("00000001", "Owner");
     const end = paragraph("00000005");
     const originalTable = {
@@ -615,14 +628,21 @@ test.each(["some rows", "every row", "all deleted rows"] as const)(
     if (grid === undefined || aliases === undefined)
       throw new TypeError("Expected saved row handoffs.");
     expect(aliases.map(([source]) => source)).toEqual(
-      coverage === "some rows" ? [51] : [51, 52],
+      coverage === "every row" || coverage === "all deleted rows"
+        ? [51, 52]
+        : [51],
     );
     const reopened = withTable(parsed);
     const doc = toProseDoc(reopened, { tableReviewGeometry: "physical" });
     for (const [source, temporary] of aliases) {
       const mark =
         source === 51 || coverage === "all deleted rows" ? "del" : "ins";
-      expect(xml).toContain(`<w:trPr><w:${mark} w:id="${temporary}"`);
+      expect(xml).toMatch(
+        new RegExp(
+          `<w:trPr>(?:<w:gridBefore[^>]*\\/>)?<w:${mark} w:id="${temporary}"`,
+          "u",
+        ),
+      );
       expect(getTrackedChangeGroupsForIds(doc, [source]).at(0)).toEqual([
         source,
         temporary,

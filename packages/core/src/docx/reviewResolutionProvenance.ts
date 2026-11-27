@@ -903,7 +903,7 @@ const isNestedTableMove = (value: unknown): value is NestedTableMove => {
     rows.every(isRevisionId) &&
     new Set(rows).size === rows.length &&
     Array.isArray(paragraphs) &&
-    paragraphs.length > 0 &&
+    (rows.length > 0 || paragraphs.length > 0) &&
     paragraphs.every(
       (pair) =>
         Array.isArray(pair) &&

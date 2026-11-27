@@ -132,7 +132,6 @@ export const activeNestedTableRevisionHandoffs = (
     !Array.isArray(revisions) ||
     revisions.length === 0 ||
     !Array.isArray(paragraphs) ||
-    paragraphs.length === 0 ||
     !Array.isArray(rows)
   )
     return [];
@@ -159,6 +158,27 @@ export const activeNestedTableRevisionHandoffs = (
           ),
         );
   if (target === undefined) return [];
+  const copies = revisionSlots(target);
+  const pairedIn = (candidate: Table) => {
+    const originals = revisionSlots(candidate);
+    return revisions.filter((pair) => {
+      if (!Array.isArray(pair) || pair.length !== 2) return false;
+      const [old, temporary] = pair;
+      const slot = originals.get(old);
+      return slot !== undefined && slot === copies.get(temporary);
+    });
+  };
+  // Fully omitted rows have no paragraphs to pair. A native insertion
+  // identifies the target. Matching physical slots identify the source
+  // while both versions still carry the earlier record.
+  if (pairs.length === 0) {
+    for (const candidate of tables) {
+      if (candidate === target) continue;
+      const active = pairedIn(candidate);
+      if (active.length > 0) return active;
+    }
+    return [];
+  }
   const destinations = paragraphIds(target);
   if (pairs.some(([from]) => destinations.has(from))) return [];
   // A decision on an earlier cell record may have removed the same
@@ -172,13 +192,5 @@ export const activeNestedTableRevisionHandoffs = (
         !origins.has(to) && origins.has(from) === destinations.has(to),
     );
   });
-  if (source === undefined) return [];
-  const originals = revisionSlots(source);
-  const copies = revisionSlots(target);
-  return revisions.filter((pair) => {
-    if (!Array.isArray(pair) || pair.length !== 2) return false;
-    const [old, temporary] = pair;
-    const slot = originals.get(old);
-    return slot !== undefined && slot === copies.get(temporary);
-  });
+  return source === undefined ? [] : pairedIn(source);
 };
