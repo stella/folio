@@ -11,6 +11,7 @@ import { describe, expect, test } from "bun:test";
 import type { Node as ProseNode } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 
+import type { OpStory } from "@stll/docx-core/ops";
 import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
@@ -763,4 +764,114 @@ test("a note pasted into one package and copied on reads the parts that paste co
   const read = new Set(parts?.parts.keys() ?? []);
   for (const path of copiedPaths)
     if (!path.includes("_rels/")) expect(read.has(path)).toBe(true);
+});
+
+/** The first footnote of a package, as a story. */
+const FIRST_NOTE: OpStory = { kind: "footnote", id: 1 };
+
+/** The first node of `story` in `session` keeping markup, as a copied slice. */
+const storySlice = (session: CanonicalSession, story: OpStory) => {
+  const { doc } = session.projectStory(story).unwrap();
+  let range: { from: number; to: number } | undefined;
+  doc.descendants((node, position) => {
+    if (range !== undefined) return false;
+    if (
+      Object.values(node.attrs).some(
+        (value) => typeof value === "string" && value.startsWith("<"),
+      )
+    )
+      range = { from: position, to: position + node.nodeSize };
+    return range === undefined;
+  });
+  if (range === undefined)
+    throw new TypeError("The story holds no kept markup.");
+  return doc.slice(range.from, range.to);
+};
+
+test("a chart copied straight from a note whose part has no relationships of its own pastes into another package with its parts", async () => {
+  const copy = createCanonicalSession(
+    await sourceWithoutNoteRelationships(),
+  ).unwrap();
+  const copiedFrom = readModel(copy.document);
+  const slice = storySlice(copy, FIRST_NOTE);
+  const sourceParts = await readClipboardPackageParts({
+    document: copiedFrom,
+    markup: sliceKeptMarkup(slice),
+    story: FIRST_NOTE,
+  });
+  expect([...(sourceParts?.parts.keys() ?? [])].toSorted()).toEqual(
+    [
+      "word/charts/chart1.xml",
+      "word/charts/_rels/chart1.xml.rels",
+      "word/embeddings/workbook1.xlsx",
+    ].toSorted(),
+  );
+  const session = createCanonicalSession(await destination()).unwrap();
+  let state = EditorState.create({ doc: session.projection.doc });
+  state = state.apply(
+    state.tr.setSelection(
+      TextSelection.create(state.doc, state.doc.child(0).nodeSize - 1),
+    ),
+  );
+  const prepared = prepareCanonicalPaste({
+    session,
+    state,
+    slice,
+    sourceDocument: copiedFrom,
+    sourceStory: FIRST_NOTE,
+    ...(sourceParts === undefined ? {} : { sourceParts }),
+  });
+  if (prepared.isErr()) throw prepared.error;
+  expect(prepared.value.warnings).toEqual([]);
+  publishCanonicalProjection({
+    session,
+    state,
+    commit: prepared.value,
+  }).unwrap();
+  const zip = await ZipArchive.read(await save(session, "full"));
+  expect(
+    targetsByType(await resolvedIn(zip, "word/document.xml")).get("chart"),
+  ).toEqual(["word/charts/chart2.xml"]);
+});
+
+test("a chart pasted into a note whose part has no relationships of its own leaves the note's other ids resolving", async () => {
+  const copy = createCanonicalSession(await source()).unwrap();
+  const copiedFrom = readModel(copy.document);
+  const slice = storySlice(copy, FIRST_NOTE);
+  const sourceParts = await readClipboardPackageParts({
+    document: copiedFrom,
+    markup: sliceKeptMarkup(slice),
+    story: FIRST_NOTE,
+  });
+  const session = createCanonicalSession(
+    await sourceWithoutNoteRelationships(),
+  ).unwrap();
+  const projection = session.projectStory(FIRST_NOTE).unwrap();
+  let state = EditorState.create({ doc: projection.doc });
+  state = state.apply(
+    state.tr.setSelection(
+      TextSelection.create(state.doc, state.doc.child(0).nodeSize - 1),
+    ),
+  );
+  const prepared = prepareCanonicalPaste({
+    session,
+    state,
+    slice,
+    story: FIRST_NOTE,
+    sourceDocument: copiedFrom,
+    sourceStory: FIRST_NOTE,
+    ...(sourceParts === undefined ? {} : { sourceParts }),
+  });
+  if (prepared.isErr()) throw prepared.error;
+  expect(prepared.value.warnings).toEqual([]);
+  prepared.value.publish().unwrap();
+  // The note's own chart and kept block keep the main document's targets
+  // beside the copy, in the relationships file the paste gives the part.
+  const zip = await ZipArchive.read(await save(session, "full"));
+  const byType = targetsByType(await resolvedIn(zip, "word/footnotes.xml"));
+  expect(byType.get("chart")).toEqual([
+    "word/charts/chart1.xml",
+    "word/charts/chart2.xml",
+  ]);
+  expect(byType.get("aFChunk")).toEqual(["word/chunk1.html"]);
 });

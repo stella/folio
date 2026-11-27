@@ -255,7 +255,11 @@ describe("copied comments holding pictures and links", () => {
     const commentRels = parseRelationships(
       (await zip.entry("word/_rels/comments.xml.rels")?.text()) ?? "",
     );
-    expect(commentRels.get(id)?.target).toBe(COMMENT_LINK);
+    // The link stays external: without the mode it would name a part.
+    expect(commentRels.get(id)).toMatchObject({
+      target: COMMENT_LINK,
+      targetMode: "External",
+    });
     publishCanonicalProjection({
       session,
       state: next,

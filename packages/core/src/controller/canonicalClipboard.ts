@@ -27,6 +27,8 @@ import {
   CanonicalSessionError,
 } from "../canonical/canonicalSession";
 import {
+  isHeaderFooterRelationshipsKey,
+  partRelationshipsOf,
   storyPartPath,
   storyRelationshipsKey,
   withRelationshipIds,
@@ -54,9 +56,11 @@ import {
   getLocalName,
   getNamespaceUri,
   getTextContent,
+  NAMESPACES,
   OFFICE_RELATIONSHIP_NAMESPACE_URIS,
   OOXML_NAMESPACE_SCOPE,
   parseXml,
+  selectAlternateContentBranch,
   type XmlElement,
 } from "../docx/xmlParser";
 import { canonicalSelectionRange } from "../prosemirror/canonicalSelectionRange";
@@ -87,6 +91,7 @@ import { base64ToBytes } from "../utils/textEncoding";
 import {
   type ClipboardPackageParts,
   createPartCopier,
+  relationshipTargetPath,
   storyRelationshipsOf,
 } from "./canonicalClipboardParts";
 import {
@@ -856,16 +861,38 @@ const relationshipIdsIn = (
   return Result.ok(ids);
 };
 
-/** Whether two relationships name the same target in the same way. */
+/** A relationship, with the path of the part whose relationships hold it. */
+type OwnedRelationship = {
+  relationship: Relationship | undefined;
+  part: string | undefined;
+};
+
+/**
+ * Whether two relationships name the same target in the same way: an
+ * internal target resolved against the part each belongs to, since the same
+ * relative target names another part from another folder.
+ */
 const sameRelationship = (
-  left: { type: string; target: string; targetMode?: string } | undefined,
-  right: { type: string; target: string; targetMode?: string } | undefined,
-): boolean =>
-  left !== undefined &&
-  right !== undefined &&
-  left.type === right.type &&
-  left.target === right.target &&
-  left.targetMode === right.targetMode;
+  left: OwnedRelationship,
+  right: OwnedRelationship,
+): boolean => {
+  const { relationship: one, part: onePart } = left;
+  const { relationship: other, part: otherPart } = right;
+  if (
+    one === undefined ||
+    other === undefined ||
+    one.type !== other.type ||
+    one.targetMode !== other.targetMode
+  )
+    return false;
+  if (one.targetMode === "External") return one.target === other.target;
+  return (
+    onePart !== undefined &&
+    otherPart !== undefined &&
+    relationshipTargetPath(onePart, one.target).toLowerCase() ===
+      relationshipTargetPath(otherPart, other.target).toLowerCase()
+  );
+};
 
 /**
  * The image relationship ids and the markup a range of the editor's own
@@ -889,9 +916,24 @@ const rangeHoldings = (
   return { relationshipIds, markup };
 };
 
-/** A picture source a paste imports: image bytes, or an HTTP image URL. */
-const IMPORTABLE_PICTURE_SOURCE =
-  /^(?:data:image\/(?:png|jpeg|gif|webp);base64,|https?:\/\/)/u;
+/** A picture's data URL a paste imports: its image type and base64 payload. */
+const CLIPBOARD_IMAGE_DATA_URL =
+  /^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/=\s]+)$/u;
+
+/** The longest base64 payload within the import size limit. */
+const MAX_CLIPBOARD_IMAGE_PAYLOAD = Math.ceil(
+  (MAX_CLIPBOARD_IMAGE_BYTES * 4) / 3,
+);
+
+/**
+ * Whether a paste's image import accepts `src` as a picture's source: an
+ * HTTP image URL, or image bytes within the import size limit.
+ */
+const importablePictureSource = (src: string): boolean => {
+  if (/^https?:\/\//u.test(src)) return true;
+  const payload = CLIPBOARD_IMAGE_DATA_URL.exec(src)?.at(2);
+  return payload !== undefined && payload.length <= MAX_CLIPBOARD_IMAGE_PAYLOAD;
+};
 
 const WORDPROCESSING_NAMESPACE =
   "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
@@ -936,8 +978,23 @@ const keptBlockTexts = (
   const isWord = (element: XmlElement, name: string) =>
     getLocalName(element.name ?? "") === name &&
     getNamespaceUri(element) === WORDPROCESSING_NAMESPACE;
+  /**
+   * `element`'s children, with each `mc:AlternateContent` standing for the
+   * branch the reader selects: its branches are alternatives, not content in
+   * sequence.
+   */
+  const childrenOf = (element: XmlElement): XmlElement[] =>
+    (element.elements ?? []).flatMap((child) => {
+      if (
+        getLocalName(child.name ?? "") !== "AlternateContent" ||
+        getNamespaceUri(child) !== NAMESPACES.mc
+      )
+        return [child];
+      const branch = selectAlternateContentBranch(child);
+      return branch === undefined ? [] : childrenOf(branch);
+    });
   const textOf = (element: XmlElement): string =>
-    (element.elements ?? [])
+    childrenOf(element)
       .map((child) => {
         if (isWord(child, "t")) return getTextContent(child);
         if (isWord(child, "tab")) return "\t";
@@ -947,7 +1004,7 @@ const keptBlockTexts = (
       })
       .join("");
   const visit = (element: XmlElement): void => {
-    for (const child of element.elements ?? []) {
+    for (const child of childrenOf(element)) {
       if (isWord(child, "p")) {
         texts.push(textOf(child));
         continue;
@@ -1050,6 +1107,14 @@ export type CanonicalPasteCommit = CanonicalCommit & {
   readonly warnings: readonly CanonicalPasteWarning[];
 };
 
+/**
+ * A paste refused or changing nothing. One that changes nothing because it
+ * left out every piece it held carries a warning for each piece.
+ */
+export type CanonicalPasteError = CanonicalSessionError & {
+  readonly warnings?: readonly CanonicalPasteWarning[];
+};
+
 export const prepareCanonicalPaste = ({
   session,
   state,
@@ -1064,7 +1129,7 @@ export const prepareCanonicalPaste = ({
   moveSource,
 }: PrepareCanonicalPasteOptions): Result<
   CanonicalPasteCommit,
-  CanonicalSessionError
+  CanonicalPasteError
 > => {
   // Declared: the inferred union of Ok/Err branches is emitted in a nondeterministic order.
   if (session.isComposing)
@@ -1345,6 +1410,8 @@ export const prepareCanonicalPaste = ({
       : undefined;
   // What the paste put in place of kept markup it could not keep.
   const warnings: CanonicalPasteWarning[] = [];
+  // The paragraphs left holding nothing once their kept markup was left out.
+  const emptiedByOmission = new Set<Paragraph>();
   const importExternalLink = (
     href: string | undefined,
     previousId: string | undefined,
@@ -1582,10 +1649,7 @@ export const prepareCanonicalPaste = ({
           );
         image.src = src;
         const id = freshRelationshipId();
-        const data =
-          /^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/=\s]+)$/u.exec(
-            src,
-          );
+        const data = CLIPBOARD_IMAGE_DATA_URL.exec(src);
         if (data !== null) {
           const mimeType = data.at(1);
           const payload = data.at(2);
@@ -1594,7 +1658,7 @@ export const prepareCanonicalPaste = ({
               "The clipboard image data is malformed.",
               INVALID_CLIPBOARD,
             );
-          if (payload.length > Math.ceil((MAX_CLIPBOARD_IMAGE_BYTES * 4) / 3))
+          if (payload.length > MAX_CLIPBOARD_IMAGE_PAYLOAD)
             return refuse(
               "The clipboard image exceeds the import size limit.",
               INVALID_CLIPBOARD,
@@ -1611,7 +1675,13 @@ export const prepareCanonicalPaste = ({
           if (decoded.isErr()) return decoded;
           const extension =
             mimeType === "image/jpeg" ? "jpg" : mimeType.slice(6);
-          while (media.has(`word/media/clipboard${imageIndex}.${extension}`))
+          // A part a copier stages takes its name as a picture does.
+          const staged = new Set(
+            [...copiedParts.keys()].map((path) => path.toLowerCase()),
+          );
+          const taken = (path: string) =>
+            media.has(path) || staged.has(path.toLowerCase());
+          while (taken(`word/media/clipboard${imageIndex}.${extension}`))
             imageIndex += 1;
           const path = `word/media/clipboard${imageIndex++}.${extension}`;
           media.set(path, {
@@ -1652,6 +1722,8 @@ export const prepareCanonicalPaste = ({
       if (dropped.length > 0) emptied.add(item);
     }
     withoutEmptiedRuns(paragraph, emptied);
+    if (emptied.size > 0 && paragraph.content.length === 0)
+      emptiedByOmission.add(paragraph);
     return Result.ok(undefined);
   };
   /**
@@ -1660,12 +1732,15 @@ export const prepareCanonicalPaste = ({
    * copies the parts they name from the source package, read ahead of the
    * paste, under fresh names and relationship ids. `part` names the note,
    * comment, header or footer part the markup lands in, and is absent for
-   * the body.
+   * the body. `sourcePart` and `destinationPart` are the paths of the parts
+   * whose relationships `source` and `destination` are.
    */
   type KeptMarkupScope = {
     part?: string;
     source: ReadonlyMap<string, Relationship> | undefined;
+    sourcePart: string | undefined;
     destination: Map<string, Relationship>;
+    destinationPart: string | undefined;
     copier: ReturnType<typeof createPartCopier> | undefined;
   };
   const copiedPaths = new Map<string, string>();
@@ -1701,6 +1776,7 @@ export const prepareCanonicalPaste = ({
       relationships: into,
       destinationPart,
       copiedParts,
+      stagedMedia: media,
       freshRelationshipId,
       copiedPaths,
     });
@@ -1723,18 +1799,39 @@ export const prepareCanonicalPaste = ({
     sourceDocument === undefined
       ? undefined
       : storyRelationshipsOf(sourceDocument, sourceStory);
+  /**
+   * The relationships of the story part kept under `part` that the paste
+   * copies into. Copying into a note or comment part without its own gives
+   * it a relationships file of its own, which the parser then reads instead
+   * of the main document's: the new table starts from the main document's
+   * relationships, so the ids the part already names keep resolving to what
+   * they named.
+   */
+  const relationshipsInto = (part: string): Map<string, Relationship> => {
+    const seeded =
+      !annotationRelationships.has(part) &&
+      !isHeaderFooterRelationshipsKey(part);
+    const into = partRelationships(part);
+    if (seeded)
+      for (const [id, relationship] of relationships)
+        if (!into.has(id)) into.set(id, relationship);
+    return into;
+  };
   const landingPart = storyRelationshipsKey(story);
   const landing =
-    landingPart === undefined ? relationships : partRelationships(landingPart);
+    landingPart === undefined ? relationships : relationshipsInto(landingPart);
+  const landingPath = storyPartPath(destination, story);
   let scope: KeptMarkupScope = {
     ...(landingPart === undefined ? {} : { part: landingPart }),
     source: copiedFrom?.relationships,
+    sourcePart: copiedFrom?.partPath,
     destination: landing,
+    destinationPart: landingPath,
     copier: copierOf({
       origin: copiedFrom?.relationships,
       into: landing,
       sourcePart: copiedFrom?.partPath,
-      destinationPart: storyPartPath(destination, story),
+      destinationPart: landingPath,
     }),
   };
   const annotationScopes = new Map<string, KeptMarkupScope>();
@@ -1745,26 +1842,22 @@ export const prepareCanonicalPaste = ({
     // A part without its own relationships file resolves its ids through the
     // main document's, as the parser reads it.
     const origin =
-      sourceDocument?.package.annotationRelationships?.get(part) ??
-      sourceDocument?.package.relationships;
-    // Copying into such a part gives it a relationships file of its own,
-    // which the parser then reads instead of the main document's: the new
-    // table starts from the main document's relationships, so the ids the
-    // part already names keep resolving to what they named.
-    const hadOwn = annotationRelationships.has(part);
-    const into = partRelationships(part);
-    if (!hadOwn)
-      for (const [id, relationship] of relationships)
-        if (!into.has(id)) into.set(id, relationship);
-    const created = {
+      sourceDocument === undefined
+        ? undefined
+        : partRelationshipsOf(sourceDocument, part);
+    const into = relationshipsInto(part);
+    const path = `word/${part}.xml`;
+    const created: KeptMarkupScope = {
       part,
       source: origin,
+      sourcePart: path,
       destination: into,
+      destinationPart: path,
       copier: copierOf({
         origin,
         into,
-        sourcePart: `word/${part}.xml`,
-        destinationPart: `word/${part}.xml`,
+        sourcePart: path,
+        destinationPart: path,
       }),
     };
     annotationScopes.set(part, created);
@@ -1778,7 +1871,13 @@ export const prepareCanonicalPaste = ({
   const resolvesInPlace = (ids: readonly string[]) =>
     samePackage &&
     ids.every((id) =>
-      sameRelationship(scope.source?.get(id), scope.destination.get(id)),
+      sameRelationship(
+        { relationship: scope.source?.get(id), part: scope.sourcePart },
+        {
+          relationship: scope.destination.get(id),
+          part: scope.destinationPart,
+        },
+      ),
     );
   /**
    * Whether a picture's captured markup is an embedded object around it: the
@@ -1793,19 +1892,25 @@ export const prepareCanonicalPaste = ({
     const own = new Set([drawing.image.rId, drawing.image.hlinkRId]);
     return !referenced.value.every((id) => own.has(id));
   };
-  /** Whether a picture has bytes or a URL the paste can import it by. */
+  /**
+   * Whether a picture has bytes or a URL the paste's image import accepts:
+   * a preview it would refuse is left out instead of refusing the paste.
+   */
   const hasPictureBytes = (image: DrawingContent["image"]): boolean => {
-    if (image.src !== undefined)
-      return IMPORTABLE_PICTURE_SOURCE.test(image.src);
+    if (image.src !== undefined) return importablePictureSource(image.src);
     const relationship =
       image.rId === undefined ? undefined : sourceRelationships?.get(image.rId);
     if (relationship === undefined) return false;
     if (relationship.targetMode === "External")
-      return IMPORTABLE_PICTURE_SOURCE.test(relationship.target);
+      return importablePictureSource(relationship.target);
     const path = relationship.target.startsWith("/")
       ? relationship.target.slice(1)
       : `word/${relationship.target}`;
-    return sourceDocument?.package.media?.has(path) === true;
+    const picture = sourceDocument?.package.media?.get(path);
+    return (
+      picture !== undefined &&
+      picture.data.byteLength <= MAX_CLIPBOARD_IMAGE_BYTES
+    );
   };
   /** Record what the paste did in place of keeping `xml`. */
   const warn = (code: CanonicalPasteWarning["code"], xml: string): void => {
@@ -1979,13 +2084,22 @@ export const prepareCanonicalPaste = ({
     if (Array.isArray(placed.value)) blocks.splice(index, 1, ...placed.value);
     else block.xml = placed.value.xml;
   }
-  if (blocks.length === 0)
+  // A paste whose every piece was left out changes nothing, the selection
+  // it would replace included, and reports what it left out.
+  if (
+    blocks.every(
+      (block) => block.type === "paragraph" && emptiedByOmission.has(block),
+    )
+  )
     return Result.err(
-      new CanonicalSessionError({
-        ground: INVALID_CLIPBOARD,
-        message: "The clipboard contains no content the document can hold.",
-        reason: "noChange",
-      }),
+      Object.assign(
+        new CanonicalSessionError({
+          ground: INVALID_CLIPBOARD,
+          message: "The clipboard contains no content the document can hold.",
+          reason: "noChange",
+        }),
+        { warnings },
+      ),
     );
   // A note's or a comment's ids name its own part's relationships: its links
   // import by their targets and its images by their bytes, and the save
@@ -2095,10 +2209,16 @@ export const prepareCanonicalPaste = ({
   };
   const withWarnings = (
     prepared: Result<CanonicalCommit, CanonicalSessionError>,
-  ): Result<CanonicalPasteCommit, CanonicalSessionError> =>
-    prepared.map((commit): CanonicalPasteCommit =>
-      Object.assign(commit, { warnings }),
-    );
+  ): Result<CanonicalPasteCommit, CanonicalPasteError> =>
+    prepared
+      .map((commit): CanonicalPasteCommit =>
+        Object.assign(commit, { warnings }),
+      )
+      .mapError((error): CanonicalPasteError =>
+        error.reason === "noChange"
+          ? Object.assign(error, { warnings })
+          : error,
+      );
   if (from.value === undefined || to.value === undefined)
     return withWarnings(
       session.prepareCellSelectionStructure(

@@ -147,6 +147,8 @@ import {
   nextAutocompleteWord,
 } from "./autocompleteSuggestion";
 import {
+  type CanonicalPasteCommit,
+  type CanonicalPasteError,
   type CanonicalPasteWarning,
   prepareCanonicalPaste,
 } from "./canonicalClipboard";
@@ -1148,6 +1150,30 @@ export const createHiddenEditorManager = (
       ? clipboardCopy
       : undefined;
   };
+  /** What a prepared paste left out, whether or not it changes anything. */
+  const pasteWarningsOf = (
+    prepared: Result<CanonicalPasteCommit, CanonicalPasteError>,
+  ): readonly CanonicalPasteWarning[] =>
+    prepared.isOk() ? prepared.value.warnings : (prepared.error.warnings ?? []);
+  /**
+   * Publish a prepared paste through `publishPrepared`, and tell the host
+   * what it left out: a paste that left out every piece it held changes
+   * nothing, and still reports each one.
+   */
+  const publishPaste = (
+    prepared: Result<CanonicalPasteCommit, CanonicalPasteError>,
+    publishPrepared: (commit: CanonicalPasteCommit) => boolean,
+  ): boolean => {
+    if (prepared.isErr() && prepared.error.reason !== "noChange") {
+      refuse(prepared.error.message, prepared.error.ground);
+      return false;
+    }
+    const published = prepared.isOk() && publishPrepared(prepared.value);
+    const warnings = pasteWarningsOf(prepared);
+    if ((published || prepared.isErr()) && warnings.length > 0)
+      deps.onCanonicalPasteWarnings?.(warnings);
+    return published;
+  };
   /**
    * Paste a clipboard slice into the editor showing `story`, as one
    * journalled change. A paste of the editor's own copy that needs the
@@ -1180,27 +1206,19 @@ export const createHiddenEditorManager = (
             }),
       });
     };
-    const publish = (prepared: ReturnType<typeof prepare>): boolean => {
-      if (prepared.isErr()) {
-        if (prepared.error.reason !== "noChange")
-          refuse(prepared.error.message, prepared.error.ground);
-        return false;
-      }
-      const published =
+    const publish = (prepared: ReturnType<typeof prepare>): boolean =>
+      publishPaste(prepared, (commit) =>
         story === OP_STORIES.MAIN
-          ? publishCommit(prepared.value)
-          : publishStoryCommit(pmView, prepared.value);
-      if (published && prepared.value.warnings.length > 0)
-        deps.onCanonicalPasteWarnings?.(prepared.value.warnings);
-      return published;
-    };
+          ? publishCommit(commit)
+          : publishStoryCommit(pmView, commit),
+      );
     const prepared = prepare();
     const reading = copy?.reading;
     // A paste that keeps all its markup without the parts pastes now.
     if (
       reading === undefined ||
-      prepared.isErr() ||
-      prepared.value.warnings.length === 0
+      (prepared.isErr() && prepared.error.reason !== "noChange") ||
+      pasteWarningsOf(prepared).length === 0
     ) {
       publish(prepared);
       return true;
@@ -1573,10 +1591,7 @@ export const createHiddenEditorManager = (
               }
             : { pasteTarget: target }),
         });
-        if (prepared.isErr()) {
-          if (prepared.error.reason !== "noChange")
-            refuse(prepared.error.message, prepared.error.ground);
-        } else publishCommit(prepared.value);
+        publishPaste(prepared, publishCommit);
         return true;
       },
       handleScrollToSelection: suppressHiddenEditorScrollToSelection,
@@ -1703,12 +1718,7 @@ export const createHiddenEditorManager = (
           slice,
           plain,
         });
-        if (prepared.isErr()) {
-          if (prepared.error.reason !== "noChange")
-            refuse(prepared.error.message, prepared.error.ground);
-          return false;
-        }
-        return publishCommit(prepared.value);
+        return publishPaste(prepared, publishCommit);
       });
     releaseCommandOwner = registerEditorCommandOwner(
       view,

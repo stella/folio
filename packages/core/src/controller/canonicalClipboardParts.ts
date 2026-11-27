@@ -16,11 +16,12 @@ import type { Slice } from "prosemirror-model";
 
 import { escapeXmlAttribute } from "@stll/docx-core";
 import { OP_STORIES, type OpStory } from "@stll/docx-core/ops";
-import { ZipArchive } from "@stll/docx-core/zip";
+import { ZipArchive, type ZipEntry } from "@stll/docx-core/zip";
 
 import {
   keptMarkupIn,
   MAIN_DOCUMENT_PART,
+  partRelationshipsOf,
   relationshipIdsInMarkup,
   RELATIONSHIPS_CONTENT_TYPE,
   relationshipsPartOf,
@@ -117,13 +118,17 @@ const decodedTarget = (target: string): string =>
   Result.try(() => decodeURIComponent(target)).unwrapOr(target);
 
 /** The package path a relationship of the part at `partPath` targets. */
-const targetOf = (partPath: string, target: string): string =>
+export const relationshipTargetPath = (
+  partPath: string,
+  target: string,
+): string =>
   resolveRelativePath(relationshipsPartOf(partPath), decodedTarget(target));
 
 /**
  * The relationships kept markup in `story` names its parts by, with the path
  * of the part holding them: the main document's for the body, the story
- * part's own otherwise.
+ * part's own otherwise, or the main document's for a note part without its
+ * own, as the parser reads it.
  */
 export const storyRelationshipsOf = (
   document: Document,
@@ -137,7 +142,7 @@ export const storyRelationshipsOf = (
     relationships:
       key === undefined
         ? document.package.relationships
-        : document.package.annotationRelationships?.get(key),
+        : partRelationshipsOf(document, key),
     partPath: storyPartPath(document, story),
   };
 };
@@ -208,19 +213,15 @@ export const readClipboardPackageParts = async ({
       return relationship === undefined ||
         relationship.targetMode === "External"
         ? []
-        : [targetOf(partPath, relationship.target)];
+        : [relationshipTargetPath(partPath, relationship.target)];
     });
   };
   // Note and comment parts sit beside the main document.
   const roots = [
     ...rootsOf(markup, storyRelationshipsOf(document, story)),
     ...[...annotationMarkup].flatMap(([part, kept]) =>
-      // A part without its own relationships resolves through the main
-      // document's, as the parser reads it.
       rootsOf(kept, {
-        relationships:
-          document.package.annotationRelationships?.get(part) ??
-          document.package.relationships,
+        relationships: partRelationshipsOf(document, part),
         partPath: `word/${part}.xml`,
       }),
     ),
@@ -237,6 +238,14 @@ export const readClipboardPackageParts = async ({
       ? ""
       : decodeText(await registry.bytes(), { ignoreBOM: true }),
   );
+  /** An entry's bytes; undefined when the entry cannot be read. */
+  const bytesOf = async (entry: ZipEntry): Promise<Uint8Array | undefined> =>
+    (
+      await Result.tryPromise({
+        try: () => entry.bytes(),
+        catch: () => undefined,
+      })
+    ).unwrapOr(undefined);
   const partAt = async (path: string): Promise<SourcePart | undefined> => {
     const held = copied.get(path.toLowerCase());
     if (held !== undefined)
@@ -244,8 +253,12 @@ export const readClipboardPackageParts = async ({
     const entry = entries.get(path.toLowerCase());
     const contentType = contentTypeOf(path);
     if (entry === undefined || contentType === undefined) return undefined;
-    return { data: await entry.bytes(), contentType };
+    const data = await bytesOf(entry);
+    return data === undefined ? undefined : { data, contentType };
   };
+  // A part that cannot be read is left out, as one the package lacks: the
+  // copier then refuses only the markup reaching it, and the parts other
+  // markup reaches still copy.
   const parts = new Map<string, SourcePart>();
   const pending = [...roots];
   for (let path = pending.pop(); path !== undefined; path = pending.pop()) {
@@ -253,16 +266,21 @@ export const readClipboardPackageParts = async ({
     // oxlint-disable-next-line no-await-in-loop -- each part names the next
     const part = await partAt(path);
     if (part === undefined) continue;
-    parts.set(path, part);
     const relsPath = relationshipsPartOf(path);
     const heldRels = copied.get(relsPath.toLowerCase());
     const relsEntry = entries.get(relsPath.toLowerCase());
-    let data: Uint8Array;
+    let data: Uint8Array | undefined;
     if (heldRels !== undefined) data = new Uint8Array(heldRels.data);
     else if (relsEntry !== undefined)
       // oxlint-disable-next-line no-await-in-loop -- each part names the next
-      data = await relsEntry.bytes();
-    else continue;
+      data = await bytesOf(relsEntry);
+    else {
+      parts.set(path, part);
+      continue;
+    }
+    // A part whose relationships cannot be read cannot be copied whole.
+    if (data === undefined) continue;
+    parts.set(path, part);
     parts.set(relsPath, { data, contentType: RELATIONSHIPS_CONTENT_TYPE });
     for (const relationship of parseRelationships(
       decodeText(data, { ignoreBOM: true }),
@@ -295,6 +313,11 @@ type PartCopierOptions = {
   destinationPart?: string;
   /** The destination's copied parts, which receive the copies. */
   copiedParts: Map<string, CopiedPackagePart>;
+  /**
+   * The media the paste stages beside the copies, by path: a picture the
+   * same paste imports holds its name there, so no copy takes it.
+   */
+  stagedMedia?: ReadonlyMap<string, unknown>;
   /** A relationship id the destination does not hold yet. */
   freshRelationshipId: () => string;
   /**
@@ -331,6 +354,7 @@ export const createPartCopier = ({
   relationships,
   destinationPart = MAIN_DOCUMENT_PART,
   copiedParts,
+  stagedMedia = new Map(),
   freshRelationshipId,
   copiedPaths = new Map(),
 }: PartCopierOptions) => {
@@ -350,7 +374,9 @@ export const createPartCopier = ({
     for (const path of copiedParts.keys()) names.add(path.toLowerCase());
     for (const { target, targetMode } of relationships.values())
       if (targetMode !== "External")
-        names.add(targetOf(destinationPart, target).toLowerCase());
+        names.add(
+          relationshipTargetPath(destinationPart, target).toLowerCase(),
+        );
     taken = names;
     return Result.ok(names);
   };
@@ -471,7 +497,7 @@ export const createPartCopier = ({
         ? source.target
         : relativeTarget(
             destinationPart,
-            copyPart(targetOf(sourcePart, source.target), names),
+            copyPart(relationshipTargetPath(sourcePart, source.target), names),
           );
     const next = freshRelationshipId();
     relationships.set(next, {
@@ -499,12 +525,15 @@ export const createPartCopier = ({
         if (
           source.targetMode !== "External" &&
           !copiedIds.has(id) &&
-          !reachable(targetOf(sourcePart, source.target), seen)
+          !reachable(relationshipTargetPath(sourcePart, source.target), seen)
         )
           return Result.err({ type: "unreadable" });
       }
       const names = takenNames();
       if (names.isErr()) return names;
+      // The paste stages pictures and other copiers' parts between copies.
+      for (const path of [...stagedMedia.keys(), ...copiedParts.keys()])
+        names.value.add(path.toLowerCase());
       const renamed = new Map<string, string>();
       for (const id of ids) renamed.set(id, copyRelationship(id, names.value));
       return Result.ok(renamed);

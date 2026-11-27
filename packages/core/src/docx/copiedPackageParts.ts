@@ -266,6 +266,25 @@ export const headerFooterRelationshipsKey = (
 ): string => `${kind}:${rId}`;
 
 /**
+ * The relationships the ids of the story part kept under `key` resolve
+ * through, as the parser reads them: the part's own, or, for a note or
+ * comment part without its own, the main document's. A header or footer
+ * part without its own has none: its ids restart in every part.
+ */
+export const partRelationshipsOf = (
+  document: Document,
+  key: string,
+): ReadonlyMap<string, Relationship> | undefined =>
+  document.package.annotationRelationships?.get(key) ??
+  (isHeaderFooterRelationshipsKey(key)
+    ? undefined
+    : document.package.relationships);
+
+/** Whether `key` names a header's or a footer's part relationships. */
+export const isHeaderFooterRelationshipsKey = (key: string): boolean =>
+  key.startsWith("header:") || key.startsWith("footer:");
+
+/**
  * The key the model keeps a story part's own relationships under, in
  * `annotationRelationships`; undefined for the body, whose relationships are
  * the main document's.

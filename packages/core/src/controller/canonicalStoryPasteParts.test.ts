@@ -9,8 +9,8 @@
  */
 import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
-import type { Node as PMNode } from "prosemirror-model";
-import { TextSelection } from "prosemirror-state";
+import { Fragment, type Node as PMNode, Slice } from "prosemirror-model";
+import { EditorState, TextSelection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
 import type { OpStory } from "@stll/docx-core/ops";
@@ -18,12 +18,22 @@ import { ZipArchive } from "@stll/docx-core/zip";
 
 import { acquireHarnessDom } from "../../../../test/harnessDom";
 import { buildRawPackage, SECTION } from "../__tests__/documentShapes";
+import { createCanonicalSession } from "../canonical/canonicalSession";
 import { serializeCanonicalSave } from "../docx/canonicalSave";
 import { parseDocx } from "../docx/parser";
 import { parseRelationships, resolveRelativePath } from "../docx/relsParser";
 import type { CanonicalRefusalGround } from "../types/canonicalCapabilities";
 import type { Document } from "../types/document";
+import { readModel } from "../types/documentModel";
 import { decodeText } from "../utils/textEncoding";
+import {
+  type CanonicalPasteWarning,
+  prepareCanonicalPaste,
+} from "./canonicalClipboard";
+import {
+  readClipboardPackageParts,
+  sliceKeptMarkup,
+} from "./canonicalClipboardParts";
 import { createHeaderFooterEditorManager } from "./headerFooterEditorManager";
 import {
   createHiddenEditorManager,
@@ -51,9 +61,10 @@ const textParagraph = (text: string) =>
 
 /**
  * A package whose body holds a chart under the main document's `rIdChart`,
- * with a header, a footer and a footnote. The header's own relationships
- * hold `rIdChart` for something else, so a paste judged against the main
- * document's relationships would name the wrong target there.
+ * with a header, a footer and a footnote. The header's and the footnote
+ * part's own relationships hold `rIdChart` for something else, so a paste
+ * judged against the main document's relationships would name the wrong
+ * target there.
  */
 const storyPackage = async (): Promise<ArrayBuffer> => {
   const bytes = await buildRawPackage({
@@ -95,6 +106,10 @@ const storyPackage = async (): Promise<ArrayBuffer> => {
           '<w:footnote w:type="continuationSeparator" w:id="0"><w:p><w:r><w:continuationSeparator/></w:r></w:p></w:footnote>' +
           '<w:footnote w:id="1"><w:p><w:r><w:footnoteRef/></w:r><w:r><w:t xml:space="preserve"> Footnote text</w:t></w:r></w:p></w:footnote>' +
           "</w:footnotes>",
+      },
+      {
+        path: "word/_rels/footnotes.xml.rels",
+        body: `${XML_DECL}<Relationships xmlns="${REL_NS}"><Relationship Id="rIdChart" Type="${R_NS}/hyperlink" Target="https://note.example.test/" TargetMode="External"/></Relationships>`,
       },
       {
         path: "word/charts/chart1.xml",
@@ -189,6 +204,7 @@ const mount = async (story: OpStory, suggesting: boolean) => {
   const refused: { message: string; ground: CanonicalRefusalGround }[] = [];
   const onSessionRefusal = (message: string, ground: CanonicalRefusalGround) =>
     refused.push({ message, ground });
+  const warned: CanonicalPasteWarning[][] = [];
   const deps = {
     getHost: () => bodyHost,
     getDocument: () => source,
@@ -210,6 +226,8 @@ const mount = async (story: OpStory, suggesting: boolean) => {
     onEditorViewDestroy: () => undefined,
     onRemoteSelectionsChange: () => undefined,
     onSessionRefusal,
+    onCanonicalPasteWarnings: (warnings: readonly CanonicalPasteWarning[]) =>
+      warned.push([...warnings]),
   } satisfies HiddenEditorManagerDeps;
   const manager = createHiddenEditorManager(deps);
   const storyDeps = {
@@ -243,7 +261,7 @@ const mount = async (story: OpStory, suggesting: boolean) => {
     storyHost.remove();
     releaseDom();
   };
-  return { manager, body, view, refused, dispose };
+  return { manager, body, view, refused, warned, dispose };
 };
 
 /** Copy the body's chart paragraph through the editor's own copy. */
@@ -376,9 +394,9 @@ describe.each(["editing", "suggesting"] as const)("in %s", (mode) => {
         expect(partRelationships.get(copy.id)?.target).toBe(
           "charts/chart2.xml",
         );
-        if (name === "header")
+        if (name !== "footer")
           expect(partRelationships.get("rIdChart")?.target).toBe(
-            "https://header.example.test/",
+            `https://${name === "header" ? "header" : "note"}.example.test/`,
           );
         expect(
           parseRelationships(
@@ -434,4 +452,143 @@ test("a paste waiting on its copy's parts refuses as stale once the story editor
   } finally {
     editor.dispose();
   }
+});
+
+test("a paste from outside the editor whose every piece is left out keeps the story's selection and reports each piece", async () => {
+  const editor = await mount({ kind: "header", rId: "rIdHeader1" }, false);
+  try {
+    let chart: PMNode | undefined;
+    editor.body.state.doc.descendants((node) => {
+      const xml: unknown = node.attrs["_docxRawXml"];
+      if (
+        chart === undefined &&
+        typeof xml === "string" &&
+        xml.includes("c:chart")
+      )
+        chart = node;
+      return chart === undefined;
+    });
+    if (chart === undefined) throw new TypeError("The body holds no chart.");
+    const before = editor.manager.api.getCanonicalDocument();
+    const { from, to } = paragraphHolding(editor.view.state.doc, "Header text");
+    editor.view.dispatch(
+      editor.view.state.tr.setSelection(
+        TextSelection.create(editor.view.state.doc, from, to),
+      ),
+    );
+    const shown = editor.view.state.doc;
+    const handled = editor.view.someProp("handlePaste", (handle) =>
+      handle(
+        editor.view,
+        new ClipboardEvent("paste", {
+          bubbles: true,
+          cancelable: true,
+          clipboardData: new DataTransfer(),
+        }),
+        new Slice(Fragment.from(chart), 0, 0),
+      ),
+    );
+    expect(handled).toBe(true);
+    expect(editor.refused).toEqual([]);
+    expect(editor.manager.api.getCanonicalDocument()).toEqual(before);
+    expect(editor.view.state.doc.eq(shown)).toBe(true);
+    expect(editor.warned).toEqual([
+      [
+        {
+          code: "kept-markup-dropped",
+          part: "header:rIdHeader1",
+          element: "w:drawing",
+        },
+      ],
+    ]);
+  } finally {
+    editor.dispose();
+  }
+});
+
+test("a body chart pasted into a header in another folder whose own relationships spell its target alike copies it", async () => {
+  // The header's `rIdChart` spells the body's target, `charts/chart1.xml`,
+  // which from the header's folder names another chart.
+  const bytes = await buildRawPackage({
+    styles: null,
+    body:
+      `<w:p><w:r><w:t xml:space="preserve">Chart </w:t></w:r>${CHART_RUN}</w:p>` +
+      SECTION('<w:headerReference w:type="default" r:id="rIdHeader1"/>'),
+    parts: [
+      {
+        path: "word/sub/header1.xml",
+        contentType: `${WML_CT}.header+xml`,
+        relationshipType: "header",
+        relationshipId: "rIdHeader1",
+        body: `${XML_DECL}<w:hdr xmlns:w="${W_NS}" xmlns:r="${R_NS}">${textParagraph("Header text")}</w:hdr>`,
+      },
+      {
+        path: "word/sub/_rels/header1.xml.rels",
+        body: `${XML_DECL}<Relationships xmlns="${REL_NS}"><Relationship Id="rIdChart" Type="${R_NS}/chart" Target="charts/chart1.xml"/></Relationships>`,
+      },
+      {
+        path: "word/sub/charts/chart1.xml",
+        contentType:
+          "application/vnd.openxmlformats-officedocument.drawingml.chart+xml",
+        body: `<c:chartSpace xmlns:c="${CHART_NS}"><c:chart/></c:chartSpace>`,
+      },
+      {
+        path: "word/charts/chart1.xml",
+        contentType:
+          "application/vnd.openxmlformats-officedocument.drawingml.chart+xml",
+        relationshipType: "chart",
+        relationshipId: "rIdChart",
+        body: `<c:chartSpace xmlns:c="${CHART_NS}"><c:chart/><c:title/></c:chartSpace>`,
+      },
+    ],
+  });
+  const session = createCanonicalSession(
+    await parseDocx(bytes.slice().buffer, {
+      preloadFonts: false,
+      detectVariables: false,
+    }),
+  ).unwrap();
+  const copiedFrom = readModel(session.document);
+  const body = session.projection.doc;
+  const slice = body.slice(0, body.child(0).nodeSize);
+  const sourceParts = await readClipboardPackageParts({
+    document: copiedFrom,
+    markup: sliceKeptMarkup(slice),
+  });
+  const story: OpStory = { kind: "header", rId: "rIdHeader1" };
+  const { doc } = session.projectStory(story).unwrap();
+  const at = positionAfter(doc, "Header text");
+  const state = EditorState.create({
+    doc,
+    selection: TextSelection.create(doc, at),
+  });
+  const prepared = prepareCanonicalPaste({
+    session,
+    state,
+    slice,
+    story,
+    sourceDocument: copiedFrom,
+    ...(sourceParts === undefined ? {} : { sourceParts }),
+  });
+  if (prepared.isErr()) throw prepared.error;
+  expect(prepared.value.warnings).toEqual([]);
+  prepared.value.publish().unwrap();
+  const zip = await ZipArchive.read(
+    (
+      await serializeCanonicalSave({
+        snapshot: session.captureSaveSnapshot(),
+        options: { mode: "full" },
+      })
+    ).buffer,
+  );
+  await assertResolves(zip);
+  const relsPath = "word/sub/_rels/header1.xml.rels";
+  const relationships = parseRelationships(await textOf(zip, relsPath));
+  const named = chartIds(await textOf(zip, "word/sub/header1.xml"));
+  expect(named).toHaveLength(1);
+  const id = named.at(0) ?? panic("The header names no chart.");
+  expect(id).not.toBe("rIdChart");
+  const target = relationships.get(id)?.target ?? panic("No copy.");
+  const copied = await textOf(zip, resolveRelativePath(relsPath, target));
+  expect(copied).toContain("<c:title/>");
 });

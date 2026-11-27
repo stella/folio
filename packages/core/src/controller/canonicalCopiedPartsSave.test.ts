@@ -36,6 +36,7 @@ import type {
 } from "../types/document";
 import { readModel } from "../types/documentModel";
 import { FOLIO_DOCX_SERIALIZATION_MODE } from "../types/docxSerialization";
+import { bytesToDataUrl } from "../utils/base64";
 import { decodeText, encodeUtf8 } from "../utils/textEncoding";
 import { prepareCanonicalPaste } from "./canonicalClipboard";
 import {
@@ -177,11 +178,36 @@ const drawing = (rawXml: string): DrawingContent => ({
   rawXmlMode: DRAWING_RAW_XML_MODES.PRESERVE_ONLY,
 });
 
-/** A package built from `content`, with `parts` and `relationships` added. */
+/**
+ * `bytes` with the stored data of each entry of `paths` damaged, so reading
+ * that entry fails its checksum while the archive's directory still lists it.
+ */
+const damaged = (bytes: ArrayBuffer, paths: ReadonlySet<string>) => {
+  const data = new Uint8Array(bytes.slice(0));
+  const view = new DataView(data.buffer);
+  for (let offset = 0; offset + 30 <= data.length; offset += 1) {
+    if (view.getUint32(offset, true) !== 0x04_03_4b_50) continue;
+    const nameLength = view.getUint16(offset + 26, true);
+    const extraLength = view.getUint16(offset + 28, true);
+    const name = new TextDecoder().decode(
+      data.subarray(offset + 30, offset + 30 + nameLength),
+    );
+    if (!paths.has(name)) continue;
+    const start = offset + 30 + nameLength + extraLength;
+    data[start] = (data[start] ?? 0) ^ 0xff;
+  }
+  return data.buffer;
+};
+
+/**
+ * A package built from `content`, with `parts` and `relationships` added,
+ * and each part of `damagedParts` stored so that it cannot be read.
+ */
 const packageOf = async (
   content: BlockContent[],
   parts: Record<string, Part>,
   relationships: readonly { id: string; type: string; target: string }[],
+  damagedParts: ReadonlySet<string> = new Set(),
 ): Promise<Document> => {
   const model = createSimpleDocument([]);
   model.package.document.content = content;
@@ -206,10 +232,19 @@ const packageOf = async (
       `${relationships.map(({ id, type, target }) => `<Relationship Id="${id}" Type="${type}" Target="${target}"/>`).join("")}</Relationships>`,
     ),
   );
-  for (const [path, { body }] of Object.entries(parts)) zip.set(path, body);
-  return parseDocx((await zip.generate({ compression: "store" })).buffer, {
-    preloadFonts: false,
-  });
+  for (const [path, { body }] of Object.entries(parts))
+    zip.set(
+      path,
+      body,
+      damagedParts.has(path) ? { compression: "deflate" } : {},
+    );
+  return parseDocx(
+    damaged(
+      (await zip.generate({ compression: "store" })).buffer,
+      damagedParts,
+    ),
+    { preloadFonts: false },
+  );
 };
 
 const source = () =>
@@ -731,7 +766,10 @@ describe.each(["editing", "suggesting"] as const)(
         '<w:r><w:object><o:OLEObject Type="Embed" r:id="rIdElsewhere"/></w:object></w:r></w:p>' +
         "<w:p><w:r><w:t>Second</w:t><w:tab/><w:t>kept</w:t></w:r>" +
         "<w:del><w:r><w:delText>gone</w:delText></w:r></w:del></w:p>" +
-        "</mc:Choice></mc:AlternateContent>";
+        // The fallback is an alternative to the choice, not more content.
+        "</mc:Choice><mc:Fallback><w:p><w:r><w:t>First kept</w:t></w:r></w:p>" +
+        "<w:p><w:r><w:t>Fallback only</w:t></w:r></w:p>" +
+        "</mc:Fallback></mc:AlternateContent>";
       const before = session.document;
       const prepared = prepareCanonicalPaste({
         session,
@@ -775,7 +813,8 @@ describe.each(["editing", "suggesting"] as const)(
       createCanonicalSession(reopened)
         .unwrap()
         .projection.doc.forEach((node) => texts.push(node.textContent));
-      expect(texts).toContain("First kept");
+      expect(texts.filter((text) => text === "First kept")).toHaveLength(1);
+      expect(texts).not.toContain("Fallback only");
       // The tab between the second paragraph's words is a tab.
       expect(texts).toContain("Secondkept");
       expect(documentXml).toMatch(
@@ -791,3 +830,332 @@ describe.each(["editing", "suggesting"] as const)(
     });
   },
 );
+
+/** The source's first node keeping `needle` in its markup. */
+const keptNode = (doc: ProseNode, needle: string): ProseNode => {
+  let found: ProseNode | undefined;
+  doc.descendants((node) => {
+    if (found !== undefined) return false;
+    const xml: unknown = node.attrs["_docxRawXml"];
+    if (typeof xml === "string" && xml.includes(needle)) found = node;
+    return found === undefined;
+  });
+  if (found === undefined) throw new TypeError(`No node keeps ${needle}.`);
+  return found;
+};
+
+describe.each(["editing", "suggesting"] as const)(
+  "kept inline markup from outside the editor, in %s",
+  (mode) => {
+    test("an object whose preview the image import would refuse is left out, and the text around it pastes", async () => {
+      const { session, state, copiedFrom } = await pasted(mode);
+      const doc = createCanonicalSession(copiedFrom).unwrap().projection.doc;
+      const object = keptNode(doc, "rIdPicturedObject");
+      const { schema } = state;
+      const oversized = `data:image/png;base64,${"A".repeat(
+        Math.ceil((16 * 1024 * 1024 * 4) / 3) + 4,
+      )}`;
+      const slice = new Slice(
+        Fragment.from(
+          schema.node("paragraph", null, [
+            schema.text("Kept "),
+            object.type.create({ ...object.attrs, src: oversized }),
+            object.type.create({
+              ...object.attrs,
+              src: "data:image/png;base64,not base64!",
+            }),
+            schema.text(" text"),
+          ]),
+        ),
+        1,
+        1,
+      );
+      const prepared = prepareCanonicalPaste({ session, state, slice });
+      if (prepared.isErr()) throw prepared.error;
+      expect(
+        prepared.value.warnings.map(
+          ({ code, part, element }) => `${code} ${part} ${element}`,
+        ),
+      ).toEqual([
+        "kept-markup-dropped document w:object",
+        "kept-markup-dropped document w:object",
+      ]);
+      publishCanonicalProjection({
+        session,
+        state,
+        commit: prepared.value,
+      }).unwrap();
+      const documentXml = await textOf(
+        await ZipArchive.read(await save(session, "full")),
+        "word/document.xml",
+      );
+      expect(documentXml).toContain("Kept ");
+      expect(documentXml).toContain(" text");
+      expect(documentXml).not.toContain("<o:OLEObject");
+      expect(documentXml).not.toContain("<pic:pic ");
+    });
+
+    test("a paste whose every piece is left out keeps the selection it would replace and reports each piece", async () => {
+      const { session, copiedFrom } = await pasted(mode);
+      const doc = createCanonicalSession(copiedFrom).unwrap().projection.doc;
+      const chart = keptNode(doc, "rIdChart");
+      let state = EditorState.create({ doc: session.projection.doc });
+      // The selection covers the first paragraph's text.
+      state = state.apply(
+        state.tr.setSelection(
+          TextSelection.create(state.doc, 1, state.doc.child(0).nodeSize - 1),
+        ),
+      );
+      const before = session.document;
+      const prepared = prepareCanonicalPaste({
+        session,
+        state,
+        slice: new Slice(Fragment.from(chart), 0, 0),
+      });
+      if (prepared.isOk())
+        throw new TypeError("The paste changed the document.");
+      expect(prepared.error.reason).toBe("noChange");
+      expect(
+        (prepared.error.warnings ?? []).map(
+          ({ code, part, element }) => `${code} ${part} ${element}`,
+        ),
+      ).toEqual(["kept-markup-dropped document w:drawing"]);
+      expect(session.document).toBe(before);
+    });
+  },
+);
+
+describe.each(["object first", "picture first"] as const)(
+  "a copied part and a new picture in one paste, %s",
+  (order) => {
+    test("take distinct names", async () => {
+      // The source's preview picture sits where a pasted picture is named.
+      const copiedFrom = readModel(
+        createCanonicalSession(
+          await packageOf(
+            [
+              {
+                type: "paragraph",
+                paraId: "40000001",
+                content: [
+                  {
+                    type: "run",
+                    content: [
+                      {
+                        type: "preservedXml",
+                        xml: PICTURED_OBJECT_XML,
+                        text: "",
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+            {
+              "word/embeddings/oleObject2.bin": {
+                type: "application/vnd.openxmlformats-officedocument.oleObject",
+                body: "Pictured OLE object bytes",
+              },
+              "word/media/clipboard1.png": { type: "image/png", body: PNG },
+            },
+            [
+              {
+                id: "rIdPicturedObject",
+                type: `${RELATIONSHIP_TYPE}/oleObject`,
+                target: "embeddings/oleObject2.bin",
+              },
+              {
+                id: "rIdPreview",
+                type: `${RELATIONSHIP_TYPE}/image`,
+                target: "media/clipboard1.png",
+              },
+            ],
+          ),
+        ).unwrap().document,
+      );
+      const object = keptNode(
+        createCanonicalSession(copiedFrom).unwrap().projection.doc,
+        "rIdPicturedObject",
+      );
+      const session = createCanonicalSession(await destination()).unwrap();
+      const state = EditorState.create({ doc: session.projection.doc });
+      const { schema } = state;
+      const picture = object.type.create({
+        src: bytesToDataUrl(PNG, "image/png"),
+        width: 1,
+        height: 1,
+      });
+      const slice = new Slice(
+        Fragment.from(
+          schema.node(
+            "paragraph",
+            null,
+            order === "object first" ? [object, picture] : [picture, object],
+          ),
+        ),
+        1,
+        1,
+      );
+      const sourceParts = await readClipboardPackageParts({
+        document: copiedFrom,
+        markup: sliceKeptMarkup(slice),
+      });
+      const prepared = prepareCanonicalPaste({
+        session,
+        state,
+        slice,
+        sourceDocument: copiedFrom,
+        ...(sourceParts === undefined ? {} : { sourceParts }),
+      });
+      if (prepared.isErr()) throw prepared.error;
+      expect(prepared.value.warnings).toEqual([]);
+      const pastedModel = readModel(prepared.value.document);
+      const copied = [...(pastedModel.package.copiedParts?.keys() ?? [])];
+      const pictures = [...(pastedModel.package.media?.keys() ?? [])].filter(
+        (path) => !(session.document.package.media?.has(path) ?? false),
+      );
+      // Whichever comes first takes the name the other would.
+      expect(
+        [...copied, ...pictures].filter((path) =>
+          path.startsWith("word/media/"),
+        ),
+      ).toEqual(
+        order === "object first"
+          ? ["word/media/clipboard1.png", "word/media/clipboard2.png"]
+          : ["word/media/clipboard2.png", "word/media/clipboard1.png"],
+      );
+      expect(pictures).toHaveLength(1);
+      for (const path of pictures) expect(copied).not.toContain(path);
+      publishCanonicalProjection({
+        session,
+        state,
+        commit: prepared.value,
+      }).unwrap();
+      const zip = await ZipArchive.read(await save(session, "full"));
+      await assertResolves(zip);
+      const targets = [
+        ...parseRelationships(
+          await textOf(zip, "word/_rels/document.xml.rels"),
+        ).values(),
+      ]
+        .filter(({ type }) => type.endsWith("/image"))
+        .map(({ target }) => target);
+      expect(targets).toHaveLength(2);
+      expect(new Set(targets).size).toBe(2);
+    });
+  },
+);
+
+/** A chart run naming `id`. */
+const chartNaming = (id: string, docPr: number): DrawingContent =>
+  drawing(
+    CHART_XML.replace('r:id="rIdChart"', `r:id="${id}"`).replace(
+      'id="77"',
+      `id="${String(docPr)}"`,
+    ),
+  );
+
+test("a copy keeps the parts it can read when another part its markup reaches cannot be read", async () => {
+  const chartRels = (workbook: string) => ({
+    type: "application/vnd.openxmlformats-package.relationships+xml",
+    body:
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      `<Relationship Id="rId1" Type="${RELATIONSHIP_TYPE}/package" Target="../embeddings/${workbook}"/>` +
+      "</Relationships>",
+  });
+  const chartPart = {
+    type: "application/vnd.openxmlformats-officedocument.drawingml.chart+xml",
+    body: textBody("word/charts/chart1.xml"),
+  };
+  const workbook = {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    body: "PK workbook bytes",
+  };
+  const model = await packageOf(
+    [
+      {
+        type: "paragraph",
+        paraId: "50000001",
+        content: [
+          {
+            type: "run",
+            content: [
+              chartNaming("rIdReadable", 81),
+              chartNaming("rIdDamaged", 82),
+              { type: "text", text: "Charts" },
+            ],
+          },
+        ],
+      },
+    ],
+    {
+      "word/charts/chart1.xml": chartPart,
+      "word/charts/_rels/chart1.xml.rels": chartRels("book1.xlsx"),
+      "word/charts/chart2.xml": chartPart,
+      "word/charts/_rels/chart2.xml.rels": chartRels("book2.xlsx"),
+      "word/embeddings/book1.xlsx": workbook,
+      "word/embeddings/book2.xlsx": workbook,
+    },
+    [
+      {
+        id: "rIdReadable",
+        type: `${RELATIONSHIP_TYPE}/chart`,
+        target: "charts/chart1.xml",
+      },
+      {
+        id: "rIdDamaged",
+        type: `${RELATIONSHIP_TYPE}/chart`,
+        target: "charts/chart2.xml",
+      },
+    ],
+    new Set(["word/embeddings/book2.xlsx"]),
+  );
+  const copiedFrom = readModel(createCanonicalSession(model).unwrap().document);
+  const doc = createCanonicalSession(copiedFrom).unwrap().projection.doc;
+  const slice = doc.slice(0, doc.child(0).nodeSize);
+  const sourceParts = await readClipboardPackageParts({
+    document: copiedFrom,
+    markup: sliceKeptMarkup(slice),
+  });
+  // The damaged workbook is left out; the chart reaching it is read, but
+  // cannot be copied whole.
+  expect([...(sourceParts?.parts.keys() ?? [])].toSorted()).toEqual(
+    [
+      "word/charts/chart1.xml",
+      "word/charts/_rels/chart1.xml.rels",
+      "word/charts/chart2.xml",
+      "word/charts/_rels/chart2.xml.rels",
+      "word/embeddings/book1.xlsx",
+    ].toSorted(),
+  );
+  const session = createCanonicalSession(await destination()).unwrap();
+  const state = EditorState.create({ doc: session.projection.doc });
+  const prepared = prepareCanonicalPaste({
+    session,
+    state,
+    slice,
+    sourceDocument: copiedFrom,
+    ...(sourceParts === undefined ? {} : { sourceParts }),
+  });
+  if (prepared.isErr()) throw prepared.error;
+  expect(
+    prepared.value.warnings.map(({ code, element }) => `${code} ${element}`),
+  ).toEqual(["kept-markup-dropped w:drawing"]);
+  publishCanonicalProjection({
+    session,
+    state,
+    commit: prepared.value,
+  }).unwrap();
+  const zip = await ZipArchive.read(await save(session, "full"));
+  await assertResolves(zip);
+  const relationships = parseRelationships(
+    await textOf(zip, "word/_rels/document.xml.rels"),
+  );
+  const named = namedIds(await textOf(zip, "word/document.xml"));
+  expect(named).toHaveLength(1);
+  const id = named.at(0) ?? "";
+  expect(relationships.get(id)?.target).toBe("charts/chart2.xml");
+  expect(await textOf(zip, "word/embeddings/book1.xlsx")).toBe(
+    "PK workbook bytes",
+  );
+});
