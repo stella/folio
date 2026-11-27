@@ -1,5 +1,69 @@
 # @stll/docx-core
 
+## 0.49.0
+
+### Minor Changes
+
+- [#3741](https://github.com/stella/folio/pull/3741) [`69094f1`](https://github.com/stella/folio/commit/69094f148197c6ea69b56939d8bdc42cc0b84844) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A suggested deletion of a paragraph that ends a section, followed by bookmark or comment range markers, is now recorded and resolves as the direct deletion does, its section break going with its mark. Deleting a paragraph right before a content control or kept block that ends its container now empties the paragraph in place, directly or as a suggestion, instead of being refused. Section property changes on a paragraph inside a content control or table cell now accept and reject. A direct paragraph insertion after a pending inserted mark that rejecting it could not reproduce is refused as a request to resolve that insertion first.
+
+- [#3737](https://github.com/stella/folio/pull/3737) [`7a96822`](https://github.com/stella/folio/commit/7a96822aeec0d4b55e6d8b2cb9662d18fe75d56e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A suggested paste of a paragraph whose break was moved away keeps that move beside the paste's insertion of the break, written `w:moveFrom` beside `w:ins`, and documents that carry both records on a paragraph mark open with both. A tracked change inside a simple field now resolves in place whatever it holds, such as bookmarks or content controls: accepting it keeps its content in the field, and rejecting it leaves the bookmark boundaries it held where they stood.
+
+- [#3723](https://github.com/stella/folio/pull/3723) [`6bbec53`](https://github.com/stella/folio/commit/6bbec53b53c870d7950e8d6f5ee3456fdbd06a53) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A chart, an embedded object or kept block markup copied from one document now pastes into another, directly or as a suggestion: the parts it names (the chart with its workbook and styles, the embedding, its preview picture) are copied in under fresh names and relationship ids and are written on save. An embedded object drawn by a picture now pastes as the object rather than as the picture alone. The package model gains `copiedParts`, the package resources operation carries them, and `ZipArchive.readDirectory` reads an archive's directory at once.
+
+- [#3732](https://github.com/stella/folio/pull/3732) [`776e96f`](https://github.com/stella/folio/commit/776e96f361cbe83d985a9cf4268e8abbbd2b85b1) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A copied footnote, endnote or comment holding a chart, an embedded object or kept block markup now pastes with it, within one document or into another, directly or as a suggestion: the parts it names are copied in, and the save writes their relationships into the note or comment part's own relationships. A pasted note may now hold kept block markup beside its paragraphs. The package model gains `annotationRelationships`, the relationships of the footnotes, endnotes and comments parts, and the package resources operation carries changes to them.
+
+- [#3730](https://github.com/stella/folio/pull/3730) [`5d0ce91`](https://github.com/stella/folio/commit/5d0ce9190266fb41a6ffcf87a44e9249cd3f864f) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A paragraph inserted directly after one whose paragraph mark is a pending insertion now goes in where rejecting that insertion leaves the same paragraphs as inserting into the rejected document: the pending break moves to the last new paragraph. A suggested paste of a paragraph whose break is pending deletion now records the paste's insertion of the break with the copied deletion beside it, which stays pending once the paste is accepted. A pasted paragraph carrying a table's review carrier now pastes as the plain paragraph it shows, directly or as a suggestion.
+
+- [#3729](https://github.com/stella/folio/pull/3729) [`8983233`](https://github.com/stella/folio/commit/898323354dbd0a6b2b245173c57cfd6433f237a9) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A suggested paste or move of a block content control is now refused under the document's `revisionContentShape` rule (reason `noRevisionRecord`), since a block-level content control takes no tracked change of its own, and the editor shows the new `editor.suggestionUnavailable` message in every catalog language; the same change made directly applies. A suggested deletion of paragraphs that would record nothing reports `noChange` instead of a capability gap.
+
+- [#3738](https://github.com/stella/folio/pull/3738) [`941ed38`](https://github.com/stella/folio/commit/941ed38e1308a60ad51bab37ec1a287aabf4b065) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Accepting a deleted paragraph mark that ends a section now joins the paragraphs across bookmark, comment or move range boundaries standing before the next paragraph, putting them where the resolved section ended, instead of refusing. A suggested copy of bookmark or move range boundaries keeps its copy ownership however many tracked insertions it is nested in. A suggested deletion over a bidirectional or other transparent wrapper holding a comment anchor whose range it does not remove whole is refused as holding a dependent record, as the bare anchor is.
+
+### Patch Changes
+
+- [#3736](https://github.com/stella/folio/pull/3736) [`d4ecd4b`](https://github.com/stella/folio/commit/d4ecd4b4e0d26cf41b840969dbf6e22939d749fa) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Deleting a paragraph beside a numbered one now leaves the same list numbering whether it is applied directly or tracked and then accepted: a container's last paragraph under a pending deletion of its mark takes the properties the direct deletion gives it, a direct deletion joins the paragraph across block-level bookmarks as the tracked one does, and a tracked deletion before a table of a paragraph whose mark is another reviewer's pending insertion is recorded beside that insertion, so accepting both removes the paragraph whole.
+
+- [#3693](https://github.com/stella/folio/pull/3693) [`e8bd722`](https://github.com/stella/folio/commit/e8bd722eff9052fcb7c6ec23b33b2c2a1d9cd2f7) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep a paragraph left with only its anchors, or reached through emptied paragraphs, in place before a table whose first row is pending in review views, and keep text addresses when a removed paragraph's bookmarks move to its neighbour.
+
+- [#3689](https://github.com/stella/folio/pull/3689) [`de0d9b7`](https://github.com/stella/folio/commit/de0d9b70fdb6936101f64540a7b63cd4e07d50c6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve vertical merges during selective table-cell review, using row omissions at the edges and empty cells between merges.
+
+- [#3688](https://github.com/stella/folio/pull/3688) [`e3e38fa`](https://github.com/stella/folio/commit/e3e38fa2e939351e1464e11f6ffb5da327345397) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve the shared custom XML binding of rich-text controls during tracked table moves.
+
+- [#3684](https://github.com/stella/folio/pull/3684) [`ae17d88`](https://github.com/stella/folio/commit/ae17d88289e19937d67d6b1b82b9473acdf7b46c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve hyperlinks, bidirectional text, and inline run characters when recording a tracked table merge.
+
+- [#3684](https://github.com/stella/folio/pull/3684) [`ae17d88`](https://github.com/stella/folio/commit/ae17d88289e19937d67d6b1b82b9473acdf7b46c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve omitted and explicitly zero column widths through table review and document reconstruction.
+
+- [#3683](https://github.com/stella/folio/pull/3683) [`22f158e`](https://github.com/stella/folio/commit/22f158ebf421e251521bd1a92eb0eb5f3bff4066) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Record text moved by table merges with native move ranges, including merges that absorb complete rows, and preserve paragraph identities through review.
+
+- [#3688](https://github.com/stella/folio/pull/3688) [`e3e38fa`](https://github.com/stella/folio/commit/e3e38fa2e939351e1464e11f6ffb5da327345397) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve unbound rich-text inline content controls when suggesting a table merge.
+
+- [#3687](https://github.com/stella/folio/pull/3687) [`c622ddb`](https://github.com/stella/folio/commit/c622ddbef95511735f901d3792f9275ba0263fe4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve nested tables when suggesting a rectangular table merge.
+
+- [#3689](https://github.com/stella/folio/pull/3689) [`de0d9b7`](https://github.com/stella/folio/commit/de0d9b70fdb6936101f64540a7b63cd4e07d50c6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Review tracked table rows and row properties after the last cell paragraph is removed, with exact undo through the surrounding document.
+
+- [#3718](https://github.com/stella/folio/pull/3718) [`0d01712`](https://github.com/stella/folio/commit/0d01712ebaf4eacc730d96694c224557693f1b82) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A suggested change to a paragraph mark's run formatting is now recorded as its own revision (`w:rPrChange` under `w:pPr/w:rPr`) instead of being refused. It accepts, rejects and undoes apart from any paragraph property change, folds later edits by the same suggestion, follows the mark through tracked splits, insertions and pastes, and survives a save.
+
+- [#3684](https://github.com/stella/folio/pull/3684) [`ae17d88`](https://github.com/stella/folio/commit/ae17d88289e19937d67d6b1b82b9473acdf7b46c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve both halves of an existing native move when suggesting a table row that contains the complete move.
+
+- [#3688](https://github.com/stella/folio/pull/3688) [`e3e38fa`](https://github.com/stella/folio/commit/e3e38fa2e939351e1464e11f6ffb5da327345397) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Retain a stable empty paragraph when review removes the only table in a main story.
+
+- [#3689](https://github.com/stella/folio/pull/3689) [`de0d9b7`](https://github.com/stella/folio/commit/de0d9b70fdb6936101f64540a7b63cd4e07d50c6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep self-contained inline and display equations in native tracked cell moves.
+
+- [#3684](https://github.com/stella/folio/pull/3684) [`ae17d88`](https://github.com/stella/folio/commit/ae17d88289e19937d67d6b1b82b9473acdf7b46c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve wrapped markup and existing cell records through table review, and report table snapshots with explicitly undefined fields as a document rule.
+
+- [#3688](https://github.com/stella/folio/pull/3688) [`e3e38fa`](https://github.com/stella/folio/commit/e3e38fa2e939351e1464e11f6ffb5da327345397) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve shared footnote and endnote bodies when a tracked table move relocates their references.
+
+- [#3687](https://github.com/stella/folio/pull/3687) [`c622ddb`](https://github.com/stella/folio/commit/c622ddbef95511735f901d3792f9275ba0263fe4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Use a surviving peer table's paragraph as the exact inverse anchor when editing a table-only block list.
+
+- [#3689](https://github.com/stella/folio/pull/3689) [`de0d9b7`](https://github.com/stella/folio/commit/de0d9b70fdb6936101f64540a7b63cd4e07d50c6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve plain-text phonetic guides when tracked table merges move cell content.
+
+- [#3689](https://github.com/stella/folio/pull/3689) [`de0d9b7`](https://github.com/stella/folio/commit/de0d9b70fdb6936101f64540a7b63cd4e07d50c6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep inline custom XML and smart tags with the cells they move during tracked merges.
+
+- [#3689](https://github.com/stella/folio/pull/3689) [`de0d9b7`](https://github.com/stella/folio/commit/de0d9b70fdb6936101f64540a7b63cd4e07d50c6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve complete spelling and grammar ranges during tracked cell moves.
+
+- [#3684](https://github.com/stella/folio/pull/3684) [`ae17d88`](https://github.com/stella/folio/commit/ae17d88289e19937d67d6b1b82b9473acdf7b46c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Track whole tables inside block wrappers that hold no other paragraphs, using a surviving paragraph outside the wrapper for undo.
+
+- [#3688](https://github.com/stella/folio/pull/3688) [`e3e38fa`](https://github.com/stella/folio/commit/e3e38fa2e939351e1464e11f6ffb5da327345397) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Restore the declared number of unmeasured columns when rejecting a table grid revision.
+
 ## 0.48.2
 
 ### Patch Changes
