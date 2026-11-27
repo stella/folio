@@ -53,6 +53,7 @@ import {
   mergeOwnersContinuedBelow,
   removalOrphansAMerge,
   rowsWithoutRow,
+  rowsWithRow,
 } from "./tableRowRemoval";
 import { applyTableOp } from "./tables";
 import { permitsRestoredCellFinalMark, trackTableRows } from "./tableTracking";
@@ -169,14 +170,14 @@ const commitRows = ({
     });
   }
   if (
-    op.type === DOCUMENT_OP_TYPES.DELETE_ROW &&
+    op.type !== DOCUMENT_OP_TYPES.SET_TABLE_ROWS &&
     removalOrphansAMerge(location.table, rows)
   ) {
     return refused({
       op: op,
       reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
       message:
-        "A removed row hands the merges it starts to the next row with their content.",
+        "A row edit keeps every vertical merge under the cell that starts it.",
     });
   }
   if (
@@ -390,12 +391,11 @@ export const applyRowOp = (
       if (tracked.isErr()) return Result.err(tracked.error);
       const row =
         tracked.value.at(0) ?? panic("A tracked insertion lost its row.");
-      rows.splice(op.at, 0, row);
       return commitRows({
-        document: document,
-        op: op,
-        location: location,
-        rows: rows,
+        document,
+        op,
+        location,
+        rows: rowsWithRow(rows, op.at, row),
       });
     }
     case DOCUMENT_OP_TYPES.DELETE_ROW: {
