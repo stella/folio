@@ -239,3 +239,81 @@ test.each([
     expect(result.error.reason).toBe(reason);
   },
 );
+
+test.each([
+  { kind: "footnote", reference: "footnoteRef" },
+  { kind: "endnote", reference: "endnoteRef" },
+] as const)(
+  "a native table move retains the single $kind body for both tracked references",
+  async ({ kind, reference }) => {
+    const noteId = 8;
+    const source = documentWith([
+      { type: "run", content: [{ type: reference, id: noteId }] },
+    ]);
+    const content = [
+      {
+        type: "paragraph",
+        paraId: "00000008",
+        content: [
+          {
+            type: "run",
+            content: [
+              { type: "noteMarker", kind },
+              { type: "text", text: " Retained note" },
+            ],
+          },
+        ],
+      },
+    ] satisfies Document["package"]["document"]["content"];
+    if (kind === "footnote")
+      source.package.footnotes = [{ type: kind, id: noteId, content }];
+    else source.package.endnotes = [{ type: kind, id: noteId, content }];
+    const original = await read(await createDocx(source));
+    const ids = allocate(original, intent);
+    const compiled = compileEditorIntent(original, {
+      intent,
+      mode: {
+        type: "suggesting",
+        revision: { ...revision, id: ids.revisionId },
+        newIds: ids.newIds,
+      },
+    }).unwrap();
+    const pending = applyDocumentOps(original, compiled.ops).unwrap();
+    const direct = applyDocumentOp(original, {
+      ...operation,
+      newBlockIds: [],
+    }).unwrap().document;
+    const file = await createDocx(pending.document);
+    const archive = await ZipArchive.read(file);
+    const main = archive.entry("word/document.xml");
+    if (main === undefined) throw new Error("Expected the document part.");
+    const xml = await main.text();
+    expect(xml.split(`<w:${kind}Reference w:id="${noteId}"`)).toHaveLength(3);
+    const reopened = await read(file);
+    for (const decision of [
+      REVISION_DECISIONS.ACCEPT,
+      REVISION_DECISIONS.REJECT,
+    ]) {
+      const op = {
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story: OP_STORIES.MAIN,
+        revisionIds: pending.revisions,
+        decision,
+      } as const;
+      const expected =
+        decision === REVISION_DECISIONS.ACCEPT ? direct : original;
+      const settled = applyDocumentOp(pending.document, op).unwrap();
+      expect(settled.document).toStrictEqual(expected);
+      expect(
+        applyDocumentOps(settled.document, settled.inverse).unwrap().document,
+      ).toStrictEqual(pending.document);
+      const reopenedSettled = applyDocumentOp(reopened, op).unwrap().document;
+      expect(cellContentOf(reopenedSettled)).toEqual(cellContentOf(expected));
+      const notes =
+        kind === "footnote"
+          ? reopenedSettled.package.footnotes
+          : reopenedSettled.package.endnotes;
+      expect(notes?.filter(({ id }) => id === noteId)).toHaveLength(1);
+    }
+  },
+);

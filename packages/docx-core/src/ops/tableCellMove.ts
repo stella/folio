@@ -1,3 +1,4 @@
+import { isNoteReferenceId } from "../model/content";
 import {
   type BlockContent,
   type DocxPackage,
@@ -44,7 +45,10 @@ const movableAtom = (leaf: RunContent): boolean =>
     (leaf.breakType === undefined || leaf.breakType === "textWrapping")) ||
   leaf.type === "symbol" ||
   leaf.type === "softHyphen" ||
-  leaf.type === "noBreakHyphen";
+  leaf.type === "noBreakHyphen" ||
+  ((leaf.type === "footnoteRef" || leaf.type === "endnoteRef") &&
+    Number.isInteger(leaf.id) &&
+    isNoteReferenceId(leaf.id));
 
 const movableRun = (run: Run): boolean =>
   run.propertyChanges === undefined && run.content.every(movableAtom);
