@@ -213,6 +213,13 @@ export {
   type AutocompleteCaretRect,
 } from "./paged-editor/AutocompleteCaretOverlay";
 
+// How TIFF images are decoded for display (hosts that cannot load the
+// decoding worker hand the decoder over).
+export {
+  configureTiffDecoding,
+  type TiffDecoder,
+  type TiffDecodingOptions,
+} from "@stll/folio-core/tiff-decoding";
 // Where automatic hyphenation gets its dictionaries (offline hosts, a strict
 // Content Security Policy, single-file bundles).
 export {

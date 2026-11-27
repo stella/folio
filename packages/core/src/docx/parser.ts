@@ -54,9 +54,11 @@ import type { DocxInput } from "../utils/docxInput";
 import { loadFontsWithMapping } from "../utils/fontLoader";
 import { decodeText, encodeUtf8 } from "../utils/textEncoding";
 import {
+  canConvertTiff,
   convertTiffToPngDataUrl,
   isTiffMimeType,
   MAX_PACKAGE_TIFF_PIXELS,
+  TIFF_PLACEHOLDER_SVG,
 } from "../utils/tiffConverter";
 import {
   ALT_CHUNK_PLAIN_TEXT_LIMIT_BYTES,
@@ -151,6 +153,7 @@ import {
   createPackagePreviewBudget,
   type PreviewBudgetOverrides,
   type PreviewLedger,
+  svgPreviewDataUrl,
 } from "./previewBudget";
 import { detectRasterMimeType } from "./rasterMime";
 import {
@@ -1278,10 +1281,10 @@ async function buildMediaMap(
     // TIFF: browsers don't render TIFF in <img>, so decode + re-encode as
     // PNG eagerly. The mimeType, data, and filename extension are all
     // updated together so re-export writes a PNG file matching its
-    // declared type. If conversion fails (e.g. headless / no Canvas, or
-    // dimensions exceed the safety cap), fall through to lazy attachment
-    // with the original TIFF data — the round-trip survives even if the
-    // in-browser preview is broken.
+    // declared type. If conversion fails (the decoder could not load, or
+    // dimensions exceed the safety cap), the package keeps the original TIFF
+    // and a browser paints a placeholder; headless (no Canvas) falls through
+    // to lazy attachment.
     if (isReferenced && isTiffMimeType(mimeType) && remainingTiffPixels > 0) {
       // oxlint-disable-next-line no-await-in-loop -- TIFF decode uses a shared Canvas; conversions must stay serialized to avoid contention
       const converted = await convertTiffToPngDataUrl(
@@ -1304,6 +1307,21 @@ async function buildMediaMap(
         }
         continue;
       }
+    }
+    if (isReferenced && isTiffMimeType(mimeType) && canConvertTiff()) {
+      const mediaFile: MediaFile = {
+        path,
+        filename,
+        mimeType,
+        data,
+        dataUrl: svgPreviewDataUrl(TIFF_PLACEHOLDER_SVG),
+      };
+      media.set(path, mediaFile);
+      const normalizedPath = path.replace(/^word\//u, "");
+      if (normalizedPath !== path) {
+        media.set(normalizedPath, mediaFile);
+      }
+      continue;
     }
 
     const raster =

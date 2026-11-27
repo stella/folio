@@ -29,6 +29,7 @@ import { Comment as Comment_2 } from '@stll/folio-core/types/content';
 import { ComponentProps } from 'react';
 import { ComponentType } from 'react';
 import { configureHyphenationAssets } from '@stll/folio-core/hyphenation';
+import { configureTiffDecoding } from '@stll/folio-core/tiff-decoding';
 import { consumeTemplateSlashQuery } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
 import { ContentControlFilter } from '@stll/folio-core/content-controls';
 import { createAICitationDecorationsPlugin } from '@stll/folio-core/prosemirror/plugins/aiCitationDecorations';
@@ -187,6 +188,8 @@ import { TemplateSlashMenuState } from '@stll/folio-core/prosemirror/plugins/tem
 import { TextPosition } from '@stll/folio-core/controller/folioEditor';
 import { TextWatermark } from '@stll/folio-core/watermark';
 import { Theme } from '@stll/folio-core/types/document';
+import { TiffDecoder } from '@stll/folio-core/tiff-decoding';
+import { TiffDecodingOptions } from '@stll/folio-core/tiff-decoding';
 import { toMarkdown } from '@stll/folio-core/markdown';
 import { toMarkdownResult } from '@stll/folio-core/markdown';
 import { Transaction } from 'prosemirror-state';
@@ -255,6 +258,8 @@ export type ColorPreset = {
 };
 
 export { configureHyphenationAssets }
+
+export { configureTiffDecoding }
 
 export { consumeTemplateSlashQuery }
 
@@ -781,6 +786,10 @@ export { TemplateSlashMenuKeyAction }
 export { TemplateSlashMenuState }
 
 export { TextWatermark }
+
+export { TiffDecoder }
+
+export { TiffDecodingOptions }
 
 export { toMarkdown }
 
