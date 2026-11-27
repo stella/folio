@@ -209,3 +209,69 @@ test("a split beside a merge that would close its row is refused in either mode"
     expect(tracked.applied).not.toContain("split");
   }
 });
+
+test.each(MODES)(
+  "of two merges whose cells overlap, the later one is refused (%s)",
+  async (mode) => {
+    const pair: FolioDocumentOperation = {
+      id: "pair",
+      type: "mergeTableCells",
+      blockId: cellId(0, 2),
+      endBlockId: cellId(0, 3),
+    };
+    const row: FolioDocumentOperation = {
+      id: "row",
+      type: "mergeTableCells",
+      blockId: cellId(0, 0),
+      endBlockId: cellId(0, 3),
+    };
+    const bytes = await bytesOf(tableOf(1, 4, () => ""));
+    for (const [first, second] of [
+      [pair, row],
+      [row, pair],
+    ] as const) {
+      const { applied, skipped } = await accepted({
+        bytes,
+        mode,
+        operations: [first, second],
+      });
+      expect(applied).toEqual([first.id]);
+      expect(skipped).toEqual([
+        {
+          id: second.id,
+          message:
+            "An earlier merge or split of the batch reshapes cells this merges or splits.",
+        },
+      ]);
+    }
+  },
+);
+
+test.each(MODES)(
+  "a merge below a deleted row that starts a vertical merge is refused (%s)",
+  async (mode) => {
+    const table = tableOf(3, 2, (row, column) =>
+      column === 1 && row < 2 ? `r${row}c${column}` : "",
+    );
+    for (const [index, row] of table.rows.entries()) {
+      const [first] = row.cells;
+      if (first === undefined) throw new Error("Every row has a cell.");
+      first.formatting = { vMerge: index === 0 ? "restart" : "continue" };
+    }
+    const { applied, skipped } = await accepted({
+      bytes: await bytesOf(table),
+      mode,
+      operations: [
+        {
+          id: "merge",
+          type: "mergeTableCells",
+          blockId: cellId(1, 1),
+          endBlockId: cellId(2, 1),
+        },
+        { id: "delete", type: "deleteTableRow", blockId: cellId(0, 0) },
+      ],
+    });
+    expect(applied).toEqual(["delete"]);
+    expect(skipped.map(({ id }) => id)).toEqual(["merge"]);
+  },
+);

@@ -185,7 +185,7 @@ export const mergesRemoveRow = ({
   return removesRow;
 };
 
-const tableRectanglesOverlap = (
+export const tableRectanglesOverlap = (
   left: TableRectangle,
   right: TableRectangle,
 ): boolean =>

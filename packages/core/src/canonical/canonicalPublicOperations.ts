@@ -140,6 +140,7 @@ import {
 import {
   mergesRemoveRow,
   type TableRectangle,
+  tableRectanglesOverlap,
 } from "../ai-edits/table-mutation-plan";
 import {
   applyTableRowInsertion,
@@ -288,6 +289,8 @@ type CanonicalBatchPlan = {
   claim: ReturnType<typeof snapshotBatchClaim>;
   address: BatchOrderAddress;
   removes: TableLineRemoval | null;
+  /** The cells a merge or split reshapes, as the batch read its table. */
+  cells?: TableRectangle;
   block: number;
   /**
    * The paragraph the edit is addressed through as it runs: `block`, or
@@ -583,6 +586,7 @@ const canonicalBatchPlan = ({
       });
       return {
         ...plan,
+        cells: rectangle,
         address: {
           type: "cell",
           tablePosition: target.tablePosition,
@@ -705,32 +709,21 @@ type RowClosingCellShapesOptions<T> = {
  * cells and the earlier ones' would empty a row is refused, and so is a
  * split in a table whose merges empty a row, whatever the order.
  */
-const rowClosingCellShapes = <
-  T extends PlannedOperation & { intents: readonly EditorIntent[] },
->({
+const rowClosingCellShapes = <T extends PlannedOperation>({
   items,
   doc,
 }: RowClosingCellShapesOptions<T>): T[] => {
   const kept = new Map<number, TableRectangle[]>();
   const refused: T[] = [];
   for (const item of items) {
-    const { operation, intents, plan } = item;
+    const { operation, plan } = item;
     if (operation.type !== "mergeTableCells" || plan.address.type !== "cell")
       continue;
-    const merge = intents.find(
-      (intent) =>
-        intent.type === "table" &&
-        intent.operation.type === DOCUMENT_OP_TYPES.MERGE_CELLS,
-    );
-    if (
-      merge?.type !== "table" ||
-      merge.operation.type !== DOCUMENT_OP_TYPES.MERGE_CELLS
-    )
-      return panic("A resolved cell merge lost its rectangle");
-    const { left, top, right, bottom } = merge.operation;
+    const cells =
+      plan.cells ?? panic("A resolved cell merge lost its rectangle");
     const table = plan.address.tablePosition;
     const earlier = kept.get(table) ?? [];
-    const rectangles = [...earlier, { left, top, right, bottom }];
+    const rectangles = [...earlier, cells];
     if (
       earlier.length > 0 &&
       mergesRemoveRow({ doc, tablePosition: table, rectangles })
@@ -756,6 +749,35 @@ const rowClosingCellShapes = <
       refused.push(item);
   }
   return refused;
+};
+
+const OVERLAPPING_CELL_SHAPE =
+  "An earlier merge or split of the batch reshapes cells this merges or splits.";
+
+/**
+ * The merges and splits whose cells an earlier one of the batch in their
+ * table reshapes too. Each names its cells as the batch read the table, so
+ * once the other has run its rectangle can cut the cell that one made; as
+ * `planTableMutations` does, the first stays and a later one is refused,
+ * whatever the mode.
+ */
+const overlappingCellShapes = <T extends PlannedOperation>(
+  items: readonly T[],
+): T[] => {
+  const kept: { table: number; cells: TableRectangle }[] = [];
+  return items.filter(({ plan: { address, cells } }) => {
+    if (address.type !== "cell" || cells === undefined) return false;
+    const table = address.tablePosition;
+    if (
+      kept.some(
+        (other) =>
+          other.table === table && tableRectanglesOverlap(other.cells, cells),
+      )
+    )
+      return true;
+    kept.push({ table, cells });
+    return false;
+  });
 };
 
 /**
@@ -5766,6 +5788,7 @@ export class CanonicalPublicOperations {
         rowClosingCellShapes({ items: shaping, doc: projected.value.doc }),
         ROW_CLOSING_CELL_SHAPE,
       );
+    refuseShapes(overlappingCellShapes(shaping), OVERLAPPING_CELL_SHAPE);
     if (batch.atomic && skipped.length > 0) {
       for (const { operation } of resolved)
         skip(operation.id, "atomicBatchRejected");
