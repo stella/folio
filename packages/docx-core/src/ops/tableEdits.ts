@@ -3227,7 +3227,7 @@ const pendingGeometry = (table: Table, op: TableIntentOperation) =>
 export const tableEditCopyIdentityDemand = (
   location: TableRowLocation,
   op: TableIntentOperation,
-) => {
+): { controls: number; revisions: number } => {
   const none = { controls: 0, revisions: 0 };
   if (op.type !== DOCUMENT_OP_TYPES.MERGE_CELLS) return none;
   const { table } = location;

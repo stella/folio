@@ -3,4 +3,4 @@
 "@stll/folio-core": patch
 ---
 
-Keep earlier table, row, and cell formatting revisions reviewable when a tracked cell merge moves a nested table.
+Keep nested table formatting revisions and block content controls intact through tracked cell merges.
