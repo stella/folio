@@ -15,6 +15,7 @@ import type { DocxPackage } from "../model/document";
 import { structurallyEqual } from "./equality";
 import { changedListBounds } from "./listSplice";
 import { recentValues } from "./recentValues";
+import { readDrawingIds } from "./tablePictureMove";
 
 const isObjectValue = (value: unknown): value is object =>
   typeof value === "object" && value !== null;
@@ -198,6 +199,30 @@ export const packageMoveRangeCensus = (
     },
   });
   return { ids, names };
+};
+
+/** Drawing IDs in editable objects and in retained drawing markup. */
+export const packageDrawingIds = (pkg: DocxPackage): Set<number> => {
+  const ids = new Set<number>();
+  walk({
+    value: storiesOf(pkg),
+    visit: (entries) => {
+      const type = fieldOf(entries, "type");
+      if (type === "image" || type === "shape") {
+        const value = fieldOf(entries, "id");
+        if (typeof value === "string" && /^\d+$/u.test(value))
+          ids.add(Number(value));
+      }
+      for (const [key, value] of entries)
+        if (
+          typeof value === "string" &&
+          (key === "rawXml" || key === "xml") &&
+          value.includes("docPr")
+        )
+          readDrawingIds(value, ids);
+    },
+  });
+  return ids;
 };
 
 /**
