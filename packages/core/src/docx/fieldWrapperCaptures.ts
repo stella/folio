@@ -3,11 +3,12 @@
  *
  * The model types a wrapper's content as any paragraph content, so a field
  * built through the model may hold, inside a `w:dir` or a smart tag, an
- * equation, a bookmark, a content control or another field. The parser never
- * reads one: a wrapper inside `w:fldSimple` reads with the field's own map,
- * which keeps everything else as the markup it is. The editor's field node
- * holds the field's content only, so a built field reads here as the parser
- * would read the markup the serializer writes for it.
+ * equation, a bookmark, a content control or another field, and a resolved
+ * change inside a field leaves what it held in the field itself. The parser
+ * never reads one: a field and a wrapper inside `w:fldSimple` read with the
+ * field's own map, which keeps everything else as the markup it is. The
+ * editor's field node holds the field's content only, so a built field reads
+ * here as the parser would read the markup the serializer writes for it.
  */
 
 import { panic } from "better-result";
@@ -21,6 +22,7 @@ import {
   isHyperlinkContent,
   isInlineSdtContent,
   isSimpleFieldContent,
+  isSimpleFieldReadContent,
   isTrackedChangeWrapperChild,
 } from "./inlineWrapperContent";
 import { preservedInlineCapture } from "./preservedRunContent";
@@ -39,9 +41,12 @@ const writtenMarkup = (item: ParagraphContent): string => {
   return written.slice(open.length, -close.length);
 };
 
-/** Comment range markers a field's conversion reads where they stand. */
+/**
+ * What a field's conversion reads where it stands: what the parser reads in a
+ * field, and comment range markers.
+ */
 const readInField = (item: ParagraphContent): boolean =>
-  isSimpleFieldContent(item) ||
+  isSimpleFieldReadContent(item) ||
   item.type === "commentRangeStart" ||
   item.type === "commentRangeEnd";
 
@@ -64,13 +69,21 @@ const wrapperInField = (wrapper: InlineWrapper): InlineWrapper => {
   return changed ? { ...wrapper, content } : wrapper;
 };
 
+/**
+ * A field item as the parser reads the markup the serializer writes for it:
+ * one it reads where it stands, normalized, and any other (content a resolved
+ * change left in the field) as the capture it reads.
+ */
+const fieldItem = (item: ParagraphContent): ParagraphContent | undefined => {
+  if (item.type === "inlineWrapper") return wrapperInField(item);
+  if (!readInField(item)) return preservedInlineCapture(writtenMarkup(item));
+  return withFieldWrapperCaptures([item]).at(0);
+};
+
 const fieldWithCaptures = (field: SimpleField): SimpleField => {
   let changed = false;
   const content = field.content.map((item) => {
-    const next =
-      item.type === "inlineWrapper"
-        ? wrapperInField(item)
-        : withFieldWrapperCaptures([item]).at(0);
+    const next = fieldItem(item);
     if (next === undefined || !isSimpleFieldContent(next))
       return panic("A field's content must stay field content");
     if (next !== item) changed = true;

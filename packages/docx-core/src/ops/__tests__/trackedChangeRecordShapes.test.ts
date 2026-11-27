@@ -387,6 +387,51 @@ describe("a tracked change inside a simple field's result", () => {
     },
   );
 
+  test.each([
+    [REVISION_DECISIONS.ACCEPT, "keeps"],
+    [REVISION_DECISIONS.REJECT, "drops"],
+  ] as const)(
+    "%s of a change holding boundaries, a field and a control %s its content inside the field",
+    (decision) => {
+      const nested: FieldContent[number] = {
+        type: "simpleField",
+        instruction: "NUMPAGES",
+        fieldType: "NUMPAGES",
+        content: [run("9")],
+      };
+      const control: FieldContent[number] = {
+        type: "inlineSdt",
+        properties: { sdtType: "richText" },
+        content: [run("x")],
+      };
+      const start: FieldContent[number] = {
+        type: "bookmarkStart",
+        id: 3,
+        name: "_Ref3",
+      };
+      const end: FieldContent[number] = { type: "bookmarkEnd", id: 3 };
+      const holding: FieldContent[number] = {
+        type: "insertion",
+        info: info(7),
+        content: [start, run("4"), nested, control, end],
+      };
+      const document = withField([run("1"), holding]);
+      const resolved = resolve(document, [7], decision);
+      // Rejecting the insertion takes its content and leaves the bookmark's
+      // boundaries where they stood, as a paragraph's resolution does.
+      expect(resolved.document).toStrictEqual(
+        withField(
+          decision === REVISION_DECISIONS.ACCEPT
+            ? [run("1"), start, run("4"), nested, control, end]
+            : [run("1"), start, end],
+        ),
+      );
+      expect(apply(resolved.document, resolved.inverse).document).toStrictEqual(
+        document,
+      );
+    },
+  );
+
   test("a container the resolution empties goes; the field stays, showing nothing", () => {
     const linked = withField([
       {
@@ -1296,41 +1341,64 @@ describe("a pasted paragraph whose break is pending deletion", () => {
     ],
   });
 
-  test("the paste inserts the break and keeps the copied deletion of it beside", () => {
-    const { suggested } = assertSuggestionLaws(
-      document,
-      paste({ kind: "del", info: { id: 93, ...earlier } }),
-    );
-    const marks = suggested.document.package.document.content.flatMap(
-      (block) =>
-        block.type === "paragraph" && block.pPrMark?.deletion !== undefined
-          ? [block.pPrMark]
-          : [],
-    );
-    expect(marks).toEqual([
-      {
-        kind: "ins",
-        info: expect.objectContaining({ author: STAMP.author }),
-        deletion: { info: expect.objectContaining(earlier) },
-      },
-    ]);
-    const [mark] = marks;
-    if (mark?.deletion === undefined)
-      throw new TypeError("The pasted break holds the copied deletion.");
-    expect(suggested.revisions).not.toContain(mark.deletion.info.id);
-  });
+  test.each<ParagraphMarkChange>([
+    { kind: "del", info: { id: 93, ...earlier } },
+    { kind: "moveFrom", info: { id: 93, ...earlier } },
+  ])(
+    "the paste inserts the break and keeps the copied removal of it beside (%o)",
+    (copied) => {
+      const removal =
+        copied.kind === "moveFrom"
+          ? { info: expect.objectContaining(earlier), kind: "moveFrom" }
+          : { info: expect.objectContaining(earlier) };
+      const { suggested } = assertSuggestionLaws(document, paste(copied));
+      const marks = suggested.document.package.document.content.flatMap(
+        (block) =>
+          block.type === "paragraph" && block.pPrMark?.deletion !== undefined
+            ? [block.pPrMark]
+            : [],
+      );
+      expect(marks).toEqual([
+        {
+          kind: "ins",
+          info: expect.objectContaining({ author: STAMP.author }),
+          deletion: removal,
+        },
+      ]);
+      const [mark] = marks;
+      if (mark?.deletion === undefined)
+        throw new TypeError("The pasted break holds the copied removal.");
+      expect(suggested.revisions).not.toContain(mark.deletion.info.id);
+      // Accepting the paste alone leaves the copied record as the direct
+      // paste copies it; resolving that record then removes the break.
+      const accepted = resolve(
+        suggested.document,
+        suggested.revisions,
+        REVISION_DECISIONS.ACCEPT,
+      );
+      const kept = accepted.document.package.document.content.flatMap(
+        (block) =>
+          block.type === "paragraph" && block.pPrMark !== undefined
+            ? [block.pPrMark]
+            : [],
+      );
+      expect(kept).toEqual([
+        { kind: copied.kind, info: expect.objectContaining(earlier) },
+      ]);
+    },
+  );
 
   test.each<ParagraphMarkChange>([
     { kind: "ins", info: { id: 93, ...earlier } },
     { kind: "moveTo", info: { id: 93, ...earlier } },
-    { kind: "moveFrom", info: { id: 93, ...earlier } },
     {
       kind: "ins",
       info: { id: 93, ...earlier },
       deletion: { info: { id: 94, ...earlier } },
     },
+    { kind: "moveFrom", info: { id: 93, ...earlier }, resolutionJoin: 1 },
   ])(
-    "a copied mark that is no deletion beside the paste's insertion is refused, suggested only (%o)",
+    "a copied mark that is no plain removal beside the paste's insertion is refused, suggested only (%o)",
     (pPrMark) => {
       const intent = paste(pPrMark);
       const refused = compileEditorIntent(document, {
@@ -1338,8 +1406,8 @@ describe("a pasted paragraph whose break is pending deletion", () => {
         mode: { type: "suggesting", revision: STAMP, newIds: NEW_IDS },
       });
       // An added mark is a format limit: `w:pPr/w:rPr` holds one `w:ins`,
-      // the paste's. A moved-away mark is one the model records only as a
-      // deletion beside an added mark.
+      // the paste's. A removal holding a cut of its own is one the record
+      // beside an added mark does not carry.
       expect(refused.isErr() && refused.error.reason).toBe(
         pPrMark.kind === "moveFrom"
           ? DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE

@@ -1918,9 +1918,14 @@ type PlaceContainerBlockOptions = {
  * block-level `w:sdt` takes no revision of its own (CT_SdtBlock records none:
  * an insertion is recorded only on the runs and paragraph marks inside it, so
  * rejecting would leave the empty control standing), which is the format's
- * rule. A block-level `w:customXml` has range records of its own
- * (`w:customXmlInsRangeStart` and its kin) that the model does not carry yet,
- * and kept markup is not read.
+ * rule. A block-level `w:customXml` records its own tags' insertion and
+ * deletion with ranges around it (`w:customXmlInsRangeStart` and its kin),
+ * but no operation sets those records on a standing element (the structural
+ * container op puts whole wrappers in or takes them out and never changes
+ * one in place, so accepting the insertion or recording a move's deletion
+ * has no op), and the review surface lists no change for an element's own
+ * record, so one would stay pending once the pasted content is resolved.
+ * Kept markup is not read.
  */
 const containerBlockSuggestionRefusal = (
   block: { type: BlockContent["type"] },
@@ -2679,18 +2684,19 @@ const withoutMoveAnchors = (nodes: readonly InlineNode[]): InlineNode[] => {
 
 /**
  * Whether a copied paragraph mark can go beside a suggested paste's
- * insertion of that break: a pending deletion of it holding no cut of its
- * own, which accepting the paste leaves pending as the direct paste does.
+ * insertion of that break: a pending deletion or move away of it holding no
+ * cut of its own, which accepting the paste leaves pending as the direct
+ * paste does.
  */
 const goesBesidePastedBreak = (mark: ParagraphMarkChange): boolean =>
-  mark.kind === "del" &&
+  (mark.kind === "del" || mark.kind === "moveFrom") &&
   mark.resolutionJoin === undefined &&
   mark.splitDate === undefined;
 
 /**
- * The paste's inserted `mark` holding the copied deletion `copied` beside it.
- * A break that cut no record keeps no cut depth, so accepting the paste
- * leaves the deletion as the direct paste copies it.
+ * The paste's inserted `mark` holding the copied deletion or move away
+ * `copied` beside it. A break that cut no record keeps no cut depth, so
+ * accepting the paste leaves the copied record as the direct paste copies it.
  */
 const besidePastedBreak = (
   mark: ParagraphMarkChange,
@@ -2699,7 +2705,10 @@ const besidePastedBreak = (
   const { resolutionJoin, ...uncut } = mark;
   return {
     ...(resolutionJoin === 0 ? uncut : mark),
-    deletion: { info: copied.info },
+    deletion:
+      copied.kind === "moveFrom"
+        ? { info: copied.info, kind: "moveFrom" }
+        : { info: copied.info },
   };
 };
 
@@ -4212,12 +4221,12 @@ const compileInStory = (
       }
       const tail = paragraphs.at(-1);
       // A suggested paste inserts each pasted paragraph's break, so that
-      // mark's insertion is the paste's own. A copied deletion of the break
-      // goes beside it, `w:del` beside `w:ins` in `w:pPr/w:rPr`, and stays
-      // pending once the paste is accepted, as a pasted inline record does.
-      // CT_ParaRPr holds one `w:ins`, the paste's, so a copied added mark
-      // (`w:ins`, `w:moveTo`) has no place on the break; an added mark
-      // records only a `w:del` beside it, not a move away.
+      // mark's insertion is the paste's own. A copied deletion or move away
+      // of the break goes beside it, `w:del` or `w:moveFrom` beside `w:ins`
+      // in `w:pPr/w:rPr`, and stays pending once the paste is accepted, as a
+      // pasted inline record does. CT_ParaRPr holds one `w:ins`, the
+      // paste's, so a copied added mark (`w:ins`, `w:moveTo`) has no place
+      // on the break.
       const unplaced =
         mode.type === "suggesting"
           ? paragraphs
@@ -4228,8 +4237,8 @@ const compileInStory = (
               )?.pPrMark
           : undefined;
       if (unplaced !== undefined) {
-        // An added mark is a format limit; a moved-away mark or a joined
-        // deletion is one the model does not record beside an added mark.
+        // An added mark is a format limit; a removal holding a cut of its
+        // own is one the record beside an added mark does not carry.
         const added = unplaced.kind === "ins" || unplaced.kind === "moveTo";
         return Result.err(
           new DocumentOpRefusal({
@@ -4237,7 +4246,7 @@ const compileInStory = (
               ? DOCUMENT_OP_REFUSAL_REASONS.NO_REVISION_RECORD
               : DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
             message:
-              "A copied added or moved-away paragraph mark has no place beside the tracked paste's insertion of that break.",
+              "A copied added paragraph mark, or a removed one holding a cut of its own, has no place beside the tracked paste's insertion of that break.",
             opType: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
           }),
         );

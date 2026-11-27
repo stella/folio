@@ -408,7 +408,6 @@ export const removeCommentMarkers = (
     return changed ? result : content;
   };
 
-  type SimpleFieldContent = SimpleField["content"][number];
   type InlineSdtContent = InlineSdt["content"][number];
   type HyperlinkContent = Hyperlink["children"][number];
 
@@ -418,28 +417,9 @@ export const removeCommentMarkers = (
       ? hyperlink
       : { ...hyperlink, children };
   };
-  const rebuildSimpleFieldContent = (
-    item: SimpleFieldContent,
-  ): SimpleFieldContent => {
-    switch (item.type) {
-      case "hyperlink":
-        return rebuildHyperlink(item);
-      case "insertion":
-      case "deletion":
-      case "moveFrom":
-      case "moveTo":
-        return rebuildTrackedChange(item);
-      case "inlineWrapper": {
-        const content = rebuildParagraphContent(item.content);
-        return content === item.content ? item : { ...item, content };
-      }
-      case "run":
-      case "preservedInline":
-        return item;
-    }
-  };
   const rebuildSimpleField = (field: SimpleField): SimpleField => {
-    const content = rebuildArray(field.content, rebuildSimpleFieldContent);
+    // A field holds what a tracked change holds.
+    const content = rebuildArray(field.content, rebuildTrackedContent);
     return content === field.content ? field : { ...field, content };
   };
   const rebuildInlineSdtContent = (

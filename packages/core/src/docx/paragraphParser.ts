@@ -465,11 +465,27 @@ export function parseParagraphPropertyChanges(
   return changes.length > 0 ? changes : undefined;
 }
 
+/** The mark records that add a break, a moved paragraph's first. */
+const ADDED_MARK_KINDS: readonly ParagraphMarkChange["kind"][] = [
+  "moveTo",
+  "ins",
+];
+
+/** The mark records that remove a break, a moved paragraph's first. */
+const REMOVED_MARK_KINDS: readonly ParagraphMarkChange["kind"][] = [
+  "moveFrom",
+  "del",
+];
+
 /**
  * Parse `<w:pPr><w:rPr><w:ins/>` or `<w:del/>` — the OOXML paragraph-mark
- * tracked-change marker (ECMA-376 §17.13.5). Returns the first marker
- * encountered, or undefined when none is present. `ins` and `del` are
- * mutually exclusive in valid documents.
+ * tracked-change marker (ECMA-376 §17.13.5). Returns undefined when none is
+ * present.
+ *
+ * An added mark (`w:ins` or `w:moveTo`) is the mark's own record, and a
+ * `w:del` or `w:moveFrom` beside it is a later removal of that break: both
+ * records stand on the mark, and neither is dropped. Without an added record
+ * the mark is the first removal found, `moveFrom` before `del`.
  */
 function parseParagraphMarkChange(
   pPr: XmlElement | null,
@@ -485,33 +501,39 @@ function parseParagraphMarkChange(
   if (!rPr) {
     return undefined;
   }
+  const records = new Map<ParagraphMarkChange["kind"], XmlElement>();
   // Driven by the kinds themselves, so a kind the model gains cannot be one
-  // the parser silently drops. `moveFrom` / `moveTo` come first: a moved
-  // paragraph's mark carries one of them INSTEAD of `del` / `ins`, never both.
+  // the parser silently drops.
   for (const kind of PARAGRAPH_MARK_CHANGE_KINDS) {
     const element = findChildByNamespaceUri(
       rPr,
       WORDPROCESSINGML_NAMESPACE_URIS,
       kind,
     );
-    if (element) {
-      // An added mark can also carry a later deletion of it: both records
-      // stand on the mark, and neither is dropped.
-      const deletion =
-        kind === "ins" || kind === "moveTo"
-          ? findChildByNamespaceUri(rPr, WORDPROCESSINGML_NAMESPACE_URIS, "del")
-          : null;
-      return {
-        kind,
-        info: parseTrackedChangeInfo(element),
-        ...parseParagraphMarkResolutionJoin(element),
-        ...(deletion
-          ? { deletion: { info: parseTrackedChangeInfo(deletion) } }
-          : {}),
-      };
-    }
+    if (element) records.set(kind, element);
   }
-  return undefined;
+  const added = ADDED_MARK_KINDS.find((kind) => records.has(kind));
+  const kind =
+    added ?? REMOVED_MARK_KINDS.find((removed) => records.has(removed));
+  const element = kind === undefined ? undefined : records.get(kind);
+  if (kind === undefined || element === undefined) return undefined;
+  const removal =
+    added === undefined
+      ? undefined
+      : (records.get("del") ?? records.get("moveFrom"));
+  return {
+    kind,
+    info: parseTrackedChangeInfo(element),
+    ...parseParagraphMarkResolutionJoin(element),
+    ...(removal === undefined
+      ? {}
+      : {
+          deletion: {
+            info: parseTrackedChangeInfo(removal),
+            ...(records.has("del") ? {} : { kind: "moveFrom" as const }),
+          },
+        }),
+  };
 }
 
 export const parseParagraphMarkPropertyChange = (

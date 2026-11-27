@@ -1259,6 +1259,7 @@ export type ParagraphMarkChangeKind = (typeof PARAGRAPH_MARK_CHANGE_KINDS)[numbe
 // @public
 export type ParagraphMarkDeletion = WritableRecord & {
     info: TrackedChangeInfo;
+    kind?: "moveFrom" | undefined;
 };
 
 // @public
@@ -1868,7 +1869,7 @@ export type SimpleField = WritableRecord & {
     type: "simpleField";
     instruction: string;
     fieldType: FieldType;
-    content: (Run | Hyperlink | InlineWrapper | PreservedInline | TrackedRunChange)[];
+    content: TrackedRunContent[];
     fldLock?: boolean;
     dirty?: boolean;
 };

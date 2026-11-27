@@ -140,6 +140,7 @@ export const withParagraphIdentity = (
         ? {}
         : {
             deletion: {
+              ...deletion,
               info: { ...deletion.info, id: ids[at + 1] ?? deletion.info.id },
             },
           }),

@@ -181,6 +181,30 @@ describe("parseParagraph — paragraph-mark tracked change (ECMA-376 §17.13.5)"
     });
   });
 
+  test.each([
+    [
+      "ins",
+      '<w:ins w:id="1" w:author="A"/><w:moveFrom w:id="2" w:author="B"/>',
+    ],
+    [
+      "moveTo",
+      '<w:moveFrom w:id="2" w:author="B"/><w:moveTo w:id="1" w:author="A"/>',
+    ],
+  ] as const)(
+    "reads an added %s mark's later move away beside it",
+    (kind, records) => {
+      const paragraph = parseParagraphXml(
+        `<w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:pPr><w:rPr>${records}</w:rPr></w:pPr></w:p>`,
+      );
+
+      expect(paragraph.pPrMark).toEqual({
+        kind,
+        info: { id: 1, author: "A" },
+        deletion: { info: { id: 2, author: "B" }, kind: "moveFrom" },
+      });
+    },
+  );
+
   test("omits w:date when it is absent on the source element", () => {
     const paragraph = parseParagraphXml(`
       <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">

@@ -1329,6 +1329,7 @@ export type ExhaustiveParagraphMarkChangeReserved = ExhaustiveFields<
 
 export const PARAGRAPH_MARK_DELETION_RESERVED = {
   info: NO_RESERVED_VALUE,
+  kind: NO_RESERVED_VALUE,
 } satisfies Record<
   RecordField<ParagraphMarkDeletion>,
   ReservedValueDisposition

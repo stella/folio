@@ -569,10 +569,14 @@ export type SimpleField = WritableRecord & {
    * `CT_SimpleField` is `EG_PContent` plus `w:fldData`, so everything
    * `EG_PContent` admits can sit here, `w:bdo` / `w:dir` / `w:smartTag` /
    * `w:customXml` among them.
+   *
+   * It holds what a tracked change inside it holds: resolving that change
+   * keeps its content where it stood, inside the field, so the bookmark,
+   * comment and move-range boundaries, fields, content controls and
+   * equations a change held stay field content. The parser reads the
+   * field's own boundaries as the markup it keeps.
    */
-  content: (
-    Run | Hyperlink | InlineWrapper | PreservedInline | TrackedRunChange
-  )[];
+  content: TrackedRunContent[];
   /** `@w:fldLock`: absent states nothing, `false` is an explicit unlock. */
   fldLock?: boolean;
   /** `@w:dirty`: absent states nothing, `false` explicitly forbids a recompute. */
@@ -2555,17 +2559,25 @@ export type ParagraphMarkChange = WritableRecord & {
    */
   takenOverMark?: number | undefined;
   /**
-   * A later pending deletion of this added mark, `w:del` written beside its
-   * `w:ins` or `w:moveTo`: another author deleted the break an insertion
-   * made, and either can be resolved first. Absent on deleted and
-   * moved-from marks.
+   * A later pending removal of this added mark, written beside its `w:ins`
+   * or `w:moveTo`: another author deleted (`w:del`) or moved away
+   * (`w:moveFrom`) the break an insertion made, and either can be resolved
+   * first. Absent on deleted and moved-from marks.
    */
   deletion?: ParagraphMarkDeletion | undefined;
 };
 
-/** The later deletion an added paragraph mark holds beside its insertion. */
+/**
+ * The later removal an added paragraph mark holds beside its insertion. It
+ * resolves as a deletion of the break does, whichever record says so.
+ */
 export type ParagraphMarkDeletion = WritableRecord & {
   info: TrackedChangeInfo;
+  /**
+   * `"moveFrom"` when the break was moved away, written `w:moveFrom`; absent
+   * for a deletion, written `w:del`.
+   */
+  kind?: "moveFrom" | undefined;
 };
 
 /** Run properties belonging to the paragraph mark. */

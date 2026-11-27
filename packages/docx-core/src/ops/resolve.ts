@@ -113,6 +113,7 @@ import {
   fieldHeldChangeIds,
   fieldResultOf,
   type InlineNode,
+  isParagraphContent,
   mergeAlike,
   mergeLists,
   ownRunPropertyChanges,
@@ -132,6 +133,7 @@ import {
   referencedNoteKeys,
 } from "./noteMarks";
 import {
+  isRangeBoundary,
   paragraphHoldsContent,
   paragraphHoldsContentOnceAccepted,
 } from "./offsets";
@@ -642,11 +644,23 @@ const resolveRun = (run: Run, { ids, decision }: Resolution): Run => {
 };
 
 /**
+ * The range boundaries `nodes` hold at any depth. They are positions, not
+ * content, so they outlast the content a resolution removes around them.
+ */
+const heldRangeBoundaries = (nodes: readonly InlineNode[]): InlineNode[] =>
+  nodes.flatMap((node) =>
+    isParagraphContent(node) && isRangeBoundary(node)
+      ? [node]
+      : heldRangeBoundaries(childNodes(node) ?? []),
+  );
+
+/**
  * A field's result with the records it holds resolved: the run property
  * changes on its runs, and the tracked changes `w:fldSimple` holds around
  * them ({@link fieldHeldChangeIds}). The result is the field's one unit, so
  * a resolved change keeps or drops its content where it stood and no seam
- * outside the field moves. A container that resolving empties goes, as
+ * outside the field moves; a dropped change leaves the range boundaries it
+ * held where they stood. A container that resolving empties goes, as
  * resolution leaves no emptied record.
  */
 const resolveFieldResult = (
@@ -663,8 +677,15 @@ const resolveFieldResult = (
       resolution.ids.has(node.info.id)
     ) {
       changed = true;
-      if (!removesContent(node, resolution.decision))
-        out.push(...resolveFieldResult(node.content, resolution, held));
+      out.push(
+        ...resolveFieldResult(
+          removesContent(node, resolution.decision)
+            ? heldRangeBoundaries(node.content)
+            : node.content,
+          resolution,
+          held,
+        ),
+      );
       continue;
     }
     let next: InlineNode = node;
@@ -8574,8 +8595,9 @@ type RevisionResolutionPlanOptions = {
 };
 
 /**
- * A mark holding an insertion and a later deletion of it, settled to the one
- * record resolution then decides, with the revision ids left to resolve:
+ * A mark holding an insertion and a later deletion of it (or move away, which
+ * resolves as one), settled to the one record resolution then decides, with
+ * the revision ids left to resolve:
  * - accepting the deletion takes the break, whatever becomes of the
  *   insertion: the mark is the deletion alone, which the resolution accepts,
  *   and the break goes as rejecting its insertion takes it, rejoining the
@@ -8603,7 +8625,7 @@ const settleTwoRecordMarks = (
     const review = reviewFieldsOf(paragraph);
     if (op.decision === REVISION_DECISIONS.ACCEPT) {
       review.pPrMark = {
-        kind: "del",
+        kind: mark.deletion.kind ?? "del",
         info: mark.deletion.info,
         ...(mark.resolutionJoin === undefined
           ? {}
