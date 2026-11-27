@@ -279,8 +279,8 @@ describe("analyzeDocxBlocks", () => {
       ),
     );
 
-    const single = { line: 240, lineRule: "auto" };
-    const cell = { line: 276, lineRule: "auto" };
+    const single = { line: 240, lineRule: "auto" } as const;
+    const cell = { line: 276, lineRule: "auto" } as const;
     expect(blocks.slice(0, 7).map((block) => block.spacingInEffect)).toEqual([
       // The defaults' space behind; nothing states one in front, nor a line
       // spacing: single.
