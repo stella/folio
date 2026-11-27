@@ -229,15 +229,28 @@ export class ZipArchive {
     input: Uint8Array | ArrayBuffer,
     options: ZipReadOptions = {},
   ): Promise<ZipArchive> {
+    const archive = ZipArchive.readDirectory(input, options);
+    return Result.isError(archive)
+      ? Promise.reject(archive.error)
+      : Promise.resolve(archive.value);
+  }
+
+  /**
+   * {@link ZipArchive.read}, at once: the directory is read and validated
+   * now, and the entries still inflate on demand. For a caller that must
+   * know the archive's paths without waiting.
+   */
+  static readDirectory(
+    input: Uint8Array | ArrayBuffer,
+    options: ZipReadOptions = {},
+  ): Result<ZipArchive, ZipError> {
     const bytes = toSourceBytes(input);
     const entries = readEntries(bytes, {
       limits: { ...ZIP_DEFAULT_READ_LIMITS, ...options.limits },
       isCompressionRatioExempt:
         options.isCompressionRatioExempt ?? (() => false),
     });
-    if (Result.isError(entries)) {
-      return Promise.reject(entries.error);
-    }
+    if (Result.isError(entries)) return entries;
     const archive = new ZipArchive(
       options.codec === undefined ? {} : { codec: options.codec },
     );
@@ -245,7 +258,7 @@ export class ZipArchive {
     for (const entry of entries.value) {
       archive.#entries.set(entry.path, { type: "source", entry });
     }
-    return Promise.resolve(archive);
+    return Result.ok(archive);
   }
 
   /** Entry names in archive order. */

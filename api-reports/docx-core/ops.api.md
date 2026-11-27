@@ -1105,6 +1105,11 @@ export const orphanRootCommentIds: (document: Document_2) => Set<number>;
 // @public
 export const packageParagraphIds: (pkg: DocxPackage) => string[];
 
+// @public
+export type PackageResourceCopiedPart = Omit<CopiedPackagePart, "data"> & {
+    data: readonly number[];
+};
+
 // @public (undocumented)
 export type PackageResourceEntry<Value> = {
     type: "absent";
@@ -1563,6 +1568,7 @@ export type SetPackageResourcesOp = {
     resources: PackageResources;
     relationships: PackageResourceMapChange<Relationship>;
     media: PackageResourceMapChange<PackageResourceMedia>;
+    copiedParts?: PackageResourceMapChange<PackageResourceCopiedPart>;
 };
 
 // @public

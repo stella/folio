@@ -57,6 +57,7 @@ import {
   numberingInstance,
   object,
   optional,
+  packageResourceCopiedPart,
   packageResourceMedia,
   paragraph,
   paragraphMarkChange,
@@ -827,6 +828,7 @@ const operationFields = {
     resources: packageResources,
     relationships: resourceMapChange(relationship),
     media: resourceMapChange(packageResourceMedia),
+    copiedParts: optional(resourceMapChange(packageResourceCopiedPart)),
   } satisfies OperationFields<"setPackageResources">,
   addNote: {
     type: literal("addNote"),

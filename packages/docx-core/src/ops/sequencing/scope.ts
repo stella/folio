@@ -316,6 +316,14 @@ const footprintOf = (op: DocumentOp): OpFootprint => {
           ...(op.media.expected === op.media.next
             ? []
             : [write(EXCLUSIVE_PARTS.MEDIA)]),
+          // Copied parts are package parts beside the media, keyed by path.
+          ...(op.copiedParts?.entries.map(({ key }) =>
+            write(EXCLUSIVE_PARTS.MEDIA, key),
+          ) ?? []),
+          ...(op.copiedParts === undefined ||
+          op.copiedParts.expected === op.copiedParts.next
+            ? []
+            : [write(EXCLUSIVE_PARTS.MEDIA)]),
         ],
       );
     case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:

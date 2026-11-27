@@ -306,6 +306,7 @@ export {
   type JoinInlineOp,
   type NewIds,
   type NumberingPartState,
+  type PackageResourceCopiedPart,
   type PackageResourceEntry,
   type PackageResourceEntryChange,
   type PackageResourceMapChange,

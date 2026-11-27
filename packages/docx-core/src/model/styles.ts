@@ -320,3 +320,18 @@ export type MediaFile = WritableRecord & {
   /** Data URL for direct use in src attributes */
   dataUrl?: string;
 };
+
+/**
+ * A package part copied in from another package with the content that names
+ * it: a chart, an embedding, a diagram's parts, and their own relationship
+ * parts. The model reads no further than its bytes; the save writes it under
+ * `path` with `contentType`.
+ */
+export type CopiedPackagePart = WritableRecord & {
+  /** Part path in the ZIP, without a leading slash. */
+  path: string;
+  /** The part's content type. */
+  contentType: string;
+  /** The part's bytes. */
+  data: ArrayBuffer;
+};

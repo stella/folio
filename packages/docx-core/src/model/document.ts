@@ -53,6 +53,7 @@ import type { WritableRecord } from "./deepReadonly";
 import type { NumberingDefinitions } from "./lists";
 import type { ParseWarning } from "./parseWarning";
 import type {
+  CopiedPackagePart,
   FontTable,
   MediaFile,
   RelationshipMap,
@@ -415,6 +416,7 @@ export type {
   Relationship,
   RelationshipMap,
   MediaFile,
+  CopiedPackagePart,
 } from "./styles";
 
 // ============================================================================
@@ -547,6 +549,11 @@ export type DocxPackage = WritableRecord & {
   relationships?: RelationshipMap | undefined;
   /** Media files */
   media?: Map<string, MediaFile> | undefined;
+  /**
+   * Parts copied in from another package with pasted content that names
+   * them, by path, until a save writes them into the package.
+   */
+  copiedParts?: Map<string, CopiedPackagePart> | undefined;
   /** Document properties */
   properties?: WritableRecord & {
     title?: string;

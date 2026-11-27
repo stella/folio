@@ -219,6 +219,13 @@ export type ContentControlLock = NonNullable<SdtProperties["lock"]>;
 export const contentControlLockAllows: (lock: ContentControlLock | null | undefined, change: ContentControlChange) => boolean;
 
 // @public
+export type CopiedPackagePart = WritableRecord & {
+    path: string;
+    contentType: string;
+    data: ArrayBuffer;
+};
+
+// @public
 export const COUNTER_FORMATS: readonly ["decimal", "upperRoman", "lowerRoman", "upperLetter", "lowerLetter", "ordinal", "cardinalText", "ordinalText", "hex", "chicago", "ideographDigital", "japaneseCounting", "aiueo", "iroha", "decimalFullWidth", "decimalHalfWidth", "japaneseLegal", "japaneseDigitalTenThousand", "decimalEnclosedCircle", "decimalFullWidth2", "aiueoFullWidth", "irohaFullWidth", "decimalZero", "bullet", "ganada", "chosung", "decimalEnclosedFullstop", "decimalEnclosedParen", "decimalEnclosedCircleChinese", "ideographEnclosedCircle", "ideographTraditional", "ideographZodiac", "ideographZodiacTraditional", "taiwaneseCounting", "ideographLegalTraditional", "taiwaneseCountingThousand", "taiwaneseDigital", "chineseCounting", "chineseLegalSimplified", "chineseCountingThousand", "koreanDigital", "koreanCounting", "koreanLegal", "koreanDigital2", "vietnameseCounting", "russianLower", "russianUpper", "none", "numberInDash", "hebrew1", "hebrew2", "arabicAlpha", "arabicAbjad", "hindiVowels", "hindiConsonants", "hindiNumbers", "hindiCounting", "thaiLetters", "thaiNumbers", "thaiCounting", "bahtText", "dollarText", "custom", "decimalZero3", "decimalZero4", "decimalZero5"];
 
 // @public (undocumented)
@@ -339,6 +346,7 @@ export type DocxPackage = WritableRecord & {
     footers?: Map<string, HeaderFooter>;
     relationships?: RelationshipMap | undefined;
     media?: Map<string, MediaFile> | undefined;
+    copiedParts?: Map<string, CopiedPackagePart> | undefined;
     properties?: WritableRecord & {
         title?: string;
         subject?: string;

@@ -24,6 +24,7 @@ import {
 } from "./commentRangeIntegrity";
 import { hasUnsynthesizedReplyRanges } from "./commentReplyMarkers";
 import { detectDocxConformanceClass } from "./conformance";
+import { publishCopiedPackageParts } from "./copiedPackageParts";
 import { readPackageForSave } from "./mainDocumentPart";
 import { validateFolioDocumentModel } from "./modelValidation";
 import { parseNumbering } from "./numberingParser";
@@ -689,6 +690,11 @@ async function writeChangedParts({
       }
     }
 
+    await publishCopiedPackageParts({
+      document: doc,
+      zip,
+      compressionLevel: 6,
+    });
     if (options.bodyAuthority === "canonical") {
       // The patched parts keep the model's picture ids, so a picture its part
       // must rebind goes through the full repack.

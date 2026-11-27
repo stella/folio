@@ -405,7 +405,11 @@ const withoutOwnedRecords = ({
         Reflect.deleteProperty(out.package, key);
     // Keyed package maps own exactly the entries the operation carries, or the whole map
     // when its presence changes.
-    const maps = { relationships: op.relationships, media: op.media } as const;
+    const maps = {
+      relationships: op.relationships,
+      media: op.media,
+      ...(op.copiedParts === undefined ? {} : { copiedParts: op.copiedParts }),
+    };
     for (const [field, change] of Object.entries(maps)) {
       if (change.expected !== change.next) {
         Reflect.deleteProperty(out.package, field);
@@ -796,6 +800,12 @@ export const serializedLocalityFailures = ({
         lifecycle = true;
         ownedRelationshipTypes.add(RELATIONSHIP_TYPES.image);
       }
+      if (
+        op.copiedParts !== undefined &&
+        (op.copiedParts.expected !== op.copiedParts.next ||
+          op.copiedParts.entries.length > 0)
+      )
+        lifecycle = true;
       if (
         op.relationships.expected !== op.relationships.next ||
         op.relationships.entries.length > 0

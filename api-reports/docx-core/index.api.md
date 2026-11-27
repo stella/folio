@@ -131,6 +131,7 @@ export type DocxPackage = WritableRecord & {
     footers?: Map<string, HeaderFooter>;
     relationships?: RelationshipMap | undefined;
     media?: Map<string, MediaFile> | undefined;
+    copiedParts?: Map<string, CopiedPackagePart> | undefined;
     properties?: WritableRecord & {
         title?: string;
         subject?: string;
