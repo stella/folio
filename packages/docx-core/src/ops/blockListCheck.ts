@@ -1,4 +1,4 @@
-import type { BlockContent, Paragraph } from "../model/document";
+import type { BlockContent, Paragraph, Table } from "../model/document";
 import { listKey, sourceSplice } from "./listSplice";
 
 /** Whether a block list holds what a check looks for. */
@@ -7,17 +7,20 @@ export type BlockListCheck = (blocks: readonly BlockContent[]) => boolean;
 type BlockListCheckOptions = {
   /** Whether a paragraph directly in the list is what the check looks for. */
   paragraph: (paragraph: Paragraph) => boolean;
+  /** Whether the table itself is what the check looks for. */
+  table?: (table: Table) => boolean;
   /** How a table's cells are checked; as the list itself by default. */
   cell?: BlockListCheck;
 };
 
 /**
- * Whether a block list or a container in it holds what `paragraph` looks for,
+ * Whether a block list or a container in it holds what the checks look for,
  * reusing unchanged lists: operation documents and their block lists are
  * immutable once validated.
  */
 export const blockListCheck = ({
   paragraph,
+  table,
   cell,
 }: BlockListCheckOptions): BlockListCheck => {
   const checked = new WeakMap<object, boolean>();
@@ -36,8 +39,11 @@ export const blockListCheck = ({
         case "paragraph":
           return paragraph(block);
         case "table":
-          return block.rows.some((row) =>
-            row.cells.some(({ content }) => (cell ?? holds)(content)),
+          return (
+            table?.(block) === true ||
+            block.rows.some((row) =>
+              row.cells.some(({ content }) => (cell ?? holds)(content)),
+            )
           );
         case "blockSdt":
         case "blockCustomXml":

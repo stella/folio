@@ -7,6 +7,7 @@ import {
   TABLE_CELL_VERTICAL_MERGES,
   tableCellVerticalMerge,
 } from "../model/tableCellVerticalMerge";
+import { MAX_TABLE_GRID_COLUMNS } from "../model/tableGridLimits";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import type { DocumentOpType } from "./types";
 
@@ -106,7 +107,7 @@ export const tableGrid = (
     for (const cell of cells) previous.set(cell.start, cell);
   }
   const width = maxOf(covered, table.columnWidths?.length ?? 0);
-  if (width === 0) return refuse();
+  if (width === 0 || width > MAX_TABLE_GRID_COLUMNS) return refuse();
   const stated =
     covered.every((columns) => columns === width) &&
     (table.columnWidths === undefined || table.columnWidths.length === width);

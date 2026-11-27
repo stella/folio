@@ -6,6 +6,10 @@ import type {
   TableCell,
   TableRow,
 } from "../model/document";
+import {
+  gridColumnsInRows,
+  MAX_TABLE_GRID_COLUMNS,
+} from "../model/tableGridLimits";
 import { blockListCheck } from "./blockListCheck";
 
 const DocumentOpsContractErrorBase: TaggedErrorClass<"DocumentOpsContractError"> =
@@ -25,6 +29,7 @@ const DocumentOpsContractErrorBase: TaggedErrorClass<"DocumentOpsContractError">
  * - no revision id (tracked changes, property changes) or content-control id
  *   repeats, so the one record carrying an id is the one it names;
  * - the body's section view says what its blocks say;
+ * - table grids and their snapshots fit the supported model width;
  * - each editable story holds no empty run, text node, or revision wrapper.
  *
  * Headers, footers and notes are independently addressable stories. Text-box
@@ -75,6 +80,15 @@ const blocksHaveMultiplePropertyChanges = blockListCheck({
   paragraph: ({ propertyChanges }) => (propertyChanges?.length ?? 0) > 1,
 });
 
+const blocksHaveOversizedTableGrid = blockListCheck({
+  paragraph: () => false,
+  table: ({ rows, columnWidths, formatting }) =>
+    gridColumnsInRows(rows) > MAX_TABLE_GRID_COLUMNS ||
+    (columnWidths?.length ?? 0) > MAX_TABLE_GRID_COLUMNS ||
+    (formatting?.gridChange?.columnWidths?.length ?? 0) >
+      MAX_TABLE_GRID_COLUMNS,
+});
+
 /** Check every editable story and nested block container, reusing unchanged lists. */
 export const hasMultipleParagraphPropertyChanges = (
   document: Document,
@@ -110,6 +124,15 @@ const violation = (
       message: "A paragraph cannot carry more than one property change.",
     });
   }
+  if (
+    documentStories(document).some((story) =>
+      blocksHaveOversizedTableGrid(storyBody(document, story).content),
+    )
+  )
+    return new DocumentOpsContractError({
+      reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+      message: `A table grid can hold at most ${MAX_TABLE_GRID_COLUMNS} columns.`,
+    });
   const body = document.package.document;
   const paragraphs = documentStories(document).flatMap((story) =>
     storyParagraphs(storyBody(document, story)),

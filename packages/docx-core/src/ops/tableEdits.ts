@@ -19,6 +19,7 @@ import {
   type TrackedChangeInfo,
 } from "../model/document";
 import { maxOf } from "../model/extremes";
+import { MAX_TABLE_GRID_COLUMNS } from "../model/tableGridLimits";
 import {
   storyBody,
   storyParagraphs,
@@ -1480,6 +1481,11 @@ const columnEdit = ({
     op.type === DOCUMENT_OP_TYPES.INSERT_COLUMN ? (op.count ?? 1) : 1;
   if (!Number.isSafeInteger(count) || count < 1)
     return mismatch(op, "A column insertion inserts at least one column.");
+  if (insert && count > MAX_TABLE_GRID_COLUMNS - grid.width)
+    return mismatch(
+      op,
+      `A table grid can hold at most ${MAX_TABLE_GRID_COLUMNS} columns.`,
+    );
   if (
     !Number.isSafeInteger(op.column) ||
     op.column < 0 ||
@@ -2819,6 +2825,11 @@ export const tableEditParagraphDemand = (
   if (grid.isErr()) return Result.err(grid.error);
   switch (op.type) {
     case DOCUMENT_OP_TYPES.INSERT_COLUMN: {
+      if ((op.count ?? 1) > MAX_TABLE_GRID_COLUMNS - grid.value.width)
+        return mismatch(
+          op,
+          `A table grid can hold at most ${MAX_TABLE_GRID_COLUMNS} columns.`,
+        );
       const plans = recordsPlaceColumnsApart(table, grid.value)
         ? columnPlanAcrossRecords({
             table,

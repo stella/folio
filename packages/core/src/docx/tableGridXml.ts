@@ -3,6 +3,11 @@
  * The serializer writes it; the parser keeps a capture only when the source
  * grid differs from it, so a table without one reads back as it was written.
  */
+import {
+  gridColumnsInRows,
+  MAX_TABLE_GRID_COLUMNS as MAX_GRID_COLUMNS,
+} from "@stll/docx-core/model";
+
 import type { Table, TableGridChange } from "../types/document";
 import { intAttr } from "./serializer/xmlUtils";
 
@@ -11,25 +16,15 @@ import { intAttr } from "./serializer/xmlUtils";
  * it bounds a grid built from a source's skipped-column
  * and span counts, which a file can state at any size.
  */
-export const MAX_GRID_COLUMNS = 4096;
+export { MAX_GRID_COLUMNS };
 
 /**
  * Columns the grid has to declare: the widest row's total of skipped columns
  * and spans, because a grid narrower than a row leaves cells with no column
  * to sit in. At most {@link MAX_GRID_COLUMNS}.
  */
-export const gridColumnCount = (table: Table): number => {
-  let widest = 0;
-  for (const row of table.rows) {
-    let columns =
-      (row.formatting?.gridBefore ?? 0) + (row.formatting?.gridAfter ?? 0);
-    for (const cell of row.cells) {
-      columns += cell.formatting?.gridSpan ?? 1;
-    }
-    widest = Math.max(widest, columns);
-  }
-  return Math.min(widest, MAX_GRID_COLUMNS);
-};
+export const gridColumnCount = (table: Table): number =>
+  Math.min(gridColumnsInRows(table.rows), MAX_GRID_COLUMNS);
 
 /**
  * Serialize `w:tblGridChange`: the grid a reviewer replaced, from the change's

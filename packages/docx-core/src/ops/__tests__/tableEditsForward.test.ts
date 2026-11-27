@@ -15,6 +15,7 @@ import type {
   TableCell,
   TableRow,
 } from "../../model/document";
+import { MAX_TABLE_GRID_COLUMNS } from "../../model/tableGridLimits";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { contractViolation } from "../contract";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
@@ -905,6 +906,45 @@ describe("independent table forward oracles", () => {
     },
     propertyTestTimeout(10_000),
   );
+
+  test("edits and table snapshots respect the shared grid width limit", () => {
+    const row = {
+      type: "tableRow",
+      formatting: { gridAfter: MAX_TABLE_GRID_COLUMNS - 1 },
+      cells: [cell(10)],
+    } satisfies TableRow;
+    const table = {
+      type: "table",
+      rows: [row],
+    } satisfies Table;
+    const document = documentOf(table);
+    expect(contractViolation(document)).toBeUndefined();
+    const target = address(targetOf(table));
+    refused(
+      document,
+      {
+        ...target,
+        type: DOCUMENT_OP_TYPES.INSERT_COLUMN,
+        column: 0,
+        width: 900,
+        newBlockIds: [id(11)],
+      },
+      DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+    );
+    refused(
+      document,
+      {
+        ...target,
+        type: DOCUMENT_OP_TYPES.SET_TABLE,
+        expected: table,
+        table: {
+          ...table,
+          rows: [{ ...row, formatting: { gridAfter: MAX_TABLE_GRID_COLUMNS } }],
+        },
+      },
+      DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+    );
+  });
 
   test("sparse raw identity, width and revision arrays refuse their shape before use", () => {
     // Array.every skips holes; sparse production-shaped payloads close the gap left by ordinary missing-field cases.
