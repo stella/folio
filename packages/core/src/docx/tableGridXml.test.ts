@@ -10,7 +10,7 @@ import {
 
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import type { Document, Table } from "../types/document";
+import type { Document, Table, TableCellFormatting } from "../types/document";
 import { FOLIO_REVIEW_HISTORY_NAMESPACE } from "./reviewHistoryNamespace";
 import { parseTableGeometryChange } from "./reviewResolutionProvenance";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
@@ -189,7 +189,12 @@ test.each([
     rejectsInsertionAndFormatting: true,
     expected: ["restart", undefined, "restart", "continue"],
   },
-])(
+] satisfies {
+  cut: number;
+  last: number;
+  expected: TableCellFormatting["vMerge"][];
+  rejectsInsertionAndFormatting?: boolean;
+}[])(
   "selective cell review retains vertical merge fragments ($cut of $last)",
   ({ cut, last, expected, rejectsInsertionAndFormatting }) => {
     const table = readTable(
