@@ -300,6 +300,7 @@ export type DocxBlock = {
     hash: string;
     paraId?: string;
     inlineObjects: number;
+    pageShapes?: number;
     pageBreaks?: number;
     selfNumbers?: number[];
     revisions?: DocxBlockRevision[];
@@ -2317,6 +2318,7 @@ export type TemplatePlanNestedParagraph = {
     numbering?: TemplatePlanNumbering | null;
     stripLabel?: string;
     labelAsText?: boolean;
+    dropPageShapes?: boolean;
     keepNext?: boolean;
     indent?: TemplatePlanIndent;
     tabStops?: number[];
@@ -2440,6 +2442,7 @@ export type TemplatePlanReport = {
         }[];
         internalHyperlinks: number;
         sectionBreaks: number;
+        pageShapes: number;
     };
     textEffects: {
         removed: TemplatePlanEffectCount[];
@@ -2484,6 +2487,7 @@ export type TemplatePlanSourceItem = {
     stripLabel?: string;
     stripLabelBreak?: boolean;
     labelAsText?: boolean;
+    dropPageShapes?: boolean;
     mergeNext?: TemplatePlanMerge;
     pageBreakBefore?: boolean;
     keepNext?: boolean;

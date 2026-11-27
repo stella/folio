@@ -2041,6 +2041,12 @@ export const reportTemplatePlanOutput = async ({
     parts.flatMap(({ block }) => (block.read === null ? [] : [block.read])),
   );
   const droppedFields = new Map<string, number>();
+  let pageShapes = 0;
+  for (const paragraph of new Set(resolved.byBlockId.values())) {
+    for (const part of paragraph.parts) {
+      pageShapes += part.droppedPageShapes;
+    }
+  }
   let internalHyperlinks = 0;
   for (const read of placedReads) {
     for (const index of read.fieldIndices) {
@@ -2207,6 +2213,7 @@ export const reportTemplatePlanOutput = async ({
       })),
       internalHyperlinks,
       sectionBreaks,
+      pageShapes,
     },
     textEffects,
     updateFields,

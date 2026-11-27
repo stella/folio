@@ -535,6 +535,9 @@ export const analyzeStory = ({
         ...(read.paraId === null ? {} : { paraId: read.paraId }),
         inlineObjects: read.inlineObjects,
       };
+      if (read.pageShapes > 0) {
+        block.pageShapes = read.pageShapes;
+      }
       const pageBreaks = pageBreaksOf(read);
       if (pageBreaks > 0) {
         block.pageBreaks = pageBreaks;

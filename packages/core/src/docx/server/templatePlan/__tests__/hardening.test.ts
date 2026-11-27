@@ -1467,6 +1467,128 @@ describe("a slot that drops the name of a field the template shows", () => {
   });
 });
 
+describe("drawn shapes fixed to the page", () => {
+  const WP =
+    "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing";
+  const A = "http://schemas.openxmlformats.org/drawingml/2006/main";
+  const WPS =
+    "http://schemas.microsoft.com/office/word/2010/wordprocessingShape";
+  const MC = "http://schemas.openxmlformats.org/markup-compatibility/2006";
+  /** A floating shape: a dot, or a text box when it has text of its own. */
+  const shape = (id: number, horizontal: string, inner = ""): string =>
+    `<w:r><mc:AlternateContent xmlns:mc="${MC}"><mc:Choice xmlns:wps="${WPS}" Requires="wps"><w:drawing><wp:anchor xmlns:wp="${WP}" distT="0" distB="0" distL="0" distR="0" simplePos="0" relativeHeight="${String(id)}" behindDoc="1" locked="0" layoutInCell="1" allowOverlap="1"><wp:simplePos x="0" y="0"/><wp:positionH relativeFrom="${horizontal}"><wp:posOffset>967105</wp:posOffset></wp:positionH><wp:positionV relativeFrom="paragraph"><wp:posOffset>1197610</wp:posOffset></wp:positionV><wp:extent cx="59055" cy="59055"/><wp:wrapNone/><wp:docPr id="${String(id)}" name="Shape ${String(id)}"/><a:graphic xmlns:a="${A}"><a:graphicData uri="${WPS}"><wps:wsp><wps:spPr/>${inner}<wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:anchor></w:drawing></mc:Choice><mc:Fallback><w:pict/></mc:Fallback></mc:AlternateContent></w:r>`;
+  const BODY = [
+    // Two marks of the page, one shape that follows its column, and a text
+    // box that is fixed to the page but says something.
+    p(
+      `${shape(1, "page")}${shape(2, "margin")}${shape(3, "column")}${shape(4, "page", `<wps:txbx><w:txbxContent>${p(r("Note"))}</w:txbxContent></wps:txbx>`)}${r("Text of the paragraph.")}`,
+    ),
+    p(r("Plain paragraph.")),
+  ].join("");
+  const planOf = async (source: Uint8Array, drop: boolean | undefined) =>
+    await planFor({
+      source,
+      template,
+      items: (blocks) =>
+        blocks.map(({ id, hash }): TemplatePlanItem => {
+          const item: TemplatePlanItem = {
+            kind: "source",
+            blockId: id,
+            hash,
+            styleId: "HouseBody",
+          };
+          if (id === "p0" && drop !== undefined) {
+            item.dropPageShapes = drop;
+          }
+          return item;
+        }),
+    });
+
+  test("the manifest counts them apart from a paragraph's other objects", async () => {
+    const [first, second] = unwrap(
+      await analyzeDocxBlocks(await buildMinimalDocx(BODY)),
+    ).blocks;
+    expect(first).toMatchObject({ inlineObjects: 4, pageShapes: 2 });
+    expect(second?.pageShapes).toBeUndefined();
+  });
+
+  test("a paragraph is written without them when its item says so, and with everything else", async () => {
+    const source = await buildMinimalDocx(BODY);
+    const dropping = await planOf(source, true);
+    const keeping = await planOf(source, undefined);
+    const dropped = unwrap(
+      await applyTemplatePlan({ source, template, plan: dropping }),
+    );
+    const kept = unwrap(
+      await applyTemplatePlan({ source, template, plan: keeping }),
+    );
+    const anchorsOf = async (docx: Uint8Array) =>
+      [
+        ...(await documentOf(docx)).matchAll(
+          /relativeFrom="(\w+)"><wp:posOffset>967105/gu,
+        ),
+      ].map(([, from]) => from);
+
+    expect(dropped.report.ok).toBe(true);
+    expect(await anchorsOf(dropped.docx)).toEqual(["column", "page"]);
+    expect(await documentOf(dropped.docx)).toContain("Text of the paragraph.");
+    expect(dropped.report.dropped.pageShapes).toBe(2);
+    // Without the option every object is carried.
+    expect(await anchorsOf(kept.docx)).toEqual([
+      "page",
+      "margin",
+      "column",
+      "page",
+    ]);
+    expect(kept.report.dropped.pageShapes).toBe(0);
+    // Verification holds the output to what the plan names, both ways.
+    for (const [output, plan] of [
+      [dropped.docx, keeping],
+      [kept.docx, dropping],
+    ] as const) {
+      expect((await verifyFor({ source, template, output, plan })).ok).toBe(
+        false,
+      );
+    }
+  });
+
+  test("the option is a switch of a paragraph", async () => {
+    const source = await buildMinimalDocx(
+      `${BODY}<w:tbl><w:tr><w:tc>${p(r("cell"))}</w:tc></w:tr></w:tbl>${p(r("end"))}`,
+    );
+    const plan = await planFor({ source, template });
+    const withOption = (blockId: string, value: unknown): TemplatePlan => {
+      const body: TemplatePlanItem[] = [];
+      for (const item of plan.body) {
+        const changed = structuredClone(item);
+        if (changed.kind === "source" && changed.blockId === blockId) {
+          Object.assign(changed, { dropPageShapes: value });
+        }
+        body.push(changed);
+      }
+      return { ...plan, body };
+    };
+    expect(
+      codeOf(
+        await applyTemplatePlan({
+          source,
+          template,
+          plan: withOption("p0", "yes"),
+        }),
+      ),
+    ).toBe("plan-invalid");
+    expect(
+      codeOf(
+        await applyTemplatePlan({
+          source,
+          template,
+          plan: withOption("t2", true),
+        }),
+      ),
+    ).toBe("plan-invalid");
+  });
+});
+
 describe("labels written as text", () => {
   const level = (
     ilvl: number,
