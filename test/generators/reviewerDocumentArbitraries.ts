@@ -114,7 +114,7 @@ type PendingJoinPiece =
       /** Whether the paragraph ends a section before the body's last one. */
       section: boolean;
     }
-  | { type: "bookmark" | "altChunk" | "table" };
+  | { type: "bookmark" | "altChunk" | "table" | "control" };
 
 // Paragraphs without words and marks pending are drawn most often.
 const pendingJoinPieceArbitrary: fc.Arbitrary<PendingJoinPiece> = fc.oneof(
@@ -136,6 +136,7 @@ const pendingJoinPieceArbitrary: fc.Arbitrary<PendingJoinPiece> = fc.oneof(
         "bookmark" as const,
         "altChunk" as const,
         "table" as const,
+        "control" as const,
       ),
     }),
   },
@@ -168,9 +169,10 @@ const pendingJoinContent = (
  * Short bodies around pending paragraph joins: paragraphs that are empty, hold
  * only range boundaries, a note reference or words, in lists or not, under
  * pending insertions or deletions of their marks and property changes, ending
- * sections or not, beside block-level bookmarks, preserved blocks and a
- * one-cell table. As a review leaves them, a paragraph ending the body has no
- * pending mark and ends no section of its own.
+ * sections or not, beside block-level bookmarks, preserved blocks, a
+ * one-cell table and a group content control holding a paragraph. As a
+ * review leaves them, a paragraph ending the body has no pending mark and
+ * ends no section of its own.
  */
 export const pendingJoinDocumentArbitrary: fc.Arbitrary<Document> = fc
   .array(pendingJoinPieceArbitrary, { minLength: 2, maxLength: 5 })
@@ -203,6 +205,12 @@ export const pendingJoinDocumentArbitrary: fc.Arbitrary<Document> = fc
                 ],
               },
             ],
+          };
+        case "control":
+          return {
+            type: "blockSdt",
+            properties: { sdtType: "group", id: 20 + index },
+            content: [{ type: "paragraph", content: [], paraId: paraId() }],
           };
         case "paragraph":
           break;
