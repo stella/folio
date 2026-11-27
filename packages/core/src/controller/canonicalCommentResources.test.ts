@@ -24,6 +24,7 @@ import { createDocx } from "../docx/rezip";
 import { schema } from "../prosemirror/schema";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import type { Comment, Document, Hyperlink, Image } from "../types/document";
+import { readModel } from "../types/documentModel";
 import { FOLIO_DOCX_SERIALIZATION_MODE } from "../types/docxSerialization";
 import { prepareCanonicalPaste } from "./canonicalClipboard";
 
@@ -279,7 +280,7 @@ describe("copied comments holding pictures and links", () => {
         commit: prepared.value,
       }).unwrap().state;
 
-      const pasted = session.document.package.document.comments;
+      const pasted = readModel(session.document).package.document.comments;
       expect(pictureSource(commentHolding(pasted, "Pictured"))).toBe(
         expectedPicture,
       );
