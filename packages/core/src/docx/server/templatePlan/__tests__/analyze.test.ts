@@ -244,7 +244,7 @@ describe("analyzeDocxBlocks", () => {
   });
 
   test("a block says the space in effect around it: its own, its style's, the defaults'", async () => {
-    const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:pPrDefault><w:pPr><w:spacing w:after="160"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style><w:style w:type="paragraph" w:styleId="Cell"><w:name w:val="Cell"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="0"/></w:pPr></w:style><w:style w:type="paragraph" w:styleId="CellNarrow"><w:name w:val="Cell Narrow"/><w:basedOn w:val="Cell"/><w:pPr><w:spacing w:before="40"/></w:pPr></w:style></w:styles>`;
+    const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:pPrDefault><w:pPr><w:spacing w:after="160"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style><w:style w:type="paragraph" w:styleId="Cell"><w:name w:val="Cell"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="0"/></w:pPr></w:style><w:style w:type="paragraph" w:styleId="CellNarrow"><w:name w:val="Cell Narrow"/><w:basedOn w:val="Cell"/><w:pPr><w:spacing w:before="40"/></w:pPr></w:style><w:style w:type="paragraph" w:styleId="Web"><w:name w:val="Web"/><w:basedOn w:val="Cell"/><w:pPr><w:spacing w:before="100" w:beforeAutospacing="1" w:after="100" w:afterAutospacing="1"/></w:pPr></w:style></w:styles>`;
     const { blocks } = unwrap(
       await analyzeDocxBlocks(
         await buildMinimalDocx(
@@ -263,6 +263,11 @@ describe("analyzeDocxBlocks", () => {
               r("a side in lines"),
               '<w:spacing w:after="200" w:afterLines="50"/>',
             ),
+            p(r("auto spacing by its style"), '<w:pStyle w:val="Web"/>'),
+            p(
+              r("its own measure over its style's auto spacing"),
+              '<w:pStyle w:val="Web"/><w:spacing w:before="0"/>',
+            ),
             `<w:tbl><w:tr><w:tc>${p(r("in a cell"), '<w:pStyle w:val="Cell"/>')}</w:tc></w:tr></w:tbl>`,
           ].join(""),
           {
@@ -274,20 +279,23 @@ describe("analyzeDocxBlocks", () => {
       ),
     );
 
-    expect(blocks.slice(0, 5).map((block) => block.spacingInEffect)).toEqual([
+    expect(blocks.slice(0, 7).map((block) => block.spacingInEffect)).toEqual([
       // The defaults' space behind; nothing states one in front.
       { before: 0, after: 160 },
       { before: 0, after: 0 },
       // In front from the style itself, behind from the one it is based on.
       { before: 40, after: 0 },
       { before: 0, after: 120 },
-      // A side counted in lines states no measure: the defaults' stands.
-      { before: 0, after: 160 },
+      // A side counted in lines is no measure: it is left out.
+      { before: 0 },
+      // Auto spacing, decided by the style, is no measure either.
+      undefined,
+      { before: 0 },
     ]);
     // What the paragraph sets by hand is still apart.
     expect(blocks.at(1)?.spacing).toBeUndefined();
     expect(blocks.at(3)?.spacing).toEqual({ after: 120 });
-    expect(blocks.at(5)?.nested?.at(0)?.spacingInEffect).toEqual({
+    expect(blocks.at(7)?.nested?.at(0)?.spacingInEffect).toEqual({
       before: 0,
       after: 0,
     });

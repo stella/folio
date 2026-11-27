@@ -274,7 +274,7 @@ const SWITCHED_ON: ReadonlySet<string> = new Set(["1", "true", "on"]);
  * (`beforeAutospacing`) or counted in lines (`beforeLines`) is not such a
  * measure and reads as not stated.
  */
-export const ownSpacing = (
+const ownSpacing = (
   spacing: XmlElement | null,
 ): { before: number | null; after: number | null } => {
   const side = (name: "before" | "after"): number | null =>

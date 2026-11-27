@@ -29,7 +29,6 @@ import {
 import {
   createStoryState,
   endStory,
-  ownSpacing,
   type ParagraphRead,
   readParagraph,
   type StoryState,
@@ -113,9 +112,28 @@ type StoryResources = {
   defaultSpacing?: SpacingSides;
 };
 
-type SpacingSides = { before: number | null; after: number | null };
+/** A side of `w:spacing`: a measure in twentieths of a point, a side set
+ *  but not as such a measure (auto spacing, counted in lines), or unset. */
+type SpacingSide = number | "unmeasured" | null;
+type SpacingSides = { before: SpacingSide; after: SpacingSide };
 
 const NO_SPACING: SpacingSides = { before: null, after: null };
+
+const SPACING_SWITCHED_ON: ReadonlySet<string> = new Set(["1", "true", "on"]);
+
+/** The sides a `w:spacing` element sets, measured or not. */
+const spacingSides = (spacing: XmlElement | null): SpacingSides => {
+  const side = (name: "before" | "after"): SpacingSide => {
+    if (
+      SPACING_SWITCHED_ON.has(wAttr(spacing, `${name}Autospacing`) ?? "") ||
+      wAttr(spacing, `${name}Lines`) !== null
+    ) {
+      return "unmeasured";
+    }
+    return twipsOrNull(wAttr(spacing, name));
+  };
+  return { before: side("before"), after: side("after") };
+};
 
 type OpenTable = {
   analyzed: AnalyzedBlock;
@@ -302,7 +320,7 @@ export const statedSpacings = (
       : readRawPart(stylesPath, stylesXml);
   for (const style of wChildren(part?.root, "style")) {
     const styleId = wAttr(style, "styleId");
-    const sides = ownSpacing(wChild(wChild(style, "pPr"), "spacing"));
+    const sides = spacingSides(wChild(wChild(style, "pPr"), "spacing"));
     if (styleId !== null && (sides.before !== null || sides.after !== null)) {
       styles.set(styleId, sides);
     }
@@ -310,14 +328,16 @@ export const statedSpacings = (
   const defaults = wChild(wChild(part?.root, "docDefaults"), "pPrDefault");
   return {
     styles,
-    defaults: ownSpacing(wChild(wChild(defaults, "pPr"), "spacing")),
+    defaults: spacingSides(wChild(wChild(defaults, "pPr"), "spacing")),
   };
 };
 
 /**
  * The space in effect in front of a paragraph and behind it: each side its
- * own, else that of the nearest style in the `basedOn` chain that states
- * it, else the document defaults', else none.
+ * own, else that of the nearest style in the `basedOn` chain that sets it,
+ * else the document defaults', else none. A side that is decided by auto
+ * spacing or a count of lines is no measure and is left out; undefined when
+ * both are.
  */
 const spacingInEffect = (
   own: SpacingSides,
@@ -325,8 +345,8 @@ const spacingInEffect = (
   styles: StyleMap,
   stated: ReadonlyMap<string, SpacingSides>,
   defaults: SpacingSides,
-): { before: number; after: number } => {
-  const side = (name: "before" | "after"): number => {
+): { before?: number; after?: number } | undefined => {
+  const side = (name: "before" | "after"): SpacingSide => {
     if (own[name] !== null) {
       return own[name];
     }
@@ -342,7 +362,13 @@ const spacingInEffect = (
     }
     return defaults[name] ?? 0;
   };
-  return { before: side("before"), after: side("after") };
+  const before = side("before");
+  const after = side("after");
+  const sides = {
+    ...(typeof before === "number" ? { before } : {}),
+    ...(typeof after === "number" ? { after } : {}),
+  };
+  return Object.keys(sides).length === 0 ? undefined : sides;
 };
 
 /** What a style states of the look of its text; null where it states
@@ -760,14 +786,18 @@ export const analyzeStory = ({
           ...(after === null ? {} : { after }),
         };
       }
-      if (resources.spacings !== undefined) {
-        block.spacingInEffect = spacingInEffect(
-          read.spacing,
-          styleId ?? resources.defaultStyleId,
-          resources.styles,
-          resources.spacings,
-          resources.defaultSpacing ?? NO_SPACING,
-        );
+      const inEffect =
+        resources.spacings === undefined
+          ? undefined
+          : spacingInEffect(
+              spacingSides(wChild(wChild(read.element, "pPr"), "spacing")),
+              styleId ?? resources.defaultStyleId,
+              resources.styles,
+              resources.spacings,
+              resources.defaultSpacing ?? NO_SPACING,
+            );
+      if (inEffect !== undefined) {
+        block.spacingInEffect = inEffect;
       }
       // A list the paragraph names itself gives its level's indent over
       // the style's; a list the style brings is part of the style, whose

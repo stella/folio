@@ -221,10 +221,11 @@ export type DocxBlock = {
    * The space in effect in front of the paragraph and behind it, in
    * twentieths of a point: each side its own, else its style's with
    * inheritance resolved, else the document defaults', else none (0). A
-   * side set to follow the application or counted in lines reads as not
-   * stated. Present on paragraphs of the body.
+   * side that whichever of these decides it sets to follow the application
+   * or counts in lines is no such measure and is left out. Present on
+   * paragraphs of the body with at least one measured side.
    */
-  spacingInEffect?: { before: number; after: number };
+  spacingInEffect?: { before?: number; after?: number };
   /**
    * The paragraph's indent in effect, in twentieths of a point: `left` is
    * where its lines start, `firstLine` what its first line adds to that

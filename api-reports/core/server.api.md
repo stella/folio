@@ -310,8 +310,8 @@ export type DocxBlock = {
     alignment?: string;
     spacing?: TemplatePlanSpacing;
     spacingInEffect?: {
-        before: number;
-        after: number;
+        before?: number;
+        after?: number;
     };
     indent?: {
         left: number;
