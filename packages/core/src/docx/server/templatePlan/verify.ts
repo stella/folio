@@ -164,6 +164,8 @@ type ContentUnit = {
   instruction: string | null;
   /** The kept tracked change the unit is part of, or null. */
   revision: AtomRevision | null;
+  /** Whether the unit is the mark of a checkbox content control. */
+  checkbox: boolean;
   origin: StoryOrigin;
 };
 
@@ -204,6 +206,7 @@ const appendUnit = (
     element,
     instruction,
     revision,
+    checkbox,
     origin,
   }: ContentUnit,
   resources: StoryResources,
@@ -218,6 +221,10 @@ const appendUnit = (
   const at = content.text.length - text.length;
   if (revision !== null) {
     content.marks.push(...revisionMarks(revision, at, text.length));
+  }
+  // A box a reader can tick is not the character that draws it.
+  if (checkbox) {
+    content.marks.push(`${at}:checkbox`);
   }
   if (kind === "pageBreak") {
     content.marks.push(`${at}:break:${wAttr(element, "type") ?? "page"}`);
@@ -256,6 +263,7 @@ const expectedContent = (
         element: piece.atom?.element ?? null,
         instruction: piece.atom?.instruction ?? null,
         revision: piece.atom?.revision ?? null,
+        checkbox: piece.atom?.checkbox !== undefined,
         origin: piece.origin,
       },
       resources,
@@ -314,6 +322,7 @@ const outputContent = ({
         element: atom.element,
         instruction: atom.instruction ?? null,
         revision: atom.revision ?? null,
+        checkbox: atom.checkbox !== undefined,
         origin,
       },
       resources,
