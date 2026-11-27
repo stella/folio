@@ -154,23 +154,31 @@ test("a canonical open converts the document to ProseMirror once", async () => {
 test("a refused seed opens from the state the pages convert, converting once", async () => {
   const restoreCanvas = stubCanvas();
   const conversions = spyOn(conversion, "toProseDoc");
-  const refusal = spyOn(
-    canonicalSessions,
-    "createCanonicalSession",
-  ).mockImplementation(() =>
+  const refuse = () =>
     Result.err(
       new canonicalSessions.CanonicalSessionError({
         ground: { gap: CANONICAL_GAP.storyContentProjection },
         message: "The session cannot hold this document.",
         reason: "refused",
       }),
-    ),
-  );
+    );
+  // The editor seeds a document it opened itself without a copy, and any
+  // other with one: both refuse.
+  const refusal = spyOn(
+    canonicalSessions,
+    "createCanonicalSession",
+  ).mockImplementation(refuse);
+  const takingRefusal = spyOn(
+    canonicalSessions,
+    "createCanonicalSessionTaking",
+  ).mockImplementation(refuse);
   const errors: Error[] = [];
   const mounted = await mountCanonicalEditor("Refused open", errors);
   try {
     await waitForPaintedText(mounted.container, "Refused open");
-    expect(refusal).toHaveBeenCalled();
+    expect(
+      refusal.mock.calls.length + takingRefusal.mock.calls.length,
+    ).toBeGreaterThan(0);
     expect(errors.map(({ message }) => message)).toContain(
       "The session cannot hold this document.",
     );
@@ -179,6 +187,7 @@ test("a refused seed opens from the state the pages convert, converting once", a
   } finally {
     await mounted.unmount();
     refusal.mockRestore();
+    takingRefusal.mockRestore();
     conversions.mockRestore();
     restoreCanvas();
   }
