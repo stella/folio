@@ -1456,6 +1456,24 @@ export const deleteBlocks = ({
     ];
   }
   const endsContainer = trailing.at(-1) ?? (terminal ? last.paragraph : null);
+  // Before a block, accepting keeps the last paragraph when pending joins
+  // run words into the deletion: its mark has nowhere to go, and it holds
+  // those words. Directly, the paragraphs go whole and the words keep the
+  // properties of the paragraph that holds them, so the last paragraph takes
+  // those, as a pending change of its own.
+  const joinedWordsHolder =
+    trackedBeforeBlock && pendingJoinsRunWordsInto(list, first.index)
+      ? list[first.index - 1]
+      : undefined;
+  const holderRestyle =
+    joinedWordsHolder?.type === "paragraph"
+      ? {
+          formatting: withMarkFormatting(
+            paragraphPropertiesOf(joinedWordsHolder.formatting),
+            last.paragraph.formatting,
+          ),
+        }
+      : undefined;
   // The paragraphs whose own mark the tracked deletion records deleted.
   const losesMark = (paragraph: Paragraph) =>
     paragraph !== endsContainer && !trailing.includes(paragraph);
@@ -1556,7 +1574,9 @@ export const deleteBlocks = ({
               : form.content,
         };
     }
+    let restyle = paragraph === last.paragraph ? holderRestyle : undefined;
     if (joinsNext.has(paragraph)) {
+      restyle = undefined;
       const { pPrMark: _removed, ...unmarked } = next;
       next = unmarked;
     } else if (keepsDeletedMark(paragraph)) {
@@ -1569,18 +1589,21 @@ export const deleteBlocks = ({
           deletion: { info: stampInfo(op.revision) },
         },
       };
-    } else if (losesMark(paragraph)) {
-      next = {
-        ...next,
-        // A move's source marks its paragraph moved from, not deleted.
-        pPrMark: {
-          kind: op.move === true ? "moveFrom" : "del",
-          info: stampInfo(op.revision),
-        },
-      };
-    } else if (
-      paragraph === endsContainer &&
-      !sameParagraphProperties(next.formatting, endFormatting)
+    } else {
+      if (losesMark(paragraph))
+        next = {
+          ...next,
+          // A move's source marks its paragraph moved from, not deleted.
+          pPrMark: {
+            kind: op.move === true ? "moveFrom" : "del",
+            info: stampInfo(op.revision),
+          },
+        };
+      if (paragraph === endsContainer) restyle = { formatting: endFormatting };
+    }
+    if (
+      restyle !== undefined &&
+      !sameParagraphProperties(next.formatting, restyle.formatting)
     ) {
       const conflict = paragraphPropertyFoldConflict(paragraph, op.revision);
       if (conflict !== undefined)
@@ -1590,11 +1613,12 @@ export const deleteBlocks = ({
         );
       const review = reviewFieldsOf(next);
       delete review.formatting;
-      if (endFormatting !== undefined) review.formatting = endFormatting;
+      if (restyle.formatting !== undefined)
+        review.formatting = restyle.formatting;
       review.propertyChanges = [
         foldedParagraphPropertyChange({
           paragraph,
-          formatting: endFormatting,
+          formatting: restyle.formatting,
           stamp: revision,
         }),
       ];

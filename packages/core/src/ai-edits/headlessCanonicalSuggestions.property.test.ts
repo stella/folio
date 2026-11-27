@@ -356,6 +356,106 @@ const oneCellTable = (n: number): BlockContent => ({
   ],
 });
 
+const noteReference: ParagraphContent[] = [
+  { type: "run", content: [{ type: "footnoteRef", id: 2 }] },
+];
+const alpha: ParagraphContent[] = [
+  { type: "run", content: [{ type: "text", text: "Alpha" }] },
+];
+/** `paragraph` as an item of list `numId`; list 2 restarts the numbering. */
+const numbered = (paragraph: Paragraph, numId = 1): Paragraph => ({
+  ...paragraph,
+  formatting: { numPr: { kind: "reference", numId, ilvl: 0 } },
+});
+const groupControl = (paragraph: Paragraph): BlockContent => ({
+  type: "blockSdt",
+  properties: { sdtType: "group", id: 1 },
+  content: [paragraph],
+});
+const deleting = (block: number): OperationDraw => ({
+  kind: "deleteBlock",
+  block,
+  word: 0,
+  text: "revised",
+});
+
+/**
+ * Bodies where pending joins run a numbered paragraph's words into the
+ * paragraphs a deletion takes, before a block their last mark cannot cross,
+ * with the draw naming that deletion (the first a generated case, shrunk).
+ * Directly the paragraphs go whole and the words keep their own paragraph's
+ * list numbering, so accepting the suggestion numbers them alike.
+ */
+const DELETIONS_BESIDE_NUMBERED_JOINS: Record<
+  string,
+  [BlockContent[], OperationDraw]
+> = {
+  "deleting an empty paragraph a numbered note reference joins, before a control":
+    [
+      [
+        numbered(pending(1, noteReference, "del")),
+        pending(2, []),
+        blockBookmark,
+        groupControl(pending(3, [])),
+        pending(4, []),
+      ],
+      deleting(1),
+    ],
+  "deleting an empty paragraph under another's added mark that a numbered note reference joins":
+    [
+      [
+        numbered(pending(1, noteReference, "del")),
+        pending(2, [], "ins"),
+        blockBookmark,
+        groupControl(pending(3, [])),
+        pending(4, []),
+      ],
+      deleting(1),
+    ],
+  "deleting an empty paragraph before a numbered one": [
+    [
+      pending(1, alpha, "del"),
+      pending(2, []),
+      numbered(pending(3, alpha)),
+      altChunk,
+      pending(4, []),
+    ],
+    deleting(1),
+  ],
+  "deleting a numbered paragraph holding a note reference that words join, before a preserved block":
+    [
+      [
+        pending(1, alpha, "del"),
+        numbered(pending(2, noteReference)),
+        altChunk,
+        pending(3, []),
+      ],
+      deleting(1),
+    ],
+  "deleting an empty paragraph a numbered one joins, in a list that goes on after the block":
+    [
+      [
+        numbered(pending(1, alpha)),
+        numbered(pending(2, noteReference, "del")),
+        pending(3, []),
+        altChunk,
+        numbered(pending(4, alpha)),
+      ],
+      deleting(2),
+    ],
+  "deleting an empty paragraph a numbered one joins, before a list restarting after the block":
+    [
+      [
+        numbered(pending(1, alpha)),
+        numbered(pending(2, noteReference, "del")),
+        pending(3, []),
+        altChunk,
+        numbered(pending(4, alpha), 2),
+      ],
+      deleting(2),
+    ],
+};
+
 const inserting = (
   kind: "insertBeforeBlock" | "insertAfterBlock",
   block: number,
@@ -439,6 +539,29 @@ const bodyOf = (content: BlockContent[]): Document => ({
         },
       ],
     },
+    numbering: {
+      abstractNums: [
+        {
+          abstractNumId: 1,
+          levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }],
+        },
+      ],
+      nums: [
+        { numId: 1, abstractNumId: 1 },
+        {
+          numId: 2,
+          abstractNumId: 1,
+          levelOverrides: [{ ilvl: 0, startOverride: 1 }],
+        },
+      ],
+    },
+    footnotes: [
+      {
+        type: "footnote",
+        id: 2,
+        content: [{ type: "paragraph", paraId: "7FFFFFF1", content: [] }],
+      },
+    ],
   },
 });
 
@@ -447,21 +570,19 @@ const PENDING_JOIN_RUNS = 100;
 const COVERAGE_RUNS = 30;
 
 describe("a canonical reviewer's pending suggestions", () => {
-  test("a paragraph suggested beside a pending join stages as the tracked one applies", async () => {
-    for (const [shape, [content, draw]] of Object.entries(
-      BESIDE_PENDING_JOINS,
-    )) {
-      const buffer = await packaged(bodyOf(content));
-      expect({ shape, packaged: buffer !== null }).toEqual({
-        shape,
-        packaged: true,
-      });
-      if (buffer === null) continue;
-      expect({ shape, outcome: await suggestionLaws(buffer, draw) }).toEqual({
-        shape,
-        outcome: "suggested",
-      });
-    }
+  // A paragraph suggested beside a pending join stages as the tracked one
+  // applies; a suggested deletion a numbered pending join runs into numbers
+  // its words, once accepted, as the direct deletion does.
+  test.each(
+    Object.entries({
+      ...BESIDE_PENDING_JOINS,
+      ...DELETIONS_BESIDE_NUMBERED_JOINS,
+    }),
+  )("a suggestion %s follows the laws", async (_shape, [content, draw]) => {
+    const buffer = await packaged(bodyOf(content));
+    expect(buffer).not.toBeNull();
+    if (buffer === null) return;
+    expect(await suggestionLaws(buffer, draw)).toBe("suggested");
   });
 
   test("a suggestion beside pending paragraph marks restages", async () => {

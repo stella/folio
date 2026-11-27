@@ -1,6 +1,12 @@
 {
   "generated suggestions save, restage, reject and accept as the laws say": [
     {
+      "seed": 11,
+      "path": "259:0:0:0:0:0:0:0:4:2:4:5:5:5:5:6:5:5:5:5:7:7:8:7:7:7:9:9:9:9:9:9:9:12:12:12:12:12:12:12:21:12:12:12:12:19:22:22:21:23:23:23:24:23:21:22:21:23:21:21:21:21:21:21:24:48:48:48",
+      "note": "#2889: an accepted suggested removal of an empty paragraph that a numbered paragraph's pending join runs a note reference into, before a content control, keeps that paragraph's list number, as the direct removal does.",
+      "date": "2026-11-27"
+    },
+    {
       "seed": 176064444,
       "path": "18:1:1:1:2:1:2:1:1:1:1:3:2:2:2:2:3:2:2:2:2:2:10:11:10:14:10:11:11:12:12:11:10:11:10:11:11:11:11:10:10:10:10:10:10:12:12:12",
       "note": "#2889: a paragraph suggested before one holding only a comment's range, after a bookmark between paragraphs and before an unsupported block, applies as the tracked one: rejecting both keeps that paragraph with its properties, as rejecting its own changes does.",
