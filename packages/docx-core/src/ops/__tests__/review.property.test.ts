@@ -934,6 +934,9 @@ const TRACKING_REFUSALS: readonly string[] = [
   DOCUMENT_OP_REFUSAL_REASONS.INSIDE_TRACKED_DELETION,
   // A tracked change is a record more, whose id a cut may need to name.
   DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
+  // A tracked deletion keeps a comment anchor only with the range it marks
+  // whole; the direct deletion removes a lone anchor with the rest.
+  DOCUMENT_OP_REFUSAL_REASONS.DEPENDENT_RECORDS,
 ];
 
 // ---------------------------------------------------------------------------
