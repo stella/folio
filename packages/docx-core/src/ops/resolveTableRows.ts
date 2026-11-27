@@ -712,6 +712,7 @@ const resolveCellColumns = ({
     let carried = 0;
     let carriedFrom: TableCell | undefined;
     let insertedPlaceholder = false;
+    let holdsRemovedColumnsInRow = false;
     let omittedBefore = 0;
     let omittedAfter = 0;
     const lastKept = layout.cells.findLastIndex(({ cell }) => !removes(cell));
@@ -732,6 +733,7 @@ const resolveCellColumns = ({
         const kept = end - start - removedIn(start, end);
         if (kept === 0) continue;
         holdsRemovedColumns = true;
+        holdsRemovedColumnsInRow = true;
         const previous = cells.at(-1);
         if (previous === undefined) {
           carried += kept;
@@ -793,11 +795,13 @@ const resolveCellColumns = ({
       const survivors = insertedPlaceholder
         ? row.cells.filter((cell) => !removes(cell))
         : cells;
-      if (
-        cellReviewRemovesRow(row, survivors) &&
-        !cells.some((cell) => retainedOwners.has(cell))
-      )
-        continue;
+      // A complete column deletion closes continuation-only rows the same
+      // way as its direct edit. Selective review keeps authored survivors
+      // when another row still uses the columns the removed cells occupied.
+      const closes = holdsRemovedColumnsInRow
+        ? cellReviewRemovesRow(row, survivors)
+        : editRemovesRow({ before: row.cells, after: survivors });
+      if (closes && !cells.some((cell) => retainedOwners.has(cell))) continue;
     }
     // Preserve the occupied columns of a vertical merge. Unoccupied slots
     // at the row edges can be expressed as native gridBefore/gridAfter.
