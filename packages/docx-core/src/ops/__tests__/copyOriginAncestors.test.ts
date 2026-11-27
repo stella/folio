@@ -645,7 +645,10 @@ test("copy-origin transforms carry ownership at any nesting depth", () => {
   const origins = Array.from({ length: 256 }, (_, index) => index);
   if (!isCopyOriginAncestors(origins))
     throw new TypeError("Every ancestor may own the copy.");
-  expect(addCopyOriginAncestor(origins, 256)).toEqual([...origins, 256]);
+  const added = addCopyOriginAncestor(origins, 256);
+  if (added === undefined)
+    throw new TypeError("An owner past the old cap must be representable.");
+  expect([...added]).toEqual([...origins, 256]);
 });
 
 test("the operations contract rejects copied ownership on block-level boundaries", () => {
