@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "title": "PINNED #1738, reported seed 2040609271: a paragraph suggested before one whose inserted break the same batch merges away copies the heading the merge leaves",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "styleNumbered",
+  "mode": "tracked-changes",
+  "seed": 7977654,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 1207707797,
+      "operations": [
+        { "type": "splitBlock", "blockId": "1BF99289", "offset": 8 }
+      ],
+      "atomic": true
+    },
+    { "action": "new reviewer", "seed": 135081529 },
+    {
+      "action": "suggest_changes",
+      "seed": 1711661073,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "1BF99289",
+          "text": "Agreement written buyer."
+        },
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "1BF99289",
+          "separator": " ",
+          "mergedParagraphProperties": { "styleId": "Heading2" }
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "formatRange",
+    "insertBeforeBlock",
+    "splitBlock",
+    "mergeBlockWithNext",
+    "setBlockParagraphProperties",
+    "insertTable",
+    "insertTableRow",
+    "deleteTable"
+  ],
+  "origin": "shrunk from insert of 37e8618f54fb196f"
+}

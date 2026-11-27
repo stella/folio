@@ -30,9 +30,15 @@ export const paragraphVisibleText = (paragraph: Paragraph): string => {
     .join("");
 };
 
-/** Whether a paragraph's mark is pending deletion, as a move's source too. */
+/**
+ * Whether a paragraph's mark is pending deletion, as a move's source too, or
+ * added and then deleted by another author (`deletion`): accepting removes
+ * each alike.
+ */
 export const joinsFollowingParagraph = ({ pPrMark }: Paragraph): boolean =>
-  pPrMark?.kind === "del" || pPrMark?.kind === "moveFrom";
+  pPrMark?.kind === "del" ||
+  pPrMark?.kind === "moveFrom" ||
+  pPrMark?.deletion !== undefined;
 
 /**
  * Whether the paragraphs right before `blocks[index]`, each joined to the
