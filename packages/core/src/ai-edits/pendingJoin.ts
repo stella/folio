@@ -9,6 +9,7 @@ import type { Node as PMNode } from "prosemirror-model";
 
 import type { FolioDocumentOperation } from "../document-operations";
 import { endOfParagraphWithItsTextBoxes } from "../prosemirror/anchoredTextBoxes";
+import { expectParagraphAttrs } from "../prosemirror/attrs";
 import { paragraphJoinAfter } from "../prosemirror/commands/paragraphBookmarkJoin";
 import { isBlockBoundaryNode } from "../prosemirror/keptRangeBoundaries";
 import { paragraphLeftAfter } from "../prosemirror/paragraphPropertyCarry";
@@ -126,6 +127,23 @@ const joinsIn = (options: PendingJoinBoundsOptions): boolean =>
   keepsWords(options);
 
 /**
+ * Whether a join read back from after a paragraph runs on across its mark: a
+ * deleted one, or one an insertion added and another author deleted after
+ * (`deletion`). A deletion its own author recorded beside the insertion (a
+ * whole-paragraph deletion before a table keeps it there) ends the join read
+ * back, as an added mark does.
+ */
+const joinsOnFromBefore = (paragraph: PMNode): boolean => {
+  const mark = expectParagraphAttrs(paragraph).pPrMark;
+  if (mark == null) return false;
+  if (isDeletedPPrMark(mark)) return true;
+  return (
+    mark.deletion !== undefined &&
+    mark.deletion.info.author !== mark.info.author
+  );
+};
+
+/**
  * The paragraph whose break, once gone, runs it into `position`, the start of
  * a paragraph or a place between blocks: the paragraph before it, past the
  * typed range boundaries between them, when its break is pending removal.
@@ -142,10 +160,7 @@ const joinedFromBefore = (doc: PMNode, position: number): number | null => {
     index -= 1;
   }
   const previous = index < 0 ? null : $place.parent.child(index);
-  if (
-    previous?.type.name !== "paragraph" ||
-    !markGoesWhenAccepted(previous.attrs["pPrMark"])
-  )
+  if (previous?.type.name !== "paragraph" || !joinsOnFromBefore(previous))
     return null;
   if (
     doc.nodeAt(position)?.type.name === "paragraph" &&
