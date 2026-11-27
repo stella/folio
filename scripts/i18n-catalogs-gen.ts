@@ -141,13 +141,14 @@ export default messages;
   }
   const strings = englishPaths.map((keys) => stringAt(catalog, keys, locale));
   // The data file the editor fetches for this locale: the same strings, as
-  // UTF-8 JSON, so no bundle of the editor carries a translated catalog.
+  // UTF-8 JSON, so no bundle of the editor carries a translated catalog. One
+  // string a line, as the source catalogs hold them.
   outputs.set(
     path.resolve(
       import.meta.dir,
       `../packages/core/assets/i18n/${locale}.json`,
     ),
-    `${JSON.stringify(strings)}\n`,
+    `${JSON.stringify(strings, null, 2)}\n`,
   );
   outputs.set(
     path.join(messagesDir, `${locale}.gen.ts`),

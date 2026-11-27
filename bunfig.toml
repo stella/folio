@@ -75,6 +75,9 @@ ignorePatterns = [
   "api-reports/**",
   "packages/docx-core/src/generated/**",
   "packages/core/src/generated/**",
+  # Data files the editor fetches (hyphenation dictionaries, locale
+  # catalogs), generated compact and checked byte for byte.
+  "packages/core/assets/**",
   # @stll/folio-fonts: copied from @fontsource and generated from it
   # (scripts/generate-folio-fonts.ts), checked byte for byte.
   "packages/fonts/fonts/**",
