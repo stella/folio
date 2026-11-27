@@ -172,7 +172,7 @@ import {
 import { tableGrid } from "./tableGrid";
 import {
   locateTableRow,
-  tableRemovalAnchor,
+  tableRemovalAddress,
   tableRowAnchor,
   type TableRowLocation,
 } from "./tableLocation";
@@ -4557,7 +4557,11 @@ const compileInStory = (
           storyParagraphs(body).find((paragraph) =>
             sameBlockList(paragraph.list, located.value.list),
           )?.paragraph.paraId ??
-          tableRemovalAnchor(body, located.value)?.blockId;
+          tableRemovalAddress({
+            body,
+            story: op.story,
+            location: located.value,
+          })?.anchor.blockId;
         if (survivor === undefined)
           return Result.err(
             new DocumentOpRefusal({
@@ -4676,8 +4680,11 @@ const compileInStory = (
               ? rowsWithoutRow(table, rowIndex)
               : table.rows.filter((_row, index) => index !== rowIndex),
           ) ??
-          tableRemovalAnchor(storyBody(document, op.story), located.value)
-            ?.blockId;
+          tableRemovalAddress({
+            body: storyBody(document, op.story),
+            story: op.story,
+            location: located.value,
+          })?.anchor.blockId;
       }
       if (blockId === undefined)
         return Result.err(
@@ -4888,7 +4895,8 @@ const compileInStory = (
       );
       const anchor =
         (beside[position] ?? beside.at(-1))?.paragraph.paraId ??
-        tableRemovalAnchor(body, located.value)?.blockId;
+        tableRemovalAddress({ body, story: op.story, location: located.value })
+          ?.anchor.blockId;
       if (anchor === undefined)
         return Result.err(
           new DocumentOpRefusal({
