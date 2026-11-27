@@ -190,16 +190,19 @@ const run = async (
 };
 
 /**
- * The gap each insertion lands in made one at a time, in batch order: how
- * many of the document's blocks stand before it, the blocks earlier ones
- * put there aside. Put before a block, it is in the gap before the blocks
- * right before it that accepting removes whole. Undefined for one refused
- * at its turn.
+ * The batch's operations made one at a time, in batch order, tracked: the
+ * gap each insertion lands in (how many of the document's blocks stand
+ * before it, the blocks earlier ones put there aside; put before a block,
+ * in the gap before the blocks right before it that accepting removes
+ * whole), undefined for one refused at its turn; whether the deletion then
+ * applies; and the labels of the document's own blocks that accepting the
+ * prepared document leaves, read without the batch.
  */
-const gapsOneAtATime = async (setup: Case) => {
+const oneAtATime = async (setup: Case) => {
   const accepted = await prepared(setup);
   accepted.acceptAll();
   const kept = new Set(accepted.snapshot().blocks.map(({ id }) => id));
+  const surviving = new Set(labelsOf(accepted));
   const reviewer = await prepared(setup);
   const anchors = anchorsOf(reviewer);
   const original = reviewer.snapshot().blocks;
@@ -209,7 +212,7 @@ const gapsOneAtATime = async (setup: Case) => {
       text === "" && !kept.has(id) ? [id] : [],
     ),
   );
-  return setup.insertions.map((insertion, at) => {
+  const gaps = setup.insertions.map((insertion, at) => {
     const { skipped } = reviewer.applyOperations(
       [operationOf(insertion, at, anchors)],
       { undefinedReferences: "refuse", mode: "tracked-changes" },
@@ -221,11 +224,31 @@ const gapsOneAtATime = async (setup: Case) => {
       while (end > 0 && goesWhole.has(blocks[end - 1]?.id ?? "")) end -= 1;
     return blocks.slice(0, end).filter(({ id }) => ids.has(id)).length;
   });
+  const index = setup.deletes;
+  const deleted =
+    index === undefined
+      ? undefined
+      : original.find(({ id }) => id === anchors[index % anchors.length]);
+  const deletes =
+    deleted !== undefined &&
+    reviewer.applyOperations(
+      [{ id: "delete", type: "deleteBlock", blockId: deleted.id }],
+      { undefinedReferences: "refuse", mode: "tracked-changes" },
+    ).skipped.length === 0;
+  // The deletion takes its paragraph's own words, and nothing else: a table
+  // cell's label stays with the table's other cells.
+  const label = deleted?.text.match(LABEL)?.[0];
+  const carriers = original.filter(
+    ({ text }) => text.match(LABEL)?.[0] === label,
+  );
+  if (deletes && label !== undefined && carriers.length === 1)
+    surviving.delete(label);
+  return { gaps, deletes, surviving };
 };
 
 /** The batch's blocks once accepted, and the order the gaps they land in give. */
 const replay = async (setup: Case) => {
-  const gaps = await gapsOneAtATime(setup);
+  const { gaps, deletes, surviving } = await oneAtATime(setup);
   // An insertion refused at its turn, a table beside a pending break say, is
   // left out of the batch.
   const kept = setup.insertions.flatMap((insertion, at) => {
@@ -234,7 +257,7 @@ const replay = async (setup: Case) => {
   });
   const operations = (anchors: readonly string[]) => [
     ...kept.map(({ insertion, at }) => operationOf(insertion, at, anchors)),
-    ...(setup.deletes === undefined
+    ...(setup.deletes === undefined || !deletes
       ? []
       : [
           {
@@ -247,7 +270,7 @@ const replay = async (setup: Case) => {
   const tracked = await run(setup, "tracked-changes", operations);
   const direct = await run(setup, "direct", operations);
   const deletedId =
-    setup.deletes === undefined
+    setup.deletes === undefined || !deletes
       ? undefined
       : tracked.anchors[setup.deletes % tracked.anchors.length];
   const deletedAt = tracked.before.findIndex(({ id }) => id === deletedId);
@@ -260,7 +283,7 @@ const replay = async (setup: Case) => {
     for (const { at, gap } of byGap) if (gap === index) expected.push(`I${at}`);
     const label = block?.label;
     if (label !== undefined && label !== expected.at(-1))
-      if (accepted.includes(label)) expected.push(label);
+      if (surviving.has(label)) expected.push(label);
   }
   return {
     kept,
@@ -540,11 +563,9 @@ test(
     await assertProperty(
       fc.asyncProperty(caseArbitrary, async (setup) => {
         const reviewed = await replay(setup);
-        fc.pre(
-          reviewed.kept.length >= 2 &&
-            !reviewed.tracked.skipped.includes("delete") &&
-            !reviewed.deletesJoinedWords,
-        );
+        // A deletion made one at a time after the insertions goes in the
+        // batch, which must apply it too.
+        fc.pre(reviewed.kept.length >= 2 && !reviewed.deletesJoinedWords);
         expect(reviewed.tracked.skipped).toEqual([]);
         expect(reviewed.direct.skipped).toEqual([]);
         expect(reviewed.directAccepted).toEqual(reviewed.accepted);
@@ -584,6 +605,17 @@ test.each(["tracked-changes", "direct"] as const)(
     );
     expect(result.skipped).toEqual([]);
     reviewer.acceptAll();
-    expect(labelsOf(reviewer)).toEqual(["P0", "P1", "P3", "I0", "I1"]);
+    // Each paragraph on its own, so a merge of the two inserted ones fails.
+    expect(
+      reviewer
+        .snapshot()
+        .blocks.flatMap(({ text }) => (text === "" ? [] : [text])),
+    ).toEqual([
+      "P0 clause.",
+      "P1 clause.",
+      "P3 clause.",
+      "I0 alone.",
+      "I1 alone.",
+    ]);
   },
 );
