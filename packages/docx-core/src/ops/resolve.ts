@@ -110,6 +110,7 @@ import {
   alikeDepth,
   asParagraphContent,
   childNodes,
+  fieldHeldChangeIds,
   fieldResultOf,
   type InlineNode,
   mergeAlike,
@@ -634,38 +635,64 @@ const resolveRun = (run: Run, { ids, decision }: Resolution): Run => {
   return next;
 };
 
-/** Records with the run property changes of their runs resolved, the same list when none is. */
-const resolveRunsIn = (
+/**
+ * A field's result with the records it holds resolved: the run property
+ * changes on its runs, and the tracked changes `w:fldSimple` holds around
+ * them ({@link fieldHeldChangeIds}). The result is the field's one unit, so
+ * a resolved change keeps or drops its content where it stood and no seam
+ * outside the field moves. A container that resolving empties goes, as
+ * resolution leaves no emptied record.
+ */
+const resolveFieldResult = (
   nodes: readonly InlineNode[],
   resolution: Resolution,
+  held: ReadonlySet<number>,
 ): readonly InlineNode[] => {
   let changed = false;
-  const out = nodes.map((node) => {
+  const out: InlineNode[] = [];
+  for (const node of nodes) {
+    if (
+      isTrackedWrapper(node) &&
+      held.has(node.info.id) &&
+      resolution.ids.has(node.info.id)
+    ) {
+      changed = true;
+      if (!removesContent(node, resolution.decision))
+        out.push(...resolveFieldResult(node.content, resolution, held));
+      continue;
+    }
     let next: InlineNode = node;
+    const children = node.type === "run" ? undefined : childNodes(node);
     if (node.type === "run") next = resolveRun(node, resolution);
-    else {
-      const children = childNodes(node);
-      const inner =
-        children === undefined ? children : resolveRunsIn(children, resolution);
-      if (inner !== children && inner !== undefined)
+    else if (children !== undefined) {
+      const inner = resolveFieldResult(children, resolution, held);
+      if (inner !== children) {
+        changed = true;
+        if (inner.length === 0 && children.length > 0) continue;
         next = rebuildNode(node, inner);
+      }
     }
     if (next !== node) changed = true;
-    return next;
-  });
+    out.push(next);
+  }
   return changed ? out : nodes;
 };
 
 /**
- * A field with the run property changes on the runs of its result resolved:
- * a run property patch over the field records them there.
+ * A field with the records of its result resolved: the run property changes
+ * a run property patch over the field records there, and the tracked changes
+ * a `w:fldSimple` holds.
  */
 const resolveFieldRuns = (
   field: Extract<InlineNode, { type: "simpleField" | "complexField" }>,
   resolution: Resolution,
 ): InlineNode => {
   const result = fieldResultOf(field) ?? [];
-  const next = resolveRunsIn(result, resolution);
+  const next = resolveFieldResult(
+    result,
+    resolution,
+    new Set(fieldHeldChangeIds(field)),
+  );
   return next === result ? field : withFieldResult(field, next);
 };
 
@@ -6910,6 +6937,7 @@ const reachableIds = (paragraph: Paragraph): Set<number> => {
     for (const node of nodes) {
       if (isTrackedWrapper(node)) out.add(node.info.id);
       for (const change of ownRunPropertyChanges(node)) out.add(change.info.id);
+      for (const id of fieldHeldChangeIds(node)) out.add(id);
       visit(childNodes(node) ?? []);
     }
   };
@@ -8508,7 +8536,8 @@ const withBelongingPropertyChanges = (
  * Resolve tracked changes by revision id, applied as the primitive
  * operations it expands to. An id no record in the story carries is
  * skipped; one carried by a record resolution does not reach yet (a table,
- * cell or section change, a record inside a field) is refused.
+ * cell or section change, or a change inside a simple field holding content
+ * the field cannot hold) is refused.
  */
 export const planRevisionResolution = (
   options: RevisionResolutionPlanOptions,

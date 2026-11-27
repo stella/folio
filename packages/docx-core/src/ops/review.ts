@@ -463,6 +463,12 @@ const spanningAction = (
   return "cut";
 };
 
+/** Whether the wrap takes this comment reference in ({@link WrapOptions.takenReferences}). */
+const takesReference = (node: InlineNode, state: WrapState): boolean =>
+  node.type === "commentReference" &&
+  state.commentAnchorsStand &&
+  state.takenReferences.has(node.id);
+
 /** What a wrap does with a record the range covers whole. */
 type CoveredAction = "wrap" | "skip" | "descend" | "refuse";
 
@@ -489,6 +495,7 @@ const holdsCommentAnchor = (node: InlineNode): boolean =>
  */
 const coveredAction = (node: InlineNode, state: WrapState): CoveredAction => {
   if (isCommentAnchor(node)) {
+    if (takesReference(node, state)) return "wrap";
     return state.commentAnchorsStand ? "skip" : "refuse";
   }
   if (state.kind === WRAP_KINDS.DELETION) {
@@ -556,6 +563,8 @@ type WrapState = {
   refusal: DocumentOpRefusalReason | undefined;
   /** Whether bare comment range anchors stand outside the deletion, as whole paragraphs leave them. */
   commentAnchorsStand: boolean;
+  /** See {@link WrapOptions.takenReferences}. */
+  takenReferences: ReadonlySet<number>;
 };
 
 /** Cut facts a deletion's merge can carry: the join depths at its edges and on removal. */
@@ -724,7 +733,7 @@ const trackedContent = (
     if (
       !isParagraphContent(node) ||
       !isTrackedChild(node) ||
-      node.type === "commentReference"
+      (node.type === "commentReference" && !takesReference(node, state))
     ) {
       state.refusal = DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE;
       return undefined;
@@ -997,6 +1006,12 @@ export type WrapOptions = {
    * comment reference is content and is still refused.
    */
   commentAnchors?: "stand";
+  /**
+   * With `commentAnchors: "stand"`, the comments whose reference the
+   * deletion takes in rather than leaves standing: point comments, whose
+   * reference is their only anchor and goes with the content it marks.
+   */
+  takenReferences?: ReadonlySet<number>;
 };
 
 export type WrapOutcome =
@@ -1028,6 +1043,7 @@ export const wrapTracked = ({
   acceptance,
   copiedBoundaries,
   commentAnchors,
+  takenReferences = new Set(),
 }: WrapOptions): WrapOutcome => {
   const state: WrapState = {
     gaps: [from, to],
@@ -1044,6 +1060,7 @@ export const wrapTracked = ({
     recordedContent: false,
     refusal: undefined,
     commentAnchorsStand: commentAnchors === "stand",
+    takenReferences,
   };
   const content = wrapList(items, startCursor(), state);
   if (content === undefined) {

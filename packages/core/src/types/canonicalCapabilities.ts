@@ -157,7 +157,7 @@ export const CANONICAL_CAPABILITIES: {
     readonly owner: "document-operations";
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "A suggested change whose content the tracked-change records cannot express is refused: comment boundaries in a tracked range, paragraph-mark run properties, a join at a section break, a record inside a field.";
+    readonly summary: "A suggested change whose content the tracked-change records cannot express is refused: paragraph-mark run properties, a deleted paragraph whose hyperlink or content control holds a comment anchor, a section-ending mark resolved across a standing range boundary, a change inside a simple field holding content the field cannot hold.";
   };
   readonly "publicOps.headlessSession": {
     readonly owner: "document-operations";
@@ -185,7 +185,7 @@ export const CANONICAL_CAPABILITIES: {
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
-      "A suggested change whose content the tracked-change records cannot express is refused: comment boundaries in a tracked range, paragraph-mark run properties, a join at a section break, a record inside a field.",
+      "A suggested change whose content the tracked-change records cannot express is refused: paragraph-mark run properties, a deleted paragraph whose hyperlink or content control holds a comment anchor, a section-ending mark resolved across a standing range boundary, a change inside a simple field holding content the field cannot hold.",
   },
   [CANONICAL_GAP.publicHeadlessSession]: {
     owner: "document-operations",

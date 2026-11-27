@@ -119,8 +119,10 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
   readonly INSIDE_INLINE_CONTROL: "insideInlineControl";
   /**
    * No tracked change can record the edit, or no resolution op can carry it
-   * out yet: comment boundaries in a tracked range, the paragraph mark's run
-   * properties, a join at a section break, a record inside a field.
+   * out yet: the paragraph mark's run properties, a deleted paragraph whose
+   * hyperlink or content control holds a comment anchor, a section-ending
+   * mark resolved across a standing range boundary, a change inside a
+   * simple field holding content the field cannot hold.
    */
   readonly UNTRACKABLE: "untrackable";
   /**
@@ -288,8 +290,10 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
   INSIDE_INLINE_CONTROL: "insideInlineControl",
   /**
    * No tracked change can record the edit, or no resolution op can carry it
-   * out yet: comment boundaries in a tracked range, the paragraph mark's run
-   * properties, a join at a section break, a record inside a field.
+   * out yet: the paragraph mark's run properties, a deleted paragraph whose
+   * hyperlink or content control holds a comment anchor, a section-ending
+   * mark resolved across a standing range boundary, a change inside a
+   * simple field holding content the field cannot hold.
    */
   UNTRACKABLE: "untrackable",
   /** A second tracked column insertion beside a pending grid change. */
