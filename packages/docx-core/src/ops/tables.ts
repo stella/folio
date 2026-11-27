@@ -45,7 +45,11 @@ import {
 } from "./refusal";
 import { stampInfo, WRAP_KINDS } from "./review";
 import { replaceStoryBody } from "./stories";
-import { locateBlockInsertion, locateTableRow } from "./tableLocation";
+import {
+  locateBlockInsertion,
+  locateTableRow,
+  survivingTableAnchor,
+} from "./tableLocation";
 import { rangeEndsReachingPast } from "./tableRowRemoval";
 import { permitsRestoredCellFinalMark, trackTableRows } from "./tableTracking";
 import {
@@ -132,23 +136,6 @@ const fixedBlocks = (items: readonly BlockContent[]): BlockContent[] => {
     else fixed.push(block);
   }
   return fixed;
-};
-
-const survivingTableAnchor = (
-  body: DocumentBody,
-  list: ParagraphLocation["list"],
-): ParagraphLocation | undefined => {
-  let current = list;
-  for (;;) {
-    const blocks = blockListAt(body.content, current);
-    const index = blocks.findLastIndex((block) => block.type === "paragraph");
-    const paragraph = blocks[index];
-    if (paragraph?.type === "paragraph")
-      return { list: current, index, paragraph };
-    const step = current.at(-1);
-    if (step === undefined || step.kind === "tableCell") return undefined;
-    current = current.slice(0, -1);
-  }
 };
 
 const tableBlocksForAnchor = (

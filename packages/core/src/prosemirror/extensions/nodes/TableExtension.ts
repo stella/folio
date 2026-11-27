@@ -530,6 +530,7 @@ const tableSpec: NodeSpec = {
     widthType: { default: null },
     justification: { default: null },
     columnWidths: { default: null },
+    _omittedColumnWidths: { default: null },
     floating: { default: null },
     cellMargins: { default: null },
     _resolvedCellMargins: { default: null },

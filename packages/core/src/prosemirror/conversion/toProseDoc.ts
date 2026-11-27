@@ -2878,6 +2878,11 @@ function convertTable(
   }
   if (columnWidths) {
     attrs.columnWidths = columnWidths;
+    if (table.omittedColumnWidthIndices !== undefined)
+      attrs._omittedColumnWidths = {
+        columnCount: columnWidths.length,
+        indices: table.omittedColumnWidthIndices,
+      };
   }
   if (table.formatting?.floating) {
     attrs.floating = table.formatting.floating;

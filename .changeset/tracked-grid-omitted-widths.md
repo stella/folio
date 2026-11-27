@@ -3,4 +3,4 @@
 "@stll/folio-core": patch
 ---
 
-Restore omitted and explicitly zero column widths separately when rejecting a tracked table grid change.
+Preserve omitted and explicitly zero column widths through table review and document reconstruction.

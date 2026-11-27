@@ -181,6 +181,7 @@ const collectCarriers = ({
     ? targetBlockIdLookup(targetSnapshot.anchors)
     : undefined;
   let unanchoredTargetCarrier = false;
+  const removedRowCells = new Set<number>();
   // The walk visits every ancestor before its descendants, so the paragraphs
   // still open at a position are exactly its paragraph ancestors. Recording the
   // nearest one here spares a `doc.resolve` per run later, which re-descends
@@ -197,11 +198,31 @@ const collectCarriers = ({
     }
     if (node.type.name === "table" && node.childCount > 0) {
       let retainedRows = node.childCount;
-      node.forEach((row) => {
-        if (expectTableRowAttrs(row).trDel != null) retainedRows--;
+      const removedRows: { row: PMNode; start: number; index: number }[] = [];
+      node.forEach((row, offset, index) => {
+        if (expectTableRowAttrs(row).trDel != null) {
+          retainedRows--;
+          removedRows.push({ row, start: position + 1 + offset, index });
+        }
       });
       if (retainedRows === 0) return false;
+      let nextRetained = node.childCount;
+      for (const { row, start, index } of removedRows.reverse()) {
+        // Consecutive deleted rows hand an existing vertical merge to the
+        // first surviving row inside its span.
+        if (
+          index + 1 < nextRetained &&
+          expectTableRowAttrs(node.child(index + 1)).trDel == null
+        )
+          nextRetained = index + 1;
+        const firstSurvivingRow = nextRetained;
+        row.forEach((cell, offset) => {
+          if (index + expectTableCellAttrs(cell).rowspan <= firstSurvivingRow)
+            removedRowCells.add(start + 1 + offset);
+        });
+      }
     }
+    if (removedRowCells.has(position)) return false;
     if (
       (node.type.name === "tableCell" || node.type.name === "tableHeader") &&
       !isTableCellRetainedInReviewView(

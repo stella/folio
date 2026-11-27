@@ -4,6 +4,7 @@ import { panic, Result } from "better-result";
 import type {
   BlockContent,
   Document,
+  DocumentBody,
   Table,
   TableRow,
 } from "../model/document";
@@ -54,6 +55,26 @@ export type TableRowLocation = {
   rowIndex: number;
   cellIndex: number;
   table: Table;
+};
+
+/** A paragraph beside a table or in an enclosing transparent wrapper's list. */
+export const survivingTableAnchor = (
+  body: DocumentBody,
+  list: ParagraphLocation["list"],
+): ParagraphLocation | undefined => {
+  let current = list;
+  for (;;) {
+    const blocks = blockListAt(body.content, current);
+    const index = blocks.findLastIndex(
+      (block) => block.type === "paragraph" && block.paraId !== undefined,
+    );
+    const paragraph = blocks[index];
+    if (paragraph?.type === "paragraph")
+      return { list: current, index, paragraph };
+    const step = current.at(-1);
+    if (step === undefined || step.kind === "tableCell") return undefined;
+    current = current.slice(0, -1);
+  }
 };
 
 /** A paragraph selects its innermost table, even through block wrappers. */
