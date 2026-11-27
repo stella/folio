@@ -1040,8 +1040,9 @@ describe("independent table forward oracles", () => {
               },
             }).unwrap();
             const tracked = tableOf(pending.document);
+            const group = tracked.formatting?.gridChange?.geometryChange;
             const deleted = tracked.rows.at(1)?.cells.at(0)?.structuralChange;
-            if (deleted?.type !== "tableCellDeletion")
+            if (group === undefined || deleted?.type !== "tableCellDeletion")
               throw new Error("Selected cell was not recorded.");
             expect(
               tracked.rows.at(0)?.cells.at(0)?.propertyChanges?.at(0)
@@ -1056,7 +1057,10 @@ describe("independent table forward oracles", () => {
               const resolved = applyDocumentOp(pending.document, {
                 type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
                 story: OP_STORIES.MAIN,
-                revisionIds: [deleted.info.id],
+                revisionIds: Array.from(
+                  { length: group.revisionIds.length + 1 },
+                  () => deleted.info.id,
+                ),
                 decision,
               }).unwrap();
               expect(resolved.document).toStrictEqual(
@@ -1175,6 +1179,44 @@ describe("independent table forward oracles", () => {
     },
     propertyTestTimeout(10_000),
   );
+
+  test("a tracked merge refuses before recording more history than DOCX can save", () => {
+    const width = 3300;
+    const table = {
+      type: "table",
+      rows: [
+        {
+          type: "tableRow",
+          cells: Array.from({ length: width }, (_, index) => ({
+            type: "tableCell",
+            content: [
+              { type: "paragraph", paraId: id(0x10000 + index), content: [] },
+            ],
+          })),
+        },
+      ],
+    } satisfies Table;
+    const start = 1_900_000_000;
+    const result = applyDocumentOp(documentOf(table), {
+      type: DOCUMENT_OP_TYPES.MERGE_CELLS,
+      ...address(targetOf(table)),
+      top: 0,
+      bottom: 1,
+      left: 0,
+      right: width,
+      newBlockIds: [],
+      revision: { id: start, author: "Reviewer" },
+      newIds: {
+        revision: Array.from(
+          { length: width + 1 },
+          (_, index) => start + index + 1,
+        ),
+      },
+    });
+    expect(result.isErr() && result.error.message).toMatch(
+      /exceeds the saved history limit/u,
+    );
+  });
 
   test("sparse raw identity, width and revision arrays refuse their shape before use", () => {
     // Array.every skips holes; sparse production-shaped payloads close the gap left by ordinary missing-field cases.

@@ -833,7 +833,8 @@ type GeometryChange = NonNullable<TableGridChange["geometryChange"]>;
 const isTableGeometryChange = (value: unknown): value is GeometryChange => {
   if (
     !record(value) ||
-    (value["type"] !== "deleteColumn" && value["type"] !== "mergeCells")
+    (value["type"] !== "deleteColumn" && value["type"] !== "mergeCells") ||
+    Object.keys(value).some((key) => key !== "type" && key !== "revisionIds")
   )
     return false;
   const ids = value["revisionIds"];

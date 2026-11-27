@@ -2548,6 +2548,19 @@ const suggestHorizontalMerge = (
   }
   const rows = [...table.rows];
   rows[op.top] = { ...row, cells };
+  const geometryChange = {
+    type: "mergeCells" as const,
+    revisionIds: [
+      ownerStamp.id,
+      tableStamp.id,
+      ...deletedStamps.map(({ id }) => id),
+    ],
+  };
+  if (JSON.stringify(geometryChange).length > MAX_TABLE_GEOMETRY_HISTORY_LENGTH)
+    return mismatch(
+      op,
+      "The combined merge review exceeds the saved history limit.",
+    );
   return Result.ok({
     ...table,
     rows,
@@ -2558,14 +2571,7 @@ const suggestHorizontalMerge = (
         columnWidths:
           table.columnWidths ??
           Array.from({ length: grid.width }, () => undefined),
-        geometryChange: {
-          type: "mergeCells",
-          revisionIds: [
-            ownerStamp.id,
-            tableStamp.id,
-            ...deletedStamps.map(({ id }) => id),
-          ],
-        },
+        geometryChange,
       },
     },
     propertyChanges: [

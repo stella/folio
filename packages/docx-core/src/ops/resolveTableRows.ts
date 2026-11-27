@@ -71,6 +71,7 @@ export const withBelongingTableGeometry = (
   op: ResolveRevisionOp,
 ): ResolveRevisionOp => {
   const ids = new Set(op.revisionIds);
+  const uniqueCount = ids.size;
   for (const table of tablesIn(document, op.story)) {
     const grid = table.formatting?.gridChange;
     const members = grid?.geometryChange?.revisionIds;
@@ -80,9 +81,7 @@ export const withBelongingTableGeometry = (
     ids.add(grid.id);
     for (const id of members) if (local.has(id)) ids.add(id);
   }
-  return ids.size === op.revisionIds.length
-    ? op
-    : { ...op, revisionIds: [...ids] };
+  return ids.size === uniqueCount ? op : { ...op, revisionIds: [...ids] };
 };
 
 const propertyIds = (
