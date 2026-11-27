@@ -30,8 +30,8 @@ const BUDGETS = {
   // +3.5 kB: a suggested deletion keeps the comment ranges it crosses, a
   // suggested join or paste keeps the records at its seam, and rejecting a
   // link insertion that cut an inline control gives one result in every order.
-  react: { minified: 3_751_500, gzip: 1_181_000, docxOps: 692_750 },
-  vue: { minified: 3_446_400, gzip: 1_077_000, docxOps: 692_700 },
+  react: { minified: 3_751_500, gzip: 1_181_000, docxOps: 694_050 },
+  vue: { minified: 3_446_400, gzip: 1_077_000, docxOps: 694_000 },
 } as const satisfies Record<Adapter, Metrics>;
 
 const HOST_PEERS = [
