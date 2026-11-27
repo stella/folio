@@ -170,9 +170,14 @@ export const paragraphLeftAfter = ({
     if (!join) return null;
     const { next, nextPosition: nextPos } = join;
     const mark = expectParagraphAttrs(next).pPrMark;
+    // Accepting removes a deleted mark, and an added one another author
+    // deleted after (`deletion`), alike.
     const nextGoes =
       removedBreakPositions?.has(nextPos) ||
-      (mark != null && (mark.kind === "del" || mark.kind === "moveFrom"));
+      (mark != null &&
+        (mark.kind === "del" ||
+          mark.kind === "moveFrom" ||
+          mark.deletion !== undefined));
     if (!nextGoes || !paragraphJoinAfter(doc, nextPos + next.nodeSize))
       return nextPos;
     position = nextPos;

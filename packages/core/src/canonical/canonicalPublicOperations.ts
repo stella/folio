@@ -118,6 +118,7 @@ import {
   insertionAfterPendingBreak,
   isDeletedPPrMark,
   joinStopsAtTableAfter,
+  markGoesWhenAccepted,
   PENDING_BREAK_TABLE_REFUSAL,
   PENDING_JOIN_INSERTION_REFUSAL,
   type PendingJoinParagraphs,
@@ -2381,7 +2382,7 @@ const resolveBlockInsertion = ({
       ? {
           inheritsFrom: {
             blockId: formattingSource.blockId,
-            markDeleted: isDeletedPPrMark(
+            markDeleted: markGoesWhenAccepted(
               formattingSource.node.attrs["pPrMark"],
             ),
             followsAnchor:
@@ -2998,7 +2999,7 @@ const insertionIntentsAsItRuns = ({
   // this block list. A table or wrapper ends the chain.
   if (!inheritsFrom.markDeleted && !inheritsFrom.followsAnchor) {
     let index = at.index;
-    while (isDeletedPPrMark(source.pPrMark)) {
+    while (markGoesWhenAccepted(source.pPrMark)) {
       const next = at.blocks[++index];
       if (next?.type !== "paragraph") break;
       source = next;

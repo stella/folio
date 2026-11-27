@@ -29,7 +29,7 @@ export const isDeletedPPrMark = (value: unknown): boolean =>
  * A paragraph mark accepting removes: a deleted one, or an added one another
  * author deleted after (`deletion`), as docx-core's `markGoes` reads it.
  */
-const markGoesWhenAccepted = (value: unknown): boolean =>
+export const markGoesWhenAccepted = (value: unknown): boolean =>
   isDeletedPPrMark(value) ||
   (typeof value === "object" &&
     value !== null &&
@@ -144,7 +144,7 @@ const joinedFromBefore = (doc: PMNode, position: number): number | null => {
   const previous = index < 0 ? null : $place.parent.child(index);
   if (
     previous?.type.name !== "paragraph" ||
-    !isDeletedPPrMark(previous.attrs["pPrMark"])
+    !markGoesWhenAccepted(previous.attrs["pPrMark"])
   )
     return null;
   if (
@@ -233,7 +233,7 @@ export const pendingJoinParagraphs = (
   let after = paragraphPos;
   if (
     paragraph?.type.name === "paragraph" &&
-    isDeletedPPrMark(paragraph.attrs["pPrMark"]) &&
+    markGoesWhenAccepted(paragraph.attrs["pPrMark"]) &&
     (joinsIn(options) || joinRunsWordsInto(options))
   ) {
     const survivor = paragraphLeftAfter({ doc, paragraphPos });
@@ -293,7 +293,7 @@ export const insertionAfterPendingBreak = (
   options: PendingJoinBoundsOptions,
 ): PendingBreakInsertion => {
   const { doc, paragraphPos, noteReferences } = options;
-  if (!isDeletedPPrMark(doc.nodeAt(paragraphPos)?.attrs["pPrMark"]))
+  if (!markGoesWhenAccepted(doc.nodeAt(paragraphPos)?.attrs["pPrMark"]))
     return { type: "afterParagraph" };
   if (!keepsWords(options)) {
     const { last } = pendingJoinParagraphs(options);
