@@ -7707,6 +7707,7 @@ const joinOps = (
           // emptied paragraph whatever stands before it.
           (endsControl && standsAfterBlock),
     followingTableCanReceiveRunIn: tableTarget !== undefined,
+    followingTableReceiverPending: stillPendingReceiver,
     holdsContentOnceAccepted: paragraphHoldsContentOnceAccepted(chained),
     followingBlockCanReceiveRunIn: blockTarget !== undefined,
     needsFollowingCommentHost:
@@ -9179,10 +9180,21 @@ const planSingleRecordResolution = (
     if (markResolved && !keepsBreak) {
       let depth = retiredCutDepths.get(idKey(paraId)) ?? mark.resolutionJoin;
       const blocks = blockListAt(body.content, location.list);
-      const following =
-        purpose === "markup-view"
-          ? blockFollower(blocks, location.index).block
-          : undefined;
+      // The block the paragraph's joins end at: past paragraphs whose marks
+      // this resolution takes too, as resolving them in turn reaches it.
+      let following: BlockContent | undefined;
+      if (purpose === "markup-view") {
+        let at = blockFollower(blocks, location.index);
+        while (
+          at.block?.type === "paragraph" &&
+          at.block.pPrMark !== undefined &&
+          ids.has(at.block.pPrMark.info.id) &&
+          markWasAdded(at.block.pPrMark.kind) !==
+            (op.decision === REVISION_DECISIONS.ACCEPT)
+        )
+          at = blockFollower(blocks, at.index);
+        following = at.block;
+      }
       const pendingReceiverTableIds =
         following?.type === "table" &&
         authoredTableReceiverIsPending({

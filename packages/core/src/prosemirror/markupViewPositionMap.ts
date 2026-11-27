@@ -4,7 +4,9 @@ import { StepMap } from "prosemirror-transform";
 import type { RevisionDecision } from "@stll/docx-core/ops";
 
 import { COMMENT_REFERENCE_NODE_NAME } from "./commentReferenceIntegrity";
+import { BLOCK_BOOKMARK_BOUNDARY_NODE_NAME } from "./extensions/nodes/BlockBookmarkBoundaryExtension";
 import { BLOCK_MOVE_RANGE_BOUNDARY_NODE_NAME } from "./extensions/nodes/BlockMoveRangeBoundaryExtension";
+import { BOOKMARK_BOUNDARY_NODE_NAME } from "./extensions/nodes/BookmarkBoundaryExtension";
 import { MOVE_RANGE_BOUNDARY_NODE_NAME } from "./extensions/nodes/MoveRangeBoundaryExtension";
 import { RANGE_ANCHOR_NODE_NAME } from "./extensions/nodes/RangeAnchorExtension";
 import { isUsableParaId } from "./paraIds";
@@ -287,6 +289,10 @@ const isAddressEdge = (span: Span): boolean =>
   span.key.startsWith("open:") ||
   span.key.startsWith("close:") ||
   span.key.startsWith(`leaf:${COMMENT_REFERENCE_NODE_NAME}:`) ||
+  // A paragraph that goes hands its bookmarks to a neighbour, across that
+  // paragraph's edge, as it does its move ranges and comment anchors.
+  span.key.startsWith(`leaf:${BOOKMARK_BOUNDARY_NODE_NAME}:`) ||
+  span.key.startsWith(`leaf:${BLOCK_BOOKMARK_BOUNDARY_NODE_NAME}:`) ||
   span.key.startsWith(`leaf:${MOVE_RANGE_BOUNDARY_NODE_NAME}`) ||
   span.key.startsWith(`leaf:${BLOCK_MOVE_RANGE_BOUNDARY_NODE_NAME}`) ||
   span.key.startsWith(`leaf:${RANGE_ANCHOR_NODE_NAME}`);

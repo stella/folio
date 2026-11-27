@@ -326,10 +326,11 @@ export const paragraphGoes = (
 /**
  * Whether what stands right after a paragraph whose mark goes is itself removed
  * by this resolution, so the paragraph runs on into what stands after that, as
- * it would had the removed block never been there: a table it removes, or, when
- * rejecting, an inserted paragraph it empties with a table after it. (Accepted,
- * a deleted paragraph did stand there, and the join ended at it. Paragraphs join
- * among themselves without help.)
+ * it would had the removed block never been there: a table it removes, or
+ * paragraphs it removes whole with a table after them. Accepting the marks one
+ * at a time joins the paragraph into those and runs the result into the table,
+ * so accepting them all does too. (Paragraphs join among themselves without
+ * help.)
  */
 export const paragraphBeforeRemovedBlock = ({
   parent,
@@ -346,7 +347,7 @@ export const paragraphBeforeRemovedBlock = ({
     return false;
   }
   if (tableGoes(next, mode)) return true;
-  if (mode !== "reject" || paragraphGoes(paragraph, mode)) return false;
+  if (paragraphGoes(paragraph, mode)) return false;
   let following = index + 1;
   while (following < parent.childCount) {
     const block = parent.child(following);

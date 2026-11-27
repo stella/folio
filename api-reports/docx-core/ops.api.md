@@ -1195,6 +1195,7 @@ export const paragraphMarkOutcome: (input: {
     markWasAdded: boolean;
     containerStillEndsWithParagraph: boolean;
     followingTableCanReceiveRunIn: boolean;
+    followingTableReceiverPending?: boolean;
     holdsContentOnceAccepted?: ParagraphContentVerdict;
     followingBlockCanReceiveRunIn?: boolean;
     needsFollowingCommentHost?: boolean;
