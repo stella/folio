@@ -2,6 +2,7 @@ import { isNoteReferenceId } from "../model/content";
 import {
   type BlockContent,
   type BlockCustomXml,
+  type BlockSdt,
   type DocxPackage,
   type InlineSdt,
   type MathEquation,
@@ -28,6 +29,7 @@ import {
   XML_NAMESPACE_URI,
 } from "../xml/xmlNamespaceContext";
 import { blockListEndsInParagraph } from "./blocks";
+import { structurallyEqual } from "./equality";
 import {
   IDENTITY_SPACES,
   identityKeysIn,
@@ -326,6 +328,10 @@ const movableControlId = (
   }
   return id;
 };
+
+export const movableBlockControl = ({ properties }: BlockSdt): boolean =>
+  (properties.lock === undefined || properties.lock === "unlocked") &&
+  movableControlId(properties) !== undefined;
 
 type ProofingKind = "spelling" | "grammar";
 
@@ -991,17 +997,89 @@ export const tableMoveOwnershipMatches = (
   return true;
 };
 
+/** The control shells on opposite sides of the recorded paragraph moves. */
+export const tableBlockControlHandoffs = (
+  table: Table,
+): ReadonlyMap<number, number> => {
+  const controls = new Map<number, number>();
+  const geometry = table.formatting?.gridChange?.geometryChange;
+  if (geometry?.type !== "mergeCells") return controls;
+  const pairs = [
+    ...(geometry.moves ?? []).map(
+      ({ source, destination }) => [source, destination] as const,
+    ),
+    ...(geometry.nestedMoves ?? []).flatMap(({ paragraphs }) => paragraphs),
+  ];
+  if (pairs.length === 0) return controls;
+  const anchors = new Map<string, readonly BlockSdt[]>();
+  const collect = (
+    blocks: readonly BlockContent[],
+    scope: readonly BlockSdt[],
+  ): void => {
+    for (const block of blocks) {
+      if (block.type === "blockSdt") collect(block.content, [...scope, block]);
+      else if (block.type === "blockCustomXml") collect(block.content, scope);
+      else if (block.type === "table") {
+        for (const row of block.rows)
+          for (const cell of row.cells) collect(cell.content, scope);
+      } else if (
+        block.type === "paragraph" &&
+        block.paraId !== undefined &&
+        scope.length > 0
+      ) {
+        anchors.set(idKey(block.paraId), scope);
+      }
+    }
+  };
+  for (const row of table.rows)
+    for (const cell of row.cells) collect(cell.content, []);
+  for (const [source, destination] of pairs) {
+    const originals = anchors.get(idKey(source));
+    const copies = anchors.get(idKey(destination));
+    if (
+      originals === undefined ||
+      copies === undefined ||
+      originals.length !== copies.length
+    )
+      continue;
+    for (const [index, original] of originals.entries()) {
+      const copy = copies[index];
+      if (
+        copy === undefined ||
+        !movableBlockControl(original) ||
+        !movableBlockControl(copy)
+      )
+        continue;
+      const { id: from, ...originalProperties } = original.properties;
+      const { id: to, ...copyProperties } = copy.properties;
+      if (
+        from !== undefined &&
+        to !== undefined &&
+        from !== to &&
+        structurallyEqual(originalProperties, copyProperties)
+      )
+        controls.set(to, from);
+    }
+  }
+  return controls;
+};
+
 type ResolveTableMovesOptions = {
   table: Table;
   reject: boolean;
-  propertyHandoffs: ReadonlyMap<number, number>;
+  handoffs: TableMoveHandoffs;
+};
+
+export type TableMoveHandoffs = {
+  properties: ReadonlyMap<number, number>;
+  controls: ReadonlyMap<number, number>;
 };
 
 /** Settle copied identities with the cell topology. */
 export const resolveTableMoves = ({
   table,
   reject,
-  propertyHandoffs,
+  handoffs,
 }: ResolveTableMovesOptions): Table => {
   const geometry = table.formatting?.gridChange?.geometryChange;
   if (
@@ -1028,13 +1106,27 @@ export const resolveTableMoves = ({
         Object.assign({}, cell, {
           content: cell.content.flatMap(
             function restore(block): BlockContent[] {
-              if (block.type === "blockCustomXml") {
+              if (
+                block.type === "blockCustomXml" ||
+                block.type === "blockSdt"
+              ) {
                 const content = block.content.flatMap(restore);
                 // A destination wrapper whose copied children are all gone
                 // goes with them. Keep pre-existing empty wrappers.
-                return content.length === 0 && block.content.length > 0
-                  ? []
-                  : [{ ...block, content }];
+                if (content.length === 0 && block.content.length > 0) return [];
+                const id =
+                  block.type === "blockSdt" && block.properties.id !== undefined
+                    ? handoffs.controls.get(block.properties.id)
+                    : undefined;
+                if (!reject && block.type === "blockSdt" && id !== undefined)
+                  return [
+                    {
+                      ...block,
+                      properties: { ...block.properties, id },
+                      content,
+                    },
+                  ];
+                return [{ ...block, content }];
               }
               if (block.type === "table") {
                 const move = block.rows
@@ -1055,7 +1147,7 @@ export const resolveTableMoves = ({
                       source,
                     ]),
                   ),
-                  properties: propertyHandoffs,
+                  properties: handoffs.properties,
                 });
                 const stamps = new Set(record.rows);
                 placed.rows = placed.rows.map((child) => {

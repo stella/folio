@@ -4,6 +4,7 @@ import { panic, Result } from "better-result";
 import {
   type BlockContent,
   type BlockCustomXml,
+  type BlockSdt,
   type Document,
   finalizeParagraphFormatting,
   MAX_REVISION_ID,
@@ -72,6 +73,7 @@ import {
   markEmptyTableMove,
   markNestedTableMove,
   markTableMove,
+  movableBlockControl,
   movableCustomXmlBlock,
   moveRangeAllocator,
   type NestedTableMoveSource,
@@ -2343,7 +2345,8 @@ type MergeOptions = {
   grid: TableGrid;
 };
 
-type MergeMoveSource = { wrappers: readonly BlockCustomXml[] } & (
+type MergeWrapper = BlockCustomXml | BlockSdt;
+type MergeMoveSource = { wrappers: readonly MergeWrapper[] } & (
   | { type: "paragraph"; source: TableMoveSource }
   | { type: "table"; source: NestedTableMoveSource }
 );
@@ -2354,7 +2357,7 @@ const mergeMoveSources = (
   const moves: MergeMoveSource[] = [];
   const collect = (
     block: BlockContent,
-    wrappers: readonly BlockCustomXml[],
+    wrappers: readonly MergeWrapper[],
   ): boolean => {
     switch (block.type) {
       case "paragraph": {
@@ -2371,6 +2374,12 @@ const mergeMoveSources = (
       }
       case "blockCustomXml": {
         if (block.content.length === 0 || !movableCustomXmlBlock(block))
+          return false;
+        const inside = [...wrappers, block];
+        return block.content.every((child) => collect(child, inside));
+      }
+      case "blockSdt": {
+        if (block.content.length === 0 || !movableBlockControl(block))
           return false;
         const inside = [...wrappers, block];
         return block.content.every((child) => collect(child, inside));
@@ -2396,7 +2405,19 @@ const mergeMoveParagraphCount = (moves: readonly MergeMoveSource[]): number =>
     0,
   );
 
-const mergeMoveControlCount = (moves: readonly MergeMoveSource[]): number =>
+const mergeMoveBlockControls = (
+  moves: readonly MergeMoveSource[],
+): Set<BlockSdt> => {
+  const controls = new Set<BlockSdt>();
+  for (const move of moves)
+    for (const wrapper of move.wrappers)
+      if (wrapper.type === "blockSdt") controls.add(wrapper);
+  return controls;
+};
+
+const mergeMoveInlineControlCount = (
+  moves: readonly MergeMoveSource[],
+): number =>
   moves.reduce(
     (count, move) =>
       count + (move.type === "paragraph" ? move.source.controls.length : 0),
@@ -2478,7 +2499,8 @@ const suggestMerge = ({
   }
   const stamps = stampsFor(op, structuralCount + 3 + moveCount);
   if (stamps.isErr()) return Result.err(stamps.error);
-  const controlCount = mergeMoveControlCount(moves);
+  const blockControls = mergeMoveBlockControls(moves);
+  const controlCount = blockControls.size + mergeMoveInlineControlCount(moves);
   const controlIds = (op.newIds?.control ?? []).slice(0, controlCount);
   if (controlIds.length !== controlCount)
     return refuse({
@@ -2522,16 +2544,33 @@ const suggestMerge = ({
   >();
   const nestedMoves: TableGeometryNestedMove[] = [];
   const destinationBlocks: BlockContent[] = [];
-  const wrappers = new Map<BlockCustomXml, BlockCustomXml>();
+  const wrappers = new Map<MergeWrapper, MergeWrapper>();
+  const copiedControls = new Map<BlockSdt, number>();
+  let nextControl = 0;
+  for (const control of blockControls) {
+    const temporary = controlIds[nextControl++];
+    if (temporary === undefined)
+      return mismatch(op, "A moved control needs a temporary id.");
+    copiedControls.set(control, temporary);
+  }
   const appendDestination = (
-    scope: readonly BlockCustomXml[],
+    scope: readonly MergeWrapper[],
     block: BlockContent,
   ) => {
     let target = destinationBlocks;
     for (const source of scope) {
       let wrapper = wrappers.get(source);
       if (wrapper === undefined) {
-        wrapper = { ...source, content: [] };
+        const temporary =
+          source.type === "blockSdt" ? copiedControls.get(source) : undefined;
+        wrapper =
+          source.type === "blockSdt" && temporary !== undefined
+            ? {
+                ...source,
+                properties: { ...source.properties, id: temporary },
+                content: [],
+              }
+            : { ...source, content: [] };
         wrappers.set(source, wrapper);
         target.push(wrapper);
       }
@@ -2552,7 +2591,6 @@ const suggestMerge = ({
     : undefined;
   let nextBlockId = continuationCount;
   let nextStamp = 0;
-  let nextControl = 0;
   for (const move of moves) {
     if (move.type === "table") {
       const { source } = move;
@@ -2665,7 +2703,7 @@ const suggestMerge = ({
     ],
   };
   const markBlock = (block: BlockContent): BlockContent => {
-    if (block.type === "blockCustomXml")
+    if (block.type === "blockCustomXml" || block.type === "blockSdt")
       return { ...block, content: block.content.map(markBlock) };
     return block.type === "paragraph" && block.paraId !== undefined
       ? (moved.get(idKey(block.paraId))?.source ?? block)
@@ -3200,7 +3238,8 @@ export const tableEditCopyIdentityDemand = (
   const moves = mergeMoveSources(selection.value.selected);
   if (moves === undefined) return none;
   return {
-    controls: mergeMoveControlCount(moves),
+    controls:
+      mergeMoveBlockControls(moves).size + mergeMoveInlineControlCount(moves),
     revisions: moves.reduce(
       (total, move) =>
         total + (move.type === "table" ? move.source.properties.length : 0),

@@ -31,6 +31,8 @@ import type { ApplyOps } from "./resolve";
 import { reviewFieldsOf } from "./review";
 import {
   resolveTableMoves,
+  tableBlockControlHandoffs,
+  type TableMoveHandoffs,
   tableMoveOwnershipMatches,
   tableMoveRevisionIds,
 } from "./tableCellMove";
@@ -944,14 +946,14 @@ const endAdjacentMerges = ({
 
 type ResolveCellChangesOptions = {
   table: Table;
-  propertyHandoffs?: ReadonlyMap<number, number>;
+  moveHandoffs?: TableMoveHandoffs;
   ids: ReadonlySet<number>;
   reject: boolean;
   selectedGridChange: boolean;
 };
 const resolveCellChanges = ({
   table,
-  propertyHandoffs,
+  moveHandoffs,
   ids,
   reject,
   selectedGridChange,
@@ -1032,7 +1034,7 @@ const resolveCellChanges = ({
           selected: mergeRows,
         }),
         reject,
-        propertyHandoffs: propertyHandoffs ?? tablePropertyHandoffs(table),
+        handoffs: moveHandoffs ?? tableMoveHandoffs(table),
       }),
       holdsRemovedColumns: false,
     });
@@ -1244,6 +1246,11 @@ const tablePropertyHandoffs = (table: Table): ReadonlyMap<number, number> => {
   return handoffs;
 };
 
+const tableMoveHandoffs = (table: Table): TableMoveHandoffs => ({
+  properties: tablePropertyHandoffs(table),
+  controls: tableBlockControlHandoffs(table),
+});
+
 export const resolveTableRows = ({
   document,
   op,
@@ -1253,7 +1260,7 @@ export const resolveTableRows = ({
   const reject = op.decision === REVISION_DECISIONS.REJECT;
   let current = document;
   const edits: DocumentEdit[] = [];
-  const propertyHandoffs = new Map<number, ReadonlyMap<number, number>>();
+  const moveHandoffs = new Map<number, TableMoveHandoffs>();
 
   const settled = marksInRemovedStructure(document, op);
   if (settled.length > 0) {
@@ -1269,7 +1276,7 @@ export const resolveTableRows = ({
     // Match both copies before row decisions remove one of them.
     const grid = originalTable.formatting?.gridChange;
     if (grid !== undefined && ids.has(grid.id))
-      propertyHandoffs.set(grid.id, tablePropertyHandoffs(originalTable));
+      moveHandoffs.set(grid.id, tableMoveHandoffs(originalTable));
     // A merge already records the replacement cell topology. Applying its
     // row deletions separately would carry old merge owners into that topology.
     const mergeRows = reject
@@ -1386,9 +1393,7 @@ export const resolveTableRows = ({
     const selectedGridChange = grid !== undefined && ids.has(grid.id);
     const cellsResolved = resolveCellChanges({
       table,
-      propertyHandoffs: selectedGridChange
-        ? propertyHandoffs.get(grid.id)
-        : undefined,
+      moveHandoffs: selectedGridChange ? moveHandoffs.get(grid.id) : undefined,
       ids,
       reject,
       selectedGridChange,
