@@ -609,7 +609,11 @@ test.each([
       intent,
       mode: {
         type: "suggesting",
-        revision: { id: ids.revisionId, author: "Reviewer" },
+        revision: {
+          id: ids.revisionId,
+          author: "Reviewer",
+          date: "2026-11-27T00:00:00Z",
+        },
         newIds: ids.newIds,
       },
     }).unwrap();
@@ -792,7 +796,11 @@ test.each(["deleteColumn", "mergeCells"] as const)(
         intent,
         mode: {
           type: "suggesting",
-          revision: { id: revisionId, author: "Reviewer" },
+          revision: {
+            id: revisionId,
+            author: "Reviewer",
+            date: "2026-11-27T00:00:00Z",
+          },
           newIds,
         },
       }).unwrap();

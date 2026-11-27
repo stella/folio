@@ -127,7 +127,11 @@ const allocateTrackedMerge = (document: Document) => {
     intent,
     mode: {
       type: "suggesting",
-      revision: { id: revisionId, author: "Reviewer" },
+      revision: {
+        id: revisionId,
+        author: "Reviewer",
+        date: "2026-11-27T00:00:00Z",
+      },
       newIds,
     },
   }).unwrap();
