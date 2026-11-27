@@ -33,28 +33,48 @@ const catalogs = new Map<
 >();
 
 // Literal URLs let bundlers copy each data file without putting its strings in
-// JavaScript. The relative path holds from `src/` and `dist/` alike.
-const PACKAGED_CATALOG_URLS = {
-  ar: new URL("../../assets/i18n/ar.json", import.meta.url),
-  cs: new URL("../../assets/i18n/cs.json", import.meta.url),
-  de: new URL("../../assets/i18n/de.json", import.meta.url),
-  es: new URL("../../assets/i18n/es.json", import.meta.url),
-  et: new URL("../../assets/i18n/et.json", import.meta.url),
-  fr: new URL("../../assets/i18n/fr.json", import.meta.url),
-  he: new URL("../../assets/i18n/he.json", import.meta.url),
-  hi: new URL("../../assets/i18n/hi.json", import.meta.url),
-  hu: new URL("../../assets/i18n/hu.json", import.meta.url),
-  lt: new URL("../../assets/i18n/lt.json", import.meta.url),
-  lv: new URL("../../assets/i18n/lv.json", import.meta.url),
-  pl: new URL("../../assets/i18n/pl.json", import.meta.url),
-  "pt-BR": new URL("../../assets/i18n/pt-BR.json", import.meta.url),
-  sk: new URL("../../assets/i18n/sk.json", import.meta.url),
-  tr: new URL("../../assets/i18n/tr.json", import.meta.url),
-  "zh-CN": new URL("../../assets/i18n/zh-CN.json", import.meta.url),
-} as const satisfies Record<TranslatedFolioLocale, URL>;
-
-const packagedCatalogUrl = (locale: TranslatedFolioLocale): URL =>
-  PACKAGED_CATALOG_URLS[locale];
+// JavaScript. Construct only the requested URL: an English-only non-ESM host
+// must not evaluate `import.meta.url` while its editor module initializes.
+const packagedCatalogUrl = (locale: TranslatedFolioLocale): URL => {
+  switch (locale) {
+    case "ar":
+      return new URL("../../assets/i18n/ar.json", import.meta.url);
+    case "cs":
+      return new URL("../../assets/i18n/cs.json", import.meta.url);
+    case "de":
+      return new URL("../../assets/i18n/de.json", import.meta.url);
+    case "es":
+      return new URL("../../assets/i18n/es.json", import.meta.url);
+    case "et":
+      return new URL("../../assets/i18n/et.json", import.meta.url);
+    case "fr":
+      return new URL("../../assets/i18n/fr.json", import.meta.url);
+    case "he":
+      return new URL("../../assets/i18n/he.json", import.meta.url);
+    case "hi":
+      return new URL("../../assets/i18n/hi.json", import.meta.url);
+    case "hu":
+      return new URL("../../assets/i18n/hu.json", import.meta.url);
+    case "lt":
+      return new URL("../../assets/i18n/lt.json", import.meta.url);
+    case "lv":
+      return new URL("../../assets/i18n/lv.json", import.meta.url);
+    case "pl":
+      return new URL("../../assets/i18n/pl.json", import.meta.url);
+    case "pt-BR":
+      return new URL("../../assets/i18n/pt-BR.json", import.meta.url);
+    case "sk":
+      return new URL("../../assets/i18n/sk.json", import.meta.url);
+    case "tr":
+      return new URL("../../assets/i18n/tr.json", import.meta.url);
+    case "zh-CN":
+      return new URL("../../assets/i18n/zh-CN.json", import.meta.url);
+    default: {
+      const exhaustive: never = locale;
+      return exhaustive;
+    }
+  }
+};
 
 const catalogUrl = (locale: TranslatedFolioLocale): URL => {
   const { baseUrl } = assetOptions;
