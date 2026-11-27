@@ -22,6 +22,7 @@ import {
   resolveParagraphNumbering,
 } from "../../numberingReference";
 import type { StyleMap } from "../../styleParser";
+import { englishCardinal, englishOrdinal } from "./spelledNumbers";
 import type { DocxBlockNumbering } from "./types";
 
 export type ParagraphLabel = {
@@ -37,8 +38,8 @@ export type ParagraphLabel = {
   /**
    * The label and what its list puts after it, when the label can stand as
    * text: it reads the same wherever the file is opened. Null for a bullet,
-   * whose glyph belongs to a font, for a number a language spells out, and
-   * for an ordinal in a language whose way of writing it is not known.
+   * whose glyph belongs to a font, and for an ordinal or a number in words
+   * in a language whose way of writing it is not known.
    */
   asText: { label: string; suffix: LevelSuffix } | null;
 };
@@ -59,6 +60,23 @@ const PLAIN_FORMATS: ReadonlySet<string> = new Set([
   "lowerRoman",
   "upperLetter",
   "lowerLetter",
+]);
+
+/**
+ * Formats a language writes out in words, by language. A language not
+ * listed here has no entry: its words are not known.
+ */
+const SPELLED: Readonly<
+  Record<string, Readonly<Record<string, (value: number) => string | null>>>
+> = {
+  en: { cardinalText: englishCardinal, ordinalText: englishOrdinal },
+};
+
+/** Counter formats whose text depends on the paragraph's language. */
+const BY_LANGUAGE: ReadonlySet<string> = new Set([
+  "ordinal",
+  "cardinalText",
+  "ordinalText",
 ]);
 
 const LEVEL_PLACEHOLDER = /%([1-9])/gu;
@@ -87,8 +105,9 @@ type AsTextOptions = {
   template: string;
   levelFormats: readonly string[] | undefined;
   suffix: LevelSuffix | undefined;
-  /** Whether the paragraph's language writes `ordinal` a known way. */
-  ordinalKnown: boolean;
+  /** Whether the paragraph's language writes `ordinal` and the counters in
+   *  words a known way. */
+  writtenKnown: boolean;
 };
 
 const labelAsText = ({
@@ -96,7 +115,7 @@ const labelAsText = ({
   template,
   levelFormats,
   suffix,
-  ordinalKnown,
+  writtenKnown,
 }: AsTextOptions): ParagraphLabel["asText"] => {
   if (label.trim() === "") {
     return null;
@@ -105,7 +124,7 @@ const labelAsText = ({
     const format = levelFormats?.[Number(digit) - 1];
     const plain =
       format !== undefined &&
-      (PLAIN_FORMATS.has(format) || (format === "ordinal" && ordinalKnown));
+      (PLAIN_FORMATS.has(format) || (BY_LANGUAGE.has(format) && writtenKnown));
     if (!plain) {
       return null;
     }
@@ -194,7 +213,10 @@ type RenderedLabel = ReturnType<typeof resolveListTemplateWithComponents> & {
   known: boolean;
 };
 
-/** A level text over its counters, ordinals written by the language. */
+/**
+ * A level text over its counters, ordinals and counters in words written
+ * by the language.
+ */
 const renderLabel = ({
   template,
   counters,
@@ -208,33 +230,53 @@ const renderLabel = ({
     levelFormats,
     forceDecimal,
   });
-  const isOrdinal = (level: number): boolean =>
-    !forceDecimal && levelFormats?.[level] === "ordinal";
-  const hasOrdinal = rendered.components.some(({ level }) => isOrdinal(level));
+  const formatOf = (level: number): string | undefined =>
+    forceDecimal ? undefined : levelFormats?.[level];
+  const byLanguage = rendered.components.some(({ level }) =>
+    BY_LANGUAGE.has(formatOf(level) ?? ""),
+  );
+  if (!byLanguage) {
+    return { ...rendered, byLanguage: false, known: true };
+  }
   const primary = primaryLanguage(language);
   const ordinal = primary === null ? undefined : ORDINALS[primary];
-  if (!hasOrdinal || ordinal === undefined) {
-    return {
-      ...rendered,
-      byLanguage: hasOrdinal,
-      known: !hasOrdinal || primary === "en",
-    };
-  }
+  const spelled = primary === null ? undefined : SPELLED[primary];
+  // How the language writes a counter of a level: undefined keeps the text
+  // the shared marker code wrote (English ordinals and every format that
+  // does not depend on the language), null is a way not known.
+  const writerOf = (
+    level: number,
+  ): ((value: number) => string | null) | null | undefined => {
+    const format = formatOf(level);
+    if (format === "ordinal") {
+      return ordinal ?? (primary === "en" ? undefined : null);
+    }
+    if (format === "cardinalText" || format === "ordinalText") {
+      return spelled?.[format] ?? null;
+    }
+    return undefined;
+  };
   let value = "";
   let cursor = 0;
+  let known = true;
   const components = rendered.components.map((component) => {
     const { level, start, end } = component;
     value += rendered.value.slice(cursor, start);
     cursor = end;
-    const written = isOrdinal(level)
-      ? ordinal(counters[level] ?? 0)
-      : rendered.value.slice(start, end);
+    const writer = writerOf(level);
+    const written =
+      writer === undefined || writer === null
+        ? null
+        : writer(counters[level] ?? 0);
+    if (writer === null || (writer !== undefined && written === null)) {
+      known = false;
+    }
     const moved = { ...component, start: value.length };
-    value += written;
+    value += written ?? rendered.value.slice(start, end);
     return { ...moved, end: value.length };
   });
   value += rendered.value.slice(cursor);
-  return { value, components, byLanguage: true, known: true };
+  return { value, components, byLanguage: true, known };
 };
 
 /**
@@ -413,7 +455,7 @@ export const createLabelCounter = ({
           template,
           levelFormats: listRendering.levelNumFmts,
           suffix: listRendering.markerSuffix,
-          ordinalKnown: rendered.known,
+          writtenKnown: rendered.known,
         }),
         paragraphNumber: stripTrailingPeriods(label.trim()),
         numberOnly: numberOnlyLabel(rendered),
