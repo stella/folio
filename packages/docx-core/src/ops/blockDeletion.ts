@@ -518,6 +518,35 @@ export const sectionEndpointRemoval = ({
 };
 
 /**
+ * The section break the paragraph at `location` ends, taken off on its own
+ * before a replacement of the blocks around it, which moves no break: as
+ * {@link sectionEndpointRemoval} does in the main body, and elsewhere by
+ * replacing the paragraph alone.
+ */
+export const sectionBreakTakenFirst = (
+  story: OpStory,
+  location: ParagraphLocation,
+): { ops: DocumentOp[]; paragraph: Paragraph } => {
+  const { paragraph } = location;
+  if (paragraph.sectionProperties === undefined) return { ops: [], paragraph };
+  const removal = sectionEndpointRemoval({ story, location });
+  if (removal.ops.length > 0) return removal;
+  const { sectionProperties: _section, ...unsectioned } = paragraph;
+  return {
+    ops: [
+      {
+        type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+        story,
+        expected: [paragraph],
+        blocks: [unsectioned],
+        sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE,
+      },
+    ],
+    paragraph: unsectioned,
+  };
+};
+
+/**
  * Whether `block`, following a paragraph, is a block that paragraph's mark
  * neither joins nor runs into: a block content control, custom XML or a
  * preserved block. Resolving the mark away removes the paragraph only when
@@ -1017,9 +1046,9 @@ export const deleteBlocks = ({
   const endsNoSection = found.every(
     ({ paragraph }) => paragraph.sectionProperties === undefined,
   );
-  const follower = endsNoSection
-    ? blockFollower(list, last.index)
-    : { index: last.index + 1, block: list[last.index + 1], standing: [] };
+  // So do they after a section break, which goes with its mark on its own
+  // first, as resolving that mark takes it.
+  const follower = blockFollower(list, last.index);
   const { index: followerIndex, block: following } = follower;
   const standing = following?.type === "paragraph" ? follower.standing : [];
   const terminal = following === undefined;
@@ -1198,21 +1227,28 @@ export const deleteBlocks = ({
     op.revision !== undefined &&
     isOpaqueFollower(following) &&
     endsWithParagraph;
+  // A paragraph before a block in a container that ends with a block keeps
+  // its place and mark, emptied, as one ending its container does: resolving
+  // its mark away keeps it there (`paragraphMarkOutcome`).
+  const keptBeforeBlock = isOpaqueFollower(following) && !endsWithParagraph;
   // Directly, the breaks their marks carry go first, on their own, as
   // accepting their tracked deletion takes them; the paragraphs then go as
-  // any others do.
+  // any others do. So do they before boundaries a join takes into the next
+  // paragraph, as no replacement of the blocks around them moves a break.
   if (
     op.revision === undefined &&
     following !== undefined &&
-    following.type !== "paragraph"
+    (following.type !== "paragraph" || standing.length > 0)
   ) {
     const breaks = found.filter(
-      ({ paragraph }) => paragraph.sectionProperties !== undefined,
+      ({ paragraph }) =>
+        paragraph.sectionProperties !== undefined &&
+        !(keptBeforeBlock && paragraph === last.paragraph),
     );
     const ops = breaks.flatMap(
-      (location) => sectionEndpointRemoval({ story: op.story, location }).ops,
+      (location) => sectionBreakTakenFirst(op.story, location).ops,
     );
-    if (breaks.length > 0 && ops.length === breaks.length) {
+    if (ops.length > 0) {
       const dropped = applyOps(document, ops);
       if (dropped.isErr())
         return refuse(dropped.error.reason, dropped.error.message);
@@ -1243,7 +1279,8 @@ export const deleteBlocks = ({
     !terminal &&
     !trackedBeforeTable &&
     !trackedBeforeBlock &&
-    !directBeforeBlock
+    !directBeforeBlock &&
+    !keptBeforeBlock
   ) {
     return refuse(
       DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
@@ -1410,7 +1447,13 @@ export const deleteBlocks = ({
   const changesNothing = structurallyEqual(directBlocks, expected);
   if (changesNothing && op.revision === undefined) return unchanged(document);
   directOps.push(replacement(directBlocks));
-  const direct = applyOps(document, directOps);
+  // Before boundaries a join takes in, the direct deletion takes the breaks
+  // first, on their own, as accepting the tracked one does.
+  const { revision: _stamp, ...directOp } = op;
+  const direct =
+    op.revision !== undefined && !endsNoSection && standing.length > 0
+      ? deleteBlocks({ document, op: directOp, applyOps })
+      : applyOps(document, directOps);
   if (direct.isErr()) return refuse(direct.error.reason, direct.error.message);
   // A paragraph the direct deletion writes back is modified exactly when it
   // is not the block it replaces: the survivor, or the paragraph after the
@@ -1491,7 +1534,8 @@ export const deleteBlocks = ({
       ...trailing,
     ];
   }
-  const endsContainer = trailing.at(-1) ?? (terminal ? last.paragraph : null);
+  const endsContainer =
+    trailing.at(-1) ?? (terminal || keptBeforeBlock ? last.paragraph : null);
   // Before a block, accepting keeps the last paragraph when pending joins
   // run words into the deletion: its mark has nowhere to go, and it holds
   // those words. Directly, the paragraphs go whole and the words keep the

@@ -1308,7 +1308,7 @@ describe("a direct paragraph after a pending inserted mark", () => {
       ]),
     );
     expect(refused.isErr() && refused.error.reason).toBe(
-      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_INSERTION,
     );
   });
 });

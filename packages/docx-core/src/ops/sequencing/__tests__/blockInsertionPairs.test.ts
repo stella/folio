@@ -194,7 +194,7 @@ describe("paragraph insertions sharing an anchor", () => {
     expect(applied.isErr()).toBe(true);
     if (applied.isErr())
       expect(applied.error.reason).toBe(
-        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+        DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_INSERTION,
       );
     expect(marked.value.document).toStrictEqual(before);
     for (const [first, second] of [
@@ -333,7 +333,7 @@ describe("paragraph insertions sharing an anchor", () => {
           expect(changed.value.document).toStrictEqual(before);
           if (inserted.isErr()) {
             expect(inserted.error.reason).toBe(
-              DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+              DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_INSERTION,
             );
             return;
           }

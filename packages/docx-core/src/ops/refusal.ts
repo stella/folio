@@ -125,10 +125,7 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
    * deleted or moved-away mark of a pasted paragraph's break holding a cut
    * of its own (the cut is read below the paste's own insertions, at a depth
    * their resolution changes, and the record beside an added mark holds one
-   * fixed depth), a direct insertion after a pending inserted mark whose
-   * rejection would give the paragraphs it joins other properties or
-   * content (only a property change of that insertion could record the
-   * difference), the table-side insertions and paragraph removals beside a
+   * fixed depth), the table-side insertions and paragraph removals beside a
    * table, and removing a block content control's only paragraph (no
    * operation addresses a block list without a paragraph).
    */
@@ -154,7 +151,10 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
   /**
    * As {@link DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_DELETION},
    * for a paragraph mark whose break is pending insertion (inserted or moved
-   * here) and not deleted since.
+   * here) and not deleted since. Or a direct insertion after one would give
+   * the paragraphs rejecting it joins other properties or content: only a
+   * property change of that insertion could record the difference, and a
+   * direct edit records none.
    */
   readonly PENDING_PARAGRAPH_MARK_INSERTION: "pendingParagraphMarkInsertion";
   /**
@@ -319,10 +319,7 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
    * deleted or moved-away mark of a pasted paragraph's break holding a cut
    * of its own (the cut is read below the paste's own insertions, at a depth
    * their resolution changes, and the record beside an added mark holds one
-   * fixed depth), a direct insertion after a pending inserted mark whose
-   * rejection would give the paragraphs it joins other properties or
-   * content (only a property change of that insertion could record the
-   * difference), the table-side insertions and paragraph removals beside a
+   * fixed depth), the table-side insertions and paragraph removals beside a
    * table, and removing a block content control's only paragraph (no
    * operation addresses a block list without a paragraph).
    */
@@ -349,7 +346,10 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
   /**
    * As {@link DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_DELETION},
    * for a paragraph mark whose break is pending insertion (inserted or moved
-   * here) and not deleted since.
+   * here) and not deleted since. Or a direct insertion after one would give
+   * the paragraphs rejecting it joins other properties or content: only a
+   * property change of that insertion could record the difference, and a
+   * direct edit records none.
    */
   PENDING_PARAGRAPH_MARK_INSERTION: "pendingParagraphMarkInsertion",
   /**
