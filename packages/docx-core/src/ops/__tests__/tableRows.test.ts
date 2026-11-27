@@ -102,7 +102,14 @@ describe("table row review", () => {
         const content = table === undefined ? [] : [table];
         const blocks =
           location === "wrapped"
-            ? [{ type: "blockCustomXml" as const, content }]
+            ? [
+                {
+                  type: "blockCustomXml" as const,
+                  openingXml: "<w:customXml>",
+                  closingXml: "</w:customXml>",
+                  content,
+                },
+              ]
             : content;
         return {
           package: {

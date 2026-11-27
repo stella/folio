@@ -8,11 +8,11 @@ export const CELL_GRID_FIELDS = {
   gridSpan: 1,
   vMerge: undefined,
   width: undefined,
-} as const;
+};
 /** The cell field a column edit rewrites. */
-export const CELL_SPAN_FIELDS = { gridSpan: 1 } as const;
+export const CELL_SPAN_FIELDS = { gridSpan: 1 };
 /** The row fields a column edit rewrites. */
-export const ROW_GRID_FIELDS = { gridBefore: 0, gridAfter: 0 } as const;
+export const ROW_GRID_FIELDS = { gridBefore: 0, gridAfter: 0 };
 type GridFields =
   typeof CELL_GRID_FIELDS | typeof CELL_SPAN_FIELDS | typeof ROW_GRID_FIELDS;
 
