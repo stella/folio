@@ -59,6 +59,7 @@ import { consumeSectionReferenceResolution } from "../internal/sectionReferenceR
  */
 import type {
   BlockContent,
+  Comment,
   DrawingContent,
   Endnote,
   Footnote,
@@ -711,9 +712,9 @@ function relativeTargetForPart(
 /**
  * Every package part whose block content may mint relationships (images,
  * external hyperlinks), paired with the rels part those relationships belong
- * to. Header/footer parts own `word/_rels/<part>.rels`; footnotes and endnotes
- * own `word/_rels/<notes part>.rels`, derived from the ZIP entry the note
- * serializer resolves (case-insensitively) so a producer's casing is reused
+ * to. Header/footer parts own `word/_rels/<part>.rels`; footnotes, endnotes
+ * and comments own `word/_rels/<part>.rels`, derived from the ZIP entry the
+ * part serializer resolves (case-insensitively) so a producer's casing is reused
  * instead of minting a second, lowercase rels part.
  */
 function collectDocxParts(doc: Document, zip: ZipArchive): DocxPart[] {
@@ -747,8 +748,9 @@ function collectDocxParts(doc: Document, zip: ZipArchive): DocxPart[] {
   addHeaderFooterParts(doc.package.footers, RELATIONSHIP_TYPES.footer);
 
   const addNoteParts = (
-    notes: readonly (Footnote | Endnote)[] | undefined,
-    conventionalLowerPath: "word/footnotes.xml" | "word/endnotes.xml",
+    notes: readonly (Footnote | Endnote | Comment)[] | undefined,
+    conventionalLowerPath:
+      "word/footnotes.xml" | "word/endnotes.xml" | "word/comments.xml",
   ) => {
     if (!notes || notes.length === 0) {
       return;
@@ -758,11 +760,14 @@ function collectDocxParts(doc: Document, zip: ZipArchive): DocxPart[] {
       conventionalLowerPath;
     parts.push({
       relsPath: notePartRelsPath(partPath),
-      blocks: notes.flatMap((note) => note.content),
+      blocks: notes.flatMap((note): BlockContent[] => note.content),
     });
   };
   addNoteParts(doc.package.footnotes, "word/footnotes.xml");
   addNoteParts(doc.package.endnotes, "word/endnotes.xml");
+  // Comment bodies resolve their images and links against the comments
+  // part's own relationships, as a note's do against its part's.
+  addNoteParts(doc.package.document.comments, "word/comments.xml");
 
   return parts;
 }

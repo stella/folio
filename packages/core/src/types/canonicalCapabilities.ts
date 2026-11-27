@@ -151,7 +151,7 @@ export const CANONICAL_CAPABILITIES: {
     readonly owner: "controller";
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "A paste of content whose package parts the model does not carry refuses: an opaque drawing or kept block markup from another package, and a copied comment holding images or external links.";
+    readonly summary: "A paste of content whose package parts the model does not carry refuses: an opaque drawing or kept block or comment markup from another package.";
   };
   readonly "tracked-change-records": {
     readonly owner: "document-operations";
@@ -178,7 +178,7 @@ export const CANONICAL_CAPABILITIES: {
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
-      "A paste of content whose package parts the model does not carry refuses: an opaque drawing or kept block markup from another package, and a copied comment holding images or external links.",
+      "A paste of content whose package parts the model does not carry refuses: an opaque drawing or kept block or comment markup from another package.",
   },
   [CANONICAL_GAP.trackedChangeRecords]: {
     owner: "document-operations",

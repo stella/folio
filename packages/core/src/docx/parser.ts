@@ -704,12 +704,21 @@ export async function parseDocxWithPreviewBudget(
     // ========================================================================
     onProgress("Parsing comments...", 75);
     const commentsContext = parseContext.scoped({ part: COMMENTS_PART });
+    // The comments part owns its relationships, as a note part does; the
+    // document's stand in only when the part has none.
+    const commentsRelsXml = getMapCaseInsensitive(
+      raw.allXml,
+      getRelationshipsPathForPart(COMMENTS_PART),
+    );
+    const commentsRels = commentsRelsXml
+      ? parseRelationships(commentsRelsXml)
+      : rels;
     const comments = timeStage("comments", () =>
       parseComments(
         raw.commentsXml,
         styles,
         theme,
-        rels,
+        commentsRels,
         media,
         raw.commentsExtensibleXml,
         raw.commentsExtendedXml,

@@ -837,20 +837,6 @@ const relationshipIdsIn = (
   return Result.ok(ids);
 };
 
-/** Whether the paragraphs hold an image or an external link. */
-const namesPartRelationships = (paragraphs: readonly Paragraph[]): boolean =>
-  paragraphs.some((paragraph) => {
-    let related = false;
-    visitInlineContentSlots(paragraph, ({ item }) => {
-      if (item.type === "hyperlink" && item.anchor === undefined)
-        related = true;
-    });
-    visitParagraphRuns(paragraph, (run) => {
-      if (run.content.some((child) => child.type === "drawing")) related = true;
-    });
-    return related;
-  });
-
 /** Whether two relationships name the same target in the same way. */
 const sameRelationship = (
   left: { type: string; target: string; targetMode?: string } | undefined,
@@ -1072,16 +1058,6 @@ export const prepareCanonicalPaste = ({
   const annotationParagraphs = annotationBodies.map(
     ({ paragraph }) => paragraph,
   );
-  // A note's images and external links import as the body's do: the save
-  // writes each into the relationships of the part that holds it. A comment
-  // part's relationships are written as they were read, so a copied comment
-  // naming an image or an external link would name one its part never holds.
-  for (const comment of annotations?.comments ?? [])
-    if (namesPartRelationships(comment.content))
-      return refuse(
-        "Copied comments holding images or external links require their part's relationships.",
-        { gap: CANONICAL_GAP.storyContentProjection },
-      );
   // The session's own document, read to build the paste's operations.
   const destination = readModel(session.document);
   let styles = destination.package.styles;
@@ -1529,8 +1505,9 @@ export const prepareCanonicalPaste = ({
     );
     if (placed.isErr()) return placed;
   }
-  // A note's ids name its own part's relationships, which the model does not
-  // keep: its links import by their targets and its images by their bytes.
+  // A note's or a comment's ids name its own part's relationships, which the
+  // model does not keep: its links import by their targets and its images by
+  // their bytes, and the save writes each into the part that holds it.
   sourceRelationships = undefined;
   for (const note of annotations?.notes ?? [])
     for (const block of note.content) {
@@ -1538,6 +1515,27 @@ export const prepareCanonicalPaste = ({
       const imported = importResources(block);
       if (imported.isErr()) return imported;
     }
+  for (const comment of annotations?.comments ?? []) {
+    for (const paragraph of comment.content) {
+      const imported = importResources(paragraph);
+      if (imported.isErr()) return imported;
+    }
+    // A comment's kept markup replays as it was read, naming the comments
+    // part's relationships: only that part, in the same package, holds them.
+    for (const { xml } of comment.preserved?.children ?? []) {
+      const referenced = relationshipIdsIn(xml);
+      if (referenced.isErr()) return referenced;
+      if (
+        referenced.value.length > 0 &&
+        (sourceDocument?.originalBuffer === undefined ||
+          sourceDocument.originalBuffer !== destination.originalBuffer)
+      )
+        return refuse(
+          "Kept comment markup naming package parts pastes only into the package holding them.",
+          { gap: CANONICAL_GAP.storyContentProjection },
+        );
+    }
+  }
   const resourceOps: DocumentOp[] = [];
   if (
     importedResource ||
