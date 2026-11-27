@@ -212,9 +212,10 @@ describe("a tracked change inside a simple field's result", () => {
   test("a container the resolution empties goes; the field stays, showing nothing", () => {
     const linked = withField([
       {
-        type: "hyperlink",
-        href: "https://example.test",
-        children: [inserted],
+        type: "inlineWrapper",
+        kind: "smartTag",
+        element: "place",
+        content: [inserted],
       },
     ]);
     const rejected = resolve(linked, [5], REVISION_DECISIONS.REJECT);
