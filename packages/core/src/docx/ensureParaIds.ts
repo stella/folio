@@ -1049,32 +1049,46 @@ const planPackageParaIdsInternal = async (
   // an attacker-crafted archive with thousands of parts or a decompression-
   // bomb entry must fail fast instead of exhausting memory.
   const archive = await loadDocxArchive(docx);
+  return planParaIdsReading({
+    entries: archive.entries,
+    read: (name) => archive.readEntryString(name),
+  });
+};
 
-  const relsPath = archive.entries.find(
+/**
+ * The paragraph ids {@link ensureParaIds} writes into a package whose parts
+ * `read` gives as text, by path: the plan of {@link planPackageParaIds} for
+ * a package already open, as a save holds it.
+ */
+export const planParaIdsReading = async ({
+  entries,
+  read,
+}: {
+  entries: readonly string[];
+  read: (name: string) => Promise<string | null>;
+}): Promise<PackageParaIdPlan> => {
+  const relsPath = entries.find(
     (name) => name.toLowerCase() === PACKAGE_RELATIONSHIPS_PART,
   );
-  const rels =
-    relsPath === undefined ? null : await archive.readEntryString(relsPath);
+  const rels = relsPath === undefined ? null : await read(relsPath);
   if (rels === null)
     throw createEnsureParaIdsError("Package relationships not found");
   const documentPartName = mainDocumentPart({
     rels,
     relsPath: relsPath ?? PACKAGE_RELATIONSHIPS_PART,
-    entries: archive.entries,
+    entries,
   });
   const documentRelsPath = relationshipsPathFor(documentPartName);
-  const documentRelsName = archive.entries.find(
+  const documentRelsName = entries.find(
     (name) => name.toLowerCase() === documentRelsPath.toLowerCase(),
   );
   const { storyParts, isTargetPart } = packageStoryParts({
     documentPartName,
     documentRels:
-      documentRelsName === undefined
-        ? null
-        : await archive.readEntryString(documentRelsName),
-    entries: archive.entries,
+      documentRelsName === undefined ? null : await read(documentRelsName),
+    entries,
   });
-  const xmlPartNames = archive.entries.filter(
+  const xmlPartNames = entries.filter(
     (name) =>
       name.toLowerCase().endsWith(".xml") ||
       name === documentPartName ||
@@ -1083,15 +1097,15 @@ const planPackageParaIdsInternal = async (
 
   const partTexts = new Map<string, string>();
   for (const name of xmlPartNames) {
-    // oxlint-disable-next-line no-await-in-loop -- archive.readEntryString serializes reads to enforce a shared cumulative byte budget across parts
-    const text = await archive.readEntryString(name);
+    // oxlint-disable-next-line no-await-in-loop -- a bounded archive serializes reads to enforce a shared cumulative byte budget across parts
+    const text = await read(name);
     if (text !== null) {
       partTexts.set(name, text);
     }
   }
 
   return {
-    entries: archive.entries,
+    entries,
     partTexts,
     ...packageParaIdUpdates(
       partTexts,

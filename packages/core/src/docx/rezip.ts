@@ -100,6 +100,11 @@ import {
 } from "./documentSectionFacts";
 import { normalizeDrawingIds } from "./drawingIdNormalization";
 import { rebindDrawingImageRelationship } from "./drawingRelationships";
+import {
+  EnsureParaIdsError,
+  isDigitallySignedPackage,
+  planParaIdsReading,
+} from "./ensureParaIds";
 import { parseEndnotes, parseFootnotes } from "./footnoteParser";
 import {
   getDocumentSourceBaseline,
@@ -1658,11 +1663,45 @@ const normalizePackageIdsInZip = async (
   const normalizedParts = normalizeParaIdRangeInXmlParts(
     normalizeRevisionIdsInXmlParts(xmlParts),
   );
+  for (const [path, xml] of await withParagraphIds(zip, normalizedParts))
+    normalizedParts.set(path, xml);
   for (const [path, xml] of normalizedParts) {
     if (xml !== xmlParts.get(path)) {
       assertValidOoxmlNumericIds(xml, path);
       zip.set(path, xml, { level: compressionLevel });
     }
+  }
+};
+
+/**
+ * The parts that give each paragraph lacking a paragraph id one on save, by
+ * the rule the editor's ingest applies (`ensureParaIds`): ids a
+ * paragraph holds stay, a fresh one is unique in the package and a pure
+ * function of the part's markup, so a second save writes the same ids. A
+ * signed package keeps its parts, and so does one the rule cannot read.
+ */
+const withParagraphIds = async (
+  zip: ZipArchive,
+  parts: ReadonlyMap<string, string>,
+): Promise<ReadonlyMap<string, string>> => {
+  const entries = zip.paths();
+  if (isDigitallySignedPackage(entries)) return new Map();
+  try {
+    const plan = await planParaIdsReading({
+      entries,
+      read: async (name) => {
+        const known = parts.get(name);
+        if (known !== undefined) return known;
+        const bytes = await zip.entry(name)?.bytes();
+        return bytes === undefined
+          ? null
+          : decodeText(bytes, { ignoreBOM: true });
+      },
+    });
+    return plan.updates;
+  } catch (error) {
+    if (error instanceof EnsureParaIdsError) return new Map();
+    throw error;
   }
 };
 
