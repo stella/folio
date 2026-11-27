@@ -830,19 +830,45 @@ export const serializeParagraphPropertyChangeOwner = (
 
 const TABLE_GEOMETRY_CHANGE = "tableGeometryChange";
 type GeometryChange = NonNullable<TableGridChange["geometryChange"]>;
+type TableMove = NonNullable<
+  Extract<GeometryChange, { type: "mergeCells" }>["moves"]
+>[number];
+const isTableMove = (value: unknown): value is TableMove =>
+  record(value) &&
+  typeof value["source"] === "string" &&
+  typeof value["destination"] === "string" &&
+  isRevisionId(value["fromRevision"]) &&
+  isRevisionId(value["toRevision"]) &&
+  isRevisionId(value["destinationMark"]) &&
+  isRevisionId(value["fromRange"]) &&
+  isRevisionId(value["toRange"]);
 const isTableGeometryChange = (value: unknown): value is GeometryChange => {
   if (
     !record(value) ||
     (value["type"] !== "deleteColumn" && value["type"] !== "mergeCells") ||
-    Object.keys(value).some((key) => key !== "type" && key !== "revisionIds")
+    Object.keys(value).some(
+      (key) =>
+        key !== "type" &&
+        key !== "revisionIds" &&
+        (value["type"] !== "mergeCells" ||
+          (key !== "moves" && key !== "emptyOwner")),
+    )
   )
     return false;
   const ids = value["revisionIds"];
+  const moves = value["moves"];
+  const emptyOwner = value["emptyOwner"];
   return (
     Array.isArray(ids) &&
     ids.length > 0 &&
     ids.every(isRevisionId) &&
-    new Set(ids).size === ids.length
+    new Set(ids).size === ids.length &&
+    (moves === undefined ||
+      (value["type"] === "mergeCells" &&
+        Array.isArray(moves) &&
+        moves.every(isTableMove))) &&
+    (emptyOwner === undefined ||
+      (value["type"] === "mergeCells" && typeof emptyOwner === "string"))
   );
 };
 

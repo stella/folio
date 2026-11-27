@@ -8642,10 +8642,12 @@ export const planRevisionResolution = (
   options: RevisionResolutionPlanOptions,
 ): Result<RevisionResolutionPlan, DocumentOpRefusal> => {
   const { document, applyOps } = options;
-  const op = withBelongingTableGeometry(
+  const grouped = withBelongingTableGeometry(
     document,
     withBelongingPropertyChanges(document, options.op),
   );
+  if (grouped.isErr()) return Result.err(grouped.error);
+  const op = grouped.value;
   const sections = settleSectionRecords(document, op);
   if (sections.ops.length === 0) return planMarkResolution({ ...options, op });
   const settled = applyOps(document, sections.ops);

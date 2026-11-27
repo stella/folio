@@ -2048,9 +2048,14 @@ export type TableGridChange = WritableRecord & {
     id: number;
     columnWidths: readonly (number | undefined)[];
     geometryChange?: {
-        readonly type: "deleteColumn" | "mergeCells";
         readonly revisionIds: readonly number[];
-    };
+    } & ({
+        readonly type: "deleteColumn";
+    } | {
+        readonly type: "mergeCells";
+        readonly moves?: readonly TableGeometryMove[];
+        readonly emptyOwner?: string;
+    });
 };
 
 // @public
@@ -2096,6 +2101,9 @@ export type TablePropertyExceptionChange = WritableRecord & {
 
 // @public
 export type TablePropertyExceptionFormatting = WritableRecord & Pick<TableFormatting, "width" | "justification" | "cellSpacing" | "indent" | "borders" | "shading" | "layout" | "cellMargins" | "look" | "preserved" | "sourceXml">;
+
+// @public
+export const tableReviewGeometry: (table: Table) => TableReviewGeometry | undefined;
 
 // @public
 export type TableRow = WritableRecord & {

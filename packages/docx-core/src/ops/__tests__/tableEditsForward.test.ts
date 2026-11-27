@@ -18,6 +18,7 @@ import type {
 import { MAX_TABLE_GRID_COLUMNS } from "../../model/tableGridLimits";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { contractViolation } from "../contract";
+import { revisionIdDemand } from "../plan";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import {
   DOCUMENT_OP_TYPES,
@@ -1135,13 +1136,15 @@ describe("independent table forward oracles", () => {
   );
 
   test(
-    "a tracked horizontal merge absorbs empty cells with property and cell records",
+    "a tracked horizontal merge accepts source paragraph identities at their new locations",
     () => {
       assertProperty(
         fc.property(
           fc.boolean(),
           fc.integer({ min: 2, max: 6 }),
-          (measured, width) => {
+          fc.boolean(),
+          fc.boolean(),
+          (measured, width, movesText, emptyOwner) => {
             const table: Table = {
               type: "table",
               ...(measured
@@ -1151,17 +1154,30 @@ describe("independent table forward oracles", () => {
                 {
                   type: "tableRow",
                   cells: [
-                    cell(0x100),
+                    {
+                      type: "tableCell",
+                      content: [
+                        emptyOwner
+                          ? {
+                              type: "paragraph",
+                              paraId: id(0x100),
+                              content: [],
+                            }
+                          : paragraph(0x100),
+                      ],
+                    },
                     ...Array.from(
                       { length: width - 1 },
                       (_, index): TableCell => ({
                         type: "tableCell",
                         content: [
-                          {
-                            type: "paragraph",
-                            paraId: id(0x200 + index),
-                            content: [],
-                          },
+                          movesText
+                            ? paragraph(0x200 + index)
+                            : {
+                                type: "paragraph",
+                                paraId: id(0x200 + index),
+                                content: [],
+                              },
                         ],
                       }),
                     ),
@@ -1183,6 +1199,11 @@ describe("independent table forward oracles", () => {
             const direct = applied(document, op);
             const pending = applyDocumentOp(document, {
               ...op,
+              newBlockIds: movesText
+                ? Array.from({ length: width - 1 }, (_, index) =>
+                    id(0xa000 + index),
+                  )
+                : [],
               revision: {
                 id: 100_000,
                 author: "Reviewer",
@@ -1190,7 +1211,7 @@ describe("independent table forward oracles", () => {
               },
               newIds: {
                 revision: Array.from(
-                  { length: width + 1 },
+                  { length: width + 1 + (movesText ? (width - 1) * 3 : 0) },
                   (_, index) => 100_001 + index,
                 ),
               },
@@ -1214,7 +1235,7 @@ describe("independent table forward oracles", () => {
               const resolved = applied(pending.document, {
                 type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
                 story: OP_STORIES.MAIN,
-                revisionIds: [100_000],
+                revisionIds: [movesText ? 100_000 + width + 3 : 100_000],
                 decision,
               });
               expect(resolved.document).toStrictEqual(
@@ -1225,7 +1246,360 @@ describe("independent table forward oracles", () => {
         ),
         {
           numRuns: 30,
-          id: "a tracked horizontal merge absorbs empty cells with property and cell records",
+          id: "a tracked horizontal merge accepts source paragraph identities at their new locations",
+        },
+      );
+    },
+    propertyTestTimeout(10_000),
+  );
+
+  test("a merge refuses before staging more paragraph moves than DOCX can save", () => {
+    const paragraphs = Array.from({ length: 320 }, (_, index) =>
+      paragraph(0x200 + index),
+    );
+    const table = {
+      type: "table",
+      rows: [
+        {
+          type: "tableRow",
+          cells: [cell(0x100), { type: "tableCell", content: paragraphs }],
+        },
+      ],
+    } satisfies Table;
+    const document = documentOf(table);
+    const op = {
+      type: DOCUMENT_OP_TYPES.MERGE_CELLS,
+      ...address(targetOf(table)),
+      top: 0,
+      bottom: 1,
+      left: 0,
+      right: 2,
+      newBlockIds: paragraphs.map((_block, index) => id(0xa000 + index)),
+      revision: {
+        id: 100_000,
+        author: "Reviewer",
+        date: "2026-11-27T00:00:00Z",
+      },
+    } satisfies DocumentOp;
+    const planned = revisionIdDemand(document, op);
+    expect(planned.isErr() && planned.error.message).toMatch(
+      /exceeds the saved history limit/u,
+    );
+    const result = applyDocumentOp(document, {
+      ...op,
+      newIds: {
+        revision: Array.from(
+          {
+            length: 3 * paragraphs.length + 4,
+          },
+          (_, index) => 100_001 + index,
+        ),
+      },
+    });
+    expect(result.isErr() && result.error.message).toMatch(
+      /exceeds the saved history limit/u,
+    );
+  });
+
+  test("merge review only uses the table's native paragraph move records", () => {
+    const table = {
+      type: "table",
+      rows: [{ type: "tableRow", cells: [cell(0x100), cell(0x200)] }],
+    } satisfies Table;
+    const pending = structuredClone(
+      applyDocumentOp(documentOf(table), {
+        type: DOCUMENT_OP_TYPES.MERGE_CELLS,
+        ...address(targetOf(table)),
+        top: 0,
+        bottom: 1,
+        left: 0,
+        right: 2,
+        newBlockIds: [id(0xa000)],
+        revision: {
+          id: 100_000,
+          author: "Reviewer",
+          date: "2026-11-27T00:00:00Z",
+        },
+        newIds: {
+          revision: [100_001, 100_002, 100_003, 100_004, 100_005, 100_006],
+        },
+      }).unwrap().document,
+    );
+    const tracked = tableOf(pending);
+    const grid = tracked.formatting?.gridChange;
+    const moved = tracked.rows.at(0)?.cells.at(0)?.content.at(1);
+    if (
+      grid === undefined ||
+      moved?.type !== "paragraph" ||
+      moved.pPrMark === undefined
+    )
+      throw new TypeError("Expected the moved paragraph and its mark.");
+    delete moved.pPrMark;
+    const group = grid.geometryChange;
+    const move = group?.type === "mergeCells" ? group.moves?.at(0) : undefined;
+    if (group?.type !== "mergeCells" || move === undefined)
+      throw new TypeError("Expected a saved paragraph move.");
+    for (const revisionId of [grid.id, move.fromRevision]) {
+      const result = applyDocumentOp(pending, {
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story: OP_STORIES.MAIN,
+        revisionIds: [revisionId],
+        decision: "accept",
+      });
+      expect(result.isErr() && result.error.reason).toBe(
+        DOCUMENT_OP_REFUSAL_REASONS.STALE,
+      );
+    }
+
+    const foreignId = 200_000;
+    grid.geometryChange = {
+      ...group,
+      moves: [{ ...move, destinationMark: foreignId }],
+    };
+    pending.package.document.content.splice(-1, 0, {
+      type: "table",
+      columnWidths: [2400],
+      formatting: { gridChange: { id: foreignId, columnWidths: [1800] } },
+      rows: [{ type: "tableRow", cells: [cell(30)] }],
+    });
+    const resolved = applyDocumentOp(pending, {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: [foreignId],
+      decision: "accept",
+    }).unwrap().document;
+    expect(tableOf(resolved)).toStrictEqual(tracked);
+    const foreign = resolved.package.document.content.at(-2);
+    if (foreign?.type !== "table") throw new Error("Fixture table missing.");
+    expect(foreign.formatting?.gridChange).toBeUndefined();
+  });
+
+  test("accepting a merge places a bookmark end beside its original cells", () => {
+    const table = {
+      type: "table",
+      columnWidths: [800, 900, 1000],
+      rows: [
+        { type: "tableRow", cells: [cell(0x100), cell(0x101), cell(0x102)] },
+        {
+          type: "tableRow",
+          cells: [cell(0x200), cell(0x201), cell(0x202)],
+          bookmarks: [{ index: 2, marker: { type: "bookmarkEnd", id: 42 } }],
+        },
+      ],
+    } satisfies Table;
+    const document = documentOf(table);
+    const preceding = document.package.document.content.at(0);
+    if (preceding?.type !== "paragraph")
+      throw new TypeError("Expected the preceding paragraph.");
+    preceding.content.push({
+      type: "bookmarkStart",
+      id: 42,
+      name: "MergedRows",
+    });
+    const merge = {
+      type: DOCUMENT_OP_TYPES.MERGE_CELLS,
+      ...address(targetOf(table)),
+      top: 0,
+      bottom: 2,
+      left: 0,
+      right: 2,
+      newBlockIds: [id(0xa000)],
+    } satisfies DocumentOp;
+    const direct = applied(document, merge);
+    const suggestion = {
+      ...merge,
+      newBlockIds: [id(0xa000), id(0xa001), id(0xa002), id(0xa003)],
+      revision: {
+        id: 100_000,
+        author: "Reviewer",
+        date: "2026-11-27T00:00:00Z",
+      },
+    };
+    const pending = applied(document, {
+      ...suggestion,
+      newIds: {
+        revision: Array.from(
+          { length: revisionIdDemand(document, suggestion).unwrap() },
+          (_, index) => 100_001 + index,
+        ),
+      },
+    });
+    const grid = tableOf(pending.document).formatting?.gridChange;
+    if (grid === undefined)
+      throw new TypeError("Expected pending merge geometry.");
+    const accepted = applied(pending.document, {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: [grid.id],
+      decision: "accept",
+    });
+    const expected = tableOf(direct.document).rows.at(1)?.bookmarks;
+    expect(expected?.at(0)?.index).toBe(0);
+    expect(tableOf(accepted.document).rows.at(1)?.bookmarks).toStrictEqual(
+      expected,
+    );
+  });
+
+  test("a row-closing tracked merge replaces adjacent vertical owners exactly", () => {
+    const table = {
+      type: "table",
+      columnWidths: [600, 600],
+      rows: [
+        {
+          type: "tableRow",
+          cells: [
+            { ...cell(0x100), formatting: { vMerge: "restart" } },
+            cell(0x101),
+          ],
+        },
+        {
+          type: "tableRow",
+          cells: [
+            { ...cell(0x200), formatting: { vMerge: "continue" } },
+            { ...cell(0x201), formatting: { vMerge: "restart" } },
+          ],
+        },
+        {
+          type: "tableRow",
+          cells: [
+            cell(0x300),
+            { ...cell(0x301), formatting: { vMerge: "continue" } },
+          ],
+        },
+      ],
+    } satisfies Table;
+    const source = documentOf(table);
+    const op = {
+      type: DOCUMENT_OP_TYPES.MERGE_CELLS,
+      ...address(id(0x101)),
+      top: 0,
+      bottom: 3,
+      left: 1,
+      right: 2,
+      newBlockIds: [id(0x401), id(0x402)],
+    } satisfies DocumentOp;
+    const direct = applyDocumentOp(source, op).unwrap();
+    const pending = applyDocumentOp(source, {
+      ...op,
+      newBlockIds: [id(0x401), id(0x402), id(0x403), id(0x404)],
+      revision: { id: 100, author: "Reviewer", date: "2026-11-27T00:00:00Z" },
+      newIds: {
+        revision: [101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111],
+      },
+    }).unwrap();
+    const grid = tableOf(pending.document).formatting?.gridChange;
+    if (grid === undefined) throw new TypeError("Expected a merge revision.");
+    for (const decision of ["accept", "reject"] as const) {
+      const resolved = applyDocumentOp(pending.document, {
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story: OP_STORIES.MAIN,
+        revisionIds: [grid.id],
+        decision,
+      }).unwrap();
+      expect(resolved.document).toStrictEqual(
+        decision === "accept" ? direct.document : source,
+      );
+      expect(
+        applyDocumentOps(resolved.document, resolved.inverse).unwrap().document,
+      ).toStrictEqual(pending.document);
+    }
+  });
+
+  test(
+    "a tracked merge moves words across both retained and absorbed rows",
+    () => {
+      assertProperty(
+        fc.property(
+          fc.integer({ min: 2, max: 5 }),
+          fc.integer({ min: 1, max: 4 }),
+          fc.boolean(),
+          (height, width, retained) => {
+            const columns = width + Number(retained);
+            const table: Table = {
+              type: "table",
+              columnWidths: Array.from({ length: columns }, () => 1000),
+              rows: Array.from({ length: height }, (_, row) => ({
+                type: "tableRow",
+                cells: Array.from({ length: columns }, (_unused, col) =>
+                  cell(0x100 + row * 16 + col),
+                ),
+              })),
+            };
+            const document = documentOf(table);
+            const op = {
+              type: DOCUMENT_OP_TYPES.MERGE_CELLS,
+              ...address(targetOf(table)),
+              top: 0,
+              bottom: height,
+              left: 0,
+              right: width,
+              newBlockIds: Array.from({ length: height - 1 }, (_, index) =>
+                id(0xa000 + index),
+              ),
+            } satisfies DocumentOp;
+            const direct = applied(document, op);
+            expect(tableOf(direct.document).rows).toHaveLength(
+              retained ? height : 1,
+            );
+            const suggested = {
+              ...op,
+              newBlockIds: [
+                ...op.newBlockIds,
+                ...Array.from({ length: height * width - 1 }, (_, index) =>
+                  id(0xb000 + index),
+                ),
+              ],
+              revision: {
+                id: 100_000,
+                author: "Reviewer",
+                date: "2026-11-26T00:00:00Z",
+              },
+            } satisfies DocumentOp;
+            const freshCount = revisionIdDemand(document, suggested).unwrap();
+            const pending = applyDocumentOp(document, {
+              ...suggested,
+              newIds: {
+                revision: Array.from(
+                  { length: freshCount },
+                  (_, index) => 100_001 + index,
+                ),
+              },
+            }).unwrap();
+            const lower = tableOf(pending.document).rows.at(1);
+            const selected = retained
+              ? lower?.cells.find(
+                  ({ structuralChange }) =>
+                    structuralChange?.type === "tableCellInsertion",
+                )?.structuralChange
+              : lower?.structuralChange;
+            if (
+              selected === undefined ||
+              selected.type !==
+                (retained ? "tableCellInsertion" : "tableRowDeletion")
+            )
+              throw new Error(
+                "The merged row needs a continuation or a deletion record.",
+              );
+            expect(
+              applyDocumentOps(pending.document, pending.inverse).unwrap()
+                .document,
+            ).toStrictEqual(document);
+            for (const decision of ["accept", "reject"] as const) {
+              const resolved = applied(pending.document, {
+                type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+                story: OP_STORIES.MAIN,
+                revisionIds: [selected.info.id],
+                decision,
+              });
+              expect(resolved.document).toStrictEqual(
+                decision === "accept" ? direct.document : document,
+              );
+            }
+          },
+        ),
+        {
+          numRuns: 20,
+          id: "a tracked merge moves words across both retained and absorbed rows",
         },
       );
     },

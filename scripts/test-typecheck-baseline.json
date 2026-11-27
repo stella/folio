@@ -548,9 +548,6 @@
   "packages/core/src/canonical/commentAnchorParagraph.test.ts": {
     "TS2740": 1
   },
-  "packages/core/src/canonical/tableBatchModes.test.ts": {
-    "TS2769": 2
-  },
   "packages/core/src/compare/content-alignment-exact-anchors.property.test.ts": {
     "TS2339": 1
   },

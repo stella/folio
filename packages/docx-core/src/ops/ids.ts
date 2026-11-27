@@ -174,6 +174,32 @@ export const packageBookmarkCensus = (
   return { ids, names, pairs };
 };
 
+/** Native move range pairs use their own ids and share one move name. */
+export const packageMoveRangeCensus = (
+  pkg: DocxPackage,
+): { ids: ReadonlySet<number>; names: ReadonlySet<string> } => {
+  const ids = new Set<number>();
+  const names = new Set<string>();
+  walk({
+    value: storiesOf(pkg),
+    visit: (entries) => {
+      const type = fieldOf(entries, "type");
+      if (
+        type !== "moveFromRangeStart" &&
+        type !== "moveFromRangeEnd" &&
+        type !== "moveToRangeStart" &&
+        type !== "moveToRangeEnd"
+      )
+        return;
+      const id = fieldOf(entries, "id");
+      const name = fieldOf(entries, "name");
+      if (typeof id === "number") ids.add(id);
+      if (typeof name === "string") names.add(name);
+    },
+  });
+  return { ids, names };
+};
+
 /**
  * The key two spellings of one id share. `ST_LongHexNumber` is hex, so
  * `0000abcd` and `0000ABCD` are the same id; every lookup and comparison of

@@ -1,7 +1,9 @@
 import type { Table, TableCell, TableRow } from "./content";
 
+/** Physical cell membership and formatting while geometry review is pending. */
 type TableReviewGeometry = {
   readonly columnWidths: readonly (number | undefined)[];
+  readonly holdsCell: (cell: TableCell) => boolean;
   readonly rowFormatting: (row: TableRow) => TableRow["formatting"];
   readonly cellFormatting: (cell: TableCell) => TableCell["formatting"];
 };
@@ -16,6 +18,10 @@ export const tableReviewGeometry = (
   const ids = new Set(grid.geometryChange.revisionIds);
   return {
     columnWidths: grid.columnWidths,
+    holdsCell: (cell: TableCell) => {
+      const change = cell.structuralChange;
+      return change?.type !== "tableCellInsertion" || !ids.has(change.info.id);
+    },
     rowFormatting: (row: TableRow) => {
       const prior = row.propertyChanges?.find(({ info }) => ids.has(info.id));
       return prior === undefined ? row.formatting : prior.previousFormatting;
@@ -35,17 +41,37 @@ export const tableWithPhysicalColumns = (table: Table): Table => {
   const rows: TableRow[] = [];
   for (const row of table.rows) {
     const cells: TableCell[] = [];
-    for (const cell of row.cells) {
+    const offsets = [0];
+    for (const [index, cell] of row.cells.entries()) {
+      if (!geometry.holdsCell(cell)) {
+        offsets[index + 1] = cells.length;
+        continue;
+      }
       const formatting = geometry.cellFormatting(cell);
       const next = { ...cell };
       if (formatting === undefined) delete next.formatting;
       else next.formatting = formatting;
       cells.push(next);
+      offsets[index + 1] = cells.length;
     }
     const formatting = geometry.rowFormatting(row);
     const next = { ...row, cells };
     if (formatting === undefined) delete next.formatting;
     else next.formatting = formatting;
+    if (cells.length !== row.cells.length) {
+      const relocate = <T extends { index: number }>(items: T[]) =>
+        items.map((item) =>
+          Object.assign({}, item, {
+            index: offsets[item.index] ?? cells.length,
+          }),
+        );
+      if (row.preserved?.children !== undefined)
+        next.preserved = {
+          ...row.preserved,
+          children: relocate(row.preserved.children),
+        };
+      if (row.bookmarks !== undefined) next.bookmarks = relocate(row.bookmarks);
+    }
     rows.push(next);
   }
   const pending = { ...table, rows };

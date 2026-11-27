@@ -613,30 +613,30 @@ type PlannedOperation = {
 type RunCarrier = Exclude<FinalBreakCarrier<unknown>["type"], "none">;
 
 const ROW_SHIFTED_CELL_SHAPE =
-  "The batch inserts a row above the last row of the cells this merges or splits.";
+  "The batch inserts or deletes a row that shifts the cells this merges or splits.";
 
 /**
- * The merges and splits whose cells a row the batch inserts in their table
- * would shift or cut, whatever their order in the request. A merge or split
- * names its cells by row as the batch read the table, and runs after the
- * batch's row insertions, so a row inserted above its last row would move
- * the cells it names.
+ * The merges and splits whose cells a batch row edit would shift or remove.
+ * They name their cells by row as the batch read the table and run after
+ * row edits, so a row edit before the end of the rectangle changes its cells.
  */
 const rowShiftedCellShapes = <
   T extends PlannedOperation & { intents: readonly EditorIntent[] },
 >(
   items: readonly T[],
 ): T[] => {
-  const boundaries = items.flatMap(({ plan: { claim }, intents }) =>
-    claim.type === "tableStructure" && claim.axis === "row"
+  const boundaries = items.flatMap(({ plan: { claim, removes }, intents }) => {
+    if (removes?.axis === "row")
+      return [{ table: removes.tablePosition, at: removes.index }];
+    return claim.type === "tableStructure" && claim.axis === "row"
       ? intents.flatMap((intent) =>
           intent.type === "tableRow" &&
           intent.operation.type === DOCUMENT_OP_TYPES.INSERT_ROW
             ? [{ table: claim.table, at: intent.operation.at }]
             : [],
         )
-      : [],
-  );
+      : [];
+  });
   return items.filter(({ plan: { address } }) =>
     address.type === "cell"
       ? boundaries.some(
@@ -657,15 +657,26 @@ const COLUMN_EDITED_CELL_SHAPE =
  * and the cells it runs through, so, as `planTableMutations` refuses them on
  * the legacy engine, they are refused in either mode.
  */
-const columnEditedCellShapes = <T extends PlannedOperation>(
+const columnEditedCellShapes = <
+  T extends PlannedOperation & { intents: readonly EditorIntent[] },
+>(
   items: readonly T[],
 ): T[] => {
   const tables = new Set(
-    items.flatMap(({ plan: { claim } }) =>
-      claim.type === "tableStructure" && claim.axis === "column"
-        ? [claim.table]
-        : [],
-    ),
+    items.flatMap(({ plan: { address, claim }, intents }) => {
+      if (claim.type === "tableStructure" && claim.axis === "column")
+        return [claim.table];
+      // Removing the final column compiles to a table deletion. Its public
+      // address still names the column and claims the same cell geometry.
+      return address.type === "column" &&
+        intents.some(
+          (intent) =>
+            intent.type === "tableBlock" &&
+            intent.operation.type === DOCUMENT_OP_TYPES.DELETE_TABLE,
+        )
+        ? [address.tablePosition]
+        : [];
+    }),
   );
   if (tables.size === 0) return [];
   return items.filter(
@@ -3582,56 +3593,6 @@ const columnInsertionWidensCell = (table: PMNode, columnIndex: number) => {
   return false;
 };
 
-/**
- * Whether the rectangle is one column of one-cell rows, every cell below
- * the first holding nothing but empty paragraphs: the merge a suggestion
- * records, as merge state alone.
- */
-const mergesDownOverEmptyCells = (
-  table: PMNode,
-  map: TableMap,
-  rectangle: TableRectangle,
-) => {
-  if (rectangle.right - rectangle.left !== 1) return false;
-  for (let row = rectangle.top; row < rectangle.bottom; row += 1) {
-    const offset = map.map[row * map.width + rectangle.left];
-    const cell = offset === undefined ? null : table.nodeAt(offset);
-    if (offset === undefined || cell === null) return false;
-    const rect = map.findCell(offset);
-    if (rect.top !== row || rect.bottom !== row + 1) return false;
-    if (row === rectangle.top) continue;
-    let empty = true;
-    cell.forEach((child) => {
-      if (!child.isTextblock || child.content.size > 0) empty = false;
-    });
-    if (!empty) return false;
-  }
-  return true;
-};
-
-/** A merge across one row can absorb empty cells without moving blocks. */
-const mergesAcrossEmptyCells = (
-  table: PMNode,
-  map: TableMap,
-  rectangle: TableRectangle,
-) => {
-  if (rectangle.bottom - rectangle.top !== 1) return false;
-  const cells = new Set(cellsIn(map, rectangle));
-  const owner = map.map[rectangle.top * map.width + rectangle.left];
-  if (owner === undefined) return false;
-  cells.delete(owner);
-  for (const offset of cells) {
-    const cell = table.nodeAt(offset);
-    if (
-      cell?.childCount !== 1 ||
-      !cell.firstChild?.isTextblock ||
-      cell.firstChild.content.size > 0
-    )
-      return false;
-  }
-  return cells.size > 0;
-};
-
 type TableStructureOperation = Extract<
   FolioDocumentOperation,
   {
@@ -3961,14 +3922,6 @@ const resolveTableStructure = ({
         return skipAlike(
           "unsupportedBlock",
           "The merge covers a single merged cell.",
-        );
-      if (
-        tracked &&
-        !mergesDownOverEmptyCells(row.table, map, rectangle) &&
-        !mergesAcrossEmptyCells(row.table, map, rectangle)
-      )
-        return skipTracked(
-          "A suggested merge can absorb only empty cells in one row or column.",
         );
       const blockId = tableBlockAddress(projection, row, deleted);
       if (blockId === undefined)

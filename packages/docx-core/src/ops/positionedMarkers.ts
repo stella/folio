@@ -103,13 +103,21 @@ const inheritCarriers = <T extends TableRow | TableCell>(
  * whose paragraphs it holds: a row that takes over a removed row's merged
  * cells holds both rows' paragraphs, and it is the later one.
  */
-const originsOf = (
-  before: readonly (TableRow | TableCell)[],
-  after: readonly (TableRow | TableCell)[],
-): (number | null)[] => {
+type OriginsOptions<T extends TableRow | TableCell> = {
+  before: readonly T[];
+  after: readonly T[];
+  fresh?: (item: T) => boolean;
+};
+const originsOf = <T extends TableRow | TableCell>({
+  before,
+  after,
+  fresh,
+}: OriginsOptions<T>): (number | null)[] => {
   const owner = new Map<string, number>();
-  for (const [index, sibling] of before.entries())
+  for (const [index, sibling] of before.entries()) {
+    if (fresh?.(sibling)) continue;
     for (const id of paragraphIdsIn(sibling)) owner.set(idKey(id), index);
+  }
   return after.map((sibling) => {
     let origin: number | null = null;
     for (const id of paragraphIdsIn(sibling)) {
@@ -195,11 +203,13 @@ const relocateCaptured = (
  * `after`, with its bookmark markers and captured XML moved to the gaps
  * where the edit leaves them beside table rows and row cells.
  */
+type RelocateTableMarkupOptions = { freshCellRevisions?: ReadonlySet<number> };
 export const relocatePositionedMarkers = (
   before: Table,
   after: Table,
+  options?: RelocateTableMarkupOptions,
 ): Table => {
-  const rowOrigins = originsOf(before.rows, after.rows);
+  const rowOrigins = originsOf({ before: before.rows, after: after.rows });
   const wrappedRows = inheritCarriers(after.rows, rowOrigins);
   let rowsChanged = wrappedRows !== after.rows;
   const rows = [...wrappedRows];
@@ -217,7 +227,18 @@ export const relocatePositionedMarkers = (
         ))
     )
       continue;
-    const cellOrigins = originsOf(source.cells, row.cells);
+    const fresh = options?.freshCellRevisions;
+    const cellOrigins = originsOf({
+      before: source.cells,
+      after: row.cells,
+      ...(fresh === undefined
+        ? {}
+        : {
+            fresh: ({ structuralChange }) =>
+              structuralChange?.type === "tableCellInsertion" &&
+              fresh.has(structuralChange.info.id),
+          }),
+    });
     const cells = inheritCarriers(row.cells, cellOrigins);
     const destinations = { origins: cellOrigins, siblings: cells };
     // Exact row replacements can state their own gaps. Re-address inherited

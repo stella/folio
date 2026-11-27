@@ -459,21 +459,24 @@ describe.each(SESSIONS)("%s session", (session) => {
    * Whether tracked mode may refuse what direct mode applies. Each case is a
    * shape the tracked-change vocabulary cannot record, and nothing else is:
    *
-   * - A merge is tracked as `w:vMerge` under `w:tcPr/w:cellMerge`, so only a
-   *   single column of single, unmerged cells merges tracked, and only into
-   *   blank cells, since the record moves no content. Nor can it record a row
-   *   going with the merge, which the direct merge does when it takes a row's
-   *   only cell of its own.
+   * - A merge tracks paragraph moves and geometry. The generator also puts
+   *   nested tables and paragraphs with pending edits in cells that would
+   *   need to move as complete blocks.
    * - A split is the reverse, so only a vertical merge splits tracked.
    * - A column inserted through a horizontal merge widens it, and a column
    *   deleted through one narrows it: a `w:gridSpan` change has no tracked form.
    * Pending table reviews also block edits that could overwrite their record
    * or give it a different effect. Those refusals use a separate typed reason.
    */
-  const trackedRefusalIsExpected = (
-    planned: PlannedOperation,
-    plan: OperationPlan,
-  ): boolean => {
+  const trackedRefusalIsExpected = ({
+    planned,
+    plan,
+    paragraphEdits,
+  }: {
+    planned: PlannedOperation;
+    plan: OperationPlan;
+    paragraphEdits: ReadonlySet<TableSpecCell>;
+  }): boolean => {
     const { anchor, other } = planned;
     const cell = anchor.cell;
     const siblings = anchor.siblings;
@@ -489,33 +492,14 @@ describe.each(SESSIONS)("%s session", (session) => {
           cell.column + cell.columnSpan,
           other.column + other.columnSpan,
         );
-        const inside = siblings.filter(
+        return siblings.some(
           (candidate) =>
+            (candidate.nested !== undefined || paragraphEdits.has(candidate)) &&
+            (candidate.row !== top || candidate.column !== left) &&
             candidate.row < bottom &&
             candidate.row + candidate.rowSpan > top &&
             candidate.column < right &&
             candidate.column + candidate.columnSpan > left,
-        );
-        const rowsLeftEmpty = Array.from(
-          { length: bottom - top - 1 },
-          (_, index) => top + 1 + index,
-        ).some(
-          (row) =>
-            !siblings.some(
-              (candidate) =>
-                candidate.row === row && !inside.includes(candidate),
-            ),
-        );
-        return (
-          right - left !== 1 ||
-          rowsLeftEmpty ||
-          inside.some(
-            (candidate) =>
-              candidate.rowSpan !== 1 ||
-              candidate.columnSpan !== 1 ||
-              candidate.nested !== undefined ||
-              (candidate.row !== top && candidate.text !== ""),
-          )
         );
       }
       case "splitTableCell":
@@ -594,6 +578,16 @@ describe.each(SESSIONS)("%s session", (session) => {
     if (disagreeing.length > 0) {
       // (b) Both modes agree on whether each operation is allowed, bar the
       // refusals the tracked vocabulary forces.
+      const paragraphEdits = new Set(
+        tracked.planned.flatMap(({ operation, anchor }) =>
+          trackedApplied.has(operation.id) &&
+          (operation.type === "deleteBlock" ||
+            operation.type === "replaceBlock" ||
+            operation.type === "insertAfterBlock")
+            ? [anchor.cell]
+            : [],
+        ),
+      );
       for (const { planned, plan } of disagreeing) {
         const id = planned.operation.id;
         const pendingTableReview =
@@ -643,7 +637,11 @@ describe.each(SESSIONS)("%s session", (session) => {
                 skip.id === id &&
                 ((skip.reason === "pendingTableChange" && pendingTableReview) ||
                   (skip.reason === "unsupportedBlock" &&
-                    trackedRefusalIsExpected(planned, plan))),
+                    trackedRefusalIsExpected({
+                      planned,
+                      plan,
+                      paragraphEdits,
+                    }))),
             ),
         }).toMatchObject({ expected: true });
       }
