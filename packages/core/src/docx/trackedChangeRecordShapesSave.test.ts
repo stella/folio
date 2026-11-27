@@ -1,8 +1,9 @@
 /**
  * Suggestions over records a tracked change has to hold survive a save:
- * a point comment's reference inside a deleted paragraph's `w:del`, a
- * `w:ins`/`w:del` inside `w:fldSimple`, and a deleted paragraph mark that
- * carries `w:sectPr`. Each reopens as the same pending change and resolves
+ * a point comment's reference inside a deleted paragraph's `w:del`, a comment
+ * anchor in a `w:hyperlink` or `w:sdt` there, a `w:ins`/`w:del` inside
+ * `w:fldSimple`, a deleted or inserted paragraph mark that carries
+ * `w:sectPr`, and a `w:sectPrChange` on the body's final `w:sectPr`. Each reopens as the same pending change and resolves
  * as it did before the save.
  */
 import { expect, test } from "bun:test";
@@ -33,11 +34,14 @@ const NEW_IDS = {
   revision: Array.from({ length: 16 }, (_, index) => 101 + index),
 };
 
-const open = async (body: string): Promise<Document> => {
+const open = async (
+  body: string,
+  finalSection = "<w:sectPr/>",
+): Promise<Document> => {
   const zip = await ZipArchive.read(await createDocx(createEmptyDocument()));
   zip.set(
     "word/document.xml",
-    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document ${W}><w:body>${body}<w:sectPr/></w:body></w:document>`,
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document ${W}><w:body>${body}${finalSection}</w:body></w:document>`,
   );
   return parseDocx((await zip.generate({ compression: "store" })).buffer, {
     preloadFonts: false,
@@ -162,6 +166,66 @@ test("a point comment's reference saves inside the deleted paragraph's w:del", a
   expect(rejected.package.document.comments?.map(({ id }) => id)).toEqual([7]);
 });
 
+test.each([
+  [
+    "w:hyperlink",
+    '<w:hyperlink w:anchor="target"><w:r><w:t>b</w:t></w:r><w:r><w:t>c</w:t></w:r></w:hyperlink>',
+  ],
+  [
+    "w:sdt",
+    '<w:sdt><w:sdtPr><w:id w:val="55"/></w:sdtPr><w:sdtContent><w:r><w:t>b</w:t></w:r><w:r><w:t>c</w:t></w:r></w:sdtContent></w:sdt>',
+  ],
+])(
+  "a comment range start inside %s stands outside the deleted paragraph's w:del after a save",
+  async (_container, held) => {
+    const document = await open(
+      `<w:p w14:paraId="00000001"><w:r><w:t>a</w:t></w:r>${held}<w:r><w:t>d</w:t></w:r></w:p>` +
+        '<w:p w14:paraId="00000002"><w:r><w:t>e</w:t></w:r></w:p>',
+    );
+    const [first, second] = document.package.document.content;
+    if (first?.type !== "paragraph" || second?.type !== "paragraph")
+      throw new Error("Expected two paragraphs.");
+    const container = first.content[1];
+    if (container?.type === "hyperlink")
+      container.children.splice(1, 0, { type: "commentRangeStart", id: 7 });
+    else if (container?.type === "inlineSdt")
+      container.content.splice(1, 0, { type: "commentRangeStart", id: 7 });
+    else throw new Error("Expected a hyperlink or a content control.");
+    second.content.push(
+      { type: "commentRangeEnd", id: 7 },
+      { type: "commentReference", id: 7 },
+    );
+    document.package.document.comments = [
+      {
+        id: 7,
+        author: "Commenter",
+        content: [
+          {
+            type: "paragraph",
+            paraId: "00000010",
+            content: [
+              { type: "run", content: [{ type: "text", text: "Why?" }] },
+            ],
+          },
+        ],
+      },
+    ];
+    const suggested = suggest(document, {
+      type: "deleteParagraphs",
+      story: OP_STORIES.MAIN,
+      blockIds: ["00000001"],
+    });
+    const zip = await ZipArchive.read(await saved(suggested.document));
+    const xml = (await zip.entry("word/document.xml")?.text()) ?? "";
+    expect(xml).not.toMatch(
+      /<w:del [^>]*>(?:(?!<\/w:del>).)*<w:commentRangeStart w:id="7"\/>/su,
+    );
+    expect(xml).toContain('<w:commentRangeStart w:id="7"/>');
+    const reread = await assertSurvivesSave(suggested);
+    expect(reread.package.document.comments?.map(({ id }) => id)).toEqual([7]);
+  },
+);
+
 test("a w:ins and a w:del inside w:fldSimple resolve after a save", async () => {
   const document = await open(
     '<w:p w14:paraId="00000001"><w:r><w:t xml:space="preserve">Page </w:t></w:r>' +
@@ -217,4 +281,67 @@ test("a suggested join at a section break saves its deleted mark beside w:sectPr
       content: expect.stringContaining("Ends a section.Opens the next."),
     },
   ]);
+});
+
+test("a final section revision resolves after a save", async () => {
+  const document = await open(
+    '<w:p w14:paraId="00000001"><w:r><w:t>Body.</w:t></w:r></w:p>',
+    '<w:sectPr><w:pgSz w:w="14400" w:h="15840"/>' +
+      `<w:sectPrChange w:id="9" ${AUTHORED}><w:sectPr><w:pgSz w:w="12240" w:h="15840"/></w:sectPr></w:sectPrChange></w:sectPr>`,
+  );
+  const reread = await reopened(document);
+  const width = (resolved: Document) =>
+    resolved.package.document.finalSectionProperties?.pageWidth;
+  for (const source of [document, reread]) {
+    const accepted = resolve(source, [9], REVISION_DECISIONS.ACCEPT);
+    const rejected = resolve(source, [9], REVISION_DECISIONS.REJECT);
+    expect(width(accepted)).toBe(14_400);
+    expect(width(rejected)).toBe(12_240);
+    for (const resolved of [accepted, rejected]) {
+      expect(
+        resolved.package.document.finalSectionProperties?.propertyChanges,
+      ).toBeUndefined();
+      expect(width(await reopened(resolved))).toBe(width(resolved));
+    }
+  }
+});
+
+test("a suggested paragraph ending a section saves its break beside its inserted mark", async () => {
+  const document = await open(
+    '<w:p w14:paraId="00000001"><w:r><w:t>One.</w:t></w:r></w:p>' +
+      '<w:p w14:paraId="00000002"><w:r><w:t>Two.</w:t></w:r></w:p>',
+  );
+  const suggested = apply(document, [
+    {
+      type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+      story: OP_STORIES.MAIN,
+      at: { type: "after", blockId: "00000001" },
+      blocks: [
+        {
+          type: "paragraph",
+          paraId: "0000000A",
+          sectionProperties: { pageWidth: 11_906, pageHeight: 16_838 },
+          content: [
+            { type: "run", content: [{ type: "text", text: "Ends." }] },
+          ],
+        },
+      ],
+      revision: STAMP,
+      newIds: NEW_IDS,
+    },
+  ]);
+  const reread = await assertSurvivesSave(suggested);
+  const inserted = reread.package.document.content.find(
+    (block) => block.type === "paragraph" && block.paraId === "0000000A",
+  );
+  expect(inserted?.type === "paragraph" && inserted.pPrMark?.kind).toBe("ins");
+  expect(
+    inserted?.type === "paragraph" && inserted.sectionProperties?.pageWidth,
+  ).toBe(11_906);
+  const rejected = resolve(
+    reread,
+    suggested.revisions,
+    REVISION_DECISIONS.REJECT,
+  );
+  expect(shape(rejected)).toEqual(shape(document));
 });

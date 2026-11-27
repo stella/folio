@@ -62,15 +62,6 @@ export const setRevisionInfo = (
     wanted.set(info.id, info);
   }
   const body = storyBody(document, op.story);
-  const finalSectionRevision =
-    body.finalSectionProperties?.propertyChanges?.find(({ info }) =>
-      wanted.has(info.id),
-    );
-  if (finalSectionRevision !== undefined)
-    return refuse(
-      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      `Final section revision ${String(finalSectionRevision.info.id)} requires section review.`,
-    );
   const previous = new Map<number, TrackedChangeInfo>();
   let disagreeing: number | undefined;
   const modified = new Set<string>();
@@ -157,6 +148,12 @@ export const setRevisionInfo = (
     body.sections === undefined
       ? undefined
       : (rebuild(body.sections) as typeof body.sections);
+  const finalSectionProperties =
+    body.finalSectionProperties === undefined
+      ? undefined
+      : (rebuild(
+          body.finalSectionProperties,
+        ) as typeof body.finalSectionProperties);
   const missing = [...wanted.keys()].find((id) => !previous.has(id));
   if (missing !== undefined)
     return refuse(
@@ -170,7 +167,11 @@ export const setRevisionInfo = (
       DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
       `The records of revision ${String(disagreeing)} carry different infos.`,
     );
-  if (content === body.content && sections === body.sections)
+  if (
+    content === body.content &&
+    sections === body.sections &&
+    finalSectionProperties === body.finalSectionProperties
+  )
     return refuse(
       DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE,
       "The revisions already carry these infos.",
@@ -183,6 +184,9 @@ export const setRevisionInfo = (
         ...body,
         content,
         ...(sections === undefined ? {} : { sections }),
+        ...(finalSectionProperties === undefined
+          ? {}
+          : { finalSectionProperties }),
       },
     }),
     inverse: [

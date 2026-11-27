@@ -486,7 +486,11 @@ const holdsCommentAnchor = (node: InlineNode): boolean =>
  * still refused, as a bare anchor is. A deletion of whole paragraphs leaves
  * the bare comment anchors, a comment's reference included, standing outside
  * it (`commentAnchorsStand`): they are no content of the paragraphs, and accepting it hands them to the nearest
- * paragraph that stays, as deleting the paragraphs directly does. A
+ * paragraph that stays, as deleting the paragraphs directly does. It leaves
+ * an anchor a content control or transparent wrapper holds standing there
+ * too, the deletion going inside the container around its other content
+ * (`descend`); a hyperlink cannot hold a deletion, so it is cut around such
+ * an anchor instead ({@link splitAtStandingAnchors}). A
  * deletion recording no joins takes in no record holding one: accepting it
  * keeps the anchors of comment ranges that continue past it, which removing
  * that content directly does not keep where they were. An insertion may
@@ -501,6 +505,13 @@ const coveredAction = (node: InlineNode, state: WrapState): CoveredAction => {
   if (state.kind === WRAP_KINDS.DELETION) {
     if (isRemovedRevisionNode(node)) return "skip";
     if (isAddedRevision(node)) return "descend";
+    if (state.commentAnchorsStand) {
+      if (!holdsStandingAnchor(node, state)) return "wrap";
+      // A hyperlink holding one is cut around it before it gets here.
+      return node.type === "inlineSdt" || node.type === "inlineWrapper"
+        ? "descend"
+        : "refuse";
+    }
     if (
       (state.resolutionJoin === undefined || node.type === "inlineWrapper") &&
       holdsCommentAnchor(node)
@@ -508,6 +519,72 @@ const coveredAction = (node: InlineNode, state: WrapState): CoveredAction => {
       return "refuse";
   }
   return "wrap";
+};
+
+/** Whether a record holds, at any depth, a comment anchor a deletion of whole paragraphs leaves standing. */
+const holdsStandingAnchor = (node: InlineNode, state: WrapState): boolean =>
+  (childNodes(node) ?? []).some(
+    (child) =>
+      (isCommentAnchor(child) && !takesReference(child, state)) ||
+      holdsStandingAnchor(child, state),
+  );
+
+/** A piece of a record cut around the anchors it leaves standing. */
+type StandingPiece = {
+  node: InlineNode;
+  /** Whether the piece holds only the standing anchors, which stay outside the deletion. */
+  standing: boolean;
+};
+
+/**
+ * A record a deletion of whole paragraphs covers, cut around the comment
+ * anchors in it the deletion leaves standing: pieces of it holding the
+ * anchors alternate with pieces holding the rest, and each seam is as deep
+ * as the records cut there. A hyperlink cannot hold a deletion, so its
+ * pieces holding content are wrapped whole and the pieces holding the anchors
+ * stay, as a deletion of a range in the link leaves them. Rejecting joins the
+ * pieces back at those depths; accepting leaves the anchors where the
+ * content was, inside the link.
+ */
+const splitAtStandingAnchors = (
+  node: InlineNode,
+  state: WrapState,
+): { pieces: StandingPiece[]; seams: number[] } => {
+  const parts: { standing: boolean; children: InlineNode[] }[] = [];
+  const seams: number[] = [];
+  const add = (standing: boolean, child: InlineNode, inner: number): void => {
+    const last = parts.at(-1);
+    if (last?.standing === standing && inner === 0) {
+      last.children.push(child);
+      return;
+    }
+    if (last !== undefined) seams.push(1 + inner);
+    parts.push({ standing, children: [child] });
+  };
+  for (const child of childNodes(node) ?? []) {
+    if (isCommentAnchor(child) && !takesReference(child, state)) {
+      add(true, child, 0);
+      continue;
+    }
+    if (!holdsStandingAnchor(child, state)) {
+      add(false, child, 0);
+      continue;
+    }
+    const inner = splitAtStandingAnchors(child, state);
+    for (const [index, piece] of inner.pieces.entries())
+      add(
+        piece.standing,
+        piece.node,
+        index === 0 ? 0 : (inner.seams[index - 1] ?? 0),
+      );
+  }
+  return {
+    pieces: parts.map(({ standing, children }) => ({
+      standing,
+      node: rebuildNode(node, children),
+    })),
+    seams,
+  };
 };
 
 /**
@@ -782,6 +859,18 @@ const groupCovered = (
       state.kind === WRAP_KINDS.INSERTION
         ? { type: "insertion", info, content }
         : { type: "deletion", info, content };
+    const standingSeams = {
+      before: stretch.at(0)?.joinBefore ?? 0,
+      after: stretch.at(-1)?.joinAfter ?? 0,
+    };
+    if (
+      state.commentAnchorsStand &&
+      state.resolutionJoin === undefined &&
+      (standingSeams.before > 0 || standingSeams.after > 0) &&
+      isTrackedWrapper(wrapper)
+    )
+      // Pieces of a hyperlink cut around standing anchors join back there.
+      wrapper.resolutionJoins = { ...standingSeams, remove: 0 };
     if (state.resolutionJoin !== undefined && isTrackedWrapper(wrapper)) {
       const opening = stretch.at(0);
       wrapper.resolutionJoins = {
@@ -810,6 +899,29 @@ const groupCovered = (
   };
   for (const entry of entries) {
     const { node, covered } = entry;
+    if (
+      covered &&
+      state.commentAnchorsStand &&
+      state.kind === WRAP_KINDS.DELETION &&
+      node.type === "hyperlink" &&
+      holdsStandingAnchor(node, state)
+    ) {
+      const { pieces, seams } = splitAtStandingAnchors(node, state);
+      for (const [index, piece] of pieces.entries()) {
+        if (piece.standing) {
+          if (!flush()) return undefined;
+          out.push(piece.node);
+          continue;
+        }
+        stretch.push({
+          node: piece.node,
+          covered: true,
+          joinBefore: index === 0 ? 0 : (seams[index - 1] ?? 0),
+          joinAfter: seams[index] ?? 0,
+        });
+      }
+      continue;
+    }
     const action = covered ? coveredAction(node, state) : "skip";
     switch (action) {
       case "refuse":

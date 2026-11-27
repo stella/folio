@@ -315,11 +315,6 @@ test("an invalid requested ID precedes a selected final section record", () => {
       reason: DOCUMENT_OP_REFUSAL_REASONS.INVALID_NEW_ID,
       message: "A revision id is an integer.",
     },
-    {
-      selected: [finalRevision, ...ids],
-      reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      message: `Final section revision ${finalRevision} requires section review.`,
-    },
   ]) {
     const { actual, expected, successful, fallbacks } = counted(
       document,

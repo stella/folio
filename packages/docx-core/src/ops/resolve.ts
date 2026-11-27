@@ -8611,8 +8611,8 @@ const withoutSection = (story: OpStory, paragraph: Paragraph): DocumentOp => {
 /**
  * The records of the sections the ids select, resolved through the section
  * calculation every reviewer applies, with the revision ids left to resolve.
- * A section's records travel on the paragraph that ends it; the final
- * section's are resolved by section review. A header, footer or note has no
+ * A section's records travel on the paragraph that ends it or on the main
+ * story's final section record. A header, footer or note has no
  * sections, but a paragraph there may still carry section properties with
  * records: they resolve by the same calculation, on that paragraph.
  */
@@ -8626,6 +8626,21 @@ const settleSectionRecords = (
   const ops: DocumentOp[] = [];
   if (op.story === OP_STORIES.MAIN) {
     const body = document.package.document;
+    const final = body.finalSectionProperties;
+    if (final !== undefined) {
+      const resolved = resolveSectionRecords({
+        properties: final,
+        ids,
+        decision: op.decision,
+      });
+      if (resolved !== final)
+        ops.push({
+          type: DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT,
+          endpoint: { type: "final" },
+          expected: { type: "present", value: final },
+          properties: { type: "present", value: resolved },
+        });
+    }
     for (const [sectionIndex, { index, properties }] of sectionEnds(
       body,
     ).entries()) {
@@ -8727,20 +8742,6 @@ const planSingleRecordResolution = (
       ),
     );
   }
-  const finalSectionRevision = storyBody(
-    document,
-    op.story,
-  ).finalSectionProperties?.propertyChanges?.find(({ info }) =>
-    op.revisionIds.includes(info.id),
-  );
-  if (finalSectionRevision !== undefined)
-    return Result.err(
-      refusal(
-        op,
-        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-        `Final section revision ${String(finalSectionRevision.info.id)} requires section review.`,
-      ),
-    );
   const present = storyIdentityKeys(document, op.story);
   const ids = new Set(
     op.revisionIds.filter((id) =>
