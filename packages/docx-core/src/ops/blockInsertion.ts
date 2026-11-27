@@ -62,6 +62,7 @@ import { identitySlots } from "./slots";
 import { locateBlockInsertion } from "./tableLocation";
 import {
   DOCUMENT_OP_TYPES,
+  type DocumentOp,
   type InsertBlocksOp,
   OP_STORIES,
   type ReplaceBlocksOp,
@@ -603,6 +604,77 @@ const insertedMarkResolvesBeforeTable = ({
     blockListEndsInParagraph(blocks) &&
     !followsFirstParagraphOwner(blocks, index));
 
+/**
+ * Paragraphs some of which end a section (`w:pPr/w:sectPr`), inserted as
+ * the paragraphs and then each break set on its paragraph, as setting a
+ * section endpoint does. A suggested insertion records each new paragraph's
+ * mark inserted, so the break travels with that mark: rejecting it removes
+ * the paragraph and joins its section into the one after it, and accepting
+ * keeps the break. A section ends only in the main story; a paragraph
+ * elsewhere keeps no break an insertion could give it.
+ */
+const insertSectionBreaks = ({
+  document,
+  op,
+  applyOps,
+}: Omit<BlockInsertionOptions, "validateBlockReplacement">): Result<
+  DocumentEdit,
+  DocumentOpRefusal
+> => {
+  const refuse = (reason: DocumentOpRefusal["reason"], message: string) =>
+    Result.err(new DocumentOpRefusal({ reason, message, opType: op.type }));
+  if (op.story !== OP_STORIES.MAIN)
+    return refuse(
+      DOCUMENT_OP_REFUSAL_REASONS.SECTION_BOUNDARY,
+      "A section break ends a section of the main story only.",
+    );
+  const breaks: DocumentOp[] = [];
+  const paragraphs = op.blocks.map(({ sectionProperties, ...paragraph }) => {
+    if (sectionProperties !== undefined)
+      breaks.push({
+        type: DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT,
+        endpoint: { type: "paragraph", blockId: paragraph.paraId ?? "" },
+        expected: { type: "omitted" },
+        properties: { type: "present", value: sectionProperties },
+      });
+    return paragraph;
+  });
+  const applied = applyOps(document, [
+    { ...op, blocks: paragraphs },
+    ...breaks,
+  ]);
+  if (applied.isErr())
+    return refuse(applied.error.reason, applied.error.message);
+  // Suggested after the story's last paragraph, the new last paragraph keeps
+  // the story's own mark, which no tracked change records: rejecting would
+  // leave its break standing.
+  if (
+    op.revision !== undefined &&
+    paragraphs.some((paragraph, index) => {
+      if (op.blocks[index]?.sectionProperties === undefined) return false;
+      const mark = findStoryParagraph(
+        storyBody(applied.value.document, op.story),
+        paragraph.paraId ?? "",
+      )?.paragraph.pPrMark;
+      return mark?.kind !== "ins" && mark?.kind !== "moveTo";
+    })
+  )
+    return refuse(
+      DOCUMENT_OP_REFUSAL_REASONS.SECTION_BOUNDARY,
+      "A suggested section break needs a paragraph mark the suggestion adds.",
+    );
+  return Result.ok({
+    ...applied.value,
+    touched: {
+      modified: applied.value.touched.modified,
+      inserted: op.blocks.flatMap(({ paraId }) =>
+        paraId === undefined ? [] : [paraId],
+      ),
+      removed: [],
+    },
+  });
+};
+
 export const insertBlocks = ({
   document,
   op,
@@ -818,12 +890,8 @@ export const insertBlocks = ({
   }
   if (
     op.blocks.some(({ sectionProperties }) => sectionProperties !== undefined)
-  ) {
-    return refuse(
-      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      "Inserting section breaks requires section operations.",
-    );
-  }
+  )
+    return insertSectionBreaks({ document, op, applyOps });
   // Use the following paragraph as the unchanged boundary whenever possible.
   const list = blockListAt(body.content, location.list);
   const following = list[location.index + 1];

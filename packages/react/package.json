@@ -1,6 +1,6 @@
 {
   "name": "@stll/folio-react",
-  "version": "0.39.1",
+  "version": "0.39.2",
   "description": "React editor for .docx documents: paginated editing, tracked changes, comments and collaboration in the browser, on the @stll/folio-core engine.",
   "keywords": [
     "document-editor",

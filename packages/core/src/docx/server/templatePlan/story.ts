@@ -21,6 +21,73 @@ import {
   wName,
 } from "./xml";
 
+/** What a horizontal position is counted from when it is fixed to the page
+ *  rather than to the text the drawing is anchored in. */
+const PAGE_FIXED: ReadonlySet<string> = new Set([
+  "page",
+  "margin",
+  "leftMargin",
+  "rightMargin",
+  "insideMargin",
+  "outsideMargin",
+]);
+const SHAPE_GRAPHIC = "wordprocessingShape";
+/** What makes a drawing more than a mark: a picture, text of its own. */
+const SHAPE_CONTENT: ReadonlySet<string> = new Set([
+  "pic",
+  "blip",
+  "txbx",
+  "txbxContent",
+  "linkedTxbx",
+]);
+
+/**
+ * Whether an object of a paragraph is a drawn shape fixed to the page: a
+ * single shape without a picture and without text of its own (a rule, a
+ * dot, a line), floating, with its horizontal place counted from the page
+ * or a margin. Such a mark belongs to the layout of the page it was drawn
+ * on: when the text around it is set anew it stands where that page had it.
+ * A picture, a text box, a group, a chart, an inline drawing and a shape
+ * that follows its column, character or paragraph are none.
+ */
+export const isPageShape = (object: XmlElement): boolean => {
+  let anchors = 0;
+  let fixed = false;
+  let plain = true;
+  let shapes = 0;
+  const stack: XmlElement[] = [object];
+  for (
+    let element = stack.pop();
+    element !== undefined;
+    element = stack.pop()
+  ) {
+    const local = getLocalName(element.name);
+    // What an application without drawings reads instead says the same
+    // mark again; the drawing itself is what is judged.
+    if (local === "Fallback") {
+      continue;
+    }
+    if (local === "anchor") {
+      anchors += 1;
+    } else if (local === "inline") {
+      plain = false;
+    } else if (local === "positionH") {
+      fixed = PAGE_FIXED.has(
+        String(element.attributes?.["relativeFrom"] ?? ""),
+      );
+    } else if (local === "graphicData") {
+      shapes += 1;
+      plain &&= String(element.attributes?.["uri"] ?? "").endsWith(
+        SHAPE_GRAPHIC,
+      );
+    } else if (SHAPE_CONTENT.has(local)) {
+      plain = false;
+    }
+    stack.push(...elementChildren(element));
+  }
+  return anchors === 1 && shapes === 1 && fixed && plain;
+};
+
 /** The mark a footnote or endnote reference leaves in a block's text. */
 export const NOTE_REFERENCE_MARK = "￼";
 
@@ -199,6 +266,25 @@ const ownIndent = (
   };
 };
 
+const SWITCHED_ON: ReadonlySet<string> = new Set(["1", "true", "on"]);
+
+/**
+ * The space in front of a paragraph and behind it as its own `w:spacing`
+ * states it in twentieths of a point. A side set to follow the application
+ * (`beforeAutospacing`) or counted in lines (`beforeLines`) is not such a
+ * measure and reads as not stated.
+ */
+const ownSpacing = (
+  spacing: XmlElement | null,
+): { before: number | null; after: number | null } => {
+  const side = (name: "before" | "after"): number | null =>
+    SWITCHED_ON.has(wAttr(spacing, `${name}Autospacing`) ?? "") ||
+    wAttr(spacing, `${name}Lines`) !== null
+      ? null
+      : twipsOrNull(wAttr(spacing, name));
+  return { before: side("before"), after: side("after") };
+};
+
 export type ParagraphRead = {
   element: XmlElement;
   ordinal: number;
@@ -217,6 +303,8 @@ export type ParagraphRead = {
   bookmarks: ParagraphBookmark[];
   bookmarkEnds: ParagraphBookmarkEnd[];
   inlineObjects: number;
+  /** How many of them are drawn shapes fixed to the page. */
+  pageShapes: number;
   /** Names of content the reader has no text for and the transfer cannot carry. */
   unsupported: string[];
   hasSectionBreak: boolean;
@@ -224,6 +312,9 @@ export type ParagraphRead = {
   pageBreakBefore: boolean | null;
   /** `w:jc` as the paragraph itself states it, or null. */
   alignment: string | null;
+  /** The space in front and behind (`w:spacing`) the paragraph itself
+   *  states, in twentieths of a point; null for a side it does not state. */
+  spacing: { before: number | null; after: number | null };
   /** The sides of `w:ind` the paragraph itself states, in twentieths of a
    *  point: where its lines start, and what its first line adds to that
    *  (negative for a hanging indent). Null for a side it does not state. */
@@ -516,6 +607,7 @@ const readRun = (
       return;
     }
     read.inlineObjects += 1;
+    read.pageShapes += isPageShape(element) ? 1 : 0;
     const inside = countContentRevisions(element);
     state.trackedChanges += inside;
     // A change inside an object is none this reading can carry.
@@ -820,10 +912,12 @@ export const readParagraph = (
     bookmarks: [],
     bookmarkEnds: [],
     inlineObjects: 0,
+    pageShapes: 0,
     unsupported: [],
     hasSectionBreak: wChild(properties, "sectPr") !== null,
     pageBreakBefore: toggleOf(wChild(properties, "pageBreakBefore")),
     alignment: wChildVal(properties, "jc"),
+    spacing: ownSpacing(wChild(properties, "spacing")),
     indent: ownIndent(wChild(properties, "ind")),
     indentInCharacters: CHARACTER_INDENTS.some((name) => {
       const value = wAttr(wChild(properties, "ind"), name);

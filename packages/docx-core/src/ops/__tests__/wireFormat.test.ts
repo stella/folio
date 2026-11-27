@@ -140,13 +140,64 @@ test("the pinned note restore and current producer inverse both decode, undo and
 });
 
 test("semantic table wire fixtures exercise geometry, ids, patches and tracked payloads", () => {
-  const fixtures = envelopes().map(({ op }) => op);
+  const columnTable: Document = {
+    package: {
+      document: {
+        content: [
+          {
+            type: "table",
+            columnWidths: [600, 700, 800],
+            rows: [
+              {
+                type: "tableRow",
+                cells: ["00000001", "00000002", "00000003"].map((paraId) => ({
+                  type: "tableCell",
+                  content: [{ type: "paragraph", paraId, content: [] }],
+                })),
+              },
+            ],
+          },
+        ],
+      },
+    },
+  };
+  const target = {
+    story: "main",
+    blockId: "00000003",
+    column: 0,
+    count: 2,
+  } as const;
+  // Optional counts extend the current decoder while the pinned single-column
+  // specimens keep their original bytes.
+  const columnRanges = [
+    {
+      ...target,
+      type: DOCUMENT_OP_TYPES.INSERT_COLUMN,
+      width: 900,
+      newBlockIds: ["00000004", "00000005"],
+    },
+    { ...target, type: DOCUMENT_OP_TYPES.DELETE_COLUMN },
+  ] as const satisfies readonly DocumentOp[];
+  for (const op of columnRanges) {
+    const encoded: DocumentOpEnvelope = JSON.parse(
+      JSON.stringify(toOpEnvelope(op)),
+    );
+    const applied = applyDocumentOpEnvelope(columnTable, encoded).unwrap();
+    const table = applied.document.package.document.content.at(0);
+    if (table?.type !== "table")
+      throw new TypeError("Expected a retained table.");
+    expect(table.columnWidths).toHaveLength(
+      op.type === DOCUMENT_OP_TYPES.INSERT_COLUMN ? 5 : 1,
+    );
+  }
+  const fixtures = [...envelopes().map(({ op }) => op), ...columnRanges];
   const fields = {
     insertColumn: {
       type: true,
       story: true,
       blockId: true,
       column: true,
+      count: true,
       width: true,
       newBlockIds: true,
       revision: true,
@@ -157,6 +208,7 @@ test("semantic table wire fixtures exercise geometry, ids, patches and tracked p
       story: true,
       blockId: true,
       column: true,
+      count: true,
       revision: true,
       newIds: true,
     },

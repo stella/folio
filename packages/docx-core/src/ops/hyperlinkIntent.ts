@@ -64,10 +64,7 @@ export type HyperlinkEditorIntent =
       tooltip?: string;
     };
 
-const refuse = (
-  message: string,
-  reason: DocumentOpRefusal["reason"] = DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-) =>
+const refuse = (message: string, reason: DocumentOpRefusal["reason"]) =>
   Result.err(
     new DocumentOpRefusal({
       message,

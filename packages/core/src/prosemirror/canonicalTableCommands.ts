@@ -314,18 +314,22 @@ const insertColumn =
     ];
   };
 
-/** Each selected column, from the right so the indices still hold. */
+/** One grid change covers the selection, including any spans it narrows. */
 const deleteColumns: StructureLowering = (rect) => {
   const at = tableAnchor(rect, { left: rect.left, right: rect.right });
   if (at === undefined) return undefined;
-  const intents: CanonicalCommandIntent[] = [];
-  for (let column = rect.right - 1; column >= rect.left; column -= 1)
-    intents.push({
+  const count = rect.right - rect.left;
+  return [
+    {
       type: "editTable",
       at,
-      edit: { type: DOCUMENT_OP_TYPES.DELETE_COLUMN, column },
-    });
-  return intents;
+      edit: {
+        type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
+        column: rect.left,
+        ...(count > 1 ? { count } : {}),
+      },
+    },
+  ];
 };
 
 const mergeCells: StructureLowering = (rect) => {

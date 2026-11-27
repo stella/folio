@@ -21,6 +21,7 @@ import { hasIllegalXmlCharacters } from "@stll/docx-core";
 import {
   lockedControlMessage,
   type LockedControlViolation,
+  tableWithPhysicalColumns,
 } from "@stll/docx-core/model";
 import {
   type AppliedDocumentOp,
@@ -1119,8 +1120,9 @@ const visitBlockSources = (
     return;
   }
   if (block.type !== "table") return;
-  const rowSpans = calculateRowSpans(block);
-  for (const [rowIndex, row] of block.rows.entries()) {
+  const display = tableWithPhysicalColumns(block);
+  const rowSpans = calculateRowSpans(display);
+  for (const [rowIndex, row] of display.rows.entries()) {
     let column = row.formatting?.gridBefore ?? 0;
     for (const cell of row.cells) {
       const skippedContinuation =
@@ -1805,11 +1807,14 @@ const project = ({
   const currentStyles = Object.hasOwn(document.package, "styles")
     ? document.package.styles
     : styles;
-  const options = storyConversionOptions({
-    styles: currentStyles,
-    theme: document.package.theme,
-    numbering: document.package.numbering,
-  });
+  const options = {
+    ...storyConversionOptions({
+      styles: currentStyles,
+      theme: document.package.theme,
+      numbering: document.package.numbering,
+    }),
+    tableReviewGeometry: "physical" as const,
+  };
   const converted = Result.try({
     try: () => {
       if (story === OP_STORIES.MAIN)

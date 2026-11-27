@@ -3609,6 +3609,29 @@ const mergesDownOverEmptyCells = (
   return true;
 };
 
+/** A merge across one row can absorb empty cells without moving blocks. */
+const mergesAcrossEmptyCells = (
+  table: PMNode,
+  map: TableMap,
+  rectangle: TableRectangle,
+) => {
+  if (rectangle.bottom - rectangle.top !== 1) return false;
+  const cells = new Set(cellsIn(map, rectangle));
+  const owner = map.map[rectangle.top * map.width + rectangle.left];
+  if (owner === undefined) return false;
+  cells.delete(owner);
+  for (const offset of cells) {
+    const cell = table.nodeAt(offset);
+    if (
+      cell?.childCount !== 1 ||
+      !cell.firstChild?.isTextblock ||
+      cell.firstChild.content.size > 0
+    )
+      return false;
+  }
+  return cells.size > 0;
+};
+
 type TableStructureOperation = Extract<
   FolioDocumentOperation,
   {
@@ -3783,22 +3806,6 @@ const resolveTableStructure = ({
         left: cell.leftColumnIndex,
         right: cell.leftColumnIndex + 1,
       };
-      // A column covered only by spans and omissions changes geometry. A
-      // column also taking whole cells needs both geometry and cell records.
-      if (tracked) {
-        const spans = Array.from({ length: map.height }, (_, rowIndex) => {
-          const position = map.map[rowIndex * map.width + column.left];
-          const node =
-            position === undefined ? null : row.table.nodeAt(position);
-          return node === null || node.attrs["_omittedGridSlot"] != null
-            ? 0
-            : Number(node.attrs["colspan"] ?? 1);
-        });
-        if (spans.includes(1) && spans.some((span) => span > 1))
-          return skipTracked(
-            "A suggested column deletion cannot narrow a cell that spans other columns.",
-          );
-      }
       // The table is addressed by a paragraph the deletion keeps, as the
       // editor's column deletion addresses it.
       const at = tableAnchor(
@@ -3955,11 +3962,13 @@ const resolveTableStructure = ({
           "unsupportedBlock",
           "The merge covers a single merged cell.",
         );
-      // A suggestion records a merge down over empty cells; a merge that
-      // moves content between cells has no tracked form.
-      if (tracked && !mergesDownOverEmptyCells(row.table, map, rectangle))
+      if (
+        tracked &&
+        !mergesDownOverEmptyCells(row.table, map, rectangle) &&
+        !mergesAcrossEmptyCells(row.table, map, rectangle)
+      )
         return skipTracked(
-          "A suggested merge takes one column over empty cells.",
+          "A suggested merge can absorb only empty cells in one row or column.",
         );
       const blockId = tableBlockAddress(projection, row, deleted);
       if (blockId === undefined)
@@ -3988,12 +3997,6 @@ const resolveTableStructure = ({
         return skipAlike(
           "noopOperation",
           "A one-row, one-column cell has nothing to split.",
-        );
-      // A suggested split gives a merge down its rows back; a cell spanning
-      // columns has no suggested split in either engine.
-      if (tracked && cell.rightColumnIndex - cell.leftColumnIndex !== 1)
-        return skipTracked(
-          "A suggested split takes a cell merged down one column.",
         );
       // The cell is addressed by its own paragraph, the merge's first.
       return resolved(

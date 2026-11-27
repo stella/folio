@@ -13,7 +13,9 @@
  */
 
 export { getSingularRunPropertyChange } from "./runPropertyReview";
+export { MAX_TABLE_GEOMETRY_HISTORY_LENGTH } from "./formatting";
 export { gridColumnsInRows, MAX_TABLE_GRID_COLUMNS } from "./tableGridLimits";
+export { tableWithPhysicalColumns } from "./tableReviewGeometry";
 export {
   CONTENT_CONTROL_LOCK,
   contentControlLockAllows,

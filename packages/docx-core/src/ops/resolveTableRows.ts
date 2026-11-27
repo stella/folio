@@ -65,6 +65,29 @@ const tablesIn = (document: Document, story: OpStory): Table[] => {
   return out;
 };
 
+/** A geometry decision removes or retains the cells and the grid together. */
+export const withBelongingTableGeometry = (
+  document: Document,
+  op: ResolveRevisionOp,
+): ResolveRevisionOp => {
+  const ids = new Set(op.revisionIds);
+  const uniqueCount = ids.size;
+  for (const table of tablesIn(document, op.story)) {
+    const grid = table.formatting?.gridChange;
+    const members = grid?.geometryChange?.revisionIds;
+    if (grid === undefined || !Array.isArray(members)) continue;
+    const local = reachableOnTable(table);
+    if (
+      !ids.has(grid.id) &&
+      !members.some((id) => local.has(id) && ids.has(id))
+    )
+      continue;
+    ids.add(grid.id);
+    for (const id of members) if (local.has(id)) ids.add(id);
+  }
+  return ids.size === uniqueCount ? op : { ...op, revisionIds: [...ids] };
+};
+
 const propertyIds = (
   changes: readonly { info: { id: number } }[] | undefined,
 ): number[] => changes?.map(({ info }) => info.id) ?? [];
@@ -650,7 +673,11 @@ const resolveCellChanges = ({
       );
     }),
   );
-  if (!hasRemovedCells)
+  if (
+    !hasRemovedCells ||
+    (selectedGridChange &&
+      table.formatting?.gridChange?.geometryChange !== undefined)
+  )
     return Result.ok({ table: structureResolved, holdsRemovedColumns: false });
 
   // Cell insertions used by horizontal/vertical splits restore the owner's span

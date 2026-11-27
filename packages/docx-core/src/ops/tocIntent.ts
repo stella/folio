@@ -39,10 +39,7 @@ export type GenerateTOCIntent = {
   tabPosition: number;
 };
 
-const refuse = (
-  message: string,
-  reason: DocumentOpRefusal["reason"] = DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-) =>
+const refuse = (message: string, reason: DocumentOpRefusal["reason"]) =>
   Result.err(
     new DocumentOpRefusal({
       message,
@@ -50,17 +47,6 @@ const refuse = (
       opType: DOCUMENT_OP_TYPES.REPLACE_INLINE,
     }),
   );
-
-const isPendingOrUnsupported = (
-  content: readonly ParagraphContent[],
-): boolean =>
-  content.some((item) => {
-    if (item.type === "bookmarkStart" || item.type === "bookmarkEnd")
-      return false;
-    if (item.type === "run") return (item.propertyChanges?.length ?? 0) > 0;
-    if (item.type === "hyperlink") return isPendingOrUnsupported(item.children);
-    return true;
-  });
 
 const takeBookmarkId = (
   census: { ids: ReadonlySet<number> },
@@ -243,9 +229,11 @@ export const compileGenerateTOCIntent = (
 > => {
   if (intent.headings.length === 0)
     return Result.ok({ ops: [], selection: intent.at });
+  // A contents lists the body's headings and goes in the body.
   if (intent.at.story !== OP_STORIES.MAIN)
     return refuse(
       "TOC generation is supported in the main document story only.",
+      DOCUMENT_OP_REFUSAL_REASONS.INVALID_OPERATION,
     );
   if (
     intent.title === "" ||
@@ -307,20 +295,17 @@ export const compileGenerateTOCIntent = (
         "A TOC heading paragraph does not exist.",
         DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
       );
-    if (
-      paragraphLogicalText(location.paragraph).trim() !== heading.text.trim() ||
-      location.paragraph.paraId === undefined ||
-      isPendingOrUnsupported(location.paragraph.content) ||
-      (location.paragraph.propertyChanges?.length ?? 0) > 0 ||
-      location.paragraph.pPrMark !== undefined ||
-      location.paragraph.reviewCarrier !== undefined
-    )
+    if (paragraphLogicalText(location.paragraph).trim() !== heading.text.trim())
       return refuse(
-        "A TOC heading is stale or contains pending review wrappers.",
+        "A TOC heading is stale.",
+        DOCUMENT_OP_REFUSAL_REASONS.STALE,
       );
     const headingKey = idKey(heading.blockId);
     if (seenHeadings.has(headingKey))
-      return refuse("A TOC heading is listed more than once.");
+      return refuse(
+        "A TOC heading is listed more than once.",
+        DOCUMENT_OP_REFUSAL_REASONS.INVALID_OPERATION,
+      );
     seenHeadings.add(headingKey);
     const local = paragraphBookmarks(location.paragraph.content);
     const existing = [...local.starts].find(
@@ -336,7 +321,10 @@ export const compileGenerateTOCIntent = (
     }
     const id = takeBookmarkId(census, reservedBookmarkIds);
     if (id === undefined)
-      return refuse("The bookmark identity space is exhausted.");
+      return refuse(
+        "The bookmark identity space is exhausted.",
+        DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
+      );
     bookmarkIds.push(id);
     links.push({
       heading,
@@ -352,9 +340,13 @@ export const compileGenerateTOCIntent = (
         idKey(candidate.paraId ?? "") === idKey(heading.blockId),
     )?.paragraph;
     if (paragraph === undefined)
-      return refuse("A TOC heading paragraph disappeared.");
+      return refuse(
+        "A TOC heading paragraph disappeared.",
+        DOCUMENT_OP_REFUSAL_REASONS.STALE,
+      );
     const id = bookmarkIds[index];
-    if (id === undefined) return refuse("A TOC bookmark id was not allocated.");
+    if (id === undefined)
+      return panic("Each TOC heading has an allocated bookmark id.");
     if (census.pairs.some((pair) => pair.id === id && pair.name === name))
       continue;
     const op = {
@@ -373,7 +365,10 @@ export const compileGenerateTOCIntent = (
 
   const currentTarget = paragraphFor(document, intent.at);
   if (currentTarget === undefined)
-    return refuse("The TOC insertion paragraph disappeared.");
+    return refuse(
+      "The TOC insertion paragraph disappeared.",
+      DOCUMENT_OP_REFUSAL_REASONS.STALE,
+    );
   const gap = resolveGap({
     paragraph: currentTarget,
     position: insertionAt,
@@ -384,15 +379,6 @@ export const compileGenerateTOCIntent = (
       "The TOC insertion position is invalid after bookmark updates.",
       gap,
     );
-  if (
-    gap.offset !== 0 &&
-    gap.offset !== paragraphLength(currentTarget) &&
-    (isPendingOrUnsupported(currentTarget.content) ||
-      (currentTarget.propertyChanges?.length ?? 0) > 0 ||
-      currentTarget.pPrMark !== undefined ||
-      currentTarget.reviewCarrier !== undefined)
-  )
-    return refuse("TOC insertion cannot split pending review wrappers.");
   const toc = tocParagraphs(intent, links);
   const story = intent.at.story;
   if (mode.type === "suggesting") {
@@ -411,7 +397,10 @@ export const compileGenerateTOCIntent = (
         lease: mode.idLease,
       })?.at(0);
       if (newBlockId === undefined)
-        return refuse("The paragraph identity space is exhausted.");
+        return refuse(
+          "The paragraph identity space is exhausted.",
+          DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
+        );
       const split = compileIntent(
         current,
         {
@@ -455,7 +444,10 @@ export const compileGenerateTOCIntent = (
       lease: mode.idLease,
     });
     if (ids === undefined)
-      return refuse("The paragraph identity space is exhausted.");
+      return refuse(
+        "The paragraph identity space is exhausted.",
+        DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
+      );
     ops.push({
       type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
       story,
@@ -478,7 +470,10 @@ export const compileGenerateTOCIntent = (
     lease: mode.idLease,
   })?.at(0);
   if (newBlockId === undefined)
-    return refuse("The paragraph identity space is exhausted.");
+    return refuse(
+      "The paragraph identity space is exhausted.",
+      DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
+    );
   const split = {
     type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
     at: { ...insertionAt, ...gap },
@@ -486,6 +481,8 @@ export const compileGenerateTOCIntent = (
     newHalf: SPLIT_HALVES.FIRST,
     newParagraph:
       target.formatting === undefined ? {} : { formatting: target.formatting },
+    // A record the split cuts gives its piece a new id.
+    ...(mode.newIds === undefined ? {} : { newIds: mode.newIds }),
   } as const;
   ops.push(split);
   const afterSplit = applyDocumentOp(document, split);
@@ -498,7 +495,10 @@ export const compileGenerateTOCIntent = (
     lease: mode.idLease,
   });
   if (tocIds === undefined)
-    return refuse("The paragraph identity space is exhausted.");
+    return refuse(
+      "The paragraph identity space is exhausted.",
+      DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
+    );
   const blocks = identifyTocParagraphs(toc, tocIds);
   ops.push({
     type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,

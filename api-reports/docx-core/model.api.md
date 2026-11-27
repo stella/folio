@@ -961,6 +961,9 @@ export const MAX_RETAINED_PARSE_WARNINGS_PER_CODE = 20;
 export const MAX_REVISION_ID = 2147483647;
 
 // @public
+export const MAX_TABLE_GEOMETRY_HISTORY_LENGTH: number;
+
+// @public
 export const MAX_TABLE_GRID_COLUMNS = 4096;
 
 // @public
@@ -2044,6 +2047,10 @@ export type TableFormatting = WritableRecord & {
 export type TableGridChange = WritableRecord & {
     id: number;
     columnWidths: readonly (number | undefined)[];
+    geometryChange?: {
+        readonly type: "deleteColumn" | "mergeCells";
+        readonly revisionIds: readonly number[];
+    };
 };
 
 // @public
@@ -2144,6 +2151,9 @@ export type TableStructuralChangeInfo = WritableRecord & ({
 
 // @public
 export type TableWidthType = "auto" | "dxa" | "nil" | "pct";
+
+// @public
+export const tableWithPhysicalColumns: (table: Table) => Table;
 
 // @public
 export type TabStop = WritableRecord & {

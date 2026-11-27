@@ -6,6 +6,7 @@ import {
   type Document,
   finalizeParagraphFormatting,
   MAX_REVISION_ID,
+  MAX_TABLE_GEOMETRY_HISTORY_LENGTH,
   type Paragraph,
   type ParagraphContent,
   type Table,
@@ -1477,10 +1478,9 @@ const columnEdit = ({
   grid,
 }: ColumnOptions): Result<Table, DocumentOpRefusal> => {
   const insert = op.type === DOCUMENT_OP_TYPES.INSERT_COLUMN;
-  const count =
-    op.type === DOCUMENT_OP_TYPES.INSERT_COLUMN ? (op.count ?? 1) : 1;
+  const count = op.count ?? 1;
   if (!Number.isSafeInteger(count) || count < 1)
-    return mismatch(op, "A column insertion inserts at least one column.");
+    return mismatch(op, "A column edit changes at least one column.");
   if (insert && count > MAX_TABLE_GRID_COLUMNS - grid.width)
     return mismatch(
       op,
@@ -1489,10 +1489,10 @@ const columnEdit = ({
   if (
     !Number.isSafeInteger(op.column) ||
     op.column < 0 ||
-    op.column >= grid.width + (insert ? 1 : 0)
+    (insert ? op.column > grid.width : count > grid.width - op.column)
   )
     return mismatch(op, "Column is outside the logical grid.");
-  if (!insert && grid.width === 1)
+  if (!insert && count === grid.width)
     return mismatch(
       op,
       "Deleting the final column requires deleting the table.",
@@ -1528,7 +1528,30 @@ const columnEdit = ({
     });
   // Records placing the column apart once accepted and once rejected: the
   // edit is read against both decisions.
-  if (op.revision === undefined && recordsPlaceColumnsApart(table, grid))
+  const differentReviewGrids =
+    op.revision === undefined && recordsPlaceColumnsApart(table, grid);
+  if (
+    op.revision === undefined &&
+    op.type === DOCUMENT_OP_TYPES.DELETE_COLUMN &&
+    count > 1 &&
+    (differentReviewGrids || table.formatting?.gridChange !== undefined)
+  ) {
+    let next = table;
+    for (let column = op.column + count - 1; column >= op.column; column--) {
+      const currentGrid = statedGrid(next, op);
+      if (currentGrid.isErr()) return Result.err(currentGrid.error);
+      const changed = columnEdit({
+        document,
+        op: { ...op, column, count: 1 },
+        table: next,
+        grid: currentGrid.value,
+      });
+      if (changed.isErr()) return changed;
+      next = changed.value;
+    }
+    return Result.ok(next);
+  }
+  if (differentReviewGrids) {
     return columnEditAcrossRecords({
       document,
       op,
@@ -1541,18 +1564,16 @@ const columnEdit = ({
           message,
         }),
     });
+  }
+  const cutWidth = (start: number, end: number): number =>
+    Math.max(0, Math.min(op.column + count, end) - Math.max(op.column, start));
   // The cells the column removes, now or when its suggestion is accepted,
   // take their bookmarks, content controls and own review records with them.
   const removedCells = insert
     ? []
     : grid.rows.flatMap((entries) =>
         entries
-          .filter(
-            (entry) =>
-              entry.start <= op.column &&
-              op.column < entry.end &&
-              entry.end - entry.start === 1,
-          )
+          .filter(({ start, end }) => cutWidth(start, end) === end - start)
           .map((entry) => entry.cell),
       );
   if (
@@ -1595,16 +1616,48 @@ const columnEdit = ({
   // A suggested deletion keeps the grid while it is pending: the deleted
   // cells stay in their columns, and accepting removes them with their grid
   // entries.
-  const trackedDeletion = suggestedDeletion && removedCells.length > 0;
+  const narrowsSpans =
+    suggestedDeletion &&
+    count === 1 &&
+    grid.rows.some((entries) =>
+      entries.some(
+        ({ start, end }) =>
+          start <= op.column && op.column < end && end - start > 1,
+      ),
+    );
+  const trackedDeletion =
+    suggestedDeletion &&
+    count === 1 &&
+    removedCells.length > 0 &&
+    !narrowsSpans;
+  const recordsGeometry = suggestedDeletion && !trackedDeletion;
+  if (
+    recordsGeometry &&
+    (hasReviewBlockingColumns(table, false) ||
+      table.rows.some(({ structuralChange }) => structuralChange !== undefined))
+  )
+    return refuse({
+      op,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
+      message: "Resolve existing column records before changing the grid.",
+    });
   // The rows the edit leaves as they are: for a suggested deletion, those
   // with no cell in the column, which keep it for themselves when the
   // deletion is accepted; for another edit, those stopping short of the
   // column by more than they state.
   const leavesRow = (rowIndex: number) => {
     const { before, end } = rowExtent(table, grid, rowIndex);
-    if (trackedDeletion) return op.column < before || op.column >= end;
+    if (trackedDeletion) return cutWidth(before, end) === 0;
     const stated = table.rows[rowIndex]?.formatting?.gridAfter ?? 0;
     return insert ? op.column > end + stated : op.column >= end + stated;
+  };
+  const omissionsRemoved = (rowIndex: number) => {
+    const { before, end } = rowExtent(table, grid, rowIndex);
+    const after = table.rows[rowIndex]?.formatting?.gridAfter ?? 0;
+    return {
+      before: cutWidth(0, before),
+      after: cutWidth(end, end + after),
+    };
   };
   const earlierGrid =
     op.revision === undefined
@@ -1619,7 +1672,14 @@ const columnEdit = ({
   for (const rowIndex of table.rows.keys()) {
     if (leavesRow(rowIndex)) continue;
     stampedRows.set(rowIndex, rowStamps);
-    rowStamps += takesNewCells(rowIndex) ? count : 1;
+    if (insert) {
+      rowStamps += takesNewCells(rowIndex) ? count : 1;
+    } else {
+      const omissions = omissionsRemoved(rowIndex);
+      if (omissions.before > 0 || omissions.after > 0) rowStamps++;
+      for (const { start, end } of grid.rows[rowIndex] ?? [])
+        if (cutWidth(start, end) > 0) rowStamps++;
+    }
   }
   const stamps = stampsFor(op, trackedDeletion ? rowStamps : rowStamps + 2);
   if (stamps.isErr()) return Result.err(stamps.error);
@@ -1677,12 +1737,8 @@ const columnEdit = ({
       continue;
     }
     const { before, end } = rowExtent(table, grid, rowIndex);
-    if (op.column < before) {
-      const next = withOmission(
-        row,
-        "gridBefore",
-        before + (insert ? count : -1),
-      );
+    if (insert && op.column < before) {
+      const next = withOmission(row, "gridBefore", before + count);
       const stamp = rowStamp(rowIndex);
       if (stamp !== undefined)
         next.propertyChanges = [
@@ -1699,11 +1755,11 @@ const columnEdit = ({
       rows.push(kept.value);
       continue;
     }
-    if (op.column >= end && (!insert || op.column > end)) {
+    if (insert && op.column > end) {
       const next = withOmission(
         row,
         "gridAfter",
-        (row.formatting?.gridAfter ?? 0) + (insert ? count : -1),
+        (row.formatting?.gridAfter ?? 0) + count,
       );
       const stamp = rowStamp(rowIndex);
       if (stamp !== undefined)
@@ -1723,6 +1779,7 @@ const columnEdit = ({
     }
     const cells: TableCell[] = [];
     let inserted = false;
+    let deletedCellStamps = 0;
     for (const entry of entries) {
       if (insert && entry.start === op.column) {
         const added = newCells(rowIndex);
@@ -1750,7 +1807,8 @@ const columnEdit = ({
         inserted = true;
         continue;
       }
-      if (!insert && hit) {
+      const removed = insert ? 0 : cutWidth(entry.start, entry.end);
+      if (removed > 0) {
         if (
           trackedDeletion &&
           entry.cell.structuralChange?.type === "tableCellDeletion"
@@ -1760,16 +1818,10 @@ const columnEdit = ({
             reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
             message: "The column's cells are already suggested for deletion.",
           });
-        if (trackedDeletion && entry.end - entry.start > 1)
-          return refuse({
-            op,
-            reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-            message:
-              "A suggested column deletion cannot narrow a cell that spans other columns.",
-          });
-        if (entry.end - entry.start > 1) {
-          const next = withSpan(entry.cell, entry.end - entry.start - 1);
-          const stamp = rowStamp(rowIndex);
+        const stamp = rowStamp(rowIndex, deletedCellStamps++);
+        const remaining = entry.end - entry.start - removed;
+        if (remaining > 0) {
+          const next = withSpan(entry.cell, remaining);
           if (stamp !== undefined)
             next.propertyChanges = [
               {
@@ -1785,7 +1837,6 @@ const columnEdit = ({
           cells.push(kept.value);
           continue;
         }
-        const stamp = rowStamp(rowIndex);
         if (stamp !== undefined)
           cells.push({
             ...entry.cell,
@@ -1807,7 +1858,35 @@ const columnEdit = ({
     // starts, from goes with them; a suggested deletion leaves it to go
     // when the suggestion is accepted.
     if (editRemovesRow({ before: row.cells, after: cells })) continue;
-    rows.push({ ...row, cells });
+    let next: TableRow = { ...row, cells };
+    if (!insert) {
+      const omissions = omissionsRemoved(rowIndex);
+      if (omissions.before > 0 || omissions.after > 0) {
+        if (omissions.before > 0)
+          next = withOmission(next, "gridBefore", before - omissions.before);
+        if (omissions.after > 0)
+          next = withOmission(
+            next,
+            "gridAfter",
+            (row.formatting?.gridAfter ?? 0) - omissions.after,
+          );
+        const stamp = rowStamp(rowIndex, deletedCellStamps);
+        if (stamp !== undefined)
+          next.propertyChanges = [
+            {
+              type: "tableRowPropertyChange",
+              info: stampInfo(stamp),
+              ...(row.formatting === undefined
+                ? {}
+                : { previousFormatting: row.formatting }),
+            },
+          ];
+        const kept = keptRow(row, next);
+        if (kept.isErr()) return Result.err(kept.error);
+        next = kept.value;
+      }
+    }
+    rows.push(next);
   }
   if (trackedDeletion) return Result.ok({ ...table, rows });
   const columnWidths =
@@ -1819,7 +1898,7 @@ const columnEdit = ({
         0,
         ...Array.from({ length: count }, () => op.width),
       );
-    else columnWidths.splice(op.column, 1);
+    else columnWidths.splice(op.column, count);
   }
   const next = { ...table, rows };
   if (columnWidths !== undefined) next.columnWidths = columnWidths;
@@ -1832,12 +1911,29 @@ const columnEdit = ({
     gridStamp !== undefined &&
     propertyStamp !== undefined
   ) {
+    const geometryChange = recordsGeometry
+      ? {
+          type: "deleteColumn" as const,
+          revisionIds: stamps.value
+            .filter(({ id }) => id !== gridStamp.id)
+            .map(({ id }) => id),
+        }
+      : undefined;
+    if (
+      geometryChange !== undefined &&
+      JSON.stringify(geometryChange).length > MAX_TABLE_GEOMETRY_HISTORY_LENGTH
+    )
+      return mismatch(
+        op,
+        "The combined column review exceeds the saved history limit.",
+      );
     next.formatting = {
       ...table.formatting,
       // A grid the file states no widths for is recorded as its columns,
       // each without a measure, as the file states them.
       gridChange: {
         id: gridStamp.id,
+        ...(geometryChange === undefined ? {} : { geometryChange }),
         columnWidths:
           table.columnWidths === undefined
             ? Array.from({ length: grid.width }, () => undefined)
@@ -2402,6 +2498,93 @@ type MergeOptions = {
   table: Table;
   grid: TableGrid;
 };
+
+/** A merge that takes only empty cells changes topology without moving text. */
+const suggestHorizontalMerge = (
+  options: MergeOptions,
+  selected: readonly GridCell[],
+): Result<Table, DocumentOpRefusal> => {
+  const { op, table, grid } = options;
+  const row = table.rows[op.top];
+  const first = selected.at(0);
+  if (row === undefined || first === undefined)
+    return mismatch(op, "No cells are selected.");
+  const { revision: _stamp, ...directOp } = op;
+  const direct = merge({ ...options, op: directOp });
+  if (direct.isErr()) return direct;
+  const owner = direct.value.rows[op.top]?.cells[first.index];
+  if (owner === undefined)
+    return mismatch(op, "The merge must retain its owner cell.");
+  const stamps = stampsFor(op, selected.length + 2);
+  if (stamps.isErr()) return Result.err(stamps.error);
+  const [ownerStamp, gridStamp, tableStamp, ...deletedStamps] = stamps.value;
+  if (
+    ownerStamp === undefined ||
+    gridStamp === undefined ||
+    tableStamp === undefined
+  )
+    return mismatch(op, "The merge needs cell and grid revision stamps.");
+  const cells = [...row.cells];
+  cells[first.index] = {
+    ...owner,
+    propertyChanges: [
+      {
+        type: "tableCellPropertyChange",
+        info: stampInfo(ownerStamp),
+        ...(first.cell.formatting === undefined
+          ? {}
+          : { previousFormatting: first.cell.formatting }),
+      },
+    ],
+  };
+  for (const [index, entry] of selected.slice(1).entries()) {
+    const stamp = deletedStamps[index];
+    if (stamp === undefined)
+      return mismatch(op, "An absorbed cell needs a revision stamp.");
+    cells[entry.index] = {
+      ...entry.cell,
+      structuralChange: { type: "tableCellDeletion", info: stampInfo(stamp) },
+    };
+  }
+  const rows = [...table.rows];
+  rows[op.top] = { ...row, cells };
+  const geometryChange = {
+    type: "mergeCells" as const,
+    revisionIds: [
+      ownerStamp.id,
+      tableStamp.id,
+      ...deletedStamps.map(({ id }) => id),
+    ],
+  };
+  if (JSON.stringify(geometryChange).length > MAX_TABLE_GEOMETRY_HISTORY_LENGTH)
+    return mismatch(
+      op,
+      "The combined merge review exceeds the saved history limit.",
+    );
+  return Result.ok({
+    ...table,
+    rows,
+    formatting: {
+      ...table.formatting,
+      gridChange: {
+        id: gridStamp.id,
+        columnWidths:
+          table.columnWidths ??
+          Array.from({ length: grid.width }, () => undefined),
+        geometryChange,
+      },
+    },
+    propertyChanges: [
+      {
+        type: "tablePropertyChange",
+        info: stampInfo(tableStamp),
+        ...(table.formatting === undefined
+          ? {}
+          : { previousFormatting: table.formatting }),
+      },
+    ],
+  });
+};
 const merge = ({
   document,
   op,
@@ -2510,6 +2693,14 @@ const merge = ({
       used: selected.length * 2,
     }).map((tracked) => Object.assign({}, table, { rows: tracked }));
   }
+  const firstRow = selected.at(0);
+  if (
+    op.revision !== undefined &&
+    selected.length === 1 &&
+    firstRow !== undefined &&
+    firstRow.slice(1).every(({ cell }) => isEmptyCell(cell))
+  )
+    return suggestHorizontalMerge({ document, op, table, grid }, firstRow);
   if (op.revision !== undefined)
     return refuse({
       op,
@@ -2619,12 +2810,6 @@ const split = ({
       op,
       "A vertical merge continuation must be addressed through its owner cell.",
     );
-  if (hasWrappedCellMarkup(table))
-    return refuse({
-      op,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      message: "Captures inside cell wrappers need a shared destination.",
-    });
   if (op.revision !== undefined && hasReview(table))
     return refuse({
       op,
@@ -2764,7 +2949,13 @@ const split = ({
     for (let column = 1; column < span; column += 1) {
       const cell = fresh.value[freshIndex++];
       if (cell !== undefined) {
-        const next = { ...cell, formatting: formattingForColumn(column) };
+        const { carrierStack, contentControls } = entry.cell;
+        const next = {
+          ...cell,
+          formatting: formattingForColumn(column),
+          ...(carrierStack === undefined ? {} : { carrierStack }),
+          ...(contentControls === undefined ? {} : { contentControls }),
+        };
         const cellStamp = stamps.value[stampIndex++];
         if (cellStamp !== undefined)
           next.structuralChange = {
@@ -2814,13 +3005,25 @@ const statedGrid = (
         ),
   );
 
+const pendingGeometry = (table: Table, op: TableIntentOperation) =>
+  table.formatting?.gridChange?.geometryChange === undefined
+    ? undefined
+    : refuse({
+        op,
+        reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
+        message:
+          "Resolve the pending geometry change before editing this table's grid or properties.",
+      });
+
 /** Count identities from the same topology/selection decisions the operation applies. */
 export const tableEditParagraphDemand = (
   location: TableRowLocation,
   op: TableIntentOperation,
 ): Result<number, DocumentOpRefusal> => {
-  if (isPropertyEdit(op)) return Result.ok(0);
   const table = location.table;
+  const pending = pendingGeometry(table, op);
+  if (pending !== undefined) return pending;
+  if (isPropertyEdit(op)) return Result.ok(0);
   const grid = statedGrid(table, op);
   if (grid.isErr()) return Result.err(grid.error);
   switch (op.type) {
@@ -3031,6 +3234,26 @@ const editProperties = ({
 };
 
 /** Structural edits validate their grid; property edits retain every structural fact. */
+/** Removing all the table's actual cells also removes the table. */
+export const columnDeletionTakesTable = (
+  grid: TableGrid,
+  op: Extract<TableIntentOperation, { type: "deleteColumn" }>,
+): boolean => {
+  const count = op.count ?? 1;
+  return (
+    Number.isSafeInteger(op.column) &&
+    Number.isSafeInteger(count) &&
+    count > 0 &&
+    op.column >= 0 &&
+    count <= grid.width - op.column &&
+    grid.rows.every((entries) =>
+      entries.every(
+        ({ start, end }) => start >= op.column && end <= op.column + count,
+      ),
+    )
+  );
+};
+
 export const applyTableEdit = (
   document: Document,
   op: Op,
@@ -3048,6 +3271,8 @@ export const applyTableEdit = (
       });
     return commitTable({ document, op, location, table: op.table });
   }
+  const pending = pendingGeometry(table, op);
+  if (pending !== undefined) return pending;
   if (op.revision !== undefined) {
     const ambiguous = (record: object) =>
       ["formatting", "propertyChanges", "structuralChange"].some(
@@ -3083,13 +3308,7 @@ export const applyTableEdit = (
   // column does, removes the table.
   if (
     op.type === DOCUMENT_OP_TYPES.DELETE_COLUMN &&
-    op.column >= 0 &&
-    op.column < grid.value.width &&
-    grid.value.rows.every((entries) =>
-      entries.every(
-        ({ start, end }) => start === op.column && end === op.column + 1,
-      ),
-    )
+    columnDeletionTakesTable(grid.value, op)
   ) {
     const cells = table.rows.flatMap((row) => row.cells);
     if (cells.some(reachesPastRemovedCell) || strandsABookmark(cells))

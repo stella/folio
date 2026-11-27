@@ -10,6 +10,14 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
+import {
+  applyDocumentOp,
+  applyDocumentOps,
+  compileEditorIntent,
+  createEditorIntentIdAllocator,
+  DOCUMENT_OP_TYPES,
+  OP_STORIES,
+} from "@stll/docx-core/ops";
 import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
@@ -17,6 +25,9 @@ import {
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 import type { FolioDocumentOperation } from "../ai-edits";
+import { createCanonicalSession } from "../canonical/canonicalSession";
+import { parseDocx } from "../docx/parser";
+import { createDocx } from "../docx/rezip";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import {
   type Mode,
@@ -190,6 +201,152 @@ describe("column operations on a table whose file states no widths", () => {
     expect(reviewed.accepted).toEqual((await outcomes(direct.bytes)).accepted);
     expect(reviewed.rejected).toEqual((await outcomes(source)).rejected);
   });
+
+  test("saved mixed column deletions preserve a neighboring vertical merge under review", async () => {
+    const source = await packageOf([
+      paragraph("10000001", "Before"),
+      table(
+        [
+          row(
+            textCell("20000001", "wide", '<w:gridSpan w:val="2"/>') +
+              textCell("20000002", "merge", '<w:vMerge w:val="restart"/>'),
+          ),
+          row(
+            textCell("20000003", "deleted") +
+              textCell("20000004", "kept") +
+              textCell("20000005", "", "<w:vMerge/>"),
+          ),
+        ],
+        3,
+      ),
+      paragraph("10000002", "After"),
+    ]);
+    const op = OPERATIONS.deleteTableColumn("20000001");
+    const pending = await viaCanonicalEngine(source, op, "tracked-changes");
+    expect(pending.refusals).toEqual([]);
+    expect(pending.skipped).toEqual([]);
+    const direct = await viaCanonicalEngine(source, op, "direct");
+    expect(direct.skipped).toEqual([]);
+    const part = (await ZipArchive.read(pending.bytes)).entry(
+      "word/document.xml",
+    );
+    if (!part) throw new Error("The saved package has no document part.");
+    const xml = await part.text();
+    expect(xml).toMatch(/<w:tcPrChange\b/u);
+    expect(xml).toMatch(/<w:cellDel\b/u);
+    expect(xml).toMatch(/<w:tblGridChange\b/u);
+    const pendingDocument = await parseDocx(pending.bytes, {
+      preloadFonts: false,
+      detectVariables: false,
+    });
+    const pendingTable = createCanonicalSession(pendingDocument)
+      .unwrap()
+      .projection.doc.child(1);
+    expect(pendingTable.firstChild?.lastChild?.attrs["rowspan"]).toBe(2);
+    const reviewed = await reviewedInSession(pending.bytes);
+    expect(reviewed.accepted).toEqual((await outcomes(direct.bytes)).accepted);
+    expect(reviewed.rejected).toEqual((await outcomes(source)).rejected);
+  });
+
+  test("a saved unmeasured multi-column deletion has the right current and previous grids", async () => {
+    const source = await packageOf([
+      paragraph("10000001", "Before"),
+      `<w:tbl>${TABLE_PROPERTIES}<w:tblGrid>${"<w:gridCol/>".repeat(3)}</w:tblGrid>${row(textCell("20000001", "A") + textCell("20000002", "B") + textCell("20000003", "C"))}</w:tbl>`,
+      paragraph("10000002", "After"),
+    ]);
+    const loaded = await parseDocx(source, {
+      preloadFonts: false,
+      detectVariables: false,
+    });
+    const operation = {
+      type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
+      story: OP_STORIES.MAIN,
+      blockId: "20000003",
+      column: 0,
+      count: 2,
+    } as const;
+    const intent = { type: "table", operation } as const;
+    const ids = createEditorIntentIdAllocator()(loaded, intent);
+    const compiled = compileEditorIntent(loaded, {
+      intent,
+      mode: {
+        type: "suggesting",
+        revision: {
+          id: ids.revisionId,
+          author: "Reviewer",
+          date: "2026-11-27T00:00:00Z",
+        },
+        newIds: ids.newIds,
+      },
+    }).unwrap();
+    const pending = await createDocx(
+      applyDocumentOps(loaded, compiled.ops).unwrap().document,
+    );
+    const part = (await ZipArchive.read(pending)).entry("word/document.xml");
+    if (part === undefined)
+      throw new TypeError("The saved package has no document part.");
+    const xml = await part.text();
+    expect(xml).toMatch(
+      /<w:tblGrid><w:gridCol\/><w:tblGridChange\b[^>]*><w:tblGrid>(?:<w:gridCol\/>){3}<\/w:tblGrid>/u,
+    );
+    const direct = await createDocx(
+      applyDocumentOp(loaded, operation).unwrap().document,
+    );
+    const reviewed = await reviewedInSession(pending);
+    expect(reviewed.accepted).toEqual((await outcomes(direct)).accepted);
+    expect(reviewed.rejected).toEqual((await outcomes(source)).rejected);
+  });
+
+  test.each(["merge", "split"] as const)(
+    "a tracked horizontal %s survives save and review",
+    async (kind) => {
+      const source = await packageOf([
+        paragraph("10000001", "Before"),
+        table(
+          [
+            row(
+              (kind === "merge"
+                ? textCell("20000001", "Owner") + textCell("20000002", "")
+                : textCell("20000001", "Owner", '<w:gridSpan w:val="2"/>')) +
+                textCell("20000003", "Tail"),
+            ),
+          ],
+          3,
+        ),
+        paragraph("10000002", "After"),
+      ]);
+      const op =
+        kind === "merge"
+          ? ({
+              type: "mergeTableCells",
+              id: "merge",
+              blockId: "20000001",
+              endBlockId: "20000002",
+            } satisfies FolioDocumentOperation)
+          : ({
+              type: "splitTableCell",
+              id: "split",
+              blockId: "20000001",
+            } satisfies FolioDocumentOperation);
+      const pending = await viaCanonicalEngine(source, op, "tracked-changes");
+      expect(pending.refusals).toEqual([]);
+      expect(pending.skipped).toEqual([]);
+      const direct = await viaCanonicalEngine(source, op, "direct");
+      expect(direct.skipped).toEqual([]);
+      const part = (await ZipArchive.read(pending.bytes)).entry(
+        "word/document.xml",
+      );
+      if (!part) throw new Error("The saved package has no document part.");
+      const xml = await part.text();
+      expect(xml).toMatch(/<w:tcPrChange\b/u);
+      expect(xml).toMatch(kind === "merge" ? /<w:cellDel\b/u : /<w:cellIns\b/u);
+      const reviewed = await reviewedInSession(pending.bytes);
+      expect(reviewed.accepted).toEqual(
+        (await outcomes(direct.bytes)).accepted,
+      );
+      expect(reviewed.rejected).toEqual((await outcomes(source)).rejected);
+    },
+  );
 
   // Without the fix the canonical session refuses the suggestion the default
   // engine records; the parity check above then fails.

@@ -573,6 +573,9 @@ export type FloatingTableProperties = WritableRecord & {
   rightFromText?: number;
 };
 
+/** Maximum saved geometry payload, leaving room for the history wrapper. */
+export const MAX_TABLE_GEOMETRY_HISTORY_LENGTH: number = 32_768 - 32;
+
 /**
  * The grid a reviewer replaced, as `w:tblGridChange` records it.
  *
@@ -591,6 +594,11 @@ export type TableGridChange = WritableRecord & {
   id: number;
   /** One entry per `w:gridCol`, in source order. */
   columnWidths: readonly (number | undefined)[];
+  /** Physical records that together change table geometry. */
+  geometryChange?: {
+    readonly type: "deleteColumn" | "mergeCells";
+    readonly revisionIds: readonly number[];
+  };
 };
 
 /**

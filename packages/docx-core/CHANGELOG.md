@@ -1,5 +1,25 @@
 # @stll/docx-core
 
+## 0.48.0
+
+### Minor Changes
+
+- [#3625](https://github.com/stella/folio/pull/3625) [`8b6d090`](https://github.com/stella/folio/commit/8b6d09012aa6aaeaed9b35da9bffd72b75101dd8) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Dragging a content control or table that holds a footnote, endnote or comment now moves it with its note or comment under the same id, and dragging an image or kept block markup of the document keeps its relationship instead of copying or refusing it. A copy that starts between a content control's paragraphs, or inside a table within a control, now pastes the paragraphs or the table cells it holds, and nested table captures are dropped from pasted tables.
+
+- [#3652](https://github.com/stella/folio/pull/3652) [`9117b98`](https://github.com/stella/folio/commit/9117b983d3e0d158714420a6f1c7381bcf5ae848) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Resolve review views through the document model and move the legacy ProseMirror resolver and its deep imports to test support.
+
+- [#3625](https://github.com/stella/folio/pull/3625) [`8b6d090`](https://github.com/stella/folio/commit/8b6d09012aa6aaeaed9b35da9bffd72b75101dd8) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Canonical sessions now paste and drag block content controls, custom XML elements and kept block markup whole, and a copy that starts or ends inside a container pastes the content it copied. Text copied from outside the editor with comment or note markers pastes without them, and copied footnotes and endnotes bring their images and links. Documents holding a table-review carrier paragraph now open and edit, and composing inside an inline content control commits as typing does. Refusals that describe a malformed document or request, or a session defect, now report a condition instead of a gap.
+
+- [#3691](https://github.com/stella/folio/pull/3691) [`2ee857b`](https://github.com/stella/folio/commit/2ee857bcf1e754b13867559ab9ab250a354fe8ba) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Suggesting the deletion of a paragraph that holds a point comment now works: the deletion takes the comment's reference with it, accepting removes the comment as deleting the paragraph directly does, and rejecting keeps it. Tracked insertions and deletions inside a simple field's result can be accepted and rejected instead of being refused.
+
+### Patch Changes
+
+- [#3675](https://github.com/stella/folio/pull/3675) [`043d924`](https://github.com/stella/folio/commit/043d924b46b6fd6daeec5ed84afc432135fdd26c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A comment range with a boundary inside a hyperlink, or one that runs across a paragraph holding such a boundary, opens, edits and resolves like any other comment range, and removing a table or row keeps the reference of a comment whose range end it keeps.
+
+- [#3660](https://github.com/stella/folio/pull/3660) [`90c6a20`](https://github.com/stella/folio/commit/90c6a20a74c5488fd2b8c00acce62b6b0c718f7e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A row inserted inside a vertical merge continues it even when the same batch removes the merge's last row, and a continuation with no merge above it becomes a cell of its own.
+
+- [#3677](https://github.com/stella/folio/pull/3677) [`8404345`](https://github.com/stella/folio/commit/8404345597f237e89ff62c539683ffe33b144417) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve indexed table markup through tracked row and column edits, review decisions, and undo.
+
 ## 0.47.0
 
 ### Minor Changes

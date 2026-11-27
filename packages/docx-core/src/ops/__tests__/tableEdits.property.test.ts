@@ -1277,6 +1277,12 @@ describe("semantic table edit properties", () => {
     const law = (tallies: Map<string, number>, counts: { attempts: number }) =>
       fc.property(shape, (value) => {
         const f = fixture({ ...value, variant: 0 });
+        const empty = fixture({
+          ...value,
+          variant: 0,
+          empty: true,
+          nested: false,
+        });
         const address = target(f.target);
         const inserted = applied(f.document, {
           ...address,
@@ -1338,9 +1344,9 @@ describe("semantic table edit properties", () => {
             reason: DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
           },
           {
-            document: f.document,
+            document: empty.document,
             op: {
-              ...address,
+              ...target(empty.target),
               type: DOCUMENT_OP_TYPES.MERGE_CELLS,
               top: 0,
               bottom: 1,
@@ -1353,7 +1359,7 @@ describe("semantic table edit properties", () => {
                 date: "2026-10-02T10:00:00Z",
               },
             } satisfies DocumentOp,
-            reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+            reason: DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
           },
           {
             document: changed.document,
@@ -1386,7 +1392,7 @@ describe("semantic table edit properties", () => {
       [
         DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
         DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
-        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+        DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
         DOCUMENT_OP_REFUSAL_REASONS.STALE,
       ].sort(),
     );
@@ -1399,7 +1405,7 @@ describe("semantic table edit properties", () => {
     );
     for (const reason of [
       DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
-      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
       DOCUMENT_OP_REFUSAL_REASONS.STALE,
     ]) {
       expect(tallies.get(reason)).toBe(attempts / 6);

@@ -25,6 +25,7 @@ import type {
   ParagraphPropertyChange,
   RecordField,
   RunPropertyChange,
+  TableGridChange,
 } from "../types/document";
 import { FOLIO_REVIEW_HISTORY_NAMESPACE } from "./reviewHistoryNamespace";
 import { getAttributeByNamespaceUri, type XmlElement } from "./xmlParser";
@@ -827,6 +828,42 @@ export const serializeParagraphPropertyChangeOwner = (
     valid: isRevisionId,
   });
 
+const TABLE_GEOMETRY_CHANGE = "tableGeometryChange";
+type GeometryChange = NonNullable<TableGridChange["geometryChange"]>;
+const isTableGeometryChange = (value: unknown): value is GeometryChange => {
+  if (
+    !record(value) ||
+    (value["type"] !== "deleteColumn" && value["type"] !== "mergeCells") ||
+    Object.keys(value).some((key) => key !== "type" && key !== "revisionIds")
+  )
+    return false;
+  const ids = value["revisionIds"];
+  return (
+    Array.isArray(ids) &&
+    ids.length > 0 &&
+    ids.every(isRevisionId) &&
+    new Set(ids).size === ids.length
+  );
+};
+
+export const parseTableGeometryChange = (
+  node: XmlElement,
+): Pick<TableGridChange, "geometryChange"> => {
+  const geometryChange = parseAttribute({
+    node,
+    attribute: TABLE_GEOMETRY_CHANGE,
+    valid: isTableGeometryChange,
+  });
+  return geometryChange === undefined ? {} : { geometryChange };
+};
+
+export const serializeTableGeometryChange = (change: TableGridChange): string =>
+  serializeAttribute({
+    attribute: TABLE_GEOMETRY_CHANGE,
+    value: change.geometryChange,
+    valid: isTableGeometryChange,
+  });
+
 /** Every provenance attribute folio reads, with the shape its value must have. */
 const PROVENANCE_VALUE_SHAPES: Readonly<Record<string, ProvenanceShape>> = {
   resolutionJoins: isStoredJoinsOf,
@@ -840,6 +877,7 @@ const PROVENANCE_VALUE_SHAPES: Readonly<Record<string, ProvenanceShape>> = {
   [PARAGRAPH_MARK_FIELDS.survivor.attribute]: isParagraphMarkSurvivor,
   [PARAGRAPH_MARK_FIELDS.splitDate.attribute]: isParagraphMarkSplitDate,
   resolvesWith: isRevisionId,
+  [TABLE_GEOMETRY_CHANGE]: isTableGeometryChange,
 };
 
 /**

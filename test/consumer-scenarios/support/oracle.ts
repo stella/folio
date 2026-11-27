@@ -1349,7 +1349,9 @@ const markedJoinSourcesOf = async (
     if (
       paragraph.paraId === undefined ||
       paragraph.pPrMark === undefined ||
-      !JOINING_MARK_KINDS.has(paragraph.pPrMark.kind)
+      // An added mark another author deleted goes too: they joined on.
+      (!JOINING_MARK_KINDS.has(paragraph.pPrMark.kind) &&
+        paragraph.pPrMark.deletion === undefined)
     )
       return;
     ids.add(paragraph.paraId);

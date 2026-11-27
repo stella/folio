@@ -18,7 +18,8 @@ test("TOC identities are package-wide, deterministic and exact under inverse", (
       fc.constantFrom(0, 1, 3),
       fc.constantFrom(0, 1, 2, 3, 4, 5, 6, 7, 8),
       fc.boolean(),
-      (offset, level, existing) => {
+      fc.boolean(),
+      (offset, level, existing, pendingHeading) => {
         const document = {
           package: {
             document: {
@@ -26,6 +27,18 @@ test("TOC identities are package-wide, deterministic and exact under inverse", (
                 {
                   type: "paragraph",
                   paraId: "12345678",
+                  ...(pendingHeading
+                    ? {
+                        formatting: { alignment: "start" },
+                        propertyChanges: [
+                          {
+                            type: "paragraphPropertyChange",
+                            info: { id: 34, author: "Earlier" },
+                            previousFormatting: { alignment: "end" },
+                          },
+                        ],
+                      }
+                    : {}),
                   content: [
                     ...(existing
                       ? [
@@ -102,6 +115,9 @@ test("TOC identities are package-wide, deterministic and exact under inverse", (
           (item) => item.type === "paragraph" && item.paraId === "12345678",
         );
         if (heading?.type !== "paragraph") return panic("Missing TOC heading");
+        expect(heading.propertyChanges?.at(0)?.info.id).toBe(
+          pendingHeading ? 34 : undefined,
+        );
         const bookmarks = heading.content.filter(
           (item) => item.type === "bookmarkStart",
         );

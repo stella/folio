@@ -32,6 +32,7 @@ import {
   type AnalyzedStory,
   analyzeKeptForm,
   analyzeSource,
+  bookmarkEncloses,
   viewOf,
 } from "./blocks";
 import {
@@ -79,7 +80,7 @@ import {
   type StoryOrigin,
   type StoryResources,
 } from "./resources";
-import { DELETED_PARAGRAPH_MARK, tableRowRevisions } from "./revisions";
+import { tableRowRevisions } from "./revisions";
 import {
   type AtomKind,
   type AtomLink,
@@ -511,6 +512,10 @@ type StatedProperties = {
   tabStops: string | null;
   /** The paragraph's own alignment as written; null without one. */
   alignment: string | null;
+  /** The paragraph's own space in front and behind as `before:after` in
+   *  twentieths of a point, a side it does not state left empty; null when
+   *  it states neither. */
+  spacing: string | null;
   endsSection: boolean;
 };
 
@@ -529,6 +534,14 @@ const indentKey = (
   hanging: number | null | undefined,
   firstLine: number | null | undefined,
 ): string => [left, hanging, firstLine].map((side) => side ?? "").join(":");
+
+const spacingKey = (
+  before: number | null,
+  after: number | null,
+): string | null =>
+  before === null && after === null
+    ? null
+    : `${before === null ? "" : String(before)}:${after === null ? "" : String(after)}`;
 
 /** The sides of an indent counted in characters: they override the
  *  measured ones, so a paragraph that states one is another paragraph. */
@@ -566,6 +579,10 @@ const statedProperties = (paragraph: XmlElement): StatedProperties => {
           )}${characterIndentKey(indent)}`,
     tabStops: tabStopsKey(wChild(properties, "tabs")),
     alignment: wChildVal(properties, "jc"),
+    spacing: spacingKey(
+      twipsOrNull(wAttr(wChild(properties, "spacing"), "before")),
+      twipsOrNull(wAttr(wChild(properties, "spacing"), "after")),
+    ),
     endsSection: wChild(properties, "sectPr") !== null,
   };
 };
@@ -578,37 +595,10 @@ const sameStated = (before: StatedProperties, after: StatedProperties) =>
   before.indent === after.indent &&
   before.tabStops === after.tabStops &&
   before.alignment === after.alignment &&
+  before.spacing === after.spacing &&
   before.endsSection === after.endsSection &&
   before.numId === after.numId &&
   before.ilvl === after.ilvl;
-
-/**
- * Whether a bookmark of `read` holds all of the paragraph's content. In a
- * reading that keeps tracked changes the paragraph's own content begins
- * behind the last paragraph mark deleted in it (what stands in front is the
- * paragraph the mark ended) and ends in front of a mark somebody inserted.
- */
-const bookmarkEncloses = (
-  read: ParagraphRead | null,
-  name: string,
-): boolean => {
-  const start = read?.bookmarks.find((bookmark) => bookmark.name === name);
-  const end =
-    start === undefined
-      ? undefined
-      : read?.bookmarkEnds.find(({ id }) => id === start.id);
-  if (read === null || start === undefined || end === undefined) {
-    return false;
-  }
-  const own =
-    read.atoms.findLastIndex(
-      ({ revision }) => revision?.deleted === DELETED_PARAGRAPH_MARK,
-    ) + 1;
-  const marked = read.atoms.at(-1)?.revision?.mark === true ? 1 : 0;
-  return (
-    start.atomIndex === own && end.atomIndex === read.atoms.length - marked
-  );
-};
 
 const segmentLength = (segment: ExpectedSegment): number =>
   piecesContent(segment.kind === "piece" ? [segment.piece] : segment.pieces)
@@ -723,6 +713,13 @@ export const reportTemplatePlanOutput = async ({
     }
     const { styleId, numbering, pageBreakBefore, keepNext, alignment } =
       paragraph;
+    const spacing =
+      paragraph.spacing === null
+        ? null
+        : spacingKey(
+            paragraph.spacing.before ?? null,
+            paragraph.spacing.after ?? null,
+          );
     const endsSection = paragraph.endsSection !== null;
     const indent =
       paragraph.indent === null
@@ -746,6 +743,7 @@ export const reportTemplatePlanOutput = async ({
         indent,
         tabStops,
         alignment,
+        spacing,
         endsSection,
       };
     }
@@ -765,6 +763,7 @@ export const reportTemplatePlanOutput = async ({
       indent,
       tabStops,
       alignment,
+      spacing,
       endsSection,
     };
   };
@@ -800,11 +799,12 @@ export const reportTemplatePlanOutput = async ({
       stated.keepNext !== planned.keepNext ||
       stated.indent !== planned.indent ||
       stated.tabStops !== planned.tabStops ||
-      stated.alignment !== planned.alignment
+      stated.alignment !== planned.alignment ||
+      stated.spacing !== planned.spacing
     ) {
       issues.push({
         code: "paragraph-format-mismatch",
-        message: `Block ${blockId} does not carry the keep-with-next, the indent, the tab stops or the alignment the plan gives it.`,
+        message: `Block ${blockId} does not carry the keep-with-next, the indent, the tab stops, the alignment or the spacing the plan gives it.`,
         blockId,
       });
     }
@@ -1341,7 +1341,12 @@ export const reportTemplatePlanOutput = async ({
       let predictedText: string | null = null;
       if (targetBlock !== undefined) {
         if (!hasNumberSwitch) {
-          predictedText = targetBlock.block.text;
+          // A number a field counts itself is in no text, so the text
+          // shows what such a heading prints only where it has none.
+          predictedText =
+            targetBlock.block.selfNumbers === undefined
+              ? targetBlock.block.text
+              : null;
         } else if (usesNumber) {
           const number = /\\t\b/u.test(entry.reference.instruction)
             ? (targetBlock.label?.numberOnly ?? null)
@@ -2050,6 +2055,12 @@ export const reportTemplatePlanOutput = async ({
     parts.flatMap(({ block }) => (block.read === null ? [] : [block.read])),
   );
   const droppedFields = new Map<string, number>();
+  let pageShapes = 0;
+  for (const paragraph of new Set(resolved.byBlockId.values())) {
+    for (const part of paragraph.parts) {
+      pageShapes += part.droppedPageShapes;
+    }
+  }
   let internalHyperlinks = 0;
   for (const read of placedReads) {
     for (const index of read.fieldIndices) {
@@ -2216,6 +2227,7 @@ export const reportTemplatePlanOutput = async ({
       })),
       internalHyperlinks,
       sectionBreaks,
+      pageShapes,
     },
     textEffects,
     updateFields,

@@ -482,6 +482,7 @@ describe("applyTemplatePlan", () => {
       sourceFields: [],
       internalHyperlinks: 0,
       sectionBreaks: 0,
+      pageShapes: 0,
     });
     expect(report.conformance).toMatchObject({
       status: "conformant",

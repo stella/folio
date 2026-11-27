@@ -5,6 +5,7 @@
  * Each case draws a document and one public operation built from what a
  * reader sees, applied as a suggestion:
  *
+ * - a suggestion that applies changes what a reader sees and is recorded;
  * - the saved package holds the suggestion as rejected: reopened, it reads
  *   as the document before the suggestion;
  * - the exported records restage on a reviewer reopened on the saved
@@ -24,8 +25,14 @@
 
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
+import { isDeepStrictEqual } from "node:util";
 
-import { reviewerDocumentArbitrary } from "../../../../test/generators/reviewerDocumentArbitraries";
+import { paragraphNumberingReference } from "@stll/docx-core/model";
+
+import {
+  pendingJoinDocumentArbitrary,
+  reviewerDocumentArbitrary,
+} from "../../../../test/generators/reviewerDocumentArbitraries";
 import {
   type OperationDraw,
   operationFor,
@@ -43,7 +50,12 @@ import {
 } from "../document-operations";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { createDocx } from "../docx/rezip";
-import type { Document } from "../types/document";
+import type {
+  BlockContent,
+  Document,
+  Paragraph,
+  ParagraphContent,
+} from "../types/document";
 import { FolioDocxReviewer } from "./headless";
 
 type Reviewer = FolioDocxReviewer;
@@ -151,10 +163,10 @@ const suggestionLaws = async (
       table !== undefined && content[index]?.table?.outerTableIndex === table;
     const step = insertion.type === "insertBeforeBlock" ? -1 : 1;
     if (table === undefined) {
+      // The same insertion tracked applies too: a suggestion is adopted as
+      // tracked changes, so it stages only what tracking admits.
       const tracked = await open(buffer);
-      expect(
-        apply(tracked, operation, "tracked-changes").applied.length,
-      ).toBeGreaterThan(0);
+      expect(apply(tracked, operation, "tracked-changes").skipped).toEqual([]);
       expect(blockTexts(reviewer)).toEqual(blockTexts(tracked));
     } else {
       let edge = at;
@@ -169,8 +181,13 @@ const suggestionLaws = async (
       expect(beside !== undefined && !known.has(beside)).toBe(true);
     }
   }
+  // A suggestion that applies changes what a reader sees and is recorded:
+  // one that would change nothing is refused, not staged unseen.
   const records = reviewer.exportPendingSuggestions();
-  expect(records.length).toBeGreaterThan(0);
+  expect({
+    changed: !isDeepStrictEqual(suggested, before),
+    recorded: records.length > 0,
+  }).toEqual({ changed: true, recorded: true });
   const suggestionIds = [
     ...new Set(records.map(({ suggestionId }) => suggestionId)),
   ];
@@ -225,17 +242,16 @@ const packaged = async (document: Document): Promise<ArrayBuffer | null> => {
   }
 };
 
-const generatedSuggestions = (tally: Map<SuggestionOutcome, number>) =>
-  fc.asyncProperty(
-    reviewerDocumentArbitrary,
-    stagingDrawArbitrary,
-    async (document, draw) => {
-      const buffer = await packaged(document);
-      const outcome =
-        buffer === null ? "notAPackage" : await suggestionLaws(buffer, draw);
-      tally.set(outcome, (tally.get(outcome) ?? 0) + 1);
-    },
-  );
+const generatedSuggestions = (
+  tally: Map<SuggestionOutcome, number>,
+  documents: fc.Arbitrary<Document> = reviewerDocumentArbitrary,
+) =>
+  fc.asyncProperty(documents, stagingDrawArbitrary, async (document, draw) => {
+    const buffer = await packaged(document);
+    const outcome =
+      buffer === null ? "notAPackage" : await suggestionLaws(buffer, draw);
+    tally.set(outcome, (tally.get(outcome) ?? 0) + 1);
+  });
 
 /**
  * A suggestion inserted beside a paragraph whose mark is a pending insertion
@@ -256,7 +272,9 @@ const besidePendingMarks: Document = {
           type: "paragraph",
           content: [],
           pPrMark: { kind: "del", info: { id: 2, author: "A" } },
-          formatting: { numPr: { kind: "reference", numId: 1, ilvl: 0 } },
+          formatting: {
+            numPr: paragraphNumberingReference({ numId: 1, ilvl: 0 }),
+          },
           paraId: "00000002",
         },
         { type: "paragraph", content: [], paraId: "00000003" },
@@ -292,10 +310,285 @@ const besidePendingMarks: Document = {
   warnings: ["kept"],
 };
 
+const commentRange: ParagraphContent[] = [
+  { type: "commentRangeStart", id: 8 },
+  { type: "commentRangeEnd", id: 8 },
+];
+
+/** Paragraph `n` holding `content`, under the pending changes named. */
+const pending = (
+  n: number,
+  content: ParagraphContent[],
+  mark?: "ins" | "del",
+  changed = false,
+): Paragraph => {
+  const paragraph: Paragraph = {
+    type: "paragraph",
+    content,
+    paraId: `0000000${n}`,
+  };
+  if (changed)
+    paragraph.propertyChanges = [
+      {
+        type: "paragraphPropertyChange",
+        info: { id: 10 + n, author: "A" },
+        previousFormatting: { alignment: "end" },
+      },
+    ];
+  if (mark !== undefined)
+    paragraph.pPrMark = { kind: mark, info: { id: n, author: "A" } };
+  return paragraph;
+};
+
+const blockBookmark: BlockContent = {
+  type: "bookmarkStart",
+  id: 90,
+  name: "_GoBack",
+};
+const altChunk: BlockContent = {
+  type: "preservedBlock",
+  xml: "<w:altChunk/>",
+};
+const oneCellTable = (n: number): BlockContent => ({
+  type: "table",
+  columnWidths: [2400],
+  rows: [
+    {
+      type: "tableRow",
+      cells: [{ type: "tableCell", content: [pending(n, [])] }],
+    },
+  ],
+});
+
+const noteReference: ParagraphContent[] = [
+  { type: "run", content: [{ type: "footnoteRef", id: 2 }] },
+];
+const alpha: ParagraphContent[] = [
+  { type: "run", content: [{ type: "text", text: "Alpha" }] },
+];
+/** `paragraph` as an item of list `numId`; list 2 restarts the numbering. */
+const numbered = (paragraph: Paragraph, numId = 1): Paragraph => ({
+  ...paragraph,
+  formatting: { numPr: paragraphNumberingReference({ numId, ilvl: 0 }) },
+});
+const groupControl = (paragraph: Paragraph): BlockContent => ({
+  type: "blockSdt",
+  properties: { sdtType: "group", id: 1 },
+  content: [paragraph],
+});
+const deleting = (block: number): OperationDraw => ({
+  kind: "deleteBlock",
+  block,
+  word: 0,
+  text: "revised",
+});
+
+/**
+ * Bodies where pending joins run a numbered paragraph's words into the
+ * paragraphs a deletion takes, before a block their last mark cannot cross,
+ * with the draw naming that deletion (the first a generated case, shrunk).
+ * Directly the paragraphs go whole and the words keep their own paragraph's
+ * list numbering, so accepting the suggestion numbers them alike.
+ */
+const DELETIONS_BESIDE_NUMBERED_JOINS: Record<
+  string,
+  [BlockContent[], OperationDraw]
+> = {
+  "deleting an empty paragraph a numbered note reference joins, before a control":
+    [
+      [
+        numbered(pending(1, noteReference, "del")),
+        pending(2, []),
+        blockBookmark,
+        groupControl(pending(3, [])),
+        pending(4, []),
+      ],
+      deleting(1),
+    ],
+  "deleting an empty paragraph under another's added mark that a numbered note reference joins":
+    [
+      [
+        numbered(pending(1, noteReference, "del")),
+        pending(2, [], "ins"),
+        blockBookmark,
+        groupControl(pending(3, [])),
+        pending(4, []),
+      ],
+      deleting(1),
+    ],
+  "deleting an empty paragraph before a numbered one": [
+    [
+      pending(1, alpha, "del"),
+      pending(2, []),
+      numbered(pending(3, alpha)),
+      altChunk,
+      pending(4, []),
+    ],
+    deleting(1),
+  ],
+  "deleting a numbered paragraph holding a note reference that words join, before a preserved block":
+    [
+      [
+        pending(1, alpha, "del"),
+        numbered(pending(2, noteReference)),
+        altChunk,
+        pending(3, []),
+      ],
+      deleting(1),
+    ],
+  "deleting an empty paragraph a numbered one joins, in a list that goes on after the block":
+    [
+      [
+        numbered(pending(1, alpha)),
+        numbered(pending(2, noteReference, "del")),
+        pending(3, []),
+        altChunk,
+        numbered(pending(4, alpha)),
+      ],
+      deleting(2),
+    ],
+  "deleting an empty paragraph a numbered one joins, before a list restarting after the block":
+    [
+      [
+        numbered(pending(1, alpha)),
+        numbered(pending(2, noteReference, "del")),
+        pending(3, []),
+        altChunk,
+        numbered(pending(4, alpha), 2),
+      ],
+      deleting(2),
+    ],
+};
+
+const inserting = (
+  kind: "insertBeforeBlock" | "insertAfterBlock",
+  block: number,
+): OperationDraw => ({ kind, block, word: 0, text: "revised" });
+
+/**
+ * Bodies around pending paragraph joins, with the draw naming a paragraph
+ * put beside one: generated cases, shrunk, whose suggestion staged while the
+ * same tracked insertion was refused. A comment's range and a property
+ * change stand for any marker and property a paragraph keeps.
+ */
+const BESIDE_PENDING_JOINS: Record<string, [BlockContent[], OperationDraw]> = {
+  "before a paragraph holding a range after a block bookmark, before a preserved block":
+    [
+      [
+        pending(1, [], "del"),
+        blockBookmark,
+        pending(2, commentRange, "ins", true),
+        altChunk,
+      ],
+      inserting("insertBeforeBlock", 1),
+    ],
+  "before a paragraph holding a range after a block bookmark, ending the body":
+    [
+      [
+        pending(1, [], "del"),
+        blockBookmark,
+        pending(2, commentRange, "ins", true),
+      ],
+      inserting("insertBeforeBlock", 1),
+    ],
+  "after a paragraph holding a range after a block bookmark, whose added mark the new one takes over":
+    [
+      [
+        pending(1, [], "del"),
+        blockBookmark,
+        pending(2, commentRange, "ins", true),
+        altChunk,
+        blockBookmark,
+      ],
+      inserting("insertAfterBlock", 1),
+    ],
+  "before a paragraph holding a range, whose deleted mark cannot be accepted before a block bookmark and a table":
+    [
+      [pending(1, commentRange, "del"), blockBookmark, oneCellTable(2)],
+      inserting("insertBeforeBlock", 0),
+    ],
+  "before a paragraph holding a range, whose added mark cannot be rejected before a block bookmark and a table":
+    [
+      [
+        pending(1, commentRange, "ins"),
+        blockBookmark,
+        oneCellTable(2),
+        pending(3, [], "del"),
+        pending(4, []),
+      ],
+      inserting("insertBeforeBlock", 0),
+    ],
+  "after an empty paragraph whose added mark cannot be rejected before a table":
+    [
+      [
+        pending(1, [], "ins"),
+        oneCellTable(2),
+        pending(3, [], "del"),
+        blockBookmark,
+      ],
+      inserting("insertAfterBlock", 0),
+    ],
+};
+
+const bodyOf = (content: BlockContent[]): Document => ({
+  package: {
+    document: {
+      content,
+      finalSectionProperties: { pageWidth: 12240, pageHeight: 15840 },
+      comments: [
+        {
+          id: 8,
+          author: "A",
+          content: [{ type: "paragraph", paraId: "7FFFFFF0", content: [] }],
+        },
+      ],
+    },
+    numbering: {
+      abstractNums: [
+        {
+          abstractNumId: 1,
+          levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }],
+        },
+      ],
+      nums: [
+        { numId: 1, abstractNumId: 1 },
+        {
+          numId: 2,
+          abstractNumId: 1,
+          levelOverrides: [{ ilvl: 0, startOverride: 1 }],
+        },
+      ],
+    },
+    footnotes: [
+      {
+        type: "footnote",
+        id: 2,
+        content: [{ type: "paragraph", paraId: "7FFFFFF1", content: [] }],
+      },
+    ],
+  },
+});
+
 const GENERATED_RUNS = 30;
+const PENDING_JOIN_RUNS = 100;
 const COVERAGE_RUNS = 30;
 
 describe("a canonical reviewer's pending suggestions", () => {
+  // A paragraph suggested beside a pending join stages as the tracked one
+  // applies; a suggested deletion a numbered pending join runs into numbers
+  // its words, once accepted, as the direct deletion does.
+  test.each(
+    Object.entries({
+      ...BESIDE_PENDING_JOINS,
+      ...DELETIONS_BESIDE_NUMBERED_JOINS,
+    }),
+  )("a suggestion %s follows the laws", async (_shape, [content, draw]) => {
+    const buffer = await packaged(bodyOf(content));
+    expect(buffer).not.toBeNull();
+    if (buffer === null) return;
+    expect(await suggestionLaws(buffer, draw)).toBe("suggested");
+  });
+
   test("a suggestion beside pending paragraph marks restages", async () => {
     const buffer = await packaged(besidePendingMarks);
     expect(buffer).not.toBeNull();
@@ -381,6 +674,20 @@ describe("a canonical reviewer's pending suggestions", () => {
         id: "generated suggestions save, restage, reject and accept as the laws say",
         numRuns: GENERATED_RUNS,
       });
+    },
+    propertyTestTimeout(120_000),
+  );
+
+  test(
+    "suggestions beside pending joins save, restage, reject and accept as the laws say",
+    async () => {
+      await assertProperty(
+        generatedSuggestions(new Map(), pendingJoinDocumentArbitrary),
+        {
+          id: "suggestions beside pending joins save, restage, reject and accept as the laws say",
+          numRuns: PENDING_JOIN_RUNS,
+        },
+      );
     },
     propertyTestTimeout(120_000),
   );

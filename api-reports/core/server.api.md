@@ -300,18 +300,31 @@ export type DocxBlock = {
     hash: string;
     paraId?: string;
     inlineObjects: number;
+    pageShapes?: number;
     pageBreaks?: number;
     selfNumbers?: number[];
     revisions?: DocxBlockRevision[];
+    crossReferences?: DocxBlockCrossReference[];
     pageBreakBefore?: true;
     endsSection?: true;
     alignment?: string;
+    spacing?: TemplatePlanSpacing;
     indent?: {
         left: number;
         firstLine: number;
     };
     cells?: DocxTableCell[];
     nested?: DocxBlock[];
+};
+
+// @public
+export type DocxBlockCrossReference = {
+    start: number;
+    end: number;
+    instruction: string;
+    bookmark: string;
+    targetBlockId: string | null;
+    targetWhole: boolean;
 };
 
 // @public (undocumented)
@@ -2317,10 +2330,12 @@ export type TemplatePlanNestedParagraph = {
     numbering?: TemplatePlanNumbering | null;
     stripLabel?: string;
     labelAsText?: boolean;
+    dropPageShapes?: boolean;
     keepNext?: boolean;
     indent?: TemplatePlanIndent;
     tabStops?: number[];
     alignment?: TemplatePlanAlignment;
+    spacing?: TemplatePlanSpacing;
 };
 
 // @public (undocumented)
@@ -2440,6 +2455,7 @@ export type TemplatePlanReport = {
         }[];
         internalHyperlinks: number;
         sectionBreaks: number;
+        pageShapes: number;
     };
     textEffects: {
         removed: TemplatePlanEffectCount[];
@@ -2484,15 +2500,23 @@ export type TemplatePlanSourceItem = {
     stripLabel?: string;
     stripLabelBreak?: boolean;
     labelAsText?: boolean;
+    dropPageShapes?: boolean;
     mergeNext?: TemplatePlanMerge;
     pageBreakBefore?: boolean;
     keepNext?: boolean;
     indent?: TemplatePlanIndent;
     tabStops?: number[];
     alignment?: TemplatePlanAlignment;
+    spacing?: TemplatePlanSpacing;
     endsSection?: TemplatePlanSection;
     cellStyleId?: string;
     nested?: TemplatePlanNestedParagraph[];
+};
+
+// @public
+export type TemplatePlanSpacing = {
+    before?: number;
+    after?: number;
 };
 
 // @public (undocumented)

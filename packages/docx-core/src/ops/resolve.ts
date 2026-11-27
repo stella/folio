@@ -166,7 +166,11 @@ import {
   tryMaterializeResolution,
 } from "./resolutionMaterialization";
 import { edgeChain, edgeChainPastRemoved } from "./resolvedEdges";
-import { reachableRowIds, resolveTableRows } from "./resolveTableRows";
+import {
+  reachableRowIds,
+  resolveTableRows,
+  withBelongingTableGeometry,
+} from "./resolveTableRows";
 import {
   isAddedRevision,
   isRemovedRevisionNode,
@@ -7330,7 +7334,9 @@ const withAbsorptions = (
  * also takes, that one takes all it holds, not only the markers a paragraph
  * that goes leaves: resolving the marks one at a time from the first joins
  * that paragraph into this one first, which keeps it all, empty inline
- * containers too.
+ * containers too. Where nothing around those joined paragraphs can take what
+ * they leave, this one stays, as it would once they had joined it: its
+ * identity and properties are the ones the joins keep.
  */
 const removalBesideJoin = ({
   blocks,
@@ -7343,12 +7349,26 @@ const removalBesideJoin = ({
 }): ReturnType<typeof planParagraphBoundaryRemoval> => {
   const paragraph = blocks[index];
   const previous = blocks[index - 1];
+  const joins = (block: BlockContent | undefined): block is Paragraph =>
+    block?.type === "paragraph" && joinsBefore.has(idKey(block.paraId ?? ""));
+  if (paragraph?.type !== "paragraph" || !joins(previous))
+    return planParagraphBoundaryRemoval({ blocks, index });
+  let start = index - 1;
+  while (joins(blocks[start - 1])) start -= 1;
+  const chained: Paragraph = {
+    ...paragraph,
+    content: blocks
+      .slice(start, index + 1)
+      .flatMap((block) => (block.type === "paragraph" ? block.content : [])),
+  };
   if (
-    paragraph?.type !== "paragraph" ||
-    previous?.type !== "paragraph" ||
-    paragraph.content.length === 0 ||
-    !joinsBefore.has(idKey(previous.paraId ?? ""))
+    planParagraphBoundaryRemoval({
+      blocks: [...blocks.slice(0, start), chained, ...blocks.slice(index + 1)],
+      index: start,
+    }).type === "blocked"
   )
+    return { type: "blocked" };
+  if (paragraph.content.length === 0)
     return planParagraphBoundaryRemoval({ blocks, index });
   const host: Paragraph = {
     ...previous,
@@ -7448,7 +7468,17 @@ const joinOps = (
   }
   const { paragraph } = location;
   const blocks = blockListAt(body.content, location.list);
-  const previous = blocks[location.index - 1];
+  // The paragraphs right before this one whose marks this resolution also
+  // takes join it first, resolving the marks one at a time from the first:
+  // what stands before this one is what stands before them.
+  let previousIndex = location.index - 1;
+  for (
+    let before = blocks[previousIndex];
+    before?.type === "paragraph" && joinsBefore.has(idKey(before.paraId ?? ""));
+    before = blocks[previousIndex]
+  )
+    previousIndex -= 1;
+  const previous = blocks[previousIndex];
   // Range boundaries the block list holds between this paragraph and the
   // next block stand at its boundary. A following paragraph or opaque
   // block receives them where the earlier words meet the later content.
@@ -7755,7 +7785,7 @@ const joinOps = (
       tableBoundary?.type === "blocked" && tableBoundary.reason === "review"
         ? "pendingReview"
         : "unavailable",
-    precededByBlock: location.index > 0,
+    precededByBlock: previous !== undefined,
   });
   if (outcome.kind === "refuse") {
     return Result.err(
@@ -8543,7 +8573,10 @@ export const planRevisionResolution = (
   options: RevisionResolutionPlanOptions,
 ): Result<RevisionResolutionPlan, DocumentOpRefusal> => {
   const { document, applyOps } = options;
-  const op = withBelongingPropertyChanges(document, options.op);
+  const op = withBelongingTableGeometry(
+    document,
+    withBelongingPropertyChanges(document, options.op),
+  );
   const sections = settleSectionRecords(document, op);
   if (sections.ops.length === 0) return planMarkResolution({ ...options, op });
   const settled = applyOps(document, sections.ops);
@@ -8611,8 +8644,8 @@ const withoutSection = (story: OpStory, paragraph: Paragraph): DocumentOp => {
 /**
  * The records of the sections the ids select, resolved through the section
  * calculation every reviewer applies, with the revision ids left to resolve.
- * A section's records travel on the paragraph that ends it; the final
- * section's are resolved by section review. A header, footer or note has no
+ * A section's records travel on the paragraph that ends it or on the main
+ * story's final section record. A header, footer or note has no
  * sections, but a paragraph there may still carry section properties with
  * records: they resolve by the same calculation, on that paragraph.
  */
@@ -8626,6 +8659,21 @@ const settleSectionRecords = (
   const ops: DocumentOp[] = [];
   if (op.story === OP_STORIES.MAIN) {
     const body = document.package.document;
+    const final = body.finalSectionProperties;
+    if (final !== undefined) {
+      const resolved = resolveSectionRecords({
+        properties: final,
+        ids,
+        decision: op.decision,
+      });
+      if (resolved !== final)
+        ops.push({
+          type: DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT,
+          endpoint: { type: "final" },
+          expected: { type: "present", value: final },
+          properties: { type: "present", value: resolved },
+        });
+    }
     for (const [sectionIndex, { index, properties }] of sectionEnds(
       body,
     ).entries()) {
@@ -8727,20 +8775,6 @@ const planSingleRecordResolution = (
       ),
     );
   }
-  const finalSectionRevision = storyBody(
-    document,
-    op.story,
-  ).finalSectionProperties?.propertyChanges?.find(({ info }) =>
-    op.revisionIds.includes(info.id),
-  );
-  if (finalSectionRevision !== undefined)
-    return Result.err(
-      refusal(
-        op,
-        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-        `Final section revision ${String(finalSectionRevision.info.id)} requires section review.`,
-      ),
-    );
   const present = storyIdentityKeys(document, op.story);
   const ids = new Set(
     op.revisionIds.filter((id) =>

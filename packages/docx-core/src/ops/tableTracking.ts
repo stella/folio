@@ -7,7 +7,6 @@ import {
   type DocumentBody,
   MAX_REVISION_ID,
   type Paragraph,
-  type Table,
   type TableCell,
   type TableRow,
   type TrackedChangeInfo,
@@ -68,12 +67,7 @@ type TrackingRefusalOptions = {
 const refused = ({ op, reason, message }: TrackingRefusalOptions) =>
   Result.err(new DocumentOpRefusal({ opType: op.type, reason, message }));
 
-const paragraphsIn = (rows: readonly TableRow[]): Paragraph[] =>
-  storyParagraphs({ content: [{ type: "table", rows: [...rows] }] }).map(
-    ({ paragraph }) => paragraph,
-  );
-
-/** Rebuild only paths to changed paragraphs, retaining every other record. */
+/** Rebuild the cell's own paragraphs, leaving its nested tables intact. */
 const mapParagraphs = (
   blocks: readonly BlockContent[],
   replace: (paragraph: Paragraph) => Paragraph,
@@ -86,10 +80,6 @@ const mapParagraphs = (
       case "blockCustomXml":
         return { ...block, content: mapParagraphs(block.content, replace) };
       case "table":
-        return {
-          ...block,
-          rows: block.rows.map((row) => rowWithParagraphs(row, replace)),
-        };
       case "preservedBlock":
       case "bookmarkStart":
       case "bookmarkEnd":
@@ -136,36 +126,9 @@ const trackableInline = (nodes: readonly InlineNode[]): boolean =>
   });
 
 /**
- * A nested table records a suggestion through the words in its cells, as the
- * row holding it records it: its own rows and cells need nothing a row
- * suggestion cannot carry.
- */
-const trackableTable = (table: Table): boolean =>
-  table.preserved === undefined &&
-  table.bookmarks === undefined &&
-  table.carrierStack === undefined &&
-  (table.propertyChanges?.length ?? 0) === 0 &&
-  table.rows.every(
-    (row) =>
-      row.structuralChange === undefined &&
-      row.preserved === undefined &&
-      row.bookmarks === undefined &&
-      row.contentControls === undefined &&
-      row.carrierStack === undefined &&
-      row.cells.every(
-        (cell) =>
-          cell.structuralChange === undefined &&
-          (cell.propertyChanges?.length ?? 0) === 0 &&
-          cell.contentControls === undefined &&
-          cell.carrierStack === undefined &&
-          trackableBlocks(cell.content),
-      ),
-  );
-
-/**
  * Captured blocks, section breaks and moves have no tracked-row
  * construction. Bookmark and comment boundaries hold no words to mark, and
- * a nested table records the suggestion through its words.
+ * the row's structural record carries a nested table whole.
  */
 const trackableBlocks = (blocks: readonly BlockContent[]): boolean =>
   blocks.every((block) => {
@@ -181,7 +144,6 @@ const trackableBlocks = (blocks: readonly BlockContent[]): boolean =>
       case "blockCustomXml":
         return trackableBlocks(block.content);
       case "table":
-        return trackableTable(block);
       case "bookmarkStart":
       case "bookmarkEnd":
       case "commentRangeStart":
@@ -199,15 +161,6 @@ const trackableBlocks = (blocks: readonly BlockContent[]): boolean =>
       }
     }
   });
-
-/** A table anywhere in the blocks, inside content controls and custom XML too. */
-const holdsTable = (blocks: readonly BlockContent[]): boolean =>
-  blocks.some(
-    (block) =>
-      block.type === "table" ||
-      ((block.type === "blockSdt" || block.type === "blockCustomXml") &&
-        holdsTable(block.content)),
-  );
 
 type TrackTableRowsOptions = {
   document: Document;
@@ -241,17 +194,23 @@ export const trackTableRows = ({
     });
   }
   const finals = new Set<Paragraph>();
-  const surviving = new Set<Paragraph>();
+  const unmarked = new Set<Paragraph>();
+  const before: Paragraph[] = [];
   let missingFinalParagraph = false;
   for (const row of rows) {
     for (const cell of row.cells) {
-      if (survivingCells.has(cell)) {
-        for (const { paragraph } of storyParagraphs({ content: cell.content }))
-          surviving.add(paragraph);
-        continue;
-      }
       const body = { content: cell.content };
-      const final = storyParagraphs(body).at(-1);
+      const locations = storyParagraphs(body);
+      const handsOn = survivingCells.has(cell);
+      for (const { list, paragraph } of locations) {
+        before.push(paragraph);
+        // The outer row owns the nested table as a block. Leave every
+        // inner paragraph and its earlier revisions in the inner scope.
+        if (handsOn || list.some((step) => step.kind === "tableCell"))
+          unmarked.add(paragraph);
+      }
+      if (handsOn) continue;
+      const final = locations.at(-1);
       if (final === undefined) {
         return refused({
           op,
@@ -259,7 +218,7 @@ export const trackTableRows = ({
           message: "Every cell must have a paragraph.",
         });
       }
-      if (!endsItsContainer(body, final)) {
+      if (unmarked.has(final.paragraph) || !endsItsContainer(body, final)) {
         missingFinalParagraph = true;
         continue;
       }
@@ -290,14 +249,9 @@ export const trackTableRows = ({
     return refused({
       op,
       reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      message: rows.some((row) =>
-        row.cells.some((cell) => holdsTable(cell.content)),
-      )
-        ? "A suggestion cannot record a nested table that holds captured markup or review records."
-        : "The rows contain an unsupported tracked structure.",
+      message: "The rows contain an unsupported tracked structure.",
     });
   }
-  const before = paragraphsIn(rows);
   const outside = new Set(packageIdentityKeys(document.package));
   if (
     op.type === DOCUMENT_OP_TYPES.DELETE_ROW ||
@@ -354,7 +308,7 @@ export const trackTableRows = ({
   }
   const after: Paragraph[] = [];
   for (const paragraph of before) {
-    if (surviving.has(paragraph)) {
+    if (unmarked.has(paragraph)) {
       after.push(paragraph);
       continue;
     }

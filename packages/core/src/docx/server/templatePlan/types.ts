@@ -79,6 +79,36 @@ export type DocxBlockNumbering = {
   bulletFont?: string;
 };
 
+/**
+ * A `REF` field of a paragraph (ECMA-376 Part 1, 17.16.5.52). Without a
+ * number switch it shows the content of the bookmark it names; with one,
+ * the number of the paragraph the bookmark stands in. A plan that places
+ * the paragraph the bookmark marks can keep the field a field: a
+ * `TemplatePlanReference` over its span to that paragraph, with its
+ * switches and its result.
+ */
+export type DocxBlockCrossReference = {
+  /** The span of the paragraph's `text` the field's result takes. */
+  start: number;
+  end: number;
+  /** The field's code as the document states it, e.g. ` REF Annex3 \h `. */
+  instruction: string;
+  /** The bookmark the field names. */
+  bookmark: string;
+  /**
+   * The paragraph of the main story the bookmark starts and ends in. Null
+   * when no bookmark of that name does both in one paragraph: it spans
+   * paragraphs, stands between blocks, or is not there.
+   */
+  targetBlockId: string | null;
+  /**
+   * Whether the bookmark holds all of that paragraph's content, so that a
+   * field without a number switch shows the paragraph's text, which is
+   * what a plan's own bookmark on the paragraph holds.
+   */
+  targetWhole: boolean;
+};
+
 export type DocxTableCell = {
   row: number;
   col: number;
@@ -130,6 +160,14 @@ export type DocxBlock = {
   /** Drawings, pictures, embedded objects and equations anchored in the block. */
   inlineObjects: number;
   /**
+   * How many of them are drawn shapes fixed to the page, when the block
+   * holds any: a single floating shape without a picture and without text
+   * of its own (a rule, a dot, a line) whose horizontal place is counted
+   * from the page or a margin. Such a mark belongs to the layout of the
+   * page it was drawn on; a plan may leave it out (`dropPageShapes`).
+   */
+  pageShapes?: number;
+  /**
    * Page breaks among the paragraph's runs, when it holds any. A paragraph
    * without text can hold one: it is then all that starts the next page.
    */
@@ -149,6 +187,12 @@ export type DocxBlock = {
    */
   revisions?: DocxBlockRevision[];
   /**
+   * The cross-reference fields of the paragraph, in the order they stand:
+   * each `REF` field whose result lies in the paragraph's text and in no
+   * other field. Absent without one.
+   */
+  crossReferences?: DocxBlockCrossReference[];
+  /**
    * The paragraph starts on a new page by its own formatting or its
    * style's (`w:pageBreakBefore`). A plan carries it over with an item's
    * `pageBreakBefore`; no other direct formatting of a paragraph comes along.
@@ -166,6 +210,13 @@ export type DocxBlock = {
    * Absent when neither states one.
    */
   alignment?: string;
+  /**
+   * The space the paragraph states for itself in front of and behind it
+   * (`w:spacing`, `before` and `after`), in twentieths of a point. A side
+   * it does not state is left out; absent when it states neither. What its
+   * style gives is not here: this is what the document set by hand.
+   */
+  spacing?: TemplatePlanSpacing;
   /**
    * The paragraph's indent in effect, in twentieths of a point: `left` is
    * where its lines start, `firstLine` what its first line adds to that
@@ -466,6 +517,8 @@ export type TemplatePlanNestedParagraph = {
   /** As on a source item. */
   labelAsText?: boolean;
   /** As on a source item. */
+  dropPageShapes?: boolean;
+  /** As on a source item. */
   keepNext?: boolean;
   /** As on a source item. */
   indent?: TemplatePlanIndent;
@@ -473,10 +526,18 @@ export type TemplatePlanNestedParagraph = {
   tabStops?: number[];
   /** As on a source item. */
   alignment?: TemplatePlanAlignment;
+  /** As on a source item. */
+  spacing?: TemplatePlanSpacing;
 };
 
 /** How a paragraph's lines are set between the margins (`w:jc`). */
 export type TemplatePlanAlignment = "left" | "center" | "right" | "both";
+
+/**
+ * The space in front of a paragraph and behind it (`w:spacing`), in
+ * twentieths of a point: at least one side. A side left out is the style's.
+ */
+export type TemplatePlanSpacing = { before?: number; after?: number };
 
 /** A page other than the template's, in twentieths of a point. */
 export type TemplatePlanSectionPage = {
@@ -529,6 +590,14 @@ export type TemplatePlanSourceItem = {
    * bullet glyph and not a number a language spells.
    */
   labelAsText?: boolean;
+  /**
+   * Write the paragraph without its drawn shapes that are fixed to the page
+   * (`pageShapes` of the block): marks of the page the source was laid out
+   * on, which would stand at that page's places in the output. Everything
+   * else the paragraph holds is placed as it is. The report counts what was
+   * left out.
+   */
+  dropPageShapes?: boolean;
   /** Join the next item of the plan, a source paragraph, into this paragraph. */
   mergeNext?: TemplatePlanMerge;
   /**
@@ -570,6 +639,12 @@ export type TemplatePlanSourceItem = {
    * cell or a centred line under a title. Not for a table.
    */
   alignment?: TemplatePlanAlignment;
+  /**
+   * The paragraph's own space in front of it and behind it (`w:spacing`),
+   * over what its style states: for a line the document sets tight or
+   * apart by itself, such as the rows of a table. Not for a table.
+   */
+  spacing?: TemplatePlanSpacing;
   /**
    * The paragraph is the last of a section, described here: for a part of
    * the document whose page is another than the template's, such as a
@@ -872,6 +947,9 @@ export type TemplatePlanReport = {
     sourceFields: { kind: string; count: number }[];
     internalHyperlinks: number;
     sectionBreaks: number;
+    /** Drawn shapes fixed to the page that placed paragraphs were written
+     *  without, as their items asked (`dropPageShapes`). */
+    pageShapes: number;
   };
   /**
    * Text effects that show nothing: those of the template the output does

@@ -361,9 +361,18 @@ test("insertion validates identities, review conflicts and section boundaries", 
     ...makeParagraph("00000002", "section"),
     sectionProperties: {},
   };
-  const boundary = applyDocumentOp(baseDocument, insertion([section]));
+  // The break goes in with the inserted mark it travels with.
+  const sectioned = apply(baseDocument, insertion([section]));
+  const [opened] = sectioned.document.package.document.content;
+  expect(opened?.type === "paragraph" && opened.pPrMark?.kind).toBe("ins");
+  expect(opened?.type === "paragraph" && opened.sectionProperties).toEqual({});
+  // After the story's last paragraph the new one keeps the story's mark.
+  const boundary = applyDocumentOp(baseDocument, {
+    ...insertion([section]),
+    at: { type: "after", blockId: "00000001" },
+  });
   expect(boundary.isErr() && boundary.error.reason).toBe(
-    DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+    DOCUMENT_OP_REFUSAL_REASONS.SECTION_BOUNDARY,
   );
   const insufficient = applyDocumentOp(baseDocument, {
     ...insertion([makeParagraph("00000002", "new")]),

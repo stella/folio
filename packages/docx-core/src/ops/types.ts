@@ -1191,9 +1191,11 @@ export type InsertColumnOp = TableEditTarget & {
   count?: number;
   newBlockIds: readonly string[];
 };
+/** Remove adjacent columns together, with one column when count is absent. */
 export type DeleteColumnOp = TableEditTarget & {
   type: typeof DOCUMENT_OP_TYPES.DELETE_COLUMN;
   column: number;
+  count?: number;
 };
 /** Half-open logical rectangle; every touched span must be wholly contained. */
 export type MergeCellsOp = TableEditTarget & {
