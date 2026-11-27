@@ -539,10 +539,6 @@ export const nestedTableMoveSource = (
         if (
           !collectCarriers(cell) ||
           reachesPastRemovedCell(cellProperties) ||
-          cell.propertyChanges?.some(
-            ({ previousStructuralChange }) =>
-              previousStructuralChange !== undefined,
-          ) ||
           !blockListEndsInParagraph(content)
         )
           return false;
@@ -556,6 +552,15 @@ export const nestedTableMoveSource = (
           revisions.push(change.info.id);
         }
         collectProperties(cell.propertyChanges);
+        for (const { previousStructuralChange } of cell.propertyChanges ?? []) {
+          if (previousStructuralChange === undefined) continue;
+          if (
+            previousStructuralChange.type === "tableRowInsertion" ||
+            previousStructuralChange.type === "tableRowDeletion"
+          )
+            return false;
+          revisions.push(previousStructuralChange.info.id);
+        }
         return content.every(collectBlock);
       });
     });
@@ -718,7 +723,19 @@ const withNestedMoveIdentities = (
         ...carrierIdentities(cell),
         ...(cell.propertyChanges === undefined
           ? {}
-          : { propertyChanges: cell.propertyChanges.map(restamp) }),
+          : {
+              propertyChanges: cell.propertyChanges.map((change) => {
+                const updated = restamp(change);
+                return change.previousStructuralChange === undefined
+                  ? updated
+                  : {
+                      ...updated,
+                      previousStructuralChange: restamp(
+                        change.previousStructuralChange,
+                      ),
+                    };
+              }),
+            }),
         ...(cell.structuralChange === undefined
           ? {}
           : { structuralChange: restamp(cell.structuralChange) }),

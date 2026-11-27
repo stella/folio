@@ -101,6 +101,10 @@ const nestedWithCellRecords = {
               type: "tableCellPropertyChange",
               info: { id: 45, author: "Earlier" },
               previousFormatting: { width: { type: "dxa", value: 1000 } },
+              previousStructuralChange: {
+                type: "tableCellInsertion",
+                info: { id: 46, author: "Earlier" },
+              },
             },
           ],
         },
@@ -318,13 +322,24 @@ test.each([
         fact?.type === "mergeCells"
           ? fact.nestedMoves?.at(0)?.revisions
           : undefined;
-      if (aliases?.length !== 2)
+      if (aliases?.length !== 3)
         throw new TypeError("Expected the cell revision handoffs.");
-      const [deletion, formatting] = aliases;
-      if (deletion === undefined || formatting === undefined)
-        throw new TypeError("Expected both cell revision handoffs.");
+      const [deletion, formatting, previous] = aliases;
+      if (
+        deletion === undefined ||
+        formatting === undefined ||
+        previous === undefined
+      )
+        throw new TypeError("Expected all cell revision handoffs.");
       expect(deletion[0]).toBe(44);
       expect(formatting[0]).toBe(45);
+      expect(previous[0]).toBe(46);
+      expect(xml).toMatch(
+        new RegExp(
+          `<w:tcPrChange w:id="${formatting[1]}"[^>]*><w:tcPr>.*?<w:cellIns w:id="${previous[1]}"`,
+          "u",
+        ),
+      );
       const doc = toProseDoc(withTable(parsed), {
         tableReviewGeometry: "physical",
       });
@@ -349,7 +364,7 @@ test.each([
         pendingGeometry?.type === "mergeCells"
           ? pendingGeometry.nestedMoves?.at(0)?.revisions
           : undefined;
-      expect(remainingAliases).toEqual([formatting]);
+      expect(remainingAliases).toEqual([formatting, previous]);
       const rejected = applyDocumentOp(withTable(saved), {
         ...descriptor,
         revisionIds: [formatting[1]],
@@ -361,6 +376,7 @@ test.each([
         ),
       );
       expect(nestedTables).toHaveLength(2);
+      const revived: number[] = [];
       for (const item of nestedTables) {
         expect(item.rows.at(0)?.cells).toHaveLength(1);
         const retainedCell = item.rows.at(0)?.cells.at(0);
@@ -369,16 +385,34 @@ test.each([
           value: 1000,
         });
         expect(retainedCell?.propertyChanges).toBeUndefined();
+        if (retainedCell?.structuralChange?.type === "tableCellInsertion")
+          revived.push(retainedCell.structuralChange.info.id);
       }
+      expect(revived.sort((left, right) => left - right)).toEqual(
+        [...previous].sort((left, right) => left - right),
+      );
+      const reopenedRevival = withTable(
+        parseSavedTable(serializeTable(tableOf(rejected), serializeParagraph)),
+      );
+      const afterEarlierReview = applyDocumentOp(reopenedRevival, {
+        ...descriptor,
+        revisionIds: [previous[1]],
+        decision: REVISION_DECISIONS.ACCEPT,
+      }).unwrap().document;
       const withoutCell = applyDocumentOp(original, {
         ...descriptor,
         revisionIds: [44],
         decision: REVISION_DECISIONS.ACCEPT,
       }).unwrap().document;
-      const reviewedSource = applyDocumentOp(withoutCell, {
+      const revivedSource = applyDocumentOp(withoutCell, {
         ...descriptor,
         revisionIds: [45],
         decision: REVISION_DECISIONS.REJECT,
+      }).unwrap().document;
+      const reviewedSource = applyDocumentOp(revivedSource, {
+        ...descriptor,
+        revisionIds: [46],
+        decision: REVISION_DECISIONS.ACCEPT,
       }).unwrap().document;
       const reviewedDirect = applyDocumentOp(reviewedSource, {
         ...operation,
@@ -388,7 +422,7 @@ test.each([
         REVISION_DECISIONS.ACCEPT,
         REVISION_DECISIONS.REJECT,
       ]) {
-        const completed = applyDocumentOp(rejected, {
+        const completed = applyDocumentOp(afterEarlierReview, {
           ...descriptor,
           revisionIds: [nestedId],
           decision,

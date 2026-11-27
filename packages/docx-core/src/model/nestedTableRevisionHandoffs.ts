@@ -101,6 +101,15 @@ const revisionSlots = (table: Table): ReadonlyMap<number, string> => {
       for (const [cellIndex, cell] of row.cells.entries()) {
         const cellPosition = `${position}:cell:${cellIndex}`;
         record(cell.propertyChanges, cellPosition);
+        for (const [snapshotIndex, { previousStructuralChange }] of (
+          cell.propertyChanges ?? []
+        ).entries()) {
+          if (previousStructuralChange !== undefined)
+            slots.set(
+              previousStructuralChange.info.id,
+              `${cellPosition}:previous:${snapshotIndex}:${previousStructuralChange.type}`,
+            );
+        }
         if (cell.structuralChange !== undefined)
           slots.set(
             cell.structuralChange.info.id,
