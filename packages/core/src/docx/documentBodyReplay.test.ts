@@ -19,7 +19,8 @@ import { readRootNamespaceBindings } from "./serializer/partNamespaces";
 const WORD = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const untouched =
   '<q:p xmlns:p14="http://schemas.microsoft.com/office/word/2010/wordml" p14:paraId="11111111">\n<q:r>  <q:t>untouched</q:t> </q:r></q:p>';
-const source = `<?xml version='1.0' encoding='UTF-8'?>\n<q:document xmlns:q='${WORD}'><q:background q:color='FFFFFF'/>\n<q:body>\n${untouched}\n<!-- authored gap -->\t<q:p><q:r><q:t>before</q:t></q:r></q:p>\n<q:sectPr><q:pgSz q:w='12240' q:h='15840'/></q:sectPr>\n</q:body></q:document>`;
+// Each paragraph holds an id, so a save adds none to the authored shell.
+const source = `<?xml version='1.0' encoding='UTF-8'?>\n<q:document xmlns:q='${WORD}'><q:background q:color='FFFFFF'/>\n<q:body>\n${untouched}\n<!-- authored gap -->\t<q:p xmlns:p14="http://schemas.microsoft.com/office/word/2010/wordml" p14:paraId="22222222"><q:r><q:t>before</q:t></q:r></q:p>\n<q:sectPr><q:pgSz q:w='12240' q:h='15840'/></q:sectPr>\n</q:body></q:document>`;
 
 const parsedSource = async () => {
   const zip = await ZipArchive.read(

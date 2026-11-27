@@ -70,6 +70,7 @@ import {
   typedInto,
   typeInto,
 } from "./__tests__/listNumberFieldFixture";
+import { withoutParagraphIds } from "./__tests__/paragraphIds";
 import { visitDocxParagraphs } from "./paragraphTraversal";
 import { repackDocx } from "./rezip";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
@@ -1338,8 +1339,11 @@ describe("a document with no LISTNUM field", () => {
       const rebuilt = fromProseDoc(toProseDoc(parsed), parsed, {
         stylesheetSource: { type: "package" },
       });
-      const written = await documentXmlOf(
-        await repackDocx(rebuilt, { updateModifiedDate: false }),
+      // The save gives each paragraph an id; the recorded bytes are the rest.
+      const written = withoutParagraphIds(
+        await documentXmlOf(
+          await repackDocx(rebuilt, { updateModifiedDate: false }),
+        ),
       );
       if ("file" in saved) {
         const reference = await Bun.file(
