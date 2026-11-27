@@ -512,8 +512,6 @@ describe.each(SESSIONS)("%s session", (session) => {
    *   nested tables and paragraphs with pending edits in cells that would
    *   need to move as complete blocks.
    * - A split is the reverse, so only a vertical merge splits tracked.
-   * - A column inserted through a horizontal merge widens it, and a column
-   *   deleted through one narrows it: a `w:gridSpan` change has no tracked form.
    * Pending table reviews also block edits that could overwrite their record
    * or give it a different effect. Those refusals use a separate typed reason.
    */
@@ -553,24 +551,6 @@ describe.each(SESSIONS)("%s session", (session) => {
       }
       case "splitTableCell":
         return cell.columnSpan > 1;
-      case "insertTableColumn": {
-        const boundary =
-          plan.position === "before"
-            ? cell.column
-            : cell.column + cell.columnSpan;
-        return siblings.some(
-          (candidate) =>
-            candidate.column < boundary &&
-            candidate.column + candidate.columnSpan > boundary,
-        );
-      }
-      case "deleteTableColumn":
-        return siblings.some(
-          (candidate) =>
-            candidate.columnSpan > 1 &&
-            candidate.column <= cell.column &&
-            candidate.column + candidate.columnSpan > cell.column,
-        );
       default:
         return false;
     }

@@ -3,9 +3,12 @@ import {
   type BlockContent,
   type DocxPackage,
   type InlineSdt,
+  type MathEquation,
   MAX_REVISION_ID,
   type Paragraph,
   type ParagraphContent,
+  type PreservedInline,
+  type PreservedXmlContent,
   type Run,
   type RunContent,
   type Table,
@@ -15,11 +18,12 @@ import type {
   TableGeometryNestedMove,
   TableGridChange,
 } from "../model/formatting";
-import { readXml } from "../xml/streamingXmlParser";
+import { readXml, type XmlElement } from "../xml/streamingXmlParser";
 import {
   OOXML_NAMESPACE_SCOPE,
   OOXML_NS,
   resolveNamespaceUri,
+  XML_NAMESPACE_URI,
 } from "../xml/xmlNamespaceContext";
 import {
   identityKeysIn,
@@ -52,6 +56,7 @@ const movableAtom = (leaf: RunContent): boolean =>
   leaf.type === "symbol" ||
   leaf.type === "softHyphen" ||
   leaf.type === "noBreakHyphen" ||
+  (leaf.type === "preservedXml" && movableRuby(leaf)) ||
   ((leaf.type === "footnoteRef" || leaf.type === "endnoteRef") &&
     Number.isInteger(leaf.id) &&
     isNoteReferenceId(leaf.id));
@@ -63,7 +68,118 @@ const wordNamespace = (uri: string | undefined): boolean =>
   uri === OOXML_NS.w ||
   uri === "http://purl.oclc.org/ooxml/wordprocessingml/main";
 
-const emptyControlElement = (xml: string) => {
+const wordName = (node: XmlElement) =>
+  node.type === "element" && wordNamespace(node.namespaceUri)
+    ? node.name?.slice(node.name.indexOf(":") + 1)
+    : undefined;
+
+const RUBY_PROPERTIES = new Set([
+  "rubyAlign",
+  "hps",
+  "hpsRaise",
+  "hpsBaseText",
+  "lid",
+  "dirty",
+]);
+const RUBY_CHILDREN = new Map([
+  ["ruby", new Set(["rubyPr", "rt", "rubyBase"])],
+  ["rubyPr", RUBY_PROPERTIES],
+  ["rt", new Set(["r"])],
+  ["rubyBase", new Set(["r"])],
+  ["r", new Set(["t"])],
+]);
+
+/** Both halves can replay a phonetic guide made of plain text runs. */
+const movableRuby = ({ xml }: PreservedXmlContent): boolean => {
+  const parsed = readXml(xml, {
+    conformance: "ooxml",
+    inheritedNamespaceScope: OOXML_NAMESPACE_SCOPE,
+  });
+  if (parsed.status !== "parsed" || parsed.value.elements?.length !== 1)
+    return false;
+  const ruby = parsed.value.elements.at(0);
+  if (ruby === undefined || wordName(ruby) !== "ruby") return false;
+
+  const attrsAreLocal = (node: XmlElement, name: string) =>
+    Object.keys(node.attributes ?? {}).every((key) => {
+      if (key === "xmlns" || key.startsWith("xmlns:")) return true;
+      const colon = key.indexOf(":");
+      if (colon < 1) return false;
+      const local = key.slice(colon + 1);
+      const namespace = resolveNamespaceUri(
+        node.namespaceScope,
+        key.slice(0, colon),
+      );
+      return name === "t"
+        ? namespace === XML_NAMESPACE_URI && local === "space"
+        : RUBY_PROPERTIES.has(name) &&
+            wordNamespace(namespace) &&
+            local === "val";
+    });
+  const visit = (node: XmlElement, parent: string): boolean => {
+    if (node.type === "comment") return true;
+    if (node.type === "text")
+      return parent === "t" || String(node.text ?? "").trim() === "";
+    const name = wordName(node);
+    return (
+      name !== undefined &&
+      RUBY_CHILDREN.get(parent)?.has(name) === true &&
+      attrsAreLocal(node, name) &&
+      (node.elements?.every((child) => visit(child, name)) ?? true)
+    );
+  };
+  return (
+    attrsAreLocal(ruby, "ruby") &&
+    (ruby.elements?.every((child) => visit(child, "ruby")) ?? false)
+  );
+};
+
+const mathNamespace = (uri: string | undefined): boolean =>
+  uri === OOXML_NS.m ||
+  uri === "http://purl.oclc.org/ooxml/officeDocument/math";
+
+const localMathNode = (node: XmlElement): boolean => {
+  if (node.type === "text" || node.type === "comment") return true;
+  if (node.type !== "element" || !mathNamespace(node.namespaceUri))
+    return false;
+  return (
+    Object.keys(node.attributes ?? {}).every((name) => {
+      if (name === "xmlns" || name.startsWith("xmlns:")) return true;
+      const colon = name.indexOf(":");
+      if (colon <= 0) return false;
+      const namespace = resolveNamespaceUri(
+        node.namespaceScope,
+        name.slice(0, colon),
+      );
+      return (
+        mathNamespace(namespace) ||
+        (namespace === XML_NAMESPACE_URI && name.slice(colon + 1) === "space")
+      );
+    }) &&
+    (node.elements?.every(localMathNode) ?? true)
+  );
+};
+
+/** A native equation can appear in both move halves if it owns no other markup. */
+const movableMath = ({ display, ommlXml }: MathEquation): boolean => {
+  const parsed = readXml(ommlXml, {
+    conformance: "ooxml",
+    inheritedNamespaceScope: OOXML_NAMESPACE_SCOPE,
+  });
+  if (parsed.status !== "parsed" || parsed.value.elements?.length !== 1)
+    return false;
+  const root = parsed.value.elements.at(0);
+  const name = root?.name;
+  return (
+    root !== undefined &&
+    name !== undefined &&
+    name.slice(name.indexOf(":") + 1) ===
+      (display === "inline" ? "oMath" : "oMathPara") &&
+    localMathNode(root)
+  );
+};
+
+const emptyElement = (xml: string) => {
   const parsed = readXml(xml, {
     conformance: "ooxml",
     inheritedNamespaceScope: OOXML_NAMESPACE_SCOPE,
@@ -83,7 +199,7 @@ const emptyControlElement = (xml: string) => {
 const controlPropertyKind = (
   xml: string,
 ): "richText" | "binding" | undefined => {
-  const parsed = emptyControlElement(xml);
+  const parsed = emptyElement(xml);
   if (parsed === undefined) return undefined;
   const { element, localName, attributes } = parsed;
   if (
@@ -128,7 +244,7 @@ const controlPropertyKind = (
 };
 
 const emptyControlEndProperties = (xml: string): boolean => {
-  const parsed = emptyControlElement(xml);
+  const parsed = emptyElement(xml);
   return (
     parsed?.localName === "sdtEndPr" &&
     wordNamespace(parsed.element.namespaceUri) &&
@@ -163,7 +279,58 @@ const movableControlId = (
   return id;
 };
 
-type MoveContentContext = { withinLink: boolean; controls: number[] };
+type ProofingKind = "spelling" | "grammar";
+
+/** Proofing ranges pair by kind and order. Both endpoints must move together. */
+const recordProofingMarker = (
+  { xml, text, foldedListNumber }: PreservedInline,
+  open: Set<ProofingKind>,
+): boolean => {
+  if (text !== "" || foldedListNumber !== undefined) return false;
+  const parsed = emptyElement(xml);
+  const attribute = parsed?.attributes.at(0);
+  if (
+    parsed?.localName !== "proofErr" ||
+    !wordNamespace(parsed.element.namespaceUri) ||
+    parsed.attributes.length !== 1 ||
+    attribute === undefined
+  )
+    return false;
+  const [name, value] = attribute;
+  const colon = name.indexOf(":");
+  if (
+    colon <= 0 ||
+    name.slice(colon + 1) !== "type" ||
+    !wordNamespace(
+      resolveNamespaceUri(parsed.element.namespaceScope, name.slice(0, colon)),
+    )
+  )
+    return false;
+  let kind: ProofingKind;
+  switch (value) {
+    case "spellEnd":
+      return open.delete("spelling");
+    case "gramEnd":
+      return open.delete("grammar");
+    case "spellStart":
+      kind = "spelling";
+      break;
+    case "gramStart":
+      kind = "grammar";
+      break;
+    default:
+      return false;
+  }
+  if (open.has(kind)) return false;
+  open.add(kind);
+  return true;
+};
+
+type MoveContentContext = {
+  withinLink: boolean;
+  controls: number[];
+  proofing: Set<ProofingKind>;
+};
 
 // Both sides of the move carry the inline content. Admit only records whose
 // identity and ownership stay local to the paragraph.
@@ -176,6 +343,10 @@ const movableInlineContent = (
     switch (item.type) {
       case "run":
         return movableRun(item);
+      case "mathEquation":
+        return movableMath(item);
+      case "preservedInline":
+        return recordProofingMarker(item, context.proofing);
       case "hyperlink":
         // A bidi wrapper can contain a link, but cannot hide a nested one.
         return (
@@ -184,7 +355,8 @@ const movableInlineContent = (
         );
       case "inlineWrapper":
         return (
-          item.kind === "bidi" && movableInlineContent(item.content, context)
+          (item.kind === "bidi" || item.propertiesXml === undefined) &&
+          movableInlineContent(item.content, context)
         );
       case "inlineSdt": {
         const id = movableControlId(item.properties);
@@ -202,6 +374,7 @@ export const tableMoveSource = (
   paragraph: Paragraph,
 ): TableMoveSource | undefined => {
   const controls: number[] = [];
+  const proofing = new Set<ProofingKind>();
   if (
     paragraph.paraId === undefined ||
     paragraph.pPrMark !== undefined ||
@@ -209,7 +382,12 @@ export const tableMoveSource = (
     paragraph.sectionProperties !== undefined ||
     paragraph.reviewCarrier !== undefined ||
     (paragraph.content.length !== 0 &&
-      !movableInlineContent(paragraph.content, { withinLink: false, controls }))
+      !movableInlineContent(paragraph.content, {
+        withinLink: false,
+        controls,
+        proofing,
+      })) ||
+    proofing.size !== 0
   )
     return undefined;
   return { paragraph, id: paragraph.paraId, controls };

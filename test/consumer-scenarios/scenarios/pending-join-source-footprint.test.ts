@@ -504,7 +504,6 @@ for (const spec of [
       });
       assert.equal(footprint.type, "known");
       assert.equal(footprint.ids.size, 0);
-      const before = reviewer.toDocument();
       const result = reviewer.applyDocumentOperations(
         {
           version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -513,15 +512,6 @@ for (const spec of [
         },
         { undefinedReferences: "refuse" },
       );
-      if (mode === "tracked-changes" && spec.type === "insertTableColumn") {
-        assert.deepEqual(result.applied, []);
-        assert.deepEqual(
-          result.skipped.map(({ id, reason }) => ({ id, reason })),
-          [{ id: operation.id, reason: "unsupportedBlock" }],
-        );
-        assert.deepEqual(reviewer.toDocument(), before);
-        return;
-      }
       assert.equal(result.applied.length, 1, JSON.stringify(result));
       assert.deepEqual(result.skipped, []);
       const model = modelOf(pre.rows, pre.liveRows, pre.joinSources);

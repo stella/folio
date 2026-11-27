@@ -48,6 +48,7 @@ import {
 } from "./refusal";
 import { stampInfo, WRAP_KINDS } from "./review";
 import { replaceStoryBody } from "./stories";
+import { rowHasCellsOrOmissions } from "./tableGrid";
 import {
   locateBlockInsertion,
   locateTableRow,
@@ -85,7 +86,7 @@ const validStructure = (blocks: readonly BlockContent[]): boolean =>
           block.rows.length > 0 &&
           block.rows.every(
             (row) =>
-              row.cells.length > 0 &&
+              rowHasCellsOrOmissions(row) &&
               row.cells.every(
                 (cell) =>
                   blockListEndsInParagraph(cell.content) &&

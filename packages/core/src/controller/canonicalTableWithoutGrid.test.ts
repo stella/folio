@@ -202,6 +202,37 @@ describe("column operations on a table whose file states no widths", () => {
     expect(reviewed.rejected).toEqual((await outcomes(source)).rejected);
   });
 
+  test("a tracked column insertion widens a spanning cell and adds ordinary cells", async () => {
+    const source = await packageOf([
+      paragraph("10000001", "Before"),
+      table(
+        [
+          row(textCell("20000001", "A1") + textCell("20000002", "B1")),
+          row(textCell("20000003", "A2", '<w:gridSpan w:val="2"/>')),
+        ],
+        2,
+      ),
+      paragraph("10000002", "After"),
+    ]);
+    const op = OPERATIONS["insertTableColumn after"]("20000001");
+    const pending = await viaCanonicalEngine(source, op, "tracked-changes");
+    expect(pending.refusals).toEqual([]);
+    expect(pending.skipped).toEqual([]);
+    const direct = await viaCanonicalEngine(source, op, "direct");
+    expect(direct.skipped).toEqual([]);
+    const part = (await ZipArchive.read(pending.bytes)).entry(
+      "word/document.xml",
+    );
+    if (!part) throw new Error("The saved package has no document part.");
+    const xml = await part.text();
+    expect(xml).toMatch(/<w:tcPrChange\b/u);
+    expect(xml).toMatch(/<w:cellIns\b/u);
+    expect(xml).toMatch(/<w:tblGridChange\b/u);
+    const reviewed = await reviewedInSession(pending.bytes);
+    expect(reviewed.accepted).toEqual((await outcomes(direct.bytes)).accepted);
+    expect(reviewed.rejected).toEqual((await outcomes(source)).rejected);
+  });
+
   test("saved mixed column deletions preserve a neighboring vertical merge under review", async () => {
     const source = await packageOf([
       paragraph("10000001", "Before"),

@@ -27,6 +27,12 @@
       "path": "0:0:0:0:0:0:0:2",
       "date": "2026-10-03",
       "note": "Revision pool order is retained while receipt membership includes table-level records."
+    },
+    {
+      "seed": 624074856,
+      "path": "1:0:14:10:10",
+      "date": "2026-11-27",
+      "note": "Accepting a complete column deletion closes continuation-only rows as the direct edit does."
     }
   ],
   "merge and split have independent rectangle, content and topology effects": [

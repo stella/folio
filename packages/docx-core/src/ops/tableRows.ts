@@ -44,8 +44,10 @@ import {
   type RevisionOwner,
 } from "./revisionOwner";
 import { replaceStoryBody } from "./stories";
+import { rowHasCellsOrOmissions } from "./tableGrid";
 import {
   locateTableRow,
+  tableContainerEdit,
   tableRowAnchor,
   type TableRowLocation,
 } from "./tableLocation";
@@ -144,7 +146,7 @@ const commitRows = ({
   if (
     rows.some(
       (row) =>
-        row.cells.length === 0 ||
+        !rowHasCellsOrOmissions(row) ||
         row.cells.some(
           (cell) => storyParagraphs({ content: cell.content }).length === 0,
         ),
@@ -153,7 +155,8 @@ const commitRows = ({
     return refused({
       op: op,
       reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
-      message: "Every row has cells, and every cell has a paragraph.",
+      message:
+        "Every row has cells or stated omissions, and every cell has a paragraph.",
     });
   }
   if (
@@ -281,11 +284,23 @@ const commitRows = ({
   );
   const anchor = tableRowAnchor(rows);
   if (anchor === undefined) {
-    return refused({
-      op,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      message: "The table has no paragraph that can address its rows.",
+    const replacement = tableContainerEdit({
+      body: storyBody(document, op.story),
+      story: op.story,
+      location,
+      table,
     });
+    return replacement === undefined
+      ? refused({
+          op,
+          reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+          message:
+            "The table edit requires a surviving paragraph to address its inverse.",
+        })
+      : applyTableOp(document, replacement).mapError(
+          ({ reason, message }) =>
+            new DocumentOpRefusal({ opType: op.type, reason, message }),
+        );
   }
   return Result.ok({
     document: next,
