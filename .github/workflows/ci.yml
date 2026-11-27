@@ -1083,9 +1083,10 @@ jobs:
         run: bun run test:measure-parity
 
       # Every scroll and navigation ref method must move the real scroll
-      # container, in React and Vue alike.
+      # container, and the hidden editor lays out only the blocks near the
+      # selection, in React and Vue alike.
       - name: Scroll navigation parity
-        run: bunx playwright test --project=parity tests/parity/scroll-root.spec.ts --workers=1
+        run: bunx playwright test --project=parity tests/parity/scroll-root.spec.ts tests/parity/hidden-editor-layout.spec.ts --workers=1
 
       # The editor bundle a VS Code webview loads, built and driven under the
       # webview's Content Security Policy against a fake extension.

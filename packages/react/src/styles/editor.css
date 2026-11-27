@@ -641,6 +641,14 @@
   z-index: 100;
 }
 
+/* The pages paint the document, so the hidden body editor lays out only the
+ * blocks that hold the selection; a block keeps the size it last had, so the
+ * blocks after it stay where they were when the selection leaves it. */
+.paged-editor__hidden-pm > .ProseMirror > * {
+  content-visibility: auto;
+  contain-intrinsic-size: auto none;
+}
+
 /* Hidden ProseMirror layer — keep spans alive but invisible for
  * selection mapping; tooltips are handled by the rendered layer above. */
 .paged-editor__hidden-pm .docx-insertion,
