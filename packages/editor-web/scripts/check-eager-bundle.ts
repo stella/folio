@@ -36,9 +36,11 @@ const BUDGETS = {
   // +6 kB. All six come down to the measured size plus a small margin once
   // the series has landed. minified +5 kB, gzip +1 kB: a pasted note or
   // comment keeps the parts its kept markup names in its own part's
-  // relationships.
-  react: { minified: 3_775_000, gzip: 1_188_000, docxOps: 715_000 },
-  vue: { minified: 3_470_000, gzip: 1_084_000, docxOps: 715_000 },
+  // relationships. The series outgrew its room (the ops measure about 715 kB
+  // with five of its changes still to land, each about 6 kB): docxOps to
+  // 745 kB, minified +30 kB, gzip +10 kB.
+  react: { minified: 3_805_000, gzip: 1_198_000, docxOps: 745_000 },
+  vue: { minified: 3_500_000, gzip: 1_094_000, docxOps: 745_000 },
 } as const satisfies Record<Adapter, Metrics>;
 
 const HOST_PEERS = [
