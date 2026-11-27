@@ -461,6 +461,7 @@ export type ExhaustiveFloatingTablePropertiesReserved = ExhaustiveFields<
 export const TABLE_GRID_CHANGE_RESERVED = {
   id: NO_RESERVED_VALUE,
   columnWidths: NO_RESERVED_VALUE,
+  geometryChange: NO_RESERVED_VALUE,
 } satisfies Record<RecordField<TableGridChange>, ReservedValueDisposition>;
 
 export type ExhaustiveTableGridChangeReserved = ExhaustiveFields<

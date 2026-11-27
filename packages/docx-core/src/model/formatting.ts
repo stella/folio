@@ -587,7 +587,7 @@ export type FloatingTableProperties = WritableRecord & {
  * column and no measure for it.
  */
 /** Maximum saved geometry payload, leaving room for the history wrapper. */
-export const MAX_TABLE_GEOMETRY_HISTORY_LENGTH = 32_768 - 32;
+export const MAX_TABLE_GEOMETRY_HISTORY_LENGTH: number = 32_768 - 32;
 
 export type TableGridChange = WritableRecord & {
   /** `@w:id`: a physical revision id, re-minted on every save. */

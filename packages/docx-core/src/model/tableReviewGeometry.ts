@@ -1,7 +1,15 @@
 import type { Table, TableCell, TableRow } from "./content";
 
+type TableReviewGeometry = {
+  readonly columnWidths: readonly (number | undefined)[];
+  readonly rowFormatting: (row: TableRow) => TableRow["formatting"];
+  readonly cellFormatting: (cell: TableCell) => TableCell["formatting"];
+};
+
 /** The physical geometry while the deleted cells still occupy their slots. */
-export const tableReviewGeometry = (table: Table) => {
+export const tableReviewGeometry = (
+  table: Table,
+): TableReviewGeometry | undefined => {
   const grid = table.formatting?.gridChange;
   if (grid === undefined || !Array.isArray(grid.geometryChange?.revisionIds))
     return undefined;
