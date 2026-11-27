@@ -6,6 +6,7 @@
  */
 import { Result } from "better-result";
 
+import type { Style } from "../../../types/document";
 import { parseFieldInstruction } from "../../fieldParser";
 import { computeListRendering } from "../../numberingParser";
 import { NAMESPACES, type XmlElement } from "../../xmlParser";
@@ -17,6 +18,7 @@ import {
   refFieldInstruction,
 } from "./builders";
 import {
+  type Emphasis,
   emphasisDeviation,
   emphasisSignature,
   paragraphBaseline,
@@ -435,6 +437,27 @@ const LINK_STYLE_NAMES: ReadonlySet<string> = new Set([
   "visited internet link",
 ]);
 
+/** Style names that give a heading's look, which is the template's to set. */
+const HEADING_STYLE_NAME = /^(?:heading \d|title|subtitle)$/iu;
+
+/**
+ * The emphasis a paragraph's runs state over: its style's, except that the
+ * italic a text style sets (a drafting note, a comment, a quotation set
+ * apart) is stated by every run, as the reader tells such text by it. A
+ * heading's style, one with an outline level or a heading's name, keeps
+ * its italic to itself: the template gives headings their look.
+ */
+const statedOver = (
+  style: Style | undefined,
+  defaults: Emphasis,
+  baseline: Emphasis,
+): Emphasis => {
+  const heading =
+    style?.pPr?.outlineLevel?.kind === "heading" ||
+    HEADING_STYLE_NAME.test(style?.name ?? "");
+  return heading ? baseline : { ...baseline, i: defaults.i, iCs: defaults.iCs };
+};
+
 /** The pieces of one source paragraph, each with the emphasis it states. */
 export const paragraphPieces = ({
   read,
@@ -442,10 +465,9 @@ export const paragraphPieces = ({
   origin,
   fields,
 }: ParagraphPiecesOptions): ExpectedPiece[] => {
-  const baseline = paragraphBaseline(
-    styles.get(read.styleId ?? defaultStyleId ?? ""),
-    defaultEmphasis,
-  );
+  const style = styles.get(read.styleId ?? defaultStyleId ?? "");
+  const baseline = paragraphBaseline(style, defaultEmphasis);
+  const over = statedOver(style, defaultEmphasis, baseline);
   return read.atoms.map((atom) => {
     // A HYPERLINK field is a link like any other once its result is kept.
     const fieldLink = atom.fields
@@ -469,7 +491,7 @@ export const paragraphPieces = ({
               : withCharacterStyle(baseline, characterStyle),
             readDirectEmphasis(atom.runProperties),
           ),
-          baseline,
+          over,
         ),
       );
     }
