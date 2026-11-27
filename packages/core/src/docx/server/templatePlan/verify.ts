@@ -1997,6 +1997,9 @@ export const reportTemplatePlanOutput = async ({
       ...(part === undefined || part.strippedPrefix === ""
         ? {}
         : { strippedPrefix: part.strippedPrefix }),
+      ...(part === undefined || part.droppedLead === null
+        ? {}
+        : { droppedLead: part.droppedLead }),
       ...(labelAsText === null ? {} : { labelAsText }),
       sourceLabel,
       outputLabel,
