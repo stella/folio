@@ -21,8 +21,12 @@ import { panic } from "better-result";
 import type {
   Hyperlink,
   InlineSdt,
+  InlineWrapper,
   ParagraphContent,
+  PreservedInline,
+  Run,
   SimpleField,
+  TrackedRunChange,
   TrackedRunContent,
 } from "../types/document";
 
@@ -234,14 +238,19 @@ export const HYPERLINK_CONTENT: {
 } as const satisfies AdmissionMap<Hyperlink["children"][number]>;
 
 /**
- * What a `w:fldSimple` keeps inside itself (CT_SimpleField).
+ * What the parser reads as a `w:fldSimple`'s own typed children
+ * (CT_SimpleField).
  *
  * The cached result's runs and the link one may carry, the same four
- * transparent wrappers `EG_PContent` declares, and markup folio does not
- * model. `w:fldData` is the field's own child rather than its content, so it
- * rides `dispatchChildren`'s sink like any other capture.
+ * transparent wrappers `EG_PContent` declares, the tracked changes around
+ * them, and markup folio does not model. Every other child it keeps as the
+ * markup it is. `w:fldData` is the field's own child rather than its
+ * content, so it rides `dispatchChildren`'s sink like any other capture.
+ *
+ * The model's field holds more ({@link isSimpleFieldContent}): what a
+ * tracked change inside it holds, which resolving the change leaves there.
  */
-export const SIMPLE_FIELD_CONTENT: {
+export const SIMPLE_FIELD_READ_CONTENT: {
   readonly hyperlink: true;
   readonly inlineWrapper: true;
   readonly preservedInline: true;
@@ -285,7 +294,9 @@ export const SIMPLE_FIELD_CONTENT: {
   moveToRangeEnd: false,
   moveToRangeStart: false,
   simpleField: false,
-} as const satisfies AdmissionMap<SimpleField["content"][number]>;
+} as const satisfies AdmissionMap<
+  Run | Hyperlink | InlineWrapper | PreservedInline | TrackedRunChange
+>;
 
 /**
  * Every paragraph content kind is a tracked change child. The reader keeps a
@@ -321,11 +332,25 @@ export const isHyperlinkContent = <Content extends ParagraphContent>(
 ): content is Extract<Content, Hyperlink["children"][number]> =>
   HYPERLINK_CONTENT[content.type];
 
-/** Whether a `w:fldSimple` keeps this content inside itself. */
+/**
+ * Whether a `w:fldSimple` keeps this content inside itself: what a tracked
+ * change inside it holds, so resolving one leaves its content in the field.
+ */
 export const isSimpleFieldContent = <Content extends ParagraphContent>(
   content: Content,
 ): content is Extract<Content, SimpleField["content"][number]> =>
-  SIMPLE_FIELD_CONTENT[content.type];
+  TRACKED_CHANGE_WRAPPER_CONTENT[content.type];
+
+/**
+ * Whether the parser reads this content as a `w:fldSimple`'s own typed child
+ * ({@link SIMPLE_FIELD_READ_CONTENT}) rather than the markup it keeps.
+ */
+export const isSimpleFieldReadContent = <Content extends ParagraphContent>(
+  content: Content,
+): content is Extract<
+  Content,
+  Run | Hyperlink | InlineWrapper | PreservedInline | TrackedRunChange
+> => SIMPLE_FIELD_READ_CONTENT[content.type];
 
 /**
  * Whether a transparent wrapper holds, at any depth, content a link cannot

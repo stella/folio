@@ -120,11 +120,12 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
   /**
    * No tracked change can record the edit yet, or no resolution op can carry
    * it out yet: a section-ending mark resolved across a standing range
-   * boundary, a change inside a simple field holding content the field's
-   * model cannot hold, a block-level `w:customXml` or kept block markup
-   * pasted or moved as a suggestion, a copied moved-away mark on a pasted
-   * paragraph (the model holds only a `w:del` beside an added mark),
-   * copy-origin records nested past their limit, a tracked deletion of a
+   * boundary, a block-level `w:customXml` or kept block markup pasted or
+   * moved as a suggestion (no operation sets a custom XML element's own
+   * insertion or deletion range, and no listed change names one), a copied
+   * deleted or moved-away mark holding a cut of its own on a pasted
+   * paragraph (the record beside an added mark holds none), copy-origin
+   * records nested past their limit, a tracked deletion of a
    * record holding a comment anchor that records no joins, a direct
    * insertion after a pending inserted mark whose rejection would give the
    * paragraphs it joins other properties or content (only a property change
@@ -315,11 +316,12 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
   /**
    * No tracked change can record the edit yet, or no resolution op can carry
    * it out yet: a section-ending mark resolved across a standing range
-   * boundary, a change inside a simple field holding content the field's
-   * model cannot hold, a block-level `w:customXml` or kept block markup
-   * pasted or moved as a suggestion, a copied moved-away mark on a pasted
-   * paragraph (the model holds only a `w:del` beside an added mark),
-   * copy-origin records nested past their limit, a tracked deletion of a
+   * boundary, a block-level `w:customXml` or kept block markup pasted or
+   * moved as a suggestion (no operation sets a custom XML element's own
+   * insertion or deletion range, and no listed change names one), a copied
+   * deleted or moved-away mark holding a cut of its own on a pasted
+   * paragraph (the record beside an added mark holds none), copy-origin
+   * records nested past their limit, a tracked deletion of a
    * record holding a comment anchor that records no joins, a direct
    * insertion after a pending inserted mark whose rejection would give the
    * paragraphs it joins other properties or content (only a property change

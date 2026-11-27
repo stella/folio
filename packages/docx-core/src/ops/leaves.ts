@@ -201,19 +201,32 @@ export const asParagraphContent = (
 type Field = SimpleField | ComplexField;
 type SimpleFieldContent = SimpleField["content"][number];
 
-const SIMPLE_FIELD_CONTENT_TYPES = new Set<InlineNode["type"]>([
-  "run",
-  "hyperlink",
-  "inlineWrapper",
-  "preservedInline",
-  "insertion",
-  "deletion",
-  "moveFrom",
-  "moveTo",
-] satisfies SimpleFieldContent["type"][]);
+const SIMPLE_FIELD_CONTENT_TYPES = {
+  run: true,
+  hyperlink: true,
+  bookmarkStart: true,
+  bookmarkEnd: true,
+  commentRangeStart: true,
+  commentRangeEnd: true,
+  commentReference: true,
+  moveFromRangeStart: true,
+  moveFromRangeEnd: true,
+  moveToRangeStart: true,
+  moveToRangeEnd: true,
+  simpleField: true,
+  complexField: true,
+  inlineSdt: true,
+  inlineWrapper: true,
+  mathEquation: true,
+  preservedInline: true,
+  insertion: true,
+  deletion: true,
+  moveFrom: true,
+  moveTo: true,
+} as const satisfies Record<SimpleFieldContent["type"], true>;
 
 const isSimpleFieldContent = (node: InlineNode): node is SimpleFieldContent =>
-  SIMPLE_FIELD_CONTENT_TYPES.has(node.type);
+  Object.hasOwn(SIMPLE_FIELD_CONTENT_TYPES, node.type);
 
 const isRun = (node: InlineNode): node is Run => node.type === "run";
 
@@ -267,21 +280,18 @@ const isFieldHeldChange = (node: InlineNode): node is TrackedRunChange =>
 /**
  * The ids of the tracked changes a field's result holds at any depth:
  * `CT_SimpleField` is `EG_PContent`, so `w:fldSimple` may hold `w:ins`,
- * `w:del`, `w:moveFrom` and `w:moveTo` around the runs that show it. Only a
- * change whose content the field can hold in its place is listed: resolving
- * one keeps or drops its content where it stood, inside the field's one
- * unit, so no offset or seam outside the field moves. A complex field's
- * result holds runs alone; one whose result carries a change is read as its
- * field characters, which stand in the paragraph.
+ * `w:del`, `w:moveFrom` and `w:moveTo` around the runs that show it. The
+ * field holds whatever such a change holds, so resolving one keeps or drops
+ * its content where it stood, inside the field's one unit, and no offset or
+ * seam outside the field moves. A complex field's result holds runs alone;
+ * one whose result carries a change is read as its field characters, which
+ * stand in the paragraph.
  */
 export const fieldHeldChangeIds = (node: InlineNode): number[] => {
   const out: number[] = [];
-  const holdable = (nodes: readonly InlineNode[]): boolean =>
-    nodes.every(isSimpleFieldContent);
   const visit = (nodes: readonly InlineNode[]): void => {
     for (const child of nodes) {
-      if (isFieldHeldChange(child) && holdable(child.content))
-        out.push(child.info.id);
+      if (isFieldHeldChange(child)) out.push(child.info.id);
       visit(childNodes(child) ?? []);
     }
   };

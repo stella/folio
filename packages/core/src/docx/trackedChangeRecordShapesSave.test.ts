@@ -2,11 +2,11 @@
  * Suggestions over records a tracked change has to hold survive a save:
  * a point comment's reference inside a deleted paragraph's `w:del`, a comment
  * anchor in a `w:hyperlink` or `w:sdt` there, a `w:ins`/`w:del` inside
- * `w:fldSimple`, a deleted or inserted paragraph mark that carries
+ * `w:fldSimple` (holding boundaries and controls too), a deleted or inserted paragraph mark that carries
  * `w:sectPr`, a `w:sectPrChange` on the body's final `w:sectPr`, a
  * `w:rPrChange` on a paragraph mark's `w:pPr/w:rPr`, an inserted mark a
  * direct paragraph took over, and a pasted break's `w:ins` holding a copied
- * `w:del` beside it. Each reopens as the same pending change and resolves as
+ * `w:del` or `w:moveFrom` beside it. Each reopens as the same pending change and resolves as
  * it did before the save.
  */
 import { expect, test } from "bun:test";
@@ -32,6 +32,7 @@ import { createEmptyDocument } from "../utils/createDocument";
 import { repackWithCanonicalStoryRemovals } from "./canonicalStoryRepack";
 import { parseDocx } from "./parser";
 import { createDocx, repackDocx } from "./rezip";
+import { serializeParagraph } from "./serializer/paragraphSerializer";
 
 const AUTHORED = 'w:author="Earlier" w:date="2026-01-01T00:00:00Z"';
 const W =
@@ -259,6 +260,36 @@ test("a w:ins and a w:del inside w:fldSimple resolve after a save", async () => 
     '"text":"1""text":"3"',
   );
 });
+
+test.each([REVISION_DECISIONS.ACCEPT, REVISION_DECISIONS.REJECT])(
+  "a change inside w:fldSimple holding a bookmark and a control resolves in place across a save (%s)",
+  async (decision) => {
+    const document = await open(
+      '<w:p w14:paraId="00000001"><w:fldSimple w:instr=" PAGE "><w:r><w:t>1</w:t></w:r>' +
+        `<w:ins w:id="5" ${AUTHORED}><w:bookmarkStart w:id="3" w:name="_Ref3"/><w:r><w:t>2</w:t></w:r>` +
+        '<w:sdt><w:sdtContent><w:r><w:t>9</w:t></w:r></w:sdtContent></w:sdt><w:bookmarkEnd w:id="3"/></w:ins>' +
+        "</w:fldSimple></w:p>",
+    );
+    const written = (from: Document): string => {
+      const [paragraph] = from.package.document.content;
+      if (paragraph?.type !== "paragraph")
+        throw new TypeError("The document opens with the paragraph.");
+      return serializeParagraph(paragraph);
+    };
+    const resolved = resolve(document, [5], decision);
+    expect(written(resolve(await reopened(document), [5], decision))).toBe(
+      written(resolved),
+    );
+    expect(written(await reopened(resolved))).toBe(written(resolved));
+    // The change's content stays in the field, or goes leaving the
+    // bookmark's boundaries where they stood.
+    expect(written(resolved)).toContain(
+      decision === REVISION_DECISIONS.ACCEPT
+        ? '<w:r><w:t>1</w:t></w:r><w:bookmarkStart w:id="3" w:name="_Ref3"/><w:r><w:t>2</w:t></w:r><w:sdt><w:sdtPr/><w:sdtContent><w:r><w:t>9</w:t></w:r></w:sdtContent></w:sdt><w:bookmarkEnd w:id="3"/></w:fldSimple>'
+        : '<w:r><w:t>1</w:t></w:r><w:bookmarkStart w:id="3" w:name="_Ref3"/><w:bookmarkEnd w:id="3"/></w:fldSimple>',
+    );
+  },
+);
 
 test("a suggested join at a section break saves its deleted mark beside w:sectPr", async () => {
   const document = await open(
@@ -605,53 +636,63 @@ test("a direct paragraph after a pending inserted mark saves the break it took o
   ).toEqual(["00000001", "00000002", "00000020"]);
 });
 
-test("a suggested paste keeps a copied deletion of a pasted break beside its insertion after a save", async () => {
-  const document = await open(
-    '<w:p w14:paraId="00000001"><w:r><w:t>Here.</w:t></w:r></w:p>',
-  );
-  const suggested = suggest(document, {
-    type: "replaceFragment",
-    from: { story: OP_STORIES.MAIN, blockId: "00000001", offset: 5 },
-    to: { story: OP_STORIES.MAIN, blockId: "00000001", offset: 5 },
-    openStart: 0,
-    openEnd: 0,
-    paragraphs: [
-      {
-        type: "paragraph",
-        paraId: "0000000D",
-        pPrMark: {
-          kind: "del",
-          info: { id: 93, author: "Earlier", date: "2026-01-01T00:00:00Z" },
-        },
-        content: [{ type: "run", content: [{ type: "text", text: "Copied" }] }],
-      },
-      {
-        type: "paragraph",
-        content: [{ type: "run", content: [{ type: "text", text: "tail" }] }],
-      },
-    ],
-  });
-  const reread = await assertSurvivesSave(suggested);
-  const deletions = (from: Document) =>
-    from.package.document.content.flatMap((block) =>
-      block.type === "paragraph" && block.pPrMark?.deletion !== undefined
-        ? [block.pPrMark.deletion.info.author]
-        : [],
+test.each(["del", "moveFrom"] as const)(
+  "a suggested paste keeps a copied %s of a pasted break beside its insertion after a save",
+  async (kind) => {
+    const document = await open(
+      '<w:p w14:paraId="00000001"><w:r><w:t>Here.</w:t></w:r></w:p>',
     );
-  expect(deletions(reread)).toEqual(["Earlier"]);
-  const accepted = resolve(
-    reread,
-    suggested.revisions,
-    REVISION_DECISIONS.ACCEPT,
-  );
-  expect(
-    accepted.package.document.content.flatMap((block) =>
-      block.type === "paragraph" && block.pPrMark !== undefined
-        ? [[block.pPrMark.kind, block.pPrMark.info.author]]
-        : [],
-    ),
-  ).toEqual([["del", "Earlier"]]);
-});
+    const suggested = suggest(document, {
+      type: "replaceFragment",
+      from: { story: OP_STORIES.MAIN, blockId: "00000001", offset: 5 },
+      to: { story: OP_STORIES.MAIN, blockId: "00000001", offset: 5 },
+      openStart: 0,
+      openEnd: 0,
+      paragraphs: [
+        {
+          type: "paragraph",
+          paraId: "0000000D",
+          pPrMark: {
+            kind,
+            info: { id: 93, author: "Earlier", date: "2026-01-01T00:00:00Z" },
+          },
+          content: [
+            { type: "run", content: [{ type: "text", text: "Copied" }] },
+          ],
+        },
+        {
+          type: "paragraph",
+          content: [{ type: "run", content: [{ type: "text", text: "tail" }] }],
+        },
+      ],
+    });
+    const reread = await assertSurvivesSave(suggested);
+    const deletions = (from: Document) =>
+      from.package.document.content.flatMap((block) =>
+        block.type === "paragraph" && block.pPrMark?.deletion !== undefined
+          ? [
+              [
+                block.pPrMark.deletion.kind ?? "del",
+                block.pPrMark.deletion.info.author,
+              ],
+            ]
+          : [],
+      );
+    expect(deletions(reread)).toEqual([[kind, "Earlier"]]);
+    const accepted = resolve(
+      reread,
+      suggested.revisions,
+      REVISION_DECISIONS.ACCEPT,
+    );
+    expect(
+      accepted.package.document.content.flatMap((block) =>
+        block.type === "paragraph" && block.pPrMark !== undefined
+          ? [[block.pPrMark.kind, block.pPrMark.info.author]]
+          : [],
+      ),
+    ).toEqual([[kind, "Earlier"]]);
+  },
+);
 
 test("a suggested paste of a review carrier saves the plain paragraph it shows", async () => {
   const document = await open(

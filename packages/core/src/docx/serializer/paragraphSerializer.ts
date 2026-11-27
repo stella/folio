@@ -111,7 +111,7 @@ function serializeParagraphMarkChange(mark: ParagraphMarkChange): string {
   const own = `<w:${mark.kind} ${attrs}${serializeParagraphMarkResolutionJoin(mark)}/>`;
   if (mark.deletion === undefined) return own;
   // The schema orders the mark's records ins, del, moveFrom, moveTo.
-  const deletion = `<w:del ${serializeTrackedChangeAttributes(mark.deletion.info)}/>`;
+  const deletion = `<w:${mark.deletion.kind ?? "del"} ${serializeTrackedChangeAttributes(mark.deletion.info)}/>`;
   return mark.kind === "moveTo" ? deletion + own : own + deletion;
 }
 

@@ -59,7 +59,7 @@ import {
 import {
   isHyperlinkContent,
   isInlineSdtContent,
-  isSimpleFieldContent,
+  isSimpleFieldReadContent,
 } from "../../docx/inlineWrapperContent";
 import { linkMergePropertyChanges } from "../../docx/mergePropertyChangeLinks";
 import {
@@ -5480,7 +5480,7 @@ function createFieldFromNode(
     textBoxAnchorMarkers,
     false,
     fieldFormattingContext,
-  ).filter(isSimpleFieldContent);
+  ).filter(isSimpleFieldReadContent);
   // A result-less PAGE/NUMPAGES field gets its visible fallback from
   // `materializeSerializerFieldFallbacks`, before the walk reaches here, so a
   // read can opt out of it while a save keeps it.
