@@ -9169,6 +9169,10 @@ const planSingleRecordResolution = (
     )
       keptBreaks.add(mark.info.id);
   }
+  const followingByList = new Map<
+    readonly BlockContent[],
+    Map<number, BlockContent | undefined>
+  >();
   for (const location of paragraphs) {
     const { paragraph } = location;
     const paraId = paragraph.paraId ?? "";
@@ -9184,16 +9188,27 @@ const planSingleRecordResolution = (
       // this resolution takes too, as resolving them in turn reaches it.
       let following: BlockContent | undefined;
       if (purpose === "markup-view") {
-        let at = blockFollower(blocks, location.index);
-        while (
-          at.block?.type === "paragraph" &&
-          at.block.pPrMark !== undefined &&
-          ids.has(at.block.pPrMark.info.id) &&
-          markWasAdded(at.block.pPrMark.kind) !==
-            (op.decision === REVISION_DECISIONS.ACCEPT)
-        )
-          at = blockFollower(blocks, at.index);
-        following = at.block;
+        // Every mark of one run of removed marks ends at the same block:
+        // walk each run once.
+        const memo = followingByList.get(blocks) ?? new Map();
+        followingByList.set(blocks, memo);
+        if (memo.has(location.index)) following = memo.get(location.index);
+        else {
+          const walked = [location.index];
+          let at = blockFollower(blocks, location.index);
+          while (
+            at.block?.type === "paragraph" &&
+            at.block.pPrMark !== undefined &&
+            ids.has(at.block.pPrMark.info.id) &&
+            markWasAdded(at.block.pPrMark.kind) !==
+              (op.decision === REVISION_DECISIONS.ACCEPT)
+          ) {
+            walked.push(at.index);
+            at = blockFollower(blocks, at.index);
+          }
+          following = at.block;
+          for (const index of walked) memo.set(index, following);
+        }
       }
       const pendingReceiverTableIds =
         following?.type === "table" &&
