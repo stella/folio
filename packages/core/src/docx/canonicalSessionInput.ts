@@ -28,9 +28,14 @@ import {
 } from "./ensureParaIds";
 import { uniqueControlIdUpdates } from "./ensureUniqueControlIds";
 import { uniqueRevisionIdUpdates } from "./ensureUniqueRevisionIds";
+import type { DocumentSourceBody } from "./headerFooterVerbatim";
 import { keepNormalizedSourceParts } from "./normalizedSourceParts";
 import { MalformedPackageRelationshipsError } from "./packageRelationshipsRoot";
-import { parseDocx, type ParseOptions } from "./parser";
+import {
+  parseDocx,
+  parseDocxWithPreviewBudget,
+  type ParseOptions,
+} from "./parser";
 
 const CanonicalDocxInputErrorBase: TaggedErrorClass<"CanonicalDocxInputError"> =
   TaggedError("CanonicalDocxInputError");
@@ -187,9 +192,16 @@ export const CANONICAL_DOCX_PARSE_OPTIONS: Readonly<
  * document writes each part the session leaves as read with the package's
  * own bytes, so normalizing changes no part an edit does not reach.
  */
-export const openCanonicalDocx = async (
+export const openCanonicalDocx = (
   input: DocxInput,
   options: ParseOptions = {},
+): Promise<Result<CanonicalDocx, CanonicalDocxInputFailure>> =>
+  openCanonical(input, options, "copy");
+
+const openCanonical = async (
+  input: DocxInput,
+  options: ParseOptions,
+  sourceBody: DocumentSourceBody,
 ): Promise<Result<CanonicalDocx, CanonicalDocxInputFailure>> => {
   const bytes = await Result.tryPromise({
     try: () => toArrayBuffer(input),
@@ -202,7 +214,12 @@ export const openCanonicalDocx = async (
   if (bytes.isErr()) return Result.err(bytes.error);
   const prepared = await prepareCanonicalDocxSource(bytes.value);
   if (prepared.isErr()) return Result.err(prepared.error);
-  const document = await parseDocx(prepared.value.docx, options);
+  const document = await parseDocxWithPreviewBudget(
+    prepared.value.docx,
+    options,
+    {},
+    sourceBody,
+  );
   await keepNormalizedSourceParts({ source: bytes.value, document });
   return Result.ok({ document, mintedParaIds: prepared.value.mintedParaIds });
 };
@@ -218,7 +235,9 @@ export const openOwnedCanonicalDocx = async (
   input: DocxInput,
   options: ParseOptions = {},
 ): Promise<Result<CanonicalDocx, CanonicalDocxInputFailure>> => {
-  const opened = await openCanonicalDocx(input, options);
+  // No one writes the document in place, so the save compares against the
+  // parsed body itself rather than a copy of it.
+  const opened = await openCanonical(input, options, "itself");
   if (opened.isOk()) ownedDocuments.add(opened.value.document);
   return opened;
 };
