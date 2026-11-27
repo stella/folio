@@ -38,6 +38,7 @@
     "!src/**/__fixtures__/**",
     "!src/**/fixtures/**",
     "!src/**/__snapshots__/**",
+    "assets",
     "README.md",
     "NOTICE.md"
   ],
@@ -67,6 +68,8 @@
     "./docx/document-clone": "./src/docx/documentClone.ts",
     "./text-shaping": "./src/text-shaping.ts",
     "./text-shaping/wasm": "./src/generated/text_shaper_bg.wasm",
+    "./hyphenation": "./src/hyphenation.ts",
+    "./hyphenation/*.json": "./assets/hyphenation/*.json",
     "./docx/paragraphPropertySource": null,
     "./internal/*": null,
     "./_virtual/*": null,

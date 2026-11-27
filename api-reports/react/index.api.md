@@ -28,6 +28,7 @@ import { ColorValue } from '@stll/folio-core/types/document';
 import { Comment as Comment_2 } from '@stll/folio-core/types/content';
 import { ComponentProps } from 'react';
 import { ComponentType } from 'react';
+import { configureHyphenationAssets } from '@stll/folio-core/hyphenation';
 import { consumeTemplateSlashQuery } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
 import { ContentControlFilter } from '@stll/folio-core/content-controls';
 import { createAICitationDecorationsPlugin } from '@stll/folio-core/prosemirror/plugins/aiCitationDecorations';
@@ -112,6 +113,11 @@ import { getTemplateDirectives } from '@stll/folio-core/prosemirror/plugins/temp
 import { getTemplateSlashMenu } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
 import { hashFolioAIBlockText } from '@stll/folio-core/ai-edits';
 import { HostShortcut } from '@stll/folio-core/managers/editorShortcuts';
+import { HYPHENATION_DICTIONARY_IDS } from '@stll/folio-core/hyphenation';
+import { HyphenationAssetOptions } from '@stll/folio-core/hyphenation';
+import { HyphenationDictionaryError } from '@stll/folio-core/hyphenation';
+import { HyphenationDictionaryId } from '@stll/folio-core/hyphenation';
+import { HyphenationPatterns } from '@stll/folio-core/hyphenation';
 import { ImageMeta } from '@stll/folio-core/markdown';
 import { ImageRef } from '@stll/folio-core/markdown';
 import { insertImageFromFile } from '@stll/folio-core/prosemirror';
@@ -138,6 +144,7 @@ import { PictureWatermark } from '@stll/folio-core/watermark';
 import { Plugin as Plugin_2 } from 'prosemirror-state';
 import { Popover } from '@base-ui/react/popover';
 import { PositionalText } from '@stll/folio-core/ai-suggestions/text-positions';
+import { preloadHyphenationDictionaries } from '@stll/folio-core/hyphenation';
 import React$1 from 'react';
 import { default as React_2 } from 'react';
 import { ReactElement } from 'react';
@@ -246,6 +253,8 @@ export type ColorPreset = {
     value: string;
     color?: string;
 };
+
+export { configureHyphenationAssets }
 
 export { consumeTemplateSlashQuery }
 
@@ -653,6 +662,16 @@ export type HighlightPassageOptions = {
 // @public
 export type HighlightPassageResult = "passage" | "block" | "none";
 
+export { HYPHENATION_DICTIONARY_IDS }
+
+export { HyphenationAssetOptions }
+
+export { HyphenationDictionaryError }
+
+export { HyphenationDictionaryId }
+
+export { HyphenationPatterns }
+
 export { ImageMeta }
 
 export { ImageRef }
@@ -700,6 +719,8 @@ export function parseZoom(zoomString: string): number | null;
 export { PictureWatermark }
 
 export { PositionalText }
+
+export { preloadHyphenationDictionaries }
 
 // @public
 export const renderAsync: (input: DocxInput, container: HTMLElement, options: RenderAsyncOptions) => Promise<DocxEditorHandle>;

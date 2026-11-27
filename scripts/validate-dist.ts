@@ -402,6 +402,11 @@ const runtimeExpect: Record<string, Record<string, string[]>> = {
       "subsetTrueType",
       "BIDI_DIRECTION",
     ],
+    "@stll/folio-core/hyphenation": [
+      "configureHyphenationAssets",
+      "preloadHyphenationDictionaries",
+      "HYPHENATION_DICTIONARY_IDS",
+    ],
     "@stll/folio-core/types/block-id": ["deriveBlockId", "isFolioBlockId"],
   },
   react: {
@@ -508,6 +513,29 @@ try {
 `
     : "";
 
+// Every hyphenation dictionary must load from the installed package's data
+// files, and from the parsed file handed over instead.
+const hyphenationRuntimeCheck =
+  target === "core"
+    ? `
+try {
+  const { readFileSync } = await import("node:fs");
+  const { fileURLToPath } = await import("node:url");
+  const hyphenation = await import("@stll/folio-core/hyphenation");
+  const loaded = await hyphenation.preloadHyphenationDictionaries(hyphenation.HYPHENATION_DICTIONARY_IDS);
+  if (loaded.isErr()) {
+    failed = true;
+    console.error("hyphenation dictionaries did not load from the package: " + loaded.error.message);
+  }
+  const file = fileURLToPath(import.meta.resolve("@stll/folio-core/hyphenation/en-us.json"));
+  if (!Array.isArray(JSON.parse(readFileSync(file, "utf8")))) {
+    failed = true;
+    console.error("the exported en-us hyphenation dictionary is not pattern data");
+  }
+} catch (err) { failed = true; console.error("hyphenation threw: " + (err?.message ?? err)); }
+`
+    : "";
+
 // The tarball must carry every file the catalogue and the stylesheet name, and
 // the Node reader must find them from wherever the package is installed.
 const fontsRuntimeCheck =
@@ -572,6 +600,7 @@ for (const [spec, names] of Object.entries(expect)) {
 }
 ${messagesRuntimeCheck}
 ${shaperBytesRuntimeCheck}
+${hyphenationRuntimeCheck}
 ${fontsRuntimeCheck}
 ${nuxtRuntimeCheck}
 process.exit(failed ? 1 : 0);

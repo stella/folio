@@ -1,11 +1,16 @@
 /**
  * On-demand hyphenation dictionaries for automatic hyphenation.
  *
- * Each `hyphen` pattern set is tens to hundreds of kilobytes of source whose
- * evaluation builds a pattern trie, and most documents never enable
- * `w:autoHyphenation`. A dictionary is therefore imported only once measurement
- * asks to hyphenate a word in its language. Measurement is synchronous, so the
- * first request starts the import and hyphenates nothing. A layout run wrapped
+ * Each pattern set is tens of kilobytes, and most documents never enable
+ * `w:autoHyphenation`. The sets therefore ship as JSON data beside the package
+ * (`assets/hyphenation/<id>.json`, exported as
+ * `@stll/folio-core/hyphenation/<id>.json`) rather than as modules, so no
+ * bundle carries them, and a dictionary is fetched only once measurement asks
+ * to hyphenate a word in its language. A host that cannot fetch them from
+ * there (a single-file bundle, offline, a strict `connect-src`) points
+ * {@link configureHyphenationAssets} at another location or hands the data
+ * over. Measurement is synchronous, so the first request starts the load and
+ * hyphenates nothing. A layout run wrapped
  * in {@link collectRequestedHyphenationDictionaries} learns which dictionaries
  * it lacked, so its own editor can re-run layout on load or report the failure
  * (`controller/hyphenationReadiness`). Hosts that must lay out correctly on the
@@ -23,7 +28,13 @@ import { recordHyphenationDictionaryError } from "../layoutInstrumentation";
 
 export type HyphenateWord = (text: string) => string;
 
-const HYPHENATION_DICTIONARY_IDS = ["cs", "en-gb", "en-us", "sk"] as const;
+/** The languages folio hyphenates, by dictionary. */
+export const HYPHENATION_DICTIONARY_IDS = [
+  "cs",
+  "en-gb",
+  "en-us",
+  "sk",
+] as const;
 
 export type HyphenationDictionaryId =
   (typeof HYPHENATION_DICTIONARY_IDS)[number];
@@ -32,12 +43,135 @@ export type HyphenationDictionaryLoaders = Readonly<
   Record<HyphenationDictionaryId, () => Promise<HyphenateWord>>
 >;
 
-// Literal specifiers, one per dictionary, so bundlers emit one lazy chunk each.
+/**
+ * One dictionary's patterns: the parsed contents of
+ * `@stll/folio-core/hyphenation/<id>.json`, passed on unchanged.
+ */
+export type HyphenationPatterns = unknown;
+
+export type HyphenationAssetOptions = {
+  /**
+   * The absolute URL of a directory holding the package's
+   * `hyphenation/<id>.json` files, to fetch from instead of beside the package
+   * (a CDN path of the same version, say).
+   */
+  readonly baseUrl?: string | URL;
+  /**
+   * Dictionaries the host already holds, used without fetching anything:
+   * offline hosts, or pages whose Content Security Policy blocks the fetch.
+   */
+  readonly dictionaries?: Readonly<
+    Partial<Record<HyphenationDictionaryId, HyphenationPatterns>>
+  >;
+};
+
+let assetOptions: HyphenationAssetOptions = {};
+
+// One literal `new URL` per dictionary, so bundlers that copy referenced files
+// emit each as an asset. The path holds from `src/` and `dist/` alike.
+const packagedDictionaryUrl = (dictionary: HyphenationDictionaryId): URL => {
+  switch (dictionary) {
+    case "cs":
+      return new URL("../../../assets/hyphenation/cs.json", import.meta.url);
+    case "en-gb":
+      return new URL("../../../assets/hyphenation/en-gb.json", import.meta.url);
+    case "en-us":
+      return new URL("../../../assets/hyphenation/en-us.json", import.meta.url);
+    case "sk":
+      return new URL("../../../assets/hyphenation/sk.json", import.meta.url);
+    default:
+      dictionary satisfies never;
+      return dictionary;
+  }
+};
+
+const dictionaryUrl = (dictionary: HyphenationDictionaryId): URL => {
+  const { baseUrl } = assetOptions;
+  if (baseUrl === undefined) {
+    return packagedDictionaryUrl(dictionary);
+  }
+  const url = new URL(baseUrl);
+  if (!url.pathname.endsWith("/")) {
+    url.pathname += "/";
+  }
+  url.pathname += `${dictionary}.json`;
+  return url;
+};
+
+/**
+ * The file reader of a runtime with Node's built-in modules, reached through
+ * `process.getBuiltinModule` so that no bundler sees a `node:` import.
+ */
+const builtinReadFile = ():
+  ((url: URL, encoding: "utf8") => Promise<string>) | undefined => {
+  const runtimeProcess: unknown = Reflect.get(globalThis, "process");
+  if (
+    typeof runtimeProcess !== "object" ||
+    runtimeProcess === null ||
+    !("getBuiltinModule" in runtimeProcess) ||
+    typeof runtimeProcess.getBuiltinModule !== "function"
+  ) {
+    return undefined;
+  }
+  const fs: unknown = runtimeProcess.getBuiltinModule("node:fs/promises");
+  if (
+    typeof fs !== "object" ||
+    fs === null ||
+    !("readFile" in fs) ||
+    typeof fs.readFile !== "function"
+  ) {
+    return undefined;
+  }
+  const { readFile } = fs;
+  return (url, encoding) => readFile(url, encoding);
+};
+
+const readPatterns = async (url: URL): Promise<HyphenationPatterns> => {
+  // Node's fetch does not read files, so a package installed on disk is read
+  // through the runtime's file system. A runtime without
+  // `process.getBuiltinModule` (Node before 22.3) is handed the dictionaries.
+  if (url.protocol === "file:") {
+    const readFile = builtinReadFile();
+    if (readFile === undefined) {
+      throw new Error(`This runtime cannot read ${url.href}`);
+    }
+    return JSON.parse(await readFile(url, "utf8"));
+  }
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`${url.href} answered ${response.status}`);
+  }
+  return response.json();
+};
+
+const hyphenatorFor = async (
+  patterns: HyphenationPatterns,
+): Promise<HyphenateWord> => {
+  const { default: createHyphenator } = await import("hyphen");
+  // The data is the `hyphen` pattern module's value as JSON; its declared
+  // type does not describe that shape.
+  const hyphenate = createHyphenator(
+    patterns as Parameters<typeof createHyphenator>[0],
+  ) as HyphenateWord;
+  // Data that is not a pattern set fails here, as a failed load, rather
+  // than inside a layout pass.
+  hyphenate("hyphenation");
+  return hyphenate;
+};
+
+const loadDictionary = async (
+  dictionary: HyphenationDictionaryId,
+): Promise<HyphenateWord> =>
+  hyphenatorFor(
+    assetOptions.dictionaries?.[dictionary] ??
+      (await readPatterns(dictionaryUrl(dictionary))),
+  );
+
 const HYPHENATION_DICTIONARY_LOADERS = {
-  cs: async () => (await import("hyphen/cs")).default.hyphenateSync,
-  "en-gb": async () => (await import("hyphen/en-gb")).default.hyphenateSync,
-  "en-us": async () => (await import("hyphen/en-us")).default.hyphenateSync,
-  sk: async () => (await import("hyphen/sk")).default.hyphenateSync,
+  cs: () => loadDictionary("cs"),
+  "en-gb": () => loadDictionary("en-gb"),
+  "en-us": () => loadDictionary("en-us"),
+  sk: () => loadDictionary("sk"),
 } as const satisfies HyphenationDictionaryLoaders;
 
 let dictionaryLoaders: HyphenationDictionaryLoaders =
@@ -213,14 +347,31 @@ export const collectRequestedHyphenationDictionaries = <T>(
 };
 
 /**
- * Test seam: forget every dictionary so a test observes the unloaded path, and
- * optionally load through `loaders` (for example, ones that fail) until the
- * next reset.
+ * Set where hyphenation dictionaries come from; each call replaces the
+ * previous options. Call it before opening documents. A dictionary that failed
+ * to load is tried again under the new options; loaded ones are kept.
+ */
+export const configureHyphenationAssets = (
+  options: HyphenationAssetOptions,
+): void => {
+  assetOptions = options;
+  for (const dictionary of HYPHENATION_DICTIONARY_IDS) {
+    if (dictionaryStates[dictionary].status === "failed") {
+      dictionaryStates[dictionary] = { status: "unloaded" };
+    }
+  }
+};
+
+/**
+ * Test seam: forget every dictionary and the asset options so a test observes
+ * the unloaded path, and optionally load through `loaders` (for example, ones
+ * that fail) until the next reset.
  */
 export const resetHyphenationDictionaries = (
   loaders: HyphenationDictionaryLoaders = HYPHENATION_DICTIONARY_LOADERS,
 ): void => {
   dictionaryLoaders = loaders;
+  assetOptions = {};
   dictionaryStates = createInitialStates();
   dictionaryGeneration += 1;
 };
