@@ -1,5 +1,25 @@
 # @stll/folio-core
 
+## 0.79.0
+
+### Minor Changes
+
+- [#3705](https://github.com/stella/folio/pull/3705) [`764d0b5`](https://github.com/stella/folio/commit/764d0b549c312dc7171d3c0aeae63ab0a160faf6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - The block manifest reports a paragraph's cross-reference fields (`crossReferences`): each `REF` field whose result stands in the paragraph's text, by where that result sits, with its code, the bookmark it names, the paragraph that bookmark marks and whether it holds all of that paragraph's content. A plan can then keep such a field as a field, with a reference over its span to that paragraph, instead of its result as text. Verification predicts no text for a reference without a number switch whose target holds a field that numbers itself, since that number is counted only when the document is laid out. A plan's reference may also carry the general format switch's `MERGEFORMAT` or `CHARFORMAT`, once and beside at most one letter case, so a field set in a face of its own keeps it when its result is recalculated.
+
+### Patch Changes
+
+- [#3706](https://github.com/stella/folio/pull/3706) [`acbbbac`](https://github.com/stella/folio/commit/acbbbace5aaed5442ea855346f16434a97552247) Thanks [@jan-kubica](https://github.com/jan-kubica)! - The hidden editor lays out only the blocks around the selection, so a long document no longer shapes all of its text a second time off-screen.
+
+- [#3707](https://github.com/stella/folio/pull/3707) [`232efee`](https://github.com/stella/folio/commit/232efee58bfcaaa708b44da076f93ac667d3edc2) Thanks [@jan-kubica](https://github.com/jan-kubica)! - The paragraph measure cache keeps a 128-bit hash of what a paragraph measures instead of its text, so a long document's cache retains a fraction of the memory.
+
+- [#3697](https://github.com/stella/folio/pull/3697) [`d4bcf96`](https://github.com/stella/folio/commit/d4bcf96ef55cd3c9188089bc8e3084e5835b8b6f) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A template plan carries a checkbox content control among a paragraph's runs as the control it is: its mark goes back into the control with the control's properties, in the body and in a slot, so the box can still be ticked. It came out as a plain character before. Verification holds the output to it.
+
+- [#3704](https://github.com/stella/folio/pull/3704) [`bd2ac1b`](https://github.com/stella/folio/commit/bd2ac1ba64d3795bf9739bb78e5de3c02515981c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Rejecting a suggested link that cut a content control now rejoins the control around the bookmark the link held when later suggestions stand between it and the start of its paragraph, whether those suggestions are rejected with it, before it or after it.
+
+- [#3704](https://github.com/stella/folio/pull/3704) [`bd2ac1b`](https://github.com/stella/folio/commit/bd2ac1ba64d3795bf9739bb78e5de3c02515981c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A suggested deletion now records comment ranges it crosses or holds whole, keeping a standing endpoint in place (inside a hyperlink too), and can delete an empty hyperlink or content control on its own. A suggested paragraph join records an inline merge depth, a suggested paste keeps the review and content-control records the pasted paragraphs carry, and a property change on a field's instruction run can be accepted or rejected. Removing a paragraph that owns an empty formatting field now undoes exactly, and a story-crossing range is refused as a cross-block range.
+- Updated dependencies [[`bd2ac1b`](https://github.com/stella/folio/commit/bd2ac1ba64d3795bf9739bb78e5de3c02515981c), [`bd2ac1b`](https://github.com/stella/folio/commit/bd2ac1ba64d3795bf9739bb78e5de3c02515981c)]:
+  - @stll/docx-core@0.48.2
+
 ## 0.78.0
 
 ### Minor Changes
