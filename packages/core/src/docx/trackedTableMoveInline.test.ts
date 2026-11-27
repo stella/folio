@@ -309,6 +309,26 @@ test("a moved nested table preserves drawing and rich-text control identities", 
     expect(xml.match(new RegExp(`<w:id w:val="${id}"`, "gu"))).toHaveLength(1);
 });
 
+test.each(["0", "1"] as const)(
+  "a tracked cell merge preserves a checkbox with state %s",
+  (checked) => {
+    const original = sourceWith({
+      content: `<w:sdt><w:sdtPr><w:id w:val="72"/><w14:checkbox><w14:checked w14:val="${checked}"/><w14:checkedState w14:val="2612" w14:font="Segoe UI Symbol"/><w14:uncheckedState w14:val="2610" w14:font="Segoe UI Symbol"/></w14:checkbox></w:sdtPr><w:sdtContent>${plain}</w:sdtContent></w:sdt>`,
+    });
+    const { merge, controlIds } = allocateTrackedMerge(original);
+    expect(controlIds).toHaveLength(1);
+    const xml = assertSavedMove(original, merge);
+    expect(
+      xml.match(new RegExp(`<w14:checked w14:val="${checked}"`, "gu")),
+    ).toHaveLength(2);
+    expect(
+      xml.match(
+        /<w14:checkedState w14:val="2612" w14:font="Segoe UI Symbol"/gu,
+      ),
+    ).toHaveLength(2);
+  },
+);
+
 test("a nested table keeps a previously tracked picture and rich-text control move", () => {
   const innerOwner = "00000006";
   const original = sourceWith({

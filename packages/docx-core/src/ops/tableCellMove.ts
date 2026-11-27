@@ -217,7 +217,7 @@ const movableMath = ({ display, ommlXml }: MathEquation): boolean => {
   );
 };
 
-const emptyElement = (xml: string) => {
+const readCapturedElement = (xml: string) => {
   const parsed = readXml(xml, {
     conformance: "ooxml",
     inheritedNamespaceScope: OOXML_NAMESPACE_SCOPE,
@@ -225,13 +225,17 @@ const emptyElement = (xml: string) => {
   if (parsed.status !== "parsed" || parsed.value.elements?.length !== 1)
     return undefined;
   const element = parsed.value.elements.at(0);
-  if (element?.type !== "element" || (element.elements?.length ?? 0) > 0)
-    return undefined;
+  if (element?.type !== "element") return undefined;
   const attributes = Object.entries(element.attributes ?? {}).filter(
     ([name]) => name !== "xmlns" && !name.startsWith("xmlns:"),
   );
   const localName = element.name?.slice(element.name.indexOf(":") + 1);
   return { element, localName, attributes };
+};
+
+const emptyElement = (xml: string) => {
+  const parsed = readCapturedElement(xml);
+  return (parsed?.element.elements?.length ?? 0) === 0 ? parsed : undefined;
 };
 
 /** An authored tag wrapper without a separately owned record. */
@@ -260,12 +264,63 @@ export const movableCustomXmlBlock = ({
   );
 };
 
+const localCheckbox = (element: XmlElement): boolean => {
+  const kinds = new Set<string>();
+  return (element.elements ?? []).every((child) => {
+    if (child.type === "text")
+      return typeof child.text === "string" && child.text.trim() === "";
+    if (
+      child.type !== "element" ||
+      child.namespaceUri !== OOXML_NS.w14 ||
+      (child.elements?.length ?? 0) > 0
+    )
+      return false;
+    const name = child.name?.slice(child.name.indexOf(":") + 1);
+    if (
+      (name !== "checked" &&
+        name !== "checkedState" &&
+        name !== "uncheckedState") ||
+      kinds.has(name)
+    )
+      return false;
+    const compatible = Object.keys(child.attributes ?? {}).every(
+      (attribute) => {
+        if (attribute === "xmlns" || attribute.startsWith("xmlns:"))
+          return true;
+        const colon = attribute.indexOf(":");
+        if (
+          colon < 1 ||
+          resolveNamespaceUri(
+            child.namespaceScope,
+            attribute.slice(0, colon),
+          ) !== OOXML_NS.w14
+        )
+          return false;
+        const property = attribute.slice(colon + 1);
+        return (
+          property === "val" || (name !== "checked" && property === "font")
+        );
+      },
+    );
+    if (compatible) kinds.add(name);
+    return compatible;
+  });
+};
+
 const controlPropertyKind = (
   xml: string,
-): "richText" | "binding" | undefined => {
-  const parsed = emptyElement(xml);
+): "richText" | "checkbox" | "binding" | undefined => {
+  const parsed = readCapturedElement(xml);
   if (parsed === undefined) return undefined;
   const { element, localName, attributes } = parsed;
+  if (
+    localName === "checkbox" &&
+    element.namespaceUri === OOXML_NS.w14 &&
+    attributes.length === 0 &&
+    localCheckbox(element)
+  )
+    return "checkbox";
+  if ((element.elements?.length ?? 0) > 0) return undefined;
   if (
     localName === "richText" &&
     wordNamespace(element.namespaceUri) &&
@@ -321,8 +376,9 @@ const movableControlId = (
   properties: InlineSdt["properties"],
 ): number | undefined => {
   const { id, preserved, rawEndPropertiesXml } = properties;
+  const checkbox = properties.sdtType === "checkbox";
   if (
-    properties.sdtType !== "richText" ||
+    (properties.sdtType !== "richText" && !checkbox) ||
     id === undefined ||
     !Number.isInteger(id) ||
     id < -MAX_REVISION_ID - 1 ||
@@ -337,7 +393,13 @@ const movableControlId = (
   const kinds = new Set<string>();
   for (const { xml } of preserved?.children ?? []) {
     const kind = controlPropertyKind(xml);
-    if (kind === undefined || kinds.has(kind)) return undefined;
+    if (
+      kind === undefined ||
+      kinds.has(kind) ||
+      (kind === "checkbox" && !checkbox) ||
+      (kind === "richText" && checkbox)
+    )
+      return undefined;
     kinds.add(kind);
   }
   return id;
