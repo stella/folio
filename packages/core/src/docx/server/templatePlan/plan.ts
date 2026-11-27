@@ -49,6 +49,7 @@ import {
   type TemplatePlanReference,
   type TemplatePlanSection,
   type TemplatePlanSourceItem,
+  type TemplatePlanSpacing,
 } from "./types";
 import {
   elementChildren,
@@ -130,6 +131,8 @@ export type ResolvedParagraph = {
   tabStops: readonly number[] | null;
   /** The paragraph's own alignment, or null. */
   alignment: TemplatePlanAlignment | null;
+  /** The paragraph's own space in front and behind, or null. */
+  spacing: TemplatePlanSpacing | null;
   /** The section the paragraph is the last of, or null. */
   endsSection: TemplatePlanSection | null;
 };
@@ -893,6 +896,7 @@ type ParagraphRequest = {
   indent?: TemplatePlanIndent | undefined;
   tabStops?: readonly number[] | undefined;
   alignment?: TemplatePlanAlignment | undefined;
+  spacing?: TemplatePlanSpacing | undefined;
   endsSection?: TemplatePlanSection | undefined;
 };
 
@@ -1159,6 +1163,7 @@ export const resolvePlan = (
     indent,
     tabStops,
     alignment,
+    spacing,
     endsSection,
   }: ParagraphRequest): Result<ResolvedParagraph, TemplatePlanError> => {
     const first = parts.at(0);
@@ -1379,6 +1384,7 @@ export const resolvePlan = (
       indent: indent ?? null,
       tabStops: tabStops ?? null,
       alignment: alignment ?? null,
+      spacing: spacing ?? null,
       endsSection: endsSection ?? null,
     };
     for (const { block } of resolvedParts) {
@@ -1422,6 +1428,7 @@ export const resolvePlan = (
       item.indent !== undefined ||
       item.tabStops !== undefined ||
       item.alignment !== undefined ||
+      item.spacing !== undefined ||
       item.endsSection !== undefined ||
       item.numbering !== undefined
     ) {
@@ -1477,6 +1484,7 @@ export const resolvePlan = (
         indent: override?.indent,
         tabStops: override?.tabStops,
         alignment: override?.alignment,
+        spacing: override?.spacing,
       });
       if (Result.isError(paragraph)) {
         return paragraph;
@@ -1615,6 +1623,7 @@ export const resolvePlan = (
             next.indent !== undefined ||
             next.tabStops !== undefined ||
             next.alignment !== undefined ||
+            next.spacing !== undefined ||
             next.endsSection !== undefined
           ) {
             return Result.err(
@@ -1647,6 +1656,7 @@ export const resolvePlan = (
           indent: item.indent,
           tabStops: item.tabStops,
           alignment: item.alignment,
+          spacing: item.spacing,
           endsSection: item.endsSection,
         });
         if (Result.isError(paragraph)) {

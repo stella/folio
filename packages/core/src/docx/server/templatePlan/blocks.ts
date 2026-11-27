@@ -565,6 +565,13 @@ export const analyzeStory = ({
       if (alignment !== null) {
         block.alignment = alignment;
       }
+      const { before, after } = read.spacing;
+      if (before !== null || after !== null) {
+        block.spacing = {
+          ...(before === null ? {} : { before }),
+          ...(after === null ? {} : { after }),
+        };
+      }
       // A list the paragraph names itself gives its level's indent over
       // the style's; a list the style brings is part of the style, whose
       // own indent then stands over the level's.

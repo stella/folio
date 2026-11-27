@@ -306,6 +306,7 @@ export type DocxBlock = {
     pageBreakBefore?: true;
     endsSection?: true;
     alignment?: string;
+    spacing?: TemplatePlanSpacing;
     indent?: {
         left: number;
         firstLine: number;
@@ -2321,6 +2322,7 @@ export type TemplatePlanNestedParagraph = {
     indent?: TemplatePlanIndent;
     tabStops?: number[];
     alignment?: TemplatePlanAlignment;
+    spacing?: TemplatePlanSpacing;
 };
 
 // @public (undocumented)
@@ -2490,9 +2492,16 @@ export type TemplatePlanSourceItem = {
     indent?: TemplatePlanIndent;
     tabStops?: number[];
     alignment?: TemplatePlanAlignment;
+    spacing?: TemplatePlanSpacing;
     endsSection?: TemplatePlanSection;
     cellStyleId?: string;
     nested?: TemplatePlanNestedParagraph[];
+};
+
+// @public
+export type TemplatePlanSpacing = {
+    before?: number;
+    after?: number;
 };
 
 // @public (undocumented)

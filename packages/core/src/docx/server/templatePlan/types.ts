@@ -167,6 +167,13 @@ export type DocxBlock = {
    */
   alignment?: string;
   /**
+   * The space the paragraph states for itself in front of and behind it
+   * (`w:spacing`, `before` and `after`), in twentieths of a point. A side
+   * it does not state is left out; absent when it states neither. What its
+   * style gives is not here: this is what the document set by hand.
+   */
+  spacing?: TemplatePlanSpacing;
+  /**
    * The paragraph's indent in effect, in twentieths of a point: `left` is
    * where its lines start, `firstLine` what its first line adds to that
    * (negative for a hanging indent). Each side is the paragraph's own, else
@@ -473,10 +480,18 @@ export type TemplatePlanNestedParagraph = {
   tabStops?: number[];
   /** As on a source item. */
   alignment?: TemplatePlanAlignment;
+  /** As on a source item. */
+  spacing?: TemplatePlanSpacing;
 };
 
 /** How a paragraph's lines are set between the margins (`w:jc`). */
 export type TemplatePlanAlignment = "left" | "center" | "right" | "both";
+
+/**
+ * The space in front of a paragraph and behind it (`w:spacing`), in
+ * twentieths of a point: at least one side. A side left out is the style's.
+ */
+export type TemplatePlanSpacing = { before?: number; after?: number };
 
 /** A page other than the template's, in twentieths of a point. */
 export type TemplatePlanSectionPage = {
@@ -570,6 +585,12 @@ export type TemplatePlanSourceItem = {
    * cell or a centred line under a title. Not for a table.
    */
   alignment?: TemplatePlanAlignment;
+  /**
+   * The paragraph's own space in front of it and behind it (`w:spacing`),
+   * over what its style states: for a line the document sets tight or
+   * apart by itself, such as the rows of a table. Not for a table.
+   */
+  spacing?: TemplatePlanSpacing;
   /**
    * The paragraph is the last of a section, described here: for a part of
    * the document whose page is another than the template's, such as a

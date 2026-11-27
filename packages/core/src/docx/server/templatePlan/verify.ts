@@ -502,6 +502,10 @@ type StatedProperties = {
   tabStops: string | null;
   /** The paragraph's own alignment as written; null without one. */
   alignment: string | null;
+  /** The paragraph's own space in front and behind as `before:after` in
+   *  twentieths of a point, a side it does not state left empty; null when
+   *  it states neither. */
+  spacing: string | null;
   endsSection: boolean;
 };
 
@@ -520,6 +524,14 @@ const indentKey = (
   hanging: number | null | undefined,
   firstLine: number | null | undefined,
 ): string => [left, hanging, firstLine].map((side) => side ?? "").join(":");
+
+const spacingKey = (
+  before: number | null,
+  after: number | null,
+): string | null =>
+  before === null && after === null
+    ? null
+    : `${before === null ? "" : String(before)}:${after === null ? "" : String(after)}`;
 
 /** The sides of an indent counted in characters: they override the
  *  measured ones, so a paragraph that states one is another paragraph. */
@@ -557,6 +569,10 @@ const statedProperties = (paragraph: XmlElement): StatedProperties => {
           )}${characterIndentKey(indent)}`,
     tabStops: tabStopsKey(wChild(properties, "tabs")),
     alignment: wChildVal(properties, "jc"),
+    spacing: spacingKey(
+      twipsOrNull(wAttr(wChild(properties, "spacing"), "before")),
+      twipsOrNull(wAttr(wChild(properties, "spacing"), "after")),
+    ),
     endsSection: wChild(properties, "sectPr") !== null,
   };
 };
@@ -569,6 +585,7 @@ const sameStated = (before: StatedProperties, after: StatedProperties) =>
   before.indent === after.indent &&
   before.tabStops === after.tabStops &&
   before.alignment === after.alignment &&
+  before.spacing === after.spacing &&
   before.endsSection === after.endsSection &&
   before.numId === after.numId &&
   before.ilvl === after.ilvl;
@@ -714,6 +731,13 @@ export const reportTemplatePlanOutput = async ({
     }
     const { styleId, numbering, pageBreakBefore, keepNext, alignment } =
       paragraph;
+    const spacing =
+      paragraph.spacing === null
+        ? null
+        : spacingKey(
+            paragraph.spacing.before ?? null,
+            paragraph.spacing.after ?? null,
+          );
     const endsSection = paragraph.endsSection !== null;
     const indent =
       paragraph.indent === null
@@ -737,6 +761,7 @@ export const reportTemplatePlanOutput = async ({
         indent,
         tabStops,
         alignment,
+        spacing,
         endsSection,
       };
     }
@@ -756,6 +781,7 @@ export const reportTemplatePlanOutput = async ({
       indent,
       tabStops,
       alignment,
+      spacing,
       endsSection,
     };
   };
@@ -791,11 +817,12 @@ export const reportTemplatePlanOutput = async ({
       stated.keepNext !== planned.keepNext ||
       stated.indent !== planned.indent ||
       stated.tabStops !== planned.tabStops ||
-      stated.alignment !== planned.alignment
+      stated.alignment !== planned.alignment ||
+      stated.spacing !== planned.spacing
     ) {
       issues.push({
         code: "paragraph-format-mismatch",
-        message: `Block ${blockId} does not carry the keep-with-next, the indent, the tab stops or the alignment the plan gives it.`,
+        message: `Block ${blockId} does not carry the keep-with-next, the indent, the tab stops, the alignment or the spacing the plan gives it.`,
         blockId,
       });
     }

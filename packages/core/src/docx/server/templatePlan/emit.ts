@@ -762,6 +762,15 @@ export const paragraphXml = (
       .join("");
     properties.push(`<${w}:tabs>${stops}</${w}:tabs>`);
   }
+  // The space in front and behind stands between the stops and the indent.
+  const { spacing } = emit.paragraph;
+  if (spacing !== null) {
+    const sides = (["before", "after"] as const)
+      .filter((side) => spacing[side] !== undefined)
+      .map((side) => ` ${w}:${side}="${String(spacing[side])}"`)
+      .join("");
+    properties.push(`<${w}:spacing${sides}/>`);
+  }
   if (indent !== null) {
     const sides = (["left", "hanging", "firstLine"] as const)
       .filter((side) => indent[side] !== undefined)
