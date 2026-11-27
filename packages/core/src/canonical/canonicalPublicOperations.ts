@@ -3479,8 +3479,13 @@ const tableIntentsAsItRuns = ({
   const stands = (blockId: string): boolean =>
     locateParagraphThroughTextBoxes(document, story, blockId) !== undefined;
   return intents.map((intent): EditorIntent => {
-    if (intent.type !== "table" || stands(intent.operation.blockId))
+    if (
+      intent.type !== "table" &&
+      (intent.type !== "tableBlock" ||
+        intent.operation.type !== DOCUMENT_OP_TYPES.DELETE_TABLE)
+    )
       return intent;
+    if (stands(intent.operation.blockId)) return intent;
     const table = projection.doc.nodeAt(address.tablePosition);
     if (table === null) return intent;
     const map = TableMap.get(table);
@@ -3494,6 +3499,12 @@ const tableIntentsAsItRuns = ({
         deleted: { has: (blockId) => !stands(blockId) },
         ...(skipsCell === undefined ? {} : { skipsCell }),
       });
+    if (intent.type === "tableBlock") {
+      const blockId = standing();
+      return blockId === undefined
+        ? intent
+        : { ...intent, operation: { ...intent.operation, blockId } };
+    }
     const { operation } = intent;
     const blockId =
       operation.type === DOCUMENT_OP_TYPES.DELETE_COLUMN &&

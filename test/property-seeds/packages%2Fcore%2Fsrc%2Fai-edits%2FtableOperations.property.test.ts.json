@@ -19,6 +19,12 @@
       "date": "2026-11-27"
     },
     {
+      "seed": -1689233668,
+      "path": "143:0:0:0:0:0:3:2:2:2:4:3:3:4:1:2:4:6:2:15:7:4:4:6:4:4:5:10:4:4:4:5:4:7:7:7:12:7:7:7:7:7:12:7:7:11:12:13",
+      "note": "Deleting a nested table's only column addresses the table through a surviving paragraph after a vertical merge.",
+      "date": "2026-11-27"
+    },
+    {
       "seed": -615835652,
       "path": "12:2:2:2:2:4:1:8:2:2:4:2:2:2:5:2:2:4:7:8:8:9:8:8:8:8:8:8:9:8:8:10:8:8:8:8:8:8:8:8:8:11:8:8:8:8:10",
       "note": "Accepting a table merge trims the owner paragraph when an earlier accepted deletion empties it.",
