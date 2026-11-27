@@ -1730,16 +1730,6 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     // before plugin handlers, so it would otherwise move the caret out of the
     // trigger and dismiss the menu before the slash plugin ever sees the key.
     // Defer to the plugin chain (return false) whenever the menu is active.
-    const handleHiddenEditorKeyDown = useCallback(
-      (view: EditorView, event: KeyboardEvent): boolean => {
-        if (getTemplateSlashMenu(view.state).active) {
-          return false;
-        }
-        return handlePMKeyDown(view, event);
-      },
-      [handlePMKeyDown],
-    );
-
     // Stable ref for drag-extend callback (avoids circular deps with getPositionFromMouse)
     // oxlint-disable-next-line eslint/no-empty-function -- no-op placeholder until the real callback is assigned
     const dragExtendRef = useRef<(cx: number, cy: number) => void>(() => {});
@@ -2129,6 +2119,26 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         replayDeferredKeyDown(view, input.eventInit);
       }
     }, []);
+
+    // A key reaches the hidden editor before the container sees it. A click
+    // made while the editor was being created leaves its selection (and any
+    // keys typed meanwhile) pending until the next frame; a key pressed first
+    // must act on that selection, not on the one the click replaced.
+    const handleHiddenEditorKeyDown = useCallback(
+      (view: EditorView, event: KeyboardEvent): boolean => {
+        if (
+          pendingHiddenEditorSelectionRef.current ||
+          queuedInputBeforeHiddenEditorRef.current.length > 0
+        ) {
+          applyPendingHiddenEditorInput(view);
+        }
+        if (getTemplateSlashMenu(view.state).active) {
+          return false;
+        }
+        return handlePMKeyDown(view, event);
+      },
+      [applyPendingHiddenEditorInput, handlePMKeyDown],
+    );
 
     // Column resize state
     const isResizingColumnRef = useRef(false);
