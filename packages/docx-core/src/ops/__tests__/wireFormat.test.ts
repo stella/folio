@@ -179,7 +179,9 @@ test("semantic table wire fixtures exercise geometry, ids, patches and tracked p
     { ...target, type: DOCUMENT_OP_TYPES.DELETE_COLUMN },
   ] as const satisfies readonly DocumentOp[];
   for (const op of columnRanges) {
-    const encoded: unknown = JSON.parse(JSON.stringify(toOpEnvelope(op)));
+    const encoded: DocumentOpEnvelope = JSON.parse(
+      JSON.stringify(toOpEnvelope(op)),
+    );
     const applied = applyDocumentOpEnvelope(columnTable, encoded).unwrap();
     const table = applied.document.package.document.content.at(0);
     if (table?.type !== "table")
