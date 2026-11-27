@@ -701,7 +701,12 @@ export const applyTableOp = (
           reason: DOCUMENT_OP_REFUSAL_REASONS.STALE,
           message: "The table to remove has changed.",
         });
-      const anchor = survivingTableAnchor(body, location.list);
+      // Preserve the original same-list anchor. Search enclosing lists only
+      // when the edited list has no paragraph of its own.
+      const anchor =
+        storyParagraphs(body).find((paragraph) =>
+          sameBlockList(paragraph.list, location.list),
+        ) ?? survivingTableAnchor(body, location.list);
       if (anchor === undefined)
         return refuse({
           op,
