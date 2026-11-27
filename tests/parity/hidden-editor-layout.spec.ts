@@ -7,7 +7,7 @@ import {
 } from "./parity-fixture";
 
 const FILLER_PAGES = 80;
-/** The selection's block, and at most a block or two the browser keeps near it. */
+/** The blocks the selection reaches, and the block before and after them. */
 const MOST_LAID_OUT_BLOCKS = 4;
 const EDITOR = ".paged-editor__hidden-pm > .ProseMirror";
 const BLOCKS = `${EDITOR} > *`;
@@ -15,7 +15,8 @@ const BLOCKS = `${EDITOR} > *`;
 declare global {
   // eslint-disable-next-line typescript/consistent-type-definitions
   interface Window {
-    __folioSkippedBlocks?: WeakMap<EventTarget, boolean>;
+    /** Whether the browser lays out a hidden editor block. */
+    __folioBlockLaidOut?: (block: Element) => boolean;
   }
 }
 
@@ -23,10 +24,10 @@ forEachAdapter(
   "the hidden editor lays out only the blocks near the selection",
   async (adapter, { page }) => {
     // The browser reports each block it may skip as skipped or laid out,
-    // first when it decides and then on every change.
+    // first when it decides and then on every change. A block it may not
+    // skip, or never reported skipped, is laid out, its text shaped.
     await page.addInitScript(() => {
       const skipped = new WeakMap<EventTarget, boolean>();
-      window.__folioSkippedBlocks = skipped;
       document.addEventListener(
         "contentvisibilityautostatechange",
         (event) => {
@@ -38,6 +39,9 @@ forEachAdapter(
         },
         true,
       );
+      window.__folioBlockLaidOut = (block) =>
+        getComputedStyle(block).contentVisibility !== "auto" ||
+        skipped.get(block) !== true;
     });
     const bytes = await buildScrollRootDocument({ fillerPages: FILLER_PAGES });
     await page.route("**/fixtures/scroll-root.docx", (route) =>
@@ -52,36 +56,49 @@ forEachAdapter(
 
     const blocks = page.locator(BLOCKS);
     await expect.poll(() => blocks.count()).toBeGreaterThan(FILLER_PAGES);
-    // A block the browser never reported skipped is laid out, its text shaped.
     const laidOut = () =>
       blocks.evaluateAll(
         (elements) =>
-          elements.filter(
-            (element) => window.__folioSkippedBlocks?.get(element) !== true,
-          ).length,
+          elements.filter((element) => window.__folioBlockLaidOut?.(element))
+            .length,
       );
     await expect.poll(laidOut).toBeLessThanOrEqual(MOST_LAID_OUT_BLOCKS);
 
-    // The block that takes the selection is laid out, so the native caret
-    // the input method reads has a box.
+    // The block that takes the selection, and its neighbours, are laid out
+    // in the same update, so the browser edits and composes in laid-out text.
     const target = Math.floor(FILLER_PAGES / 2);
     await page.locator(EDITOR).first().focus();
-    await blocks.nth(target).evaluate((element) => {
-      const text = document
-        .createTreeWalker(element, NodeFilter.SHOW_TEXT)
-        .nextNode();
-      if (text === null) throw new Error("the block has no text");
-      document.getSelection()?.collapse(text, 1);
-    });
-    await expect
-      .poll(() =>
-        blocks
-          .nth(target)
-          .evaluate(
-            (element) => window.__folioSkippedBlocks?.get(element) === false,
-          ),
-      )
-      .toBe(true);
+    const laidOutAfterSelecting = await blocks
+      .nth(target)
+      .evaluate((element) => {
+        const text = document
+          .createTreeWalker(element, NodeFilter.SHOW_TEXT)
+          .nextNode();
+        if (text === null) throw new Error("the block has no text");
+        document.getSelection()?.collapse(text, 1);
+        return new Promise<boolean[]>((resolve) => {
+          // ProseMirror reads the selection on `selectionchange`.
+          document.addEventListener(
+            "selectionchange",
+            () =>
+              queueMicrotask(() =>
+                resolve(
+                  [
+                    element.previousElementSibling,
+                    element,
+                    element.nextElementSibling,
+                  ].map(
+                    (block) =>
+                      block !== null &&
+                      getComputedStyle(block).contentVisibility !== "auto",
+                  ),
+                ),
+              ),
+            { once: true },
+          );
+        });
+      });
+    expect(laidOutAfterSelecting).toEqual([true, true, true]);
     await expect
       .poll(() =>
         page.evaluate(() => {

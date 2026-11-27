@@ -2387,10 +2387,11 @@ defineExpose(exposed);
 }
 
 /* The pages paint the document, so the hidden body editor lays out only the
- * blocks that hold the selection; a block keeps the size it last had, so the
- * blocks after it stay where they were when the selection leaves it.
+ * blocks around the selection, which core marks `folio-hidden-laid-out`; a
+ * block keeps the size it last had, so the blocks after it stay where they
+ * were when the selection leaves it.
  * ProseMirror renders the blocks, so the rule is global. */
-.paged-editor__hidden-pm > .ProseMirror > * {
+.paged-editor__hidden-pm > .ProseMirror > :not(.folio-hidden-laid-out) {
   content-visibility: auto;
   contain-intrinsic-size: auto none;
 }
