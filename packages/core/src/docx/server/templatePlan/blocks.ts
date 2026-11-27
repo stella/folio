@@ -502,24 +502,39 @@ const crossReferencesOf = (
 
 /**
  * Where each bookmark of a story stands: the paragraph it starts and ends
- * in, and whether it holds all of its content. Null for one that ends in
- * another paragraph or not at all. The first bookmark of a name counts.
+ * in, and whether it holds all of its content. A bookmark that takes its
+ * paragraph's mark along ends in front of anything of the next paragraph
+ * and counts as ending in its own. Null for one that ends further on or
+ * not at all. The first bookmark of a name counts.
  */
 const bookmarkTargetsOf = (
   story: AnalyzedStory,
 ): Map<string, { blockId: string; whole: boolean } | null> => {
   const targets = new Map<string, { blockId: string; whole: boolean } | null>();
-  for (const { block, read } of story.order) {
+  for (const [position, { block, read }] of story.order.entries()) {
     for (const start of read?.bookmarks ?? []) {
       if (targets.has(start.name)) {
         continue;
       }
       const end = read?.bookmarkEnds.find(({ id }) => id === start.id);
+      if (end !== undefined) {
+        targets.set(
+          start.name,
+          end.atomIndex < start.atomIndex
+            ? null
+            : { blockId: block.id, whole: bookmarkEncloses(read, start.name) },
+        );
+        continue;
+      }
+      const next = story.order[position + 1]?.read;
+      const behindMark = next?.bookmarkEnds.some(
+        ({ id, atomIndex }) => id === start.id && atomIndex === 0,
+      );
       targets.set(
         start.name,
-        end === undefined || end.atomIndex < start.atomIndex
-          ? null
-          : { blockId: block.id, whole: bookmarkEncloses(read, start.name) },
+        behindMark === true
+          ? { blockId: block.id, whole: start.atomIndex === 0 }
+          : null,
       );
     }
   }
