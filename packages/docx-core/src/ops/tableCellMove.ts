@@ -1,6 +1,7 @@
 import { isNoteReferenceId } from "../model/content";
 import {
   type BlockContent,
+  type BlockCustomXml,
   type DocxPackage,
   type InlineSdt,
   type MathEquation,
@@ -26,6 +27,7 @@ import {
   resolveNamespaceUri,
   XML_NAMESPACE_URI,
 } from "../xml/xmlNamespaceContext";
+import { blockListEndsInParagraph } from "./blocks";
 import {
   identityKeysIn,
   idKey,
@@ -208,6 +210,32 @@ const emptyElement = (xml: string) => {
   );
   const localName = element.name?.slice(element.name.indexOf(":") + 1);
   return { element, localName, attributes };
+};
+
+/** An authored tag wrapper without a separately owned record. */
+export const movableCustomXmlBlock = ({
+  openingXml,
+  closingXml,
+}: BlockCustomXml): boolean => {
+  const parsed = emptyElement(`${openingXml}${closingXml}`);
+  return (
+    parsed?.localName === "customXml" &&
+    wordNamespace(parsed.element.namespaceUri) &&
+    parsed.attributes.every(([attribute]) => {
+      const colon = attribute.indexOf(":");
+      if (colon < 1) return false;
+      const name = attribute.slice(colon + 1);
+      return (
+        (name === "uri" || name === "element") &&
+        wordNamespace(
+          resolveNamespaceUri(
+            parsed.element.namespaceScope,
+            attribute.slice(0, colon),
+          ),
+        )
+      );
+    })
+  );
 };
 
 const controlPropertyKind = (
@@ -431,40 +459,45 @@ export const nestedTableMoveSource = (
           (cell) =>
             cell.contentControls === undefined &&
             cell.carrierStack === undefined &&
-            cell.content.at(-1)?.type === "paragraph" &&
-            cell.content.every((block) => {
-              if (block.type === "table") return collect(block);
-              if (block.type !== "paragraph") return false;
-              const source = tableMoveSource(block);
-              if (source === undefined || source.pictures.size > 0)
-                return false;
-              paragraphs.push(source.id);
-              return true;
-            }),
+            blockListEndsInParagraph(cell.content) &&
+            cell.content.every(collectBlock),
         ),
     );
+  const collectBlock = (block: BlockContent): boolean => {
+    if (block.type === "table") return collect(block);
+    if (block.type === "blockCustomXml")
+      return movableCustomXmlBlock(block) && block.content.every(collectBlock);
+    if (block.type !== "paragraph") return false;
+    const source = tableMoveSource(block);
+    if (source === undefined || source.pictures.size > 0) return false;
+    paragraphs.push(source.id);
+    return true;
+  };
   return collect(table) ? { table, paragraphs } : undefined;
 };
 
 const withNestedParagraphIds = (
   table: Table,
   ids: ReadonlyMap<string, string>,
-): Table => ({
-  ...table,
-  rows: table.rows.map((row) => ({
-    ...row,
-    cells: row.cells.map((cell) => ({
-      ...cell,
-      content: cell.content.map((block) => {
-        if (block.type === "table") return withNestedParagraphIds(block, ids);
-        if (block.type !== "paragraph" || block.paraId === undefined)
-          return block;
-        const paraId = ids.get(idKey(block.paraId));
-        return paraId === undefined ? block : { ...block, paraId };
-      }),
+): Table => {
+  const rewrite = (block: BlockContent): BlockContent => {
+    if (block.type === "table") return withNestedParagraphIds(block, ids);
+    if (block.type === "blockCustomXml")
+      return { ...block, content: block.content.map(rewrite) };
+    if (block.type !== "paragraph" || block.paraId === undefined) return block;
+    const paraId = ids.get(idKey(block.paraId));
+    return paraId === undefined ? block : { ...block, paraId };
+  };
+  return {
+    ...table,
+    rows: table.rows.map((row) => ({
+      ...row,
+      cells: row.cells.map((cell) =>
+        Object.assign({}, cell, { content: cell.content.map(rewrite) }),
+      ),
     })),
-  })),
-});
+  };
+};
 
 type MarkNestedTableMoveOptions = {
   source: NestedTableMoveSource;
@@ -744,6 +777,17 @@ export const tableMoveOwnershipMatches = (
       }
     }
   };
+  const collect = (
+    blocks: readonly BlockContent[],
+    paragraphs: Map<string, Paragraph>,
+  ): void => {
+    for (const block of blocks) {
+      if (block.type === "paragraph" && block.paraId !== undefined)
+        paragraphs.set(idKey(block.paraId), block);
+      else if (block.type === "blockCustomXml" || block.type === "blockSdt")
+        collect(block.content, paragraphs);
+    }
+  };
   let hasOwner = false;
   let emptyOwner: string | undefined;
   for (const row of table.rows) {
@@ -765,11 +809,7 @@ export const tableMoveOwnershipMatches = (
       if (owned && first?.type === "paragraph") emptyOwner = first.paraId;
       if (geometry.nestedMoves !== undefined)
         collectMovedTables(cell.content, owned ? "destination" : "source");
-      const paragraphs = owned ? destinations : sources;
-      for (const paragraph of cell.content) {
-        if (paragraph.type === "paragraph" && paragraph.paraId !== undefined)
-          paragraphs.set(idKey(paragraph.paraId), paragraph);
-      }
+      collect(cell.content, owned ? destinations : sources);
     }
   }
   if (
@@ -889,105 +929,115 @@ export const resolveTableMoves = (table: Table, reject: boolean): Table => {
     Object.assign({}, row, {
       cells: row.cells.map((cell) =>
         Object.assign({}, cell, {
-          content: cell.content.flatMap((block): BlockContent[] => {
-            if (block.type === "table") {
-              const move = block.rows
-                .map((nestedRow) => nestedRow.structuralChange)
-                .find(
-                  (change) =>
-                    change?.type === "tableRowInsertion" &&
-                    nested.has(change.info.id),
+          content: cell.content.flatMap(
+            function restore(block): BlockContent[] {
+              if (block.type === "blockCustomXml") {
+                const content = block.content.flatMap(restore);
+                // A destination wrapper whose copied children are all gone
+                // goes with them. Keep pre-existing empty wrappers.
+                return content.length === 0 && block.content.length > 0
+                  ? []
+                  : [{ ...block, content }];
+              }
+              if (block.type === "table") {
+                const move = block.rows
+                  .map((nestedRow) => nestedRow.structuralChange)
+                  .find(
+                    (change) =>
+                      change?.type === "tableRowInsertion" &&
+                      nested.has(change.info.id),
+                  );
+                const record =
+                  move === undefined ? undefined : nested.get(move.info.id);
+                if (record === undefined) return [block];
+                if (reject) return [];
+                const placed = withNestedParagraphIds(
+                  block,
+                  new Map(
+                    record.paragraphs.map(([source, destination]) => [
+                      idKey(destination),
+                      source,
+                    ]),
+                  ),
                 );
-              const record =
-                move === undefined ? undefined : nested.get(move.info.id);
-              if (record === undefined) return [block];
-              if (reject) return [];
-              const placed = withNestedParagraphIds(
-                block,
-                new Map(
-                  record.paragraphs.map(([source, destination]) => [
-                    idKey(destination),
-                    source,
-                  ]),
-                ),
+                const stamps = new Set(record.rows);
+                placed.rows = placed.rows.map((child) => {
+                  const change = child.structuralChange;
+                  if (change === undefined || !stamps.has(change.info.id))
+                    return child;
+                  const { structuralChange: _owned, ...accepted } = child;
+                  return accepted;
+                });
+                return [placed];
+              }
+              if (block.type !== "paragraph" || block.paraId === undefined)
+                return [block];
+              const key = idKey(block.paraId);
+              const destination = destinations.get(key);
+              if (
+                (reject && destination !== undefined) ||
+                (!reject &&
+                  key === emptyOwner &&
+                  block.content.length === 0 &&
+                  block.pPrMark === undefined &&
+                  block.propertyChanges === undefined &&
+                  block.sectionProperties === undefined)
+              )
+                return [];
+              const move = reject ? sources.get(key) : destination;
+              if (move === undefined) return [block];
+              let revision: number | undefined;
+              let range: number | undefined;
+              if (move.kind !== "empty") {
+                revision = reject ? move.fromRevision : move.toRevision;
+                range = reject ? move.fromRange : move.toRange;
+              }
+              const content = block.content.flatMap(
+                (item): ParagraphContent[] => {
+                  switch (item.type) {
+                    case "moveFromRangeStart":
+                    case "moveFromRangeEnd":
+                    case "moveToRangeStart":
+                    case "moveToRangeEnd":
+                      return item.id === range ? [] : [item];
+                    case "moveFrom":
+                    case "moveTo":
+                      return item.info.id === revision ? item.content : [item];
+                    default:
+                      return [item];
+                  }
+                },
               );
-              const stamps = new Set(record.rows);
-              placed.rows = placed.rows.map((child) => {
-                const change = child.structuralChange;
-                if (change === undefined || !stamps.has(change.info.id))
-                  return child;
-                const { structuralChange: _owned, ...accepted } = child;
-                return accepted;
-              });
-              return [placed];
-            }
-            if (block.type !== "paragraph" || block.paraId === undefined)
-              return [block];
-            const key = idKey(block.paraId);
-            const destination = destinations.get(key);
-            if (
-              (reject && destination !== undefined) ||
-              (!reject &&
-                key === emptyOwner &&
-                block.content.length === 0 &&
-                block.pPrMark === undefined &&
-                block.propertyChanges === undefined &&
-                block.sectionProperties === undefined)
-            )
-              return [];
-            const move = reject ? sources.get(key) : destination;
-            if (move === undefined) return [block];
-            let revision: number | undefined;
-            let range: number | undefined;
-            if (move.kind !== "empty") {
-              revision = reject ? move.fromRevision : move.toRevision;
-              range = reject ? move.fromRange : move.toRange;
-            }
-            const content = block.content.flatMap(
-              (item): ParagraphContent[] => {
-                switch (item.type) {
-                  case "moveFromRangeStart":
-                  case "moveFromRangeEnd":
-                  case "moveToRangeStart":
-                  case "moveToRangeEnd":
-                    return item.id === range ? [] : [item];
-                  case "moveFrom":
-                  case "moveTo":
-                    return item.info.id === revision ? item.content : [item];
-                  default:
-                    return [item];
-                }
-              },
-            );
-            const restored =
-              reject ||
-              move.kind === "empty" ||
-              (move.controls === undefined && move.pictures === undefined)
-                ? content
-                : withMoveIdentities({
-                    content,
-                    controls: new Map(
-                      move.controls?.map(([old, temporary]) => [
-                        temporary,
-                        old,
-                      ]),
-                    ),
-                    pictures: new Map(
-                      move.pictures?.map(([old, temporary]) => [
-                        temporary,
-                        old,
-                      ]),
-                    ),
-                  });
-            const paragraph = {
-              ...block,
-              paraId: move.source,
-              content: restored,
-            };
-            if (paragraph.pPrMark?.info.id === move.destinationMark)
-              delete paragraph.pPrMark;
-            return [paragraph];
-          }),
+              const restored =
+                reject ||
+                move.kind === "empty" ||
+                (move.controls === undefined && move.pictures === undefined)
+                  ? content
+                  : withMoveIdentities({
+                      content,
+                      controls: new Map(
+                        move.controls?.map(([old, temporary]) => [
+                          temporary,
+                          old,
+                        ]),
+                      ),
+                      pictures: new Map(
+                        move.pictures?.map(([old, temporary]) => [
+                          temporary,
+                          old,
+                        ]),
+                      ),
+                    });
+              const paragraph = {
+                ...block,
+                paraId: move.source,
+                content: restored,
+              };
+              if (paragraph.pPrMark?.info.id === move.destinationMark)
+                delete paragraph.pPrMark;
+              return [paragraph];
+            },
+          ),
         }),
       ),
     }),

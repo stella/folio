@@ -5,6 +5,7 @@ import {
   applyDocumentOps,
   DOCUMENT_OP_REFUSAL_REASONS,
   DOCUMENT_OP_TYPES,
+  type DocumentOp,
   OP_STORIES,
   REVISION_DECISIONS,
 } from "@stll/docx-core/ops";
@@ -13,7 +14,7 @@ import { base64ToBytes } from "@stll/utf8-boundaries";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
-import type { Document, Table } from "../types/document";
+import type { BlockContent, Document, Table } from "../types/document";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import { FOLIO_REVIEW_HISTORY_NAMESPACE } from "./reviewHistoryNamespace";
 import { createEmptyDocx } from "./rezip";
@@ -53,26 +54,37 @@ const tableOf = (document: Document): Table => {
   return table;
 };
 
+const savedContentOf = (block: BlockContent): BlockContent => {
+  if (block.type === "blockCustomXml")
+    return { ...block, content: block.content.map(savedContentOf) };
+  if (block.type !== "paragraph") return block;
+  const { paraId, content } = block;
+  return {
+    type: "paragraph",
+    ...(paraId === undefined ? {} : { paraId }),
+    content,
+  };
+};
 const inlineContentOf = (table: Table) =>
   table.rows.map(({ cells }) =>
-    cells.map(({ content }) =>
-      content.map((block) =>
-        block.type === "paragraph"
-          ? { paraId: block.paraId, content: block.content }
-          : block,
-      ),
-    ),
+    cells.map(({ content }) => content.map(savedContentOf)),
   );
 
-type SourceWithOptions = { content: string; owner?: string };
+type SourceWithOptions = {
+  content: string;
+  owner?: string;
+  wrap?: (paragraph: string) => string;
+};
 const sourceWith = ({
   content,
   owner = plain,
+  wrap = (paragraph) => paragraph,
 }: SourceWithOptions): Document => {
+  const absorbed = wrap(`<w:p w14:paraId="${sourceId}">${content}</w:p>`);
   const table = readTable(
     '<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="1000"/><w:gridCol w:w="1000"/></w:tblGrid>' +
       `<w:tr><w:tc><w:p w14:paraId="${ownerId}">${owner}</w:p></w:tc>` +
-      `<w:tc><w:p w14:paraId="${sourceId}">${content}</w:p></w:tc></w:tr></w:tbl>`,
+      `<w:tc>${absorbed}</w:tc></w:tr></w:tbl>`,
   );
   return {
     package: {
@@ -118,45 +130,16 @@ test.each([
   },
 );
 
-test.each([
-  `${direction}${link}${atoms}</w:hyperlink></w:dir>`,
-  `${link}${direction}${atoms}</w:dir></w:hyperlink>`,
-  `${atoms}${link}${atoms}</w:hyperlink>${direction}${atoms}</w:dir>`,
-  "<w:r><w:tab/></w:r>",
-  inlinePicture,
-  inlinePicture.replace('<pic:cNvPr id="0"', '<pic:cNvPr id="27"'),
-  '<w:r><w:ruby><w:rubyPr><w:rubyAlign w:val="center"/><w:hps w:val="10"/><w:hpsRaise w:val="12"/><w:hpsBaseText w:val="20"/><w:lid w:val="ja-JP"/></w:rubyPr><w:rt><w:r><w:t>とう</w:t></w:r></w:rt><w:rubyBase><w:r><w:t>東</w:t></w:r></w:rubyBase></w:ruby></w:r>',
-  "<m:oMath><m:f><m:num><m:r><m:t>1</m:t></m:r></m:num><m:den><m:r><m:t>2</m:t></m:r></m:den></m:f></m:oMath>",
-  '<q:oMathPara xmlns:q="http://purl.oclc.org/ooxml/officeDocument/math"><q:oMath><q:r><q:t xml:space="preserve"> 1 + 2 </q:t></q:r></q:oMath></q:oMathPara>',
-  '<w:proofErr w:type="gramStart"/><w:proofErr w:type="spellStart"/><w:r><w:t>Teh text.</w:t></w:r><w:proofErr w:type="spellEnd"/><w:proofErr w:type="gramEnd"/>',
-  '<w:customXml w:element="clause" w:uri="urn:example"><w:r><w:t>A clause.</w:t></w:r></w:customXml>',
-  '<w:smartTag w:element="term" w:uri="urn:example"><w:r><w:t>A term.</w:t></w:r></w:smartTag>',
-])("tracked table merges preserve moved inline content: %s", (content) => {
-  const picture = content.includes("rIdLogo");
-  const original = sourceWith({
-    content,
-    ...(picture
-      ? { owner: inlinePicture.replace('docPr id="27"', 'docPr id="1"') }
-      : {}),
-  });
+const assertSavedMove = (
+  original: Document,
+  operation: Extract<DocumentOp, { type: "mergeCells" }> = trackedMerge,
+) => {
   const direct = applyDocumentOp(original, directMerge).unwrap().document;
-  const pending = applyDocumentOp(original, trackedMerge).unwrap();
+  const pending = applyDocumentOp(original, operation).unwrap();
   expect(
     applyDocumentOps(pending.document, pending.inverse).unwrap().document,
   ).toEqual(original);
   const xml = serializeTable(tableOf(pending.document), serializeParagraph);
-  expect(xml).toContain("<w:moveFrom ");
-  expect(xml).toContain("<w:moveTo ");
-  if (picture) {
-    const drawingIds = [...xml.matchAll(/<wp:docPr\b[^>]*\bid="(\d+)"/gu)].map(
-      (match) => match.at(1),
-    );
-    expect(drawingIds).toHaveLength(3);
-    expect(new Set(drawingIds).size).toBe(3);
-    expect(drawingIds).toContain("1");
-    expect(drawingIds).toContain("27");
-    expect(xml.match(/r:embed="rIdLogo"/gu)).toHaveLength(3);
-  }
   const reopened = {
     ...original,
     package: {
@@ -189,6 +172,68 @@ test.each([
       }
     }
   }
+  return xml;
+};
+
+test.each([
+  `${direction}${link}${atoms}</w:hyperlink></w:dir>`,
+  `${link}${direction}${atoms}</w:dir></w:hyperlink>`,
+  `${atoms}${link}${atoms}</w:hyperlink>${direction}${atoms}</w:dir>`,
+  "<w:r><w:tab/></w:r>",
+  inlinePicture,
+  inlinePicture.replace('<pic:cNvPr id="0"', '<pic:cNvPr id="27"'),
+  '<w:r><w:ruby><w:rubyPr><w:rubyAlign w:val="center"/><w:hps w:val="10"/><w:hpsRaise w:val="12"/><w:hpsBaseText w:val="20"/><w:lid w:val="ja-JP"/></w:rubyPr><w:rt><w:r><w:t>とう</w:t></w:r></w:rt><w:rubyBase><w:r><w:t>東</w:t></w:r></w:rubyBase></w:ruby></w:r>',
+  "<m:oMath><m:f><m:num><m:r><m:t>1</m:t></m:r></m:num><m:den><m:r><m:t>2</m:t></m:r></m:den></m:f></m:oMath>",
+  '<q:oMathPara xmlns:q="http://purl.oclc.org/ooxml/officeDocument/math"><q:oMath><q:r><q:t xml:space="preserve"> 1 + 2 </q:t></q:r></q:oMath></q:oMathPara>',
+  '<w:proofErr w:type="gramStart"/><w:proofErr w:type="spellStart"/><w:r><w:t>Teh text.</w:t></w:r><w:proofErr w:type="spellEnd"/><w:proofErr w:type="gramEnd"/>',
+  '<w:customXml w:element="clause" w:uri="urn:example"><w:r><w:t>A clause.</w:t></w:r></w:customXml>',
+  '<w:smartTag w:element="term" w:uri="urn:example"><w:r><w:t>A term.</w:t></w:r></w:smartTag>',
+])("tracked table merges preserve moved inline content: %s", (content) => {
+  const picture = content.includes("rIdLogo");
+  const original = sourceWith({
+    content,
+    ...(picture
+      ? { owner: inlinePicture.replace('docPr id="27"', 'docPr id="1"') }
+      : {}),
+  });
+  const xml = assertSavedMove(original);
+  expect(xml).toContain("<w:moveFrom ");
+  expect(xml).toContain("<w:moveTo ");
+  if (picture) {
+    const drawingIds = [...xml.matchAll(/<wp:docPr\b[^>]*\bid="(\d+)"/gu)].map(
+      (match) => match.at(1),
+    );
+    expect(drawingIds).toHaveLength(3);
+    expect(new Set(drawingIds).size).toBe(3);
+    expect(drawingIds).toContain("1");
+    expect(drawingIds).toContain("27");
+    expect(xml.match(/r:embed="rIdLogo"/gu)).toHaveLength(3);
+  }
+});
+
+test("a tracked merge moves each enclosing custom XML block with its contents", () => {
+  const original = sourceWith({
+    content: plain,
+    wrap: (paragraph) =>
+      `<w:customXml w:uri="urn:test" w:element="clause"><w:customXml w:uri="urn:test" w:element="term">${paragraph}</w:customXml></w:customXml>`,
+  });
+  const xml = assertSavedMove(original);
+  expect(xml.match(/<w:customXml\b/gu)).toHaveLength(4);
+  expect(xml).toMatch(/<w:customXml[^>]*><w:p[^>]*>.*?<w:moveTo /u);
+  expect(xml).toMatch(/<w:customXml[^>]*><w:p[^>]*>.*?<w:moveFrom /u);
+});
+
+test("a copied nested table keeps its tagged cell paragraph and stable identity", () => {
+  const original = sourceWith({
+    content: plain,
+    wrap: (paragraph) =>
+      `<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="500"/></w:tblGrid><w:tr><w:tc><w:customXml w:element="tag">${paragraph}</w:customXml></w:tc></w:tr></w:tbl><w:p w14:paraId="00000005"/>`,
+  });
+  const xml = assertSavedMove(original, {
+    ...trackedMerge,
+    newBlockIds: ["00000004", "00000006"],
+  });
+  expect(xml.match(/<w:customXml\b/gu)).toHaveLength(2);
 });
 
 test("the saved picture is available after each public table review decision", async () => {
