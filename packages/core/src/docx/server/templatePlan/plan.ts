@@ -102,6 +102,9 @@ export type ResolvedNumbering =
 export type ResolvedPart = {
   block: AnalyzedBlock;
   strippedPrefix: string;
+  /** The lead a slot dropped off the part and the template paragraph that
+   *  shows the field, or null. */
+  droppedLead: { text: string; shownByTemplateBlockId: string } | null;
   /** The automatic label written as text before the part, or null. */
   labelAsText: string | null;
 };
@@ -846,6 +849,9 @@ const partTables = (items: ResolvedItem[]): void => {
 type PlannedPart = {
   block: AnalyzedBlock;
   stripLabel: string | undefined;
+  /** A slot's lead to drop off the part: a field's name the template
+   *  shows itself. */
+  dropLead?: { text: string; shownByTemplateBlockId: string };
   /** Whether a line break behind the stripped label goes with it. */
   stripLabelBreak?: boolean;
   labelAsText: boolean;
@@ -1246,6 +1252,33 @@ export const resolvePlan = (
           labelEnd + (blank.exec(text.slice(labelEnd))?.[0].length ?? 0),
         );
       }
+      // A slot's lead: the block starts with it, and something follows.
+      let droppedLead: ResolvedPart["droppedLead"] = null;
+      if (planned.dropLead !== undefined) {
+        const lead = LEADING_SPACE.exec(text)?.[0] ?? "";
+        const leadEnd = lead.length + planned.dropLead.text.length;
+        const dropped = text.slice(
+          0,
+          leadEnd + (LABEL_SPACE.exec(text.slice(leadEnd))?.[0].length ?? 0),
+        );
+        if (
+          planned.dropLead.text.trim() === "" ||
+          !text.startsWith(planned.dropLead.text, lead.length) ||
+          text.slice(dropped.length).trim() === ""
+        ) {
+          return Result.err(
+            refuse({
+              code: "strip-label-mismatch",
+              message: `Block ${id} does not start with the lead to drop, or holds nothing behind it.`,
+              blockId: id,
+            }),
+          );
+        }
+        droppedLead = {
+          text: dropped,
+          shownByTemplateBlockId: planned.dropLead.shownByTemplateBlockId,
+        };
+      }
       const part = partSegments({
         block,
         pieces: paragraphPieces({
@@ -1254,7 +1287,10 @@ export const resolvePlan = (
           origin: "document",
           fields: source.story.state.fields,
         }),
-        strippedLength: strippedPrefix.length,
+        strippedLength:
+          droppedLead === null
+            ? strippedPrefix.length
+            : droppedLead.text.length,
         strippedBreak: stripLabelBreak === true,
         references: referencesByBlock.get(id) ?? [],
         highlights: highlightsByBlock.get(id) ?? [],
@@ -1302,6 +1338,7 @@ export const resolvePlan = (
       resolvedParts.push({
         block,
         strippedPrefix,
+        droppedLead,
         labelAsText: written?.label ?? null,
       });
     }
@@ -1470,6 +1507,8 @@ export const resolvePlan = (
   const keptTemplateIds = new Set<string>();
   const slottedTemplateIds = new Set<string>();
   const pendingNestedSlots: ResolvedSlot[] = [];
+  /** The template paragraphs slots name as showing a dropped lead's field. */
+  const leadShowers: { templateBlockId: string; slotId: string }[] = [];
   let ordinal = 0;
 
   for (let index = 0; index < plan.body.length; index += 1) {
@@ -1644,8 +1683,17 @@ export const resolvePlan = (
           );
         }
         slottedTemplateIds.add(item.templateBlockId);
+        if (
+          item.dropLead !== undefined &&
+          (typeof item.dropLead.text !== "string" ||
+            typeof item.dropLead.shownByTemplateBlockId !== "string")
+        ) {
+          return invalid(
+            `Slot ${item.templateBlockId} names a lead to drop without its text or the paragraph that shows it.`,
+          );
+        }
         const parts: PlannedPart[] = [];
-        for (const id of item.sourceBlockIds) {
+        for (const [position, id] of item.sourceBlockIds.entries()) {
           const block = sourceTopLevel(id);
           if (Result.isError(block)) {
             return block;
@@ -1654,6 +1702,15 @@ export const resolvePlan = (
             block: block.value,
             stripLabel: undefined,
             labelAsText: false,
+            ...(position === 0 && item.dropLead !== undefined
+              ? { dropLead: item.dropLead }
+              : {}),
+          });
+        }
+        if (item.dropLead !== undefined) {
+          leadShowers.push({
+            templateBlockId: item.dropLead.shownByTemplateBlockId,
+            slotId: item.templateBlockId,
           });
         }
         const paragraph = resolveParagraph({
@@ -1712,6 +1769,28 @@ export const resolvePlan = (
       );
     }
     emptied.push(block);
+  }
+
+  // The paragraph that shows a dropped lead's field is one the output has
+  // as the template has it: kept, with text, and neither filled nor emptied.
+  for (const { templateBlockId, slotId } of leadShowers) {
+    const shower = template.story.byId.get(templateBlockId);
+    if (
+      shower === undefined ||
+      shower.read === null ||
+      shower.block.text.trim() === "" ||
+      !keptTemplateIds.has(shower.topLevelId) ||
+      slottedTemplateIds.has(templateBlockId) ||
+      emptied.includes(shower)
+    ) {
+      return Result.err(
+        refuse({
+          code: "unknown-block",
+          message: `Template block ${templateBlockId} is no kept paragraph with text that could show the field of slot ${slotId}.`,
+          blockId: templateBlockId,
+        }),
+      );
+    }
   }
 
   partTables(items);

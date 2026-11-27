@@ -1351,6 +1351,122 @@ describe("a kept table of contents", () => {
   });
 });
 
+describe("a slot that drops the name of a field the template shows", () => {
+  // The template's table has two cells: the left one stands for the cell
+  // that shows the field, the right one for the cell that takes its value.
+  const shower = TEMPLATE_IDS.signatureLeft;
+  const cell = TEMPLATE_IDS.signatureRight;
+  const planOf = async (
+    line: string,
+    dropLead: { text: string; shownByTemplateBlockId: string },
+    extra: Partial<TemplatePlan> = {},
+  ) => {
+    const source = await buildMinimalDocx(
+      `${p(`${r(line.split("\t").at(0) ?? "")}${line.includes("\t") ? `<w:r><w:tab/></w:r>${r(line.split("\t").at(1) ?? "")}` : ""}`)}${p(r("The body of the note."))}`,
+    );
+    const plan = await planFor({
+      source,
+      template,
+      items: ([head, ...rest]) => [
+        { kind: "template", templateBlockIds: [TEMPLATE_IDS.signatures] },
+        {
+          kind: "slot",
+          templateBlockId: cell,
+          sourceBlockIds: head === undefined ? [] : [head.id],
+          dropLead,
+        },
+        ...rest.map(({ id, hash }): TemplatePlanItem => ({
+          kind: "source",
+          blockId: id,
+          hash,
+        })),
+      ],
+      extra,
+    });
+    return { source, plan };
+  };
+
+  test("the lead goes, the value stands word for word, and the report names the lead", async () => {
+    const { source, plan } = await planOf("To:\tJane Roe, Legal", {
+      text: "To:",
+      shownByTemplateBlockId: shower,
+    });
+    const { docx, report } = unwrap(
+      await applyTemplatePlan({ source, template, plan }),
+    );
+    const document = await documentOf(docx);
+
+    expect(report.ok).toBe(true);
+    expect(document).toContain(
+      '<w:r><w:t xml:space="preserve">Jane Roe, Legal</w:t></w:r></w:p></w:tc>',
+    );
+    expect(document).not.toContain("To:");
+    expect(report.blocks.find(({ blockId }) => blockId === "p0")).toMatchObject(
+      {
+        disposition: "slot",
+        text: "identical",
+        droppedLead: { text: "To:\t", shownByTemplateBlockId: shower },
+      },
+    );
+    // No label of the source is reported as lost with it.
+    expect(
+      report.blocks.find(({ blockId }) => blockId === "p0")?.sourceLabel,
+    ).toBeNull();
+    // Verification holds the value to the source: the lead back in the
+    // cell, or another word in the value, is no longer what the plan placed.
+    for (const changed of [
+      document.replace(">Jane Roe, Legal<", ">To: Jane Roe, Legal<"),
+      document.replace(">Jane Roe, Legal<", ">Jane Doe, Legal<"),
+    ]) {
+      expect(changed).not.toBe(document);
+      const checked = await verifyFor({
+        source,
+        template,
+        output: await replacePart(docx, "word/document.xml", changed),
+        plan,
+      });
+      expect(checked.ok).toBe(false);
+    }
+  });
+
+  test("a line that does not start with the lead, or holds nothing behind it, is refused", async () => {
+    for (const [line, lead] of [
+      ["Attention:\tJane Roe", "To:"],
+      ["To:", "To:"],
+      ["To:\tJane Roe", " "],
+    ] as const) {
+      const { source, plan } = await planOf(line, {
+        text: lead,
+        shownByTemplateBlockId: shower,
+      });
+      const applied = await applyTemplatePlan({ source, template, plan });
+      expect(codeOf(applied)).toBe("strip-label-mismatch");
+    }
+  });
+
+  test("the paragraph that shows the field must be kept as the template has it, with text", async () => {
+    const refused = async (
+      shownByTemplateBlockId: string,
+      extra: Partial<TemplatePlan> = {},
+    ) => {
+      const { source, plan } = await planOf(
+        "To:\tJane Roe",
+        { text: "To:", shownByTemplateBlockId },
+        extra,
+      );
+      return codeOf(await applyTemplatePlan({ source, template, plan }));
+    };
+    // A paragraph the plan does not keep, one that is no block of the
+    // template, the slot itself, and one the plan empties.
+    expect(await refused(TEMPLATE_IDS.party)).toBe("unknown-block");
+    expect(await refused("p999")).toBe("unknown-block");
+    expect(await refused(cell)).toBe("unknown-block");
+    expect(await refused(shower, { emptyTemplateBlockIds: [shower] })).toBe(
+      "unknown-block",
+    );
+  });
+});
+
 describe("labels written as text", () => {
   const level = (
     ilvl: number,

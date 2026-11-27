@@ -2232,6 +2232,10 @@ export type TemplatePlanBlockResult = {
     text: "identical" | "mismatch" | "omitted";
     emphasis: "identical" | "mismatch" | "omitted";
     strippedPrefix?: string;
+    droppedLead?: {
+        text: string;
+        shownByTemplateBlockId: string;
+    };
     labelAsText?: string;
     sourceLabel: string | null;
     outputLabel: string | null;
@@ -2297,6 +2301,10 @@ export type TemplatePlanItem = {
     kind: "slot";
     templateBlockId: string;
     sourceBlockIds: string[];
+    dropLead?: {
+        text: string;
+        shownByTemplateBlockId: string;
+    };
 };
 
 // @public (undocumented)
