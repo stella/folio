@@ -1,5 +1,23 @@
 # @stll/docx-core
 
+## 0.48.1
+
+### Patch Changes
+
+- [#3699](https://github.com/stella/folio/pull/3699) [`f63500e`](https://github.com/stella/folio/commit/f63500eafc3b2a0c0e59ca99fa1ac5e78286ea04) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A tracked deletion of paragraphs that pending joins run words into, before a block, now records the properties those words keep when deleted directly, so accepting it keeps their list numbering.
+
+- [#3699](https://github.com/stella/folio/pull/3699) [`f63500e`](https://github.com/stella/folio/commit/f63500eafc3b2a0c0e59ca99fa1ac5e78286ea04) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A tracked paragraph inserted beside paragraphs whose marks are pending, across a bookmark between paragraphs or before a block or table, now applies as its suggestion does, and rejecting it gives back the original paragraph with its properties.
+
+- [#3701](https://github.com/stella/folio/pull/3701) [`3a38524`](https://github.com/stella/folio/commit/3a38524dd57e61c79ec38a1ac881b3b22f6a5ed1) Thanks [@jan-kubica](https://github.com/jan-kubica)! - An operation that releases a paragraph's rejection survivor through an edit it makes now reports that paragraph as modified, so a save writes the released paragraph and resolving reads the same after it.
+
+- [#3682](https://github.com/stella/folio/pull/3682) [`718daa0`](https://github.com/stella/folio/commit/718daa0e28ee9ba3a5289b5b5b1b351bd08577df) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Suggest mixed column deletions, horizontal splits, and horizontal merges that absorb empty cells, with native grid and cell records.
+
+- [#3681](https://github.com/stella/folio/pull/3681) [`4380b16`](https://github.com/stella/folio/commit/4380b161ead24318e22f8c147efc439399c3c850) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Record prior table grids, cell spans, and row omissions when suggesting column edits, and use the serializer's grid width limit for edits and snapshots.
+
+- [#3681](https://github.com/stella/folio/pull/3681) [`4380b16`](https://github.com/stella/folio/commit/4380b161ead24318e22f8c147efc439399c3c850) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve shared row and cell content controls through tracked row and column edits.
+
+- [#3682](https://github.com/stella/folio/pull/3682) [`718daa0`](https://github.com/stella/folio/commit/718daa0e28ee9ba3a5289b5b5b1b351bd08577df) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve table markup and existing property revisions when suggesting whole-table insertion or deletion.
+
 ## 0.48.0
 
 ### Minor Changes
