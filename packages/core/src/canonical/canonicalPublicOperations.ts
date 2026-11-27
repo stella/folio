@@ -613,30 +613,30 @@ type PlannedOperation = {
 type RunCarrier = Exclude<FinalBreakCarrier<unknown>["type"], "none">;
 
 const ROW_SHIFTED_CELL_SHAPE =
-  "The batch inserts a row above the last row of the cells this merges or splits.";
+  "The batch inserts or deletes a row that shifts the cells this merges or splits.";
 
 /**
- * The merges and splits whose cells a row the batch inserts in their table
- * would shift or cut, whatever their order in the request. A merge or split
- * names its cells by row as the batch read the table, and runs after the
- * batch's row insertions, so a row inserted above its last row would move
- * the cells it names.
+ * The merges and splits whose cells a batch row edit would shift or remove.
+ * They name their cells by row as the batch read the table and run after
+ * row edits, so a row edit before the end of the rectangle changes its cells.
  */
 const rowShiftedCellShapes = <
   T extends PlannedOperation & { intents: readonly EditorIntent[] },
 >(
   items: readonly T[],
 ): T[] => {
-  const boundaries = items.flatMap(({ plan: { claim }, intents }) =>
-    claim.type === "tableStructure" && claim.axis === "row"
+  const boundaries = items.flatMap(({ plan: { claim, removes }, intents }) => {
+    if (removes?.axis === "row")
+      return [{ table: removes.tablePosition, at: removes.index }];
+    return claim.type === "tableStructure" && claim.axis === "row"
       ? intents.flatMap((intent) =>
           intent.type === "tableRow" &&
           intent.operation.type === DOCUMENT_OP_TYPES.INSERT_ROW
             ? [{ table: claim.table, at: intent.operation.at }]
             : [],
         )
-      : [],
-  );
+      : [];
+  });
   return items.filter(({ plan: { address } }) =>
     address.type === "cell"
       ? boundaries.some(
