@@ -448,6 +448,19 @@ const pieceRunXml = (
   linked: boolean,
 ): RunsResult => {
   const revision = piece.atom?.revision;
+  const checkbox = piece.atom?.checkbox;
+  if (revision === undefined && checkbox !== undefined) {
+    // The mark of a checkbox goes back into its content control, so the
+    // box can still be ticked.
+    const mark = plainPieceRunXml(piece, context, linked);
+    if (Result.isError(mark)) {
+      return mark;
+    }
+    const { w: prefix } = context.prefixes;
+    return Result.ok(
+      `<${prefix}:sdt>${captureVerbatimXml(checkbox)}<${prefix}:sdtContent>${mark.value}</${prefix}:sdtContent></${prefix}:sdt>`,
+    );
+  }
   if (revision === undefined) {
     return plainPieceRunXml(piece, context, linked);
   }
@@ -592,6 +605,9 @@ const mergedPieces = (pieces: readonly ExpectedPiece[]): ExpectedPiece[] => {
       // A tracked change is a run of its own, and so is the text beside it.
       last.atom?.revision === undefined &&
       piece.atom?.revision === undefined &&
+      // So is the mark of a checkbox: its control holds it alone.
+      last.atom?.checkbox === undefined &&
+      piece.atom?.checkbox === undefined &&
       sameLink(last.link, piece.link)
     ) {
       merged[merged.length - 1] = { ...last, text: last.text + piece.text };

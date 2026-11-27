@@ -59,6 +59,12 @@ export type InlineAtom = {
   instruction?: string;
   /** The tracked change the atom is part of, in a reading that keeps them. */
   revision?: AtomRevision;
+  /**
+   * The properties (`w:sdtPr`) of the checkbox content control the atom is
+   * the mark of: the box a reader ticks. Without them the mark is a plain
+   * character.
+   */
+  checkbox?: XmlElement;
 };
 
 /**
@@ -393,8 +399,39 @@ const beginField = (walk: ParagraphWalk, instruction: string): StoryField => {
   return field;
 };
 
+/**
+ * The properties of a content control among runs that is a checkbox whose
+ * content is its one mark: one run with one text. Any other control is read
+ * for its content alone, as before.
+ */
+const checkboxOf = (
+  control: XmlElement,
+  content: XmlElement,
+): XmlElement | null => {
+  const properties = wChild(control, "sdtPr");
+  const isCheckbox = elementChildren(properties ?? control).some(
+    (child) => getLocalName(child.name) === "checkbox",
+  );
+  const [run, ...others] = elementChildren(content);
+  const texts =
+    run === undefined
+      ? []
+      : elementChildren(run).filter((child) => wName(child) !== "rPr");
+  return properties !== null &&
+    isCheckbox &&
+    run !== undefined &&
+    others.length === 0 &&
+    wName(run) === "r" &&
+    texts.length === 1 &&
+    wName(texts[0] ?? run) === "t"
+    ? properties
+    : null;
+};
+
 type RunContext = {
   link: AtomLink | null;
+  /** The checkbox content control the content is the mark of. */
+  checkbox?: XmlElement | undefined;
   /** The insertion or deletion the content sits in, when revisions are kept. */
   revision?: AtomRevision | undefined;
 };
@@ -448,7 +485,7 @@ const readRun = (
   walk: ParagraphWalk,
   context: RunContext,
 ): void => {
-  const { link, revision } = context;
+  const { link, revision, checkbox } = context;
   const { state, read } = walk;
   const runProperties = wChild(run, "rPr");
   if (wChild(runProperties, "rPrChange") !== null) {
@@ -470,6 +507,7 @@ const readRun = (
       link,
       element,
       ...(revision === undefined ? {} : { revision }),
+      ...(checkbox === undefined || kind !== "text" ? {} : { checkbox }),
     });
   };
   // An object travels whole, so what it holds inside is checked here.
@@ -691,7 +729,12 @@ const readInline = (
     } else if (name === "sdt") {
       const content = wChild(child, "sdtContent");
       if (content !== null) {
-        readInline(content, walk, context);
+        const checkbox = checkboxOf(child, content);
+        readInline(
+          content,
+          walk,
+          checkbox === null ? context : { ...context, checkbox },
+        );
       }
     } else if (TRANSPARENT_WRAPPERS.has(name)) {
       readInline(child, walk, context);
