@@ -38,9 +38,11 @@ const BUDGETS = {
   // comment keeps the parts its kept markup names in its own part's
   // relationships. The series outgrew its room (the ops measure about 715 kB
   // with five of its changes still to land, each about 6 kB): docxOps to
-  // 745 kB, minified +30 kB, gzip +10 kB.
-  react: { minified: 3_805_000, gzip: 1_198_000, docxOps: 745_000 },
-  vue: { minified: 3_500_000, gzip: 1_094_000, docxOps: 745_000 },
+  // 745 kB, minified +30 kB, gzip +10 kB. The ops bytes count toward the
+  // totals too, so the totals keep the room the ops ceiling still leaves
+  // (about 19 kB): minified +21 kB, gzip +7 kB.
+  react: { minified: 3_826_000, gzip: 1_205_000, docxOps: 745_000 },
+  vue: { minified: 3_521_000, gzip: 1_101_000, docxOps: 745_000 },
 } as const satisfies Record<Adapter, Metrics>;
 
 const HOST_PEERS = [
