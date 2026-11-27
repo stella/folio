@@ -953,8 +953,9 @@ describe("independent table forward oracles", () => {
         fc.property(
           fc.boolean(),
           fc.boolean(),
-          fc.integer({ min: 2, max: 5 }),
-          (measured, omitted, width) => {
+          fc.integer({ min: 3, max: 6 }),
+          fc.integer({ min: 1, max: 2 }),
+          (measured, omitted, width, count) => {
             const table: Table = {
               type: "table",
               ...(measured
@@ -991,6 +992,7 @@ describe("independent table forward oracles", () => {
               type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
               ...address(targetOf(table)),
               column: 0,
+              count,
             } satisfies DocumentOp;
             const direct = applied(document, op);
             const pending = applyDocumentOp(document, {
@@ -1000,7 +1002,12 @@ describe("independent table forward oracles", () => {
                 author: "Reviewer",
                 date: "2026-11-26T00:00:00Z",
               },
-              newIds: { revision: [100_001, 100_002, 100_003, 100_004] },
+              newIds: {
+                revision: Array.from(
+                  { length: 6 },
+                  (_, index) => 100_001 + index,
+                ),
+              },
             }).unwrap();
             const tracked = tableOf(pending.document);
             const deleted = tracked.rows.at(1)?.cells.at(0)?.structuralChange;

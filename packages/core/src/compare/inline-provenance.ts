@@ -9,6 +9,7 @@ import {
   expectHyperlinkMarkAttrs,
   expectRunPropertyChangeMarkAttrs,
   expectTableCellAttrs,
+  expectTableRowAttrs,
 } from "../prosemirror/attrs";
 import { getDocumentStyleResolver } from "../prosemirror/plugins/documentStyleState";
 import {
@@ -193,6 +194,13 @@ const collectCarriers = ({
     }
     if (node.type.name === "paragraph") {
       openParagraphs.push({ node, end: position + node.nodeSize });
+    }
+    if (node.type.name === "table" && node.childCount > 0) {
+      let retainedRows = node.childCount;
+      node.forEach((row) => {
+        if (expectTableRowAttrs(row).trDel != null) retainedRows--;
+      });
+      if (retainedRows === 0) return false;
     }
     if (
       (node.type.name === "tableCell" || node.type.name === "tableHeader") &&
