@@ -30,8 +30,13 @@ const BUDGETS = {
   // +3.5 kB: a suggested deletion keeps the comment ranges it crosses, a
   // suggested join or paste keeps the records at its seam, and rejecting a
   // link insertion that cut an inline control gives one result in every order.
-  react: { minified: 3_751_500, gzip: 1_181_000, docxOps: 694_050 },
-  vue: { minified: 3_446_400, gzip: 1_077_000, docxOps: 694_000 },
+  // Room for the tracked table records now landing in a series (rows, cells,
+  // nested tables and their moves; the ops measure about 694 kB), so
+  // each one needs no edit here: docxOps to 715 kB, minified +18.5 kB, gzip
+  // +6 kB. All six come down to the measured size plus a small margin once
+  // the series has landed.
+  react: { minified: 3_770_000, gzip: 1_187_000, docxOps: 715_000 },
+  vue: { minified: 3_465_000, gzip: 1_083_000, docxOps: 715_000 },
 } as const satisfies Record<Adapter, Metrics>;
 
 const HOST_PEERS = [
