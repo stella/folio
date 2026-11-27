@@ -37,6 +37,7 @@ import {
   type ResolvedParagraph,
   type SignatureContext,
 } from "./plan";
+import { DELETED_PARAGRAPH_MARK } from "./revisions";
 import type { AtomLink, AtomRevision, StoryField } from "./story";
 import { TemplatePlanError } from "./types";
 import {
@@ -386,6 +387,24 @@ export const wSubtreeXml = (element: XmlElement, prefix: string): string => {
 
 type RunsResult = Result<string, TemplatePlanError>;
 
+/**
+ * What stands in a paragraph's runs for a deleted paragraph mark until the
+ * paragraph is written: the attributes of the mark between two of these. No
+ * run holds the character (XML text cannot).
+ */
+const MARK_SPLIT = "\u0000";
+
+/** The inserted mark of a paragraph's last piece, when it has one. */
+const insertedMarkOf = (
+  segments: readonly ExpectedSegment[],
+): AtomRevision | undefined => {
+  const last = segments.at(-1);
+  const pieces =
+    last === undefined || last.kind === "piece" ? [last?.piece] : last.pieces;
+  const revision = pieces.at(-1)?.atom?.revision;
+  return revision?.mark === true ? revision : undefined;
+};
+
 /** The attributes a kept tracked change is written with: its own author and
  *  date, and an id of the output's. */
 const revisionAttributesXml = (
@@ -427,7 +446,15 @@ const pieceRunXml = (
     return plainPieceRunXml(piece, context, linked);
   }
   const { w } = context.prefixes;
+  // An inserted paragraph mark is written with its paragraph's properties.
+  if (revision.mark === true) {
+    return Result.ok("");
+  }
   const attributes = revisionAttributesXml(revision, context);
+  // A deleted paragraph mark ends a paragraph of its own where it stands.
+  if (revision.deleted === DELETED_PARAGRAPH_MARK) {
+    return Result.ok(`${MARK_SPLIT}${attributes}${MARK_SPLIT}`);
+  }
   if (revision.kind === "del") {
     const properties = runPropertiesXml({
       prefix: w,
@@ -749,19 +776,50 @@ export const paragraphXml = (
   if (Result.isError(runs)) {
     return runs;
   }
+  // The paragraph's mark, when the source records it as inserted: its run
+  // properties stand in front of a section's.
+  const inserted = insertedMarkOf(emit.paragraph.segments);
+  if (inserted !== undefined) {
+    const mark = `<${w}:rPr><${w}:ins${revisionAttributesXml(inserted, context)}/></${w}:rPr>`;
+    properties.splice(
+      emit.sectionXml === null ? properties.length : properties.length - 1,
+      0,
+      mark,
+    );
+  }
   const pPr =
     properties.length === 0
       ? ""
       : `<${w}:pPr>${properties.join("")}</${w}:pPr>`;
-  const xml = `<${w}:p>${pPr}${runs.value}</${w}:p>`;
+  // A deleted paragraph mark inside the block: what stands in front of it
+  // is a paragraph of its own, in the block's style and in no list, whose
+  // mark is the deleted one. The block's own paragraph comes last.
+  const [last = "", ...earlier] = runs.value.split(MARK_SPLIT).toReversed();
+  const halves: string[] = [];
+  const parted = earlier.toReversed();
+  for (let at = 0; at + 1 < parted.length; at += 2) {
+    const style =
+      styleId === null
+        ? ""
+        : `<${w}:pStyle ${w}:val="${escapeXmlAttribute(styleId)}"/>`;
+    const list =
+      numbering.kind === "direct" || emit.styleBindsList
+        ? `<${w}:numPr><${w}:numId ${w}:val="${NO_LIST_NUM_ID}"/></${w}:numPr>`
+        : "";
+    halves.push(
+      `<${w}:p><${w}:pPr>${style}${list}<${w}:rPr><${w}:del${parted[at + 1] ?? ""}/></${w}:rPr></${w}:pPr>${parted[at] ?? ""}</${w}:p>`,
+    );
+  }
+  const xml = `<${w}:p>${pPr}${last}</${w}:p>`;
   if (emit.bookmark === undefined) {
-    return Result.ok(xml);
+    return Result.ok(`${halves.join("")}${xml}`);
   }
   const wrapped = wrapParagraphContentInBookmark({
     paragraphXml: xml,
     prefixes: context.prefixes,
     ...emit.bookmark,
   });
+  // The bookmark marks the block's own paragraph, which bears its number.
   return wrapped === null
     ? Result.err(
         new TemplatePlanError({
@@ -770,7 +828,7 @@ export const paragraphXml = (
           blockId: emit.paragraph.parts.at(0)?.block.block.id ?? "",
         }),
       )
-    : Result.ok(wrapped);
+    : Result.ok(`${halves.join("")}${wrapped}`);
 };
 
 const TABLE_LAYOUT_PROPERTIES = ["tblLayout", "tblLook"] as const;

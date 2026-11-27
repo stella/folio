@@ -1,3 +1,4 @@
+import { Result } from "better-result";
 import { beforeAll, describe, expect, test } from "bun:test";
 
 import { ZipArchive } from "@stll/docx-core/zip";
@@ -11,7 +12,14 @@ import type {
   TemplatePlan,
   TemplatePlanTrackedView,
 } from "../types";
-import { buildMinimalDocx, buildTemplate, p, r, style } from "./fixtures";
+import {
+  buildMinimalDocx,
+  buildTemplate,
+  p,
+  r,
+  style,
+  TEMPLATE_IDS,
+} from "./fixtures";
 import { codeOf, planFor, unwrap, verifyFor } from "./planning";
 
 // Invented text; two authors and two dates.
@@ -371,8 +379,13 @@ describe("a plan that keeps the tracked changes of its source", () => {
   test("a change that the two views read as other paragraphs is refused by name", async () => {
     const cases: [string, string][] = [
       [
-        `${marked(r("One "), "del")}${p(r("two."))}`,
-        "inserted or deleted paragraph mark",
+        // A deleted mark with no paragraph behind it in its cell.
+        `<w:tbl><w:tr><w:tc>${marked(r("Alone"), "del")}</w:tc></w:tr></w:tbl>${p(r("After."))}`,
+        "no paragraph to join",
+      ],
+      [
+        `<w:tbl><w:tr><w:trPr><w:del w:id="8" ${BY}/></w:trPr><w:tc>${p(r("Row"))}</w:tc></w:tr></w:tbl>${p(r("After."))}`,
+        "table row",
       ],
       [
         p(
@@ -398,6 +411,260 @@ describe("a plan that keeps the tracked changes of its source", () => {
       const asked = await analyzeDocxBlocks(source, { trackedChanges: "keep" });
       expect(asked.isErr() && asked.error.code).toBe("tracked-changes");
     }
+  });
+
+  test("a deleted paragraph mark is carried: one block of the plan, the paragraphs of the source again in the output", async () => {
+    const source = await buildMinimalDocx(
+      `${marked(r("One "), "del", style("HouseTitle"))}${p(r("two."))}${p(r("Three."))}`,
+    );
+    const plan = await keeping(source, body);
+    // The plan is the accepted view's: the joined paragraph is one block.
+    expect(plan.body).toHaveLength(2);
+    const { docx, report } = unwrap(
+      await applyTemplatePlan({ source, template, plan }),
+    );
+    const document = await partOf(docx, "word/document.xml");
+
+    expect(report.ok).toBe(true);
+    // In front of the mark a paragraph of its own, in the block's style,
+    // whose mark is the deleted one; then the block's own paragraph.
+    expect(document).toMatch(
+      /<w:p><w:pPr><w:pStyle w:val="HouseBody"\/><w:rPr><w:del w:id="\d+" w:author="First Author" w:date="2026-01-05T10:00:00Z"\/><\/w:rPr><\/w:pPr><w:r><w:t xml:space="preserve">One <\/w:t><\/w:r><\/w:p><w:p><w:pPr><w:pStyle w:val="HouseBody"\/><\/w:pPr><w:r><w:t xml:space="preserve">two\.<\/w:t><\/w:r><\/w:p>/u,
+    );
+    const textsOf = async (view: TemplatePlanTrackedView) =>
+      unwrap(await analyzeDocxBlocks(docx, { trackedChanges: view }))
+        .blocks.map((block) => block.text)
+        .filter((line) => /One|two|Three/u.test(line));
+    expect(await textsOf("accept")).toEqual(["One two.", "Three."]);
+    expect(await textsOf("reject")).toEqual(["One ", "two.", "Three."]);
+    // Verification misses the mark when it is gone, and its author.
+    for (const xml of [
+      document.replace(/<w:rPr><w:del [^>]*\/><\/w:rPr>/u, ""),
+      document.replace(
+        /(<w:rPr><w:del [^>]*w:author=")First Author/u,
+        "$1Someone",
+      ),
+    ]) {
+      expect(xml).not.toBe(document);
+      const zip = await ZipArchive.read(docx);
+      zip.set("word/document.xml", xml);
+      expect(
+        (
+          await verifyFor({
+            source,
+            template,
+            output: await zip.generate(),
+            plan,
+          })
+        ).ok,
+      ).toBe(false);
+    }
+  });
+
+  test("an inserted paragraph mark is carried with its paragraph, and a block that ends in one joins no other", async () => {
+    const source = await buildMinimalDocx(
+      `${marked(r("One."), "ins")}${p(r("Two."))}`,
+    );
+    const plan = await keeping(source, body);
+    const { docx, report } = unwrap(
+      await applyTemplatePlan({ source, template, plan }),
+    );
+    const document = await partOf(docx, "word/document.xml");
+
+    expect(report.ok).toBe(true);
+    expect(document).toMatch(
+      /<w:pPr><w:pStyle w:val="HouseBody"\/><w:rPr><w:ins w:id="\d+" w:author="First Author" w:date="2026-01-05T10:00:00Z"\/><\/w:rPr><\/w:pPr><w:r><w:t xml:space="preserve">One\.<\/w:t>/u,
+    );
+    const textsOf = async (view: TemplatePlanTrackedView) =>
+      unwrap(await analyzeDocxBlocks(docx, { trackedChanges: view }))
+        .blocks.map((block) => block.text)
+        .filter((line) => /One|Two/u.test(line));
+    expect(await textsOf("accept")).toEqual(["One.", "Two."]);
+    expect(await textsOf("reject")).toEqual(["One.Two."]);
+    const zip = await ZipArchive.read(docx);
+    zip.set(
+      "word/document.xml",
+      document.replace(/<w:rPr><w:ins [^>]*\/><\/w:rPr>/u, ""),
+    );
+    expect(
+      (
+        await verifyFor({
+          source,
+          template,
+          output: await zip.generate(),
+          plan,
+        })
+      ).ok,
+    ).toBe(false);
+    // Joined to the next block, the mark would stand nowhere.
+    const merged = await keeping(source, ([first, second]) =>
+      first === undefined || second === undefined
+        ? []
+        : [
+            {
+              kind: "source",
+              blockId: first.id,
+              hash: first.hash,
+              styleId: "HouseBody",
+              mergeNext: "space",
+            },
+            { kind: "source", blockId: second.id, hash: second.hash },
+          ],
+    );
+    expect(
+      codeOf(await applyTemplatePlan({ source, template, plan: merged })),
+    ).toBe("merge-invalid");
+  });
+
+  test("a paragraph with a tracked mark can be the target of a reference", async () => {
+    // The first target ends in an inserted mark; the second is joined to
+    // the paragraph in front of it over a deleted one.
+    const source = await buildMinimalDocx(
+      [
+        marked(r("First heading"), "ins"),
+        marked(r("Gone "), "del"),
+        p(r("second heading")),
+        p(r("See 1 and 2 above.")),
+      ].join(""),
+    );
+    const plan = await keeping(source, (blocks) =>
+      blocks.map(({ id, hash }, index) => ({
+        kind: "source",
+        blockId: id,
+        hash,
+        numbering: index < 2 ? { numId: 1, ilvl: 0 } : null,
+      })),
+    );
+    const text = "See 1 and 2 above.";
+    const cite = (number: string, targetBlockId: string) => ({
+      blockId: "p2",
+      start: text.indexOf(number),
+      end: text.indexOf(number) + 1,
+      targetBlockId,
+      instruction: "\\n \\h",
+      expectedText: number,
+    });
+    const { docx, report } = unwrap(
+      await applyTemplatePlan({
+        source,
+        template,
+        plan: {
+          ...plan,
+          numberingPatches: [
+            { abstractNumId: 0, ilvl: 0, numFmt: "decimal", lvlText: "%1" },
+          ],
+          references: [cite("1", "p0"), cite("2", "p1")],
+        },
+      }),
+    );
+    const document = await partOf(docx, "word/document.xml");
+
+    expect(report.ok).toBe(true);
+    expect(report.references.results.map(({ status }) => status)).toEqual([
+      "ok",
+      "ok",
+    ]);
+    // The bookmark of the joined target holds its own paragraph: the one
+    // that carries the number, behind the paragraph the deleted mark ended.
+    expect(document).toMatch(
+      /Gone <\/w:t><\/w:r><\/w:p><w:p>(?:<w:pPr>.*?<\/w:pPr>)?<w:bookmarkStart [^>]*\/><w:r><w:t xml:space="preserve">second heading/u,
+    );
+  });
+
+  test("an inserted paragraph mark stops a chain of joined blocks wherever it stands, and a marked block fills no slot", async () => {
+    const source = await buildMinimalDocx(
+      [
+        p(r("One.")),
+        marked(r("Two."), "ins"),
+        p(r("Three.")),
+        marked(r("Gone "), "del"),
+        p(r("four.")),
+      ].join(""),
+    );
+    const chain = (joined: number) =>
+      keeping(source, (blocks) =>
+        blocks.map(({ id, hash }, index) => ({
+          kind: "source",
+          blockId: id,
+          hash,
+          ...(index === 0 ? { styleId: "HouseBody" } : {}),
+          ...(index < joined ? { mergeNext: "space" as const } : {}),
+        })),
+      );
+    // The marked block in the middle of a chain of three.
+    const middle = await applyTemplatePlan({
+      source,
+      template,
+      plan: await chain(2),
+    });
+    expect(codeOf(middle)).toBe("merge-invalid");
+    expect(Result.isError(middle) && middle.error.blockId).toBe("p1");
+    // As the last of a chain it keeps its mark: the joined paragraph's.
+    const last = unwrap(
+      await applyTemplatePlan({ source, template, plan: await chain(1) }),
+    );
+    expect(last.report.ok).toBe(true);
+    expect(await partOf(last.docx, "word/document.xml")).toMatch(
+      /<w:pStyle w:val="HouseBody"\/><w:rPr><w:ins w:id="\d+" w:author="First Author" [^>]*\/><\/w:rPr><\/w:pPr><w:r><w:t[^>]*>One\./u,
+    );
+    // A slot is one paragraph of the template.
+    for (const blockId of ["p1", "p3"]) {
+      const slotted = await applyTemplatePlan({
+        source,
+        template,
+        plan: await keeping(source, (blocks) => [
+          {
+            kind: "slot",
+            templateBlockId: TEMPLATE_IDS.party,
+            sourceBlockIds: [blockId],
+          },
+          ...blocks
+            .filter(({ id }) => id !== blockId)
+            .map(({ id, hash }) => ({
+              kind: "source" as const,
+              blockId: id,
+              hash,
+            })),
+        ]),
+      });
+      expect(codeOf(slotted)).toBe("merge-invalid");
+      expect(Result.isError(slotted) && slotted.error.blockId).toBe(blockId);
+    }
+  });
+
+  test("a deleted mark written as an element with an end tag, or under a prefix of its own, is carried all the same", async () => {
+    const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    for (const mark of [
+      `<w:del w:id="9" ${BY}></w:del>`,
+      `<x:del xmlns:x="${W}" x:id="9" x:author="First Author" x:date="2026-01-05T10:00:00Z"/>`,
+    ]) {
+      const source = await buildMinimalDocx(
+        `${p(r("One "), `<w:rPr>${mark}</w:rPr>`)}${p(r("two."))}`,
+      );
+      const plan = await keeping(source, body);
+      expect(plan.body).toHaveLength(1);
+      const { docx, report } = unwrap(
+        await applyTemplatePlan({ source, template, plan }),
+      );
+      expect(report.ok).toBe(true);
+      // Rejected, the two paragraphs stand apart again.
+      const rejected = unwrap(
+        await analyzeDocxBlocks(docx, { trackedChanges: "reject" }),
+      );
+      expect(
+        rejected.blocks
+          .map(({ text }) => text)
+          .filter((line) => /One|two/u.test(line)),
+      ).toEqual(["One ", "two."]);
+    }
+  });
+
+  test("a paragraph whose own tag declares a namespace keeps its mark, and the source is refused by name", async () => {
+    const source = await buildMinimalDocx(
+      `<w:p xmlns:x="urn:example:own"><w:pPr><w:rPr><w:del w:id="9" ${BY}/></w:rPr></w:pPr>${r("One ")}</w:p>${p(r("two."))}`,
+    );
+    const kept = await analyzeDocxBlocks(source, { trackedChanges: "keep" });
+    expect(Result.isError(kept) && kept.error.code).toBe("tracked-changes");
   });
 
   test("a label that holds a change is not stripped", async () => {

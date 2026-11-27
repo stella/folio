@@ -20,7 +20,11 @@ import {
   readPartText,
   sha256Hex,
 } from "./package";
-import { keptRevisionObstacles, resolveTrackedChanges } from "./revisions";
+import {
+  keptRevisionObstacles,
+  resolveTrackedChanges,
+  withDeletedMarksJoined,
+} from "./revisions";
 import {
   createStoryState,
   endStory,
@@ -989,12 +993,36 @@ export const viewOf = (
 
 /**
  * A source read with its tracked changes kept: the blocks are those of the
- * accepted view, and the atoms of an insertion or a deletion carry its tag.
- * Only inline changes are carried so far. A change of another kind would
- * make the paragraphs of the two views differ (a paragraph mark, a table
- * row or cell, a move) or cannot be tagged, and the source is refused with
- * what stands in the way, for the caller to offer one view instead.
+ * accepted view, and the atoms of an insertion or a deletion carry its tag,
+ * a paragraph mark's among them. A change that is not carried yet (a table
+ * row or cell, a move) or cannot be tagged is refused with what stands in
+ * the way, for the caller to offer one view instead.
  */
+/**
+ * A document read with its tracked changes kept, source or output alike:
+ * deleted paragraph marks carried as deletions inside the joined paragraph,
+ * inline insertions and deletions as tagged atoms. The manifest keeps the
+ * hash of the bytes that were given.
+ */
+export const analyzeKeptForm = async (
+  bytes: Uint8Array,
+): Promise<Result<AnalyzedDocument, TemplatePlanError>> => {
+  const joined = await withDeletedMarksJoined(bytes);
+  if (Result.isError(joined)) {
+    return joined;
+  }
+  const analyzed = await analyzeDocument(joined.value, {
+    keepsRevisions: true,
+  });
+  if (Result.isError(analyzed)) {
+    return analyzed;
+  }
+  return Result.ok({
+    ...analyzed.value,
+    manifest: { ...analyzed.value.manifest, sha256: sha256Hex(bytes) },
+  });
+};
+
 const analyzeKeeping = async (
   bytes: Uint8Array,
 ): Promise<Result<AnalyzedDocument, TemplatePlanError>> => {
@@ -1002,7 +1030,7 @@ const analyzeKeeping = async (
   if (Result.isError(obstacles)) {
     return obstacles;
   }
-  const analyzed = await analyzeDocument(bytes, { keepsRevisions: true });
+  const analyzed = await analyzeKeptForm(bytes);
   if (Result.isError(analyzed)) {
     return analyzed;
   }
@@ -1011,14 +1039,15 @@ const analyzeKeeping = async (
     story.state.untaggedRevisions +
     footnotes.state.untaggedRevisions +
     endnotes.state.untaggedRevisions;
-  const { paragraphMarks, tableRows, tableCells, moves } =
-    obstacles.value.obstacles;
+  const { tableRows, tableCells, moves } = obstacles.value.obstacles;
   const found = [
-    [paragraphMarks, "inserted or deleted paragraph mark(s)"],
     [tableRows, "inserted or deleted table row(s)"],
     [tableCells, "table cell change(s)"],
     [moves, "move(s)"],
-    [untagged, "change(s) inside another change, a drawing or an equation"],
+    [
+      untagged,
+      "change(s) inside another change, a drawing or an equation, or deleted paragraph mark(s) with no paragraph to join",
+    ],
   ].flatMap(([count, what]) =>
     typeof count === "number" && count > 0 ? [`${String(count)} ${what}`] : [],
   );

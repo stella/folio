@@ -66,13 +66,17 @@ export type InlineAtom = {
  * reports it. An inserted atom is content like any other with this tag. A
  * deleted one is a text atom without text: it takes no place in the text
  * the document reads with its changes accepted, and holds what was deleted
- * in `deleted` (a tab as `\t`, a line break as `\n`).
+ * in `deleted` (a tab as `\t`, a line break as `\n`, a paragraph mark as
+ * the private character a keeping reading carries it as). An inserted
+ * paragraph mark is a text atom without text at the end of its paragraph,
+ * tagged `mark`.
  */
 export type AtomRevision = {
   kind: "ins" | "del";
   author: string;
   date: string | null;
   deleted?: string;
+  mark?: true;
 };
 
 /**
@@ -697,6 +701,35 @@ const readInline = (
   }
 };
 
+/**
+ * The paragraph mark's own revision, in a reading that keeps them. An
+ * inserted mark is an atom at the paragraph's end. A deleted one was joined
+ * to the next paragraph before the reading; one still here had none to join.
+ */
+const readTrackedMark = (
+  mark: XmlElement | null,
+  walk: ParagraphWalk,
+): void => {
+  const inserted = wChild(mark, "ins");
+  if (wChild(mark, "del") !== null) {
+    walk.state.untaggedRevisions += 1;
+  } else if (inserted !== null) {
+    pushAtom(walk, {
+      kind: "text",
+      text: "",
+      runProperties: null,
+      link: null,
+      element: null,
+      revision: {
+        kind: "ins",
+        author: wAttr(inserted, "author") ?? "",
+        date: wAttr(inserted, "date"),
+        mark: true,
+      },
+    });
+  }
+};
+
 /** Read one `w:p`, advancing the story's field and revision state. */
 export const readParagraph = (
   element: XmlElement,
@@ -753,6 +786,9 @@ export const readParagraph = (
     }
   }
   readInline(element, walk, { link: null });
+  if (state.keepsRevisions) {
+    readTrackedMark(mark, walk);
+  }
   read.text = read.atoms.map(({ text }) => text).join("");
   return read;
 };

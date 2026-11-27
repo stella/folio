@@ -28,6 +28,7 @@ import {
 import { type ParagraphLabel, styleNumbering } from "./labels";
 import { PLAN_HIGHLIGHT_COLORS, planShapeIssue } from "./planShape";
 import type { StoryOrigin } from "./resources";
+import { DELETED_PARAGRAPH_MARK } from "./revisions";
 import type {
   AtomKind,
   AtomLink,
@@ -1180,6 +1181,32 @@ export const resolvePlan = (
       if (block.read === null) {
         return invalid(
           `Block ${id} is a table and cannot be joined or slotted.`,
+        );
+      }
+      // A tracked paragraph mark is the mark of a paragraph of its own. A
+      // block that ends in an inserted one joins no block after it, wherever
+      // it stands in a chain: joined, the mark would stand nowhere. And a
+      // slot is one paragraph of the template, which a block that holds a
+      // tracked mark of either kind does not fit.
+      const endsInInsertedMark = block.read.atoms.some(
+        ({ revision }) => revision?.mark === true,
+      );
+      const holdsDeletedMark = block.read.atoms.some(
+        ({ revision }) => revision?.deleted === DELETED_PARAGRAPH_MARK,
+      );
+      if (
+        (endsInInsertedMark && index < parts.length - 1) ||
+        (placement === "slot" && (endsInInsertedMark || holdsDeletedMark))
+      ) {
+        return Result.err(
+          refuse({
+            code: "merge-invalid",
+            message:
+              placement === "slot"
+                ? `Block ${id} holds a tracked paragraph mark and cannot fill a paragraph of the template.`
+                : `Block ${id} ends in a tracked paragraph mark and cannot join the next block.`,
+            blockId: id,
+          }),
         );
       }
       const placedOnce = place(block);

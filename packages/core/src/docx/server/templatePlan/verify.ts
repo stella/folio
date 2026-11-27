@@ -30,6 +30,7 @@ import {
   type AnalyzedNotes,
   analyzeDocument,
   type AnalyzedStory,
+  analyzeKeptForm,
   analyzeSource,
   viewOf,
 } from "./blocks";
@@ -78,6 +79,7 @@ import {
   type StoryOrigin,
   type StoryResources,
 } from "./resources";
+import { DELETED_PARAGRAPH_MARK } from "./revisions";
 import {
   type AtomKind,
   type AtomLink,
@@ -167,17 +169,21 @@ type ContentUnit = {
 /**
  * A kept tracked change as marks of a content: an insertion marks every
  * unit of its text (or its place, for content without text), a deletion its
- * place and what was deleted; both with their author and date. Two contents
+ * place and what was deleted, a paragraph mark its place; each with its
+ * author and date. Two contents
  * that read the same then show the same changes by the same hands.
  */
 const revisionMarks = (
-  { kind, author, date, deleted }: AtomRevision,
+  { kind, author, date, deleted, mark }: AtomRevision,
   at: number,
   length: number,
 ): string[] => {
   const by = `${author}:${date ?? ""}`;
   if (kind === "del") {
     return [`${at}:del:${by}:${deleted ?? ""}`];
+  }
+  if (mark === true) {
+    return [`${at}:mark:${by}`];
   }
   return Array.from(
     { length: Math.max(length, 1) },
@@ -565,7 +571,12 @@ const sameStated = (before: StatedProperties, after: StatedProperties) =>
   before.numId === after.numId &&
   before.ilvl === after.ilvl;
 
-/** Whether a bookmark of `read` holds all of the paragraph's content. */
+/**
+ * Whether a bookmark of `read` holds all of the paragraph's content. In a
+ * reading that keeps tracked changes the paragraph's own content begins
+ * behind the last paragraph mark deleted in it (what stands in front is the
+ * paragraph the mark ended) and ends in front of a mark somebody inserted.
+ */
 const bookmarkEncloses = (
   read: ParagraphRead | null,
   name: string,
@@ -575,12 +586,16 @@ const bookmarkEncloses = (
     start === undefined
       ? undefined
       : read?.bookmarkEnds.find(({ id }) => id === start.id);
+  if (read === null || start === undefined || end === undefined) {
+    return false;
+  }
+  const own =
+    read.atoms.findLastIndex(
+      ({ revision }) => revision?.deleted === DELETED_PARAGRAPH_MARK,
+    ) + 1;
+  const marked = read.atoms.at(-1)?.revision?.mark === true ? 1 : 0;
   return (
-    read !== null &&
-    start !== undefined &&
-    end !== undefined &&
-    start.atomIndex === 0 &&
-    end.atomIndex === read.atoms.length
+    start.atomIndex === own && end.atomIndex === read.atoms.length - marked
   );
 };
 
@@ -618,7 +633,9 @@ export const reportTemplatePlanOutput = async ({
 }: ReportArgs): Promise<Result<TemplatePlanReport, TemplatePlanError>> => {
   // An output that keeps tracked changes is read the way its source was.
   const keepsRevisions = source.manifest.trackedChangesKept !== undefined;
-  const analyzedOutput = await analyzeDocument(output, { keepsRevisions });
+  const analyzedOutput = keepsRevisions
+    ? await analyzeKeptForm(output)
+    : await analyzeDocument(output);
   if (Result.isError(analyzedOutput)) {
     return analyzedOutput;
   }

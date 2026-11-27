@@ -26,6 +26,7 @@ import { TemplatePlanError } from "./types";
 import type { DocxTrackedChanges, TemplatePlanTrackedView } from "./types";
 import {
   elementChildren,
+  escapeXmlAttribute,
   innerRangeOf,
   rangeOf,
   readRawPart,
@@ -464,6 +465,199 @@ const summaryOf = (tally: Tally): DocxTrackedChanges => ({
   last: tally.last,
 });
 
+/**
+ * The text a deleted paragraph mark is carried as, inside a deletion of
+ * its own, by a reading that keeps tracked changes: a private-use character
+ * no document's text holds.
+ */
+export const DELETED_PARAGRAPH_MARK = "\uE000";
+
+const deletedMarkOf = (paragraph: XmlElement): XmlElement | null =>
+  wChild(wChild(wChild(paragraph, "pPr"), "rPr"), "del");
+
+/** Whether `xml` may hold a paragraph mark recorded as deleted: an empty
+ *  deletion, in either spelling of an empty element. */
+const mayHoldDeletedMark = (xml: string): boolean =>
+  /<[A-Za-z0-9]+:del\b[^>]*(?:\/>|><\/)/u.test(xml);
+
+/** Whether the opening tag of an element declares a namespace of its own. */
+const declaresNamespace = (source: string): boolean =>
+  /^<[^>]*\sxmlns[:=]/u.test(source);
+
+/**
+ * The deletion that stands for a deleted paragraph mark, by who deleted it.
+ * It is written with the prefix of the paragraph it came from, which is
+ * bound wherever that paragraph's content may stand.
+ */
+const markDeletionXml = (paragraph: XmlElement, mark: XmlElement): string => {
+  const prefix = (paragraph.name ?? "w:p").split(":").at(0) ?? "w";
+  const attribute = (name: string): string => {
+    const value = wAttr(mark, name);
+    return value === null
+      ? ""
+      : ` ${prefix}:${name}="${escapeXmlAttribute(value)}"`;
+  };
+  return `<${prefix}:del ${prefix}:id="0"${attribute("author")}${attribute("date")}><${prefix}:r><${prefix}:delText>${DELETED_PARAGRAPH_MARK}</${prefix}:delText></${prefix}:r></${prefix}:del>`;
+};
+
+type JoinWalk = { xml: string; sound: boolean };
+
+/**
+ * The children of `container` with every paragraph whose mark is deleted
+ * joined to the paragraph after it: its content, then a deletion that
+ * stands for the mark, then that paragraph's own content under that
+ * paragraph's properties. This is what the document reads with its changes
+ * accepted, with the deleted mark still on record. A paragraph that has no
+ * paragraph after it in its container keeps its mark, and so does one whose
+ * own tag declares a namespace: its content would lose the binding in
+ * another paragraph.
+ */
+const joinChildren = (walk: JoinWalk, container: XmlElement): string => {
+  const inner = innerRangeOf(walk.xml, container);
+  if (inner === null) {
+    return "";
+  }
+  let out = "";
+  let cursor = inner.start;
+  /** A paragraph whose mark is deleted, waiting for the next paragraph. */
+  let held: { xml: string; content: string } | null = null;
+  const release = (): void => {
+    if (held !== null) {
+      out += held.xml;
+      held = null;
+    }
+  };
+  for (const child of elementChildren(container)) {
+    const range = rangeOf(child);
+    if (range === null) {
+      walk.sound = false;
+      return "";
+    }
+    const between = walk.xml.slice(cursor, range.start);
+    cursor = range.end;
+    const source = walk.xml.slice(range.start, range.end);
+    if (wName(child) !== "p") {
+      release();
+      out += between + joinElement(walk, child, source);
+      continue;
+    }
+    const carried: string = held === null ? "" : held.content;
+    const joined = withLeadingContent(source, carried);
+    const mark = declaresNamespace(source) ? null : deletedMarkOf(child);
+    if (mark === null) {
+      out += between + joined;
+      held = null;
+      continue;
+    }
+    // The white space in front of a paragraph that is handed on goes with it.
+    held = {
+      xml: between + joined,
+      content: contentOf(joined) + markDeletionXml(child, mark),
+    };
+  }
+  release();
+  return out + walk.xml.slice(cursor, inner.end);
+};
+
+const joinElement = (
+  walk: JoinWalk,
+  element: XmlElement,
+  source: string,
+): string => {
+  const outer = rangeOf(element);
+  const inner = innerRangeOf(walk.xml, element);
+  if (!mayHoldDeletedMark(source) || outer === null || inner === null) {
+    return source;
+  }
+  return `${walk.xml.slice(outer.start, inner.start)}${joinChildren(walk, element)}${walk.xml.slice(inner.end, outer.end)}`;
+};
+
+/** One part with its deleted paragraph marks carried as deletions; null
+ *  when it cannot be read whole. */
+export const joinDeletedMarksInPart = (
+  path: string,
+  xml: string,
+): string | null => {
+  if (!mayHoldDeletedMark(xml)) {
+    return xml;
+  }
+  const part = readRawPart(path, xml);
+  const outer = part === null ? null : rangeOf(part.root);
+  if (part === null || outer === null) {
+    return null;
+  }
+  const walk: JoinWalk = { xml, sound: true };
+  const joined = joinElement(
+    walk,
+    part.root,
+    xml.slice(outer.start, outer.end),
+  );
+  return walk.sound ? spliceXml(xml, [{ ...outer, newXml: joined }]) : null;
+};
+
+/**
+ * A package in the form a reading that keeps tracked changes takes it in:
+ * the main document and the notes with their deleted paragraph marks
+ * carried as deletions. The bytes are the document's own when it has none.
+ */
+export const withDeletedMarksJoined = async (
+  docx: Uint8Array,
+): Promise<Result<Uint8Array, TemplatePlanError>> => {
+  const loaded = await loadPackage(docx);
+  if (loaded.isErr()) {
+    return Result.err(loaded.error);
+  }
+  const pkg = loaded.value;
+  const paths = [
+    pkg.documentPath,
+    pkg.partPath("footnotes"),
+    pkg.partPath("endnotes"),
+  ].filter((path): path is string => path !== null);
+  const rewritten = new Map<string, string>();
+  for (const path of paths) {
+    const xml =
+      path === pkg.documentPath ? pkg.documentXml : await pkg.readText(path);
+    if (xml === null) {
+      continue;
+    }
+    const joined = joinDeletedMarksInPart(path, xml);
+    if (joined === null) {
+      return Result.err(
+        new TemplatePlanError({
+          code: "xml-unreadable",
+          message: `The deleted paragraph marks of ${path} could not be read.`,
+        }),
+      );
+    }
+    if (joined !== xml) {
+      rewritten.set(path, joined);
+    }
+  }
+  if (rewritten.size === 0) {
+    return Result.ok(docx);
+  }
+  return await Result.tryPromise({
+    try: async () => {
+      const zip = await ZipArchive.read(docx);
+      for (const [path, content] of rewritten) {
+        const current = zip.entry(path);
+        zip.set(
+          path,
+          content,
+          current === undefined ? {} : { modified: current.modified },
+        );
+      }
+      return await zip.generate();
+    },
+    catch: (cause) =>
+      new TemplatePlanError({
+        code: "archive-unreadable",
+        message: "The package could not be rewritten with its marks joined.",
+        cause,
+      }),
+  });
+};
+
 /** Changes a plan that keeps tracked changes cannot carry yet, counted. */
 export type KeptRevisionObstacles = {
   paragraphMarks: number;
@@ -486,7 +680,9 @@ const countObstacles = (
     const name = wName(element);
     if (name !== null && REVISION_WRAPPERS.has(name)) {
       if (parent === "rPr" && grandparent === "pPr") {
+        // An inserted or deleted mark is kept; a moved one is a move.
         into.paragraphMarks += 1;
+        into.moves += name === "moveFrom" || name === "moveTo" ? 1 : 0;
       } else if (parent === "trPr") {
         into.tableRows += 1;
       } else if (name === "moveFrom" || name === "moveTo") {
