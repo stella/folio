@@ -113,6 +113,18 @@ test("a session never writes the document it takes, through its seed and its edi
   ).toBeUndefined();
 });
 
+test("a host that transfers the package's bytes away leaves the session's own", async () => {
+  const handed = await opened(false);
+  const session = createCanonicalSessionTaking(handed).unwrap();
+  const bytes = handed.originalBuffer ?? panic("The package keeps its bytes.");
+  const length = bytes.byteLength;
+  structuredClone(bytes, { transfer: [bytes] });
+  expect(bytes.byteLength).toBe(0);
+  const kept = readModel(session.document).originalBuffer;
+  expect(kept?.byteLength).toBe(length);
+  expect(() => structuredClone(readModel(session.document))).not.toThrow();
+});
+
 test("an editor's own open hands its document to the first session only", async () => {
   const owned = await opened(true);
   expect(takeOwnedDocument(owned)).toBe(true);

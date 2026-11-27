@@ -82,11 +82,14 @@ import {
 } from "../docx/commentAnchorIndex";
 import {
   copyHeaderFooterBaselineHandles,
+  copyHeaderFooterPackageBaselines,
   getDocumentSourceBaseline,
 } from "../docx/headerFooterVerbatim";
 import { ListNormalizationCache } from "../docx/listModelNormalization";
+import { copyNormalizedSourceParts } from "../docx/normalizedSourceParts";
 import {
   cloneDocumentWithParagraphPropertySources,
+  copyDocumentParagraphPropertySourceContract,
   getProseParagraphPropertySourceToken,
   markParagraphPropertySourceTransfers,
 } from "../docx/paragraphPropertySource";
@@ -4701,15 +4704,33 @@ export const createCanonicalSession = (
 
 /**
  * {@link createCanonicalSession} on a document the caller hands over: no one
- * else writes it again, so the session reads it without a copy. The session
- * never writes a document it reads.
+ * else writes its model again, so the session reads the model without a copy,
+ * and never writes a document it reads. The package's bytes are the one part
+ * a host may still hold and hand on, or transfer away, so the session keeps a
+ * copy of them, with what the package registries keep for them.
  */
 export const createCanonicalSessionTaking = (
   document: ReadonlyDocument,
   styles?: DeepReadonly<StyleDefinitions> | null,
   options: CanonicalSessionOptions = {},
 ): Result<CanonicalSession, CanonicalSessionError> =>
-  seedCanonicalSession(readModel(document), styles, options);
+  seedCanonicalSession(
+    withOwnPackageBytes(readModel(document)),
+    styles,
+    options,
+  );
+
+const withOwnPackageBytes = (document: Document): Document => {
+  if (document.originalBuffer === undefined) return document;
+  const owned: Document = {
+    ...document,
+    originalBuffer: document.originalBuffer.slice(0),
+  };
+  copyDocumentParagraphPropertySourceContract(owned, document);
+  copyHeaderFooterPackageBaselines(owned, document);
+  copyNormalizedSourceParts(owned, document);
+  return owned;
+};
 
 const seedCanonicalSession = (
   owned: Document,
