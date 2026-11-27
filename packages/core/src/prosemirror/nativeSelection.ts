@@ -1,6 +1,9 @@
 import { Plugin, TextSelection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
+import { moveToLineBoundary } from "./commands/lineBoundary";
+import { executeEditorCommand } from "./executeEditorCommand";
+
 /** Take the caret the browser shows into the editor state before input. */
 export const adoptNativeSelection = (view: EditorView): void => {
   // Keys the browser handles itself (End, Home, the arrows, the page keys) move
@@ -50,6 +53,13 @@ export const isCompositionKeyDown = (event: KeyboardEvent): boolean =>
 /** Keys whose caret move the browser makes itself. */
 const NAVIGATION_KEY = /^(?:Arrow|Home$|End$|Page)/u;
 
+/** Home or End alone or with Shift; with Ctrl, Cmd or Alt they mean more. */
+const isLineEdgeKey = (event: KeyboardEvent): boolean =>
+  (event.key === "Home" || event.key === "End") &&
+  !event.ctrlKey &&
+  !event.metaKey &&
+  !event.altKey;
+
 /**
  * Takes the caret a navigation key moved into the editor state when the
  * browser reports the move, before ProseMirror reads it.
@@ -62,6 +72,10 @@ const NAVIGATION_KEY = /^(?:Arrow|Home$|End$|Page)/u;
  * undone. A capturing listener on the window hears `selectionchange` before
  * the editor's own listener on the document, and the editor then reads the
  * caret it already holds.
+ *
+ * Home and End (with Shift, extending) go to the rendered line's edges on
+ * every platform, set in the state as the key is handled: on some platforms
+ * the browser's own Home and End scroll and leave the caret where it was.
  */
 export const createNativeNavigationPlugin = (): Plugin =>
   new Plugin({
@@ -72,6 +86,14 @@ export const createNativeNavigationPlugin = (): Plugin =>
       const keydown = (event: KeyboardEvent) => {
         navigating =
           !isCompositionKeyDown(event) && NAVIGATION_KEY.test(event.key);
+        // A key the editor's own handlers took is theirs.
+        if (!navigating || event.defaultPrevented || !isLineEdgeKey(event))
+          return;
+        const move = moveToLineBoundary(
+          event.key === "Home" ? "backward" : "forward",
+          event.shiftKey,
+        );
+        if (executeEditorCommand(view, move)) event.preventDefault();
       };
       const settle = () => {
         navigating = false;
