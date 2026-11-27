@@ -1915,7 +1915,7 @@ describe("italic a style gives its text", () => {
       await applyFor({
         source: await source(),
         template,
-        items: styled(TEMPLATE_IDS.body),
+        items: styled("HouseBody"),
       }),
     );
     expect(applied.report.ok).toBe(true);
