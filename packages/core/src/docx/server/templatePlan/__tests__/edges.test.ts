@@ -177,6 +177,75 @@ describe("applyTemplatePlan edge content", () => {
     expect(document).toContain(" AUTONUMLGL  \\* Arabic \\e ");
   });
 
+  test("a paragraph cites its own number through a field", async () => {
+    const template = await buildTemplate();
+    const source = await buildMinimalDocx(
+      p(r("Within this Section 1 the fee applies.")),
+    );
+    const self = (instruction: string, expectedText: string) =>
+      planFor({
+        source,
+        template,
+        items: ([first]) =>
+          first === undefined
+            ? []
+            : [
+                {
+                  kind: "source",
+                  blockId: first.id,
+                  hash: first.hash,
+                  styleId: "HouseBody",
+                  numbering: { numId: 1, ilvl: 0 },
+                },
+              ],
+        extra: {
+          references: [
+            {
+              blockId: "p0",
+              start: 20,
+              end: 21,
+              targetBlockId: "p0",
+              instruction,
+              expectedText,
+            },
+          ],
+        },
+      });
+    const { docx, report } = unwrap(
+      await applyTemplatePlan({
+        source,
+        template,
+        plan: await self("\\n \\t \\h", "1"),
+      }),
+    );
+    const document = (await readPart(docx, "word/document.xml")) ?? "";
+    const [result] = report.references.results;
+
+    // The paragraph's bookmark holds the field that shows its number.
+    expect(report.ok).toBe(true);
+    expect(result).toMatchObject({
+      status: "ok",
+      cachedText: "1",
+      predictedText: "1",
+    });
+    expect(report.references.predictionMismatch).toBe(0);
+    expect(document).toMatch(
+      new RegExp(
+        `<w:bookmarkStart w:id="\\d+" w:name="${result?.bookmark ?? ""}"/>.*REF ${result?.bookmark ?? ""} \\\\n \\\\t \\\\h .*<w:bookmarkEnd`,
+        "u",
+      ),
+    );
+    // A field that shows the paragraph's text would show itself.
+    const looped = await applyTemplatePlan({
+      source,
+      template,
+      plan: await self("\\h", "1"),
+    });
+    expect(looped.isErr() ? looped.error.code : null).toBe(
+      "reference-span-invalid",
+    );
+  });
+
   test("strips a typed number whose parts stand apart", async () => {
     const template = await buildTemplate();
     const source = await buildMinimalDocx(
