@@ -207,6 +207,29 @@ export const openCanonicalDocx = async (
   return Result.ok({ document, mintedParaIds: prepared.value.mintedParaIds });
 };
 
+/** Documents an editor opened for itself, which no one else holds to write. */
+const ownedDocuments = new WeakSet<object>();
+
+/**
+ * {@link openCanonicalDocx} for an editor that keeps the document it opens to
+ * itself, so the first session it seeds may take the document without a copy.
+ */
+export const openOwnedCanonicalDocx = async (
+  input: DocxInput,
+  options: ParseOptions = {},
+): Promise<Result<CanonicalDocx, CanonicalDocxInputFailure>> => {
+  const opened = await openCanonicalDocx(input, options);
+  if (opened.isOk()) ownedDocuments.add(opened.value.document);
+  return opened;
+};
+
+/**
+ * Whether `document` is one an editor opened for itself and no session has
+ * taken yet; asking takes it, so only the first session shares it.
+ */
+export const takeOwnedDocument = (document: object): boolean =>
+  ownedDocuments.delete(document);
+
 /**
  * Whether each story paragraph holds a paraId and no two paragraphs hold the
  * same one: the ids a canonical session addresses paragraphs by.

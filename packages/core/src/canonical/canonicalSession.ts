@@ -137,7 +137,11 @@ import type {
   Paragraph,
   StyleDefinitions,
 } from "../types/document";
-import type { DeepReadonly, ReadonlyDocument } from "../types/documentModel";
+import {
+  type DeepReadonly,
+  readModel,
+  type ReadonlyDocument,
+} from "../types/documentModel";
 import { canonicalJson } from "../utils/canonicalJson";
 import { itemBefore } from "../utils/listItems";
 import { CanonicalIdLease } from "./canonicalIdLease";
@@ -4687,9 +4691,31 @@ export { project as projectCanonicalStory };
 export const createCanonicalSession = (
   document: ReadonlyDocument,
   styles?: DeepReadonly<StyleDefinitions> | null,
-  { idLease, newOpId }: CanonicalSessionOptions = {},
+  options: CanonicalSessionOptions = {},
+): Result<CanonicalSession, CanonicalSessionError> =>
+  seedCanonicalSession(
+    cloneDocumentWithParagraphPropertySources(document),
+    styles,
+    options,
+  );
+
+/**
+ * {@link createCanonicalSession} on a document the caller hands over: no one
+ * else writes it again, so the session reads it without a copy. The session
+ * never writes a document it reads.
+ */
+export const createCanonicalSessionTaking = (
+  document: ReadonlyDocument,
+  styles?: DeepReadonly<StyleDefinitions> | null,
+  options: CanonicalSessionOptions = {},
+): Result<CanonicalSession, CanonicalSessionError> =>
+  seedCanonicalSession(readModel(document), styles, options);
+
+const seedCanonicalSession = (
+  owned: Document,
+  styles: DeepReadonly<StyleDefinitions> | null | undefined,
+  { idLease, newOpId }: CanonicalSessionOptions,
 ): Result<CanonicalSession, CanonicalSessionError> => {
-  const owned = cloneDocumentWithParagraphPropertySources(document);
   const source = normalizeCanonicalSource(owned);
   const unsupported = unsupportedSeedReason(source.document);
   // A document the reader wrote never holds one: it keeps loose field markup
