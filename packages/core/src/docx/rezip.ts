@@ -94,7 +94,10 @@ import {
   registerContentTypeParts,
   replaceContentTypePart,
 } from "./contentTypeRegistry";
-import { publishCopiedPackageParts } from "./copiedPackageParts";
+import {
+  headerFooterRelationshipsKey,
+  publishCopiedPackageParts,
+} from "./copiedPackageParts";
 import {
   type DocumentSectionFacts,
   type HeaderFooterReference,
@@ -665,6 +668,12 @@ function findZipEntryCaseInsensitive(
 type DocxPart = {
   relsPath: string;
   blocks: BlockContent[];
+  /**
+   * The relationships the model keeps for a part besides the main document:
+   * those its relationships part held when read, with those an edit placing
+   * content into it gave it since.
+   */
+  relationships?: ReadonlyMap<string, Relationship>;
 };
 
 const PACKAGE_RELATIONSHIPS_NAMESPACE_URI =
@@ -744,9 +753,16 @@ function collectDocxParts(doc: Document, zip: ZipArchive): DocxPart[] {
       if (!rel || rel.type !== type || !rel.target) {
         continue;
       }
+      const relationships = doc.package.annotationRelationships?.get(
+        headerFooterRelationshipsKey(
+          type === RELATIONSHIP_TYPES.header ? "header" : "footer",
+          rId,
+        ),
+      );
       parts.push({
         relsPath: headerFooterRelsPath(rel.target),
         blocks: headerFooter.content,
+        ...(relationships === undefined ? {} : { relationships }),
       });
     }
   };
@@ -764,9 +780,13 @@ function collectDocxParts(doc: Document, zip: ZipArchive): DocxPart[] {
     const partPath =
       findNotePartEntry(zip, conventionalLowerPath)?.path ??
       conventionalLowerPath;
+    const relationships = doc.package.annotationRelationships?.get(
+      conventionalLowerPath.slice("word/".length, -".xml".length),
+    );
     parts.push({
       relsPath: notePartRelsPath(partPath),
       blocks: notes.flatMap((note): BlockContent[] => note.content),
+      ...(relationships === undefined ? {} : { relationships }),
     });
   };
   addNoteParts(doc.package.footnotes, "word/footnotes.xml");
@@ -1158,7 +1178,10 @@ export const publishCanonicalImageResources = async ({
   const rebindingParts: string[] = [];
   await publishCanonicalMediaReplacements({ document, zip, compressionLevel });
   const baseline = getDocumentSourceBaseline(document);
-  for (const { relsPath, blocks } of collectDocxParts(document, zip)) {
+  for (const { relsPath, blocks, relationships: modelled } of collectDocxParts(
+    document,
+    zip,
+  )) {
     const images: Image[] = [];
     visitBlockTreeRecords(blocks, (record) => {
       if (record.type !== "paragraph") return BLOCK_TREE_DESCENT.descend;
@@ -1202,6 +1225,13 @@ export const publishCanonicalImageResources = async ({
         });
       };
       let source = local.get(id);
+      // A picture an edit placed into this part names a relationship the
+      // edit gave the part, which its relationships part does not hold yet.
+      const placed =
+        source === undefined &&
+        modelled?.get(id)?.type === RELATIONSHIP_TYPES.image
+          ? modelled.get(id)
+          : undefined;
       const allocated = document.package.relationships?.get(id);
       // Newly allocated root resources can be published into any story. Existing
       // secondary bindings retain their own identity when root ids happen to repeat.
@@ -1230,14 +1260,16 @@ export const publishCanonicalImageResources = async ({
           (allocated?.targetMode === "External"
             ? image.src === allocated.target
             : image.src === allocatedMedia?.dataUrl));
-      const desired = identifiesAllocated ? allocated : source;
+      const desired = placed ?? (identifiesAllocated ? allocated : source);
       if (desired?.type !== RELATIONSHIP_TYPES.image)
         return refuse(
           "unresolved",
           "A canonical inline picture has no owning image relationship.",
         );
       const desiredRelsPath =
-        desired === allocated ? "word/_rels/document.xml.rels" : relsPath;
+        desired === allocated && placed === undefined
+          ? "word/_rels/document.xml.rels"
+          : relsPath;
       const absolute =
         desired.targetMode === "External"
           ? undefined

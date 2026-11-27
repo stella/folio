@@ -29,6 +29,7 @@ import {
 import {
   isHeaderFooterRelationshipsKey,
   partRelationshipsOf,
+  sameRelationship,
   storyPartPath,
   storyRelationshipsKey,
   withRelationshipIds,
@@ -91,7 +92,6 @@ import { base64ToBytes } from "../utils/textEncoding";
 import {
   type ClipboardPackageParts,
   createPartCopier,
-  relationshipTargetPath,
   storyRelationshipsOf,
 } from "./canonicalClipboardParts";
 import {
@@ -861,39 +861,6 @@ const relationshipIdsIn = (
   return Result.ok(ids);
 };
 
-/** A relationship, with the path of the part whose relationships hold it. */
-type OwnedRelationship = {
-  relationship: Relationship | undefined;
-  part: string | undefined;
-};
-
-/**
- * Whether two relationships name the same target in the same way: an
- * internal target resolved against the part each belongs to, since the same
- * relative target names another part from another folder.
- */
-const sameRelationship = (
-  left: OwnedRelationship,
-  right: OwnedRelationship,
-): boolean => {
-  const { relationship: one, part: onePart } = left;
-  const { relationship: other, part: otherPart } = right;
-  if (
-    one === undefined ||
-    other === undefined ||
-    one.type !== other.type ||
-    one.targetMode !== other.targetMode
-  )
-    return false;
-  if (one.targetMode === "External") return one.target === other.target;
-  return (
-    onePart !== undefined &&
-    otherPart !== undefined &&
-    relationshipTargetPath(onePart, one.target).toLowerCase() ===
-      relationshipTargetPath(otherPart, other.target).toLowerCase()
-  );
-};
-
 /**
  * The image relationship ids and the markup a range of the editor's own
  * document holds. A move carries what it drags within the part whose
@@ -1610,11 +1577,26 @@ export const prepareCanonicalPaste = ({
             ? undefined
             : media.get(ownedPath);
         if (
+          relationship !== undefined &&
           ownedMedia !== undefined &&
           (moveTarget !== undefined ||
             (image.src !== undefined && ownedMedia.dataUrl === image.src))
-        )
+        ) {
+          // The body's id names the picture in the body. A note's, a
+          // comment's, a header's or a footer's part resolves the id against
+          // its own relationships, where it names something else or nothing:
+          // there the picture takes a fresh id naming the same media, which
+          // the save writes into that part.
+          if (moveTarget !== undefined || scope.part === undefined) continue;
+          const id = freshRelationshipId();
+          const relationshipId =
+            relationshipIdOf(id) ??
+            panic("A fresh relationship id names nothing.");
+          relationships.set(id, { ...relationship, id });
+          image.rId = relationshipId;
+          importedResource = true;
           continue;
+        }
         const sourceRelationship =
           image.rId === undefined
             ? undefined

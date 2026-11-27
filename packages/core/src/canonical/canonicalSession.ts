@@ -95,6 +95,10 @@ import {
   markParagraphPropertySourceTransfers,
 } from "../docx/paragraphPropertySource";
 import { visitInlineContentSlots } from "../docx/paragraphTraversal";
+import {
+  createRelationshipRehomer,
+  type RelationshipStory,
+} from "../docx/storyRelationshipRehoming";
 import { isCellMergeContinuation } from "../docx/tableParser";
 import {
   referencedHeaderFooters,
@@ -148,6 +152,7 @@ import {
 } from "../types/documentModel";
 import { canonicalJson } from "../utils/canonicalJson";
 import { itemBefore } from "../utils/listItems";
+import { rehomedIntent, rehomedOp } from "./canonicalContentPlacement";
 import { CanonicalIdLease } from "./canonicalIdLease";
 import {
   type CanonicalInlineCommentContext,
@@ -3283,10 +3288,17 @@ class CanonicalSession {
       intents,
       resourceOps = [],
       semantic = "structure",
+      contentStory,
     }: {
       intents: readonly EditorIntent[];
       resourceOps?: readonly DocumentOp[];
       semantic?: CanonicalInputSemantic;
+      /**
+       * The story whose part the relationship ids of the content the intents
+       * place were read in; the story each places it into when absent. A
+       * move's content was read in the story it moves out of.
+       */
+      contentStory?: RelationshipStory;
     },
   ): Result<CanonicalCommit, CanonicalSessionError> {
     const first = intents.at(0);
@@ -3313,7 +3325,21 @@ class CanonicalSession {
       document = imported.value.document;
       edits.push(imported.value);
     }
-    for (const intent of intents) {
+    // Content placed into another part than the one it was read in names,
+    // there, the relationships it named where it was read.
+    const rehomer = createRelationshipRehomer(document);
+    const placed = intents.map((intent) =>
+      rehomedIntent(rehomer, intent, contentStory),
+    );
+    const rehoming = rehomer.resourcesOp();
+    if (rehoming !== undefined) {
+      const rehomed = applyDocumentOps(document, [rehoming]);
+      if (rehomed.isErr()) return refuseOp(rehomed.error);
+      document = rehomed.value.document;
+      edits.push(rehomed.value);
+      ops.push(rehoming);
+    }
+    for (const intent of placed) {
       const compiled = compileEditorIntent(document, {
         intent,
         mode: this.intentMode(document, intent),
@@ -3392,8 +3418,27 @@ class CanonicalSession {
     state: EditorState,
     ops: readonly DocumentOp[],
     postSelection: CanonicalSelection,
+    {
+      contentStory,
+    }: {
+      /**
+       * The story whose part the relationship ids of the content the
+       * operations place were read in; the story each places it into when
+       * absent.
+       */
+      contentStory?: RelationshipStory;
+    } = {},
   ): Result<CanonicalCommit, CanonicalSessionError> {
-    return this.prepareJournalledOps({ state, ops, postSelection });
+    if (contentStory === undefined)
+      return this.prepareJournalledOps({ state, ops, postSelection });
+    const rehomer = createRelationshipRehomer(this.currentDocument);
+    const placed = ops.map((op) => rehomedOp(rehomer, op, contentStory));
+    const rehoming = rehomer.resourcesOp();
+    return this.prepareJournalledOps({
+      state,
+      ops: rehoming === undefined ? placed : [rehoming, ...placed],
+      postSelection,
+    });
   }
 
   /** Verify compiled insertions and stage only the chain this session applied. */
