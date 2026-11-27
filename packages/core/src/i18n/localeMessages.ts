@@ -1,7 +1,5 @@
-import { CATALOG_SHAPE } from "./catalogShape.gen";
+import { CATALOG_SHAPE, type CatalogShape } from "./catalogShape.gen";
 import type { FolioMessages } from "./messages";
-
-type Shape = { readonly [key: string]: 0 | Shape };
 
 /**
  * A locale's catalog from its strings alone, in the order the English
@@ -11,7 +9,7 @@ type Shape = { readonly [key: string]: 0 | Shape };
  */
 export const localeMessages = (values: readonly string[]): FolioMessages => {
   let next = 0;
-  const build = (shape: Shape) => {
+  const build = (shape: CatalogShape) => {
     const built: Record<string, unknown> = {};
     for (const key of Object.keys(shape)) {
       const value = shape[key];
