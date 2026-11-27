@@ -1,6 +1,12 @@
 {
   "keep every value, agree across modes and readers, and reject cleanly": [
     {
+      "seed": 1937645953,
+      "path": "43:2:2:2:2:2:4:1:0:3:3:2:2:2:3:8:2:2:3:2:2:2:3:2:2:4:5:5:5:5:6",
+      "note": "A final-column deletion claims its table before a merge in the same batch.",
+      "date": "2026-11-27"
+    },
+    {
       "seed": 1644142386,
       "path": "126:3:3:3:3:5:4:8:12:6:4:23:1:6:3:3:3:3:11:5:5:9:5:5:5:9:9:9:9:9:11",
       "note": "Accept a row-closing merge without handing the old vertical owner to its new continuation.",

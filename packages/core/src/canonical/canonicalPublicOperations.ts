@@ -661,10 +661,10 @@ const columnEditedCellShapes = <T extends PlannedOperation>(
   items: readonly T[],
 ): T[] => {
   const tables = new Set(
-    items.flatMap(({ plan: { claim } }) =>
-      claim.type === "tableStructure" && claim.axis === "column"
-        ? [claim.table]
-        : [],
+    items.flatMap(({ plan: { address } }) =>
+      // Removing the final column compiles to a table deletion. Its public
+      // address still names the column and claims the same cell geometry.
+      address.type === "column" ? [address.tablePosition] : [],
     ),
   );
   if (tables.size === 0) return [];
