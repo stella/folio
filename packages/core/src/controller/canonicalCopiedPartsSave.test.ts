@@ -121,6 +121,13 @@ const SOURCE_PARTS: Record<string, Part> = {
     body: "<html><body><p>Chunk</p></body></html>",
   },
 };
+
+/** A text source part's body. */
+const textBody = (path: string): string => {
+  const body = SOURCE_PARTS[path]?.body;
+  if (typeof body !== "string") throw new TypeError(`${path} is a text part`);
+  return body;
+};
 const SOURCE_RELATIONSHIPS = [
   {
     id: "rIdChart",
@@ -418,7 +425,7 @@ describe.each(["editing", "suggesting"] as const)("in %s", (mode) => {
         DESTINATION_CHART.body,
       );
       expect(await textOf(zip, "word/charts/chart2.xml")).toBe(
-        SOURCE_PARTS["word/charts/chart1.xml"]?.body ?? "",
+        textBody("word/charts/chart1.xml"),
       );
       expect(targets.get("oleObject")?.toSorted()).toEqual([
         "word/embeddings/oleObject1.bin",
@@ -442,7 +449,7 @@ describe.each(["editing", "suggesting"] as const)("in %s", (mode) => {
         "word/charts/style1.xml",
       ]);
       expect(await textOf(zip, "word/embeddings/embeddedWorkbook1.xlsx")).toBe(
-        SOURCE_PARTS["word/embeddings/embeddedWorkbook.xlsx"]?.body ?? "",
+        textBody("word/embeddings/embeddedWorkbook.xlsx"),
       );
       const registry = await textOf(zip, "[Content_Types].xml");
       expect(contentTypeOf(registry, "word/charts/chart2.xml")).toBe(
@@ -506,5 +513,5 @@ test("the source parts read for a copy are the ones its markup reaches", async (
     new Uint8Array(
       sourceParts?.parts.get("word/charts/chart1.xml")?.data ?? [],
     ),
-  ).toEqual(encodeUtf8(SOURCE_PARTS["word/charts/chart1.xml"]?.body ?? ""));
+  ).toEqual(encodeUtf8(textBody("word/charts/chart1.xml")));
 });
