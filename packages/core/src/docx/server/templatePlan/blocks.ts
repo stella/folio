@@ -501,17 +501,19 @@ const crossReferencesOf = (
 };
 
 /**
- * Where each bookmark of a story stands: the paragraph it starts and ends
- * in, and whether it holds all of its content. A bookmark that takes its
- * paragraph's mark along ends in front of anything of the next paragraph
- * and counts as ending in its own. Null for one that ends further on or
- * not at all. The first bookmark of a name counts.
+ * Where each bookmark of a story stands: the paragraph it starts in, where
+ * it also ends there or further on, and whether it holds all of that
+ * paragraph's content. A bookmark that takes its paragraph's mark along
+ * ends in front of anything of the next paragraph and holds all of it when
+ * it starts at the paragraph's beginning. Null for one that ends in front
+ * of its start or not at all. The first bookmark of a name counts.
  */
 const bookmarkTargetsOf = (
   story: AnalyzedStory,
 ): Map<string, { blockId: string; whole: boolean } | null> => {
   const targets = new Map<string, { blockId: string; whole: boolean } | null>();
-  for (const [position, { block, read }] of story.order.entries()) {
+  const { order } = story;
+  for (const [position, { block, read }] of order.entries()) {
     for (const start of read?.bookmarks ?? []) {
       if (targets.has(start.name)) {
         continue;
@@ -526,16 +528,24 @@ const bookmarkTargetsOf = (
         );
         continue;
       }
-      const next = story.order[position + 1]?.read;
-      const behindMark = next?.bookmarkEnds.some(
-        ({ id, atomIndex }) => id === start.id && atomIndex === 0,
-      );
-      targets.set(
-        start.name,
-        behindMark === true
-          ? { blockId: block.id, whole: start.atomIndex === 0 }
-          : null,
-      );
+      const later = order
+        .slice(position + 1)
+        .findIndex(({ read: next }) =>
+          next?.bookmarkEnds.some(({ id }) => id === start.id),
+        );
+      if (later === -1) {
+        targets.set(start.name, null);
+        continue;
+      }
+      const behindMark =
+        later === 0 &&
+        order[position + 1]?.read?.bookmarkEnds.some(
+          ({ id, atomIndex }) => id === start.id && atomIndex === 0,
+        ) === true;
+      targets.set(start.name, {
+        blockId: block.id,
+        whole: behindMark && start.atomIndex === 0,
+      });
     }
   }
   return targets;

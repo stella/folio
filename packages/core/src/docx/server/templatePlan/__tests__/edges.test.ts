@@ -80,7 +80,7 @@ describe("applyTemplatePlan edge content", () => {
     expect(report.dropped.sourceFields).toEqual([]);
   });
 
-  test("a bookmark that takes its paragraph mark along marks that paragraph", async () => {
+  test("a bookmark that ends in a later paragraph marks the one it starts in", async () => {
     const ref = (code: string, result: string): string =>
       `<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve">${code}</w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>${r(result)}<w:r><w:fldChar w:fldCharType="end"/></w:r>`;
     const source = await buildMinimalDocx(
@@ -91,7 +91,8 @@ describe("applyTemplatePlan edge content", () => {
         // Ends in front of anything of the next paragraph: the heading's.
         p('<w:bookmarkStart w:id="1" w:name="whole"/>'),
         p(`<w:bookmarkEnd w:id="1"/>${r("Schedule of purchasers")}`),
-        // Ends behind text of the next paragraph: no one paragraph's.
+        // Ends behind text of the next paragraph (a heading run in with its
+        // text): the paragraph it starts in, not all of it.
         p(`<w:bookmarkStart w:id="2" w:name="over"/>${r("Heading")}`),
         p(`${r("Body")}<w:bookmarkEnd w:id="2"/>`),
       ].join(""),
@@ -108,7 +109,7 @@ describe("applyTemplatePlan edge content", () => {
       ),
     ).toEqual([
       { bookmark: "whole", targetBlockId: "p1", targetWhole: true },
-      { bookmark: "over", targetBlockId: null, targetWhole: false },
+      { bookmark: "over", targetBlockId: "p3", targetWhole: false },
     ]);
   });
 

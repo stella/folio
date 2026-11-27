@@ -96,9 +96,10 @@ export type DocxBlockCrossReference = {
   /** The bookmark the field names. */
   bookmark: string;
   /**
-   * The paragraph of the main story the bookmark starts and ends in. Null
-   * when no bookmark of that name does both in one paragraph: it spans
-   * paragraphs, stands between blocks, or is not there.
+   * The paragraph of the main story the bookmark starts in, the one whose
+   * number a number switch shows: where the bookmark ends there or further
+   * on. Null when it ends in front of its start, stands between blocks, or
+   * is not there.
    */
   targetBlockId: string | null;
   /**
