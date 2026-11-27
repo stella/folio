@@ -1572,8 +1572,11 @@ export const prepareCanonicalPaste = ({
         kept.rawXmlMode === DRAWING_RAW_XML_MODES.PREVIEW_ONLY &&
         kept.rawImageFingerprint === imageRawXmlFingerprint(image);
       kept.rawXml = placed.value.xml;
-      const rId = image.rId === undefined ? undefined : ids.get(image.rId);
-      if (rId !== undefined) image.rId = relationshipIdOf(rId);
+      const pictureId =
+        image.rId === undefined ? undefined : ids.get(image.rId);
+      const rId =
+        pictureId === undefined ? undefined : relationshipIdOf(pictureId);
+      if (rId !== undefined) image.rId = rId;
       const hlinkRId =
         image.hlinkRId === undefined ? undefined : ids.get(image.hlinkRId);
       if (hlinkRId !== undefined) image.hlinkRId = hlinkRId;
