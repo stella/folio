@@ -6,7 +6,10 @@ import {
 } from "better-result";
 
 import { escapeXmlAttribute } from "@stll/docx-core";
-import { MAX_REVISION_ID } from "@stll/docx-core/model";
+import {
+  MAX_REVISION_ID,
+  MAX_TABLE_GEOMETRY_HISTORY_LENGTH,
+} from "@stll/docx-core/model";
 import {
   type CopyOriginAncestorList,
   isCopyOriginAncestors,
@@ -833,15 +836,39 @@ type GeometryChange = NonNullable<TableGridChange["geometryChange"]>;
 type TableMove = NonNullable<
   Extract<GeometryChange, { type: "mergeCells" }>["moves"]
 >[number];
+type NestedTableMove = NonNullable<
+  Extract<GeometryChange, { type: "mergeCells" }>["nestedMoves"]
+>[number];
 const isTableMove = (value: unknown): value is TableMove =>
   record(value) &&
   typeof value["source"] === "string" &&
   typeof value["destination"] === "string" &&
-  isRevisionId(value["fromRevision"]) &&
-  isRevisionId(value["toRevision"]) &&
   isRevisionId(value["destinationMark"]) &&
-  isRevisionId(value["fromRange"]) &&
-  isRevisionId(value["toRange"]);
+  (value["kind"] === "empty" ||
+    (value["kind"] === undefined &&
+      isRevisionId(value["fromRevision"]) &&
+      isRevisionId(value["toRevision"]) &&
+      isRevisionId(value["fromRange"]) &&
+      isRevisionId(value["toRange"])));
+const isNestedTableMove = (value: unknown): value is NestedTableMove => {
+  if (!record(value)) return false;
+  const rows = value["rows"];
+  const paragraphs = value["paragraphs"];
+  return (
+    Array.isArray(rows) &&
+    rows.length > 0 &&
+    rows.every(isRevisionId) &&
+    new Set(rows).size === rows.length &&
+    Array.isArray(paragraphs) &&
+    paragraphs.length > 0 &&
+    paragraphs.every(
+      (pair) =>
+        Array.isArray(pair) &&
+        pair.length === 2 &&
+        pair.every((id) => typeof id === "string" && /^[\da-f]{8}$/iu.test(id)),
+    )
+  );
+};
 const isTableGeometryChange = (value: unknown): value is GeometryChange => {
   if (
     !record(value) ||
@@ -857,6 +884,7 @@ const isTableGeometryChange = (value: unknown): value is GeometryChange => {
     return false;
   const ids = value["revisionIds"];
   const moves = value["moves"];
+  const nestedMoves = value["nestedMoves"];
   const emptyOwner = value["emptyOwner"];
   return (
     Array.isArray(ids) &&
@@ -867,6 +895,11 @@ const isTableGeometryChange = (value: unknown): value is GeometryChange => {
       (value["type"] === "mergeCells" &&
         Array.isArray(moves) &&
         moves.every(isTableMove))) &&
+    (nestedMoves === undefined ||
+      (value["type"] === "mergeCells" &&
+        Array.isArray(nestedMoves) &&
+        nestedMoves.every(isNestedTableMove) &&
+        JSON.stringify(value).length <= MAX_TABLE_GEOMETRY_HISTORY_LENGTH)) &&
     (emptyOwner === undefined ||
       (value["type"] === "mergeCells" && typeof emptyOwner === "string"))
   );
