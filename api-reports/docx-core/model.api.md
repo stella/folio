@@ -1858,7 +1858,7 @@ export type SpacingExplicit = WritableRecord & {
 };
 
 // @public
-export const statedTableColumnWidths: ({ columnWidths, omittedColumnWidthIndices, }: {
+export const statedTableColumnWidths: (input: {
     columnWidths?: readonly number[];
     omittedColumnWidthIndices?: readonly number[];
 }) => (number | undefined)[] | undefined;
@@ -2011,9 +2011,6 @@ export type TableCellPropertyChange = WritableRecord & {
 
 // @public
 export const tableColumnWidthFields: (stated: readonly (number | undefined)[]) => TableColumnWidths;
-
-// @public (undocumented)
-type TableColumnWidths = WritableRecord & Pick<Table, "columnWidths" | "omittedColumnWidthIndices">;
 
 // @public
 export type TableContentCarrier = WritableRecord & ({
