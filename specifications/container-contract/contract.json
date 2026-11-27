@@ -4128,6 +4128,18 @@
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}end|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_TblWidth@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}w": {
       "disposition": "modelled"
     },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}endnote|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_FtnEdn/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXml": {
+      "disposition": "modelled"
+    },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}endnote|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_FtnEdn/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p": {
+      "disposition": "modelled"
+    },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}endnote|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_FtnEdn/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sdt": {
+      "disposition": "modelled"
+    },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}endnote|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_FtnEdn/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tbl": {
+      "disposition": "modelled"
+    },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}endnotePr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_EdnProps/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}numFmt": {
       "disposition": "modelled"
     },
@@ -4372,6 +4384,18 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}footerReference|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_HdrFtrRef@{http://schemas.openxmlformats.org/wordprocessingml/2006/main}type": {
+      "disposition": "modelled"
+    },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}footnote|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_FtnEdn/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXml": {
+      "disposition": "modelled"
+    },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}footnote|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_FtnEdn/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p": {
+      "disposition": "modelled"
+    },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}footnote|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_FtnEdn/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sdt": {
+      "disposition": "modelled"
+    },
+    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}footnote|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_FtnEdn/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tbl": {
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}footnotePr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_FtnProps/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}numFmt": {
