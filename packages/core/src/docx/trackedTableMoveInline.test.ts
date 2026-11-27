@@ -112,6 +112,8 @@ test.each([
   "<m:oMath><m:f><m:num><m:r><m:t>1</m:t></m:r></m:num><m:den><m:r><m:t>2</m:t></m:r></m:den></m:f></m:oMath>",
   '<q:oMathPara xmlns:q="http://purl.oclc.org/ooxml/officeDocument/math"><q:oMath><q:r><q:t xml:space="preserve"> 1 + 2 </q:t></q:r></q:oMath></q:oMathPara>',
   '<w:proofErr w:type="gramStart"/><w:proofErr w:type="spellStart"/><w:r><w:t>Teh text.</w:t></w:r><w:proofErr w:type="spellEnd"/><w:proofErr w:type="gramEnd"/>',
+  '<w:customXml w:element="clause" w:uri="urn:example"><w:r><w:t>A clause.</w:t></w:r></w:customXml>',
+  '<w:smartTag w:element="term" w:uri="urn:example"><w:r><w:t>A term.</w:t></w:r></w:smartTag>',
 ])("tracked table merges preserve moved inline content: %s", (content) => {
   const original = sourceWith(content);
   const direct = applyDocumentOp(original, directMerge).unwrap().document;

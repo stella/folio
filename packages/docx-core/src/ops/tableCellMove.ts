@@ -287,7 +287,8 @@ const movableInlineContent = (
         );
       case "inlineWrapper":
         return (
-          item.kind === "bidi" && movableInlineContent(item.content, context)
+          (item.kind === "bidi" || item.propertiesXml === undefined) &&
+          movableInlineContent(item.content, context)
         );
       case "inlineSdt": {
         const id = movableControlId(item.properties);
