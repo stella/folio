@@ -599,8 +599,7 @@ const resolveCellColumns = ({
         }
         const widened = widen(previous, kept);
         if (widened === undefined) {
-          if (index < lastKept || row.formatting?.widthAfter !== undefined)
-            return Result.err("unsupported");
+          if (index < lastKept) return Result.err("unsupported");
           omittedAfter += kept;
           continue;
         }
@@ -619,11 +618,7 @@ const resolveCellColumns = ({
       }
       // A kept cell holds no column every row loses.
       const widened = widen(next, carried);
-      if (widened === undefined) {
-        if (row.formatting?.widthBefore !== undefined)
-          return Result.err("unsupported");
-        omittedBefore = carried;
-      }
+      if (widened === undefined) omittedBefore = carried;
       carried = 0;
       cells.push(widened ?? next);
     }
