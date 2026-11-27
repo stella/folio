@@ -1701,6 +1701,7 @@ describe("an empty content control is content: resolution never merges it away",
           {
             type: "simpleField",
             instruction: "PAGE",
+            fieldType: "PAGE",
             content: [{ type: "run", content: [{ type: "text", text: "3" }] }],
           },
         ],
