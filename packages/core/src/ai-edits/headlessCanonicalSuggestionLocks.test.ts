@@ -378,6 +378,47 @@ for (const entry of STORIES) {
     }
   });
 
+  test(`${entry.handle.type}: a held proposal refuses the final view and story under the lock`, async () => {
+    const { bytes, locked } = await proposed(entry);
+    const create = canonicalSession.createCanonicalSession;
+    const factory = spyOn(
+      canonicalSession,
+      "createCanonicalSession",
+    ).mockImplementation((_document, styles, options) =>
+      create(locked, styles, options),
+    );
+    let reviewer: FolioDocxReviewer;
+    try {
+      reviewer = await FolioDocxReviewer.fromBuffer(bytes, {
+        session: "canonical",
+      });
+    } finally {
+      factory.mockRestore();
+    }
+    recordPlantedProposal(reviewer, entry);
+    const changesBefore = reviewer.getChanges();
+    // The session refuses to accept the proposal under the lock; a request
+    // that needs it accepted refuses with that ground.
+    for (const request of [
+      () => reviewer.toResolvedDocument("accept"),
+      () =>
+        reviewer.resolveReviewedStory({ story: entry.handle, view: "final" }),
+    ]) {
+      let refusal: unknown;
+      try {
+        request();
+      } catch (error) {
+        refusal = error;
+      }
+      if (!(refusal instanceof canonicalSession.CanonicalSessionError))
+        return panic("A held proposal must refuse the request.");
+      expect(refusal.ground).toEqual({
+        rule: CANONICAL_RULE.contentControlLock,
+      });
+    }
+    expect(reviewer.getChanges()).toEqual(changesBefore);
+  });
+
   test(`${entry.handle.type}: bulk rejection retains every fragment and comment of a held proposal`, async () => {
     const { bytes, locked } = await proposed(entry);
     const create = canonicalSession.createCanonicalSession;
