@@ -168,6 +168,7 @@ import {
   stampInfo,
 } from "./review";
 import { groupedDeletionStamp, ownInsertionSlice } from "./revisionGrouping";
+import { isOwnRecord } from "./revisionOwner";
 import { formattingEquals, runsMergeable } from "./runMerge";
 import { identitySlots } from "./slots";
 import { findStoryBody, type StoryAddress, textBoxStoriesIn } from "./stories";
@@ -2991,8 +2992,7 @@ const openedPastedSeam = ({
       only === undefined ||
       rest.length > 0 ||
       only.type !== "insertion" ||
-      only.info.author !== stamp.author ||
-      only.info.date !== stamp.date ||
+      !isOwnRecord(only.info, stamp) ||
       paragraph.paraId === undefined
     )
       return undefined;

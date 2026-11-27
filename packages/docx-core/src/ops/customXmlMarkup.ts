@@ -463,6 +463,7 @@ const untagInto = (
   placements: Placements,
   chain: Chain,
   out: BlockContent[],
+  directShells: Shell[],
 ): void => {
   for (const block of blocks) {
     if (block.type === "blockCustomXml" && wrapsContent(block)) {
@@ -474,12 +475,14 @@ const untagInto = (
         end: 0,
       };
       placements.shells.push(shell);
+      directShells.push(shell);
       untagInto(
         block.content.filter((child) => !isCustomXmlProperties(child)),
         depth,
         placements,
         [...chain, shell],
         out,
+        directShells,
       );
       shell.end = out.length;
       continue;
@@ -518,10 +521,10 @@ const untagged = (
   placements: Placements,
 ): BlockContent[] => {
   const out: BlockContent[] = [];
-  const first = placements.shells.length;
-  untagInto(blocks, depth, placements, [], out);
+  const directShells: Shell[] = [];
+  untagInto(blocks, depth, placements, [], out, directShells);
   // The block after each element's content, once the list's blocks are in.
-  for (const shell of placements.shells.slice(first))
+  for (const shell of directShells)
     if (shell.after === undefined) shell.after = out[shell.end];
   return out;
 };
@@ -693,22 +696,18 @@ const retagged = (
   return root;
 };
 
-/** Whether `value` holds a record with one of `ids`. */
-const holdsRevision = (value: unknown, ids: ReadonlySet<number>): boolean => {
-  if (typeof value !== "object" || value === null) return false;
-  if (Array.isArray(value))
-    return value.some((item) => holdsRevision(item, ids));
-  if (
-    "info" in value &&
-    typeof value.info === "object" &&
-    value.info !== null &&
-    "id" in value.info &&
-    typeof value.info.id === "number" &&
-    ids.has(value.info.id)
-  )
-    return true;
-  return Object.values(value).some((field) => holdsRevision(field, ids));
-};
+/** Whether a selected paragraph boundary stands directly in this block list. */
+const holdsSelectedBoundary = (
+  blocks: readonly BlockContent[],
+  ids: ReadonlySet<number>,
+): boolean =>
+  blocks.some((block) => {
+    if (block.type === "paragraph")
+      return block.pPrMark !== undefined && ids.has(block.pPrMark.info.id);
+    if (block.type === "blockCustomXml")
+      return holdsSelectedBoundary(block.content, ids);
+    return false;
+  });
 
 /**
  * How a resolution reads through the custom XML elements of a story: the
@@ -750,7 +749,7 @@ export const customXmlReadThrough = ({
         (block) =>
           block.type === "blockCustomXml" &&
           wrapsContent(block) &&
-          holdsRevision(block.content, selected),
+          holdsSelectedBoundary(block.content, selected),
       )
     )
       reached = true;
