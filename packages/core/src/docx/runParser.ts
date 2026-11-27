@@ -202,8 +202,15 @@ export const RUN_PROPERTY_OWNERS = {
    */
   paragraphMark: "paragraphMark",
   /**
+   * The snapshot inside the paragraph mark's `w:rPrChange`
+   * (`CT_ParaRPrOriginal`). The mark's record reads its `w:specVanish`
+   * (`ParagraphMarkPropertyChange.previousFormatting.runInWithNext`); the
+   * mark revisions it can hold have no record and are kept as markup.
+   */
+  paragraphMarkOriginal: "paragraphMarkOriginal",
+  /**
    * A style, a numbering level, a comment's reference mark, the snapshot
-   * inside a `w:rPrChange`: nothing beside it reads any of its children.
+   * inside a run's `w:rPrChange`: nothing beside it reads any of its children.
    */
   standalone: "standalone",
 } as const;
@@ -256,6 +263,13 @@ const OWNED_BY_A_SIBLING_RECORD = {
       container: "run-properties",
       child: "moveTo",
       reader: "paragraphProperties#parseParagraphProperties",
+    }),
+  },
+  paragraphMarkOriginal: {
+    specVanish: ownedElsewhere({
+      container: "run-properties",
+      child: "specVanish",
+      reader: "paragraphParser#parseParagraphMarkPropertyChange",
     }),
   },
   standalone: {},
@@ -663,6 +677,10 @@ const RUN_PROPERTY_HANDLERS = {
   paragraphMark: {
     ...RUN_PROPERTY_BASE_HANDLERS,
     ...OWNED_BY_A_SIBLING_RECORD.paragraphMark,
+  },
+  paragraphMarkOriginal: {
+    ...RUN_PROPERTY_BASE_HANDLERS,
+    ...OWNED_BY_A_SIBLING_RECORD.paragraphMarkOriginal,
   },
   standalone: {
     ...RUN_PROPERTY_BASE_HANDLERS,

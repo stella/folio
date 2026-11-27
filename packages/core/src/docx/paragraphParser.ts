@@ -524,7 +524,7 @@ const parseParagraphMarkPropertyChange = (
   const oldRun = parseRunProperties(
     previous,
     theme,
-    RUN_PROPERTY_OWNERS.paragraphMark,
+    RUN_PROPERTY_OWNERS.paragraphMarkOriginal,
   );
   let runProperties = previous === null ? undefined : (oldRun ?? {});
   if (

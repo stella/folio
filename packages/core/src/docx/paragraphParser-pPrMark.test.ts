@@ -57,6 +57,26 @@ describe("parseParagraph — paragraph-mark tracked change (ECMA-376 §17.13.5)"
     ).toStrictEqual(paragraph.markPropertyChange);
   });
 
+  test("keeps the mark revisions a mark property revision's original properties hold, in schema order", () => {
+    const original =
+      '<w:ins w:id="3" w:author="C"/><w:del w:id="4" w:author="D"/><w:b/><w:specVanish/>';
+    const source = `<w:p ${namespace}><w:pPr><w:rPr><w:i/><w:rPrChange w:id="2" w:author="B"><w:rPr>${original}</w:rPr></w:rPrChange></w:rPr></w:pPr></w:p>`;
+    const paragraph = parseParagraphXml(source);
+    expect(paragraph.markPropertyChange?.previousFormatting).toEqual({
+      runProperties: expect.objectContaining({ bold: true }),
+      runInWithNext: true,
+    });
+    const xml = serializeParagraph(paragraph);
+    expect(xml).toContain(`<w:rPr>${original}</w:rPr></w:rPrChange>`);
+    const reopened = parseParagraphXml(
+      xml.replace("<w:p", `<w:p ${namespace}`),
+    );
+    expect(reopened.markPropertyChange).toStrictEqual(
+      paragraph.markPropertyChange,
+    );
+    expect(serializeParagraph(reopened)).toBe(xml);
+  });
+
   test("reopens a written mark property revision whose original formatting was absent", () => {
     const change = { info: { id: 2, author: "Reviewer" } };
     const xml = serializeParagraph({
