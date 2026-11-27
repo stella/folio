@@ -4085,6 +4085,17 @@ const resolveList = ({
     number,
     Record<SourceOwnerSide, number> & { type: "cut" | "carriedJoin" }
   >();
+  /**
+   * A removed insertion's record of seam `from` carried to `to`, where the
+   * seam moved, keeping the earlier removal date there.
+   */
+  const moveAddedRemoval = (from: number, to: number): void => {
+    const made = removalDates.get(from);
+    if (!addedRemovalSeams.has(from) || made === undefined) return;
+    addedRemovalSeams.add(to);
+    const known = removalDates.get(to);
+    if (known === undefined || made < known) removalDates.set(to, made);
+  };
   const recordSourceSeam = (index: number, depth: number): void => {
     recordExactSeam(index, depth);
     if (depth > 0)
@@ -5933,6 +5944,7 @@ const resolveList = ({
       exactSeams.delete(recorded);
       recordExactSeam(end, depth);
       if (removalSeams.has(recorded)) removalSeams.add(end);
+      moveAddedRemoval(recorded, end);
       floating.set(end, {
         ...entry,
         count: entry.count + after.records + before,
@@ -6053,6 +6065,7 @@ const resolveList = ({
       continue;
     exactSeams.delete(recorded);
     exactSeams.set(seam, Math.max(exactSeams.get(seam) ?? 0, depth));
+    moveAddedRemoval(recorded, seam);
     // Boundaries this resolution kept there already float with the removal
     // they came from, which knows the records it cut and the changes it held;
     // a seam recorded beside it, as one a rejected deletion leaves, joins
