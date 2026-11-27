@@ -1,6 +1,12 @@
 {
   "keep every value, agree across modes and readers, and reject cleanly": [
     {
+      "seed": -615835652,
+      "path": "12:2:2:2:2:4:1:8:2:2:4:2:2:2:5:2:2:4:7:8:8:9:8:8:8:8:8:8:9:8:8:10:8:8:8:8:8:8:8:8:8:11:8:8:8:8:10",
+      "note": "Accepting a table merge trims the owner paragraph when an earlier accepted deletion empties it.",
+      "date": "2026-11-27"
+    },
+    {
       "seed": -101770239,
       "path": "12:2:1:0:1:2:2:3:3:4:3:31:32",
       "note": "#3411: column deletions of one table all apply directly, whichever removes the paragraph another is addressed by.",

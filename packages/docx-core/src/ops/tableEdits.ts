@@ -56,6 +56,12 @@ import {
 } from "./review";
 import { replaceStoryBody } from "./stories";
 import {
+  markTableMove,
+  moveRangeAllocator,
+  type TableMoveSource,
+  tableMoveSource,
+} from "./tableCellMove";
+import {
   reachesPastRemovedCell,
   strandsABookmark,
 } from "./tableEditDependencies";
@@ -2499,25 +2505,90 @@ type MergeOptions = {
   grid: TableGrid;
 };
 
-/** A merge that takes only empty cells changes topology without moving text. */
-const suggestHorizontalMerge = (
-  options: MergeOptions,
-  selected: readonly GridCell[],
-): Result<Table, DocumentOpRefusal> => {
-  const { op, table, grid } = options;
+const mergeMoveSources = (
+  selection: readonly GridCell[][],
+): TableMoveSource[] | undefined => {
+  const moves: TableMoveSource[] = [];
+  for (const { cell } of selection.flat().slice(1)) {
+    if (isEmptyCell(cell)) continue;
+    for (const block of cell.content) {
+      if (block.type !== "paragraph") return undefined;
+      const source = tableMoveSource(block);
+      if (source === undefined) return undefined;
+      moves.push(source);
+    }
+  }
+  return moves;
+};
+
+type SuggestMergeOptions = MergeOptions & {
+  selected: readonly GridCell[][];
+  moves: readonly TableMoveSource[];
+};
+const suggestMerge = ({
+  document,
+  op,
+  table,
+  grid,
+  selected,
+  moves,
+}: SuggestMergeOptions): Result<Table, DocumentOpRefusal> => {
   const row = table.rows[op.top];
-  const first = selected.at(0);
-  if (row === undefined || first === undefined)
+  const top = selected.at(0);
+  const first = top?.at(0);
+  if (row === undefined || top === undefined || first === undefined)
     return mismatch(op, "No cells are selected.");
   const { revision: _stamp, ...directOp } = op;
-  const direct = merge({ ...options, op: directOp });
+  const continuationCount = selected.length - 1;
+  const fresh = freshCells({
+    document,
+    op,
+    ids: op.newBlockIds,
+    count: continuationCount + moves.length,
+  });
+  if (fresh.isErr()) return Result.err(fresh.error);
+  const direct = merge({
+    document,
+    table,
+    grid,
+    op: {
+      ...directOp,
+      newBlockIds: op.newBlockIds.slice(0, continuationCount),
+    },
+  });
   if (direct.isErr()) return direct;
   const owner = direct.value.rows[op.top]?.cells[first.index];
   if (owner === undefined)
     return mismatch(op, "The merge must retain its owner cell.");
-  const stamps = stampsFor(op, selected.length + 2);
+  const continuationIds = new Set(op.newBlockIds.slice(0, continuationCount));
+  const continuationsById = new Map<string, TableCell>();
+  for (const plannedRow of direct.value.rows)
+    for (const cell of plannedRow.cells) {
+      const paragraph = cell.content.at(0);
+      if (
+        paragraph?.type === "paragraph" &&
+        paragraph.paraId !== undefined &&
+        continuationIds.has(paragraph.paraId)
+      )
+        continuationsById.set(paragraph.paraId, cell);
+    }
+  const lowerRows = selected.slice(1).map((entries, index) => ({
+    entries,
+    continuation: continuationsById.get(op.newBlockIds[index] ?? ""),
+  }));
+  const structuralCount =
+    top.length -
+    1 +
+    lowerRows.reduce(
+      (sum, { entries, continuation }) =>
+        sum + (continuation === undefined ? 1 : entries.length + 1),
+      0,
+    );
+  const stamps = stampsFor(op, structuralCount + 3 + moves.length * 3);
   if (stamps.isErr()) return Result.err(stamps.error);
-  const [ownerStamp, gridStamp, tableStamp, ...deletedStamps] = stamps.value;
+  const [ownerStamp, gridStamp, tableStamp, ...rest] = stamps.value;
+  const structuralStamps = rest.slice(0, structuralCount);
+  const moveStamps = rest.slice(structuralCount);
   if (
     ownerStamp === undefined ||
     gridStamp === undefined ||
@@ -2525,8 +2596,49 @@ const suggestHorizontalMerge = (
   )
     return mismatch(op, "The merge needs cell and grid revision stamps.");
   const cells = [...row.cells];
+  const moved = new Map<string, ReturnType<typeof markTableMove>>();
+  const takeMoveRange =
+    moves.length === 0 ? undefined : moveRangeAllocator(document.package);
+  for (const [index, source] of moves.entries()) {
+    const [from, to, mark] = moveStamps.slice(index * 3, index * 3 + 3);
+    const destination = op.newBlockIds[continuationCount + index];
+    if (
+      from === undefined ||
+      to === undefined ||
+      mark === undefined ||
+      destination === undefined
+    )
+      return mismatch(
+        op,
+        "A moved paragraph needs its move records and destination id.",
+      );
+    const ranges = takeMoveRange?.();
+    if (ranges === undefined)
+      return refuse({
+        op,
+        reason: DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
+        message: "The move range identity space is exhausted.",
+      });
+    moved.set(
+      idKey(source.id),
+      markTableMove({ source, destination, from, to, mark, ranges }),
+    );
+  }
+  const ownerParagraph = first.cell.content.at(0);
+  // An earlier tracked edit can empty the owner's only paragraph before the
+  // merge is accepted. Keep its address so that decision can trim it then.
+  const emptyOwner =
+    moves.length > 0 &&
+    first.cell.content.length === 1 &&
+    ownerParagraph?.type === "paragraph"
+      ? ownerParagraph.paraId
+      : undefined;
   cells[first.index] = {
     ...owner,
+    content: [
+      ...first.cell.content,
+      ...Array.from(moved.values(), ({ destination }) => destination),
+    ],
     propertyChanges: [
       {
         type: "tableCellPropertyChange",
@@ -2537,24 +2649,75 @@ const suggestHorizontalMerge = (
       },
     ],
   };
-  for (const [index, entry] of selected.slice(1).entries()) {
-    const stamp = deletedStamps[index];
+  const markSource = (cell: TableCell) =>
+    cell.content.map((block) =>
+      block.type === "paragraph" && block.paraId !== undefined
+        ? (moved.get(idKey(block.paraId))?.source ?? block)
+        : block,
+    );
+  for (const [index, entry] of top.slice(1).entries()) {
+    const stamp = structuralStamps[index];
     if (stamp === undefined)
       return mismatch(op, "An absorbed cell needs a revision stamp.");
     cells[entry.index] = {
       ...entry.cell,
+      content: markSource(entry.cell),
       structuralChange: { type: "tableCellDeletion", info: stampInfo(stamp) },
     };
   }
   const rows = [...table.rows];
   rows[op.top] = { ...row, cells };
+  let nextStructuralStamp = top.length - 1;
+  for (const [offset, { entries, continuation }] of lowerRows.entries()) {
+    const index = op.top + offset + 1;
+    const source = rows[index];
+    const stamp = structuralStamps[nextStructuralStamp++];
+    if (source === undefined || stamp === undefined)
+      return mismatch(op, "An absorbed row needs a revision stamp.");
+    if (continuation === undefined) {
+      rows[index] = {
+        ...source,
+        cells: source.cells.map((cell) =>
+          Object.assign({}, cell, { content: markSource(cell) }),
+        ),
+        structuralChange: { type: "tableRowDeletion", info: stampInfo(stamp) },
+      };
+      continue;
+    }
+    const lower = [...source.cells];
+    const start = entries.at(0)?.index;
+    if (start === undefined)
+      return mismatch(op, "A continuation needs a source cell position.");
+    for (const entry of entries) {
+      const removed = structuralStamps[nextStructuralStamp++];
+      if (removed === undefined)
+        return mismatch(op, "An absorbed cell needs a revision stamp.");
+      lower[entry.index] = {
+        ...entry.cell,
+        content: markSource(entry.cell),
+        structuralChange: {
+          type: "tableCellDeletion",
+          info: stampInfo(removed),
+        },
+      };
+    }
+    lower.splice(start, 0, {
+      ...continuation,
+      structuralChange: { type: "tableCellInsertion", info: stampInfo(stamp) },
+    });
+    rows[index] = { ...source, cells: lower };
+  }
   const geometryChange = {
     type: "mergeCells" as const,
     revisionIds: [
       ownerStamp.id,
       tableStamp.id,
-      ...deletedStamps.map(({ id }) => id),
+      ...structuralStamps.map(({ id }) => id),
     ],
+    ...(moved.size === 0
+      ? {}
+      : { moves: Array.from(moved.values(), ({ record }) => record) }),
+    ...(emptyOwner === undefined ? {} : { emptyOwner }),
   };
   if (JSON.stringify(geometryChange).length > MAX_TABLE_GEOMETRY_HISTORY_LENGTH)
     return mismatch(
@@ -2693,14 +2856,11 @@ const merge = ({
       used: selected.length * 2,
     }).map((tracked) => Object.assign({}, table, { rows: tracked }));
   }
-  const firstRow = selected.at(0);
-  if (
-    op.revision !== undefined &&
-    selected.length === 1 &&
-    firstRow !== undefined &&
-    firstRow.slice(1).every(({ cell }) => isEmptyCell(cell))
-  )
-    return suggestHorizontalMerge({ document, op, table, grid }, firstRow);
+  if (op.revision !== undefined) {
+    const moves = mergeMoveSources(selected);
+    if (moves !== undefined)
+      return suggestMerge({ document, op, table, grid, selected, moves });
+  }
   if (op.revision !== undefined)
     return refuse({
       op,
@@ -3018,7 +3178,7 @@ const pendingGeometry = (table: Table, op: TableIntentOperation) =>
 /** Count identities from the same topology/selection decisions the operation applies. */
 export const tableEditParagraphDemand = (
   location: TableRowLocation,
-  op: TableIntentOperation,
+  op: TableIntentOperation & { review?: "suggesting" },
 ): Result<number, DocumentOpRefusal> => {
   const table = location.table;
   const pending = pendingGeometry(table, op);
@@ -3063,9 +3223,12 @@ export const tableEditParagraphDemand = (
     case DOCUMENT_OP_TYPES.MERGE_CELLS: {
       const selection = mergeSelection({ table, grid: grid.value, op });
       if (selection.isErr()) return Result.err(selection.error);
-      return Result.ok(
-        selection.value.verticalOnly ? 0 : op.bottom - op.top - 1,
-      );
+      if (selection.value.verticalOnly) return Result.ok(0);
+      const moves =
+        op.review === "suggesting"
+          ? (mergeMoveSources(selection.value.selected)?.length ?? 0)
+          : 0;
+      return Result.ok(op.bottom - op.top - 1 + moves);
     }
     case DOCUMENT_OP_TYPES.SPLIT_CELL: {
       const target = grid.value.rows[location.rowIndex]?.find(

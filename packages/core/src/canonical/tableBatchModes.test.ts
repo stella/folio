@@ -30,9 +30,7 @@ const cellBlockId = (reviewer: FolioDocxReviewer, column: number): string =>
     )?.id ?? "";
 
 describe.each(SESSIONS)("%s session", (session) => {
-  // A merge across a row moves content between cells, which no tracked
-  // change records, so a tracked batch refuses it. It still claims the cells
-  // it would merge: the row deletion after it is refused in either mode.
+  // The merge claims both cells before the following row deletion can edit them.
   test.each(["direct", "tracked-changes"] as const)(
     "a %s merge claims its cells against a later row deletion",
     async (mode) => {
@@ -59,15 +57,25 @@ describe.each(SESSIONS)("%s session", (session) => {
         { undefinedReferences: "refuse" },
       );
 
-      expect(result.applied.map(({ id }) => id)).toEqual(
-        mode === "direct" ? ["merge"] : [],
-      );
+      expect(result.applied.map(({ id }) => id)).toEqual(["merge"]);
       expect(result.skipped.map(({ id, reason }) => ({ id, reason }))).toEqual([
-        ...(mode === "direct"
-          ? []
-          : [{ id: "merge", reason: "unsupportedBlock" }]),
         { id: "delete-row", reason: "overlappingOperation" },
       ]);
+      if (mode === "tracked-changes") {
+        const reopened = await FolioDocxReviewer.fromBuffer(
+          await reviewer.toBuffer(),
+          { session },
+        );
+        expect(reopened.acceptAll().resolved).toBeGreaterThan(0);
+        const saved = await parseDocx(await reopened.toBuffer(), {
+          preloadFonts: false,
+        });
+        const table = saved.package.document.content.find(
+          (block) => block.type === "table",
+        );
+        expect(table?.rows.at(0)?.cells).toHaveLength(1);
+        expect(table?.rows.at(0)?.cells.at(0)?.content).toHaveLength(2);
+      }
     },
   );
 

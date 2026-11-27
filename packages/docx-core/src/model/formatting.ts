@@ -576,6 +576,17 @@ export type FloatingTableProperties = WritableRecord & {
 /** Maximum saved geometry payload, leaving room for the history wrapper. */
 export const MAX_TABLE_GEOMETRY_HISTORY_LENGTH: number = 32_768 - 32;
 
+/** The two native move ranges and paragraph identities that relocate a table cell. */
+export type TableGeometryMove = {
+  readonly source: string;
+  readonly destination: string;
+  readonly fromRevision: number;
+  readonly toRevision: number;
+  readonly fromRange: number;
+  readonly toRange: number;
+  readonly destinationMark: number;
+};
+
 /**
  * The grid a reviewer replaced, as `w:tblGridChange` records it.
  *
@@ -595,10 +606,15 @@ export type TableGridChange = WritableRecord & {
   /** One entry per `w:gridCol`, in source order. */
   columnWidths: readonly (number | undefined)[];
   /** Physical records that together change table geometry. */
-  geometryChange?: {
-    readonly type: "deleteColumn" | "mergeCells";
-    readonly revisionIds: readonly number[];
-  };
+  geometryChange?: { readonly revisionIds: readonly number[] } & (
+    | { readonly type: "deleteColumn" }
+    | {
+        readonly type: "mergeCells";
+        readonly moves?: readonly TableGeometryMove[];
+        /** The original owner paragraph, discarded if empty when accepted. */
+        readonly emptyOwner?: string;
+      }
+  );
 };
 
 /**

@@ -183,13 +183,13 @@ const CASES: readonly Case[] = [
     name: "merge a row's cells",
     command: "mergeCells",
     selection: { type: "cells", from: "D", to: "E" },
-    tracked: false,
+    tracked: true,
   },
   {
     name: "merge a column's cells",
     command: "mergeCells",
     selection: { type: "cells", from: "A", to: "D" },
-    tracked: false,
+    tracked: true,
   },
   {
     name: "split a spanning cell",

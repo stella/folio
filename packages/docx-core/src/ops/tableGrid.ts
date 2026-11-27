@@ -69,9 +69,10 @@ export const tableGrid = (
     if (!nonnegative(position) || !nonnegative(after)) return refuse();
     const cells: GridCell[] = [];
     for (const [index, cell] of row.cells.entries()) {
-      const span =
-        (review === undefined ? cell.formatting : review.cellFormatting(cell))
-          ?.gridSpan ?? 1;
+      if (review !== undefined && !review.holdsCell(cell)) continue;
+      const formatting =
+        review === undefined ? cell.formatting : review.cellFormatting(cell);
+      const span = formatting?.gridSpan ?? 1;
       if (!nonnegative(span) || span === 0 || !nonnegative(position + span))
         return refuse();
       const start = position;
@@ -79,13 +80,15 @@ export const tableGrid = (
       let ownerRow = rowIndex;
       let ownerIndex = index;
       if (
-        tableCellVerticalMerge(cell.formatting?.vMerge) ===
+        tableCellVerticalMerge(formatting?.vMerge) ===
         TABLE_CELL_VERTICAL_MERGES.CONTINUE
       ) {
         const above = previous.get(start);
-        const aboveMerge = tableCellVerticalMerge(
-          above?.cell.formatting?.vMerge,
-        );
+        const aboveFormatting =
+          above === undefined || review === undefined
+            ? above?.cell.formatting
+            : review.cellFormatting(above.cell);
+        const aboveMerge = tableCellVerticalMerge(aboveFormatting?.vMerge);
         if (
           !above ||
           above.end !== end ||

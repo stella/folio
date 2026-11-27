@@ -3582,56 +3582,6 @@ const columnInsertionWidensCell = (table: PMNode, columnIndex: number) => {
   return false;
 };
 
-/**
- * Whether the rectangle is one column of one-cell rows, every cell below
- * the first holding nothing but empty paragraphs: the merge a suggestion
- * records, as merge state alone.
- */
-const mergesDownOverEmptyCells = (
-  table: PMNode,
-  map: TableMap,
-  rectangle: TableRectangle,
-) => {
-  if (rectangle.right - rectangle.left !== 1) return false;
-  for (let row = rectangle.top; row < rectangle.bottom; row += 1) {
-    const offset = map.map[row * map.width + rectangle.left];
-    const cell = offset === undefined ? null : table.nodeAt(offset);
-    if (offset === undefined || cell === null) return false;
-    const rect = map.findCell(offset);
-    if (rect.top !== row || rect.bottom !== row + 1) return false;
-    if (row === rectangle.top) continue;
-    let empty = true;
-    cell.forEach((child) => {
-      if (!child.isTextblock || child.content.size > 0) empty = false;
-    });
-    if (!empty) return false;
-  }
-  return true;
-};
-
-/** A merge across one row can absorb empty cells without moving blocks. */
-const mergesAcrossEmptyCells = (
-  table: PMNode,
-  map: TableMap,
-  rectangle: TableRectangle,
-) => {
-  if (rectangle.bottom - rectangle.top !== 1) return false;
-  const cells = new Set(cellsIn(map, rectangle));
-  const owner = map.map[rectangle.top * map.width + rectangle.left];
-  if (owner === undefined) return false;
-  cells.delete(owner);
-  for (const offset of cells) {
-    const cell = table.nodeAt(offset);
-    if (
-      cell?.childCount !== 1 ||
-      !cell.firstChild?.isTextblock ||
-      cell.firstChild.content.size > 0
-    )
-      return false;
-  }
-  return cells.size > 0;
-};
-
 type TableStructureOperation = Extract<
   FolioDocumentOperation,
   {
@@ -3961,14 +3911,6 @@ const resolveTableStructure = ({
         return skipAlike(
           "unsupportedBlock",
           "The merge covers a single merged cell.",
-        );
-      if (
-        tracked &&
-        !mergesDownOverEmptyCells(row.table, map, rectangle) &&
-        !mergesAcrossEmptyCells(row.table, map, rectangle)
-      )
-        return skipTracked(
-          "A suggested merge can absorb only empty cells in one row or column.",
         );
       const blockId = tableBlockAddress(projection, row, deleted);
       if (blockId === undefined)

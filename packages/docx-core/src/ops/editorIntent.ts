@@ -4489,7 +4489,12 @@ const compileInStory = (
       const operation = intent.operation;
       const located = locateTableRow(document, operation);
       if (located.isErr()) return Result.err(located.error);
-      const demand = tableEditParagraphDemand(located.value, operation);
+      const demand = tableEditParagraphDemand(
+        located.value,
+        mode.type === "suggesting"
+          ? { ...operation, review: "suggesting" }
+          : operation,
+      );
       if (demand.isErr()) return Result.err(demand.error);
       const fresh = freshParagraphIds({
         document,

@@ -2044,13 +2044,29 @@ export type TableFormatting = WritableRecord & {
 };
 
 // @public
+type TableGeometryMove = {
+    readonly source: string;
+    readonly destination: string;
+    readonly fromRevision: number;
+    readonly toRevision: number;
+    readonly fromRange: number;
+    readonly toRange: number;
+    readonly destinationMark: number;
+};
+
+// @public
 export type TableGridChange = WritableRecord & {
     id: number;
     columnWidths: readonly (number | undefined)[];
     geometryChange?: {
-        readonly type: "deleteColumn" | "mergeCells";
         readonly revisionIds: readonly number[];
-    };
+    } & ({
+        readonly type: "deleteColumn";
+    } | {
+        readonly type: "mergeCells";
+        readonly moves?: readonly TableGeometryMove[];
+        readonly emptyOwner?: string;
+    });
 };
 
 // @public
@@ -2096,6 +2112,17 @@ export type TablePropertyExceptionChange = WritableRecord & {
 
 // @public
 export type TablePropertyExceptionFormatting = WritableRecord & Pick<TableFormatting, "width" | "justification" | "cellSpacing" | "indent" | "borders" | "shading" | "layout" | "cellMargins" | "look" | "preserved" | "sourceXml">;
+
+// @public
+export const tableReviewGeometry: (table: Table) => TableReviewGeometry | undefined;
+
+// @public
+type TableReviewGeometry = {
+    readonly columnWidths: readonly (number | undefined)[];
+    readonly holdsCell: (cell: TableCell) => boolean;
+    readonly rowFormatting: (row: TableRow) => TableRow["formatting"];
+    readonly cellFormatting: (cell: TableCell) => TableCell["formatting"];
+};
 
 // @public
 export type TableRow = WritableRecord & {

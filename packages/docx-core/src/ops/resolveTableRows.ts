@@ -17,6 +17,11 @@ import { relocatePositionedMarkers } from "./positionedMarkers";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import type { ApplyOps } from "./resolve";
 import { reviewFieldsOf } from "./review";
+import {
+  resolveTableMoves,
+  tableMoveOwnershipMatches,
+  tableMoveRevisionIds,
+} from "./tableCellMove";
 import { editRemovesRow, tableGrid } from "./tableGrid";
 import { locateTableRow, tableRowAnchor } from "./tableLocation";
 import { removalOrphansAMerge, rowsWithoutRow } from "./tableRowRemoval";
@@ -69,23 +74,48 @@ const tablesIn = (document: Document, story: OpStory): Table[] => {
 export const withBelongingTableGeometry = (
   document: Document,
   op: ResolveRevisionOp,
-): ResolveRevisionOp => {
+): Result<ResolveRevisionOp, DocumentOpRefusal> => {
   const ids = new Set(op.revisionIds);
   const uniqueCount = ids.size;
   for (const table of tablesIn(document, op.story)) {
     const grid = table.formatting?.gridChange;
-    const members = grid?.geometryChange?.revisionIds;
+    const geometry = grid?.geometryChange;
+    const members = geometry?.revisionIds;
     if (grid === undefined || !Array.isArray(members)) continue;
     const local = reachableOnTable(table);
+    const moves =
+      geometry?.type === "mergeCells" && Array.isArray(geometry.moves)
+        ? tableMoveRevisionIds(geometry.moves)
+        : [];
     if (
       !ids.has(grid.id) &&
-      !members.some((id) => local.has(id) && ids.has(id))
+      !members.some((id) => local.has(id) && ids.has(id)) &&
+      !moves.some((id) => ids.has(id))
     )
       continue;
+    if (
+      geometry?.type === "mergeCells" &&
+      !tableMoveOwnershipMatches(table, geometry)
+    )
+      return Result.err(
+        new DocumentOpRefusal({
+          opType: op.type,
+          reason: DOCUMENT_OP_REFUSAL_REASONS.STALE,
+          message:
+            "The tracked table merge no longer matches its paragraph move records.",
+        }),
+      );
     ids.add(grid.id);
     for (const id of members) if (local.has(id)) ids.add(id);
+    // The topology decision unwraps these paragraphs and hands back their
+    // source ids. An independent inline decision would lose the handoff.
+    for (const id of moves) ids.delete(id);
   }
-  return ids.size === uniqueCount ? op : { ...op, revisionIds: [...ids] };
+  return Result.ok(
+    ids.size === uniqueCount && op.revisionIds.every((id) => ids.has(id))
+      ? op
+      : { ...op, revisionIds: [...ids] },
+  );
 };
 
 const propertyIds = (
@@ -674,10 +704,14 @@ const resolveCellChanges = ({
     }),
   );
   if (
-    !hasRemovedCells ||
-    (selectedGridChange &&
-      table.formatting?.gridChange?.geometryChange !== undefined)
+    selectedGridChange &&
+    table.formatting?.gridChange?.geometryChange !== undefined
   )
+    return Result.ok({
+      table: resolveTableMoves(structureResolved, reject),
+      holdsRemovedColumns: false,
+    });
+  if (!hasRemovedCells)
     return Result.ok({ table: structureResolved, holdsRemovedColumns: false });
 
   // Cell insertions used by horizontal/vertical splits restore the owner's span
@@ -952,9 +986,8 @@ export const resolveTableRows = ({
       current = applied.value.document;
       continue;
     }
-    const selectedGridChange =
-      table.formatting?.gridChange !== undefined &&
-      ids.has(table.formatting.gridChange.id);
+    const grid = table.formatting?.gridChange;
+    const selectedGridChange = grid !== undefined && ids.has(grid.id);
     const cellsResolved = resolveCellChanges({
       table,
       ids,
@@ -982,9 +1015,13 @@ export const resolveTableRows = ({
         ),
       );
     // Cells the decision removes take no bookmark beside them with them.
+    const geometry = grid?.geometryChange;
     const nextTable = relocatePositionedMarkers(
       table,
       propertiesResolved.value,
+      !reject && selectedGridChange && geometry?.type === "mergeCells"
+        ? { freshCellRevisions: new Set(geometry.revisionIds) }
+        : undefined,
     );
     const applied = applyOps(current, [
       {

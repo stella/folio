@@ -297,37 +297,61 @@ describe("column operations on a table whose file states no widths", () => {
     expect(reviewed.rejected).toEqual((await outcomes(source)).rejected);
   });
 
-  test.each(["merge", "split"] as const)(
+  test.each([
+    "merge",
+    "merge with text",
+    "merge absorbing a row",
+    "merge retaining a row",
+    "split",
+  ] as const)(
     "a tracked horizontal %s survives save and review",
     async (kind) => {
+      const merging = kind !== "split";
+      const absorbsRow = kind === "merge absorbing a row";
+      const retainsRow = kind === "merge retaining a row";
+      let endBlockId = "20000002";
+      if (absorbsRow) endBlockId = "20000006";
+      if (retainsRow) endBlockId = "20000005";
       const source = await packageOf([
         paragraph("10000001", "Before"),
         table(
           [
             row(
-              (kind === "merge"
-                ? textCell("20000001", "Owner") + textCell("20000002", "")
+              (merging
+                ? textCell("20000001", "Owner") +
+                  textCell(
+                    "20000002",
+                    kind === "merge with text" ? "Moved" : "",
+                  )
                 : textCell("20000001", "Owner", '<w:gridSpan w:val="2"/>')) +
                 textCell("20000003", "Tail"),
             ),
+            ...(absorbsRow || retainsRow
+              ? [
+                  row(
+                    textCell("20000004", "Lower left") +
+                      textCell("20000005", "Lower middle") +
+                      textCell("20000006", "Lower right"),
+                  ),
+                ]
+              : []),
           ],
           3,
         ),
         paragraph("10000002", "After"),
       ]);
-      const op =
-        kind === "merge"
-          ? ({
-              type: "mergeTableCells",
-              id: "merge",
-              blockId: "20000001",
-              endBlockId: "20000002",
-            } satisfies FolioDocumentOperation)
-          : ({
-              type: "splitTableCell",
-              id: "split",
-              blockId: "20000001",
-            } satisfies FolioDocumentOperation);
+      const op = merging
+        ? ({
+            type: "mergeTableCells",
+            id: "merge",
+            blockId: "20000001",
+            endBlockId,
+          } satisfies FolioDocumentOperation)
+        : ({
+            type: "splitTableCell",
+            id: "split",
+            blockId: "20000001",
+          } satisfies FolioDocumentOperation);
       const pending = await viaCanonicalEngine(source, op, "tracked-changes");
       expect(pending.refusals).toEqual([]);
       expect(pending.skipped).toEqual([]);
@@ -339,7 +363,15 @@ describe("column operations on a table whose file states no widths", () => {
       if (!part) throw new Error("The saved package has no document part.");
       const xml = await part.text();
       expect(xml).toMatch(/<w:tcPrChange\b/u);
-      expect(xml).toMatch(kind === "merge" ? /<w:cellDel\b/u : /<w:cellIns\b/u);
+      expect(xml).toMatch(merging ? /<w:cellDel\b/u : /<w:cellIns\b/u);
+      if (absorbsRow) expect(xml).toMatch(/<w:trPr><w:del\b/u);
+      if (retainsRow) expect(xml).toMatch(/<w:cellIns\b/u);
+      if (kind === "merge with text" || absorbsRow || retainsRow) {
+        expect(xml).toMatch(/<w:moveFromRangeStart\b/u);
+        expect(xml).toMatch(/<w:moveToRangeStart\b/u);
+        expect(xml).toMatch(/<w:moveFrom\b/u);
+        expect(xml).toMatch(/<w:moveTo\b/u);
+      }
       const reviewed = await reviewedInSession(pending.bytes);
       expect(reviewed.accepted).toEqual(
         (await outcomes(direct.bytes)).accepted,

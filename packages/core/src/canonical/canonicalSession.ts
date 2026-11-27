@@ -21,6 +21,7 @@ import { hasIllegalXmlCharacters } from "@stll/docx-core";
 import {
   lockedControlMessage,
   type LockedControlViolation,
+  tableReviewGeometry,
   tableWithPhysicalColumns,
 } from "@stll/docx-core/model";
 import {
@@ -1121,6 +1122,14 @@ const visitBlockSources = (
   }
   if (block.type !== "table") return;
   const display = tableWithPhysicalColumns(block);
+  if (display !== block) {
+    const geometry = tableReviewGeometry(block);
+    if (geometry !== undefined)
+      for (const row of block.rows)
+        for (const cell of row.cells)
+          if (!geometry.holdsCell(cell))
+            visitSourceParagraphs(cell.content, visit, true);
+  }
   const rowSpans = calculateRowSpans(display);
   for (const [rowIndex, row] of display.rows.entries()) {
     let column = row.formatting?.gridBefore ?? 0;
