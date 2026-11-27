@@ -303,7 +303,10 @@ export const sameParagraphProperties = (
   left: ParagraphFormatting | undefined,
   right: ParagraphFormatting | undefined,
 ): boolean =>
-  structurallyEqual(paragraphPropertiesOf(left), paragraphPropertiesOf(right));
+  structurallyEqual(
+    paragraphPropertiesOf(left) ?? {},
+    paragraphPropertiesOf(right) ?? {},
+  );
 
 /** Whether two property sets state the same run properties for the paragraph mark. */
 export const sameMarkFormatting = (
