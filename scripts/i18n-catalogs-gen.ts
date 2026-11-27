@@ -65,7 +65,38 @@ const stringAt = (catalog: Catalog, keys: string[], locale: string) => {
   return value;
 };
 
-const englishPaths = keyPaths(readCatalog("en"));
+/**
+ * The first place `catalog` differs from `english` in its keys or in which
+ * of them hold strings, in any key order; `undefined` when it has the same
+ * shape.
+ */
+const shapeDifference = (
+  english: Catalog,
+  catalog: Catalog,
+  prefix: string[] = [],
+): string | undefined => {
+  const englishKeys = Object.keys(english).sort();
+  const keys = Object.keys(catalog).sort();
+  const extra = keys.find((key) => !(key in english));
+  if (extra !== undefined) return [...prefix, extra].join(".");
+  const missing = englishKeys.find((key) => !(key in catalog));
+  if (missing !== undefined) return [...prefix, missing].join(".");
+  for (const key of englishKeys) {
+    const expected = english[key];
+    const value = catalog[key];
+    if (typeof expected === "string" || typeof value === "string") {
+      if (typeof expected !== typeof value) return [...prefix, key].join(".");
+      continue;
+    }
+    if (expected === undefined || value === undefined) continue;
+    const nested = shapeDifference(expected, value, [...prefix, key]);
+    if (nested !== undefined) return nested;
+  }
+  return undefined;
+};
+
+const english = readCatalog("en");
+const englishPaths = keyPaths(english);
 const outputs = new Map([[outputPath, contents]]);
 for (const locale of FOLIO_LOCALES) {
   const catalog = readCatalog(locale);
@@ -82,8 +113,11 @@ export default messages;
     );
     continue;
   }
-  if (keyPaths(catalog).length !== englishPaths.length) {
-    console.error(`Error: ${locale}.json has keys the English catalog lacks.`);
+  const difference = shapeDifference(english, catalog);
+  if (difference !== undefined) {
+    console.error(
+      `Error: ${locale}.json and en.json differ at ${difference}: every catalog holds the English catalog's keys, and no others.`,
+    );
     process.exit(1);
   }
   const strings = englishPaths.map((keys) => stringAt(catalog, keys, locale));
