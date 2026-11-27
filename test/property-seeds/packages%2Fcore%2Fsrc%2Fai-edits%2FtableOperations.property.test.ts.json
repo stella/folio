@@ -157,6 +157,98 @@
       "path": "108:2:6:5:5:5:23:5:5:5:8:22:9:9:15:7:8:10:7:8:9:9:18:5:7:9:8:11:13:7:8:10:7:8:10:7:9:9:9:9:11:5:5:6:7:9:7:13:7:0:0:6:6:4:4:5:4:4:6:7:7:8:6:6:6:8:9:9",
       "note": "#3517: a row inserted inside a nested vertical merge whose last row the batch deletes continues it (path at factor 4).",
       "date": "2026-11-26"
+    },
+    {
+      "seed": -1276312993,
+      "path": "105:4:3:3:3:3:3:3:4:0:1:1:2:3:3:4:3:4:3:4:5:5:3:3:3:3:3:4:3:3:4:5:4:5:5",
+      "note": "#3411: deleting both columns of a table of blank cells in one batch.",
+      "date": "2026-11-27"
+    },
+    {
+      "seed": -1313528112,
+      "path": "24:2:2:6:6:3:3:1:1:7:2:6:2:2:3:2:3:3:4:3:4:2:3:4:4:4:5:5",
+      "note": "#3411: a merge beside the deletion of a one-column table's only column.",
+      "date": "2026-11-27"
+    },
+    {
+      "seed": -1427226924,
+      "path": "132:7:6:4:4:5:5:4:4:4:4:4:5:4:4:4:4:4:4:4:4:4:4:5:4:4:6:4:4:4:7:32:32:32:32:4",
+      "note": "#3411: a row inserted above and a row deleted that starts vertical merges, beside a nested table.",
+      "date": "2026-11-27"
+    },
+    {
+      "seed": -1748406646,
+      "path": "79:4:3:6:6:6:6:9:8:12:10:8:12:8:8:13:16:19:17:6:16:24:15:15:15:15:15:17",
+      "note": "#3411: of two merges in one row whose cells overlap, the later is refused in either mode, though tracked refuses the wider one for the nested table it would move.",
+      "date": "2026-11-27"
+    },
+    {
+      "seed": -2045767920,
+      "path": "56:0:1:1:1:1:1:2:2:3:3:5:5:4:7:3:3:7:3:4:3:3:4:7:8:8",
+      "note": "#3411: deleting both columns of a two-column table in one batch.",
+      "date": "2026-11-27"
+    },
+    {
+      "seed": -2101097272,
+      "path": "113:1:1:1:1:1:1:2:2:3:3:3:5:6:3:10:5:6:3:4:3:7:8",
+      "note": "#3411: the same, the second deletion named through the other cell.",
+      "date": "2026-11-27"
+    },
+    {
+      "seed": 1800767993,
+      "path": "50:2:2:2:2:3:2:2:3:2:2:5:5:2:2:4:2:2:3:4:2:9:3:2:2:2:2:4:9:14:2:2:2:14:16:8:10:9:8:10:11",
+      "note": "#3411: a column inserted and one deleted through a full-width merged row and vertical merges (path at factor 4).",
+      "date": "2026-11-27"
+    },
+    {
+      "seed": 1884136748,
+      "path": "21:5:7:8:10:11:12:12:12:12:9:7:9:1:7:17:8:7:7:7:16:8:8:9:9:9:0:2:5:7:8:8",
+      "note": "#3411: a row inserted beside the split of a vertical merge.",
+      "date": "2026-11-27"
+    },
+    {
+      "seed": 206809289,
+      "path": "39:1:3:3:3:3:3:7:6:6:6:6:7:6:8:6:6:6:6:7:7:7:15:6:8:8:6:8:9:9:12:3:0:2:2:18:9:5:5:5:5:8:9:9",
+      "note": "#3411: the same, one column holding a nested table.",
+      "date": "2026-11-27"
+    },
+    {
+      "seed": 265352626,
+      "path": "35:1:0:1:4:2:3:5:3:3:5:3:3:3:7:6:3:5:4:3:4:7:5:7:5:5:5:9:5:5:20:22:19:19:19:19:19:19:19:24:21:23:20:22:22:25:22:24:24:22:22:22:25",
+      "note": "#3411: a merge in a nested table beside the deletion of the outer column holding it.",
+      "date": "2026-11-27"
+    },
+    {
+      "seed": -2094214781,
+      "path": "37:0:0:0:4:4:4:3:3:5:4:5:4:4:4:4:4:6:5:5:4:5:5:6:6:7:8:10:8:8:11:15:8:21:22",
+      "note": "#3517: a row inserted after, and the deletion of, a row a nested table's vertical merge continues into.",
+      "date": "2026-11-27"
+    },
+    {
+      "seed": -491683337,
+      "path": "1:3:2:2:1:2:2:2:2:3:2:3:3:12:4:4:7:4:4:4:4:8:4:4:4:4:7:8:8",
+      "note": "#3517: the same in a top-level table beside a nested table.",
+      "date": "2026-11-27"
+    },
+    {
+      "seed": 1209959942,
+      "path": "480:5:3:1:4:2:2:4:4:5:3:6:7:5:3:4:4:4:3:3:3:4:5:5:5:5:6:6",
+      "note": "#3517: two column deletions through a horizontal merge (path at factor 4).",
+      "date": "2026-11-27"
+    },
+    {
+      "seed": 1371192866,
+      "path": "215:2:5:4:4:5:12:6:5:4:6:4:4:6:6:5:5:15:6:6:14:20:16:23:31:31:31:31:32:32",
+      "note": "#3517: a merge below a deleted row beside vertical merges and a nested table (path at factor 4).",
+      "date": "2026-11-27"
+    }
+  ],
+  "keep vertical merges whole across batched row edits": [
+    {
+      "seed": -646753196,
+      "path": "168:5:5:5:6:6:5:7:5:5:9:5:7:9:5:5:9:12:10:10:10:10:10:10:17:10:13:10:14:14:5:6:6:6",
+      "note": "#3726: a merge below the deletion of a row whose first cell starts a vertical merge is refused in either mode (path at factor 4).",
+      "date": "2026-11-27"
     }
   ]
 }
