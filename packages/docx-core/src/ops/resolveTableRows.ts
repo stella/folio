@@ -25,7 +25,11 @@ import {
 } from "./tableCellMove";
 import { editRemovesRow, tableGrid } from "./tableGrid";
 import { locateTableRow, tableRowAnchor } from "./tableLocation";
-import { removalOrphansAMerge, rowsWithoutRow } from "./tableRowRemoval";
+import {
+  removalOrphansAMerge,
+  rowsWithoutRow,
+  withVerticalMerge,
+} from "./tableRowRemoval";
 import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
@@ -633,6 +637,93 @@ const resolveCellColumns = ({
   return Result.ok({ table: next, holdsRemovedColumns });
 };
 
+const selectedMergeMembers = (table: Table, ids: ReadonlySet<number>) => {
+  const grid = table.formatting?.gridChange;
+  return grid?.geometryChange?.type === "mergeCells" && ids.has(grid.id)
+    ? new Set(grid.geometryChange.revisionIds)
+    : undefined;
+};
+
+const mergeClosesRow = (
+  row: TableRow,
+  selected: ReadonlySet<number> | undefined,
+): boolean => {
+  const change = row.structuralChange;
+  return (
+    change?.type === "tableRowDeletion" &&
+    selected?.has(change.info.id) === true
+  );
+};
+
+type EndAdjacentMergesOptions = {
+  before: Table;
+  after: Table;
+  selected: ReadonlySet<number> | undefined;
+};
+/** End a neighboring vertical merge that the closed rows alone continued. */
+const endAdjacentMerges = ({
+  before,
+  after,
+  selected,
+}: EndAdjacentMergesOptions): Table => {
+  if (
+    selected === undefined ||
+    !before.rows.some((row) => mergeClosesRow(row, selected))
+  )
+    return after;
+  const previous = tableGrid(before, DOCUMENT_OP_TYPES.SET_TABLE);
+  if (previous.isErr()) return after;
+  const candidates = new Set<string>();
+  for (const [index, row] of before.rows.entries()) {
+    if (!mergeClosesRow(row, selected)) continue;
+    for (const slot of previous.value.rows[index] ?? []) {
+      if (slot.ownerRow === index) continue;
+      const owner = before.rows[slot.ownerRow]?.cells[slot.ownerIndex];
+      if (
+        owner === undefined ||
+        owner.propertyChanges?.some(({ info }) => selected.has(info.id))
+      )
+        continue;
+      const anchor = tableRowAnchor([{ type: "tableRow", cells: [owner] }]);
+      if (anchor !== undefined) candidates.add(anchor);
+    }
+  }
+  if (candidates.size === 0) return after;
+  // The pending snapshot interprets the original geometry. The surviving rows
+  // already hold the newly accepted geometry.
+  const { gridChange: _before, ...formatting } = after.formatting ?? {};
+  const current = tableGrid(
+    { ...after, formatting },
+    DOCUMENT_OP_TYPES.SET_TABLE,
+  );
+  if (current.isErr()) return after;
+  const ended = new Set<TableCell>();
+  for (const [index, slots] of current.value.rows.entries()) {
+    for (const slot of slots) {
+      if (slot.cell.formatting?.vMerge !== "restart") continue;
+      const anchor = tableRowAnchor([{ type: "tableRow", cells: [slot.cell] }]);
+      if (anchor === undefined || !candidates.has(anchor)) continue;
+      if (
+        !current.value.rows[index + 1]?.some(
+          ({ ownerRow, ownerIndex }) =>
+            ownerRow === index && ownerIndex === slot.index,
+        )
+      )
+        ended.add(slot.cell);
+    }
+  }
+  if (ended.size === 0) return after;
+  return {
+    ...after,
+    rows: after.rows.map((row) => ({
+      ...row,
+      cells: row.cells.map((cell) =>
+        ended.has(cell) ? withVerticalMerge(cell, undefined) : cell,
+      ),
+    })),
+  };
+};
+
 type ResolveCellChangesOptions = {
   table: Table;
   ids: ReadonlySet<number>;
@@ -648,6 +739,7 @@ const resolveCellChanges = ({
   { table: Table; holdsRemovedColumns: boolean },
   "unsupported"
 > => {
+  const mergeRows = reject ? undefined : selectedMergeMembers(table, ids);
   const properties = (source: Table): Table => ({
     ...source,
     rows: source.rows.map((row) => ({
@@ -659,6 +751,7 @@ const resolveCellChanges = ({
   const resolveStructure = (source: Table): Table => ({
     ...source,
     rows: source.rows.flatMap((row) => {
+      if (mergeClosesRow(row, mergeRows)) return [];
       const cells = row.cells.flatMap((cell) => {
         const change = cell.structuralChange;
         if (change === undefined || !ids.has(change.info.id)) return [cell];
@@ -718,7 +811,14 @@ const resolveCellChanges = ({
     table.formatting?.gridChange?.geometryChange !== undefined
   )
     return Result.ok({
-      table: resolveTableMoves(structureResolved, reject),
+      table: resolveTableMoves(
+        endAdjacentMerges({
+          before: table,
+          after: structureResolved,
+          selected: mergeRows,
+        }),
+        reject,
+      ),
       holdsRemovedColumns: false,
     });
   if (!hasRemovedCells)
@@ -806,9 +906,10 @@ const marksInRemovedStructure = (
   op: ResolveRevisionOp,
 ): DocumentOp[] => {
   const ids = new Set(op.revisionIds);
+  const reject = op.decision === REVISION_DECISIONS.REJECT;
   const removes = (change: TableStructuralChangeInfo | undefined): boolean => {
     if (change === undefined || !ids.has(change.info.id)) return false;
-    if (op.decision === REVISION_DECISIONS.REJECT)
+    if (reject)
       return (
         change.type === "tableRowInsertion" ||
         change.type === "tableCellInsertion"
@@ -838,10 +939,12 @@ const marksInRemovedStructure = (
   const settled = new Map<string, DocumentOp>();
   for (const table of tablesIn(document, op.story)) {
     const kept = handedOn(table);
+    const mergeRows = reject ? undefined : selectedMergeMembers(table, ids);
     for (const row of table.rows)
       for (const cell of row.cells) {
         const goes =
           removes(cell.structuralChange) ||
+          mergeClosesRow(row, mergeRows) ||
           (removes(row.structuralChange) && !kept.has(cell));
         if (!goes) continue;
         for (const { paragraph } of storyParagraphs({
@@ -875,6 +978,7 @@ export const resolveTableRows = ({
   applyOps,
 }: ResolveTableRowsOptions): Result<DocumentEdit, DocumentOpRefusal> => {
   const ids = new Set(op.revisionIds);
+  const reject = op.decision === REVISION_DECISIONS.REJECT;
   let current = document;
   const edits: DocumentEdit[] = [];
 
@@ -889,11 +993,17 @@ export const resolveTableRows = ({
   // Keep row insertion/deletion on its established primitive, which also
   // removes an emptied table. Table property and cell changes use setTable.
   for (const originalTable of tablesIn(document, op.story)) {
+    // A merge already records the replacement cell topology. Applying its
+    // row deletions separately would carry old merge owners into that topology.
+    const mergeRows = reject
+      ? undefined
+      : selectedMergeMembers(originalTable, ids);
     if (
       !originalTable.rows.some(
         (row) =>
           row.structuralChange !== undefined &&
-          ids.has(row.structuralChange.info.id),
+          ids.has(row.structuralChange.info.id) &&
+          !mergeClosesRow(row, mergeRows),
       )
     )
       continue;
@@ -922,7 +1032,8 @@ export const resolveTableRows = ({
       if (
         row === undefined ||
         change === undefined ||
-        !ids.has(change.info.id)
+        !ids.has(change.info.id) ||
+        mergeClosesRow(row, mergeRows)
       ) {
         rowIndex += 1;
         continue;
@@ -978,7 +1089,6 @@ export const resolveTableRows = ({
     const located = locateTableRow(current, target);
     if (located.isErr()) return Result.err(located.error);
     const table = located.value.table;
-    const reject = op.decision === REVISION_DECISIONS.REJECT;
     // A decision that takes every cell away takes the table with them, as
     // removing its last row does; no grid is left to describe.
     if (removesEveryCell({ table, ids, reject })) {

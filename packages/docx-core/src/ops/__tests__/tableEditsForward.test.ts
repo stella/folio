@@ -1440,6 +1440,71 @@ describe("independent table forward oracles", () => {
     );
   });
 
+  test("a row-closing tracked merge replaces adjacent vertical owners exactly", () => {
+    const table = {
+      type: "table",
+      columnWidths: [600, 600],
+      rows: [
+        {
+          type: "tableRow",
+          cells: [
+            { ...cell(0x100), formatting: { vMerge: "restart" } },
+            cell(0x101),
+          ],
+        },
+        {
+          type: "tableRow",
+          cells: [
+            { ...cell(0x200), formatting: { vMerge: "continue" } },
+            { ...cell(0x201), formatting: { vMerge: "restart" } },
+          ],
+        },
+        {
+          type: "tableRow",
+          cells: [
+            cell(0x300),
+            { ...cell(0x301), formatting: { vMerge: "continue" } },
+          ],
+        },
+      ],
+    } satisfies Table;
+    const source = documentOf(table);
+    const op = {
+      type: DOCUMENT_OP_TYPES.MERGE_CELLS,
+      ...address(id(0x101)),
+      top: 0,
+      bottom: 3,
+      left: 1,
+      right: 2,
+      newBlockIds: [id(0x401), id(0x402)],
+    } satisfies DocumentOp;
+    const direct = applyDocumentOp(source, op).unwrap();
+    const pending = applyDocumentOp(source, {
+      ...op,
+      newBlockIds: [id(0x401), id(0x402), id(0x403), id(0x404)],
+      revision: { id: 100, author: "Reviewer", date: "2026-11-27T00:00:00Z" },
+      newIds: {
+        revision: [101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111],
+      },
+    }).unwrap();
+    const grid = tableOf(pending.document).formatting?.gridChange;
+    if (grid === undefined) throw new TypeError("Expected a merge revision.");
+    for (const decision of ["accept", "reject"] as const) {
+      const resolved = applyDocumentOp(pending.document, {
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story: OP_STORIES.MAIN,
+        revisionIds: [grid.id],
+        decision,
+      }).unwrap();
+      expect(resolved.document).toStrictEqual(
+        decision === "accept" ? direct.document : source,
+      );
+      expect(
+        applyDocumentOps(resolved.document, resolved.inverse).unwrap().document,
+      ).toStrictEqual(pending.document);
+    }
+  });
+
   test(
     "a tracked merge moves words across both retained and absorbed rows",
     () => {

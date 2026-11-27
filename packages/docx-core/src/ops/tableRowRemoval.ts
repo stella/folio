@@ -259,7 +259,7 @@ const spansOf = (row: TableRow | undefined) => {
     return { cell, key: `${start}:${at}` };
   });
 };
-const withVerticalMerge = (
+export const withVerticalMerge = (
   cell: TableCell,
   vMerge: TableCellFormatting["vMerge"],
 ): TableCell => {
