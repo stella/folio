@@ -1434,7 +1434,7 @@ describe("deleting a paragraph with no paragraph right after it", () => {
     expect(joined.content.at(0)).toEqual(opening);
   });
 
-  test.each([
+  test.each<{ name: string; content: BlockContent[] }>([
     {
       name: "the container's end",
       content: [
@@ -1489,7 +1489,7 @@ describe("deleting a paragraph with no paragraph right after it", () => {
   // ends with a block, keeps the paragraph: deleting it empties it in place,
   // as one ending its container, and the tracked deletion records only its
   // words.
-  test.each([
+  test.each<{ name: string; content: BlockContent[] }>([
     {
       name: "a body ending with a block content control",
       content: [
