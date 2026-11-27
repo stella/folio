@@ -8,9 +8,15 @@ import {
   OP_STORIES,
   REVISION_DECISIONS,
 } from "@stll/docx-core/ops";
+import { ZipArchive } from "@stll/docx-core/zip";
+import { base64ToBytes } from "@stll/utf8-boundaries";
 
+import { FolioDocxReviewer } from "../ai-edits/headless";
+import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import type { Document, Table } from "../types/document";
+import { RELATIONSHIP_TYPES } from "./relsParser";
 import { FOLIO_REVIEW_HISTORY_NAMESPACE } from "./reviewHistoryNamespace";
+import { createEmptyDocx } from "./rezip";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
 import { serializeTable } from "./serializer/tableSerializer";
 import { parseTable } from "./tableParser";
@@ -25,6 +31,8 @@ const atoms =
   '<w:r><w:t>Linked</w:t><w:tab/><w:br/><w:sym w:font="Symbol" w:char="F020"/><w:softHyphen/><w:noBreakHyphen/></w:r>';
 const inlinePicture =
   '<w:r><w:drawing><wp:inline><wp:extent cx="914400" cy="914400"/><wp:docPr id="27" name="Inline logo"/><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="0" name="logo.png"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="rIdLogo"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="914400"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>';
+const PNG =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
 const readTable = (xml: string): Table => {
   const element = parseXmlDocument(
@@ -180,5 +188,79 @@ test.each([
         );
       }
     }
+  }
+});
+
+test("the saved picture is available after each public table review decision", async () => {
+  const source = tableOf(sourceWith({ content: inlinePicture }));
+  const tableXml = serializeTable(source, serializeParagraph).replace(
+    "<w:tbl",
+    '<w:tbl xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"',
+  );
+  const seed = await ZipArchive.read(await createEmptyDocx());
+  seed.set(
+    "word/document.xml",
+    `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:body>${tableXml}</w:body></w:document>`,
+  );
+  const path = "word/media/logo.png";
+  const relsPath = "word/_rels/document.xml.rels";
+  const rels = await seed.entry(relsPath)?.text();
+  const typesPath = "[Content_Types].xml";
+  const types = await seed.entry(typesPath)?.text();
+  if (rels === undefined || types === undefined)
+    throw new TypeError("Expected a DOCX package.");
+  seed.set(
+    relsPath,
+    rels.replace(
+      "</Relationships>",
+      `<Relationship Id="rIdLogo" Type="${RELATIONSHIP_TYPES.image}" Target="media/logo.png"/></Relationships>`,
+    ),
+  );
+  if (!types.includes('Extension="png"'))
+    seed.set(
+      typesPath,
+      types.replace(
+        "</Types>",
+        '<Default Extension="png" ContentType="image/png"/></Types>',
+      ),
+    );
+  seed.set(path, base64ToBytes(PNG));
+  const sourceReviewer = await FolioDocxReviewer.fromBuffer(
+    (await seed.generate({ compression: "store" })).buffer,
+    { session: "canonical" },
+  );
+  const result = sourceReviewer.applyDocumentOperations(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "tracked-changes",
+      operations: [
+        {
+          id: "merge-logo-cell",
+          type: "mergeTableCells",
+          blockId: ownerId,
+          endBlockId: sourceId,
+        },
+      ],
+    },
+    { undefinedReferences: "refuse" },
+  );
+  expect(result.skipped).toEqual([]);
+  expect(result.applied).toHaveLength(1);
+  const pending = await sourceReviewer.toBuffer();
+  for (const decision of ["accept", "reject"] as const) {
+    const reviewer = await FolioDocxReviewer.fromBuffer(pending.slice(0), {
+      session: "canonical",
+    });
+    if (decision === "accept") reviewer.acceptAll();
+    else reviewer.rejectAll();
+    const archive = await ZipArchive.read(await reviewer.toBuffer());
+    const main = archive.entry("word/document.xml");
+    if (main === undefined)
+      throw new TypeError("Expected the main document part.");
+    const xml = await main.text();
+    expect(xml.match(/<wp:docPr\b[^>]*\bid="27"/gu)).toHaveLength(1);
+    expect(xml).not.toContain("<w:moveTo ");
+    expect(xml).not.toContain("<w:moveFrom ");
+    expect(archive.entry(path)).toBeDefined();
   }
 });
