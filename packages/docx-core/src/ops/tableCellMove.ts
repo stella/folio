@@ -131,11 +131,15 @@ type MarkNestedTableMoveOptions = {
   destinations: readonly string[];
   rowStamps: readonly RevisionStamp[];
 };
+type MarkedNestedTableMove = {
+  destination: Table;
+  record: TableGeometryNestedMove;
+};
 export const markNestedTableMove = ({
   source,
   destinations,
   rowStamps,
-}: MarkNestedTableMoveOptions) => {
+}: MarkNestedTableMoveOptions): MarkedNestedTableMove | undefined => {
   if (
     destinations.length !== source.paragraphs.length ||
     rowStamps.length !== source.table.rows.length
@@ -276,7 +280,10 @@ export const markEmptyTableMove = ({
   source,
   destination,
   mark,
-}: Pick<MarkTableMoveOptions, "source" | "destination" | "mark">) => ({
+}: Pick<
+  MarkTableMoveOptions,
+  "source" | "destination" | "mark"
+>): MarkedTableMove => ({
   record: {
     kind: "empty",
     source: source.id,
@@ -363,8 +370,12 @@ export const tableMoveOwnershipMatches = (
     const source = sources.get(sourceId);
     const destination = destinations.get(destinationId);
     if (move.kind === "empty") {
-      if (source?.content.length !== 0 || destination?.content.length !== 0 ||
-        destination.pPrMark?.kind !== "ins" || destination.pPrMark.info.id !== move.destinationMark)
+      if (
+        source?.content.length !== 0 ||
+        destination?.content.length !== 0 ||
+        destination.pPrMark?.kind !== "ins" ||
+        destination.pPrMark.info.id !== move.destinationMark
+      )
         return false;
       continue;
     }
