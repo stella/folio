@@ -11,8 +11,10 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
-import { type EditorState, Plugin, PluginKey } from "prosemirror-state";
+import { type EditorState, Plugin } from "prosemirror-state";
 import { Decoration, DecorationSet } from "prosemirror-view";
+
+import { createPluginKeyOwner } from "../pluginKeyOwner";
 
 /** The class of a hidden editor block the browser lays out. */
 export const HIDDEN_EDITOR_LAID_OUT_CLASS = "folio-hidden-laid-out";
@@ -25,7 +27,9 @@ type LayoutWindow = {
   decorations: DecorationSet;
 };
 
-const layoutWindowKey = new PluginKey<LayoutWindow>("hiddenEditorLayoutWindow");
+const layoutWindowOwner = createPluginKeyOwner<LayoutWindow>(
+  "hiddenEditorLayoutWindow",
+);
 
 const LAID_OUT = { class: HIDDEN_EDITOR_LAID_OUT_CLASS };
 
@@ -76,17 +80,20 @@ const windowOf = (
 };
 
 /** Mark the hidden body editor's blocks around the selection as laid out. */
-export const createHiddenEditorLayoutWindowPlugin = (): Plugin<LayoutWindow> =>
-  new Plugin<LayoutWindow>({
-    key: layoutWindowKey,
-    state: {
-      init: (_config, state) => windowOf(state, undefined, true),
-      apply: (transaction, previous, _before, state) =>
-        transaction.docChanged || transaction.selectionSet
-          ? windowOf(state, previous, transaction.docChanged)
-          : previous,
-    },
-    props: {
-      decorations: (state) => layoutWindowKey.getState(state)?.decorations,
-    },
-  });
+export const createHiddenEditorLayoutWindowPlugin =
+  (): Plugin<LayoutWindow> => {
+    const key = layoutWindowOwner.createKey();
+    return new Plugin<LayoutWindow>({
+      key,
+      state: {
+        init: (_config, state) => windowOf(state, undefined, true),
+        apply: (transaction, previous, _before, state) =>
+          transaction.docChanged || transaction.selectionSet
+            ? windowOf(state, previous, transaction.docChanged)
+            : previous,
+      },
+      props: {
+        decorations: (state) => key.getState(state)?.decorations,
+      },
+    });
+  };
