@@ -344,6 +344,11 @@ const footprintOf = (op: DocumentOp): OpFootprint => {
           write(EXCLUSIVE_PARTS.SECTIONS),
           write(EXCLUSIVE_PARTS.HEADERS_FOOTERS, op.story.rId),
           write(EXCLUSIVE_PARTS.RELATIONSHIPS, op.story.rId),
+          // A removed part's own relationships go with it.
+          write(
+            EXCLUSIVE_PARTS.RELATIONSHIPS,
+            `${op.story.kind}:${op.story.rId}.xml.rels`,
+          ),
         ],
       );
     case DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS:

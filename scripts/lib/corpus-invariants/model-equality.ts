@@ -141,20 +141,10 @@ export const normalizeDocumentPackage = (document: Document): unknown => {
       "Model equality requires Document inputs containing a document package.",
     );
   // A part's table without the relationships a save allocates: a part left
-  // with none compares as absent, as a package that had none reads. A header
-  // or footer the document no longer holds has no part a save writes.
-  const heldStories = new Set([
-    ...[...(document.package.headers?.keys() ?? [])].map(
-      (id) => `header:${id}`,
-    ),
-    ...[...(document.package.footers?.keys() ?? [])].map(
-      (id) => `footer:${id}`,
-    ),
-  ]);
+  // with none compares as absent, as a package that had none reads.
   const keptAnnotationTables = [
     ...(document.package.annotationRelationships ?? []),
   ].flatMap(([part, table]) => {
-    if (/^(?:header|footer):/u.test(part) && !heldStories.has(part)) return [];
     const kept = [...table].filter(
       ([, relationship]) => !isSaveAllocated(relationship.type),
     );
