@@ -1692,8 +1692,11 @@ describe("document operations", () => {
         assertExactModel(original, snapshot);
         expect(plan.isOk()).toBe(leading && metadata !== "mark");
         if (plan.isErr()) {
+          // Either the copied paragraph ends the paste, so its review lands on
+          // the destination mark the paste keeps, or it carries a copied
+          // `w:ins` mark beside the paste's own: no revision records either.
           expect(plan.error.reason).toBe(
-            DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+            DOCUMENT_OP_REFUSAL_REASONS.NO_REVISION_RECORD,
           );
         } else {
           const edit = applyDocumentOps(original, plan.value.ops).unwrap();

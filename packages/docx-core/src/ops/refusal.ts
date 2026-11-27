@@ -122,13 +122,16 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
    * it out yet: a section-ending mark resolved across a standing range
    * boundary, a change inside a simple field holding content the field's
    * model cannot hold, a block-level `w:customXml` or kept block markup
-   * pasted or moved as a suggestion, a copied paragraph mark or review
-   * carrier a tracked paste cannot attach, copy-origin records nested past
-   * their limit, a tracked deletion of a record holding a comment anchor
-   * that records no joins, an insertion after a pending paragraph mark
-   * without its former snapshot, the table-side insertions and paragraph
-   * removals beside a table, and removing a block content control's only
-   * paragraph (no operation addresses a block list without a paragraph).
+   * pasted or moved as a suggestion, a copied moved-away mark on a pasted
+   * paragraph (the model holds only a `w:del` beside an added mark),
+   * copy-origin records nested past their limit, a tracked deletion of a
+   * record holding a comment anchor that records no joins, a direct
+   * insertion after a pending inserted mark whose rejection would give the
+   * paragraphs it joins other properties or content (only a property change
+   * of that insertion could record the difference), the table-side
+   * insertions and paragraph removals beside a table, and removing a block
+   * content control's only paragraph (no operation addresses a block list
+   * without a paragraph).
    */
   readonly UNTRACKABLE: "untrackable";
   /** A table snapshot cannot distinguish an own undefined field from an omitted field in OOXML. */
@@ -182,7 +185,11 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
    * only (CT_RunTrackChange), and a block-level `w:sdt` takes no revision of
    * its own (CT_SdtBlock records none; an insertion is recorded only on the
    * runs and paragraph marks inside it, so rejecting would leave the empty
-   * control standing). The same change made directly applies.
+   * control standing). A paragraph mark has one `w:ins` in `w:pPr/w:rPr`, so a
+   * tracked paste, whose own insertion it holds, cannot also carry a copied
+   * added mark; and the mark a paste ends in is kept, not inserted, so no
+   * record of the paste holds copied mark review or a `w:sectPr` added to
+   * it. The same change made directly applies.
    */
   readonly NO_REVISION_RECORD: "noRevisionRecord";
   /** Seed contract: a main-story paragraph has no `paraId`. */
@@ -310,13 +317,16 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
    * it out yet: a section-ending mark resolved across a standing range
    * boundary, a change inside a simple field holding content the field's
    * model cannot hold, a block-level `w:customXml` or kept block markup
-   * pasted or moved as a suggestion, a copied paragraph mark or review
-   * carrier a tracked paste cannot attach, copy-origin records nested past
-   * their limit, a tracked deletion of a record holding a comment anchor
-   * that records no joins, an insertion after a pending paragraph mark
-   * without its former snapshot, the table-side insertions and paragraph
-   * removals beside a table, and removing a block content control's only
-   * paragraph (no operation addresses a block list without a paragraph).
+   * pasted or moved as a suggestion, a copied moved-away mark on a pasted
+   * paragraph (the model holds only a `w:del` beside an added mark),
+   * copy-origin records nested past their limit, a tracked deletion of a
+   * record holding a comment anchor that records no joins, a direct
+   * insertion after a pending inserted mark whose rejection would give the
+   * paragraphs it joins other properties or content (only a property change
+   * of that insertion could record the difference), the table-side
+   * insertions and paragraph removals beside a table, and removing a block
+   * content control's only paragraph (no operation addresses a block list
+   * without a paragraph).
    */
   UNTRACKABLE: "untrackable",
   TABLE_SNAPSHOT_PRESENCE: "tableSnapshotPresence",
@@ -364,7 +374,11 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
    * only (CT_RunTrackChange), and a block-level `w:sdt` takes no revision of
    * its own (CT_SdtBlock records none; an insertion is recorded only on the
    * runs and paragraph marks inside it, so rejecting would leave the empty
-   * control standing). The same change made directly applies.
+   * control standing). A paragraph mark has one `w:ins` in `w:pPr/w:rPr`, so a
+   * tracked paste, whose own insertion it holds, cannot also carry a copied
+   * added mark; and the mark a paste ends in is kept, not inserted, so no
+   * record of the paste holds copied mark review or a `w:sectPr` added to
+   * it. The same change made directly applies.
    */
   NO_REVISION_RECORD: "noRevisionRecord",
   /** Seed contract: a main-story paragraph has no `paraId`. */
