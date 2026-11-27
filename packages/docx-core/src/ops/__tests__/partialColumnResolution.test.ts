@@ -138,14 +138,15 @@ describe("rejecting the rest of a partly accepted column insertion", () => {
   });
 });
 
-test.each(["before", "after", "interior"] as const)(
-  "partly rejecting cell insertion records preserves the vertical merge (%s)",
-  (edge) => {
+test(
+  "partly rejecting cell insertion records preserves vertical merges across omission positions",
+  () => {
     assertProperty(
       fc.property(
+        fc.constantFrom("before", "after", "interior"),
         fc.integer({ min: 1, max: 4 }),
         fc.constantFrom("unset", "dxa", "pct"),
-        (span, measurement) => {
+        (edge, span, measurement) => {
           const grid = edge === "before" ? "gridBefore" : "gridAfter";
           const width = edge === "before" ? "widthBefore" : "widthAfter";
           const omitted = measurement === "unset" ? 0 : 1;
@@ -233,7 +234,7 @@ test.each(["before", "after", "interior"] as const)(
         },
       ),
       {
-        id: `partly rejecting cell insertion records preserves the vertical merge (${edge})`,
+        id: "partial cell insertion review preserves vertical merges across omissions",
       },
     );
   },
