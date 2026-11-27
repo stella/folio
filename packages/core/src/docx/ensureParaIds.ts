@@ -242,6 +242,14 @@ export const collectExistingParaIds = (
 type AttributeSpan = { start: number; end: number; value: string };
 type ParagraphOpenTag = {
   nameEnd: number;
+  /**
+   * Just past the last namespace the open tag declares itself, when it
+   * declares any: a paragraph replayed on its own carries the bindings it
+   * reads, and is read back with every declaration before its attributes.
+   */
+  declarationsEnd: number | undefined;
+  /** The prefixes the open tag binds itself. */
+  declaredPrefixes: ReadonlySet<string>;
   inFallback: boolean;
   /** The innermost `mc:AlternateContent` the paragraph is drawn in, if any. */
   alternateContent: XmlElement | undefined;
@@ -314,7 +322,15 @@ const scanPartSpelling = (xml: string, partPath: string): PartSpelling => {
       if (alternateContent) alternateContents.set(element, alternateContent);
       let paraId: AttributeSpan | undefined;
       let textId: AttributeSpan | undefined;
+      let declarationsEnd: number | undefined;
+      const declaredPrefixes = new Set<string>();
       for (const [name, span] of spans) {
+        if (name === "xmlns" || name.startsWith("xmlns:")) {
+          // The value's span ends at its closing quote.
+          declarationsEnd = Math.max(declarationsEnd ?? 0, span.end + 1);
+          declaredPrefixes.add(name === "xmlns" ? "" : name.slice(6));
+          continue;
+        }
         const namespace = resolveAttributeNamespaceUri(element, name);
         const localName = getLocalName(name);
         const value = String(element.attributes?.[name] ?? "");
@@ -341,6 +357,8 @@ const scanPartSpelling = (xml: string, partPath: string): PartSpelling => {
       )
         paragraphs.push({
           nameEnd,
+          declarationsEnd,
+          declaredPrefixes,
           inFallback,
           alternateContent,
           paraId,
@@ -635,26 +653,42 @@ const scanPart = ({
   let deduplicated = 0;
   let ordinal = 0;
 
-  for (const { nameEnd, inFallback, paraId, textId } of spelling.paragraphs) {
+  for (const {
+    nameEnd,
+    declarationsEnd,
+    declaredPrefixes,
+    inFallback,
+    paraId,
+    textId,
+  } of spelling.paragraphs) {
     if (inFallback) {
       continue;
     }
     ordinal += 1;
+    // A paragraph that declares namespaces itself is replayed on its own and
+    // read back with every binding it reads declared ahead of its
+    // attributes: its ids go after its declarations, with the binding they
+    // read, so a save of what was read writes the same tag.
+    const at = declarationsEnd ?? nameEnd;
+    const binding =
+      declarationsEnd !== undefined && !declaredPrefixes.has(w14)
+        ? ` xmlns:${w14}="${W14_NAMESPACE_URI}"`
+        : "";
 
     if (paraId === undefined) {
       const id = mint(ordinal);
       if (textId !== undefined) {
         edits.push({
-          start: nameEnd,
-          end: nameEnd,
-          text: ` ${w14}:paraId="${id}"`,
+          start: at,
+          end: at,
+          text: `${binding} ${w14}:paraId="${id}"`,
         });
         edits.push({ start: textId.start, end: textId.end, text: id });
       } else {
         edits.push({
-          start: nameEnd,
-          end: nameEnd,
-          text: ` ${w14}:paraId="${id}" ${w14}:textId="${id}"`,
+          start: at,
+          end: at,
+          text: `${binding} ${w14}:paraId="${id}" ${w14}:textId="${id}"`,
         });
       }
       assigned += 1;

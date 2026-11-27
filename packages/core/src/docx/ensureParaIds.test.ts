@@ -113,6 +113,29 @@ describe("ensureParaIds", () => {
     }
   });
 
+  test("writes a self-declaring paragraph's ids after its declarations, with the binding they read", async () => {
+    // A paragraph replayed on its own carries the namespaces it reads, and is
+    // read back with every declaration ahead of its attributes; the ids go
+    // where that reading puts them, so a second save writes the same tag.
+    const declaring = `<w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:v="urn:schemas-microsoft-com:vml" w:rsidR="00A1B2C3"><w:r><w:t>Kept</w:t></w:r></w:p>`;
+    const input = await buildDocx({
+      "word/document.xml": documentXml(`${declaring}${PARA("Plain")}`),
+    });
+
+    const xml = await getPart(
+      (await ensureParaIds(input)).docx,
+      "word/document.xml",
+    );
+    const [first, second] = collectIds(xml);
+    expect(xml).toContain(
+      `<w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" w14:paraId="${first}" w14:textId="${first}" w:rsidR="00A1B2C3">`,
+    );
+    // A paragraph that declares nothing takes its ids after its name.
+    expect(xml).toContain(
+      `<w:p w14:paraId="${second}" w14:textId="${second}">`,
+    );
+  });
+
   test("declares xmlns:w14 / xmlns:mc and mc:Ignorable on a root that lacks them", async () => {
     const input = await buildDocx({
       "word/document.xml": documentXml(PARA("Hello")),
