@@ -507,17 +507,20 @@ test.each([
     );
 
     const [firstPair, secondPair] = nestedMove.paragraphs;
-    if (firstPair === undefined || secondPair === undefined)
-      throw new Error("Expected two nested paragraph pairs.");
+    if (firstPair === undefined)
+      throw new Error("Expected a nested paragraph pair.");
     grid.geometryChange = {
       ...history,
       nestedMoves: [
         {
           ...nestedMove,
-          paragraphs: [
-            [firstPair[0], secondPair[1]],
-            [secondPair[0], firstPair[1]],
-          ],
+          paragraphs:
+            secondPair === undefined
+              ? [[firstPair[0], "000000BB"]]
+              : [
+                  [firstPair[0], secondPair[1]],
+                  [secondPair[0], firstPair[1]],
+                ],
         },
       ],
     };
