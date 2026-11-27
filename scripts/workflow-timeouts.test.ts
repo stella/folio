@@ -657,6 +657,57 @@ test("historical caller and callee limits censor samples even after current limi
   );
 });
 
+test("a workflow's runs are read a page at a time, following the cursor", async () => {
+  const transport = fixtureTransport({
+    runFiles: [runFile],
+    files: new Map([
+      [`${HISTORICAL_SHA}:${source.path}`, CALLER],
+      [`${HISTORICAL_SHA}:.github/workflows/callee.yml`, callee(10)],
+    ]),
+  });
+  const cursors: unknown[] = [];
+  const runs = await fetchWorkflowRuns({
+    repository: source.repository,
+    workflows: new Map([[source.path, CALLER]]),
+    fetchJson: async (url, body) => {
+      const response = await transport.fetchJson(url, body);
+      if (body === undefined || !body.includes("... on Workflow"))
+        return response;
+      const request: unknown = JSON.parse(body);
+      const variables = isRecord(request) ? request["variables"] : undefined;
+      const after = isRecord(variables) ? variables["after"] : undefined;
+      cursors.push(after);
+      expect(body).toContain("runs(first: 10, after: $after");
+      const data = isRecord(response) ? response["data"] : undefined;
+      const workflow = isRecord(data) ? data["w0"] : undefined;
+      const page = isRecord(workflow) ? workflow["runs"] : undefined;
+      if (!isRecord(page)) return panic("Malformed fixture page");
+      return {
+        data: {
+          w0: {
+            runs: {
+              ...page,
+              pageInfo:
+                after === null
+                  ? { hasNextPage: true, endCursor: "page-2" }
+                  : { hasNextPage: false, endCursor: null },
+            },
+          },
+        },
+      };
+    },
+  });
+  expect(cursors).toEqual([null, "page-2"]);
+  expect(aggregateWorkflowDurations(runs)).toEqual({
+    ".github/workflows/callee.yml": {
+      run: {
+        job: { p95Seconds: 125, samples: 2 },
+        steps: { Work: { p95Seconds: 125, samples: 2 } },
+      },
+    },
+  });
+});
+
 test("missing historical definitions and recursive caller cycles fail refresh explicitly", async () => {
   for (const files of [
     {},
