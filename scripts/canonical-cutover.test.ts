@@ -135,7 +135,7 @@ describe("canonical cutover guard", () => {
   });
 
   test("the headless session factory is no gap source", () => {
-    const gap = CANONICAL_GAP.publicHeadlessSession;
+    const gap = CANONICAL_GAP.trackedChangeRecords;
     const file = "packages/core/src/ai-edits/headless.ts";
     const method = "static fromBuffer() {}";
     expect(failuresOf(`class Reviewer {\n${method}\n}`, file)).toEqual([]);

@@ -3,7 +3,6 @@ export const CANONICAL_GAP = {
   trackedTableStructure: "tracked-table-structure",
   storyContentProjection: "story-content-projection",
   trackedChangeRecords: "tracked-change-records",
-  publicHeadlessSession: "publicOps.headlessSession",
 } as const;
 
 export type CanonicalGap = (typeof CANONICAL_GAP)[keyof typeof CANONICAL_GAP];
@@ -164,12 +163,6 @@ export const CANONICAL_CAPABILITIES: {
     readonly adapters: readonly ["react", "vue"];
     readonly summary: "A suggested change whose content the tracked-change records cannot express is refused: a section-ending mark resolved across a standing range boundary, a change inside a simple field holding content the field cannot hold, content a w:ins or w:del cannot hold, a block content control or custom XML element pasted or moved, an insertion after a pending paragraph mark without its former snapshot, and the removal of a block content control's only paragraph.";
   };
-  readonly "publicOps.headlessSession": {
-    readonly owner: "document-operations";
-    readonly kind: "refusal";
-    readonly adapters: readonly ["react", "vue"];
-    readonly summary: "A reviewer refuses a resolved view, a comparison projection or a story resolution that leaves a staged suggestion pending, because the suggestion's resolution refused without stating its ground.";
-  };
 } = {
   [CANONICAL_GAP.trackedTableStructure]: {
     owner: "controller",
@@ -191,13 +184,6 @@ export const CANONICAL_CAPABILITIES: {
     adapters: ["react", "vue"],
     summary:
       "A suggested change whose content the tracked-change records cannot express is refused: a section-ending mark resolved across a standing range boundary, a change inside a simple field holding content the field cannot hold, content a w:ins or w:del cannot hold, a block content control or custom XML element pasted or moved, an insertion after a pending paragraph mark without its former snapshot, and the removal of a block content control's only paragraph.",
-  },
-  [CANONICAL_GAP.publicHeadlessSession]: {
-    owner: "document-operations",
-    kind: "refusal",
-    adapters: ["react", "vue"],
-    summary:
-      "A reviewer refuses a resolved view, a comparison projection or a story resolution that leaves a staged suggestion pending, because the suggestion's resolution refused without stating its ground.",
   },
 } as const satisfies Record<CanonicalGap, CanonicalCapability>;
 

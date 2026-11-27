@@ -139,7 +139,6 @@ import { sectionPropertiesOf } from "../prosemirror/sectionCarrier";
 import { getSuggestions } from "../prosemirror/suggestionQueries";
 import {
   CANONICAL_CONDITION,
-  CANONICAL_GAP,
   CANONICAL_RULE,
   type CanonicalCondition,
   type HeadlessReviewerSession,
@@ -333,15 +332,26 @@ const canonicalOpStory = (story: FolioEditableDocumentStoryHandle): OpStory => {
 };
 
 /**
- * The refusal of a canonical reviewer for a staged suggestion the session
- * left pending: the suggestion's resolution refused without stating why.
+ * The refusal of a reviewer request that would leave a staged suggestion
+ * pending: the refusal the session gave for resolving that suggestion, under
+ * its own ground. A suggestion left pending with no refusal recorded is a
+ * defect to report.
  */
-const canonicalReviewerRefusal = (action: string): CanonicalSessionError =>
-  new CanonicalSessionError({
-    ground: { gap: CANONICAL_GAP.publicHeadlessSession },
+const pendingSuggestionRefusal = (
+  refusals: ReadonlyMap<string, CanonicalSessionError>,
+  pending: Iterable<string>,
+  action: string,
+): CanonicalSessionError => {
+  for (const suggestionId of pending) {
+    const refusal = refusals.get(suggestionId);
+    if (refusal !== undefined) return refusal;
+  }
+  return new CanonicalSessionError({
+    ground: { condition: CANONICAL_CONDITION.internal },
     reason: "refused",
-    message: `A canonical headless reviewer cannot ${action} yet.`,
+    message: `A canonical headless reviewer cannot ${action}: a suggestion stayed pending though its resolution did not refuse.`,
   });
+};
 
 /** A reviewer request under one of the session's conditions. */
 const canonicalReviewerConditionRefusal = (
@@ -1365,6 +1375,11 @@ export class FolioDocxReviewer {
    */
   private readonly positionalParaIds: ReadonlySet<string>;
   private pendingSuggestions = new FolioPendingSuggestionRegistry();
+  /** Why the session refused to resolve a staged suggestion, by suggestion id. */
+  private readonly suggestionRefusals = new Map<
+    string,
+    CanonicalSessionError
+  >();
   /** The last room revision {@link applyRoomJournal} applied. */
   private roomRevision = 0;
   /** The resolved copies {@link resolvedSessionReader} last read, by view. */
@@ -1912,8 +1927,11 @@ export class FolioDocxReviewer {
       for (const handle of handles) {
         const state = copy.getEditableStoryState(handle);
         if (!state) continue;
-        if (copy.pendingSuggestionIdsForStory(handle, state).size > 0)
-          throw canonicalReviewerRefusal(
+        const pending = copy.pendingSuggestionIdsForStory(handle, state);
+        if (pending.size > 0)
+          throw pendingSuggestionRefusal(
+            copy.suggestionRefusals,
+            pending,
             "project a story holding a suggestion the session will not accept",
           );
         if (mode === "with-revision-census") {
@@ -3274,8 +3292,12 @@ export class FolioDocxReviewer {
       date: new Date().toISOString(),
       ...(story === undefined ? {} : { story }),
     });
-    // A proposal the engine will not resolve stays staged: `false`.
-    if (prepared.isErr() && prepared.error.reason === "refused") return false;
+    // A proposal the engine will not resolve stays staged: `false`, with the
+    // session's refusal kept for a request that needs it resolved.
+    if (prepared.isErr() && prepared.error.reason === "refused") {
+      this.suggestionRefusals.set(suggestionId, prepared.error);
+      return false;
+    }
     return this.resolveOnSession(prepared).resolved;
   }
 
@@ -3433,8 +3455,11 @@ export class FolioDocxReviewer {
         ground: { rule: CANONICAL_RULE.contentControlLock },
         message: `A locked content control prevents the ${view} view.`,
       });
-    if (pendingSuggestionIdsIn(copy.baseDocument).size > 0)
-      throw canonicalReviewerRefusal(
+    const pending = pendingSuggestionIdsIn(copy.baseDocument);
+    if (pending.size > 0)
+      throw pendingSuggestionRefusal(
+        copy.suggestionRefusals,
+        pending,
         `read the ${view} view while suggestions remain pending`,
       );
     return copy;
@@ -3497,8 +3522,13 @@ export class FolioDocxReviewer {
           reaching.has(suggestionId) ? canonicalOpStory(story) : undefined,
         );
       const after = copy.getEditableStoryState(story);
-      if (after && copy.pendingSuggestionIdsForStory(story, after).size > 0)
-        throw canonicalReviewerRefusal(
+      const pending = after
+        ? copy.pendingSuggestionIdsForStory(story, after)
+        : new Set<string>();
+      if (pending.size > 0)
+        throw pendingSuggestionRefusal(
+          copy.suggestionRefusals,
+          pending,
           "resolve a story holding a suggestion the session will not resolve",
         );
       resolved = copy.resolveStoryOnSession(session, story, view);
