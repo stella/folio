@@ -27,6 +27,8 @@ import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 import { isDeepStrictEqual } from "node:util";
 
+import { paragraphNumberingReference } from "@stll/docx-core/model";
+
 import {
   pendingJoinDocumentArbitrary,
   reviewerDocumentArbitrary,
@@ -270,7 +272,9 @@ const besidePendingMarks: Document = {
           type: "paragraph",
           content: [],
           pPrMark: { kind: "del", info: { id: 2, author: "A" } },
-          formatting: { numPr: { kind: "reference", numId: 1, ilvl: 0 } },
+          formatting: {
+            numPr: paragraphNumberingReference({ numId: 1, ilvl: 0 }),
+          },
           paraId: "00000002",
         },
         { type: "paragraph", content: [], paraId: "00000003" },
@@ -365,7 +369,7 @@ const alpha: ParagraphContent[] = [
 /** `paragraph` as an item of list `numId`; list 2 restarts the numbering. */
 const numbered = (paragraph: Paragraph, numId = 1): Paragraph => ({
   ...paragraph,
-  formatting: { numPr: { kind: "reference", numId, ilvl: 0 } },
+  formatting: { numPr: paragraphNumberingReference({ numId, ilvl: 0 }) },
 });
 const groupControl = (paragraph: Paragraph): BlockContent => ({
   type: "blockSdt",
