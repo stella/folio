@@ -1,6 +1,6 @@
 {
   "name": "@stll/folio-core",
-  "version": "0.76.0",
+  "version": "0.77.0",
   "description": "Headless DOCX engine: reads .docx into a typed OOXML model, applies every edit as a validated operation, paginates it, and writes .docx back with untouched parts byte for byte.",
   "keywords": [
     "document-model",
