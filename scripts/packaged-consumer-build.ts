@@ -35,6 +35,7 @@ import {
   consumerSrc,
   coreDir,
   docxCoreDir,
+  findCzechCatalogAsset,
   fontsDir,
   hostPeerInstallArgs,
   isDocxKernelWasmAsset,
@@ -52,6 +53,7 @@ import {
 let failure: string | null = null;
 const workerChunks: string[] = [];
 const wasmOutputs: string[] = [];
+const catalogOutputs: string[] = [];
 
 let docxCorePackDir = "";
 let corePackDir = "";
@@ -144,6 +146,16 @@ try {
     }
     workerChunks.push(`React ${reactVersion}: ${workerChunk}`);
 
+    const catalogAsset = await findCzechCatalogAsset(
+      path.join(consumerDir, "dist"),
+      distFiles,
+    );
+    if (!catalogAsset) {
+      failure = `✗ packaged-consumer: React ${reactVersion} build produced no Czech locale data asset. dist: ${distFiles.join(", ")}`;
+      return;
+    }
+    catalogOutputs.push(`React ${reactVersion}: ${catalogAsset}`);
+
     const main = await readFile(
       path.join(consumerDir, "dist", "main.js"),
       "utf8",
@@ -195,5 +207,5 @@ if (failure !== null) {
 }
 
 console.log(
-  `\n✓ packaged-consumer: production Vite build emitted worker chunks (${workerChunks.join(", ")}) and WebAssembly outputs (${wasmOutputs.join(", ")}).`,
+  `\n✓ packaged-consumer: production Vite build emitted worker chunks (${workerChunks.join(", ")}), locale assets (${catalogOutputs.join(", ")}) and WebAssembly outputs (${wasmOutputs.join(", ")}).`,
 );

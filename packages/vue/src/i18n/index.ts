@@ -71,7 +71,7 @@ const fallbackTranslator = shallowRef(
  * getter, or plain string. An unloaded catalog replaces the current messages
  * once it arrives. Call inside a parent component `setup()`. Before hydrating
  * a non-English editor, preload the catalog with
- * `await loadFolioMessages(locale)` from `@stll/folio-core/i18n/loadMessages`.
+ * `await loadFolioMessages(locale)` from `@stll/folio-core/i18n/messages`.
  */
 export const provideLocale = (
   locale: MaybeRefOrGetter<string> = defaultLocale,
@@ -79,8 +79,7 @@ export const provideLocale = (
   provide(LOCALE_KEY, locale);
 };
 
-type LocaleStatus =
-  { type: "loading" } | { type: "ready" } | { type: "failed"; error: Error };
+type LocaleStatus = { type: "loading" } | { type: "ready" };
 
 const englishTranslation = {
   translator: fallbackTranslator,
@@ -107,8 +106,7 @@ const useLocaleTranslator = (
         return;
       }
 
-      const hasTranslation = status.value.type === "ready";
-      if (!hasTranslation) status.value = { type: "loading" };
+      status.value = { type: "loading" };
       let active = true;
       onCleanup(() => {
         active = false;
@@ -125,7 +123,8 @@ const useLocaleTranslator = (
           if (!active) return undefined;
           const error =
             cause instanceof Error ? cause : new Error(String(cause));
-          if (!hasTranslation) status.value = { type: "failed", error };
+          translator.value = createFolioTranslator(defaultLocale, english);
+          status.value = { type: "ready" };
           if (!onError) throw error;
           onError(error);
           return undefined;

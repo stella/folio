@@ -6,9 +6,11 @@ import { build, type Metafile } from "esbuild";
 import path from "node:path";
 import { gzipSync } from "node:zlib";
 
+import { messages as english } from "@stll/folio-core/i18n/messages/en";
 import { FOLIO_LOCALES } from "@stll/folio-core/i18n/messages/locales";
 
 const catalogDir = "packages/core/src/i18n/messages";
+const catalogAssetDir = "packages/core/assets/i18n";
 
 const root = path.resolve(import.meta.dir, "../../..");
 const ADAPTERS = ["react", "vue"] as const;
@@ -81,25 +83,94 @@ const eagerOutputs = ({ outputs }: Metafile): Set<string> => {
 
 const checkCatalogs = (metafile: Metafile, eager: Set<string>) => {
   const eagerInputs = new Set<string>();
-  const lazyInputs = new Set<string>();
+  const allInputs = new Set<string>();
   for (const [name, output] of Object.entries(metafile.outputs)) {
-    const inputs = eager.has(name) ? eagerInputs : lazyInputs;
     for (const [source, input] of Object.entries(output.inputs)) {
-      if (input.bytesInOutput > 0 && source.startsWith(`${catalogDir}/`))
-        inputs.add(source);
+      if (input.bytesInOutput === 0 || !source.startsWith(`${catalogDir}/`))
+        continue;
+      allInputs.add(source);
+      if (eager.has(name)) eagerInputs.add(source);
     }
   }
-  if (eagerInputs.has(`${catalogDir}/catalogs.gen.ts`))
-    throw new Error("The aggregate message catalog is eager");
+  if (allInputs.has(`${catalogDir}/catalogs.gen.ts`))
+    throw new Error("The aggregate message catalog is bundled");
   for (const locale of FOLIO_LOCALES) {
     const input = `${catalogDir}/${locale}.gen.ts`;
     const isEnglish = locale === "en";
-    if (
-      isEnglish
-        ? !eagerInputs.has(input)
-        : eagerInputs.has(input) || !lazyInputs.has(input)
-    )
+    if (isEnglish ? !eagerInputs.has(input) : allInputs.has(input))
       throw new Error(`Unexpected bundle placement for the ${locale} catalog`);
+  }
+};
+
+const checkSingleFileCatalogs = async (adapter: Adapter): Promise<void> => {
+  const packageName = `@stll/folio-${adapter}`;
+  const result = await build({
+    absWorkingDir: root,
+    stdin: {
+      contents: `
+        import { renderAsync } from "${packageName}";
+        const input = await fetch("/document.docx").then((response) => response.arrayBuffer());
+        await renderAsync(input, document.body, { locale: "en" });
+      `,
+      resolveDir: root,
+    },
+    alias: {
+      [packageName]: path.join(root, "packages", adapter, "dist/index.js"),
+    },
+    bundle: true,
+    format: "esm",
+    platform: "browser",
+    target: "es2022",
+    minify: true,
+    metafile: true,
+    write: false,
+    outfile: path.join(root, ".cache/editor-eager-budget", `${adapter}.js`),
+    external: HOST_PEERS,
+    loader: { ".css": "empty" },
+  });
+  const inputs = new Set(
+    Object.values(result.metafile.outputs).flatMap((output) =>
+      Object.entries(output.inputs)
+        .filter(([, input]) => input.bytesInOutput > 0)
+        .map(([source]) => source),
+    ),
+  );
+  const javascript = result.outputFiles
+    .filter(({ path: outputPath }) => outputPath.endsWith(".js"))
+    .map(({ text }) => text)
+    .join("\n");
+  const collectStrings = (value: unknown, found: string[]): void => {
+    if (typeof value === "string") {
+      found.push(value);
+      return;
+    }
+    if (typeof value !== "object" || value === null) return;
+    for (const child of Object.values(value)) collectStrings(child, found);
+  };
+  const englishStrings: string[] = [];
+  collectStrings(english, englishStrings);
+  const englishSet = new Set(englishStrings);
+  for (const locale of FOLIO_LOCALES) {
+    if (locale === "en") continue;
+    const catalog: unknown = await Bun.file(
+      path.join(root, catalogAssetDir, `${locale}.json`),
+    ).json();
+    const translatedStrings: string[] = [];
+    collectStrings(catalog, translatedStrings);
+    const marker = translatedStrings.find(
+      (value) => value.length >= 8 && !englishSet.has(value),
+    );
+    if (marker === undefined)
+      throw new Error(`The ${locale} catalog has no distinct guard string`);
+    if (
+      inputs.has(`${catalogDir}/${locale}.gen.ts`) ||
+      inputs.has(`${catalogAssetDir}/${locale}.json`) ||
+      javascript.includes(marker)
+    ) {
+      throw new Error(
+        `${packageName} single-file bundle carried the ${locale} catalog`,
+      );
+    }
   }
 };
 
@@ -179,6 +250,7 @@ const measure = async (adapter: Adapter): Promise<Metrics> => {
   }
   if (metrics.docxOps === 0)
     throw new Error(`${packageName} did not include docx-core ops`);
+  await checkSingleFileCatalogs(adapter);
   return metrics;
 };
 

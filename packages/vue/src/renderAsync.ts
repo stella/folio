@@ -4,7 +4,8 @@
  * Mirrors the React adapter's `renderAsync` (`packages/react/src/renderAsync.tsx`):
  * returns a framework-agnostic {@link EditorHandle} extended with zoom and scroll
  * helpers. Resolves once the document has parsed (the editor's first `ready`
- * event), rejects if `error` fires before that milestone.
+ * event). A locale asset failure is reported through `onError`, then the
+ * editor mounts in English.
  *
  * ```ts
  * import { renderAsync } from "@stll/folio-vue";
@@ -97,6 +98,7 @@ export const renderAsync = (
     let app: App | null = null;
     let settled = false;
     const localeReady = ref(getLoadedFolioMessages(locale) !== undefined);
+    const renderedLocale = ref(locale);
 
     const handle: DocxEditorHandle = {
       save: async () => {
@@ -166,7 +168,7 @@ export const renderAsync = (
       },
     });
 
-    app.use(i18nPlugin, locale);
+    app.use(i18nPlugin, renderedLocale);
     app.use(colorModePlugin, colorMode);
     app.mount(container);
 
@@ -177,7 +179,11 @@ export const renderAsync = (
           return undefined;
         },
         (error: unknown) => {
-          onError(error instanceof Error ? error : new Error(String(error)));
+          editorOptions.onError?.(
+            error instanceof Error ? error : new Error(String(error)),
+          );
+          renderedLocale.value = "en";
+          localeReady.value = true;
           return undefined;
         },
       );

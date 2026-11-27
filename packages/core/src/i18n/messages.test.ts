@@ -1,12 +1,23 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 
-import { getLoadedFolioMessages } from "./loadMessages";
 import {
+  getLoadedFolioMessages,
+  resetFolioMessageAssets,
+} from "./loadMessages";
+import {
+  configureFolioMessageAssets,
   FOLIO_LOCALES,
+  FolioMessageCatalogError,
   getFolioMessages,
   isFolioLocale,
   loadFolioMessages,
+  preloadFolioMessages,
 } from "./messages";
+
+const preloaded = await preloadFolioMessages(FOLIO_LOCALES);
+if (preloaded.isErr()) throw preloaded.error;
 
 // Toolbar labels folio added after the initial translated catalogs were
 // captured. They are now translated in every non-English locale; the
@@ -27,13 +38,13 @@ const flatten = (
 ): Map<string, string> => {
   const out = new Map<string, string>();
   for (const [key, value] of Object.entries(obj)) {
-    const path = prefix ? `${prefix}.${key}` : key;
+    const keyPath = prefix ? `${prefix}.${key}` : key;
     if (typeof value === "string") {
-      out.set(path, value);
+      out.set(keyPath, value);
       continue;
     }
     if (value && typeof value === "object") {
-      for (const [k, v] of flatten(value as Record<string, unknown>, path)) {
+      for (const [k, v] of flatten(value as Record<string, unknown>, keyPath)) {
         out.set(k, v);
       }
     }
@@ -178,6 +189,7 @@ describe("loadFolioMessages", () => {
   });
 
   test("loads each translated catalog once, including regional aliases", async () => {
+    resetFolioMessageAssets();
     const turkish = loadFolioMessages("tr-TR");
     expect(turkish).toBeInstanceOf(Promise);
     expect(loadFolioMessages("tr")).toBe(turkish);
@@ -186,5 +198,28 @@ describe("loadFolioMessages", () => {
     for (const locale of FOLIO_LOCALES) {
       expect(await loadFolioMessages(locale)).toEqual(getFolioMessages(locale));
     }
+  });
+
+  test("accepts a host-supplied catalog without reading an asset", async () => {
+    resetFolioMessageAssets();
+    const german = JSON.parse(
+      readFileSync(path.join(import.meta.dir, "messages/de.json"), "utf8"),
+    );
+    configureFolioMessageAssets({ catalogs: { de: german } });
+    expect((await loadFolioMessages("de")).folio.bold).toBe("Fett");
+  });
+
+  test("reports a failed catalog preload as a tagged error", async () => {
+    resetFolioMessageAssets();
+    configureFolioMessageAssets({
+      baseUrl: new URL("file:///folio-missing-catalogs/"),
+    });
+    const loaded = await preloadFolioMessages(["cs-CZ"]);
+    expect(loaded.isErr()).toBe(true);
+    if (loaded.isOk()) return;
+    expect(loaded.error).toBeInstanceOf(FolioMessageCatalogError);
+    expect(loaded.error.locale).toBe("cs");
+    expect(getFolioMessages("cs")).toBe(getFolioMessages("en"));
+    resetFolioMessageAssets();
   });
 });

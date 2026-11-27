@@ -30,11 +30,11 @@ import {
 import { convertTiffToPngDataUrl } from "@stll/folio-core/utils/tiffConverter";
 import { DocxEditor } from "@stll/folio-react";
 import type { DocxEditorRef } from "@stll/folio-react";
-import { getFolioMessages } from "@stll/folio-react/messages";
+import { loadFolioMessages } from "@stll/folio-react/messages";
 
 import "@stll/folio-react/editor.css";
 
-import { useEffect, useRef, useState } from "react";
+import { Suspense, use, useEffect, useRef, useState } from "react";
 
 import { mountHostEditor } from "./host-editor";
 
@@ -44,7 +44,8 @@ hostContainer.className = "dark";
 document.body.prepend(hostContainer);
 const hostEditor = mountHostEditor(hostContainer);
 
-const LOCALE = "en";
+const LOCALE = "cs";
+const localeMessages = loadFolioMessages(LOCALE);
 let projectionPromise: Promise<DocxProjectionWire> | undefined;
 
 // Turn ON the off-main-thread font-metrics worker. It is OFF by default and is a
@@ -153,6 +154,7 @@ declare global {
 }
 
 function App() {
+  const messages = use(localeMessages);
   const editorRef = useRef<DocxEditorRef>(null);
   const [buffer, setBuffer] = useState<ArrayBuffer | null>(null);
 
@@ -198,7 +200,7 @@ function App() {
   return (
     <IntlProvider
       locale={LOCALE}
-      messages={getFolioMessages(LOCALE)}
+      messages={messages}
       timeZone={new Intl.DateTimeFormat().resolvedOptions().timeZone}
     >
       <DocxEditor
@@ -215,5 +217,9 @@ function App() {
 
 const container = document.querySelector("#app");
 if (container) {
-  createRoot(container).render(<App />);
+  createRoot(container).render(
+    <Suspense fallback={<div aria-busy="true">Loading locale</div>}>
+      <App />
+    </Suspense>,
+  );
 }

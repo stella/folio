@@ -29,6 +29,7 @@ import { ColorValue } from '@stll/folio-core/types/document';
 import { Comment as Comment_2 } from '@stll/folio-core/types/content';
 import { ComponentProps } from 'react';
 import { ComponentType } from 'react';
+import { configureFolioMessageAssets } from '@stll/folio-core/i18n/messages';
 import { configureHyphenationAssets } from '@stll/folio-core/hyphenation';
 import { configureTiffDecoding } from '@stll/folio-core/tiff-decoding';
 import { consumeTemplateSlashQuery } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
@@ -98,6 +99,8 @@ import { FolioDocumentOperationUndoHandle } from '@stll/folio-core/server';
 import { FolioDocumentOperationUndoResult } from '@stll/folio-core/server';
 import { FolioEditor } from '@stll/folio-core/controller/folioEditor';
 import { FolioFieldInsertion } from '@stll/folio-core/types/fields';
+import { FolioMessageAssetOptions } from '@stll/folio-core/i18n/messages';
+import { FolioMessageCatalogError } from '@stll/folio-core/i18n/messages';
 import { FolioPendingSuggestionLoadResult } from '@stll/folio-core/ai-edits';
 import { FolioPendingSuggestionRecord } from '@stll/folio-core/ai-edits';
 import { FolioReviewChange } from '@stll/folio-core/ai-edits';
@@ -135,6 +138,7 @@ import { JSX } from 'react';
 import { KeyboardShortcutScope } from '@stll/folio-core/managers/editorShortcuts';
 import { Layout } from '@stll/folio-core/layout-engine/types';
 import { ListState } from '@stll/folio-core/prosemirror';
+import { loadFolioMessages } from '@stll/folio-core/i18n/messages';
 import { MarkdownOptions } from '@stll/folio-core/markdown';
 import { MarkdownResult } from '@stll/folio-core/markdown';
 import { Menu } from '@base-ui/react/menu';
@@ -146,6 +150,7 @@ import { PictureWatermark } from '@stll/folio-core/watermark';
 import { Plugin as Plugin_2 } from 'prosemirror-state';
 import { Popover } from '@base-ui/react/popover';
 import { PositionalText } from '@stll/folio-core/ai-suggestions/text-positions';
+import { preloadFolioMessages } from '@stll/folio-core/i18n/messages';
 import { preloadHyphenationDictionaries } from '@stll/folio-core/hyphenation';
 import React$1 from 'react';
 import { default as React_2 } from 'react';
@@ -257,6 +262,8 @@ export type ColorPreset = {
     value: string;
     color?: string;
 };
+
+export { configureFolioMessageAssets }
 
 export { configureHyphenationAssets }
 
@@ -589,6 +596,10 @@ export { FolioDerivedFields }
 
 export { FolioFieldInsertion }
 
+export { FolioMessageAssetOptions }
+
+export { FolioMessageCatalogError }
+
 export { FolioSuggestion }
 
 // @public (undocumented)
@@ -703,6 +714,8 @@ export { isSuggestionStale }
 
 export { KeyboardShortcutScope }
 
+export { loadFolioMessages }
+
 export { MarkdownOptions }
 
 export { MarkdownResult }
@@ -726,6 +739,8 @@ export function parseZoom(zoomString: string): number | null;
 export { PictureWatermark }
 
 export { PositionalText }
+
+export { preloadFolioMessages }
 
 export { preloadHyphenationDictionaries }
 

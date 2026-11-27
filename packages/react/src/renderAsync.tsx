@@ -30,6 +30,7 @@ import {
   loadFolioMessages,
 } from "@stll/folio-core/i18n/loadMessages";
 import type { FolioMessages } from "@stll/folio-core/i18n/messages";
+import { messages as english } from "@stll/folio-core/i18n/messages/en";
 import type { Document } from "@stll/folio-core/types/document";
 import type { DocxInput } from "@stll/folio-core/utils/docxInput";
 
@@ -75,7 +76,8 @@ export type RenderAsyncOptions = Omit<
  * Render a DOCX editor into a container element.
  *
  * Resolves once the document has parsed and the first `onChange` fires.
- * Rejects if `onError` runs before that milestone.
+ * Rejects if the editor reports an error before that milestone. A locale asset
+ * failure is reported through `onError`, then the editor mounts in English.
  */
 export const renderAsync = (
   input: DocxInput,
@@ -184,9 +186,10 @@ export const renderAsync = (
         return undefined;
       },
       (error: unknown) => {
-        lifecycle.onError(
+        editorOptions.onError?.(
           error instanceof Error ? error : new Error(String(error)),
         );
+        mountEditor(english);
         return undefined;
       },
     );

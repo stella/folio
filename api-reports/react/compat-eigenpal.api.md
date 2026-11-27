@@ -295,6 +295,7 @@ export type LocaleProviderProps = {
     children?: ReactNode | undefined;
     i18n?: LegacyTranslations | undefined;
     locale?: string | undefined;
+    onError?: ((error: Error) => void) | undefined;
 };
 
 // @public (undocumented)

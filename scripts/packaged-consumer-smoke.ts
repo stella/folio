@@ -28,6 +28,7 @@ import {
   consumerSrc,
   coreDir,
   docxCoreDir,
+  findCzechCatalogAsset,
   fontsDir,
   hostPeerInstallArgs,
   isDocxKernelWasmAsset,
@@ -191,6 +192,16 @@ try {
           `packaged-consumer-smoke: React ${reactVersion} production app emitted no lazy DOCX kernel WebAssembly asset.`,
         );
       }
+      if (
+        (await findCzechCatalogAsset(
+          path.join(consumerDir, runtimeDistDirectory),
+          distFiles,
+        )) === undefined
+      ) {
+        throw new Error(
+          `packaged-consumer-smoke: React ${reactVersion} production app emitted no Czech locale data asset.`,
+        );
+      }
 
       console.log(
         `→ serving the React ${reactVersion} built app on ${previewUrl}`,
@@ -269,5 +280,5 @@ if (failure !== null) {
 }
 
 console.log(
-  `\n✓ packaged-consumer-smoke: React ${REACT_PEER_FLOOR.version} served build ran clean (worker + catalog verified).`,
+  `\n✓ packaged-consumer-smoke: React ${REACT_PEER_FLOOR.version} served build ran clean (worker + locale asset verified).`,
 );

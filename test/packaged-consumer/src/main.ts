@@ -8,7 +8,10 @@ import { canPrefetchMeasurement } from "@stll/folio-core/layout-engine/measure/m
 // regression this consumer exists to catch), independent of how the editor
 // tree-shakes. The messages subpath is the bundled UI catalog.
 import { DocxEditor, FolioUIProvider } from "@stll/folio-react";
-import { getFolioMessages } from "@stll/folio-react/messages";
+import {
+  getFolioMessages,
+  loadFolioMessages,
+} from "@stll/folio-react/messages";
 
 // Reference every import so nothing is eliminated before the bundler's worker
 // transform runs. Exported (not executed): the build is what is under test.
@@ -16,6 +19,7 @@ export const consumed = {
   DocxEditor,
   FolioUIProvider,
   getFolioMessages,
+  loadFolioMessages,
   canPrefetchMeasurement,
   projectCompressedDocx,
 };
