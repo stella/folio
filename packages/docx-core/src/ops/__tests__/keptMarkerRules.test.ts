@@ -4,6 +4,7 @@ import type {
   BlockContent,
   Document,
   Hyperlink,
+  Paragraph,
   ParagraphContent,
   Run,
 } from "../../model/document";
@@ -459,5 +460,85 @@ describe("a boundary kept beside a later insertion at a paragraph's start waits 
         contents(resolvedInTurn(tracked(), [accept, ...rejected])),
       ).toEqual(apart);
     }
+  });
+});
+
+describe("a move range kept from a rejected insertion beside a link stays outside it across a tracked split", () => {
+  // Insertion 2 put a move range inside insertion 1's run (3 levels), after
+  // a link holding a bookmark; mark 3 then split the paragraph inside the
+  // run's other piece, which insertion 4 holds in the new paragraph.
+  const tracked = (): Document => {
+    const first: Paragraph = {
+      type: "paragraph",
+      paraId: "00000001",
+      content: [
+        typedLink([{ type: "bookmarkStart", id: 7, name: "_Link" }]),
+        {
+          type: "insertion",
+          info: stamp(1, 0),
+          content: [typedRun(" ")],
+          resolutionJoins: { before: 0, after: 0, remove: 0 },
+        },
+        {
+          type: "insertion",
+          info: stamp(2, 1),
+          content: [
+            { type: "moveToRangeStart", id: 13, name: "move13", author: "A" },
+          ],
+          resolutionJoins: { before: 0, after: 0, remove: 3 },
+        },
+      ],
+      pPrMark: {
+        kind: "ins",
+        info: stamp(3, 2),
+        resolutionJoin: 0,
+        survivor: "first",
+      },
+    };
+    const second: Paragraph = {
+      type: "paragraph",
+      paraId: "00000002",
+      content: [
+        {
+          type: "insertion",
+          info: stamp(4, 0),
+          content: [typedRun("b")],
+          resolutionJoins: { before: 0, after: 0, remove: 0 },
+        },
+      ],
+    };
+    return documentOf([first, second]);
+  };
+  const contents = (document: Document): ParagraphContent[][] =>
+    document.package.document.content.map((block) =>
+      block.type === "paragraph" ? block.content : [],
+    );
+
+  test("rejecting at once and in every order keeps the range after the link", () => {
+    const kept: ParagraphContent[][] = [
+      [
+        typedLink([{ type: "bookmarkStart", id: 7, name: "_Link" }]),
+        { type: "moveToRangeStart", id: 13, name: "move13", author: "A" },
+      ],
+    ];
+    const ids = [1, 2, 3, 4];
+    expect(contents(resolve(tracked(), ids, REJECT))).toEqual(kept);
+    const orders = (rest: number[]): number[][] => {
+      if (rest.length === 0) return [[]];
+      const out: number[][] = [];
+      for (const id of rest)
+        for (const order of orders(rest.filter((other) => other !== id)))
+          out.push([id].concat(order));
+      return out;
+    };
+    for (const order of orders(ids))
+      expect(
+        contents(
+          resolvedInTurn(
+            tracked(),
+            order.map((id) => ({ ids: [id], decision: REJECT })),
+          ),
+        ),
+      ).toEqual(kept);
   });
 });

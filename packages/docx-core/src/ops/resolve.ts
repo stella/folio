@@ -3002,9 +3002,26 @@ const resolveList = ({
             isTrackedWrapper(candidate) &&
             (candidate.info.date ?? "") <= (node.info.date ?? ""),
         );
+    // A going piece joined to nothing beyond it holds the whole of its side
+    // of the cut, where the list ends on the other side (a later split took
+    // that piece): the record past it is no piece, as the list's edge is not.
+    const closedAt = (at: number, side: "before" | "after"): boolean => {
+      const piece = pending.at(at);
+      return (
+        piece !== undefined &&
+        goes(piece) &&
+        isTrackedWrapper(piece) &&
+        (piece.info.date ?? "") <= (node.info.date ?? "") &&
+        (piece.resolutionJoins?.[side] ?? 0) === 0
+      );
+    };
     if (
-      (before === undefined && pieceGoes(beforeIndex + 1, index)) ||
-      (after === undefined && pieceGoes(index + 1, afterIndex))
+      ((before === undefined ||
+        (after === undefined && closedAt(beforeIndex + 1, "before"))) &&
+        pieceGoes(beforeIndex + 1, index)) ||
+      ((after === undefined ||
+        (before === undefined && closedAt(afterIndex - 1, "after"))) &&
+        pieceGoes(index + 1, afterIndex))
     )
       return 0;
     // An insertion made before the change, holding a piece of its cut, had
@@ -3175,26 +3192,31 @@ const resolveList = ({
   /**
    * Whether the pieces the removed change at `index` was made between are of
    * one insertion of new content, joined to nothing, that goes with it: no
-   * record beyond them is a piece of its cut.
+   * record beyond them is a piece of its cut. Where the list ends on one
+   * side, a later split took that piece: the one left stands for both.
    */
   const madeInNewContent = (node: TrackedWrapper, index: number): boolean => {
     const made = node.info.date ?? "";
-    const piece = (step: 1 | -1): TrackedWrapper | undefined => {
+    const piece = (step: 1 | -1): TrackedWrapper | "edge" | undefined => {
       for (let at = index + step; ; at += step) {
         const candidate = at < 0 ? undefined : pending[at];
-        if (candidate === undefined || !isAddedRevision(candidate))
-          return undefined;
+        if (candidate === undefined) return "edge";
+        if (!isAddedRevision(candidate)) return undefined;
         if ((candidate.info.date ?? "") < made)
           return isTrackedWrapper(candidate) ? candidate : undefined;
       }
     };
     const before = piece(-1);
     const after = piece(1);
+    if (before === undefined || after === undefined) return false;
+    const pieces = [before, after].filter(
+      (side): side is TrackedWrapper => side !== "edge",
+    );
+    const [first, second] = pieces;
     return (
-      before !== undefined &&
-      after !== undefined &&
-      sameStamp(before, after) &&
-      [before, after].every(
+      first !== undefined &&
+      (second === undefined || sameStamp(first, second)) &&
+      pieces.every(
         ({ info, resolutionJoins }) =>
           resolution.ids.has(info.id) &&
           resolutionJoins?.before === 0 &&
@@ -5963,10 +5985,13 @@ const resolveList = ({
     // So does the one record a removal's seam meets at the list's edge, where
     // the markers its removal consumed the name of stood: the other piece
     // lies beyond the edge, as when the removal that kept them stood there.
+    // A removed piece of the cut, made before the change that kept them,
+    // carries the seam only: the record it meets is no piece.
     const edgePiece =
       kept !== undefined &&
       kept.piece === undefined &&
       removalSeams.has(recorded) &&
+      (removalDates.get(recorded) ?? kept.from) >= kept.from &&
       (left === undefined) !== (right === undefined);
     const pieceOnly =
       edgePiece ||
