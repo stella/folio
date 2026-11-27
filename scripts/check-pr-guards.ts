@@ -59,11 +59,11 @@ export const generatedChecks = (
  * check runs only when its own inputs change, after the fetch.
  */
 const JOINING_TYPES_CHECK = "generate:joining-types:check";
-const JOINING_TYPES_INPUTS = [
+const JOINING_TYPES_INPUTS = new Set([
   "scripts/generate-joining-types.ts",
   "packages/core/src/utils/joiningTypes.gen.ts",
   "specifications/sources.json",
-];
+]);
 
 const hasScript = (
   scripts: Readonly<Record<string, string>>,
@@ -167,7 +167,7 @@ export const selectPrGuards = (
 
   if (
     hasScript(scripts, JOINING_TYPES_CHECK) &&
-    touches((file) => JOINING_TYPES_INPUTS.includes(file))
+    touches((file) => JOINING_TYPES_INPUTS.has(file))
   ) {
     guards.push({
       id: JOINING_TYPES_CHECK,
