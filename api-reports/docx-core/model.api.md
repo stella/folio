@@ -19,6 +19,9 @@ export type AbstractNumbering = WritableRecord & {
 };
 
 // @public
+export const activeNestedTableRevisionHandoffs: (owner: Table, move: TableGeometryNestedMove) => readonly (readonly [number, number])[];
+
+// @public
 export const BIDI_CONTROLS: {
     readonly embedding: "embedding";
     readonly override: "override";

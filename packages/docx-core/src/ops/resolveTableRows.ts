@@ -965,7 +965,7 @@ const endAdjacentMerges = ({
 
 type ResolveCellChangesOptions = {
   table: Table;
-  moveHandoffs?: TableMoveHandoffs;
+  moveHandoffs?: TableMoveHandoffs | undefined;
   moveRows?: ReadonlySet<number>;
   ids: ReadonlySet<number>;
   reject: boolean;
