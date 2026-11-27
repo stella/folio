@@ -34,11 +34,11 @@ const BUDGETS = {
   // nested tables and their moves; the ops measure about 694 kB), so
   // each one needs no edit here: docxOps to 715 kB, minified +18.5 kB, gzip
   // +6 kB. All six come down to the measured size plus a small margin once
-  // the series has landed. minified +4 kB, gzip +1 kB: a pasted note or
+  // the series has landed. minified +5 kB, gzip +1 kB: a pasted note or
   // comment keeps the parts its kept markup names in its own part's
   // relationships.
-  react: { minified: 3_774_000, gzip: 1_188_000, docxOps: 715_000 },
-  vue: { minified: 3_469_000, gzip: 1_084_000, docxOps: 715_000 },
+  react: { minified: 3_775_000, gzip: 1_188_000, docxOps: 715_000 },
+  vue: { minified: 3_470_000, gzip: 1_084_000, docxOps: 715_000 },
 } as const satisfies Record<Adapter, Metrics>;
 
 const HOST_PEERS = [
