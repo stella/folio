@@ -3,7 +3,9 @@ import { describe, expect, test } from "bun:test";
 import type {
   BlockContent,
   Document,
+  Hyperlink,
   ParagraphContent,
+  Run,
 } from "../../model/document";
 import { applyDocumentOp } from "../apply";
 import { childNodes, type InlineNode } from "../leaves";
@@ -55,6 +57,18 @@ const link = (children: ParagraphContent[]) =>
 
 const text = (value: string) =>
   ({ type: "run", content: [{ type: "text", text: value }] }) as const;
+
+const typedRun = (value: string): Run => ({
+  type: "run",
+  content: [{ type: "text", text: value }],
+});
+
+const typedLink = (children: Hyperlink["children"]): Hyperlink => ({
+  type: "hyperlink",
+  rId: "rId9",
+  href: "https://example.org",
+  children,
+});
 
 const stamp = (id: number, second: number) => ({
   id,
@@ -329,7 +343,7 @@ describe("a boundary kept beside a later insertion at a paragraph's start waits 
   // Insertion 1's link cut the control in two (3 levels) and holds a
   // bookmark; insertion 2 was made before it later, and mark 3 split the
   // paragraph between the control's first piece and insertion 2.
-  const tab = () => ({ type: "run", content: [{ type: "tab" }] }) as const;
+  const tab = (): Run => ({ type: "run", content: [{ type: "tab" }] });
   const tracked = (): Document =>
     documentOf([
       {
@@ -340,7 +354,7 @@ describe("a boundary kept beside a later insertion at a paragraph's start waits 
           {
             type: "inlineSdt",
             properties: { sdtType: "richText", id: 1, tag: "clause" },
-            content: [text("a")],
+            content: [typedRun("a")],
           },
         ],
         pPrMark: { kind: "ins", info: stamp(3, 3), resolutionJoin: 0 },
@@ -352,19 +366,21 @@ describe("a boundary kept beside a later insertion at a paragraph's start waits 
           {
             type: "insertion",
             info: stamp(2, 1),
-            content: [text("b")],
+            content: [typedRun("b")],
             resolutionJoins: { before: 0, after: 0, remove: 0 },
           },
           {
             type: "insertion",
             info: stamp(1, 0),
-            content: [link([{ type: "bookmarkStart", id: 1, name: "_Link" }])],
+            content: [
+              typedLink([{ type: "bookmarkStart", id: 1, name: "_Link" }]),
+            ],
             resolutionJoins: { before: 0, after: 0, remove: 3 },
           },
           {
             type: "inlineSdt",
             properties: { sdtType: "richText", id: 2, tag: "clause" },
-            content: [text("aaa")],
+            content: [typedRun("aaa")],
           },
         ],
       },
@@ -382,9 +398,9 @@ describe("a boundary kept beside a later insertion at a paragraph's start waits 
           type: "inlineSdt",
           properties: { sdtType: "richText", id: 1, tag: "clause" },
           content: [
-            text("a"),
+            typedRun("a"),
             { type: "bookmarkStart", id: 1, name: "_Link" },
-            text("aaa"),
+            typedRun("aaa"),
           ],
         },
       ],
@@ -415,7 +431,7 @@ describe("a boundary kept beside a later insertion at a paragraph's start waits 
         {
           type: "inlineSdt",
           properties: { sdtType: "richText", id: 1, tag: "clause" },
-          content: [text("a")],
+          content: [typedRun("a")],
         },
       ],
       [
@@ -424,7 +440,7 @@ describe("a boundary kept beside a later insertion at a paragraph's start waits 
           properties: { sdtType: "richText", id: 2, tag: "clause" },
           content: [
             { type: "bookmarkStart", id: 1, name: "_Link" },
-            text("aaa"),
+            typedRun("aaa"),
           ],
         },
       ],
