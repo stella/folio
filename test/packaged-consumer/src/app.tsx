@@ -21,6 +21,7 @@ import {
   type DocxProjectionWire,
   projectCompressedDocx,
 } from "@stll/docx-core/projection";
+import { preloadHyphenationDictionaries } from "@stll/folio-core/hyphenation";
 import { getCachedTextWidth } from "@stll/folio-core/layout-engine/measure/cache";
 import {
   canPrefetchMeasurement,
@@ -129,6 +130,13 @@ async function convertTiff(): Promise<{
     : { dataUrl: converted.dataUrl, pixels: converted.pixels };
 }
 
+// Fetch a hyphenation dictionary from the data file the production build must
+// emit beside the bundle; the result's message names the failure if it did not.
+async function loadHyphenation(): Promise<string> {
+  const loaded = await preloadHyphenationDictionaries(["en-US"]);
+  return loaded.isOk() ? "loaded" : loaded.error.message;
+}
+
 declare global {
   var __folioFeatureFlags: { workerFontMetrics?: boolean } | undefined;
   var __folioSmoke:
@@ -136,6 +144,7 @@ declare global {
         getEditorRef: () => DocxEditorRef | null;
         measureRoundTrip: () => Promise<{ width: number; alive: boolean }>;
         convertTiff: typeof convertTiff;
+        loadHyphenation: typeof loadHyphenation;
         projectFixture: () => Promise<DocxProjectionWire>;
         projectionSchemaVersion: typeof docxProjectionSchemaVersion;
         hostEditor: typeof hostEditor;
@@ -171,6 +180,7 @@ function App() {
       getEditorRef: () => editorRef.current,
       measureRoundTrip,
       convertTiff,
+      loadHyphenation,
       projectFixture: () => {
         if (projectionPromise === undefined) {
           throw new Error("DOCX projection has not started");

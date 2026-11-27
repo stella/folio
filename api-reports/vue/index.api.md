@@ -30,8 +30,8 @@ import { Component } from 'vue';
 import { ComponentOptionsMixin } from 'vue';
 import { ComponentProvideOptions } from 'vue';
 import { ComputedRef } from 'vue';
-import { configureTiffDecoding } from '@stll/folio-core/tiff-decoding';
 import { configureHyphenationAssets } from '@stll/folio-core/hyphenation';
+import { configureTiffDecoding } from '@stll/folio-core/tiff-decoding';
 import { consumeTemplateSlashQuery } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
 import { ContentControlFilter } from '@stll/folio-core/content-controls';
 import { createAICitationDecorationsPlugin } from '@stll/folio-core/prosemirror/plugins/aiCitationDecorations';
@@ -258,8 +258,9 @@ export type ColorPreset = {
     color?: string;
 };
 
-export { configureTiffDecoding }
 export { configureHyphenationAssets }
+
+export { configureTiffDecoding }
 
 export { consumeTemplateSlashQuery }
 
