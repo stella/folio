@@ -13,7 +13,10 @@ import {
   type PreservedXmlContent,
   type Run,
   type RunContent,
+  type SdtProperties,
   type Table,
+  type TableCell,
+  type TableRow,
 } from "../model/document";
 import {
   MAX_TABLE_PICTURE_ID,
@@ -228,7 +231,7 @@ const emptyElement = (xml: string) => {
 export const movableCustomXmlBlock = ({
   openingXml,
   closingXml,
-}: BlockCustomXml): boolean => {
+}: Pick<BlockCustomXml, "openingXml" | "closingXml">): boolean => {
   const parsed = emptyElement(`${openingXml}${closingXml}`);
   return (
     parsed?.localName === "customXml" &&
@@ -333,9 +336,13 @@ const movableControlId = (
   return id;
 };
 
+const movableUnlockedControlId = (properties: SdtProperties) =>
+  properties.lock === undefined || properties.lock === "unlocked"
+    ? movableControlId(properties)
+    : undefined;
+
 export const movableBlockControl = ({ properties }: BlockSdt): boolean =>
-  (properties.lock === undefined || properties.lock === "unlocked") &&
-  movableControlId(properties) !== undefined;
+  movableUnlockedControlId(properties) !== undefined;
 
 type ProofingKind = "spelling" | "grammar";
 
@@ -462,8 +469,25 @@ export const nestedTableMoveSource = (
   const paragraphs: string[] = [];
   const revisions: number[] = [];
   const gridMembers: number[] = [];
-  const controls: number[] = [];
+  const controls = new Set<number>();
   const pictures = new Set<number>();
+  const collectControl = (properties: SdtProperties): boolean => {
+    const id = movableUnlockedControlId(properties);
+    if (id === undefined) return false;
+    controls.add(id);
+    return true;
+  };
+  const collectCarriers = ({
+    contentControls,
+    carrierStack,
+  }: TableRow | TableCell): boolean =>
+    (contentControls?.every(collectControl) ?? true) &&
+    (carrierStack?.every((carrier) =>
+      carrier.type === "customXml"
+        ? movableCustomXmlBlock(carrier.wrapper)
+        : collectControl(carrier.properties),
+    ) ??
+      true);
   const collectProperties = (
     changes: readonly { info: { id: number } }[] | undefined,
   ) => {
@@ -490,8 +514,7 @@ export const nestedTableMoveSource = (
     return nested.rows.every((row) => {
       if (
         row.bookmarks !== undefined ||
-        row.contentControls !== undefined ||
-        row.carrierStack !== undefined ||
+        !collectCarriers(row) ||
         row.cells.length === 0
       )
         return false;
@@ -501,8 +524,7 @@ export const nestedTableMoveSource = (
       collectProperties(row.tablePropertyExceptionChanges);
       return row.cells.every((cell) => {
         if (
-          cell.contentControls !== undefined ||
-          cell.carrierStack !== undefined ||
+          !collectCarriers(cell) ||
           cell.propertyChanges?.some(
             ({ previousStructuralChange }) =>
               previousStructuralChange !== undefined,
@@ -529,16 +551,15 @@ export const nestedTableMoveSource = (
     if (block.type === "blockCustomXml")
       return movableCustomXmlBlock(block) && block.content.every(collectBlock);
     if (block.type === "blockSdt") {
-      const { id } = block.properties;
-      if (id === undefined || !movableBlockControl(block)) return false;
-      controls.push(id);
-      return block.content.every(collectBlock);
+      return (
+        collectControl(block.properties) && block.content.every(collectBlock)
+      );
     }
     if (block.type !== "paragraph") return false;
     const source = tableMoveSource(block);
     if (source === undefined) return false;
     paragraphs.push(source.id);
-    for (const id of source.controls) controls.push(id);
+    for (const id of source.controls) controls.add(id);
     for (const id of source.pictures) {
       if (pictures.has(id)) return false;
       pictures.add(id);
@@ -550,17 +571,19 @@ export const nestedTableMoveSource = (
   if (gridMembers.some((id) => !revisionIds.has(id))) return undefined;
   const allowed = new Set([
     ...revisions.map((id) => slotKey({ space: IDENTITY_SPACES.REVISION, id })),
-    ...controls.map((id) => slotKey({ space: IDENTITY_SPACES.CONTROL, id })),
+    ...[...controls].map((id) =>
+      slotKey({ space: IDENTITY_SPACES.CONTROL, id }),
+    ),
   ]);
   const actual = identityKeysIn(table);
-  return revisions.length + controls.length === allowed.size &&
+  return revisions.length + controls.size === allowed.size &&
     actual.length === allowed.size &&
     actual.every((key) => allowed.has(key))
     ? {
         table,
         paragraphs,
         revisions,
-        controls,
+        controls: [...controls],
         pictures,
         insertedRows: table.rows.filter(
           ({ structuralChange }) => structuralChange === undefined,
@@ -580,6 +603,28 @@ const withNestedMoveIdentities = (
   table: Table,
   ids: NestedMoveIdentities,
 ): Table => {
+  const restampControl = (properties: SdtProperties): SdtProperties => {
+    const id =
+      properties.id === undefined ? undefined : ids.controls.get(properties.id);
+    return id === undefined ? properties : { ...properties, id };
+  };
+  const carrierIdentities = <T extends TableRow | TableCell>(item: T): T => ({
+    ...item,
+    ...(item.contentControls === undefined
+      ? {}
+      : {
+          contentControls: item.contentControls.map(restampControl),
+        }),
+    ...(item.carrierStack === undefined
+      ? {}
+      : {
+          carrierStack: item.carrierStack.map((carrier) =>
+            carrier.type === "sdt"
+              ? { ...carrier, properties: restampControl(carrier.properties) }
+              : carrier,
+          ),
+        }),
+  });
   const restamp = <Change extends { info: { id: number } }>(
     record: Change,
   ): Change => {
@@ -593,13 +638,9 @@ const withNestedMoveIdentities = (
     if (block.type === "blockCustomXml")
       return { ...block, content: block.content.map(rewrite) };
     if (block.type === "blockSdt") {
-      const { id } = block.properties;
-      const replacement = id === undefined ? undefined : ids.controls.get(id);
       return {
         ...block,
-        ...(replacement === undefined
-          ? {}
-          : { properties: { ...block.properties, id: replacement } }),
+        properties: restampControl(block.properties),
         content: block.content.map(rewrite),
       };
     }
@@ -646,7 +687,7 @@ const withNestedMoveIdentities = (
       ? {}
       : { propertyChanges: table.propertyChanges.map(restamp) }),
     rows: table.rows.map((row) => ({
-      ...row,
+      ...carrierIdentities(row),
       ...(row.structuralChange === undefined
         ? {}
         : { structuralChange: restamp(row.structuralChange) }),
@@ -660,7 +701,7 @@ const withNestedMoveIdentities = (
               row.tablePropertyExceptionChanges.map(restamp),
           }),
       cells: row.cells.map((cell) => ({
-        ...cell,
+        ...carrierIdentities(cell),
         ...(cell.propertyChanges === undefined
           ? {}
           : { propertyChanges: cell.propertyChanges.map(restamp) }),
