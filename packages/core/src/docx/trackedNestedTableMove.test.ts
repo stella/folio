@@ -795,6 +795,9 @@ test.each(["deleteColumn", "mergeCells", "merge with moved words"] as const)(
           cells: [
             cell(paragraph("00000004", "Removed")),
             cell(
+              ...(kind === "merge with moved words"
+                ? [paragraph("00000008")]
+                : []),
               paragraph(
                 "00000007",
                 kind === "mergeCells" ? undefined : "Survivor",
@@ -927,6 +930,7 @@ test.each(["deleteColumn", "mergeCells", "merge with moved words"] as const)(
     expect(resolve(moved, [outer.id], REVISION_DECISIONS.REJECT)).toStrictEqual(
       earlier,
     );
+    let earlierRevision = priorCopy[1];
     if (kind === "merge with moved words") {
       const ranges = nestedMove?.moveRanges?.at(0);
       if (nestedMove === undefined || ranges === undefined)
@@ -941,6 +945,17 @@ test.each(["deleteColumn", "mergeCells", "merge with moved words"] as const)(
         ]).size,
       ).toBe(4);
       expect(authored.name).not.toBe(temporary.name);
+      const nativeMove =
+        prior.geometryChange.type === "mergeCells"
+          ? prior.geometryChange.moves?.find((item) => item.kind !== "empty")
+          : undefined;
+      const copiedRevision =
+        nativeMove === undefined
+          ? undefined
+          : members.get(nativeMove.fromRevision);
+      if (copiedRevision === undefined)
+        throw new TypeError("Expected a copied move-from revision.");
+      earlierRevision = copiedRevision;
       const changed = structuredClone(reopened);
       const grid = tableOf(changed).formatting?.gridChange;
       const geometry = grid?.geometryChange;
@@ -969,7 +984,7 @@ test.each(["deleteColumn", "mergeCells", "merge with moved words"] as const)(
       REVISION_DECISIONS.ACCEPT,
       REVISION_DECISIONS.REJECT,
     ]) {
-      const reviewed = reopen(resolve(reopened, [priorCopy[1]], decision));
+      const reviewed = reopen(resolve(reopened, [earlierRevision], decision));
       const expected = resolve(earlier, [prior.id], decision);
       const widths = nestedTables(expected).at(0)?.columnWidths;
       expect(nestedTables(reviewed)).toHaveLength(2);
