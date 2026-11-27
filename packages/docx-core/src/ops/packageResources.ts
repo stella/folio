@@ -1,13 +1,18 @@
 import { Result } from "better-result";
 
 import { type Document, MAX_REVISION_ID } from "../model/document";
-import type { MediaFile, Relationship } from "../model/styles";
+import type {
+  CopiedPackagePart,
+  MediaFile,
+  Relationship,
+} from "../model/styles";
 import type { DocumentEdit } from "./edits";
 import { structurallyEqual } from "./equality";
 import { cloneModel } from "./modelClone";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import {
   DOCUMENT_OP_TYPES,
+  type PackageResourceCopiedPart,
   type PackageResourceEntry,
   type PackageResourceEntryChange,
   type PackageResourceMapChange,
@@ -59,6 +64,14 @@ const mediaRecordOf = (media: MediaFile): PackageResourceMedia =>
 const mediaFileOf = (record: PackageResourceMedia): MediaFile =>
   Object.assign({}, record, { data: new Uint8Array(record.data).buffer });
 
+const copiedPartRecordOf = (
+  part: CopiedPackagePart,
+): PackageResourceCopiedPart =>
+  Object.assign({}, part, { data: [...new Uint8Array(part.data)] });
+
+const copiedPartOf = (record: PackageResourceCopiedPart): CopiedPackagePart =>
+  Object.assign({}, record, { data: new Uint8Array(record.data).buffer });
+
 type PackageMap<Stored> = {
   presence: PackageResourcePresence;
   entries: ReadonlyMap<string, Stored>;
@@ -85,6 +98,13 @@ const relationshipsOf = ({ package: pkg }: Document) =>
 
 const mediaOf = ({ package: pkg }: Document) =>
   packageMapOf(Object.hasOwn(pkg, "media"), pkg.media);
+
+const copiedPartsOf = ({ package: pkg }: Document) =>
+  packageMapOf(Object.hasOwn(pkg, "copiedParts"), pkg.copiedParts);
+
+/** Whether a map change changes nothing: its presence stays and it carries no entry. */
+const unchangedMap = <Value>(change: PackageResourceMapChange<Value>) =>
+  change.expected === change.next && change.entries.length === 0;
 
 const entryOf = <Stored, Value>(
   stored: Stored | undefined,
@@ -130,21 +150,29 @@ type PackageResourcesOpOptions = { before: Document; after: Document };
 export const packageResourcesOpOf = ({
   before,
   after,
-}: PackageResourcesOpOptions): SetPackageResourcesOp => ({
-  type: DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES,
-  expected: packageResourcesOf(before),
-  resources: packageResourcesOf(after),
-  relationships: mapChangeOf({
-    before: relationshipsOf(before),
-    after: relationshipsOf(after),
-    record: (relationship: Relationship) => cloneModel(relationship),
-  }),
-  media: mapChangeOf({
-    before: mediaOf(before),
-    after: mediaOf(after),
-    record: mediaRecordOf,
-  }),
-});
+}: PackageResourcesOpOptions): SetPackageResourcesOp => {
+  const copiedParts = mapChangeOf({
+    before: copiedPartsOf(before),
+    after: copiedPartsOf(after),
+    record: copiedPartRecordOf,
+  });
+  return {
+    type: DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES,
+    expected: packageResourcesOf(before),
+    resources: packageResourcesOf(after),
+    relationships: mapChangeOf({
+      before: relationshipsOf(before),
+      after: relationshipsOf(after),
+      record: (relationship: Relationship) => cloneModel(relationship),
+    }),
+    media: mapChangeOf({
+      before: mediaOf(before),
+      after: mediaOf(after),
+      record: mediaRecordOf,
+    }),
+    ...(unchangedMap(copiedParts) ? {} : { copiedParts }),
+  };
+};
 
 type MapApplication<Stored> =
   | { type: "applied"; map: PackageMap<Stored> }
@@ -220,14 +248,24 @@ type ResourceViolationOptions = {
   expected: PackageResources;
   relationships: ReadonlyMap<string, Relationship>;
   media: ReadonlyMap<string, MediaFile>;
+  copiedParts: ReadonlyMap<string, CopiedPackagePart>;
 };
+
+const validBytes = (bytes: readonly number[]) =>
+  bytes.every((byte) => Number.isInteger(byte) && byte >= 0 && byte <= 255);
 
 /** Validate the definitions and entries this operation adds or changes. */
 const resourceViolation = ({
-  op: { resources, relationships: relationshipChange, media: mediaChange },
+  op: {
+    resources,
+    relationships: relationshipChange,
+    media: mediaChange,
+    copiedParts: copiedPartChange,
+  },
   expected,
   relationships,
   media,
+  copiedParts,
 }: ResourceViolationOptions): string | undefined => {
   const styles = valueOf(resources.styles);
   if (
@@ -272,12 +310,24 @@ const resourceViolation = ({
         key !== file.path ||
         !key.startsWith("word/media/") ||
         key.split("/").includes("..") ||
-        file.data.some(
-          (byte) => !Number.isInteger(byte) || byte < 0 || byte > 255,
-        ),
+        !validBytes(file.data),
     )
   )
     return "Imported media contains invalid paths or bytes.";
+  // A copied part lives under the main document's folder, beside the parts
+  // that name it, and is never the package's own registry or relationships.
+  if (
+    copiedPartChange !== undefined &&
+    presentEntries(copiedPartChange).some(
+      ([key, part]) =>
+        key !== part.path ||
+        !key.startsWith("word/") ||
+        key.split("/").some((segment) => segment === ".." || segment === "") ||
+        part.contentType.length === 0 ||
+        !validBytes(part.data),
+    )
+  )
+    return "Copied package parts contain invalid paths, content types or bytes.";
   for (const [, relationship] of changedRelationships) {
     if (
       !relationship.type.endsWith("/image") ||
@@ -287,7 +337,7 @@ const resourceViolation = ({
     const target = relationship.target.startsWith("/")
       ? relationship.target.slice(1)
       : `word/${relationship.target}`;
-    if (!media.has(target))
+    if (!media.has(target) && !copiedParts.has(target))
       return "An imported image relationship has no media part.";
   }
   const available = {
@@ -452,11 +502,25 @@ export const applyPackageResourcesOp = (
     stored: mediaFileOf,
   });
   if (media.type === "refused") return failed(media.reason, media.message);
+  // An operation that leaves the copied parts alone does not carry them.
+  const copiedParts =
+    owned.copiedParts === undefined
+      ? undefined
+      : applyMapChange({
+          current: copiedPartsOf(document),
+          change: owned.copiedParts,
+          record: copiedPartRecordOf,
+          stored: copiedPartOf,
+        });
+  if (copiedParts?.type === "refused")
+    return failed(copiedParts.reason, copiedParts.message);
   const violation = resourceViolation({
     op: owned,
     expected,
     relationships: relationships.map.entries,
     media: media.map.entries,
+    copiedParts:
+      copiedParts?.map.entries ?? document.package.copiedParts ?? new Map(),
   });
   if (violation !== undefined)
     return failed(DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH, violation);
@@ -478,6 +542,14 @@ export const applyPackageResourcesOp = (
   if (media.map.presence !== "omitted")
     pkg.media =
       media.map.presence === "present" ? new Map(media.map.entries) : undefined;
+  if (copiedParts !== undefined) {
+    delete pkg.copiedParts;
+    if (copiedParts.map.presence !== "omitted")
+      pkg.copiedParts =
+        copiedParts.map.presence === "present"
+          ? new Map(copiedParts.map.entries)
+          : undefined;
+  }
   const removed = {
     style: missingIds(
       document.package.styles?.styles.map(({ styleId }) => styleId) ?? [],
@@ -505,10 +577,9 @@ export const applyPackageResourcesOp = (
     );
   if (
     structurallyEqual(expected, resources) &&
-    owned.relationships.expected === owned.relationships.next &&
-    owned.relationships.entries.length === 0 &&
-    owned.media.expected === owned.media.next &&
-    owned.media.entries.length === 0
+    unchangedMap(owned.relationships) &&
+    unchangedMap(owned.media) &&
+    (owned.copiedParts === undefined || unchangedMap(owned.copiedParts))
   )
     return Result.ok({
       document,
@@ -525,6 +596,9 @@ export const applyPackageResourcesOp = (
         resources: expected,
         relationships: inverseMapChange(owned.relationships),
         media: inverseMapChange(owned.media),
+        ...(owned.copiedParts === undefined
+          ? {}
+          : { copiedParts: inverseMapChange(owned.copiedParts) }),
       },
     ],
     touched: { modified: [], inserted: [], removed: [] },

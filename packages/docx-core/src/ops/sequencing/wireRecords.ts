@@ -44,7 +44,11 @@ import type {
 } from "../../model/document";
 import { PARAGRAPH_ALIGNMENTS } from "../../model/ooxmlEnumerations.gen";
 import { isKeptCut } from "../keptCut";
-import type { PackageResourceMedia, SectionViewEntry } from "../types";
+import type {
+  PackageResourceCopiedPart,
+  PackageResourceMedia,
+  SectionViewEntry,
+} from "../types";
 
 export type Validator = (value: unknown) => boolean;
 export type Fields = Readonly<Record<string, Validator>>;
@@ -751,20 +755,28 @@ export const relationship: Validator = object({
   targetMode: optional(literal("External", "Internal")),
 } satisfies RecordFields<Relationship>);
 
+const packageBytes: Validator = array(
+  (byte) =>
+    typeof byte === "number" &&
+    Number.isInteger(byte) &&
+    byte >= 0 &&
+    byte <= 255,
+);
+
 export const packageResourceMedia: Validator = object({
   path: nonemptyString,
   filename: optional(string),
   mimeType: string,
   base64: optional(string),
   dataUrl: optional(string),
-  data: array(
-    (byte) =>
-      typeof byte === "number" &&
-      Number.isInteger(byte) &&
-      byte >= 0 &&
-      byte <= 255,
-  ),
+  data: packageBytes,
 } satisfies RecordFields<PackageResourceMedia>);
+
+export const packageResourceCopiedPart: Validator = object({
+  path: nonemptyString,
+  contentType: nonemptyString,
+  data: packageBytes,
+} satisfies RecordFields<PackageResourceCopiedPart>);
 
 export const documentSettings: Validator = object({
   compatibilityMode: boundedJson,

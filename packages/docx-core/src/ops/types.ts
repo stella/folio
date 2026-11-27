@@ -59,6 +59,7 @@ import type {
   NumberingInstance,
 } from "../model/lists";
 import type {
+  CopiedPackagePart,
   MediaFile,
   Relationship,
   StyleDefinitions,
@@ -951,6 +952,11 @@ export type PackageResourceMedia = Omit<MediaFile, "data"> & {
   data: readonly number[];
 };
 
+/** A copied part's bytes, JSON-safe as media's are. */
+export type PackageResourceCopiedPart = Omit<CopiedPackagePart, "data"> & {
+  data: readonly number[];
+};
+
 /** Package definitions captured before and after an explicit clipboard import. */
 export type PackageResources = {
   styles: PackageResourcePart<StyleDefinitions>;
@@ -1001,6 +1007,8 @@ export type SetPackageResourcesOp = {
   resources: PackageResources;
   relationships: PackageResourceMapChange<Relationship>;
   media: PackageResourceMapChange<PackageResourceMedia>;
+  /** Carried only when the operation changes the copied parts. */
+  copiedParts?: PackageResourceMapChange<PackageResourceCopiedPart>;
 };
 
 /** A section endpoint is either a paragraph's sectPr or the body's final sectPr. */

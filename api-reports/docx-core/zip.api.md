@@ -4,6 +4,7 @@
 
 ```ts
 
+import { Result } from 'better-result';
 import { TaggedErrorClass } from 'better-result';
 
 // @public
@@ -42,6 +43,7 @@ export class ZipArchive {
     has(path: string): boolean;
     paths(): string[];
     static read(input: Uint8Array | ArrayBuffer, options?: ZipReadOptions): Promise<ZipArchive>;
+    static readDirectory(input: Uint8Array | ArrayBuffer, options?: ZipReadOptions): Result<ZipArchive, ZipError>;
     set(path: string, data: ZipEntryData, options?: ZipEntryOptions): void;
 }
 

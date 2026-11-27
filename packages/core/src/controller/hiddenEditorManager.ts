@@ -148,6 +148,11 @@ import {
 } from "./autocompleteSuggestion";
 import { prepareCanonicalPaste } from "./canonicalClipboard";
 import {
+  type ClipboardPackageParts,
+  readClipboardPackageParts,
+  sliceKeptMarkup,
+} from "./canonicalClipboardParts";
+import {
   createCanonicalInputBoundary,
   unclassifiedMutationMessage,
 } from "./canonicalInput";
@@ -993,8 +998,42 @@ export const createHiddenEditorManager = (
    */
   type ClipboardCopy =
     | { type: "none" }
-    | { type: "copied"; document: Document; html: string; token: string };
+    | {
+        type: "copied";
+        document: Document;
+        html: string;
+        token: string;
+        /** The package parts the copied markup names, once they are read. */
+        parts?: ClipboardPackageParts;
+      };
   let clipboardCopy: ClipboardCopy = { type: "none" };
+  /**
+   * Keep what the editor wrote with the document it came from, and read the
+   * package parts the copied markup names, so a paste into another package
+   * can copy them.
+   */
+  const rememberCopy = (
+    pmView: EditorView,
+    document: Document,
+    written: { html: string; token: string },
+  ) => {
+    const copy: Extract<ClipboardCopy, { type: "copied" }> = {
+      type: "copied",
+      document,
+      ...written,
+    };
+    clipboardCopy = copy;
+    const markup = sliceKeptMarkup(pmView.state.selection.content());
+    if (markup.length === 0) return;
+    void readClipboardPackageParts({ document, markup }).then(
+      (parts) => {
+        if (parts !== undefined) copy.parts = parts;
+        return undefined;
+      },
+      // An unreadable package leaves the copy without parts to copy.
+      () => undefined,
+    );
+  };
   /**
    * Write the selection to the clipboard once, under a token minted for this
    * copy alone, and return what was written.
@@ -1063,7 +1102,7 @@ export const createHiddenEditorManager = (
       refuse(copied.error.message, copied.error.ground);
       return true;
     }
-    clipboardCopy = { type: "copied", document: source, ...copied.value };
+    rememberCopy(pmView, source, copied.value);
     if (story === OP_STORIES.MAIN) publishCommit(prepared.value);
     else publishStoryCommit(pmView, prepared.value);
     return true;
@@ -1076,7 +1115,12 @@ export const createHiddenEditorManager = (
     // markup check refuses an item rewritten around that token.
     return data.getData(INTERNAL_CLIPBOARD_TYPE) === clipboardCopy.token &&
       data.getData("text/html").includes(clipboardCopy.html)
-      ? { sourceDocument: clipboardCopy.document }
+      ? {
+          sourceDocument: clipboardCopy.document,
+          ...(clipboardCopy.parts === undefined
+            ? {}
+            : { sourceParts: clipboardCopy.parts }),
+        }
       : {};
   };
   let lastInputRule:
@@ -1481,11 +1525,7 @@ export const createHiddenEditorManager = (
             return createHiddenEditorClipboardHandlers(deps).copy();
           }
           event.preventDefault();
-          clipboardCopy = {
-            type: "copied",
-            document: source,
-            ...written.value,
-          };
+          rememberCopy(pmView, source, written.value);
           deps.onCopy?.();
           return true;
         },

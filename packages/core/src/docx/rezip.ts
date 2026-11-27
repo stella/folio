@@ -94,6 +94,7 @@ import {
   registerContentTypeParts,
   replaceContentTypePart,
 } from "./contentTypeRegistry";
+import { publishCopiedPackageParts } from "./copiedPackageParts";
 import {
   type DocumentSectionFacts,
   type HeaderFooterReference,
@@ -1911,6 +1912,11 @@ const finishRepack = async ({
     compressionLevel,
   );
   await materializeEmbeddedMedia({
+    document,
+    zip: outputZip,
+    compressionLevel,
+  });
+  await publishCopiedPackageParts({
     document,
     zip: outputZip,
     compressionLevel,

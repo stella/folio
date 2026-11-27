@@ -4,6 +4,7 @@ import type { EditorState } from "prosemirror-state";
 import { CellSelection, tableNodeTypes } from "prosemirror-tables";
 
 import {
+  DRAWING_RAW_XML_MODES,
   NUMBER_FORMATS,
   paragraphNumberingReference,
   relationshipIdOf,
@@ -11,6 +12,7 @@ import {
 import {
   type DocumentOp,
   type EditorIntent,
+  OP_STORIES,
   packageResourcesOpOf,
   type PasteAnnotations,
   type PastedBlock,
@@ -23,11 +25,13 @@ import {
   type CanonicalSession,
   CanonicalSessionError,
 } from "../canonical/canonicalSession";
+import { withRelationshipIds } from "../docx/copiedPackageParts";
 import {
   takeDrawingId,
   usedDrawingIds,
   withDrawingId,
 } from "../docx/drawingIdNormalization";
+import { imageRawXmlFingerprint } from "../docx/imageRawXml";
 import {
   createNumberingIdAllocator,
   numberingNumIdsTaken,
@@ -70,6 +74,10 @@ import type {
 import { readModel } from "../types/documentModel";
 import { bytesToDataUrl } from "../utils/base64";
 import { base64ToBytes } from "../utils/textEncoding";
+import {
+  type ClipboardPackageParts,
+  createPartCopier,
+} from "./canonicalClipboardParts";
 import {
   flattenClipboardStyleReferences,
   importClipboardStyles,
@@ -370,12 +378,14 @@ const clipboardTables = (blocks: readonly BlockContent[]): Table[] =>
     }
   });
 
-/** Every piece of kept block markup among the blocks, at any depth. */
-const clipboardPreservedBlocks = (blocks: readonly BlockContent[]): string[] =>
+/** Every kept block among the blocks, at any depth. */
+const clipboardPreservedBlocks = (
+  blocks: readonly BlockContent[],
+): Extract<BlockContent, { type: "preservedBlock" }>[] =>
   blocks.flatMap((block) => {
     switch (block.type) {
       case "preservedBlock":
-        return [block.xml];
+        return [block];
       case "table":
         return clipboardPreservedBlocks(
           block.rows.flatMap((row) =>
@@ -879,6 +889,12 @@ type PrepareCanonicalPasteOptions = {
   moveTarget?: number;
   pasteTarget?: number;
   sourceDocument?: Document;
+  /**
+   * The parts `sourceDocument`'s package holds that the copied markup names,
+   * read ahead of the paste: with them, markup naming parts pastes into
+   * another package.
+   */
+  sourceParts?: ClipboardPackageParts;
   moveSource?: { from: number; to: number };
 };
 
@@ -890,6 +906,7 @@ export const prepareCanonicalPaste = ({
   moveTarget,
   pasteTarget,
   sourceDocument,
+  sourceParts,
   moveSource,
 }: PrepareCanonicalPasteOptions): Result<
   CanonicalCommit,
@@ -1141,9 +1158,15 @@ export const prepareCanonicalPaste = ({
   }
   const relationships = new Map(destination.package.relationships);
   const media = new Map(destination.package.media);
+  const copiedParts = new Map(destination.package.copiedParts);
   let importedResource = false;
+  let copiedPart = false;
   let imageIndex = 1;
   let relationshipIndex = 1;
+  const freshRelationshipId = () => {
+    while (relationships.has(`rId${relationshipIndex}`)) relationshipIndex += 1;
+    return `rId${relationshipIndex++}`;
+  };
   // The relationships the copied ids name: the source body's, or none for a
   // note's body, whose ids name its own part's, which the model does not keep.
   let sourceRelationships = sourceDocument?.package.relationships;
@@ -1163,8 +1186,7 @@ export const prepareCanonicalPaste = ({
         "The clipboard hyperlink has no resolved target.",
         INVALID_CLIPBOARD,
       );
-    while (relationships.has(`rId${relationshipIndex}`)) relationshipIndex += 1;
-    const id = `rId${relationshipIndex++}`;
+    const id = freshRelationshipId();
     relationships.set(id, {
       id,
       type: HYPERLINK_RELATIONSHIP,
@@ -1267,7 +1289,7 @@ export const prepareCanonicalPaste = ({
         );
       for (const [index, child] of item.content.entries()) {
         if (child.type !== "drawing") continue;
-        if (child.rawXmlMode !== undefined) {
+        if (child.rawXmlMode !== undefined || keepsEmbeddedObject(child)) {
           const kept = keptOpaqueDrawing(child);
           if (kept.isErr()) return kept;
           item.content[index] = kept.value;
@@ -1367,9 +1389,7 @@ export const prepareCanonicalPaste = ({
             INVALID_CLIPBOARD,
           );
         image.src = src;
-        while (relationships.has(`rId${relationshipIndex}`))
-          relationshipIndex += 1;
-        const id = `rId${relationshipIndex++}`;
+        const id = freshRelationshipId();
         const data =
           /^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/=\s]+)$/u.exec(
             src,
@@ -1439,37 +1459,94 @@ export const prepareCanonicalPaste = ({
     }
     return Result.ok(undefined);
   };
+  // The parts the copied markup names, read from its source package ahead
+  // of the paste, copied in under fresh names and relationship ids. The save
+  // writes a copy's relationship beside the main document's, so only markup
+  // landing in the main story names it.
+  let copier =
+    sourceParts === undefined ||
+    sourceParts.source !== sourceDocument ||
+    sourceRelationships === undefined ||
+    session.projection.story !== OP_STORIES.MAIN
+      ? undefined
+      : createPartCopier({
+          parts: sourceParts,
+          sourceRelationships,
+          destination,
+          relationships,
+          copiedParts,
+          freshRelationshipId,
+        });
+  const samePackage =
+    sourceDocument !== undefined &&
+    sourceDocument.originalBuffer !== undefined &&
+    sourceDocument.originalBuffer === destination.originalBuffer;
+  /** Whether every id names in the destination what it named in the source. */
+  const resolvesInPlace = (ids: readonly string[]) =>
+    samePackage &&
+    ids.every((id) =>
+      sameRelationship(sourceRelationships?.get(id), relationships.get(id)),
+    );
   /**
-   * An opaque drawing or embedded object, kept as its markup with a fresh
-   * drawing id: its parts (a chart, an embedding, a diagram) are carried by
-   * the package it was read from, not by the model, so it pastes only into
-   * that package, where every relationship it names is the one it named.
+   * Whether a picture's captured markup is an embedded object around it: the
+   * markup names a part besides the picture's own. It pastes as the object
+   * where the parts it names paste with it, and as the picture otherwise.
+   */
+  const keepsEmbeddedObject = (drawing: DrawingContent): boolean => {
+    const xml = drawing.rawXml;
+    if (xml === undefined) return false;
+    const referenced = relationshipIdsIn(xml);
+    if (referenced.isErr()) return false;
+    const own = new Set([drawing.image.rId, drawing.image.hlinkRId]);
+    if (referenced.value.every((id) => own.has(id))) return false;
+    return (
+      moved?.markup.has(xml) === true ||
+      copier !== undefined ||
+      resolvesInPlace(referenced.value)
+    );
+  };
+  /**
+   * Kept markup (an opaque drawing, an embedded object, a kept block), with
+   * the relationship ids it names renamed to the copies it pastes with. Its
+   * parts (a chart, an embedding, a diagram) are carried by the package it
+   * was read from, not by the model: in that package every relationship it
+   * names is the one it named, and into another the paste copies them.
    */
   const keptMarkupPlaced = (
     xml: string,
     message: string,
-  ): Result<void, CanonicalSessionError> => {
+  ): Result<
+    { xml: string; ids: ReadonlyMap<string, string> },
+    CanonicalSessionError
+  > => {
+    const unchanged = Result.ok({ xml, ids: new Map<string, string>() });
     const referenced = relationshipIdsIn(xml);
     if (referenced.isErr()) return referenced;
     if (referenced.value.length === 0 || moved?.markup.has(xml) === true)
-      return Result.ok(undefined);
-    const samePackage =
-      sourceDocument !== undefined &&
-      sourceDocument.originalBuffer !== undefined &&
-      sourceDocument.originalBuffer === destination.originalBuffer;
-    if (
-      !samePackage ||
-      referenced.value.some(
-        (id) =>
-          !sameRelationship(
-            sourceRelationships?.get(id),
-            relationships.get(id),
-          ),
-      )
-    )
-      // A part the model does not hold cannot be copied into another package.
+      return unchanged;
+    if (resolvesInPlace(referenced.value)) return unchanged;
+    // Without the source package's parts (a clipboard from elsewhere, a note
+    // whose ids name its own part's relationships, which the model does not
+    // keep) the parts cannot be read, so they cannot be copied.
+    if (copier === undefined)
       return refuse(message, { gap: CANONICAL_GAP.storyContentProjection });
-    return Result.ok(undefined);
+    const copies = copier.copy(referenced.value);
+    if (copies.isErr())
+      return copies.error.type === "unresolved"
+        ? refuse(
+            "Copied markup names a relationship its package does not hold.",
+            INVALID_CLIPBOARD,
+          )
+        : refuse(message, { gap: CANONICAL_GAP.storyContentProjection });
+    const renamed = withRelationshipIds(xml, copies.value);
+    if (renamed === undefined)
+      return refuse(
+        "The clipboard block markup is malformed.",
+        INVALID_CLIPBOARD,
+      );
+    importedResource = true;
+    copiedPart = true;
+    return Result.ok({ xml: renamed, ids: copies.value });
   };
   const keptOpaqueDrawing = (
     drawing: DrawingContent,
@@ -1488,8 +1565,37 @@ export const prepareCanonicalPaste = ({
     });
     const id = takeDrawingId(drawingIds);
     const kept = structuredClone(drawing);
+    const { ids } = placed.value;
+    if (ids.size > 0) {
+      const image = kept.image;
+      const current =
+        kept.rawXmlMode === DRAWING_RAW_XML_MODES.PREVIEW_ONLY &&
+        kept.rawImageFingerprint === imageRawXmlFingerprint(image);
+      kept.rawXml = placed.value.xml;
+      const pictureId =
+        image.rId === undefined ? undefined : ids.get(image.rId);
+      const rId =
+        pictureId === undefined ? undefined : relationshipIdOf(pictureId);
+      if (rId !== undefined) image.rId = rId;
+      const hlinkRId =
+        image.hlinkRId === undefined ? undefined : ids.get(image.hlinkRId);
+      if (hlinkRId !== undefined) image.hlinkRId = hlinkRId;
+      if (image.hlinkClickSource !== undefined) {
+        const source = image.hlinkClickSource;
+        source.xml = withRelationshipIds(source.xml, ids) ?? source.xml;
+        const sourceRId =
+          source.rId === undefined ? undefined : ids.get(source.rId);
+        if (sourceRId !== undefined) source.rId = sourceRId;
+      }
+      if (image.hlinkHoverXml !== undefined)
+        image.hlinkHoverXml =
+          withRelationshipIds(image.hlinkHoverXml, ids) ?? image.hlinkHoverXml;
+      // A preview the renamed ids leave current stays current.
+      if (current && kept.rawXmlMode === DRAWING_RAW_XML_MODES.PREVIEW_ONLY)
+        kept.rawImageFingerprint = imageRawXmlFingerprint(image);
+    }
     kept.image.id = id;
-    const renumbered = withDrawingId(drawing, id).rawXml;
+    const renumbered = withDrawingId(kept, id).rawXml;
     if (renumbered !== undefined) kept.rawXml = renumbered;
     return Result.ok(kept);
   };
@@ -1498,17 +1604,19 @@ export const prepareCanonicalPaste = ({
     if (imported.isErr()) return imported;
   }
   // Kept block markup replays as it was read: what it names must be there.
-  for (const xml of clipboardPreservedBlocks(blocks)) {
+  for (const block of clipboardPreservedBlocks(blocks)) {
     const placed = keptMarkupPlaced(
-      xml,
+      block.xml,
       "Kept block markup naming package parts pastes only into the package holding them.",
     );
     if (placed.isErr()) return placed;
+    block.xml = placed.value.xml;
   }
   // A note's or a comment's ids name its own part's relationships, which the
   // model does not keep: its links import by their targets and its images by
   // their bytes, and the save writes each into the part that holds it.
   sourceRelationships = undefined;
+  copier = undefined;
   for (const note of annotations?.notes ?? [])
     for (const block of note.content) {
       if (block.type !== "paragraph") continue;
@@ -1549,6 +1657,7 @@ export const prepareCanonicalPaste = ({
         ...(numbering === undefined ? {} : { numbering }),
         ...(styles === undefined ? {} : { styles }),
         ...(importedResource ? { relationships, media } : {}),
+        ...(copiedPart ? { copiedParts } : {}),
       },
     };
     resourceOps.push(
