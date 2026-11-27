@@ -3475,6 +3475,20 @@ export const combineRecordedRevisions = (
   return { revisions, folded: [...folded] };
 };
 
+/** The content an operation brings in from elsewhere, with its own records. */
+const importedContent = (op: DocumentOp): unknown => {
+  switch (op.type) {
+    case DOCUMENT_OP_TYPES.INSERT_TABLE:
+      return op.table;
+    case DOCUMENT_OP_TYPES.INSERT_ROW:
+      return op.row;
+    case DOCUMENT_OP_TYPES.INSERT_BLOCKS:
+      return op.blocks;
+    default:
+      return undefined;
+  }
+};
+
 /**
  * Newly allocated revision ids, and the existing ones whose pending property
  * changes the operation folded its edit into.
@@ -3500,14 +3514,7 @@ const recordedRevisions = ({
   // Imported rows, tables and pasted blocks may bring their own review
   // records. Those records keep their own revision even when their author
   // and date match.
-  const imported =
-    op.type === DOCUMENT_OP_TYPES.INSERT_TABLE
-      ? op.table
-      : op.type === DOCUMENT_OP_TYPES.INSERT_ROW
-        ? op.row
-        : op.type === DOCUMENT_OP_TYPES.INSERT_BLOCKS
-          ? op.blocks
-          : undefined;
+  const imported = importedContent(op);
   const importedKeys =
     imported === undefined ? undefined : new Set(identityKeysIn(imported));
   const known: KeyMembership =
