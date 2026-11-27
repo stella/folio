@@ -2076,6 +2076,7 @@ export type TableGridChange = WritableRecord & {
     } | {
         readonly type: "mergeCells";
         readonly moves?: readonly TableGeometryMove[];
+        readonly nestedMoves?: readonly TableGeometryNestedMove[];
         readonly emptyOwner?: string;
     });
 };

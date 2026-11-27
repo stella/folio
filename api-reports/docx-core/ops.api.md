@@ -1543,6 +1543,7 @@ export type SetContainerBlocksOp = {
     type: typeof DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS;
     story: OpStory;
     blockId: string;
+    ancestorDepth?: number;
     expected: readonly BlockContent[];
     blocks: readonly BlockContent[];
 };
