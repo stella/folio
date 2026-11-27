@@ -479,6 +479,17 @@ const examples: [Case][] = [
       deletes: 1,
     },
   ],
+  // An emptied paragraph before a table: a paragraph put before the table
+  // from its cell stops at a table the batch put after the emptied one.
+  [
+    {
+      ...plain,
+      setup: "emptiedJoin",
+      target: 1,
+      tableAfter: 1,
+      insertions: [table("after", 1), paragraph("before", 3)],
+    },
+  ],
   // An emptied paragraph before a table: one put before the table from its
   // cell after one put after the emptied paragraph shares that one's gap,
   // not the gap of one put before the emptied paragraph.

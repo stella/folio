@@ -1801,7 +1801,7 @@ type ResolveBlockInsertionOptions = {
     reason: FolioAIEditSkipReason,
     message: string,
   ) => Result<never, CanonicalPublicOperationResolutionError>;
-  /** `BesidePendingJoinOptions.landedEarlier`. */
+  /** `BesideDeletions.blocksLandedEarlier`, where a gap before it stops. */
   landedEarlier?: ReadonlySet<number>;
 };
 
@@ -3564,6 +3564,8 @@ type ResolveTableInsertionOptions = {
   template: PMNode | undefined;
   /** `BesidePendingJoinOptions.landedEarlier`. */
   landedEarlier: ReadonlySet<number>;
+  /** `BesideDeletions.blocksLandedEarlier`, where its gap stops. */
+  blocksLandedEarlier: ReadonlySet<number>;
 };
 
 /**
@@ -3587,6 +3589,7 @@ const resolveTableInsertion = ({
   skipAlike,
   template,
   landedEarlier,
+  blocksLandedEarlier,
 }: ResolveTableInsertionOptions) => {
   const side = operation.position ?? "after";
   const { schema } = projection.doc.type;
@@ -3777,7 +3780,11 @@ const resolveTableInsertion = ({
   // A pending-deleted table is at the start of this accepted gap. Use its
   // before edge so a later insertion explicitly after it can stay there.
   if (side === "before") {
-    const start = gapStartAsTheBatchRuns(projection.doc, gap, landedEarlier);
+    const start = gapStartAsTheBatchRuns(
+      projection.doc,
+      gap,
+      blocksLandedEarlier,
+    );
     const pending = start < gap ? projection.doc.nodeAt(start) : null;
     if (pending?.type.name === "table") {
       const address = tableBlockAddress(projection, {
@@ -5212,6 +5219,11 @@ type BesideDeletions = {
    * order, put a paragraph (`BesidePendingJoinOptions.landedEarlier`).
    */
   landedEarlier: (operationId: string) => ReadonlySet<number>;
+  /**
+   * Those where they put a paragraph or a table: a block put before a block
+   * stops its gap there, as it does one at a time (`gapStartAsTheBatchRuns`).
+   */
+  blocksLandedEarlier: (operationId: string) => ReadonlySet<number>;
   /** The insertions that put a block beside `blockId`, in input order. */
   placedBeside: (
     blockId: string,
@@ -5357,6 +5369,7 @@ const NO_BESIDE_DELETIONS: BesideDeletions = {
   tables: { after: new Set(), before: new Set(), deleted: new Set() },
   paragraphsAfter: new Set(),
   landedEarlier: () => new Set(),
+  blocksLandedEarlier: () => new Set(),
   placedBeside: () => [],
 };
 
@@ -5863,12 +5876,17 @@ export class CanonicalPublicOperations {
       return borders ? landing : operation;
     };
     /**
-     * The block boundary a paragraph the operation puts lands at: put
-     * before a paragraph, at the start of its gap (`insertionGap`).
+     * The block boundary a paragraph the operation puts lands at, or with
+     * `tables` a table too: put before a paragraph, at the start of its gap
+     * (`insertionGap`).
      */
-    const landingOf = (operation: FolioDocumentOperation): number[] => {
+    const landingOf = (
+      operation: FolioDocumentOperation,
+      tables = false,
+    ): number[] => {
       const place =
-        isBlockInsertion(operation) && projected.isOk()
+        (isBlockInsertion(operation) || (tables && placesBlock(operation))) &&
+        projected.isOk()
           ? projected.value.paragraph(operation.blockId)
           : undefined;
       if (place === undefined || !projected.isOk()) return [];
@@ -5886,10 +5904,17 @@ export class CanonicalPublicOperations {
       )
         return [];
       return [
-        operation.type === "insertAfterBlock"
+        placesBlock(operation) && placementSide(operation) === "after"
           ? place.start - 1 + place.node.nodeSize
           : insertionGap(projected.value.doc, place.start - 1, "before"),
       ];
+    };
+    /** The operations before `operationId`, in input order, that land. */
+    const landingBefore = (operationId: string) => {
+      const index = placements.findIndex(({ id }) => id === operationId);
+      return placements
+        .slice(0, Math.max(index, 0))
+        .filter((operation) => landing.includes(operation));
     };
     // A block its own paragraph refuses (gone, changed since the snapshot,
     // or not as its precondition read it) lands nowhere: the batch's
@@ -5941,15 +5966,12 @@ export class CanonicalPublicOperations {
           operation.type === "insertAfterBlock" ? [operation.blockId] : [],
         ),
       ),
-      landedEarlier: (operationId) => {
-        const index = placements.findIndex(({ id }) => id === operationId);
-        return new Set(
-          placements
-            .slice(0, Math.max(index, 0))
-            .filter((operation) => landing.includes(operation))
-            .flatMap(landingOf),
-        );
-      },
+      landedEarlier: (operationId) =>
+        new Set(landingBefore(operationId).flatMap((at) => landingOf(at))),
+      blocksLandedEarlier: (operationId) =>
+        new Set(
+          landingBefore(operationId).flatMap((at) => landingOf(at, true)),
+        ),
       placedBeside: (blockId) =>
         landing.filter(
           (operation): operation is BlockInsertion | TableInsertion =>
@@ -6869,7 +6891,7 @@ export class CanonicalPublicOperations {
         operation: member.operation,
         intents: member.intents,
         projection: projected.value,
-        landedEarlier: besideDeletions.landedEarlier(member.operation.id),
+        landedEarlier: besideDeletions.blocksLandedEarlier(member.operation.id),
       });
       if (place === undefined)
         panic("A resolved block insertion lost its placement.");
@@ -8472,6 +8494,7 @@ export class CanonicalPublicOperations {
         skipAlike,
         template: options.tableTemplates?.get(operation.id),
         landedEarlier,
+        blocksLandedEarlier: besideDeletions.blocksLandedEarlier(operation.id),
       });
       return besideDeletion && inserted.isOk()
         ? Result.ok({ ...inserted.value, besideDeletion: true as const })
@@ -8583,7 +8606,7 @@ export class CanonicalPublicOperations {
         mintList,
         refusal,
         skipAlike,
-        landedEarlier,
+        landedEarlier: besideDeletions.blocksLandedEarlier(operation.id),
       });
       return besideDeletion && inserted.isOk()
         ? Result.ok({ ...inserted.value, besideDeletion: true as const })

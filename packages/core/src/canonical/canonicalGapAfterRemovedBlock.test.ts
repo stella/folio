@@ -1,7 +1,9 @@
 /**
  * A block put before a paragraph lands before the paragraph before it that
  * accepting removes whole, at the start of that gap, so a block put after the
- * removed paragraph follows it, whichever the batch names first.
+ * removed paragraph later in the batch follows it. One the batch put after the
+ * removed paragraph first stops that gap, as it does one at a time: the two
+ * keep the batch's order.
  */
 import { expect, test } from "bun:test";
 
@@ -65,7 +67,10 @@ test.each([
       { undefinedReferences: "refuse" },
     );
     expect(result.skipped).toEqual([]);
-    const named = ["Inserted words.", "Term", "Value"];
+    const named =
+      order[0] === "paragraph"
+        ? ["Inserted words.", "Term", "Value"]
+        : ["Term", "Value", "Inserted words."];
     expect(texts(reviewer)).toEqual([
       "Opening words.",
       ...named,

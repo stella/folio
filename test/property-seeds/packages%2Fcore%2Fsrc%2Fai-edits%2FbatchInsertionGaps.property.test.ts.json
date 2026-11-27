@@ -5,6 +5,12 @@
       "path": "141:7:9",
       "note": "A paragraph before and one after an emptied paragraph ahead of a table, then one put before the table from its cell: the last joins the gap after the emptied paragraph, not the one before it.",
       "date": "2026-11-27"
+    },
+    {
+      "seed": 3,
+      "path": "219:6:8:5",
+      "note": "A table put after an emptied paragraph ahead of a table, then a paragraph put before that table from its cell: the paragraph stops at the table the batch put there, after it.",
+      "date": "2026-11-27"
     }
   ]
 }
