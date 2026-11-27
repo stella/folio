@@ -648,7 +648,7 @@ describe("independent table forward oracles", () => {
     propertyTestTimeout(30_000),
   );
 
-  test("indexed markup, and existing reviews beside a tracked edit, have consistent refusals across topology edits", () => {
+  test("topology edits preserve indexed markup and refuse conflicting reviews", () => {
     // Different op-specific guards can assign different reasons to the same cause; exercise every affected family.
     const counts = new Map<string, number>();
     for (const cause of ["markup", "review"] as const) {
@@ -662,10 +662,6 @@ describe("independent table forward oracles", () => {
       });
       const table = tableOf(document);
       const target = address(targetOf(table));
-      const reason =
-        cause === "markup"
-          ? DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE
-          : DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE;
       // Markup a row keeps beside its cells, counted by the cells before it.
       if (cause === "markup") {
         const first = table.rows[0];
@@ -708,31 +704,114 @@ describe("independent table forward oracles", () => {
           newBlockIds: [id(0xa000)],
         },
       ] as const satisfies readonly DocumentOp[];
-      // A direct edit keeps the existing reviews; a tracked one refuses.
       for (const op of operations) {
+        if (cause === "markup") {
+          const edited = tableOf(applied(document, op).document);
+          expect(
+            edited.rows.at(0)?.preserved?.children?.map(({ xml }) => xml),
+          ).toEqual(['<opaque xmlns="urn:fixture"/>']);
+          continue;
+        }
+        const reason = DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE;
         refused(
           document,
-          cause === "markup"
-            ? op
-            : {
-                ...op,
-                revision: {
-                  id: 0xb000,
-                  author: "Reviewer",
-                  date: "2026-10-02T10:00:00Z",
-                },
-              },
+          {
+            ...op,
+            revision: {
+              id: 0xb000,
+              author: "Reviewer",
+              date: "2026-10-02T10:00:00Z",
+            },
+          },
           reason,
         );
         counts.set(reason, (counts.get(reason) ?? 0) + 1);
       }
     }
-    expect(counts.get(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE)).toBe(4);
     expect(counts.get(DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE)).toBe(
       4,
     );
-    expect(counts.size).toBe(2);
+    expect(counts.size).toBe(1);
   });
+
+  test(
+    "tracked columns resolve captured row gaps to their direct edit or their authored positions",
+    () => {
+      assertProperty(
+        fc.property(fc.boolean(), fc.nat(3), fc.nat(3), (insert, slot, gap) => {
+          const document = fixture({
+            rows: 2,
+            before: false,
+            after: false,
+            span: false,
+            nested: false,
+            vertical: false,
+          });
+          const table = tableOf(document);
+          const marker = {
+            index: gap,
+            xml: '<w:proofErr w:type="spellStart"/>',
+          };
+          for (const row of table.rows) row.preserved = { children: [marker] };
+          const column = insert ? slot : slot % 3;
+          const target = address(targetOf(table));
+          const op = insert
+            ? ({
+                ...target,
+                type: DOCUMENT_OP_TYPES.INSERT_COLUMN,
+                column,
+                width: 900,
+                newBlockIds: insertionOracle(table, column, 0xa000).newBlockIds,
+              } satisfies DocumentOp)
+            : ({
+                ...target,
+                type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
+                column,
+              } satisfies DocumentOp);
+          const direct = applied(document, op);
+          const shifted =
+            gap + (insert ? Number(column <= gap) : -Number(column < gap));
+          for (const row of tableOf(direct.document).rows) {
+            expect(row.preserved?.children).toEqual([
+              { ...marker, index: shifted },
+            ]);
+          }
+          const tracked = applyDocumentOp(document, {
+            ...op,
+            revision: {
+              id: 100_000,
+              author: "Reviewer",
+              date: "2026-11-26T00:00:00Z",
+            },
+            newIds: {
+              revision: Array.from(
+                { length: 16 },
+                (_, index) => 100_001 + index,
+              ),
+            },
+          }).unwrap();
+          expect(contractViolation(tracked.document)).toBeUndefined();
+          expect(
+            applyDocumentOps(tracked.document, tracked.inverse).unwrap()
+              .document,
+          ).toStrictEqual(document);
+          for (const decision of ["accept", "reject"] as const) {
+            const resolution = applied(tracked.document, {
+              type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+              story: OP_STORIES.MAIN,
+              revisionIds: tracked.revisions,
+              decision,
+            });
+            expect(resolution.document).toStrictEqual(
+              decision === "accept" ? direct.document : document,
+            );
+          }
+        }),
+        { numRuns: 30, id: "tracked columns relocate captured cell gaps" },
+      );
+    },
+    propertyTestTimeout(10_000),
+  );
 
   test("sparse raw identity, width and revision arrays refuse their shape before use", () => {
     // Array.every skips holes; sparse production-shaped payloads close the gap left by ordinary missing-field cases.

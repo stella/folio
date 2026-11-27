@@ -171,6 +171,15 @@ const fixtureFor = (shape: Shape): Fixture => {
   const table: Table = {
     type: "table",
     formatting: { justification: "center" },
+    preserved: {
+      children: [
+        {
+          index: shape.text % rows.length,
+          xml: '<w:permStart w:id="12" w:edGrp="everyone"/>',
+        },
+        { index: rows.length, xml: '<w:permEnd w:id="12"/>' },
+      ],
+    },
     rows,
   };
   const before = makeParagraph("00000001", "outside-before", shape.formatting);

@@ -280,8 +280,6 @@ export const trackTableRows = ({
     missingFinalParagraph ||
     rows.some(
       (row) =>
-        row.preserved !== undefined ||
-        row.bookmarks !== undefined ||
         row.contentControls !== undefined ||
         row.carrierStack !== undefined ||
         row.cells.some(
