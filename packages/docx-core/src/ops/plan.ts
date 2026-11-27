@@ -470,13 +470,17 @@ type ReplacementDeletionSegmentsOptions = {
         type: "editing";
         /**
          * Whether the empty containers of a region that removes nothing
-         * else stay, as a suggestion leaves them. A deletion of nothing but
-         * empty containers, which has no tracked counterpart, removes them.
+         * else stay, as a replacement that only selects incidental empty
+         * containers leaves them.
          * (default: false)
          */
         keepsLoneEmptyContainers?: boolean;
       }
-    | { type: "suggesting"; owner: RevisionOwner };
+    | {
+        type: "suggesting";
+        owner: RevisionOwner;
+        recordsLoneEmptyContainers?: true;
+      };
 };
 
 export const replacementDeletionSegments = ({
@@ -486,7 +490,9 @@ export const replacementDeletionSegments = ({
   mode,
 }: ReplacementDeletionSegmentsOptions): Segment[] => {
   const keepsLoneEmptyContainers =
-    mode.type === "suggesting" || mode.keepsLoneEmptyContainers === true;
+    mode.type === "suggesting"
+      ? mode.recordsLoneEmptyContainers !== true
+      : mode.keepsLoneEmptyContainers === true;
   type Stretch = Segment & { region: number; empties: boolean };
   const out: Stretch[] = [];
   const recordingRegions = new Set<number>();
@@ -510,9 +516,8 @@ export const replacementDeletionSegments = ({
       continue;
     }
     const segmentPlan = plan === "untouched" ? "tracked" : plan;
-    // An empty container marks nothing tracked: a suggestion drops a
-    // stretch holding nothing else, and a direct edit removes it only with a
-    // region that removes something else, whatever stretch it falls in.
+    // A replacement keeps incidental empty containers in an otherwise
+    // untouched region. A selection of only those records can mark them.
     const empty =
       plan !== "untouched" &&
       keepsLoneEmptyContainers &&
@@ -873,7 +878,7 @@ export const selectedParagraphRuns = (
     );
   if (!sameStory(from.story, to.story))
     return refuse(
-      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      DOCUMENT_OP_REFUSAL_REASONS.CROSS_BLOCK_RANGE,
       "A text range stays in one story.",
     );
   const body = storyBody(document, from.story);
@@ -939,6 +944,7 @@ type PlanDeletionOptions = {
   document: Document;
   options: PlanTrackedDeletionOptions;
   plan: TrackedPlan;
+  recordsLoneEmptyContainers?: true;
 };
 
 /** Validate and segment each paragraph before planning any edits. */
@@ -946,6 +952,7 @@ export const appendTrackedDeletion = ({
   document,
   options,
   plan,
+  recordsLoneEmptyContainers,
 }: PlanDeletionOptions): Result<void, DocumentOpRefusal> => {
   const { from, to, revision } = options;
   const refuse = (reason: DocumentOpRefusal["reason"], message: string) =>
@@ -1018,11 +1025,10 @@ export const appendTrackedDeletion = ({
   for (let index = first.index; index <= last.index; index += 1) {
     const paragraph = list[index];
     if (paragraph !== undefined && isBlockBoundary(paragraph)) continue;
+    // A selected run holds adjacent paragraphs, with only range boundaries
+    // between them ({@link selectedParagraphRuns}).
     if (paragraph?.type !== "paragraph")
-      return refuse(
-        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-        "A planned range cannot cross a non-paragraph block.",
-      );
+      return panic("A selected paragraph run crosses a non-paragraph block.");
     const at = {
       story: from.story,
       blockId: paragraph.paraId ?? "",
@@ -1061,7 +1067,11 @@ export const appendTrackedDeletion = ({
       spans: leafSpans(content),
       from: fromGap,
       to: toGap,
-      mode: { type: "suggesting", owner: revision },
+      mode: {
+        type: "suggesting",
+        owner: revision,
+        ...(recordsLoneEmptyContainers ? { recordsLoneEmptyContainers } : {}),
+      },
     });
     const only = segments.at(0);
     const reusesPreflight =
@@ -1111,12 +1121,7 @@ export const appendTrackedDeletion = ({
     last: last.index,
   });
   for (let index = ranges.length - 2; index >= 0; index -= 1) {
-    const leading = ranges[index];
-    if (leading === undefined)
-      return refuse(
-        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-        "A planned join has no endpoint.",
-      );
+    const leading = ranges[index] ?? panic("A planned join has no endpoint.");
     const currentBody = storyBody(plan.document(), from.story);
     const currentLeading = locateParagraphInBlockList(
       currentBody,

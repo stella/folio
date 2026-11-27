@@ -697,7 +697,16 @@ const resolveFieldRuns = (
     resolution,
     new Set(fieldHeldChangeIds(field)),
   );
-  return next === result ? field : withFieldResult(field, next);
+  if (field.type === "simpleField")
+    return next === result ? field : withFieldResult(field, next);
+  // The instruction runs of a `w:fldChar` field carry their own `w:rPrChange`.
+  const code = field.fieldCode.map((run) => resolveRun(run, resolution));
+  const codeChanged = code.some((run, index) => run !== field.fieldCode[index]);
+  if (next === result && !codeChanged) return field;
+  return withFieldResult(
+    codeChanged ? { ...field, fieldCode: code } : field,
+    next,
+  );
 };
 
 /**
@@ -6942,6 +6951,10 @@ const reachableIds = (paragraph: Paragraph): Set<number> => {
       if (isTrackedWrapper(node)) out.add(node.info.id);
       for (const change of ownRunPropertyChanges(node)) out.add(change.info.id);
       for (const id of fieldHeldChangeIds(node)) out.add(id);
+      if (node.type === "complexField")
+        for (const run of node.fieldCode)
+          for (const change of run.propertyChanges ?? [])
+            out.add(change.info.id);
       visit(childNodes(node) ?? []);
     }
   };

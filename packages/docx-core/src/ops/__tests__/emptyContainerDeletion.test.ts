@@ -1,15 +1,10 @@
-/**
- * A tracked deletion marks runs. An empty hyperlink, content control or
- * wrapper holds none: a deletion of nothing else would be a record no file
- * or reader shows, so it is refused, and a suggestion plans none for it.
- */
+/** A raw tracked deletion can name an empty inline record by its two gaps. */
 
 import { describe, expect, test } from "bun:test";
 
 import type { Document, ParagraphContent } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { compileEditorIntent } from "../editorIntent";
-import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import {
   DOCUMENT_OP_TYPES,
   OP_STORIES,
@@ -68,22 +63,33 @@ const gap = (offset: number, zeroWidthBefore: number) => ({
 describe.each(Object.entries(EMPTY_CONTAINERS))(
   "an empty %s",
   (_, container) => {
-    test("a tracked deletion of it alone is refused; a direct one removes it", () => {
+    test("an explicitly selected empty container accepts and rejects exactly", () => {
       const document = documentOf([container]);
       const op = {
         type: DOCUMENT_OP_TYPES.DELETE_RANGE,
         from: gap(0, 0),
         to: gap(0, 1),
       } as const;
-      const tracked = applyDocumentOp(document, { ...op, revision: STAMP });
-      expect(tracked.isErr() && tracked.error.reason).toBe(
-        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      );
-      const direct = applyDocumentOp(document, op);
-      if (direct.isErr()) throw direct.error;
-      expect(direct.value.document.package.document.content[1]).toMatchObject({
-        content: [],
-      });
+      const tracked = applyDocumentOp(document, {
+        ...op,
+        revision: STAMP,
+      }).unwrap();
+      const direct = applyDocumentOp(document, op).unwrap();
+      expect(tracked.revisions).toEqual([STAMP.id]);
+      for (const decision of Object.values(REVISION_DECISIONS)) {
+        const resolved = applyDocumentOp(tracked.document, {
+          type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+          story: OP_STORIES.MAIN,
+          revisionIds: tracked.revisions,
+          decision,
+        }).unwrap();
+        expect(resolved.document).toStrictEqual(
+          decision === REVISION_DECISIONS.ACCEPT ? direct.document : document,
+        );
+      }
+      expect(
+        applyDocumentOps(tracked.document, tracked.inverse).unwrap().document,
+      ).toStrictEqual(document);
     });
 
     test("a tracked deletion of it beside text records the text", () => {
@@ -200,23 +206,35 @@ describe.each(Object.entries(EMPTY_CONTAINERS))(
       },
     );
 
-    test("a direct deletion of nothing but it still removes it", () => {
+    test("a deletion selecting only it compiles in both modes", () => {
       const document = documentOf([container]);
+      const intent = {
+        type: "replaceText",
+        from: gap(0, 0),
+        to: gap(0, 1),
+        text: "",
+      } as const;
       const compiled = compileEditorIntent(document, {
-        intent: {
-          type: "replaceText",
-          from: gap(0, 0),
-          to: gap(0, 1),
-          text: "",
-        },
+        intent,
         mode: { type: "editing" },
-      });
-      if (compiled.isErr()) throw compiled.error;
-      const applied = applyDocumentOps(document, compiled.value.ops);
-      if (applied.isErr()) throw applied.error;
-      expect(applied.value.document.package.document.content[1]).toMatchObject({
+      }).unwrap();
+      const applied = applyDocumentOps(document, compiled.ops).unwrap();
+      expect(applied.document.package.document.content.at(1)).toMatchObject({
         content: [],
       });
+      const compiledTracked = compileEditorIntent(document, {
+        intent,
+        mode: { type: "suggesting", revision: STAMP, newIds: {} },
+      }).unwrap();
+      const tracked = applyDocumentOps(document, compiledTracked.ops).unwrap();
+      expect(tracked.revisions).toEqual([STAMP.id]);
+      const accepted = applyDocumentOp(tracked.document, {
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story: OP_STORIES.MAIN,
+        revisionIds: tracked.revisions,
+        decision: REVISION_DECISIONS.ACCEPT,
+      }).unwrap();
+      expect(accepted.document).toStrictEqual(applied.document);
     });
   },
 );

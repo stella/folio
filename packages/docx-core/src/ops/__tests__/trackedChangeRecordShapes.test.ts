@@ -681,3 +681,247 @@ describe("an inserted paragraph that ends a section", () => {
       );
   });
 });
+
+/**
+ * A tracked operation against its direct form: accepting gives the direct
+ * result, rejecting gives the source back, and every step undoes.
+ */
+const assertOpLaws = (
+  document: Document,
+  directOp: DocumentOp,
+  trackedOp: DocumentOp,
+) => {
+  const direct = apply(document, [directOp]);
+  const suggested = apply(document, [trackedOp]);
+  expect(suggested.revisions.length).toBeGreaterThan(0);
+  expect(apply(suggested.document, suggested.inverse).document).toStrictEqual(
+    document,
+  );
+  for (const decision of Object.values(REVISION_DECISIONS)) {
+    const resolved = resolve(suggested.document, suggested.revisions, decision);
+    expect(resolved.document).toStrictEqual(
+      decision === REVISION_DECISIONS.ACCEPT ? direct.document : document,
+    );
+    expect(apply(resolved.document, resolved.inverse).document).toStrictEqual(
+      suggested.document,
+    );
+  }
+  return { direct, suggested };
+};
+
+const at = (offset: number, zeroWidthBefore?: number) => ({
+  story: OP_STORIES.MAIN,
+  blockId: "00000001",
+  offset,
+  ...(zeroWidthBefore === undefined ? {} : { zeroWidthBefore }),
+});
+
+const commented = (content: Paragraph["content"]): Document => ({
+  package: {
+    document: {
+      comments: [
+        { id: 40, author: "Commenter", anchorKind: "range", content: [] },
+      ],
+      content: [
+        { type: "paragraph", paraId: "00000001", content },
+        { type: "paragraph", paraId: "00000002", content: [run("Kept.")] },
+      ],
+    },
+  },
+});
+
+describe("comment ranges a deletion of text meets", () => {
+  test.each(["opens", "closes"] as const)(
+    "a range that %s inside the cut keeps its standing endpoint outside the w:del",
+    (boundary) => {
+      const document = commented(
+        boundary === "opens"
+          ? [
+              run("ab"),
+              { type: "commentRangeStart", id: 40 },
+              run("cd"),
+              { type: "commentRangeEnd", id: 40 },
+              { type: "commentReference", id: 40 },
+            ]
+          : [
+              { type: "commentRangeStart", id: 40 },
+              run("ab"),
+              { type: "commentRangeEnd", id: 40 },
+              run("cd"),
+              { type: "commentReference", id: 40 },
+            ],
+      );
+      const { suggested } = assertSuggestionLaws(document, {
+        type: "replaceText",
+        from: at(1),
+        to: at(3),
+        text: "",
+      });
+      const [first] = suggested.document.package.document.content;
+      if (first?.type !== "paragraph")
+        throw new TypeError("Expected a paragraph.");
+      // Both endpoints stay bare in the paragraph, outside every w:del.
+      const anchors = first.content.filter(
+        (node) =>
+          node.type === "commentRangeStart" || node.type === "commentRangeEnd",
+      );
+      expect(anchors).toHaveLength(2);
+    },
+  );
+
+  test("a range crossing out of a hyperlink keeps its start inside the link", () => {
+    const document = commented([
+      run("a"),
+      {
+        type: "hyperlink",
+        anchor: "Clause",
+        children: [run("b"), { type: "commentRangeStart", id: 40 }, run("c")],
+      },
+      run("d"),
+      { type: "commentRangeEnd", id: 40 },
+      { type: "commentReference", id: 40 },
+    ]);
+    assertSuggestionLaws(document, {
+      type: "replaceText",
+      from: at(1),
+      to: at(3),
+      text: "",
+    });
+  });
+
+  test("a deletion holding a whole range and its reference takes the comment with it", () => {
+    const document = commented([
+      run("a"),
+      { type: "commentRangeStart", id: 40 },
+      run("b"),
+      { type: "commentRangeEnd", id: 40 },
+      { type: "commentReference", id: 40 },
+      run("c"),
+      run("d"),
+    ]);
+    const deleteRange = {
+      type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+      from: at(0),
+      to: at(3),
+    } satisfies DocumentOp;
+    const { direct, suggested } = assertOpLaws(document, deleteRange, {
+      ...deleteRange,
+      revision: STAMP,
+      newIds: NEW_IDS,
+    });
+    expect(direct.document.package.document.comments ?? []).toEqual([]);
+    const [first] = suggested.document.package.document.content;
+    if (first?.type !== "paragraph")
+      throw new TypeError("Expected a paragraph.");
+    const deletion = first.content.find((node) => node.type === "deletion");
+    if (deletion?.type !== "deletion")
+      throw new TypeError("Expected a deletion.");
+    expect(deletion.content).toContainEqual({
+      type: "commentRangeStart",
+      id: 40,
+    });
+  });
+});
+
+describe("an empty inline container a deletion selects alone", () => {
+  const document: Document = {
+    package: {
+      document: {
+        content: [
+          {
+            type: "paragraph",
+            paraId: "00000001",
+            content: [
+              { type: "hyperlink", anchor: "Target", children: [] },
+              run("text"),
+            ],
+          },
+        ],
+      },
+    },
+  };
+
+  test("the deletion records it as the direct one removes it", () => {
+    const { direct } = assertSuggestionLaws(document, {
+      type: "replaceText",
+      from: at(0, 0),
+      to: at(0, 1),
+      text: "",
+    });
+    const [only] = direct.document.package.document.content;
+    expect(only?.type === "paragraph" && only.content).toEqual([run("text")]);
+  });
+});
+
+describe("a tracked join that merges records at the seam", () => {
+  test.each([1, 2])("the deleted mark records a join at depth %d", (depth) => {
+    const content = (text: string): Paragraph["content"] =>
+      depth === 1
+        ? [run(text)]
+        : [{ type: "hyperlink", anchor: "Clause", children: [run(text)] }];
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            { type: "paragraph", paraId: "00000001", content: content("a") },
+            { type: "paragraph", paraId: "00000002", content: content("b") },
+          ],
+        },
+      },
+    };
+    const join = {
+      type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
+      story: OP_STORIES.MAIN,
+      blockId: "00000001",
+      nextBlockId: "00000002",
+      depth,
+    } satisfies DocumentOp;
+    const { suggested } = assertOpLaws(document, join, {
+      ...join,
+      revision: STAMP,
+    });
+    const [first] = suggested.document.package.document.content;
+    expect(first?.type === "paragraph" && first.pPrMark).toEqual(
+      expect.objectContaining({ kind: "del", resolutionJoin: depth }),
+    );
+  });
+});
+
+describe("a pasted paragraph holding review and control records of its own", () => {
+  const document: Document = {
+    package: {
+      document: {
+        content: [
+          { type: "paragraph", paraId: "00000001", content: [run("Here.")] },
+        ],
+      },
+    },
+  };
+  const pasted: Paragraph = {
+    type: "paragraph",
+    paraId: "0000000B",
+    content: [
+      {
+        type: "inlineSdt",
+        properties: { sdtType: "richText", id: 42 },
+        content: [
+          {
+            type: "insertion",
+            info: { id: 91, author: "Earlier", date: "2026-01-01T00:00:00Z" },
+            content: [run("pasted")],
+          },
+        ],
+      },
+    ],
+  };
+
+  test("the suggestion keeps the pasted insertion its own and resolves as the direct paste", () => {
+    const { suggested } = assertSuggestionLaws(document, {
+      type: "insertParagraphs",
+      story: OP_STORIES.MAIN,
+      at: { type: "before", blockId: "00000001" },
+      paragraphs: [pasted],
+    });
+    expect(suggested.revisions).not.toContain(91);
+  });
+});

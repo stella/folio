@@ -673,8 +673,9 @@ export type SplitBlockOp = {
  * the direct join would give it as a tracked property change. Accepting removes the mark, which
  * leaves the second paragraph with the first's content before its own: what
  * the direct join leaves. A tracked join always leaves the second, so
- * `survivor` must then be absent or `second`, and `depth` absent or zero: the
- * paragraph mark cannot record an inline merge depth.
+ * `survivor` must then be absent or `second`. A `depth` is recorded on the
+ * deleted mark, and accepting merges the records at the seam to that depth
+ * as the direct join does.
  */
 export type JoinBlocksOp = {
   type: typeof DOCUMENT_OP_TYPES.JOIN_BLOCKS;
@@ -706,10 +707,9 @@ export type BlockInsertionPoint =
  * paragraph receives an inserted mark and its content an insertion wrapper.
  * A tracked insertion after a paragraph no paragraph follows marks the
  * anchor's mark as the inserted one and gives the last new paragraph the
- * anchor's former mark; it is refused as `untrackable` when the anchor's mark
- * carries review records.
- * Incoming revision and content-control identities are refused in tracked
- * mode rather than nesting reviews or rewriting supplied identities.
+ * anchor's former mark. Each paragraph has one break marker and one property
+ * history, so a new mark cannot overwrite pending break history.
+ * Imported inline records keep their own review and content-control ids.
  */
 export type InsertBlocksOp = {
   type: typeof DOCUMENT_OP_TYPES.INSERT_BLOCKS;

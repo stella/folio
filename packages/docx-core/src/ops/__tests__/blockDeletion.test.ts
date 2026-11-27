@@ -1078,7 +1078,7 @@ test("a tracked deletion of an empty paragraph whose mark a pending deletion alr
     deletion(["00000001"]),
   );
   expect(refused.isErr() && refused.error.reason).toBe(
-    DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+    DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_DELETION,
   );
 });
 
@@ -1104,7 +1104,7 @@ test("a tracked deletion of a paragraph holding only an empty wrapper, whose mar
     deletion(["00000001"]),
   );
   expect(refused.isErr() && refused.error.reason).toBe(
-    DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+    DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_DELETION,
   );
 });
 
@@ -1191,7 +1191,9 @@ test.each(
     if (tracked.isErr()) {
       // Nothing to record, where the direct deletion still changes something.
       expect(tracked.error.reason).toBe(
-        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+        pending
+          ? DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_DELETION
+          : DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
       );
       expect(direct.document).not.toBe(document);
       return;

@@ -236,10 +236,13 @@ export const planTrackedReplacement = (
   options: PlanTrackedReplacementOptions,
 ): Result<DocumentOp[], DocumentOpRefusal> => {
   const { replacement, from, revision, newIds, cuts = [] } = options;
-  const refuse = (
-    message: string,
-    reason: DocumentOpRefusal["reason"] = DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-  ) =>
+  const to = options.to;
+  const deletesOnlyInlineRecords =
+    replacement.paragraphs.length === 0 &&
+    replacement.tail.content.length === 0 &&
+    idKey(from.blockId) === idKey(to.blockId) &&
+    from.offset === to.offset;
+  const refuse = (message: string, reason: DocumentOpRefusal["reason"]) =>
     Result.err(
       new DocumentOpRefusal({
         reason,
@@ -288,6 +291,7 @@ export const planTrackedReplacement = (
       document: plan.document(),
       options: { ...options, from: start, to: end },
       plan,
+      ...(deletesOnlyInlineRecords ? { recordsLoneEmptyContainers: true } : {}),
     });
     if (deleted.isErr()) return Result.err(deleted.error);
     if (!retainsControl) continue;
@@ -380,7 +384,10 @@ export const planTrackedReplacement = (
       sourceBlockId,
     );
     if (source === undefined)
-      return refuse("The replacement's source paragraph does not exist.");
+      return refuse(
+        "The replacement's source paragraph does not exist.",
+        DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
+      );
     const gap =
       at.zeroWidthBefore === undefined
         ? defaultInsertionGap(source.paragraph.content, at.offset)

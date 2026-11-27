@@ -355,7 +355,7 @@ test("insertion validates identities, review conflicts and section boundaries", 
   } satisfies Paragraph;
   const conflict = applyDocumentOp(baseDocument, insertion([changed]));
   expect(conflict.isErr() && conflict.error.reason).toBe(
-    DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+    DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_MARK_INSERTION,
   );
   const section = {
     ...makeParagraph("00000002", "section"),
@@ -1204,3 +1204,112 @@ test.each(["paragraph", "control"] as const)(
     expect(undo(applied)).toStrictEqual(original);
   },
 );
+
+test.each(["before", "beforeTable"] as const)(
+  "tracked insertion %s preserves pasted controls and separate review identities",
+  (type) => {
+    const original =
+      type === "before"
+        ? baseDocument
+        : documentOf([
+            inCell([makeParagraph("00000001", "")]),
+            makeParagraph("00000003", "kept"),
+          ]);
+    const imported = {
+      ...makeParagraph("00000002", "pasted"),
+      content: [
+        {
+          type: "inlineSdt",
+          properties: { sdtType: "richText", id: 42 },
+          content: [
+            {
+              type: "insertion",
+              info: { ...stamp, id: 91 },
+              content: [
+                { type: "run", content: [{ type: "text", text: "pasted" }] },
+              ],
+            },
+          ],
+        },
+      ],
+    } satisfies Paragraph;
+    const op = {
+      ...insertion([imported]),
+      at: { type, blockId: "00000001" },
+    } satisfies InsertBlocksOp;
+    const direct = apply(original, {
+      type: op.type,
+      story: op.story,
+      at: op.at,
+      blocks: op.blocks,
+    });
+    const pending = apply(original, op);
+    expect(pending.revisions).not.toContain(91);
+    expect(resolve(pending, REVISION_DECISIONS.ACCEPT).document).toStrictEqual(
+      direct.document,
+    );
+    expect(resolve(pending, REVISION_DECISIONS.REJECT).document).toStrictEqual(
+      original,
+    );
+    expect(undo(pending)).toStrictEqual(original);
+  },
+);
+
+test.each([
+  { location: "beside paragraph", formatting: undefined },
+  { location: "inside control", formatting: {} },
+] as const)(
+  "an empty paragraph replacement $location restores the exact authored snapshot",
+  ({ location, formatting }) => {
+    // An own `formatting` field, even one holding nothing.
+    const removed: Paragraph = Object.assign(makeParagraph("00000004", ""), {
+      formatting,
+    });
+    const control = {
+      type: "blockSdt",
+      properties: { sdtType: "group", id: 4 },
+      content: [removed, makeParagraph("00000006", "inside")],
+    } satisfies BlockContent;
+    const original = documentOf([
+      location === "inside control" ? control : removed,
+      makeParagraph("00000005", "survivor"),
+    ]);
+    const result = apply(original, {
+      type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+      story: OP_STORIES.MAIN,
+      expected: [removed],
+      blocks: [],
+    });
+    expect(result.inverse.at(0)?.type).toBe(
+      DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+    );
+    expect(undo(result)).toStrictEqual(original);
+    const replay = applyDocumentOps(
+      result.document,
+      JSON.parse(JSON.stringify(result.inverse)),
+    );
+    if (replay.isErr()) throw replay.error;
+    expect(replay.value.document).toStrictEqual(original);
+  },
+);
+
+test("an empty replacement of a control's only paragraph is refused before it changes anything", () => {
+  const removed = makeParagraph("00000004", "");
+  const original = documentOf([
+    {
+      type: "blockSdt",
+      properties: { sdtType: "group", id: 4 },
+      content: [removed],
+    },
+    makeParagraph("00000005", "survivor"),
+  ]);
+  const result = applyDocumentOp(original, {
+    type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+    story: OP_STORIES.MAIN,
+    expected: [removed],
+    blocks: [],
+  });
+  expect(result.isErr() && result.error.reason).toBe(
+    DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+  );
+});

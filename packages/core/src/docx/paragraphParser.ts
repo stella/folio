@@ -842,8 +842,12 @@ const hoistRevision =
       inScopeXmlns,
       "hyperlink",
     );
-    const content = linkedRevisionContent(wrapped, linkOver);
     const split = parseSplitResolutionPiece(child);
+    // A lifted piece still owns its link when that link has no children.
+    const content =
+      wrapped.length === 0 && split !== undefined
+        ? [linkOver([])]
+        : linkedRevisionContent(wrapped, linkOver);
     // A change written whole inside the link carries its joins itself.
     const resolutionJoins = parseResolutionJoins(child);
     items.push({

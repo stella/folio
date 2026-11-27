@@ -1,6 +1,15 @@
 /** Range endpoints whose deletion would unbalance a previously balanced range. */
 import type { BlockContent, DocumentBody, Paragraph } from "../model/document";
-import { compareGaps, type Gap, type LeafPlace, leafPlaces } from "./leaves";
+import {
+  asParagraphContent,
+  childNodes,
+  compareGaps,
+  type Gap,
+  type InlineNode,
+  type LeafPlace,
+  leafPlaces,
+  rebuildNode,
+} from "./leaves";
 import { rangeBoundaryDefinitions } from "./rangeBoundaries";
 
 const BOUNDARY_SIDES = rangeBoundaryDefinitions();
@@ -164,4 +173,41 @@ export const keptDeletionBoundaries = ({
   return paths === undefined
     ? []
     : covered.filter(({ path }) => paths.has(path.join(".")));
+};
+
+/** Give each retained occurrence its own identity for the revision partitioner. */
+export const isolateKeptDeletionBoundaries = (
+  paragraph: Paragraph,
+  leaves: readonly LeafPlace[],
+) => {
+  if (leaves.length === 0) return { items: paragraph.content };
+  const keptBoundaries = new Set<InlineNode>();
+  const paths = new Set<string>();
+  const parents = new Set<string>();
+  for (const { path } of leaves) {
+    paths.add(path.join("."));
+    for (let depth = 1; depth < path.length; depth++)
+      parents.add(path.slice(0, depth).join("."));
+  }
+  const isolate = (
+    nodes: readonly InlineNode[],
+    prefix: string,
+  ): InlineNode[] =>
+    nodes.map((node, index) => {
+      const path = `${prefix}${index}`;
+      if (paths.has(path)) {
+        const occurrence = { ...node };
+        keptBoundaries.add(occurrence);
+        return occurrence;
+      }
+      if (!parents.has(path)) return node;
+      const children = childNodes(node);
+      return children === undefined
+        ? node
+        : rebuildNode(node, isolate(children, `${path}.`));
+    });
+  return {
+    items: asParagraphContent(isolate(paragraph.content, "")),
+    keptBoundaries,
+  };
 };

@@ -31,7 +31,6 @@ import { firstSurvivorFields } from "./firstSurvivor";
 import { freshenIdentities } from "./identity";
 import {
   type IdentityKeyIndex,
-  identityKeysIn,
   idKey,
   isParaId,
   type KeyMembership,
@@ -277,12 +276,14 @@ const trackedParagraphReplacement = ({
 > => {
   const refuse = (reason: DocumentOpRefusal["reason"], message: string) =>
     Result.err(new DocumentOpRefusal({ reason, message, opType: op.type }));
-  if (identityKeysIn(op.blocks).length > 0) {
+  if (
+    takesOverMark &&
+    (canonicalBlocks.at(-1)?.propertyChanges?.length ?? 0) > 0
+  )
     return refuse(
-      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      "Tracked insertion of identified review or content-control records is unsupported.",
+      DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_PROPERTY_CHANGE,
+      "The pasted paragraph would give its break two property histories.",
     );
-  }
   // A move's destination marks its paragraphs moved to, not inserted.
   const markKind = op.move === true ? "moveTo" : "ins";
   const former = takesOverMark ? source.pPrMark : undefined;
@@ -349,7 +350,7 @@ const trackedParagraphReplacement = ({
     takesOverMark ? identitySlots(source).map(slotKey) : [],
   );
   const fresh = freshenIdentities({
-    before: takesOverMark ? [source] : [],
+    before: takesOverMark ? [source, ...canonicalBlocks] : canonicalBlocks,
     after: [...anchorBlocks, ...blocks],
     newIds: op.newIds ?? {},
     usedElsewhere: () => {
@@ -690,6 +691,14 @@ export const insertBlocks = ({
       "No paragraphs to insert.",
     );
   }
+  const existingMark = op.blocks.find(
+    ({ pPrMark }) => pPrMark !== undefined,
+  )?.pPrMark;
+  if (op.revision !== undefined && existingMark !== undefined)
+    return refuse(
+      pendingParagraphMarkReason(existingMark),
+      "A tracked insertion would overwrite a pasted paragraph's pending break.",
+    );
   if (op.at.type === "containerStart") {
     const located = locateBlockInsertion(document, op);
     if (located.isErr()) return located;
@@ -716,7 +725,7 @@ export const insertBlocks = ({
       op.blocks.some(({ sectionProperties }) => sectionProperties !== undefined)
     )
       return refuse(
-        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+        DOCUMENT_OP_REFUSAL_REASONS.SECTION_BOUNDARY,
         "Inserting section breaks requires section operations.",
       );
     if (
@@ -782,11 +791,6 @@ export const insertBlocks = ({
           DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
           "Tracked table-side insertion needs a following paragraph or a proven table boundary.",
         );
-      if (identityKeysIn(op.blocks).length > 0)
-        return refuse(
-          DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-          "Tracked insertion of identified review or content-control records is unsupported.",
-        );
       const tracked: Paragraph[] = [];
       for (const paragraph of paragraphs) {
         const content = insertedContent({
@@ -805,7 +809,7 @@ export const insertBlocks = ({
         });
       }
       const fresh = freshenIdentities({
-        before: [],
+        before: paragraphs,
         after: tracked,
         newIds: op.newIds ?? {},
         usedElsewhere: () => packageIdentityKeyIndex(document.package),

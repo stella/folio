@@ -157,7 +157,7 @@ export const CANONICAL_CAPABILITIES: {
     readonly owner: "document-operations";
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "A suggested change whose content the tracked-change records cannot express is refused: paragraph-mark run properties, a section-ending mark resolved across a standing range boundary, a change inside a simple field holding content the field cannot hold.";
+    readonly summary: "A suggested change whose content the tracked-change records cannot express is refused: paragraph-mark run properties, a section-ending mark resolved across a standing range boundary, a change inside a simple field holding content the field cannot hold, content a w:ins or w:del cannot hold, a block content control or custom XML element pasted or moved, an insertion after a pending paragraph mark without its former snapshot, and the removal of a block content control's only paragraph.";
   };
   readonly "publicOps.headlessSession": {
     readonly owner: "document-operations";
@@ -185,7 +185,7 @@ export const CANONICAL_CAPABILITIES: {
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
-      "A suggested change whose content the tracked-change records cannot express is refused: paragraph-mark run properties, a section-ending mark resolved across a standing range boundary, a change inside a simple field holding content the field cannot hold.",
+      "A suggested change whose content the tracked-change records cannot express is refused: paragraph-mark run properties, a section-ending mark resolved across a standing range boundary, a change inside a simple field holding content the field cannot hold, content a w:ins or w:del cannot hold, a block content control or custom XML element pasted or moved, an insertion after a pending paragraph mark without its former snapshot, and the removal of a block content control's only paragraph.",
   },
   [CANONICAL_GAP.publicHeadlessSession]: {
     owner: "document-operations",

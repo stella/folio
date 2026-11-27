@@ -131,6 +131,176 @@ const blocks = (document: Document): BlockContent[] =>
   document.package.document.content;
 
 describe("tracked text", () => {
+  test.each(["opens", "closes"] as const)(
+    "a tracked deletion keeps a comment boundary that %s inside the cut",
+    (boundary) => {
+      const start = { type: "commentRangeStart", id: 40 } as const;
+      const end = { type: "commentRangeEnd", id: 40 } as const;
+      const reference = { type: "commentReference", id: 40 } as const;
+      const document = commentedDocument(
+        boundary === "opens"
+          ? [run("ab"), start, run("cd"), end, reference]
+          : [start, run("ab"), end, run("cd"), reference],
+      );
+      const op = {
+        type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+        from: at("00000001", 1),
+        to: at("00000001", 3),
+        revision: stamp(1),
+        newIds: { revision: [2] },
+      } satisfies DocumentOp;
+      const pending = applied(document, op);
+      expect(
+        resolved(
+          pending.document,
+          pending.revisions,
+          REVISION_DECISIONS.ACCEPT,
+        ),
+      ).toStrictEqual(applied(document, directly(op)).document);
+      expect(
+        resolved(
+          pending.document,
+          pending.revisions,
+          REVISION_DECISIONS.REJECT,
+        ),
+      ).toStrictEqual(document);
+    },
+  );
+
+  test("tracked crossing ranges distinguish reused boundary occurrences", () => {
+    const start = { type: "commentRangeStart", id: 40 } as const;
+    const end = { type: "commentRangeEnd", id: 40 } as const;
+    const fixture = (alias: boolean) =>
+      commentedDocument([
+        run("a"),
+        start,
+        run("b"),
+        end,
+        run("c"),
+        alias ? start : { ...start },
+        run("de"),
+        alias ? end : { ...end },
+        { type: "commentReference", id: 40 },
+      ]);
+    const op = {
+      type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+      from: at("00000001", 0),
+      to: at("00000001", 4),
+      revision: stamp(9),
+      newIds: { revision: [10, 11, 12] },
+    } satisfies DocumentOp;
+    const aliased = fixture(true);
+    const independent = fixture(false);
+    const pending = applied(aliased, op);
+    expect(pending).toStrictEqual(applied(independent, op));
+    expect(
+      resolved(pending.document, pending.revisions, REVISION_DECISIONS.ACCEPT),
+    ).toStrictEqual(applied(aliased, directly(op)).document);
+    expect(
+      resolved(pending.document, pending.revisions, REVISION_DECISIONS.REJECT),
+    ).toStrictEqual(aliased);
+  });
+
+  test("a fully covered hyperlink keeps the standing anchor inside the link", () => {
+    const document = commentedDocument([
+      run("a"),
+      {
+        type: "hyperlink",
+        href: "https://example.com",
+        children: [run("b"), { type: "commentRangeStart", id: 40 }, run("c")],
+      },
+      run("d"),
+      { type: "commentRangeEnd", id: 40 },
+      { type: "commentReference", id: 40 },
+    ]);
+    const op = {
+      type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+      from: at("00000001", 1),
+      to: at("00000001", 3),
+      revision: stamp(1),
+      newIds: { revision: [2, 3] },
+    } satisfies DocumentOp;
+    const pending = applied(document, op);
+    expect(
+      resolved(pending.document, pending.revisions, REVISION_DECISIONS.ACCEPT),
+    ).toStrictEqual(applied(document, directly(op)).document);
+    expect(
+      resolved(pending.document, pending.revisions, REVISION_DECISIONS.REJECT),
+    ).toStrictEqual(document);
+  });
+
+  test.each(["inside", "outside"] as const)(
+    "a tracked deletion owns a complete comment range with its reference %s the cut",
+    (referencePlacement) => {
+      const reference = { type: "commentReference", id: 40 } as const;
+      const document = commentedDocument([
+        run("a"),
+        { type: "commentRangeStart", id: 40 },
+        run("b"),
+        { type: "commentRangeEnd", id: 40 },
+        ...(referencePlacement === "inside" ? [reference] : []),
+        run("c"),
+        run("d"),
+        ...(referencePlacement === "outside" ? [reference] : []),
+      ]);
+      const op = {
+        type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+        from: at("00000001", 0),
+        to: at("00000001", 3),
+        revision: stamp(9),
+        newIds: { revision: [10, 11, 12] },
+      } satisfies DocumentOp;
+      const pending = applied(document, op);
+      const direct = applied(document, directly(op)).document;
+      expect(direct.package.document.comments ?? []).toEqual([]);
+      expect(
+        resolved(
+          pending.document,
+          pending.revisions,
+          REVISION_DECISIONS.ACCEPT,
+        ),
+      ).toStrictEqual(direct);
+      expect(
+        resolved(
+          pending.document,
+          pending.revisions,
+          REVISION_DECISIONS.REJECT,
+        ),
+      ).toStrictEqual(document);
+    },
+  );
+
+  test("tracked deletion of a transparent wrapper owns the complete comment inside it", () => {
+    const document = commentedDocument([
+      run("a"),
+      {
+        type: "inlineWrapper",
+        kind: "bidi",
+        control: "embedding",
+        content: [
+          { type: "commentRangeStart", id: 40 },
+          run("b"),
+          { type: "commentRangeEnd", id: 40 },
+          { type: "commentReference", id: 40 },
+        ],
+      },
+      run("c"),
+    ]);
+    const op = {
+      type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+      from: at("00000001", 0),
+      to: at("00000001", 3),
+      revision: stamp(9),
+    } satisfies DocumentOp;
+    const pending = applied(document, op);
+    expect(
+      resolved(pending.document, pending.revisions, REVISION_DECISIONS.ACCEPT),
+    ).toStrictEqual(applied(document, directly(op)).document);
+    expect(
+      resolved(pending.document, pending.revisions, REVISION_DECISIONS.REJECT),
+    ).toStrictEqual(document);
+  });
+
   test("a point comment is not exhausted without covered content", () => {
     const document = commentedDocument([{ type: "commentReference", id: 40 }]);
     document.package.document.comments![0]!.anchorKind = "point";
@@ -510,7 +680,7 @@ describe("tracked text", () => {
     ).toStrictEqual(documentOf(paragraph("00000001", [])));
   });
 
-  test("a tracked deletion refuses comment anchors; the plan deletes around them", () => {
+  test("a tracked deletion leaves an unpaired comment anchor for the surrounding plan", () => {
     const document = documentOf(
       paragraph("00000001", [
         run("ab"),
@@ -530,7 +700,7 @@ describe("tracked text", () => {
         ...range,
         revision: stamp(9),
       }),
-    ).toBe(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE);
+    ).toBe(DOCUMENT_OP_REFUSAL_REASONS.DEPENDENT_RECORDS);
     const plan = planTrackedDeletion(document, {
       ...range,
       revision: stamp(9),
@@ -958,26 +1128,51 @@ describe("C9: Enter and Delete record paragraph marks", () => {
     );
   });
 
-  test("tracked joins refuse every positive inline merge depth without changing the document", () => {
-    const document = documentOf(
-      paragraph("00000001", [run("a")]),
-      paragraph("00000002", [run("b")]),
-    );
-    const original = structuredClone(document);
-    for (const depth of [1, 2, 3, 100, Number.MAX_SAFE_INTEGER]) {
+  test.each([1, 2])(
+    "tracked joins record an exact inline merge at depth %d",
+    (depth) => {
+      const content = (text: string): ParagraphContent[] =>
+        depth === 1
+          ? [run(text)]
+          : [
+              {
+                type: "hyperlink",
+                anchor: "Clause",
+                children: [{ type: "run", content: [{ type: "text", text }] }],
+              },
+            ];
+      const document = documentOf(
+        paragraph("00000001", content("a")),
+        paragraph("00000002", content("b")),
+      );
+      const op = {
+        type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
+        story: OP_STORIES.MAIN,
+        blockId: "00000001",
+        nextBlockId: "00000002",
+        depth,
+        revision: stamp(1),
+      } satisfies DocumentOp;
+      const pending = applied(document, op);
       expect(
-        refusalOf(document, {
-          type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
-          story: OP_STORIES.MAIN,
-          blockId: "00000001",
-          nextBlockId: "00000002",
-          depth,
-          revision: stamp(1),
-        }),
-      ).toBe(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE);
-      expect(document).toStrictEqual(original);
-    }
-  });
+        resolved(
+          pending.document,
+          pending.revisions,
+          REVISION_DECISIONS.ACCEPT,
+        ),
+      ).toStrictEqual(applied(document, directly(op)).document);
+      expect(
+        resolved(
+          pending.document,
+          pending.revisions,
+          REVISION_DECISIONS.REJECT,
+        ),
+      ).toStrictEqual(document);
+      expect(refusalOf(document, { ...op, depth: depth + 2 })).toBe(
+        DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+      );
+    },
+  );
 
   test("accepting a join of an empty paragraph leaves the next one as it was", () => {
     const empty = paragraph(
@@ -1247,6 +1442,26 @@ describe("an empty content control is content: resolution never merges it away",
     type: "inlineSdt",
     properties: { sdtType: "richText", id, tag: "clause" },
     content,
+  });
+
+  test("a tracked deletion records an empty control on its own", () => {
+    const document = documentOf(
+      paragraph("00000001", [control(1, []), run("text")]),
+    );
+    const op = {
+      type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+      from: { ...at("00000001", 0), zeroWidthBefore: 0 },
+      to: { ...at("00000001", 0), zeroWidthBefore: 1 },
+      revision: stamp(3),
+    } satisfies DocumentOp;
+    const pending = applied(document, op);
+    expect(pending.revisions).toEqual([3]);
+    expect(
+      resolved(pending.document, pending.revisions, REVISION_DECISIONS.ACCEPT),
+    ).toStrictEqual(applied(document, directly(op)).document);
+    expect(
+      resolved(pending.document, pending.revisions, REVISION_DECISIONS.REJECT),
+    ).toStrictEqual(document);
   });
 
   test("rejecting a tracked deletion keeps an empty control beside an alike one", () => {

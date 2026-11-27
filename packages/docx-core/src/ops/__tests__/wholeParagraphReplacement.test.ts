@@ -174,7 +174,7 @@ test("source retirement cannot cross story or parent block-list ownership", () =
     },
   });
   expect(crossed.isErr() && crossed.error.reason).toBe(
-    DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+    DOCUMENT_OP_REFUSAL_REASONS.CROSS_BLOCK_RANGE,
   );
 });
 
