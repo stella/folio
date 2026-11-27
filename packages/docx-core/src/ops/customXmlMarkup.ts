@@ -718,8 +718,8 @@ const holdsRevision = (value: unknown, ids: ReadonlySet<number>): boolean => {
  * tables and content controls: a mark ending an element joins the paragraph
  * after it across every element end it stands inside, as it would without
  * them. The tags then go back around their content that remains; an element
- * whose content a rejection took goes too (Word keeps no custom XML markup at
- * all, so leaves no empty element there), and one whose content an
+ * whose content a rejection took goes too (no empty element is left where
+ * the suggestion added none), and one whose content an
  * acceptance removed stays emptied, as removing it directly leaves it. So the
  * order the tags' own records and their content's resolve in leaves the same
  * document. `undefined` when the resolution reaches into no

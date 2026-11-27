@@ -267,8 +267,8 @@ describe("a suggested paste of a custom XML element", () => {
       shape: ["before Lead", "Inside one", "Inside two", "Trailafter", "next"],
     },
     // What the tags wrapped joins across them, and with all of it gone the
-    // tags go too: Word keeps no empty custom XML element (it keeps no
-    // custom XML markup at all).
+    // tags go too: no empty custom XML element is left where the
+    // suggestion added none.
     {
       element: REVISION_DECISIONS.ACCEPT,
       content: REVISION_DECISIONS.REJECT,
