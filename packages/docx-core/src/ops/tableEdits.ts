@@ -6,7 +6,6 @@ import {
   type Document,
   finalizeParagraphFormatting,
   MAX_REVISION_ID,
-  MAX_TABLE_GEOMETRY_HISTORY_LENGTH,
   type Paragraph,
   type ParagraphContent,
   type Table,
