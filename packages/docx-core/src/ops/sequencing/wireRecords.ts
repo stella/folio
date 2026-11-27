@@ -43,6 +43,7 @@ import type {
   TrackedChangeInfo,
 } from "../../model/document";
 import { PARAGRAPH_ALIGNMENTS } from "../../model/ooxmlEnumerations.gen";
+import { declaredUnmeasuredColumnCount } from "../../model/tableColumnWidths";
 import { isKeptCut } from "../keptCut";
 import type {
   PackageResourceCopiedPart,
@@ -507,6 +508,11 @@ const tableFields = {
   propertyChanges: boundedJson,
   columnWidths: optional(array(number)),
   omittedColumnWidthIndices: optional(array(natural)),
+  unmeasuredColumnCount: optional(
+    (value) =>
+      typeof value === "number" &&
+      declaredUnmeasuredColumnCount(value) !== undefined,
+  ),
   rows: array(tableRow),
   preserved: boundedJson,
   bookmarks: boundedJson,

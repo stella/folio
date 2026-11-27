@@ -82,9 +82,10 @@ const blocksHaveMultiplePropertyChanges = blockListCheck({
 
 const blocksHaveOversizedTableGrid = blockListCheck({
   paragraph: () => false,
-  table: ({ rows, columnWidths, formatting }) =>
+  table: ({ rows, columnWidths, unmeasuredColumnCount, formatting }) =>
     gridColumnsInRows(rows) > MAX_TABLE_GRID_COLUMNS ||
     (columnWidths?.length ?? 0) > MAX_TABLE_GRID_COLUMNS ||
+    (unmeasuredColumnCount ?? 0) > MAX_TABLE_GRID_COLUMNS ||
     (formatting?.gridChange?.columnWidths?.length ?? 0) >
       MAX_TABLE_GRID_COLUMNS,
 });

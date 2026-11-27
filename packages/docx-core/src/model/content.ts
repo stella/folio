@@ -1536,6 +1536,8 @@ export type Table = WritableRecord & {
   columnWidths?: number[];
   /** Indices projected to zero in `columnWidths` because the grid omitted `w:w`. */
   omittedColumnWidthIndices?: number[];
+  /** Count of an explicitly unmeasured grid that differs from its rows' inferred count. */
+  unmeasuredColumnCount?: number;
   /** Table rows */
   rows: TableRow[];
   /**

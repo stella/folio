@@ -85,6 +85,37 @@ const parseElement = (xml: string): XmlElement => {
 };
 
 describe("w:tblGridChange survives a grid the serializer has to rebuild", () => {
+  const namespaces = `${W_NS} xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:folio="${FOLIO_REVIEW_HISTORY_NAMESPACE}"`;
+  const read = (fragment: string): Table => {
+    const table = parseTable(
+      parseElement(fragment.replace("<w:tbl>", `<w:tbl ${namespaces}>`)),
+      new Map(),
+      null,
+      null,
+      null,
+      null,
+    );
+    if (table === undefined) throw new Error("Expected a table.");
+    return table;
+  };
+  const tableOf = (document: Document): Table => {
+    const table = document.package.document.content.at(0);
+    if (table?.type !== "table") throw new Error("Expected a table.");
+    return table;
+  };
+  const withTable = (table: Table): Document => ({
+    package: {
+      document: {
+        content: [
+          table,
+          { type: "paragraph", paraId: "00000010", content: [] },
+        ],
+      },
+    },
+  });
+  const twoCells =
+    '<w:tr><w:tc><w:p w14:paraId="00000001"/></w:tc><w:tc><w:p w14:paraId="00000002"/></w:tc></w:tr>';
+
   test("a resized column keeps the record of the grid it replaced", () => {
     const table = parseTable(
       parseElement(TABLE_XML),
@@ -194,35 +225,6 @@ describe("w:tblGridChange survives a grid the serializer has to rebuild", () => 
   });
 
   test("rejecting an imported grid change restores missing widths separately from zero widths", () => {
-    const namespaces = `${W_NS} xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"`;
-    const read = (fragment: string): Table => {
-      const table = parseTable(
-        parseElement(fragment.replace("<w:tbl>", `<w:tbl ${namespaces}>`)),
-        new Map(),
-        null,
-        null,
-        null,
-        null,
-      );
-      if (table === undefined) throw new Error("Expected a table.");
-      return table;
-    };
-    const tableOf = (document: Document): Table => {
-      const table = document.package.document.content.at(0);
-      if (table?.type !== "table") throw new Error("Expected a table.");
-      return table;
-    };
-    const withTable = (table: Table): Document => ({
-      package: {
-        document: {
-          content: [
-            table,
-            { type: "paragraph", paraId: "00000004", content: [] },
-          ],
-        },
-      },
-    });
-
     const oldGrid = '<w:gridCol/><w:gridCol w:w="0"/><w:gridCol w:w="3400"/>';
     const pending = withTable(
       read(
@@ -297,6 +299,83 @@ describe("w:tblGridChange survives a grid the serializer has to rebuild", () => 
     expect(serializeTable(deletedTable, serializeParagraph)).toContain(
       '<w:tblGrid><w:gridCol w:w="900"/><w:gridCol/><w:gridCol w:w="3400"/></w:tblGrid>',
     );
+  });
+
+  test.each([1, 2, 4])(
+    "rejection restores %i declared unmeasured columns across save and reopen",
+    (declared) => {
+      const priorGrid = "<w:gridCol/>".repeat(declared);
+      const original = withTable(
+        read(
+          '<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="900"/><w:gridCol w:w="1100"/>' +
+            `<w:tblGridChange w:id="42"><w:tblGrid>${priorGrid}</w:tblGrid></w:tblGridChange></w:tblGrid>` +
+            `${twoCells}</w:tbl>`,
+        ),
+      );
+      const reject = {
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story: OP_STORIES.MAIN,
+        revisionIds: [42],
+        decision: REVISION_DECISIONS.REJECT,
+      } as const;
+      const result = applyDocumentOp(original, reject).unwrap();
+      expect(
+        applyDocumentOps(result.document, result.inverse).unwrap().document,
+      ).toStrictEqual(original);
+      const restored = tableOf(result.document);
+      const xml = serializeTable(restored, serializeParagraph);
+      expect(xml).toContain(`<w:tblGrid>${priorGrid}</w:tblGrid>`);
+      const reopened = read(xml);
+      for (const table of [restored, reopened]) {
+        expect(table.columnWidths).toBeUndefined();
+        expect(table.omittedColumnWidthIndices).toBeUndefined();
+        expect(Object.hasOwn(table, "unmeasuredColumnCount")).toBe(
+          declared !== 2,
+        );
+        expect(table.unmeasuredColumnCount).toBe(
+          declared === 2 ? undefined : declared,
+        );
+      }
+
+      const inserted = applyDocumentOp(withTable(reopened), {
+        type: DOCUMENT_OP_TYPES.INSERT_COLUMN,
+        story: OP_STORIES.MAIN,
+        blockId: "00000001",
+        column: 0,
+        width: 500,
+        newBlockIds: ["00000004"],
+      }).unwrap().document;
+      const expanded = tableOf(inserted);
+      expect(expanded.columnWidths).toBeUndefined();
+      expect(serializeTable(expanded, serializeParagraph)).toContain(
+        `<w:tblGrid>${"<w:gridCol/>".repeat(declared + 1)}</w:tblGrid>`,
+      );
+    },
+  );
+
+  test("a pending merge of an inferred grid reopens without an explicit count", () => {
+    const original = withTable(
+      read(
+        `<w:tbl><w:tblPr/><w:tblGrid><w:gridCol/><w:gridCol/></w:tblGrid>${twoCells}</w:tbl>`,
+      ),
+    );
+    const pending = applyDocumentOp(original, {
+      type: DOCUMENT_OP_TYPES.MERGE_CELLS,
+      story: OP_STORIES.MAIN,
+      blockId: "00000001",
+      top: 0,
+      bottom: 1,
+      left: 0,
+      right: 2,
+      newBlockIds: [],
+      revision: { id: 50, author: "Reviewer", date: "2026-11-27T00:00:00Z" },
+      newIds: { revision: [51, 52, 53] },
+    }).unwrap().document;
+    const reopened = read(serializeTable(tableOf(pending), serializeParagraph));
+    expect(reopened.formatting?.gridChange?.geometryChange?.type).toBe(
+      "mergeCells",
+    );
+    expect(Object.hasOwn(reopened, "unmeasuredColumnCount")).toBe(false);
   });
 });
 

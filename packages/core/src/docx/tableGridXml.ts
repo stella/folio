@@ -4,7 +4,8 @@
  * grid differs from it, so a table without one reads back as it was written.
  */
 import {
-  gridColumnsInRows,
+  declaredUnmeasuredColumnCount,
+  inferredTableColumnCount,
   MAX_TABLE_GRID_COLUMNS as MAX_GRID_COLUMNS,
   statedTableColumnWidths,
 } from "@stll/docx-core/model";
@@ -25,13 +26,15 @@ export { MAX_GRID_COLUMNS };
  * and spans, because a grid narrower than a row leaves cells with no column
  * to sit in. At most {@link MAX_GRID_COLUMNS}.
  */
-export const gridColumnCount = (table: Table): number =>
-  Math.min(gridColumnsInRows(table.rows), MAX_GRID_COLUMNS);
+export const gridColumnCount = inferredTableColumnCount;
 
-const currentGridColumnCount = (
-  table: Table,
-  change: TableGridChange | undefined,
-): number => {
+/** The number of grid columns the live table writes, independent of its snapshot. */
+export const liveGridColumnCount = (table: Table): number => {
+  const measured = table.columnWidths?.length ?? 0;
+  if (measured > 0) return measured;
+  const declared = declaredUnmeasuredColumnCount(table.unmeasuredColumnCount);
+  if (declared !== undefined) return declared;
+  const change = table.formatting?.gridChange;
   const geometry = change?.geometryChange;
   if (change === undefined || geometry === undefined)
     return gridColumnCount(table);
@@ -88,12 +91,15 @@ export const modelTableGrid = (table: Table): string => {
   const change = table.formatting?.gridChange;
   const gridChange =
     change === undefined ? "" : serializeTableGridChange(change);
-  const columnWidths = statedTableColumnWidths(table);
+  const columnWidths =
+    table.columnWidths === undefined
+      ? undefined
+      : statedTableColumnWidths(table);
   if (columnWidths && columnWidths.length > 0) {
     const columns = serializeGridColumns(columnWidths);
     return `<w:tblGrid>${columns}${gridChange}</w:tblGrid>`;
   }
-  const columns = currentGridColumnCount(table, change);
+  const columns = liveGridColumnCount(table);
   return columns === 0 && gridChange === ""
     ? "<w:tblGrid/>"
     : `<w:tblGrid>${"<w:gridCol/>".repeat(columns)}${gridChange}</w:tblGrid>`;

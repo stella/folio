@@ -51,6 +51,8 @@ import type {
 } from "./content";
 
 export {
+  declaredUnmeasuredColumnCount,
+  inferredTableColumnCount,
   statedTableColumnWidths,
   tableColumnWidthFields,
 } from "./tableColumnWidths";

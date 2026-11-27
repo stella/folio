@@ -977,7 +977,9 @@ const withEditedColumnWidths = (table: Table, op: ColumnOp): Table => {
     widths.splice(
       op.column,
       0,
-      ...Array.from({ length: op.count ?? 1 }, () => op.width),
+      ...Array.from({ length: op.count ?? 1 }, () =>
+        table.columnWidths === undefined ? undefined : op.width,
+      ),
     );
   else widths.splice(op.column, op.count ?? 1);
   return withTableColumnWidths(table, widths);

@@ -12,6 +12,7 @@ import type {
 } from "../model/document";
 import { maxOf } from "../model/extremes";
 import {
+  declaredUnmeasuredColumnCount,
   statedTableColumnWidths,
   withTableColumnWidths,
 } from "../model/tableColumnWidths";
@@ -838,9 +839,9 @@ const resolveCellChanges = ({
         impliesWidth(
           structureResolved,
           (reject
-            ? table.formatting?.gridChange?.columnWidths
-            : table.columnWidths
-          )?.length ?? 0,
+            ? table.formatting?.gridChange?.columnWidths.length
+            : (table.columnWidths?.length ??
+              declaredUnmeasuredColumnCount(table.unmeasuredColumnCount))) ?? 0,
         )))
   ) {
     return Result.ok({ table: structureResolved, holdsRemovedColumns: false });

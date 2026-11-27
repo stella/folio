@@ -101,7 +101,7 @@ import { captureSdtSiblingMarkers, parseSdtProperties } from "./sdtProperties";
 import { parseShading } from "./shadingParser";
 import { findChildAnySpelling } from "./strictNames";
 import type { StyleMap } from "./styleParser";
-import { modelTableGrid } from "./tableGridXml";
+import { liveGridColumnCount, modelTableGrid } from "./tableGridXml";
 import { TABLE_LOOK_FLAGS } from "./tableLook";
 import {
   isEmptyRowPropertiesAttribute,
@@ -2372,11 +2372,17 @@ const declaredGridColumnWidths = (grid: XmlElement | null) =>
 
 export const parseTableGridWidthFields = (
   grid: XmlElement | null,
+  inferColumnCount?: () => number,
 ): ReturnType<typeof tableColumnWidthFields> => {
   const widths = declaredGridColumnWidths(grid);
-  // Preserve the numeric layout fallback for grids without a usable width.
+  // Keep the fallback for malformed measures without erasing a count of
+  // columns whose widths were omitted altogether.
   return tableColumnWidthFields(
-    widths.some((width) => width !== undefined && width >= 0) ? widths : [],
+    widths.some((width) => width !== undefined && width >= 0) ||
+      widths.every((width) => width === undefined)
+      ? widths
+      : [],
+    inferColumnCount,
   );
 };
 
@@ -2757,7 +2763,6 @@ export function parseTable(
 
   // Parse table grid (w:tblGrid)
   const gridElement = findChild(tblElement, "w", "tblGrid");
-  Object.assign(table, parseTableGridWidthFields(gridElement));
   // The grid element travels with the table's formatting, so a save that did
   // not resize a column writes it back with whatever it carried. A save that
   // did resize one rebuilds the grid, and `w:tblGridChange` — the tracked
@@ -2805,6 +2810,10 @@ export function parseTable(
     table.bookmarks = bookmarks;
   }
 
+  Object.assign(
+    table,
+    parseTableGridWidthFields(gridElement, () => liveGridColumnCount(table)),
+  );
   if (table.formatting?.gridChange?.geometryChange === undefined)
     inferImplicitSingleCellRowSpans(table, rowsWithGridOffsets);
 
