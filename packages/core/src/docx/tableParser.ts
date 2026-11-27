@@ -2370,7 +2370,9 @@ const declaredGridColumnWidths = (grid: XmlElement | null) =>
     parseNumericAttribute(column, "w", "w"),
   );
 
-export const parseTableGridWidthFields = (grid: XmlElement | null) => {
+export const parseTableGridWidthFields = (
+  grid: XmlElement | null,
+): ReturnType<typeof tableColumnWidthFields> => {
   const widths = declaredGridColumnWidths(grid);
   // Preserve the numeric layout fallback for grids without a usable width.
   return tableColumnWidthFields(
