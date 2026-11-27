@@ -13,6 +13,7 @@ import type {
 import { maxOf } from "../model/extremes";
 import { storyBody, storyParagraphs } from "./blocks";
 import { combineEdits, type DocumentEdit } from "./edits";
+import { IDENTITY_SPACES, identityKeysIn, slotKey } from "./ids";
 import { relocatePositionedMarkers } from "./positionedMarkers";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import type { ApplyOps } from "./resolve";
@@ -87,16 +88,24 @@ export const withBelongingTableGeometry = (
       geometry?.type === "mergeCells" && Array.isArray(geometry.moves)
         ? tableMoveRevisionIds(geometry.moves)
         : [];
-    if (
-      !ids.has(grid.id) &&
-      !members.some((id) => local.has(id) && ids.has(id)) &&
-      !moves.some((id) => ids.has(id))
-    )
-      continue;
+    const selectsGeometry =
+      ids.has(grid.id) || members.some((id) => local.has(id) && ids.has(id));
+    if (!selectsGeometry && !moves.some((id) => ids.has(id))) continue;
     if (
       geometry?.type === "mergeCells" &&
       !tableMoveOwnershipMatches(table, geometry)
-    )
+    ) {
+      if (!selectsGeometry) {
+        const physical = new Set(identityKeysIn(table));
+        if (
+          !moves.some(
+            (id) =>
+              ids.has(id) &&
+              physical.has(slotKey({ space: IDENTITY_SPACES.REVISION, id })),
+          )
+        )
+          continue;
+      }
       return Result.err(
         new DocumentOpRefusal({
           opType: op.type,
@@ -105,6 +114,7 @@ export const withBelongingTableGeometry = (
             "The tracked table merge no longer matches its paragraph move records.",
         }),
       );
+    }
     ids.add(grid.id);
     for (const id of members) if (local.has(id)) ids.add(id);
     // The topology decision unwraps these paragraphs and hands back their

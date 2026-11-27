@@ -1301,7 +1301,7 @@ describe("independent table forward oracles", () => {
     );
   });
 
-  test("a merge refuses review after its native destination mark changes", () => {
+  test("merge review only uses the table's native paragraph move records", () => {
     const table = {
       type: "table",
       rows: [{ type: "tableRow", cells: [cell(0x100), cell(0x200)] }],
@@ -1335,15 +1335,43 @@ describe("independent table forward oracles", () => {
     )
       throw new TypeError("Expected the moved paragraph and its mark.");
     delete moved.pPrMark;
-    const result = applyDocumentOp(pending, {
+    const group = grid.geometryChange;
+    const move = group?.type === "mergeCells" ? group.moves?.at(0) : undefined;
+    if (group?.type !== "mergeCells" || move === undefined)
+      throw new TypeError("Expected a saved paragraph move.");
+    for (const revisionId of [grid.id, move.fromRevision]) {
+      const result = applyDocumentOp(pending, {
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story: OP_STORIES.MAIN,
+        revisionIds: [revisionId],
+        decision: "accept",
+      });
+      expect(result.isErr() && result.error.reason).toBe(
+        DOCUMENT_OP_REFUSAL_REASONS.STALE,
+      );
+    }
+
+    const foreignId = 200_000;
+    grid.geometryChange = {
+      ...group,
+      moves: [{ ...move, destinationMark: foreignId }],
+    };
+    pending.package.document.content.splice(-1, 0, {
+      type: "table",
+      columnWidths: [2400],
+      formatting: { gridChange: { id: foreignId, columnWidths: [1800] } },
+      rows: [{ type: "tableRow", cells: [cell(30)] }],
+    });
+    const resolved = applyDocumentOp(pending, {
       type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
       story: OP_STORIES.MAIN,
-      revisionIds: [grid.id],
+      revisionIds: [foreignId],
       decision: "accept",
-    });
-    expect(result.isErr() && result.error.reason).toBe(
-      DOCUMENT_OP_REFUSAL_REASONS.STALE,
-    );
+    }).unwrap().document;
+    expect(tableOf(resolved)).toStrictEqual(tracked);
+    const foreign = resolved.package.document.content.at(-2);
+    if (foreign?.type !== "table") throw new Error("Fixture table missing.");
+    expect(foreign.formatting?.gridChange).toBeUndefined();
   });
 
   test("accepting a merge places a bookmark end beside its original cells", () => {
