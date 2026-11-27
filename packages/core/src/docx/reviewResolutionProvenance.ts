@@ -839,17 +839,42 @@ type TableMove = NonNullable<
 type NestedTableMove = NonNullable<
   Extract<GeometryChange, { type: "mergeCells" }>["nestedMoves"]
 >[number];
+const validControlHandoffs = (value: unknown): boolean => {
+  if (value === undefined) return true;
+  if (!Array.isArray(value) || value.length === 0) return false;
+  const authored = new Set<number>();
+  const temporary = new Set<number>();
+  for (const pair of value) {
+    if (!Array.isArray(pair) || pair.length !== 2) return false;
+    const [source, destination] = pair;
+    if (
+      typeof source !== "number" ||
+      !Number.isInteger(source) ||
+      source < -MAX_REVISION_ID - 1 ||
+      source > MAX_REVISION_ID ||
+      !isRevisionId(destination) ||
+      source === destination ||
+      authored.has(source) ||
+      temporary.has(destination)
+    )
+      return false;
+    authored.add(source);
+    temporary.add(destination);
+  }
+  return [...authored].every((source) => !temporary.has(source));
+};
 const isTableMove = (value: unknown): value is TableMove =>
   record(value) &&
   typeof value["source"] === "string" &&
   typeof value["destination"] === "string" &&
   isRevisionId(value["destinationMark"]) &&
-  (value["kind"] === "empty" ||
+  ((value["kind"] === "empty" && value["controls"] === undefined) ||
     (value["kind"] === undefined &&
       isRevisionId(value["fromRevision"]) &&
       isRevisionId(value["toRevision"]) &&
       isRevisionId(value["fromRange"]) &&
-      isRevisionId(value["toRange"])));
+      isRevisionId(value["toRange"]) &&
+      validControlHandoffs(value["controls"])));
 const isNestedTableMove = (value: unknown): value is NestedTableMove => {
   if (!record(value)) return false;
   const rows = value["rows"];

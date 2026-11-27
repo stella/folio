@@ -588,6 +588,8 @@ export type TableGeometryMove = {
       readonly toRevision: number;
       readonly fromRange: number;
       readonly toRange: number;
+      /** Authored control IDs paired with their temporary destination IDs. */
+      readonly controls?: readonly (readonly [number, number])[];
     }
   | { readonly kind: "empty" }
 );

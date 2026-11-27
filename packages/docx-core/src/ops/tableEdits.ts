@@ -36,6 +36,7 @@ import {
   withBodyContent,
 } from "./blocks";
 import { validateOpsDocument } from "./contract";
+import { packageIdOccupancy } from "./editorIntentCensus";
 import type { DocumentEdit } from "./edits";
 import { equalForStaleness, structurallyEqual } from "./equality";
 import { freshenIdentities, identityKeysOf } from "./identity";
@@ -2537,6 +2538,13 @@ const mergeMoveParagraphCount = (moves: readonly MergeMoveSource[]): number =>
     0,
   );
 
+const mergeMoveControlCount = (moves: readonly MergeMoveSource[]): number =>
+  moves.reduce(
+    (count, move) =>
+      count + (move.type === "paragraph" ? move.source.controls.length : 0),
+    0,
+  );
+
 type SuggestMergeOptions = MergeOptions & {
   selected: readonly GridCell[][];
   moves: readonly MergeMoveSource[];
@@ -2610,6 +2618,34 @@ const suggestMerge = ({
   }
   const stamps = stampsFor(op, structuralCount + 3 + moveCount);
   if (stamps.isErr()) return Result.err(stamps.error);
+  const controlCount = mergeMoveControlCount(moves);
+  const controlIds = (op.newIds?.control ?? []).slice(0, controlCount);
+  if (controlIds.length !== controlCount)
+    return refuse({
+      op,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
+      message: `This merge needs ${controlCount} temporary content-control ids.`,
+    });
+  if (controlIds.length > 0) {
+    const occupied = packageIdOccupancy(document.package).controls;
+    const seen = new Set<number>();
+    for (const id of controlIds) {
+      if (!Number.isInteger(id) || id < 0 || id > MAX_REVISION_ID)
+        return refuse({
+          op,
+          reason: DOCUMENT_OP_REFUSAL_REASONS.INVALID_NEW_ID,
+          message:
+            "New content-control ids must be nonnegative 31-bit integers.",
+        });
+      if (seen.has(id) || occupied.has(id))
+        return refuse({
+          op,
+          reason: DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
+          message: "A temporary content-control id is already in use.",
+        });
+      seen.add(id);
+    }
+  }
   const [ownerStamp, gridStamp, tableStamp, ...rest] = stamps.value;
   const structuralStamps = rest.slice(0, structuralCount);
   const moveStamps = rest.slice(structuralCount);
@@ -2634,6 +2670,7 @@ const suggestMerge = ({
     : undefined;
   let nextBlockId = continuationCount;
   let nextStamp = 0;
+  let nextControl = 0;
   for (const move of moves) {
     if (move.type === "table") {
       const { source } = move;
@@ -2690,6 +2727,13 @@ const suggestMerge = ({
         reason: DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
         message: "The move range identity space is exhausted.",
       });
+    const controls: [number, number][] = [];
+    for (const id of source.controls) {
+      const temporary = controlIds[nextControl++];
+      if (temporary === undefined)
+        return mismatch(op, "A moved control needs a temporary id.");
+      controls.push([id, temporary]);
+    }
     const marked = markTableMove({
       source,
       destination,
@@ -2697,6 +2741,7 @@ const suggestMerge = ({
       to,
       mark,
       ranges,
+      controls,
     });
     moved.set(idKey(source.id), marked);
     destinationBlocks.push(marked.destination);
@@ -3243,6 +3288,21 @@ const pendingGeometry = (table: Table, op: TableIntentOperation) =>
       });
 
 /** Count identities from the same topology/selection decisions the operation applies. */
+export const tableEditControlDemand = (
+  location: TableRowLocation,
+  op: TableIntentOperation,
+): number => {
+  if (op.type !== DOCUMENT_OP_TYPES.MERGE_CELLS) return 0;
+  const { table } = location;
+  const grid = statedGrid(table, op);
+  if (grid.isErr()) return 0;
+  const selection = mergeSelection({ table, grid: grid.value, op });
+  if (selection.isErr() || selection.value.verticalOnly) return 0;
+  return mergeMoveControlCount(
+    mergeMoveSources(selection.value.selected) ?? [],
+  );
+};
+
 export const tableEditParagraphDemand = (
   location: TableRowLocation,
   op: TableIntentOperation & { review?: "suggesting" },

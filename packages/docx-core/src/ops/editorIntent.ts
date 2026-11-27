@@ -166,6 +166,7 @@ import { identitySlots } from "./slots";
 import { findStoryBody, type StoryAddress, textBoxStoriesIn } from "./stories";
 import {
   columnDeletionTakesTable,
+  tableEditControlDemand,
   tableEditParagraphDemand,
 } from "./tableEdits";
 import { tableGrid } from "./tableGrid";
@@ -749,6 +750,7 @@ export const createEditorIntentIdAllocator = ({
     // at both endpoints. Table and whole-paragraph insertion demand is
     // computed below from the table or inserted paragraphs.
     let demand = 1;
+    let tableControlDemand = 0;
     const selected =
       intent.type === "table" || intent.type === "insertParagraphs"
         ? []
@@ -943,6 +945,7 @@ export const createEditorIntentIdAllocator = ({
       const located = locateTableRow(document, op);
       demand = 1;
       if (located.isOk()) {
+        tableControlDemand = tableEditControlDemand(located.value, op);
         switch (op.type) {
           case DOCUMENT_OP_TYPES.INSERT_COLUMN:
             demand = located.value.table.rows.length * (op.count ?? 1) + 2;
@@ -1058,7 +1061,7 @@ export const createEditorIntentIdAllocator = ({
         revision: revision.slice(1),
         control: fresh(
           census.controls,
-          intent.type === "table" ? 0 : demand,
+          intent.type === "table" ? tableControlDemand : demand,
           ID_LEASE_KINDS.CONTROL,
         ),
       },
