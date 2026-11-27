@@ -1,10 +1,20 @@
 import { expect, test } from "bun:test";
 
+import {
+  applyDocumentOp,
+  applyDocumentOps,
+  DOCUMENT_OP_TYPES,
+  OP_STORIES,
+  REVISION_DECISIONS,
+} from "@stll/docx-core/ops";
+
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document, Table } from "../types/document";
 import { FOLIO_REVIEW_HISTORY_NAMESPACE } from "./reviewHistoryNamespace";
 import { parseTableGeometryChange } from "./reviewResolutionProvenance";
+import { serializeParagraph } from "./serializer/paragraphSerializer";
+import { serializeTable } from "./serializer/tableSerializer";
 import {
   gridColumnCount,
   MAX_GRID_COLUMNS,
@@ -72,3 +82,57 @@ test("a rebuilt table distinguishes a missing width from an explicit zero", () =
   expect(rebuilt.omittedColumnWidthIndices).toEqual([1]);
   expect(modelTableGrid(rebuilt)).toContain(widths);
 });
+
+test.each([
+  ["cellDel", REVISION_DECISIONS.ACCEPT],
+  ["cellIns", REVISION_DECISIONS.REJECT],
+] as const)(
+  "review of %s can leave inferred grid columns",
+  (mark, decision) => {
+    const readTable = (body: string) => {
+      const xml = body.replace(
+        "<w:tbl>",
+        '<w:tbl xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml">',
+      );
+      const element = parseXmlDocument(xml);
+      if (element === null) throw new TypeError("Expected a table element.");
+      const table = parseTable(element, new Map(), null, null, null, null);
+      if (table === undefined) throw new TypeError("Expected a parsed table.");
+      return table;
+    };
+    const table = readTable(
+      [
+        '<w:tbl><w:tblGrid><w:gridCol w:w="600"/></w:tblGrid><w:tr>',
+        `<w:tc><w:tcPr><w:${mark} w:id="7" w:author="Editor"/></w:tcPr>`,
+        '<w:p w14:paraId="00000001"><w:r><w:t>Reviewed</w:t></w:r></w:p></w:tc>',
+        '<w:tc><w:tcPr><w:gridSpan w:val="2"/></w:tcPr>',
+        '<w:p w14:paraId="00000002"><w:r><w:t>Retained</w:t></w:r></w:p></w:tc>',
+        "</w:tr></w:tbl>",
+      ].join(""),
+    );
+    expect(table.columnWidths).toEqual([600]);
+    const document = { package: { document: { content: [table] } } };
+    const resolved = applyDocumentOp(document, {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: [7],
+      decision,
+    }).unwrap();
+    const result = resolved.document.package.document.content.at(0);
+    if (result?.type !== "table")
+      throw new TypeError("Expected a retained table.");
+    expect(result.columnWidths).toBeUndefined();
+    expect(gridColumnCount(result)).toBe(2);
+    expect(result.rows.at(0)?.cells).toEqual(table.rows.at(0)?.cells.slice(1));
+    const saved = serializeTable(result, serializeParagraph);
+    expect(saved).toContain("<w:tblGrid><w:gridCol/><w:gridCol/></w:tblGrid>");
+    expect(saved).toContain("Retained");
+    expect(saved).not.toContain("Reviewed");
+    const reopened = readTable(saved);
+    expect(gridColumnCount(reopened)).toBe(2);
+    expect(reopened.rows.at(0)?.cells).toHaveLength(1);
+    expect(
+      applyDocumentOps(resolved.document, resolved.inverse).unwrap().document,
+    ).toStrictEqual(document);
+  },
+);

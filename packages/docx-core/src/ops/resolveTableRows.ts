@@ -682,7 +682,7 @@ const resolveCellColumns = ({
     const nextWidths = columnWidths.filter(
       (_width, slot) => !removable.has(slot),
     );
-    if (nextWidths.length === 0) return Result.err("unsupported");
+    // A document can extend its declared grid with unmeasured cell spans.
     next = withTableColumnWidths(next, nextWidths);
   }
   return Result.ok({ table: next, holdsRemovedColumns });
