@@ -142,7 +142,9 @@ describe("comparison insertions beside a heading that states its outline level",
       label: "sections swapped before a trailing paragraph",
       base: "Intro.\n\n## Fees\n\nPay.\n\n## Term\n\nEither.\n\nTail.",
       target: "Intro.\n\n## Term\n\nEither.\n\n## Fees\n\nPay.\n\nTail.",
-      kinds: ["delete", "delete", "insert", "insert"],
+      // A save gives each paragraph an id from its markup, so the swapped
+      // sections keep their ids and read as moves.
+      kinds: ["move", "move"],
     },
   ])("keeps $label ordinary once accepted", async ({ base, target, kinds }) => {
     await expectVerifiedRestyle(
@@ -179,14 +181,15 @@ describe("comparison insertions beside a heading that states its outline level",
           "The parties will maintain confidentiality.",
         ].join("\n\n"),
       ),
+      // The relocated heading keeps the id a save gave it, so it reads as a
+      // move rather than a deletion and an insertion.
       [
-        "insert",
+        "move",
         "move",
         "replace",
         "replace",
         "table-row-delete",
         "table-row-insert",
-        "delete",
       ],
     );
   });

@@ -65,6 +65,9 @@ const CAPTURE_KEYS: ReadonlySet<string> = new Set([
   "alternateContent",
 ]);
 
+/** The ids a save gives a paragraph that holds none. */
+const PARAGRAPH_ID_KEYS: ReadonlySet<string> = new Set(["paraId", "textId"]);
+
 const isErased = (key: string): boolean =>
   VOLATILE_KEYS.has(key) || CAPTURE_KEYS.has(key);
 
@@ -361,10 +364,17 @@ const collectDifferences = (
   }
 
   if (isRecord(left) && isRecord(right)) {
+    // A save gives a paragraph that held no id one: the id is the save's.
+    const idGiven =
+      left["type"] === "paragraph" &&
+      left["paraId"] === undefined &&
+      typeof right["paraId"] === "string";
     const keys = [
       ...new Set([...Object.keys(left), ...Object.keys(right)]),
     ].sort();
     for (const key of keys) {
+      if (idGiven && PARAGRAPH_ID_KEYS.has(key) && left[key] === undefined)
+        continue;
       collectDifferences(left[key], right[key], `${path}.${key}`, collector);
     }
     return;
