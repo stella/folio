@@ -36,7 +36,8 @@ const CASES = {
     part: "word/document.xml",
     reference: "custom",
     kind: "undeclaredEntity",
-    edit: (xml: string) => xml.replace("<w:p>", '<w:p w:rsidR="a&custom;">'),
+    edit: (xml: string) =>
+      xml.replace(/<w:p(?=[\s>])/u, '<w:p w:rsidR="a&custom;"'),
   },
   "an entity in a styles attribute": {
     part: "word/styles.xml",

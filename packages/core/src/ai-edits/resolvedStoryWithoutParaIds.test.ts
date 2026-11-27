@@ -57,12 +57,36 @@ const reviewedParagraph = (paraId?: string): BlockContent => ({
 
 const FINAL_TEXT = "kept inserted new-position";
 
+const AUTHORED_PARA_ID = "1A2B3C4D";
+
+/**
+ * A package of `compose`'s blocks. A save gives every paragraph an id; the
+ * ones it gave are taken off again, and an authored one stays.
+ */
 const buildDocx = async (
   compose: (document: Document) => BlockContent[],
 ): Promise<ArrayBuffer> => {
   const document = createEmptyDocument();
   document.package.document.content = compose(document);
-  return await createDocx(document);
+  const zip = await ZipArchive.read(await createDocx(document));
+  for (const path of zip
+    .paths()
+    .filter((name) => /^word\/[^/]+\.xml$/u.test(name))) {
+    // oxlint-disable-next-line no-await-in-loop -- each part is read and rewritten in turn
+    const xml = await zip.entry(path)?.text();
+    if (xml !== undefined)
+      zip.set(
+        path,
+        xml.replace(
+          new RegExp(
+            `\\s(?:w14:paraId|w14:textId)="(?!${AUTHORED_PARA_ID}")[^"]*"`,
+            "gu",
+          ),
+          "",
+        ),
+      );
+  }
+  return (await zip.generate({ compression: "store" })).buffer as ArrayBuffer;
 };
 
 const resolveEveryStoryToFinal = async (
@@ -133,7 +157,9 @@ describe.each([
     });
 
     test("still compares an authored id, which the save does write", async () => {
-      const source = await buildDocx(() => [reviewedParagraph("1A2B3C4D")]);
+      const source = await buildDocx(() => [
+        reviewedParagraph(AUTHORED_PARA_ID),
+      ]);
 
       const xml = await partText(
         await resolveEveryStoryToFinal(source, session),
