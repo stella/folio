@@ -11,6 +11,8 @@ import {
   REVISION_DECISIONS,
 } from "@stll/docx-core/ops";
 
+import { getTrackedChangeGroupsForIds } from "../ai-edits/read";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document, Paragraph, Table, TableCell } from "../types/document";
 import { FOLIO_REVIEW_HISTORY_NAMESPACE } from "./reviewHistoryNamespace";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
@@ -39,6 +41,44 @@ const nested: Table = {
   ],
 };
 
+const nestedWithProperties = {
+  ...nested,
+  formatting: { justification: "center" },
+  propertyChanges: [
+    {
+      type: "tablePropertyChange",
+      info: { id: 41, author: "Earlier" },
+      previousFormatting: { justification: "right" },
+    },
+  ],
+  rows: [
+    {
+      type: "tableRow",
+      formatting: { cantSplit: true },
+      propertyChanges: [
+        {
+          type: "tableRowPropertyChange",
+          info: { id: 42, author: "Earlier" },
+          previousFormatting: { cantSplit: false },
+        },
+      ],
+      cells: [
+        {
+          ...cell(paragraph("00000003", "Nested property change")),
+          formatting: { width: { type: "dxa", value: 900 } },
+          propertyChanges: [
+            {
+              type: "tableCellPropertyChange",
+              info: { id: 43, author: "Earlier" },
+              previousFormatting: { width: { type: "dxa", value: 700 } },
+            },
+          ],
+        },
+      ],
+    },
+  ],
+} satisfies Table;
+
 const tableOf = (document: Document): Table => {
   const block = document.package.document.content.at(0);
   if (block?.type !== "table") throw new TypeError("Expected a table.");
@@ -59,15 +99,22 @@ const projection = (table: Table): unknown =>
     })),
   );
 
-test.each(["horizontal", "rectangular", "retained"] as const)(
+test.each([
+  "horizontal",
+  "rectangular",
+  "retained",
+  "horizontal with earlier properties",
+  "rectangular with earlier properties",
+] as const)(
   "a %s merge moves a nested table and closing paragraph through native review",
   (shape) => {
-    const rectangular = shape !== "horizontal";
+    const rectangular = shape.startsWith("rectangular") || shape === "retained";
     const retained = shape === "retained";
+    const priorProperties = shape.endsWith("with earlier properties");
     const owner = cell(paragraph("00000001", retained ? undefined : "Owner"));
     const other = cell(
       paragraph("00000002", "Before"),
-      nested,
+      priorProperties ? nestedWithProperties : nested,
       paragraph("00000005"),
     );
     const first = {
@@ -129,7 +176,9 @@ test.each(["horizontal", "rectangular", "retained"] as const)(
     if (op?.type !== DOCUMENT_OP_TYPES.MERGE_CELLS)
       throw new TypeError("Expected a merge operation.");
     const continuations = Number(rectangular);
-    expect(op.newBlockIds).toHaveLength(continuations + 4);
+    expect(op.newBlockIds).toHaveLength(
+      continuations + (priorProperties ? 3 : 4),
+    );
     const direct = applyDocumentOp(original, {
       ...operation,
       newBlockIds: op.newBlockIds.slice(0, continuations),
@@ -147,7 +196,8 @@ test.each(["horizontal", "rectangular", "retained"] as const)(
         : undefined;
     if (nestedId === undefined) throw new Error("Expected a nested row stamp.");
     const xml = serializeTable(marked, serializeParagraph);
-    expect(xml).toContain(`<w:trPr><w:ins w:id="${nestedId}"`);
+    const rowProperties = priorProperties ? "<w:cantSplit/>" : "";
+    expect(xml).toContain(`<w:trPr>${rowProperties}<w:ins w:id="${nestedId}"`);
     expect(xml.match(/<w:tbl>/gu)).toHaveLength(3);
     const element = parseXmlDocument(
       xml.replace(
@@ -158,6 +208,50 @@ test.each(["horizontal", "rectangular", "retained"] as const)(
     if (element === null) throw new Error("Expected well-formed XML.");
     const parsed = parseTable(element, new Map(), null, null, null, null);
     if (parsed === undefined) throw new Error("Expected a reopened table.");
+    if (priorProperties) {
+      const fact = parsed.formatting?.gridChange?.geometryChange;
+      const aliases =
+        fact?.type === "mergeCells"
+          ? fact.nestedMoves?.at(0)?.properties
+          : undefined;
+      if (aliases === undefined)
+        throw new TypeError("Expected saved property handoffs.");
+      expect(aliases.map(([source]) => source)).toEqual([41, 42, 43]);
+      const doc = toProseDoc(withTable(parsed), {
+        tableReviewGeometry: "physical",
+      });
+      for (const [source, temporary] of aliases)
+        expect(getTrackedChangeGroupsForIds(doc, [source]).at(0)).toEqual([
+          source,
+          temporary,
+        ]);
+
+      const earlierTable = aliases.at(0);
+      if (earlierTable === undefined)
+        throw new TypeError("Expected the table property handoff.");
+      const reviewed = applyDocumentOp(withTable(parsed), {
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story: OP_STORIES.MAIN,
+        revisionIds: [earlierTable[1]],
+        decision: REVISION_DECISIONS.REJECT,
+      }).unwrap().document;
+      const existing = tableOf(reviewed);
+      const nestedTables = existing.rows.flatMap(({ cells }) =>
+        cells.flatMap(({ content }) =>
+          content.filter((block) => block.type === "table"),
+        ),
+      );
+      expect(nestedTables).toHaveLength(2);
+      expect(
+        nestedTables.map(({ formatting }) => formatting?.justification),
+      ).toEqual(["right", "right"]);
+      expect(
+        nestedTables.every(
+          ({ propertyChanges }) => propertyChanges === undefined,
+        ),
+      ).toBe(true);
+      expect(existing.formatting?.gridChange?.geometryChange).toBeDefined();
+    }
 
     for (const decision of [
       REVISION_DECISIONS.ACCEPT,

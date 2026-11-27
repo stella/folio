@@ -11,6 +11,7 @@ import type {
   TableStructuralChangeInfo,
 } from "../model/document";
 import { maxOf } from "../model/extremes";
+import { activeNestedTablePropertyHandoffs } from "../model/nestedTablePropertyHandoffs";
 import { TABLE_CELL_VERTICAL_MERGES } from "../model/tableCellVerticalMerge";
 import {
   declaredUnmeasuredColumnCount,
@@ -103,6 +104,21 @@ export const withBelongingTableGeometry = (
     const geometry = grid?.geometryChange;
     const members = geometry?.revisionIds;
     if (grid === undefined || !Array.isArray(members)) continue;
+    if (
+      geometry?.type === "mergeCells" &&
+      Array.isArray(geometry.nestedMoves)
+    ) {
+      for (const move of geometry.nestedMoves) {
+        for (const [source, temporary] of activeNestedTablePropertyHandoffs(
+          table,
+          move,
+        )) {
+          if (!ids.has(source) && !ids.has(temporary)) continue;
+          ids.add(source);
+          ids.add(temporary);
+        }
+      }
+    }
     const local = reachableOnTable(table);
     const moves =
       geometry?.type === "mergeCells"
@@ -928,12 +944,14 @@ const endAdjacentMerges = ({
 
 type ResolveCellChangesOptions = {
   table: Table;
+  propertyHandoffs?: ReadonlyMap<number, number>;
   ids: ReadonlySet<number>;
   reject: boolean;
   selectedGridChange: boolean;
 };
 const resolveCellChanges = ({
   table,
+  propertyHandoffs,
   ids,
   reject,
   selectedGridChange,
@@ -1007,14 +1025,15 @@ const resolveCellChanges = ({
   const hasRemovedCells = table.rows.some((row) => row.cells.some(removes));
   if (compoundGrid)
     return Result.ok({
-      table: resolveTableMoves(
-        endAdjacentMerges({
+      table: resolveTableMoves({
+        table: endAdjacentMerges({
           before: table,
           after: structureResolved,
           selected: mergeRows,
         }),
         reject,
-      ),
+        propertyHandoffs: propertyHandoffs ?? tablePropertyHandoffs(table),
+      }),
       holdsRemovedColumns: false,
     });
   if (!hasRemovedCells)
@@ -1210,6 +1229,21 @@ const replaceUnaddressedTable = ({
     : Result.ok(replacement);
 };
 
+const tablePropertyHandoffs = (table: Table): ReadonlyMap<number, number> => {
+  const geometry = table.formatting?.gridChange?.geometryChange;
+  const handoffs = new Map<number, number>();
+  if (geometry?.type !== "mergeCells" || !Array.isArray(geometry.nestedMoves))
+    return handoffs;
+  for (const move of geometry.nestedMoves) {
+    for (const [source, temporary] of activeNestedTablePropertyHandoffs(
+      table,
+      move,
+    ))
+      handoffs.set(temporary, source);
+  }
+  return handoffs;
+};
+
 export const resolveTableRows = ({
   document,
   op,
@@ -1219,6 +1253,7 @@ export const resolveTableRows = ({
   const reject = op.decision === REVISION_DECISIONS.REJECT;
   let current = document;
   const edits: DocumentEdit[] = [];
+  const propertyHandoffs = new Map<number, ReadonlyMap<number, number>>();
 
   const settled = marksInRemovedStructure(document, op);
   if (settled.length > 0) {
@@ -1231,6 +1266,10 @@ export const resolveTableRows = ({
   // Keep row insertion/deletion on its established primitive, which also
   // removes an emptied table. Table property and cell changes use setTable.
   for (const originalTable of tablesIn(document, op.story)) {
+    // Match both copies before row decisions remove one of them.
+    const grid = originalTable.formatting?.gridChange;
+    if (grid !== undefined && ids.has(grid.id))
+      propertyHandoffs.set(grid.id, tablePropertyHandoffs(originalTable));
     // A merge already records the replacement cell topology. Applying its
     // row deletions separately would carry old merge owners into that topology.
     const mergeRows = reject
@@ -1347,6 +1386,9 @@ export const resolveTableRows = ({
     const selectedGridChange = grid !== undefined && ids.has(grid.id);
     const cellsResolved = resolveCellChanges({
       table,
+      propertyHandoffs: selectedGridChange
+        ? propertyHandoffs.get(grid.id)
+        : undefined,
       ids,
       reject,
       selectedGridChange,

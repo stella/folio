@@ -167,7 +167,7 @@ import { identitySlots } from "./slots";
 import { findStoryBody, type StoryAddress, textBoxStoriesIn } from "./stories";
 import {
   columnDeletionTakesTable,
-  tableEditControlDemand,
+  tableEditCopyIdentityDemand,
   tableEditParagraphDemand,
 } from "./tableEdits";
 import { tableGrid } from "./tableGrid";
@@ -946,7 +946,8 @@ export const createEditorIntentIdAllocator = ({
       const located = locateTableRow(document, op);
       demand = 1;
       if (located.isOk()) {
-        tableControlDemand = tableEditControlDemand(located.value, op);
+        const copies = tableEditCopyIdentityDemand(located.value, op);
+        tableControlDemand = copies.controls;
         switch (op.type) {
           case DOCUMENT_OP_TYPES.INSERT_COLUMN:
             demand = located.value.table.rows.length * (op.count ?? 1) + 2;
@@ -992,6 +993,7 @@ export const createEditorIntentIdAllocator = ({
             demand = (op.bottom - op.top + 1) * 2 + 2;
             if (op.bottom - op.top === 1)
               demand = Math.max(demand, op.right - op.left + 2);
+            demand += copies.revisions;
             // A row the merge leaves only continuations records its
             // deletion: the row and each of its paragraphs. A direct merge
             // across rows pending insertion or deletion records it on the

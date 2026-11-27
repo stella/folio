@@ -1,4 +1,5 @@
 import {
+  activeNestedTablePropertyHandoffs,
   PARSE_WARNING_CODES,
   tableColumnWidthFields,
 } from "@stll/docx-core/model";
@@ -2808,6 +2809,29 @@ export function parseTable(
   }
   if (bookmarks.length > 0) {
     table.bookmarks = bookmarks;
+  }
+
+  const gridChange = table.formatting?.gridChange;
+  const geometry = gridChange?.geometryChange;
+  if (
+    gridChange !== undefined &&
+    geometry?.type === "mergeCells" &&
+    geometry.nestedMoves?.some(({ properties }) => properties !== undefined)
+  ) {
+    const nestedMoves = geometry.nestedMoves.map((move) => {
+      if (move.properties === undefined) return move;
+      const active = activeNestedTablePropertyHandoffs(table, move);
+      if (active.length === move.properties.length) return move;
+      const { properties: _original, ...anchors } = move;
+      return active.length === 0 ? anchors : { ...anchors, properties: active };
+    });
+    table.formatting = {
+      ...table.formatting,
+      gridChange: {
+        ...gridChange,
+        geometryChange: { ...geometry, nestedMoves },
+      },
+    };
   }
 
   Object.assign(

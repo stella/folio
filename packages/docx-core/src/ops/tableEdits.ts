@@ -2471,7 +2471,9 @@ const suggestMerge = ({
     );
   let moveCount = 0;
   for (const move of moves) {
-    if (move.type === "table") moveCount += move.source.table.rows.length;
+    if (move.type === "table")
+      moveCount +=
+        move.source.table.rows.length + move.source.properties.length;
     else moveCount += move.source.paragraph.content.length === 0 ? 1 : 3;
   }
   const stamps = stampsFor(op, structuralCount + 3 + moveCount);
@@ -2556,10 +2558,12 @@ const suggestMerge = ({
       const { source } = move;
       const endBlockId = nextBlockId + source.paragraphs.length;
       const endStamp = nextStamp + source.table.rows.length;
+      const endProperties = endStamp + source.properties.length;
       const nested = markNestedTableMove({
         source,
         destinations: op.newBlockIds.slice(nextBlockId, endBlockId),
         rowStamps: moveStamps.slice(nextStamp, endStamp),
+        propertyStamps: moveStamps.slice(endStamp, endProperties),
       });
       if (nested === undefined)
         return mismatch(
@@ -2567,7 +2571,7 @@ const suggestMerge = ({
           "A moved table needs its row stamps and destination paragraph ids.",
         );
       nextBlockId = endBlockId;
-      nextStamp = endStamp;
+      nextStamp = endProperties;
       nestedMoves.push(nested.record);
       appendDestination(move.wrappers, nested.destination);
       continue;
@@ -3181,20 +3185,28 @@ const pendingGeometry = (table: Table, op: TableIntentOperation) =>
           "Resolve the pending geometry change before editing this table's grid or properties.",
       });
 
-/** Count identities from the same topology/selection decisions the operation applies. */
-export const tableEditControlDemand = (
+/** Additional identities the selected records need when a tracked merge copies them. */
+export const tableEditCopyIdentityDemand = (
   location: TableRowLocation,
   op: TableIntentOperation,
-): number => {
-  if (op.type !== DOCUMENT_OP_TYPES.MERGE_CELLS) return 0;
+) => {
+  const none = { controls: 0, revisions: 0 };
+  if (op.type !== DOCUMENT_OP_TYPES.MERGE_CELLS) return none;
   const { table } = location;
   const grid = statedGrid(table, op);
-  if (grid.isErr()) return 0;
+  if (grid.isErr()) return none;
   const selection = mergeSelection({ table, grid: grid.value, op });
-  if (selection.isErr() || selection.value.verticalOnly) return 0;
-  return mergeMoveControlCount(
-    mergeMoveSources(selection.value.selected) ?? [],
-  );
+  if (selection.isErr() || selection.value.verticalOnly) return none;
+  const moves = mergeMoveSources(selection.value.selected);
+  if (moves === undefined) return none;
+  return {
+    controls: mergeMoveControlCount(moves),
+    revisions: moves.reduce(
+      (total, move) =>
+        total + (move.type === "table" ? move.source.properties.length : 0),
+      0,
+    ),
+  };
 };
 
 export const tableEditParagraphDemand = (

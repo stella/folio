@@ -164,7 +164,7 @@ export const filterNewIds = (
 };
 
 /** The table edits that may keep pending records on new rows and cells. */
-const DIRECT_TABLE_EDITS: ReadonlySet<DocumentOp["type"]> = new Set([
+const TABLE_TOPOLOGY_EDITS: ReadonlySet<DocumentOp["type"]> = new Set([
   DOCUMENT_OP_TYPES.INSERT_COLUMN,
   DOCUMENT_OP_TYPES.DELETE_COLUMN,
   DOCUMENT_OP_TYPES.MERGE_CELLS,
@@ -195,10 +195,10 @@ export const trimAppliedNewIds = ({
     return location === undefined ? [] : [location.paragraph];
   });
   const known = packageIdentityKeyIndex(before.package);
-  // A direct cell or column edit keeps pending records on the rows and cells
-  // it makes, outside every paragraph.
+  // A topology edit may copy pending records outside paragraphs, keeping
+  // their authors independently of the new operation's revision stamp.
   const identities = new Set(
-    DIRECT_TABLE_EDITS.has(op.type) && stampOf(op) === undefined
+    TABLE_TOPOLOGY_EDITS.has(op.type)
       ? known.introducedIn(applied.document.package)
       : identityKeysIn(paragraphs),
   );
