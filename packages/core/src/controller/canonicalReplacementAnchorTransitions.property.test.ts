@@ -120,11 +120,10 @@ const sourceDocument = (anchors: readonly Anchor[]): Document => {
       pending += text.charAt(offset);
     }
     if (pending !== "") content.push(run(pending));
-    return {
-      type: "paragraph",
-      paraId: BLOCK_IDS[paragraph],
-      content,
-    };
+    const paraId = BLOCK_IDS[paragraph];
+    if (paraId === undefined)
+      throw new TypeError("Every fixture paragraph has a block id");
+    return { type: "paragraph", paraId, content };
   });
   return {
     package: {

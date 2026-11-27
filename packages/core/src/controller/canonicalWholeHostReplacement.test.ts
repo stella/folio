@@ -243,7 +243,10 @@ for (const endpoint of ["whole", "partial-last"] as const)
   });
 
 // What typing over the hosts leaves, per boundary, directly or accepted.
-const typedOutcomes = new Map<string, unknown>();
+const typedOutcomes = new Map<
+  string,
+  ReturnType<typeof cloneDocumentWithParagraphPropertySources>
+>();
 for (const boundary of [
   "partial-first",
   "surviving-host-comment",
