@@ -76,6 +76,7 @@ import {
   nestedTableMoveSource,
   type TableMoveSource,
   tableMoveSource,
+  tablePictureIdAllocator,
 } from "./tableCellMove";
 import {
   reachesPastRemovedCell,
@@ -2509,6 +2510,11 @@ const suggestMerge = ({
   )
     ? moveRangeAllocator(document.package)
     : undefined;
+  const takePictureId = moves.some(
+    (move) => move.type === "paragraph" && move.source.pictures.size > 0,
+  )
+    ? tablePictureIdAllocator(document.package)
+    : undefined;
   let nextBlockId = continuationCount;
   let nextStamp = 0;
   let nextControl = 0;
@@ -2575,6 +2581,17 @@ const suggestMerge = ({
         return mismatch(op, "A moved control needs a temporary id.");
       controls.push([id, temporary]);
     }
+    const pictures: [number, number][] = [];
+    for (const id of source.pictures) {
+      const temporary = takePictureId?.();
+      if (temporary === undefined)
+        return refuse({
+          op,
+          reason: DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
+          message: "The picture identity space is exhausted.",
+        });
+      pictures.push([id, temporary]);
+    }
     const marked = markTableMove({
       source,
       destination,
@@ -2583,6 +2600,7 @@ const suggestMerge = ({
       mark,
       ranges,
       controls,
+      pictures,
     });
     moved.set(idKey(source.id), marked);
     destinationBlocks.push(marked.destination);

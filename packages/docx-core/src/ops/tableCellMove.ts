@@ -13,10 +13,11 @@ import {
   type RunContent,
   type Table,
 } from "../model/document";
-import type {
-  TableGeometryMove,
-  TableGeometryNestedMove,
-  TableGridChange,
+import {
+  MAX_TABLE_PICTURE_ID,
+  type TableGeometryMove,
+  type TableGeometryNestedMove,
+  type TableGridChange,
 } from "../model/formatting";
 import { readXml, type XmlElement } from "../xml/streamingXmlParser";
 import {
@@ -28,6 +29,7 @@ import {
 import {
   identityKeysIn,
   idKey,
+  packageDrawingIds,
   packageMoveRangeCensus,
   paragraphIdsIn,
 } from "./ids";
@@ -39,12 +41,17 @@ import {
 } from "./leaves";
 import { stampInfo } from "./review";
 import { reachesPastRemovedCell } from "./tableEditDependencies";
+import {
+  movableTablePictureId,
+  withTablePictureIdentity,
+} from "./tablePictureMove";
 import type { RevisionStamp } from "./types";
 
 export type TableMoveSource = {
   paragraph: Paragraph;
   id: string;
   controls: number[];
+  pictures: ReadonlySet<number>;
 };
 export type NestedTableMoveSource = { table: Table; paragraphs: string[] };
 
@@ -61,8 +68,15 @@ const movableAtom = (leaf: RunContent): boolean =>
     Number.isInteger(leaf.id) &&
     isNoteReferenceId(leaf.id));
 
-const movableRun = (run: Run): boolean =>
-  run.propertyChanges === undefined && run.content.every(movableAtom);
+const movableRun = (run: Run, pictures: Set<number>): boolean =>
+  run.propertyChanges === undefined &&
+  run.content.every((leaf) => {
+    if (leaf.type !== "drawing") return movableAtom(leaf);
+    const id = movableTablePictureId(leaf);
+    if (id === undefined || pictures.has(id)) return false;
+    pictures.add(id);
+    return true;
+  });
 
 const wordNamespace = (uri: string | undefined): boolean =>
   uri === OOXML_NS.w ||
@@ -330,6 +344,7 @@ type MoveContentContext = {
   withinLink: boolean;
   controls: number[];
   proofing: Set<ProofingKind>;
+  pictures: Set<number>;
 };
 
 // Both sides of the move carry the inline content. Admit only records whose
@@ -342,7 +357,7 @@ const movableInlineContent = (
   content.every((item) => {
     switch (item.type) {
       case "run":
-        return movableRun(item);
+        return movableRun(item, context.pictures);
       case "mathEquation":
         return movableMath(item);
       case "preservedInline":
@@ -375,6 +390,7 @@ export const tableMoveSource = (
 ): TableMoveSource | undefined => {
   const controls: number[] = [];
   const proofing = new Set<ProofingKind>();
+  const pictures = new Set<number>();
   if (
     paragraph.paraId === undefined ||
     paragraph.pPrMark !== undefined ||
@@ -386,11 +402,12 @@ export const tableMoveSource = (
         withinLink: false,
         controls,
         proofing,
+        pictures,
       })) ||
     proofing.size !== 0
   )
     return undefined;
-  return { paragraph, id: paragraph.paraId, controls };
+  return { paragraph, id: paragraph.paraId, controls, pictures };
 };
 
 /** A structural copy may carry only records whose package identities stay unique. */
@@ -419,7 +436,8 @@ export const nestedTableMoveSource = (
               if (block.type === "table") return collect(block);
               if (block.type !== "paragraph") return false;
               const source = tableMoveSource(block);
-              if (source === undefined) return false;
+              if (source === undefined || source.pictures.size > 0)
+                return false;
               paragraphs.push(source.id);
               return true;
             }),
@@ -512,13 +530,21 @@ type MarkTableMoveOptions = {
   mark: RevisionStamp;
   ranges: TableMoveRanges;
   controls: readonly (readonly [number, number])[];
+  pictures: readonly (readonly [number, number])[];
 };
 
-const withControlIds = (
-  content: ParagraphContent[],
-  ids: ReadonlyMap<number, number>,
-): ParagraphContent[] => {
-  if (ids.size === 0) return content;
+type MoveIdentityOptions = {
+  content: ParagraphContent[];
+  controls: ReadonlyMap<number, number>;
+  pictures: ReadonlyMap<number, number>;
+};
+
+const withMoveIdentities = ({
+  content,
+  controls,
+  pictures,
+}: MoveIdentityOptions): ParagraphContent[] => {
+  if (controls.size === 0 && pictures.size === 0) return content;
   const rewrite = (node: InlineNode): InlineNode => {
     const children = childNodes(node);
     const rewritten = children?.map(rewrite);
@@ -526,14 +552,30 @@ const withControlIds = (
       rewritten?.some((child, index) => child !== children?.[index]) === true
         ? rebuildNode(node, rewritten)
         : node;
-    if (next.type !== "inlineSdt" || next.properties.id === undefined)
-      return next;
-    const id = ids.get(next.properties.id);
-    return id === undefined
-      ? next
-      : { ...next, properties: { ...next.properties, id } };
+    if (next.type === "inlineSdt" && next.properties.id !== undefined) {
+      const id = controls.get(next.properties.id);
+      if (id !== undefined)
+        return { ...next, properties: { ...next.properties, id } };
+    }
+    if (next.type === "drawing") {
+      const source = Number(next.image.id);
+      const destination = pictures.get(source);
+      if (destination !== undefined)
+        return withTablePictureIdentity(next, { source, destination });
+    }
+    return next;
   };
   return asParagraphContent(content.map(rewrite));
+};
+export const tablePictureIdAllocator = (
+  pkg: DocxPackage,
+): (() => number | undefined) => {
+  const used = packageDrawingIds(pkg);
+  let id = 1;
+  return () => {
+    while (used.has(id) && id <= MAX_TABLE_PICTURE_ID) id++;
+    return id <= MAX_TABLE_PICTURE_ID ? id++ : undefined;
+  };
 };
 export const moveRangeAllocator = (
   pkg: DocxPackage,
@@ -568,6 +610,7 @@ export const markTableMove = ({
   mark,
   ranges,
   controls,
+  pictures,
 }: MarkTableMoveOptions): MarkedTableMove => {
   const { fromRange, toRange, name } = ranges;
   const record = {
@@ -579,6 +622,7 @@ export const markTableMove = ({
     toRange,
     destinationMark: mark.id,
     ...(controls.length === 0 ? {} : { controls }),
+    ...(pictures.length === 0 ? {} : { pictures }),
   } satisfies TableGeometryMove;
   return {
     record,
@@ -615,7 +659,11 @@ export const markTableMove = ({
         {
           type: "moveTo",
           info: stampInfo(to),
-          content: withControlIds(source.paragraph.content, new Map(controls)),
+          content: withMoveIdentities({
+            content: source.paragraph.content,
+            controls: new Map(controls),
+            pictures: new Map(pictures),
+          }),
         },
         { type: "moveToRangeEnd", id: toRange },
       ],
@@ -912,14 +960,25 @@ export const resolveTableMoves = (table: Table, reject: boolean): Table => {
               },
             );
             const restored =
-              reject || move.kind === "empty" || move.controls === undefined
+              reject ||
+              move.kind === "empty" ||
+              (move.controls === undefined && move.pictures === undefined)
                 ? content
-                : withControlIds(
+                : withMoveIdentities({
                     content,
-                    new Map(
-                      move.controls.map(([old, temporary]) => [temporary, old]),
+                    controls: new Map(
+                      move.controls?.map(([old, temporary]) => [
+                        temporary,
+                        old,
+                      ]),
                     ),
-                  );
+                    pictures: new Map(
+                      move.pictures?.map(([old, temporary]) => [
+                        temporary,
+                        old,
+                      ]),
+                    ),
+                  });
             const paragraph = {
               ...block,
               paraId: move.source,
