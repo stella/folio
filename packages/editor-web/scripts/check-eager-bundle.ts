@@ -20,8 +20,10 @@ type Metrics = { minified: number; gzip: number; docxOps: number };
 const BUDGETS = {
   // Main measured React 3,833,737/1,206,336/740,273 and Vue 3,527,470/1,101,917/740,222 (minified/gzip/ops).
   // Ceilings sit a few kB above measured; raise with a reason, then ratchet down after a series.
-  react: { minified: 3_841_737, gzip: 1_209_336, docxOps: 745_273 },
-  vue: { minified: 3_535_470, gzip: 1_104_917, docxOps: 745_222 },
+  // Custom XML revision records measure React 3,854,169/1,212,264/756,432 and
+  // Vue 3,547,921/1,107,933/756,377; retain the same 8/3/5 kB margins.
+  react: { minified: 3_862_169, gzip: 1_215_264, docxOps: 761_432 },
+  vue: { minified: 3_555_921, gzip: 1_110_933, docxOps: 761_377 },
 } as const satisfies Record<Adapter, Metrics>;
 
 const HOST_PEERS = [
