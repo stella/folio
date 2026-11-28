@@ -394,6 +394,7 @@ describe("inspectDocxTemplate", () => {
       bold: true,
       size: 22,
       keepNext: true,
+      pageBreakBefore: false,
       indentLeft: null,
       isDefault: false,
     });
@@ -415,6 +416,23 @@ describe("inspectDocxTemplate", () => {
     expect(style("HouseBody")?.numPr).toBeNull();
     expect(style("Normal")?.isDefault).toBe(true);
     expect(style("HouseTable")?.type).toBe("table");
+  });
+
+  test("says which styles start their paragraphs on a new page, through the styles they are based on", async () => {
+    const template = await buildTemplate();
+    const stylesXml = (await readPart(template, "word/styles.xml")) ?? "";
+    const paged = await replacePart(
+      template,
+      "word/styles.xml",
+      stylesXml.replace(
+        '<w:pPr><w:keepNext/><w:numPr><w:numId w:val="1"/></w:numPr>',
+        '<w:pPr><w:keepNext/><w:pageBreakBefore/><w:numPr><w:numId w:val="1"/></w:numPr>',
+      ),
+    );
+    const { styles } = unwrap(await inspectDocxTemplate(paged));
+    const style = (id: string) => styles.find(({ styleId }) => styleId === id);
+    expect(style("HouseArticle")?.pageBreakBefore).toBe(true);
+    expect(style("HouseClause")?.pageBreakBefore).toBe(false);
   });
 
   test("lists numbering definitions level by level", async () => {

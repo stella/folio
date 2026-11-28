@@ -402,6 +402,11 @@ export type DocxTemplateStyle = {
    */
   keepNext: boolean;
   /**
+   * Whether the style starts its paragraphs on a new page
+   * (`w:pageBreakBefore`), inheritance and the document's defaults resolved.
+   */
+  pageBreakBefore: boolean;
+  /**
    * The left indent the style gives its paragraphs, in twentieths of a
    * point (`w:ind`), inheritance and the document's defaults resolved; null
    * when none of them states one. A style bound to a list takes the indent

@@ -402,6 +402,7 @@ type StatedLook = {
   /** In half-points. */
   size: number | null;
   keepNext: boolean | null;
+  pageBreakBefore: boolean | null;
   /** In twentieths of a point. */
   indentLeft: number | null;
 };
@@ -413,6 +414,7 @@ const statedLook = (
   bold: toggleOf(wChild(run, "b")),
   size: halfPointsOrNull(wChildVal(run, "sz")),
   keepNext: toggleOf(wChild(paragraph, "keepNext")),
+  pageBreakBefore: toggleOf(wChild(paragraph, "pageBreakBefore")),
   indentLeft: twipsOrNull(
     wAttr(wChild(paragraph, "ind"), "left") ??
       wAttr(wChild(paragraph, "ind"), "start"),
@@ -464,12 +466,14 @@ export const styleLook = (
   bold: boolean;
   size: number | null;
   keepNext: boolean;
+  pageBreakBefore: boolean;
   indentLeft: number | null;
 } => {
   const look: StatedLook = {
     bold: null,
     size: null,
     keepNext: null,
+    pageBreakBefore: null,
     indentLeft: null,
   };
   const seen = new Set<string>();
@@ -480,6 +484,7 @@ export const styleLook = (
     look.bold ??= own?.bold ?? null;
     look.size ??= own?.size ?? null;
     look.keepNext ??= own?.keepNext ?? null;
+    look.pageBreakBefore ??= own?.pageBreakBefore ?? null;
     look.indentLeft ??= own?.indentLeft ?? null;
     cursor = styles.get(cursor)?.basedOn;
   }
@@ -487,6 +492,7 @@ export const styleLook = (
     bold: look.bold ?? defaults.bold ?? false,
     size: look.size ?? defaults.size,
     keepNext: look.keepNext ?? defaults.keepNext ?? false,
+    pageBreakBefore: look.pageBreakBefore ?? defaults.pageBreakBefore ?? false,
     indentLeft: look.indentLeft ?? defaults.indentLeft,
   };
 };
