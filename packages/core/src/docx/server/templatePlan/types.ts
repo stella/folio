@@ -523,7 +523,8 @@ export type TemplatePlanMerge = "lineBreak" | "space" | "none";
 /**
  * A paragraph's own indent, in twentieths of a point (`w:ind`). A side left
  * out stays what the style or the list level gives; a hanging indent and a
- * first-line indent exclude each other.
+ * first-line indent exclude each other. `left` may be negative (into the
+ * margin); the other two may not.
  */
 export type TemplatePlanIndent = {
   left?: number;
