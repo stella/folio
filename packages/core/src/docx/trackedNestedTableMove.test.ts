@@ -205,7 +205,11 @@ test.each(["table", "row"] as const)(
       intent,
       mode: {
         type: "suggesting",
-        revision: { id: ids.revisionId, author: "Reviewer" },
+        revision: {
+          id: ids.revisionId,
+          author: "Reviewer",
+          date: "2026-11-27T00:00:00Z",
+        },
         newIds: ids.newIds,
       },
     }).unwrap();
