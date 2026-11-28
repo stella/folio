@@ -18,7 +18,6 @@ import {
   type RunContent,
   type SdtProperties,
   type Table,
-  type TableCell,
   type TableRow,
 } from "../model/document";
 import {
@@ -617,16 +616,6 @@ const movableBookmark = (marker: BookmarkStart | BookmarkEnd): boolean => {
   );
 };
 
-const movablePositionedBookmarks = (
-  bookmarks: PositionedBookmarkMarker[] | undefined,
-) =>
-  bookmarks?.every(
-    ({ marker, contentControls, carrierStack }) =>
-      contentControls === undefined &&
-      carrierStack === undefined &&
-      movableBookmark(marker),
-  ) ?? true;
-
 type NativeHalves = NonNullable<
   ReturnType<typeof nativeMovesInParagraph>
 >["halves"];
@@ -658,7 +647,7 @@ export const nestedTableMoveSource = (
   const collectCarriers = ({
     contentControls,
     carrierStack,
-  }: TableRow | TableCell): boolean =>
+  }: Pick<TableRow, "contentControls" | "carrierStack">): boolean =>
     (contentControls?.every(collectControl) ?? true) &&
     (carrierStack?.every((carrier) =>
       carrier.type === "customXml"
@@ -666,6 +655,13 @@ export const nestedTableMoveSource = (
         : collectControl(carrier.properties),
     ) ??
       true);
+  const collectPositionedBookmarks = (
+    bookmarks: PositionedBookmarkMarker[] | undefined,
+  ) =>
+    bookmarks?.every(
+      (bookmark) =>
+        movableBookmark(bookmark.marker) && collectCarriers(bookmark),
+    ) ?? true;
   const collectProperties = (
     changes: readonly { info: { id: number } }[] | undefined,
   ) => {
@@ -674,12 +670,12 @@ export const nestedTableMoveSource = (
   const collectBlocks = (blocks: readonly BlockContent[]): boolean =>
     blocks.every((block, index) => collectBlock(block, blocks.at(index + 1)));
   const collect = (candidate: Table): boolean => {
-    const { rows, ...tableProperties } = candidate;
+    const { rows, bookmarks, ...tableProperties } = candidate;
     const grid = tableProperties.formatting?.gridChange;
     const geometry = grid?.geometryChange;
-    hasBookmarks ||= (tableProperties.bookmarks?.length ?? 0) > 0;
+    hasBookmarks ||= (bookmarks?.length ?? 0) > 0;
     if (
-      !movablePositionedBookmarks(tableProperties.bookmarks) ||
+      !collectPositionedBookmarks(bookmarks) ||
       tableProperties.carrierStack !== undefined ||
       reachesPastRemovedCell(tableProperties) ||
       (geometry?.type === "mergeCells" &&
@@ -699,15 +695,16 @@ export const nestedTableMoveSource = (
     }
     collectProperties(tableProperties.propertyChanges);
     return rows.every((row) => {
-      hasBookmarks ||= (row.bookmarks?.length ?? 0) > 0;
       const {
         cells,
+        bookmarks: rowBookmarks,
         contentControls: _rowControls,
         carrierStack: _rowStack,
         ...rowProperties
       } = row;
+      hasBookmarks ||= (rowBookmarks?.length ?? 0) > 0;
       if (
-        !movablePositionedBookmarks(rowProperties.bookmarks) ||
+        !collectPositionedBookmarks(rowBookmarks) ||
         !collectCarriers(row) ||
         reachesPastRemovedCell(rowProperties) ||
         !rowHasCellsOrOmissions(row)
@@ -968,18 +965,16 @@ const withNestedMoveIdentities = (
   table: Table,
   ids: NestedMoveIdentities,
 ): Table => {
-  const rewriteBookmark = (
-    bookmark: PositionedBookmarkMarker,
-  ): PositionedBookmarkMarker => {
-    const marker = withBookmarkIdentity(bookmark.marker, ids.bookmarks);
-    return marker === bookmark.marker ? bookmark : { ...bookmark, marker };
-  };
   const restampControl = (properties: SdtProperties): SdtProperties => {
     const id =
       properties.id === undefined ? undefined : ids.controls.get(properties.id);
     return id === undefined ? properties : { ...properties, id };
   };
-  const carrierIdentities = <T extends TableRow | TableCell>(item: T): T => ({
+  const carrierIdentities = <
+    T extends Pick<TableRow, "contentControls" | "carrierStack">,
+  >(
+    item: T,
+  ): T => ({
     ...item,
     ...(item.contentControls === undefined
       ? {}
@@ -996,6 +991,12 @@ const withNestedMoveIdentities = (
           ),
         }),
   });
+  const rewriteBookmark = (
+    bookmark: PositionedBookmarkMarker,
+  ): PositionedBookmarkMarker => {
+    const marker = withBookmarkIdentity(bookmark.marker, ids.bookmarks);
+    return { ...carrierIdentities(bookmark), marker };
+  };
   const restamp = <Change extends { info: { id: number } }>(
     record: Change,
   ): Change => {
