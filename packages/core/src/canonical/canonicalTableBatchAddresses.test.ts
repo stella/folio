@@ -239,8 +239,7 @@ test.each(MODES)(
       expect(skipped).toEqual([
         {
           id: second.id,
-          message:
-            "An earlier merge or split of the batch reshapes cells this merges or splits.",
+          message: "An earlier edit reshapes these cells.",
         },
       ]);
     }
