@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 
+import { analyzeDocxBlocks } from "../blocks";
 import {
   buildTemplate,
   fieldRuns,
@@ -244,6 +245,12 @@ describe("the source's headers and footers", () => {
         '<w:sectPr><w:footerReference w:type="default" r:id="rId23"/></w:sectPr>',
       ),
     );
+    // The manifest says the second section shows a footer of its own.
+    const manifest = unwrap(await analyzeDocxBlocks(withLast));
+    expect(manifest.sections.map(({ ownHeaders }) => ownHeaders)).toEqual([
+      undefined,
+      true,
+    ]);
     const kept = unwrap(
       await applyFor({
         source: withLast,
@@ -266,6 +273,10 @@ describe("the source's headers and footers", () => {
     expect(laterXml).toContain("Signature page to the agreement");
     expect(laterXml).not.toContain("Version 3");
     const document = (await readPart(kept.docx, "word/document.xml")) ?? "";
+    // The section the plan ends begins the next on a new page.
+    expect(document.match(/<w:sectPr>.*?<\/w:sectPr>/gu)?.at(-1)).toContain(
+      '<w:type w:val="nextPage"/>',
+    );
     // Each section names one default footer.
     for (const section of document.match(/<w:sectPr>.*?<\/w:sectPr>/gu) ?? []) {
       expect(section.match(/footerReference w:type="default"/gu)?.length).toBe(

@@ -26,6 +26,7 @@ import {
   resolveTrackedChanges,
   withDeletedMarksJoined,
 } from "./revisions";
+import { sectionsWithOwnHeaders } from "./sourceHeaders";
 import {
   createStoryState,
   endStory,
@@ -513,6 +514,19 @@ export const storySections = ({
           columns: 1,
         },
       ];
+};
+
+/** Sections marked where they show headers or footers of their own. */
+const sectionsMarked = (
+  sections: DocxSection[],
+  own: ReadonlySet<number>,
+): DocxSection[] => {
+  for (const section of sections) {
+    if (own.has(section.index)) {
+      section.ownHeaders = true;
+    }
+  }
+  return sections;
 };
 
 /** Page breaks among a paragraph's runs; a column break is not one. */
@@ -1313,10 +1327,14 @@ export const analyzeDocument = async (
       `${formattingRevisions} tracked formatting change(s) are not counted as tracked changes.`,
     );
   }
+  const ownHeaders = await sectionsWithOwnHeaders({ pkg }, body);
+  if (Result.isError(ownHeaders)) {
+    return ownHeaders;
+  }
   const manifest: DocxBlockManifest = {
     sha256: pkg.sha256,
     blocks: story.topLevel.map(({ block }) => block),
-    sections: storySections(story),
+    sections: sectionsMarked(storySections(story), ownHeaders.value),
     compat: {
       doNotExpandShiftReturn:
         settingsXml !== null && keepsShiftReturnSpacing(settingsXml),
