@@ -259,6 +259,12 @@ export type DocxBlock = {
    * an indent.
    */
   indent?: { left: number; firstLine: number };
+  /**
+   * Paragraph only: the tab stops in effect, from the paragraph's style
+   * (its chain resolved) and its own `w:tabs`, a stop a later tier clears
+   * left out; by position. Absent when none is set.
+   */
+  tabStops?: DocxTabStop[];
   /** Table only: its cells in row order. */
   cells?: DocxTableCell[];
   /** Table only: every block inside the table in document order. */
@@ -548,6 +554,30 @@ export type TemplatePlanNumbering = {
 
 export type TemplatePlanMerge = "lineBreak" | "space" | "none";
 
+/** A tab stop a paragraph has, in twentieths of a point from the margin. */
+export type DocxTabStop = {
+  position: number;
+  alignment: "left" | "center" | "right" | "decimal" | "bar" | "num";
+  /** The characters that fill the space up to the stop; absent for none. */
+  leader?: TemplatePlanTabLeader;
+};
+
+/** The characters that fill the space in front of a tab stop. */
+export type TemplatePlanTabLeader =
+  "dot" | "hyphen" | "underscore" | "heavy" | "middleDot";
+
+/**
+ * A tab stop of a plan item: a position in twentieths of a point from the
+ * left margin, or one with an alignment (left when absent) and a leader.
+ */
+export type TemplatePlanTabStop =
+  | number
+  | {
+      position: number;
+      alignment?: "left" | "center" | "right" | "decimal" | "bar";
+      leader?: TemplatePlanTabLeader;
+    };
+
 /**
  * A paragraph's own indent, in twentieths of a point (`w:ind`). A side left
  * out stays what the style or the list level gives; a hanging indent and a
@@ -574,7 +604,9 @@ export type TemplatePlanNestedParagraph = {
   /** As on a source item. */
   indent?: TemplatePlanIndent;
   /** As on a source item. */
-  tabStops?: number[];
+  tabStops?: TemplatePlanTabStop[];
+  /** As on a source item. */
+  tabStopsOnly?: true;
   /** As on a source item. */
   alignment?: TemplatePlanAlignment;
   /** As on a source item. */
@@ -688,14 +720,21 @@ export type TemplatePlanSourceItem = {
    */
   indent?: TemplatePlanIndent;
   /**
-   * The paragraph's own left tab stops, in twentieths of a point from the
-   * left margin and in ascending order (`w:tabs`): for a line of a label, a
-   * tab and a value whose values are to start at one position. They are
-   * added to the stops of the paragraph's style, as tab stops are in the
-   * format: a stop the style sets in front of them still ends a tab. Not
-   * for a table.
+   * The paragraph's own tab stops, in ascending order of position
+   * (`w:tabs`): a position in twentieths of a point from the left margin
+   * for a left stop (a line of a label, a tab and a value whose values are
+   * to start at one position), or a stop with its alignment and leader (a
+   * line of signatures laid out as the source lays it out). They are added
+   * to the stops of the paragraph's style, as tab stops are in the format:
+   * a stop the style sets in front of them still ends a tab, unless
+   * `tabStopsOnly` clears those. Not for a table.
    */
-  tabStops?: number[];
+  tabStops?: TemplatePlanTabStop[];
+  /**
+   * The paragraph's tab stops are `tabStops` only: every other stop its
+   * style sets is cleared. Only with `tabStops`.
+   */
+  tabStopsOnly?: true;
   /**
    * The paragraph's own alignment (`w:jc`), over the one its style states:
    * for a line the document sets by itself, such as the text of a table

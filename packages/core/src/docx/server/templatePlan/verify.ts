@@ -775,7 +775,12 @@ export const reportTemplatePlanOutput = async ({
     const tabStops =
       paragraph.tabStops === null
         ? null
-        : paragraph.tabStops.map((stop) => `left@${String(stop)}`).join(",");
+        : paragraph.tabStops
+            .map(
+              (stop) =>
+                `${stop.alignment}@${String(stop.position)}${stop.leader === undefined ? "" : `;${stop.leader}`}`,
+            )
+            .join(",");
     if (numbering.kind === "direct") {
       return {
         styleId,

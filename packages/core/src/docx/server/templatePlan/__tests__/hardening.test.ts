@@ -2346,6 +2346,78 @@ describe("page starts", () => {
     }
   });
 
+  test("the manifest gives a paragraph's tab stops; an item may take them as its only ones", async () => {
+    const source = await buildSourceWith({
+      body: [
+        p(
+          r("Seller:\t\tBuyer:"),
+          '<w:pStyle w:val="Signatures"/><w:tabs><w:tab w:val="clear" w:pos="1000"/><w:tab w:val="right" w:leader="dot" w:pos="9000"/></w:tabs>',
+        ),
+        p(r("Body.")),
+      ].join(""),
+      styles:
+        '<w:style w:type="paragraph" w:styleId="Signatures"><w:name w:val="Signatures"/><w:pPr><w:tabs><w:tab w:val="left" w:pos="1000"/><w:tab w:val="center" w:pos="4536"/></w:tabs></w:pPr></w:style>',
+    });
+    const [first] = unwrap(await analyzeDocxBlocks(source)).blocks;
+    // The style's stops under the paragraph's own; the cleared one is gone.
+    expect(first?.tabStops).toEqual([
+      { position: 4536, alignment: "center" },
+      { position: 9000, alignment: "right", leader: "dot" },
+    ]);
+    const stopped = await replacePart(
+      template,
+      "word/styles.xml",
+      ((await readPart(template, "word/styles.xml")) ?? "").replace(
+        '<w:name w:val="House Body"/><w:basedOn w:val="Normal"/>',
+        '<w:name w:val="House Body"/><w:basedOn w:val="Normal"/><w:pPr><w:tabs><w:tab w:val="left" w:pos="2000"/></w:tabs></w:pPr>',
+      ),
+    );
+    const { docx, report } = unwrap(
+      await applyFor({
+        source,
+        template: stopped,
+        items: (blocks) =>
+          blocks.map(({ id, hash }, index): TemplatePlanItem => ({
+            kind: "source",
+            blockId: id,
+            hash,
+            styleId: "HouseBody",
+            numbering: null,
+            ...(index === 0
+              ? {
+                  tabStops: [
+                    { position: 4536, alignment: "center" },
+                    { position: 9000, alignment: "right", leader: "dot" },
+                  ],
+                  tabStopsOnly: true,
+                }
+              : {}),
+          })),
+      }),
+    );
+    expect(report.ok).toBe(true);
+    // The style's own stop is cleared; the line's stops are the source's.
+    expect(await documentOf(docx)).toContain(
+      '<w:tabs><w:tab w:val="clear" w:pos="2000"/><w:tab w:val="center" w:pos="4536"/><w:tab w:val="right" w:leader="dot" w:pos="9000"/></w:tabs>',
+    );
+    expect(
+      planShapeIssue({
+        version: 1,
+        sourceSha256: "",
+        templateSha256: "",
+        body: [
+          {
+            kind: "source",
+            blockId: "p0",
+            hash: "h",
+            tabStopsOnly: true,
+          },
+        ],
+        omit: [],
+      }),
+    ).not.toBeNull();
+  });
+
   test("an item gives its paragraph tab stops of its own", async () => {
     const source = await twoParagraphs();
     const items =

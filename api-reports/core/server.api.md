@@ -320,6 +320,7 @@ export type DocxBlock = {
         left: number;
         firstLine: number;
     };
+    tabStops?: DocxTabStop[];
     cells?: DocxTableCell[];
     nested?: DocxBlock[];
 };
@@ -425,6 +426,13 @@ export type DocxTableRowPosition = {
 } | {
     table: number;
     kind: "syntheticHeader" | "delimiter";
+};
+
+// @public
+export type DocxTabStop = {
+    position: number;
+    alignment: "left" | "center" | "right" | "decimal" | "bar" | "num";
+    leader?: TemplatePlanTabLeader;
 };
 
 // @public (undocumented)
@@ -2353,7 +2361,8 @@ export type TemplatePlanNestedParagraph = {
     dropPageShapes?: boolean;
     keepNext?: boolean;
     indent?: TemplatePlanIndent;
-    tabStops?: number[];
+    tabStops?: TemplatePlanTabStop[];
+    tabStopsOnly?: true;
     alignment?: TemplatePlanAlignment;
     spacing?: TemplatePlanSpacing;
 };
@@ -2557,7 +2566,8 @@ export type TemplatePlanSourceItem = {
     pageBreakBefore?: boolean;
     keepNext?: boolean;
     indent?: TemplatePlanIndent;
-    tabStops?: number[];
+    tabStops?: TemplatePlanTabStop[];
+    tabStopsOnly?: true;
     alignment?: TemplatePlanAlignment;
     outlineLevel?: number;
     spacing?: TemplatePlanSpacing;
@@ -2579,6 +2589,16 @@ export type TemplatePlanSpanCounts = {
     source: number;
     expected: number;
     output: number;
+};
+
+// @public
+export type TemplatePlanTabLeader = "dot" | "hyphen" | "underscore" | "heavy" | "middleDot";
+
+// @public
+export type TemplatePlanTabStop = number | {
+    position: number;
+    alignment?: "left" | "center" | "right" | "decimal" | "bar";
+    leader?: TemplatePlanTabLeader;
 };
 
 // @public
