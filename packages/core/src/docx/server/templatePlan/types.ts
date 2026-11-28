@@ -777,10 +777,18 @@ export type TemplatePlanReference = {
   start: number;
   end: number;
   targetBlockId: string;
-  /** The switches of the REF field, e.g. `\n \t \h`. */
+  /** The switches of the field, e.g. `\n \t \h`. */
   instruction: string;
   /** The cached result the field is written with. */
   expectedText: string;
+  /**
+   * The field the reference is written as: `REF`, the default, shows the
+   * target's text or number; `PAGEREF` its page (or, with a picture of
+   * words alone, those words, as a drafter's link to the target). Its
+   * switches may be `\h`, `\p`, a picture `\# "…"` and a format that
+   * keeps the result's look.
+   */
+  field?: "REF" | "PAGEREF";
 };
 
 export type TemplatePlanHighlight = {

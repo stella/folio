@@ -617,7 +617,7 @@ const crossReferencesOf = (
     if (
       field === undefined ||
       bookmark === null ||
-      field.kind !== "REF" ||
+      (field.kind !== "REF" && field.kind !== "PAGEREF") ||
       !field.closed ||
       field.nestedInCode ||
       !outermost ||

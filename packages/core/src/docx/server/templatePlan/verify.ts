@@ -1370,7 +1370,7 @@ export const reportTemplatePlanOutput = async ({
     const block = outputOf.get(paragraph);
     const fields = (block?.read?.fieldIndices ?? [])
       .map((index) => out.story.state.fields[index])
-      .filter((field) => field?.kind === "REF");
+      .filter((field) => field?.kind === "REF" || field?.kind === "PAGEREF");
     // Fields come in the order the segments were written, each over the
     // text its segment stands at.
     let offset = 0;
@@ -1390,7 +1390,8 @@ export const reportTemplatePlanOutput = async ({
       const hasNumberSwitch = NUMBER_SWITCH.test(entry.reference.instruction);
       const usesNumber = /\\n\b/u.test(entry.reference.instruction);
       let predictedText: string | null = null;
-      if (targetBlock !== undefined) {
+      // A page number is the layout's; no text predicts it.
+      if (targetBlock !== undefined && entry.reference.field !== "PAGEREF") {
         if (!hasNumberSwitch) {
           // A number a field counts itself is in no text, so the text
           // shows what such a heading prints only where it has none.

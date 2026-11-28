@@ -454,7 +454,12 @@ const spansIssue = (plan: Json): string | null => {
         !isString(reference["targetBlockId"]) ||
         !isCount(reference["start"]) ||
         !isCount(reference["end"]) ||
-        !isString(reference["instruction"])
+        !isString(reference["instruction"]) ||
+        !(
+          reference["field"] === undefined ||
+          reference["field"] === "REF" ||
+          reference["field"] === "PAGEREF"
+        )
       ) {
         return "A reference is malformed.";
       }

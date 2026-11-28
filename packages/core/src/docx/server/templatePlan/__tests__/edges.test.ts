@@ -387,6 +387,67 @@ describe("applyTemplatePlan edge content", () => {
     expect(document).toContain(" AUTONUMLGL  \\* Arabic \\e ");
   });
 
+  test("a page reference is reported and kept as a field to the plan's bookmark on its target", async () => {
+    const template = await buildTemplate();
+    const field = (code: string, result: string): string =>
+      `<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve">${code}</w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>${r(result)}<w:r><w:fldChar w:fldCharType="end"/></w:r>`;
+    const source = await buildMinimalDocx(
+      [
+        p(
+          `<w:bookmarkStart w:id="1" w:name="a19"/>${r("Dispute resolution")}<w:bookmarkEnd w:id="1"/>`,
+        ),
+        // A picture of words alone: the field shows them and links to the
+        // heading, as a drafter writes "clause " in front of its number.
+        p(
+          `${r("As set out in ")}${field("PAGEREF a19\\# \"'clause '\"  \\h", "clause ")}${r("19.")}`,
+        ),
+      ].join(""),
+    );
+    const { blocks } = unwrap(await analyzeDocxBlocks(source));
+    expect(blocks[1]?.crossReferences).toMatchObject([
+      { start: 14, end: 21, bookmark: "a19", targetBlockId: "p0" },
+    ]);
+    const plan = await planFor({
+      source,
+      template,
+      extra: {
+        references: [
+          {
+            blockId: "p1",
+            start: 14,
+            end: 21,
+            targetBlockId: "p0",
+            instruction: `\\# "'clause '" \\h`,
+            expectedText: "clause ",
+            field: "PAGEREF",
+          },
+        ],
+      },
+    });
+    const { docx, report } = unwrap(
+      await applyTemplatePlan({ source, template, plan }),
+    );
+    const document = (await readPart(docx, "word/document.xml")) ?? "";
+    const [result] = report.references.results;
+    expect(report.ok).toBe(true);
+    expect(result).toMatchObject({ status: "ok", predictedText: null });
+    expect(document).toContain(
+      `<w:instrText xml:space="preserve"> PAGEREF ${result?.bookmark ?? ""} \\# &quot;&apos;clause &apos;&quot; \\h </w:instrText>`,
+    );
+    // A switch a page reference cannot carry refuses the plan.
+    const odd = await applyTemplatePlan({
+      source,
+      template,
+      plan: {
+        ...plan,
+        references: (plan.references ?? []).map((reference) =>
+          Object.assign({}, reference, { instruction: "\\n" }),
+        ),
+      },
+    });
+    expect(odd.isErr()).toBe(true);
+  });
+
   test("a paragraph cites its own number through a field", async () => {
     const template = await buildTemplate();
     const source = await buildMinimalDocx(

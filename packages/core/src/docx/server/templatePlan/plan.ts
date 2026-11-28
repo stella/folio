@@ -16,6 +16,7 @@ import {
   bookmarkIdsOf,
   type BookmarkWrap,
   mintRefBookmarkName,
+  pagerefFieldInstruction,
   refFieldInstruction,
 } from "./builders";
 import {
@@ -2241,10 +2242,11 @@ export const resolvePlan = (
       nextBookmarkId += 1;
       bookmarks.set(target, bookmark);
     }
-    const instruction = refFieldInstruction(
-      bookmark.name,
-      reference.instruction,
-    );
+    const instruction = (
+      reference.field === "PAGEREF"
+        ? pagerefFieldInstruction
+        : refFieldInstruction
+    )(bookmark.name, reference.instruction);
     if (instruction === null) {
       return invalid(
         `A reference in ${reference.blockId} carries more than field switches.`,
