@@ -55,7 +55,7 @@ test("a moved-on document, an exhausted id space, a link suggestion and an untra
     rule: CANONICAL_RULE.revisionContentShape,
   });
   expect(groundForDocumentOpRefusal(R.UNTRACKABLE)).toEqual({
-    gap: CANONICAL_GAP.trackedChangeRecords,
+    gap: CANONICAL_GAP.trackedTableStructure,
   });
 });
 

@@ -133,7 +133,6 @@ import { heldUnreferencedNotes as notesHeldWithoutReference } from "../prosemirr
 import { runFormattingPatchFromMarks } from "../prosemirror/runFormattingFromMarks";
 import {
   CANONICAL_CONDITION,
-  CANONICAL_GAP,
   CANONICAL_RULE,
   type CanonicalRefusalGround,
 } from "../types/canonicalCapabilities";
@@ -292,26 +291,16 @@ const noChange = (message: string) =>
     }),
   );
 
-/**
- * What the session says for an intent the compiler or the engine refused. A
- * suggested row, column or table change the engine cannot record belongs to
- * the tracked table records; every other refusal reports its reason's ground.
- */
-const intentRefusal = (
-  intent: EditorIntent,
-  mode: CanonicalSessionMode,
-  { reason, message }: { reason: DocumentOpRefusalReason; message: string },
-) => {
+/** What the session says for an intent the compiler or the engine refused. */
+const intentRefusal = ({
+  reason,
+  message,
+}: {
+  reason: DocumentOpRefusalReason;
+  message: string;
+}) => {
   if (reason === DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE)
     return noChange(message);
-  if (
-    reason === DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE &&
-    mode.type === "suggesting" &&
-    (intent.type === "table" ||
-      intent.type === "tableRow" ||
-      intent.type === "tableBlock")
-  )
-    return refuse(message, { gap: CANONICAL_GAP.trackedTableStructure });
   return refuseOp({ reason, message });
 };
 
@@ -3347,15 +3336,13 @@ class CanonicalSession {
         mode: this.intentMode(document, intent),
         firstBlockId: this.nextBlockId,
       });
-      if (compiled.isErr())
-        return intentRefusal(intent, this.mode, compiled.error);
+      if (compiled.isErr()) return intentRefusal(compiled.error);
       // The compiler's own application of exactly these ops, when it made one.
       const applied =
         compiled.value.applied === undefined
           ? applyDocumentOps(document, compiled.value.ops)
           : Result.ok(compiled.value.applied);
-      if (applied.isErr())
-        return intentRefusal(intent, this.mode, applied.error);
+      if (applied.isErr()) return intentRefusal(applied.error);
       document = applied.value.document;
       edits.push(applied.value);
       ops.push(...compiled.value.ops);

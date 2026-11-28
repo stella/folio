@@ -2959,16 +2959,11 @@ const goesBesidePastedBreak = (mark: ParagraphMarkChange): boolean =>
 const besidePastedBreak = (
   mark: ParagraphMarkChange,
   copied: ParagraphMarkChange,
-): Result<ParagraphMarkChange, DocumentOpRefusal> => {
+): ParagraphMarkChange => {
   const { resolutionJoin, ...uncut } = mark;
   if (copied.resolutionJoin !== undefined && (resolutionJoin ?? 0) !== 0)
-    return Result.err(
-      new DocumentOpRefusal({
-        reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-        message:
-          "A pasted break cutting the destination cannot hold the cut of a copied removal beside it.",
-        opType: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
-      }),
+    panic(
+      "A pasted break's insertion cannot cut destination content while holding a copied removal.",
     );
   const splitDate = copied.splitDate ?? copied.info.date;
   const cut =
@@ -2978,14 +2973,14 @@ const besidePastedBreak = (
           resolutionJoin: copied.resolutionJoin + 1,
           ...(splitDate === undefined ? {} : { splitDate }),
         };
-  return Result.ok({
+  return {
     ...(resolutionJoin === 0 ? uncut : mark),
     ...cut,
     deletion:
       copied.kind === "moveFrom"
         ? { info: copied.info, kind: "moveFrom" }
         : { info: copied.info },
-  });
+  };
 };
 
 /**
@@ -4857,32 +4852,22 @@ const compileInStory = (
               splitDate: _split,
               ...uncutCopy
             } = paragraph.pPrMark;
-            const beside = besidePastedBreak(
+            review.pPrMark = besidePastedBreak(
               pastedBreak,
               cutMeetsPieces ? paragraph.pPrMark : uncutCopy,
             );
-            if (beside.isErr()) return Result.err(beside.error);
-            review.pPrMark = beside.value;
             if (cutMeetsPieces) {
               const seam =
-                next === undefined || mode.type !== "suggesting"
+                (next === undefined || mode.type !== "suggesting"
                   ? undefined
                   : openedPastedSeam({
                       before: current,
                       after: next,
                       story: selection.story,
                       stamp: mode.revision,
-                    });
-              // The cut would join a copied record of its own at the seam,
-              // which the paste's insertion does not hold whole.
-              if (seam === undefined)
-                return Result.err(
-                  new DocumentOpRefusal({
-                    reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-                    message:
-                      "A copied removal's cut reaches a pasted piece the paste's own insertion does not hold.",
-                    opType: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
-                  }),
+                    })) ??
+                panic(
+                  "A pasted paragraph cut must meet the paste's own insertion on both sides.",
                 );
               seamOps.push(...seam);
             }
