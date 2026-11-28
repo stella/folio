@@ -370,12 +370,129 @@ const levelRunPropertiesXml = ({
 type NumberingEdit = {
   patches: readonly TemplatePlanNumberingPatch[];
   mints: ResolvedPlan["mints"];
+  /** List definitions and instances copied from the source, as markup. */
+  copied: CopiedLists;
+};
+
+type CopiedLists = { abstracts: string[]; nums: string[] };
+
+/** Built-in lists a LISTNUM field may name, which need no definition. */
+const BUILT_IN_LISTS: ReadonlySet<string> = new Set([
+  "NUMBERDEFAULT",
+  "OUTLINEDEFAULT",
+  "LEGALDEFAULT",
+]);
+
+/** The list a LISTNUM field counts in by name, unless it is built in. */
+export const namedListOf = (instruction: string): string | null => {
+  const match = /^\s*LISTNUM\s+(?:"([^"]+)"|([^\s"\\]+))/iu.exec(instruction);
+  const name = match?.[1] ?? match?.[2] ?? null;
+  return name === null || BUILT_IN_LISTS.has(name.toUpperCase()) ? null : name;
+};
+
+/** The lists the LISTNUM fields the output keeps count in by name. */
+const namedListsOf = (resolved: ResolvedPlan): Set<string> => {
+  const names = new Set<string>();
+  for (const paragraph of new Set(resolved.byBlockId.values())) {
+    for (const { block } of paragraph.parts) {
+      for (const atom of block.read?.atoms ?? []) {
+        const name =
+          atom.kind === "selfNumber" && atom.instruction !== undefined
+            ? namedListOf(atom.instruction)
+            : null;
+        if (name !== null) {
+          names.add(name);
+        }
+      }
+    }
+  }
+  return names;
+};
+
+/** Children of a list definition that tie it to its own package. */
+const PACKAGE_BOUND_LIST_CHILDREN: ReadonlySet<string> = new Set([
+  "nsid",
+  "tmpl",
+  "numStyleLink",
+  "styleLink",
+]);
+
+/**
+ * The source's definitions of the lists `names` that the template does not
+ * define, numbered after the template's own, each with an instance from
+ * `firstNumId` on: a LISTNUM field finds its list by name. A definition
+ * bound to its package (a style it links, a prefix other than the
+ * template's) stays behind; its field counts in the default list.
+ */
+const copiedListsOf = (
+  source: RawPart,
+  template: RawPart,
+  names: ReadonlySet<string>,
+  firstNumId: number,
+): CopiedLists => {
+  const copied: CopiedLists = { abstracts: [], nums: [] };
+  const w = partPrefixes(template.root)?.w;
+  if (
+    names.size === 0 ||
+    w === undefined ||
+    partPrefixes(source.root)?.w !== w
+  ) {
+    return copied;
+  }
+  const nameOf = (element: XmlElement): string | null =>
+    wAttr(wChild(element, "name"), "val");
+  const templateLists = wChildren(template.root, "abstractNum");
+  const defined = new Set(templateLists.map(nameOf));
+  let abstractNumId =
+    maxOf(
+      templateLists.map(
+        (element) => integerOrNull(wAttr(element, "abstractNumId")) ?? 0,
+      ),
+      0,
+    ) + 1;
+  const foreign = new RegExp(
+    `<\\/?(?!${w}:)[\\w.-]+:|\\s(?!${w}:)[\\w.-]+:[\\w.-]+=`,
+    "u",
+  );
+  for (const element of wChildren(source.root, "abstractNum")) {
+    const name = nameOf(element);
+    const inner = innerRangeOf(source.xml, element);
+    if (
+      name === null ||
+      !names.has(name) ||
+      defined.has(name) ||
+      inner === null
+    ) {
+      continue;
+    }
+    const left: XmlSplice[] = elementChildren(element).flatMap((child) => {
+      const bound = PACKAGE_BOUND_LIST_CHILDREN.has(wName(child) ?? "")
+        ? child
+        : wChild(child, "pStyle");
+      const range = bound === null ? null : rangeOf(bound);
+      return range === null ? [] : [{ ...range, newXml: "" }];
+    });
+    const body = sliceWithSplices(source.xml, inner, left);
+    if (body === null || foreign.test(body)) {
+      continue;
+    }
+    const numId = firstNumId + copied.nums.length;
+    copied.abstracts.push(
+      `<${w}:abstractNum ${w}:abstractNumId="${abstractNumId}">${body}</${w}:abstractNum>`,
+    );
+    copied.nums.push(
+      `<${w}:num ${w}:numId="${numId}"><${w}:abstractNumId ${w}:val="${abstractNumId}"/></${w}:num>`,
+    );
+    defined.add(name);
+    abstractNumId += 1;
+  }
+  return copied;
 };
 
 /** The template numbering part with level patches and new list instances. */
 const editNumbering = (
   part: RawPart,
-  { patches, mints }: NumberingEdit,
+  { patches, mints, copied }: NumberingEdit,
 ): Result<string, TemplatePlanError> => {
   const prefixes = partPrefixes(part.root);
   if (prefixes === null) {
@@ -489,70 +606,90 @@ const editNumbering = (
       });
     }
   }
-  if (mints.length > 0) {
+  if (copied.abstracts.length > 0) {
+    const lastAbstract = wChildren(part.root, "abstractNum").at(-1);
+    const firstNum = wChild(part.root, "num");
+    const at =
+      (lastAbstract === undefined ? null : rangeOf(lastAbstract)?.end) ??
+      (firstNum === null ? null : rangeOf(firstNum)?.start) ??
+      innerRangeOf(part.xml, part.root)?.end;
+    if (at === undefined) {
+      return Result.err(
+        unreadable(part.path, "The numbering part has no place for a list."),
+      );
+    }
+    insert(at, copied.abstracts.join(""));
+  }
+  if (mints.length > 0 || copied.nums.length > 0) {
     const nums = wChildren(part.root, "num");
-    const markup = mints
-      .map(({ numId, baseNumId, abstractNumId, starts }) => {
-        // The new instance keeps what its base list overrides, level by level.
-        const base = nums.find(
-          (element) => integerOrNull(wAttr(element, "numId")) === baseNumId,
-        );
-        const inherited = new Map<number, XmlElement>();
-        for (const override of wChildren(base, "lvlOverride")) {
-          const level = integerOrNull(wAttr(override, "ilvl"));
-          if (level !== null) {
-            inherited.set(level, override);
+    const markup =
+      mints
+        .map(({ numId, baseNumId, abstractNumId, starts }) => {
+          // The new instance keeps what its base list overrides, level by level.
+          const base = nums.find(
+            (element) => integerOrNull(wAttr(element, "numId")) === baseNumId,
+          );
+          const inherited = new Map<number, XmlElement>();
+          for (const override of wChildren(base, "lvlOverride")) {
+            const level = integerOrNull(wAttr(override, "ilvl"));
+            if (level !== null) {
+              inherited.set(level, override);
+            }
           }
-        }
-        const raw = (element: XmlElement | null | undefined): string => {
-          const range =
-            element === null || element === undefined ? null : rangeOf(element);
-          return range === null ? "" : part.xml.slice(range.start, range.end);
-        };
-        const overrides = [...new Set([...inherited.keys(), ...starts.keys()])]
-          .toSorted((left, right) => left - right)
-          .map((level) => {
-            const start = starts.get(level);
-            const kept = inherited.get(level);
-            if (start === undefined) {
-              return raw(kept);
-            }
-            const startOverride = (prefix: string): string =>
-              `<${prefix}:startOverride ${prefix}:val="${start}"/>`;
-            const keptRange = kept === undefined ? null : rangeOf(kept);
-            const keptInner =
-              kept === undefined ? null : innerRangeOf(part.xml, kept);
-            const keptPrefix = kept?.name?.includes(":")
-              ? kept.name.slice(0, kept.name.indexOf(":"))
-              : null;
-            if (
-              kept === undefined ||
-              keptRange === null ||
-              keptInner === null ||
-              keptPrefix === null
-            ) {
-              return `<${w}:lvlOverride ${w}:ilvl="${level}">${startOverride(w)}</${w}:lvlOverride>`;
-            }
-            // The restart goes into the base override as written, so a
-            // prefix that override binds stays bound for the level it holds.
-            const replaced = wChild(kept, "startOverride");
-            const replacedRange = replaced === null ? null : rangeOf(replaced);
-            const rest =
-              replacedRange === null
-                ? part.xml.slice(keptInner.start, keptInner.end)
-                : part.xml.slice(keptInner.start, replacedRange.start) +
-                  part.xml.slice(replacedRange.end, keptInner.end);
-            return (
-              part.xml.slice(keptRange.start, keptInner.start) +
-              startOverride(keptPrefix) +
-              rest +
-              part.xml.slice(keptInner.end, keptRange.end)
-            );
-          })
-          .join("");
-        return `<${w}:num ${w}:numId="${numId}"><${w}:abstractNumId ${w}:val="${abstractNumId}"/>${overrides}</${w}:num>`;
-      })
-      .join("");
+          const raw = (element: XmlElement | null | undefined): string => {
+            const range =
+              element === null || element === undefined
+                ? null
+                : rangeOf(element);
+            return range === null ? "" : part.xml.slice(range.start, range.end);
+          };
+          const overrides = [
+            ...new Set([...inherited.keys(), ...starts.keys()]),
+          ]
+            .toSorted((left, right) => left - right)
+            .map((level) => {
+              const start = starts.get(level);
+              const kept = inherited.get(level);
+              if (start === undefined) {
+                return raw(kept);
+              }
+              const startOverride = (prefix: string): string =>
+                `<${prefix}:startOverride ${prefix}:val="${start}"/>`;
+              const keptRange = kept === undefined ? null : rangeOf(kept);
+              const keptInner =
+                kept === undefined ? null : innerRangeOf(part.xml, kept);
+              const keptPrefix = kept?.name?.includes(":")
+                ? kept.name.slice(0, kept.name.indexOf(":"))
+                : null;
+              if (
+                kept === undefined ||
+                keptRange === null ||
+                keptInner === null ||
+                keptPrefix === null
+              ) {
+                return `<${w}:lvlOverride ${w}:ilvl="${level}">${startOverride(w)}</${w}:lvlOverride>`;
+              }
+              // The restart goes into the base override as written, so a
+              // prefix that override binds stays bound for the level it holds.
+              const replaced = wChild(kept, "startOverride");
+              const replacedRange =
+                replaced === null ? null : rangeOf(replaced);
+              const rest =
+                replacedRange === null
+                  ? part.xml.slice(keptInner.start, keptInner.end)
+                  : part.xml.slice(keptInner.start, replacedRange.start) +
+                    part.xml.slice(replacedRange.end, keptInner.end);
+              return (
+                part.xml.slice(keptRange.start, keptInner.start) +
+                startOverride(keptPrefix) +
+                rest +
+                part.xml.slice(keptInner.end, keptRange.end)
+              );
+            })
+            .join("");
+          return `<${w}:num ${w}:numId="${numId}"><${w}:abstractNumId ${w}:val="${abstractNumId}"/>${overrides}</${w}:num>`;
+        })
+        .join("") + copied.nums.join("");
     const lastNum = nums.at(-1);
     const cleanup = wChild(part.root, "numIdMacAtCleanup");
     const inner = innerRangeOf(part.xml, part.root);
@@ -1269,11 +1406,37 @@ const writeOutput = async ({
   }
 
   const patches = plan.numberingPatches ?? [];
-  if (patches.length > 0 || resolved.mints.length > 0) {
-    const numberingPart =
-      template.numberingPath === null || template.numberingXml === null
-        ? null
-        : readRawPart(template.numberingPath, template.numberingXml);
+  const numberingPart =
+    template.numberingPath === null || template.numberingXml === null
+      ? null
+      : readRawPart(template.numberingPath, template.numberingXml);
+  const sourceNumbering =
+    source.numberingPath === null || source.numberingXml === null
+      ? null
+      : readRawPart(source.numberingPath, source.numberingXml);
+  // A LISTNUM field the output keeps counts in its list by name.
+  const copied =
+    numberingPart === null || sourceNumbering === null
+      ? { abstracts: [], nums: [] }
+      : copiedListsOf(
+          sourceNumbering,
+          numberingPart,
+          namedListsOf(resolved),
+          maxOf(
+            [
+              ...wChildren(numberingPart.root, "num").map(
+                (element) => integerOrNull(wAttr(element, "numId")) ?? 0,
+              ),
+              ...resolved.mints.map(({ numId }) => numId),
+            ],
+            0,
+          ) + 1,
+        );
+  if (
+    patches.length > 0 ||
+    resolved.mints.length > 0 ||
+    copied.nums.length > 0
+  ) {
     if (numberingPart === null) {
       return Result.err(
         new TemplatePlanError({
@@ -1285,6 +1448,7 @@ const writeOutput = async ({
     const numbering = editNumbering(numberingPart, {
       patches,
       mints: resolved.mints,
+      copied,
     });
     if (Result.isError(numbering)) {
       return numbering;
