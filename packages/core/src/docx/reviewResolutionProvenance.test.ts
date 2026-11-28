@@ -31,6 +31,7 @@ import {
   parseParagraphPropertyChangeOwner,
   parseResolutionJoins,
   parseSplitResolutionPiece,
+  parseTableGeometryChange,
   reviewProvenanceIssue,
   ReviewResolutionProvenanceError,
   serializeBoundaryJoins,
@@ -39,6 +40,7 @@ import {
   serializeParagraphPropertyChangeOwner,
   serializeResolutionJoins,
   serializeSplitResolutionPiece,
+  serializeTableGeometryChange,
   versionOneKeptMarkers,
 } from "./reviewResolutionProvenance";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
@@ -47,6 +49,7 @@ import {
   findChild,
   getChildElements,
   getLocalName,
+  NAMESPACES,
   parseXmlDocument,
   WORDPROCESSINGML_NAMESPACE_URIS,
 } from "./xmlParser";
@@ -59,6 +62,88 @@ const element = (xml: string) => {
     throw new TypeError("The provenance fixture is not XML.");
   return parsed;
 };
+
+const nestedMove = {
+  rows: [51],
+  paragraphs: [["00000001", "00000002"]],
+} as const;
+const authoredBookmark = { id: 0, name: "Source" };
+const placedBookmark = { id: 6, name: "Placed" };
+
+const gridChangeElement = (attributes: string) =>
+  element(
+    `<w:tblGridChange xmlns:w="${NAMESPACES.w}" xmlns:folio="${FOLIO_REVIEW_HISTORY_NAMESPACE}"${attributes}/>`,
+  );
+
+test("nested table bookmark handoffs round-trip through review provenance", () => {
+  const geometryChange = {
+    type: "mergeCells",
+    revisionIds: [50, 51],
+    nestedMoves: [
+      { ...nestedMove, bookmarks: [[authoredBookmark, placedBookmark]] },
+    ],
+  } as const;
+  const attributes = serializeTableGeometryChange({
+    id: 50,
+    columnWidths: [],
+    geometryChange,
+  });
+  expect(parseTableGeometryChange(gridChangeElement(attributes))).toEqual({
+    geometryChange,
+  });
+});
+
+test.each([
+  { malformed: "empty history", bookmarks: [] },
+  { malformed: "incomplete pair", bookmarks: [[authoredBookmark]] },
+  {
+    malformed: "invalid identifier",
+    bookmarks: [
+      [authoredBookmark, { ...placedBookmark, id: MAX_REVISION_ID + 1 }],
+    ],
+  },
+  {
+    malformed: "empty name",
+    bookmarks: [[authoredBookmark, { ...placedBookmark, name: "" }]],
+  },
+  {
+    malformed: "shared identifier",
+    bookmarks: [
+      [authoredBookmark, { ...placedBookmark, id: authoredBookmark.id }],
+    ],
+  },
+  {
+    malformed: "shared name with different casing",
+    bookmarks: [
+      [
+        authoredBookmark,
+        { ...placedBookmark, name: authoredBookmark.name.toLowerCase() },
+      ],
+    ],
+  },
+  {
+    malformed: "overlapping pairs",
+    bookmarks: [
+      [authoredBookmark, placedBookmark],
+      [placedBookmark, { id: 7, name: "Another" }],
+    ],
+  },
+])(
+  "rejects nested table bookmark handoffs with $malformed",
+  ({ bookmarks }) => {
+    const value = {
+      type: "mergeCells",
+      revisionIds: [50, 51],
+      nestedMoves: [{ ...nestedMove, bookmarks }],
+    };
+    const encoded = escapeXmlAttribute(JSON.stringify({ version: 2, value }));
+    expect(
+      parseTableGeometryChange(
+        gridChangeElement(` folio:tableGeometryChange="${encoded}"`),
+      ),
+    ).toEqual({});
+  },
+);
 
 for (const wordNamespace of WORDPROCESSINGML_NAMESPACE_URIS) {
   test(`generated seam metadata survives ${wordNamespace} with arbitrary bound prefixes`, () => {

@@ -624,6 +624,11 @@ export type TableGeometryNestedMove = {
   readonly controls?: readonly (readonly [number, number])[];
   /** Authored drawing IDs paired with temporary destination IDs. */
   readonly pictures?: readonly (readonly [number, number])[];
+  /** Positioned bookmarks and the identities used by the destination copy. */
+  readonly bookmarks?: readonly (readonly [
+    { readonly id: number; readonly name: string },
+    { readonly id: number; readonly name: string },
+  ])[];
 };
 
 /**
