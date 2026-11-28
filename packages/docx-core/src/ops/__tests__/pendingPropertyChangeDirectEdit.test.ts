@@ -84,6 +84,39 @@ describe("a direct edit after a tracked property change", () => {
     expect(firstParagraph(undone)).toEqual(firstParagraph(tracked));
   });
 
+  test("returning to the recorded baseline retires the pending change", () => {
+    const source = documentOf({
+      type: "paragraph",
+      paraId: "00000001",
+      formatting: { alignment: "end", styleId: "Heading1" },
+      propertyChanges: [
+        {
+          type: "paragraphPropertyChange",
+          info: { id: 1, author: "Reviewer" },
+          previousFormatting: { alignment: "end" },
+        },
+      ],
+      content: [],
+    });
+    const edit = applied(source, {
+      type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
+      story: OP_STORIES.MAIN,
+      blockId: "00000001",
+      patch: { styleId: null },
+    });
+
+    expect(firstParagraph(edit.document)).toEqual({
+      type: "paragraph",
+      paraId: "00000001",
+      formatting: { alignment: "end" },
+      content: [],
+    });
+    let undone = edit.document;
+    for (const inverse of edit.inverse)
+      undone = applied(undone, inverse).document;
+    expect(firstParagraph(undone)).toEqual(firstParagraph(source));
+  });
+
   test("the check catches a direct edit that leaves the change as recorded", () => {
     // The test-only break: a direct edit keeps the pending change as the
     // tracked edit recorded it.

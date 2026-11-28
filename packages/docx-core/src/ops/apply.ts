@@ -214,6 +214,7 @@ import {
   paragraphMarkPropertyChange,
   paragraphPropertiesOf,
   paragraphPropertyChange,
+  paragraphPropertyChangeReturnsToBaseline,
   paragraphPropertyFoldConflict,
   reviewFieldsOf,
   RUN_FOLD_INTO_OTHER_SUGGESTION_MESSAGE,
@@ -1800,13 +1801,12 @@ const setParagraphProps = (
         );
       const authored = authoredParagraphFormatting(next);
       const pending = paragraph.propertyChanges;
+      const pendingChange = pending?.at(0);
       // Returning to the pending change's authored baseline cancels it.
       if (
         pending?.length === 1 &&
-        structurallyEqual(
-          finalizeParagraphFormatting(pending.at(0)?.previousFormatting),
-          finalizeParagraphFormatting(paragraphPropertiesOf(authored)),
-        )
+        pendingChange !== undefined &&
+        paragraphPropertyChangeReturnsToBaseline(pendingChange, authored)
       ) {
         delete next.propertyChanges;
       } else {
@@ -1835,10 +1835,18 @@ const setParagraphProps = (
   // now recording what the paragraph states; undoing restores them as they
   // were.
   if (paragraph.propertyChanges !== undefined) {
-    next.propertyChanges = changesRecordingAuthored(
-      paragraph.propertyChanges,
-      next,
-    );
+    const changes = changesRecordingAuthored(paragraph.propertyChanges, next);
+    const change = changes.at(0);
+    if (
+      changes.length === 1 &&
+      change !== undefined &&
+      paragraphPropertyChangeReturnsToBaseline(
+        change,
+        authoredParagraphFormatting(next),
+      )
+    )
+      delete next.propertyChanges;
+    else next.propertyChanges = changes;
     return editOne(
       {
         document,
