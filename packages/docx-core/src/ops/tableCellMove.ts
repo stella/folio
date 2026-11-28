@@ -1987,6 +1987,26 @@ export const resolveTableMoves = ({
   }
   const emptyOwner =
     geometry.emptyOwner === undefined ? undefined : idKey(geometry.emptyOwner);
+  const liveParagraphs = new Set(paragraphIdsIn(table).map(idKey));
+  const nestedMoves = geometry.nestedMoves ?? [];
+  const substantiveDestinationIds = [
+    ...(geometry.moves ?? []).flatMap((move) =>
+      move.kind === "empty" ? [] : [idKey(move.destination)],
+    ),
+    ...nestedMoves.flatMap((move) =>
+      move.paragraphs.map(([, destination]) => idKey(destination)),
+    ),
+  ];
+  // Empty paragraphs copied around a nested table are structural move
+  // boundaries. If earlier accepted edits removed every substantive copied
+  // block, the direct merge sees an empty donor and copies none of them.
+  const discardEmptyOnlyMoveDestinations =
+    !reject &&
+    nestedMoves.length > 0 &&
+    nestedMoves.every(
+      (move) => move.omittedTable === undefined && move.paragraphs.length > 0,
+    ) &&
+    !substantiveDestinationIds.some((id) => liveParagraphs.has(id));
   const rows = table.rows.map((row) =>
     Object.assign({}, row, {
       cells: row.cells.map((cell) =>
@@ -2084,8 +2104,14 @@ export const resolveTableMoves = ({
               const key = idKey(block.paraId);
               const destination = destinations.get(key);
               if (
+                discardEmptyOnlyMoveDestinations &&
+                destination?.kind === "empty"
+              )
+                return [];
+              if (
                 (reject && destination !== undefined) ||
                 (!reject &&
+                  !discardEmptyOnlyMoveDestinations &&
                   key === emptyOwner &&
                   block.content.length === 0 &&
                   block.pPrMark === undefined &&
