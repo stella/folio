@@ -30,6 +30,11 @@ import {
 } from "./builders";
 import { removeInvisibleEffects } from "./effects";
 import {
+  embeddedContentType,
+  extensionOf,
+  isPicturePart,
+} from "./embeddedParts";
+import {
   createRelationshipsEditor,
   type EmitContext,
   type EmitShared,
@@ -120,20 +125,6 @@ const WORDPROCESSINGML_CONTENT_TYPE_PREFIX =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.";
 const RELATIONSHIPS_NAMESPACE =
   "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
-
-const MEDIA_CONTENT_TYPES: Readonly<Record<string, string>> = {
-  png: "image/png",
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  gif: "image/gif",
-  bmp: "image/bmp",
-  tif: "image/tiff",
-  tiff: "image/tiff",
-  emf: "image/x-emf",
-  wmf: "image/x-wmf",
-  svg: "image/svg+xml",
-  webp: "image/webp",
-};
 
 const NOTE_PARTS = {
   footnote: {
@@ -787,10 +778,11 @@ const writeOutput = async ({
   }
   const sourceMedia = new Map<string, SourceMedia>();
   for (const [path, bytes] of sourceResources.value.media) {
-    const dot = path.lastIndexOf(".");
     sourceMedia.set(path, {
       bytes,
-      extension: dot === -1 ? "" : path.slice(dot + 1).toLowerCase(),
+      extension: extensionOf(path),
+      relationshipType:
+        sourceResources.value.mediaTypes.get(path) ?? RELATIONSHIP_TYPES.image,
     });
   }
 
@@ -930,15 +922,24 @@ const writeOutput = async ({
     addMedia: (sourcePath, sourceItem) => {
       let entry = media.get(sourcePath);
       if (entry === undefined) {
-        if (MEDIA_CONTENT_TYPES[sourceItem.extension] === undefined) {
+        if (
+          embeddedContentType(
+            sourceItem.relationshipType,
+            sourceItem.extension,
+          ) === undefined
+        ) {
           unsupportedMedia ??= sourcePath;
         }
-        // A name neither the template nor an earlier picture of this run holds.
+        // A name neither the template nor an earlier part of this run holds;
+        // embedded objects go in the embeddings folder.
+        const folder = isPicturePart(sourceItem.relationshipType)
+          ? "media"
+          : "embeddings";
         let index = media.size + 1;
-        let path = `${documentDirectory}media/placed${index}.${sourceItem.extension}`;
+        let path = `${documentDirectory}${folder}/placed${index}.${sourceItem.extension}`;
         while (pkg.paths.has(path) || mediaPaths.has(path)) {
           index += 1;
-          path = `${documentDirectory}media/placed${index}.${sourceItem.extension}`;
+          path = `${documentDirectory}${folder}/placed${index}.${sourceItem.extension}`;
         }
         mediaPaths.add(path);
         entry = { path, media: sourceItem };
@@ -1395,7 +1396,7 @@ const writeOutput = async ({
       new TemplatePlanError({
         code: "unsupported-content",
         message:
-          "A picture of the source is in a format the output cannot declare.",
+          "A picture or embedded object of the source is in a format the output cannot declare.",
         part: unsupportedMedia,
       }),
     );
@@ -1412,7 +1413,8 @@ const writeOutput = async ({
     parts.set(path, item.bytes);
     newContentTypes.push({
       partName: `/${path}`,
-      contentType: MEDIA_CONTENT_TYPES[item.extension] ?? "",
+      contentType:
+        embeddedContentType(item.relationshipType, item.extension) ?? "",
     });
   }
   const documentRelationshipsOut = documentRelationships.xml();

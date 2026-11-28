@@ -2635,6 +2635,41 @@ describe("page starts", () => {
         }),
       ),
     ).toBe("plan-invalid");
+    // A paragraph may reach into the margin; a hanging indent is a width.
+    const intoMargin = unwrap(
+      await applyFor({
+        source,
+        template,
+        items: (blocks) =>
+          blocks.map(({ id, hash }) => ({
+            kind: "source",
+            blockId: id,
+            hash,
+            styleId: "HouseBody",
+            indent: { left: -28, firstLine: 30 },
+          })),
+      }),
+    );
+    expect(intoMargin.report.ok).toBe(true);
+    expect(await documentOf(intoMargin.docx)).toContain(
+      '<w:ind w:left="-28" w:firstLine="30"/>',
+    );
+    expect(
+      codeOf(
+        await applyFor({
+          source,
+          template,
+          items: (blocks) =>
+            blocks.map(({ id, hash }) => ({
+              kind: "source",
+              blockId: id,
+              hash,
+              styleId: "HouseBody",
+              indent: { left: 300, hanging: -300 },
+            })),
+        }),
+      ),
+    ).toBe("plan-invalid");
   });
 
   test("verification notices a page start the plan does not give, and a missing one", async () => {
