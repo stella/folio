@@ -1107,11 +1107,13 @@ export const paragraphXml = (
   if (Result.isError(runs)) {
     return runs;
   }
-  // The paragraph's mark, when the source records it as inserted: its run
-  // properties stand in front of a section's.
+  // The paragraph's mark, when the source records it as inserted or hides
+  // it (the paragraph runs on into the next on screen): its run properties
+  // stand in front of a section's.
   const inserted = insertedMarkOf(emit.paragraph.segments);
-  if (inserted !== undefined) {
-    const mark = `<${w}:rPr><${w}:ins${revisionAttributesXml(inserted, context)}/></${w}:rPr>`;
+  const hidden = emit.paragraph.parts.at(-1)?.block.read?.markHidden === true;
+  if (inserted !== undefined || hidden) {
+    const mark = `<${w}:rPr>${inserted === undefined ? "" : `<${w}:ins${revisionAttributesXml(inserted, context)}/>`}${hidden ? `<${w}:vanish/>` : ""}</${w}:rPr>`;
     properties.splice(
       emit.sectionXml === null ? properties.length : properties.length - 1,
       0,

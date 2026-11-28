@@ -447,6 +447,23 @@ describe("applyTemplatePlan edge content", () => {
     );
   });
 
+  test("a paragraph whose mark is hidden keeps it hidden, so it runs on into the next", async () => {
+    const template = await buildTemplate();
+    const source = await buildMinimalDocx(
+      [
+        p(r("Die Vergütung ist fällig. "), "<w:rPr><w:vanish/></w:rPr>"),
+        p(r("Der Auftraggeber zahlt binnen 14 Tagen.")),
+      ].join(""),
+    );
+    const { docx, report } = unwrap(await applyFor({ source, template }));
+    const document = (await readPart(docx, "word/document.xml")) ?? "";
+    expect(report.ok).toBe(true);
+    expect(document).toMatch(
+      /<w:rPr><w:vanish\/><\/w:rPr><\/w:pPr><w:r>(?:<w:rPr>.*?<\/w:rPr>)?<w:t xml:space="preserve">Die Vergütung/u,
+    );
+    expect(document.match(/<w:vanish\/>/gu)?.length).toBe(1);
+  });
+
   test("a paragraph cites its own number through a field", async () => {
     const template = await buildTemplate();
     const source = await buildMinimalDocx(

@@ -371,6 +371,10 @@ export type ParagraphRead = {
   indentInCharacters: boolean;
   /** Whether the paragraph mark is a tracked insertion or deletion. */
   hasTrackedMark: boolean;
+  /** Whether the paragraph's mark is hidden (`w:vanish` on the mark): the
+   *  paragraph runs on into the next on screen, or vanishes when its text
+   *  is hidden too. */
+  markHidden: boolean;
 };
 
 const TOGGLE_OFF = new Set(["0", "false", "off"]);
@@ -1042,6 +1046,7 @@ export const readParagraph = (
       return value !== null && !/^[+-]?0*$/u.test(value.trim());
     }),
     hasTrackedMark,
+    markHidden: toggleOf(wChild(mark, "vanish")) === true,
   };
   state.paragraphOrdinal += 1;
   const walk: ParagraphWalk = { state, read, textLength: 0 };
