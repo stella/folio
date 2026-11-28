@@ -7,6 +7,7 @@
 // Usage: `bun scripts/hyphenation-assets-gen.ts` writes them; `--check` exits
 // non-zero when a written file differs from what the package gives.
 
+import { panic } from "better-result";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -17,11 +18,28 @@ const coreDir = path.resolve(import.meta.dir, "../packages/core");
 const outDir = path.join(coreDir, "assets/hyphenation");
 const require = createRequire(path.join(coreDir, "package.json"));
 
+const formattedJson = async (name: string, value: unknown): Promise<string> => {
+  const formatter = Bun.spawn(
+    [process.execPath, "fmt", `--stdin-filepath=${name}`],
+    { stdin: "pipe", stdout: "pipe", stderr: "pipe" },
+  );
+  formatter.stdin.write(JSON.stringify(value));
+  formatter.stdin.end();
+  const [exitCode, formatted, error] = await Promise.all([
+    formatter.exited,
+    new Response(formatter.stdout).text(),
+    new Response(formatter.stderr).text(),
+  ]);
+  if (exitCode !== 0) panic("Cannot format a hyphenation asset.", { error });
+  return formatted;
+};
+
 const expected = async (): Promise<Map<string, string>> => {
   const files = new Map<string, string>();
   for (const id of HYPHENATION_DICTIONARY_IDS) {
     const patterns: unknown = require(`hyphen/patterns/${id}.js`);
-    files.set(`${id}.json`, `${JSON.stringify(patterns)}\n`);
+    const name = `${id}.json`;
+    files.set(name, await formattedJson(name, patterns));
   }
   files.set(
     "LICENSE",
