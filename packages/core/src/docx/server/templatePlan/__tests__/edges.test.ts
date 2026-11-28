@@ -14,7 +14,7 @@ import {
   replacePart,
   TEMPLATE_IDS,
 } from "./fixtures";
-import { planFor, unwrap, verifyFor } from "./planning";
+import { applyFor, planFor, unwrap, verifyFor } from "./planning";
 
 describe("innerRangeOf", () => {
   test("finds the content after an opening tag whose attribute holds '>'", () => {
@@ -385,6 +385,129 @@ describe("applyTemplatePlan edge content", () => {
       `<w:instrText xml:space="preserve"> REF ${result?.bookmark ?? ""} \\h \\* MERGEFORMAT </w:instrText>`,
     );
     expect(document).toContain(" AUTONUMLGL  \\* Arabic \\e ");
+  });
+
+  test("a page reference is reported and kept as a field to the plan's bookmark on its target", async () => {
+    const template = await buildTemplate();
+    const field = (code: string, result: string): string =>
+      `<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve">${code}</w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>${r(result)}<w:r><w:fldChar w:fldCharType="end"/></w:r>`;
+    const source = await buildMinimalDocx(
+      [
+        p(
+          `<w:bookmarkStart w:id="1" w:name="a19"/>${r("Dispute resolution")}<w:bookmarkEnd w:id="1"/>`,
+        ),
+        // A picture of words alone: the field shows them and links to the
+        // heading, as a drafter writes "clause " in front of its number.
+        p(
+          `${r("As set out in ")}${field("PAGEREF a19\\# \"'clause '\"  \\h", "clause ")}${r("19.")}`,
+        ),
+      ].join(""),
+    );
+    const { blocks } = unwrap(await analyzeDocxBlocks(source));
+    expect(blocks[1]?.crossReferences).toMatchObject([
+      { start: 14, end: 21, bookmark: "a19", targetBlockId: "p0" },
+    ]);
+    const plan = await planFor({
+      source,
+      template,
+      extra: {
+        references: [
+          {
+            blockId: "p1",
+            start: 14,
+            end: 21,
+            targetBlockId: "p0",
+            instruction: `\\# "'clause '" \\h`,
+            expectedText: "clause ",
+            field: "PAGEREF",
+          },
+        ],
+      },
+    });
+    const { docx, report } = unwrap(
+      await applyTemplatePlan({ source, template, plan }),
+    );
+    const document = (await readPart(docx, "word/document.xml")) ?? "";
+    const [result] = report.references.results;
+    expect(report.ok).toBe(true);
+    expect(result).toMatchObject({ status: "ok", predictedText: null });
+    expect(document).toContain(
+      `<w:instrText xml:space="preserve"> PAGEREF ${result?.bookmark ?? ""} \\# &quot;&apos;clause &apos;&quot; \\h </w:instrText>`,
+    );
+    // A switch a page reference cannot carry refuses the plan.
+    const odd = await applyTemplatePlan({
+      source,
+      template,
+      plan: {
+        ...plan,
+        references: (plan.references ?? []).map((reference) =>
+          Object.assign({}, reference, { instruction: "\\n" }),
+        ),
+      },
+    });
+    expect(odd.isErr()).toBe(true);
+  });
+
+  test("a link to a bookmark of the source leads to the output's target when the plan keeps it", async () => {
+    const template = await buildTemplate();
+    const field = (code: string, result: string): string =>
+      `<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve">${code}</w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>${r(result)}<w:r><w:fldChar w:fldCharType="end"/></w:r>`;
+    const source = await buildMinimalDocx(
+      [
+        p(`<w:hyperlink w:anchor="_Toc1">${r("Definitions")}</w:hyperlink>`),
+        p(`${r("See ")}${field(' HYPERLINK \\l "_Toc1" ', "the definitions")}`),
+        p(
+          `<w:bookmarkStart w:id="1" w:name="_Toc1"/>${r("Definitions")}<w:bookmarkEnd w:id="1"/>`,
+        ),
+        p(`<w:hyperlink w:anchor="nowhere">${r("Lost")}</w:hyperlink>`),
+      ].join(""),
+    );
+    const kept = unwrap(
+      await applyFor({ source, template, extra: { internalLinks: "keep" } }),
+    );
+    const document = (await readPart(kept.docx, "word/document.xml")) ?? "";
+    const bookmark =
+      /<w:bookmarkStart w:id="\d+" w:name="([^"]+)"\/><w:r>(?:<w:rPr>.*?<\/w:rPr>)?<w:t xml:space="preserve">Definitions/u.exec(
+        document,
+      )?.[1];
+    expect(bookmark).toBeDefined();
+    expect(
+      document.match(
+        new RegExp(`<w:hyperlink w:anchor="${bookmark ?? ""}"`, "gu"),
+      )?.length,
+    ).toBe(2);
+    expect(kept.report.ok).toBe(true);
+    // The link to a bookmark no paragraph holds stays text, and counts.
+    expect(kept.report.dropped.internalHyperlinks).toBe(1);
+    const plain = unwrap(await applyFor({ source, template }));
+    expect(plain.report.dropped.internalHyperlinks).toBe(3);
+    expect(
+      (await readPart(plain.docx, "word/document.xml")) ?? "",
+    ).not.toContain("w:anchor");
+  });
+
+  test("a contents entry field and a macro button stay fields where their paragraph is placed", async () => {
+    const template = await buildTemplate();
+    const code = (instruction: string): string =>
+      `<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve">${instruction}</w:instrText></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r>`;
+    const source = await buildMinimalDocx(
+      [
+        p(`${code(' TC "12. Service credits" \\l 1 ')}${r("Service credits")}`),
+        p(
+          `${code(" MACROBUTTON optional [ ")}${r("The Supplier shall notify.]")}`,
+        ),
+      ].join(""),
+    );
+    const { docx, report } = unwrap(await applyFor({ source, template }));
+    const document = (await readPart(docx, "word/document.xml")) ?? "";
+    expect(report.ok).toBe(true);
+    expect(document).toContain(
+      '<w:instrText xml:space="preserve"> TC &quot;12. Service credits&quot; \\l 1 </w:instrText>',
+    );
+    expect(document).toContain(
+      '<w:instrText xml:space="preserve"> MACROBUTTON optional [ </w:instrText>',
+    );
+    expect(report.dropped.sourceFields).toEqual([]);
   });
 
   test("a paragraph cites its own number through a field", async () => {

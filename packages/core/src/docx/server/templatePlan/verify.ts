@@ -92,6 +92,7 @@ import {
   type AtomRevision,
   createStoryState,
   endStory,
+  isCodeOnlyField,
   isFormField,
   isSelfNumberingField,
   type ParagraphRead,
@@ -241,6 +242,8 @@ const appendUnit = (
     content.marks.push(`${at}:number:${instruction ?? ""}`);
   } else if (kind === "formField") {
     content.marks.push(`${at}:form:${instruction ?? ""}`);
+  } else if (kind === "codeField") {
+    content.marks.push(`${at}:code:${instruction ?? ""}`);
   } else if (kind === "object" && element !== null) {
     content.marks.push(
       `${at}:object:${objectFingerprint(element)}:${objectTargets(element, origin, resources).join(",")}`,
@@ -314,7 +317,9 @@ const outputContent = ({
       expectedStyle = styles.footnoteReference;
     } else if (atom.kind === "endnoteReference") {
       expectedStyle = styles.endnoteReference;
-    } else if (link !== "") {
+    } else if (link !== "" || atom.link?.kind === "anchor") {
+      // A link to a bookmark of the output has no address and the look of
+      // any other link.
       expectedStyle = styles.hyperlink;
     }
     const stated = isNoteReference
@@ -1370,7 +1375,7 @@ export const reportTemplatePlanOutput = async ({
     const block = outputOf.get(paragraph);
     const fields = (block?.read?.fieldIndices ?? [])
       .map((index) => out.story.state.fields[index])
-      .filter((field) => field?.kind === "REF");
+      .filter((field) => field?.kind === "REF" || field?.kind === "PAGEREF");
     // Fields come in the order the segments were written, each over the
     // text its segment stands at.
     let offset = 0;
@@ -1390,7 +1395,8 @@ export const reportTemplatePlanOutput = async ({
       const hasNumberSwitch = NUMBER_SWITCH.test(entry.reference.instruction);
       const usesNumber = /\\n\b/u.test(entry.reference.instruction);
       let predictedText: string | null = null;
-      if (targetBlock !== undefined) {
+      // A page number is the layout's; no text predicts it.
+      if (targetBlock !== undefined && entry.reference.field !== "PAGEREF") {
         if (!hasNumberSwitch) {
           // A number a field counts itself is in no text, so the text
           // shows what such a heading prints only where it has none.
@@ -2186,7 +2192,9 @@ export const reportTemplatePlanOutput = async ({
         field !== undefined &&
         hyperlinkFieldLink(field) === null &&
         !isSelfNumberingField(field.kind) &&
-        !isRebuilt(field, rebuiltSpans.get(id))
+        !isRebuilt(field, rebuiltSpans.get(id)) &&
+        // Kept as its code where it caches no result.
+        !(isCodeOnlyField(field.kind) && field.resultStart < 0)
       ) {
         droppedFields.set(field.kind, (droppedFields.get(field.kind) ?? 0) + 1);
       }
@@ -2202,11 +2210,20 @@ export const reportTemplatePlanOutput = async ({
     for (const { link } of read.atoms) {
       const lost =
         link !== null &&
-        linkAddress(link, sourceResources.relationships.document) === null;
+        linkAddress(link, sourceResources.relationships.document) === null &&
+        !(link.kind === "anchor" && resolved.linkAnchors.has(link.anchor));
       if (lost && link !== previous) {
         internalHyperlinks += 1;
       }
       previous = lost ? link : null;
+    }
+    // A HYPERLINK field to a bookmark of the source is one such link too.
+    for (const index of read.fieldIndices) {
+      const field = source.story.state.fields[index];
+      const link = field === undefined ? null : hyperlinkFieldLink(field);
+      if (link?.kind === "anchor" && !resolved.linkAnchors.has(link.anchor)) {
+        internalHyperlinks += 1;
+      }
     }
   }
   // Direct paragraph formatting stays behind, and section ends with it.

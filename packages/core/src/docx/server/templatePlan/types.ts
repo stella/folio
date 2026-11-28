@@ -782,10 +782,18 @@ export type TemplatePlanReference = {
   start: number;
   end: number;
   targetBlockId: string;
-  /** The switches of the REF field, e.g. `\n \t \h`. */
+  /** The switches of the field, e.g. `\n \t \h`. */
   instruction: string;
   /** The cached result the field is written with. */
   expectedText: string;
+  /**
+   * The field the reference is written as: `REF`, the default, shows the
+   * target's text or number; `PAGEREF` its page (or, with a picture of
+   * words alone, those words, as a drafter's link to the target). Its
+   * switches may be `\h`, `\p`, a picture `\# "…"` and a format that
+   * keeps the result's look.
+   */
+  field?: "REF" | "PAGEREF";
 };
 
 export type TemplatePlanHighlight = {
@@ -874,6 +882,14 @@ export type TemplatePlan = {
    * note or a header.
    */
   comments?: "drop" | "keep";
+  /**
+   * What becomes of the source's links to a place in itself (a bookmark, a
+   * heading a contents line jumps to). `drop`, the default, writes their
+   * text. `keep` links each to the output paragraph that stands for the
+   * paragraph its bookmark marks, through the plan's own bookmark there,
+   * where that paragraph is placed.
+   */
+  internalLinks?: "drop" | "keep";
 };
 
 /** What the output carries of the source's comments. */

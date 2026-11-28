@@ -606,12 +606,17 @@ const crossReferencesOf = (
     const start = at;
     at += text.length;
     for (const [depth, index] of fields.entries()) {
+      // A field in the result of a table of contents stands as if alone:
+      // a contents line kept as text keeps its page reference.
+      const outermost = fields
+        .slice(0, depth)
+        .every((outer) => state.fields[outer]?.kind === "TOC");
       const span = spans.get(index);
       if (span === undefined) {
-        spans.set(index, { start, end: at, outermost: depth === 0 });
+        spans.set(index, { start, end: at, outermost });
       } else {
         span.end = at;
-        span.outermost &&= depth === 0;
+        span.outermost &&= outermost;
       }
     }
   }
@@ -623,7 +628,7 @@ const crossReferencesOf = (
     if (
       field === undefined ||
       bookmark === null ||
-      field.kind !== "REF" ||
+      (field.kind !== "REF" && field.kind !== "PAGEREF") ||
       !field.closed ||
       field.nestedInCode ||
       !outermost ||
@@ -646,7 +651,7 @@ const crossReferencesOf = (
  * it starts at the paragraph's beginning. Null for one that ends in front
  * of its start or not at all. The first bookmark of a name counts.
  */
-const bookmarkTargetsOf = (
+export const bookmarkTargetsOf = (
   story: AnalyzedStory,
 ): Map<string, { blockId: string; whole: boolean } | null> => {
   const targets = new Map<string, { blockId: string; whole: boolean } | null>();
