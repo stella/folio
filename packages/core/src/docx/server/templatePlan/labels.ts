@@ -52,8 +52,11 @@ const NO_LABEL: ParagraphLabel = {
   asText: null,
 };
 
-/** Counter formats every consumer and language writes with the same characters. */
+/** Counter formats every consumer and language writes with the same
+ *  characters; `none` writes no character at all (a level that only counts,
+ *  cited as `%1` in front of the levels below it). */
 const PLAIN_FORMATS: ReadonlySet<string> = new Set([
+  "none",
   "decimal",
   "decimalZero",
   "upperRoman",
