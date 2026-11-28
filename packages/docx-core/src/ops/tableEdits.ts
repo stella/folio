@@ -101,6 +101,7 @@ import {
   tableRowAnchor,
   type TableRowLocation,
 } from "./tableLocation";
+import { ownPendingTableInsertion } from "./tableOwnPending";
 import {
   CELL_GRID_FIELDS,
   CELL_SPAN_FIELDS,
@@ -3591,13 +3592,20 @@ export const applyTableEdit = (
         message:
           "Resolve dependent anchors and review records before removing the table.",
       });
-    return applyTableOp(document, {
+    const removal = {
       type: DOCUMENT_OP_TYPES.DELETE_TABLE,
       story: op.story,
       blockId: op.blockId,
       ...(op.revision === undefined ? {} : { revision: op.revision }),
       ...(op.newIds === undefined ? {} : { newIds: op.newIds }),
-    }).mapError(
+    } as const;
+    const own = ownPendingTableInsertion(document, removal);
+    const effective = (() => {
+      if (own?.type !== "wholeTable") return removal;
+      const { revision: _withdrawn, ...direct } = removal;
+      return direct;
+    })();
+    return applyTableOp(document, effective).mapError(
       (error) =>
         new DocumentOpRefusal({
           opType: op.type,

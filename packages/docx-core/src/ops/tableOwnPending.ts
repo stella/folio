@@ -9,23 +9,26 @@ import {
 import { locateTableRow } from "./tableLocation";
 import type { DeleteTableOp } from "./types";
 
+type OwnPendingTableInsertion =
+  | { type: "wholeTable" }
+  | { type: "cells"; revisionIds: number[]; blockId: string };
+
 const insertedBy = (cell: TableCell, owner: RevisionOwner): boolean =>
   cell.structuralChange?.type === "tableCellInsertion" &&
   isOwnRecord(cell.structuralChange.info, owner);
 
 /**
- * What a tracked deletion of a table removes outright first: cells the same
- * author's pending insertion added, with no one else's suggestion in them,
- * and that author's pending changes of the table's properties (a column
- * insertion records both), as deleting over one's own insertion removes it.
- * The ids to reject, and a paragraph of a cell that stays to address the
- * table by afterwards; `undefined` when the table holds no such insertion or
- * any other pending structure.
+ * What a tracked deletion of a table removes outright: the whole table when
+ * every row is the same author's pending insertion, or cells that author's
+ * pending column insertion added, with no one else's suggestion in them.
+ * Deleting over one's own insertion withdraws it instead of recording a
+ * deletion of the addition. A partial result supplies the ids to reject and a
+ * paragraph of a staying cell that addresses the table afterwards.
  */
 export const ownPendingTableInsertion = (
   document: Document,
   op: DeleteTableOp,
-): { revisionIds: number[]; blockId: string } | undefined => {
+): OwnPendingTableInsertion | undefined => {
   const owner = op.revision;
   if (owner === undefined) return undefined;
   const located = locateTableRow(document, op);
@@ -33,6 +36,16 @@ export const ownPendingTableInsertion = (
   const table: Table = located.value.table;
   if (op.expected !== undefined && !equalForStaleness(table, op.expected))
     return undefined;
+  if (
+    table.rows.length > 0 &&
+    table.rows.every(
+      (row) =>
+        row.structuralChange?.type === "tableRowInsertion" &&
+        isOwnRecord(row.structuralChange.info, owner),
+    ) &&
+    recordedOnlyBy(table, owner)
+  )
+    return { type: "wholeTable" };
   const cells = table.rows.flatMap((row) => row.cells);
   const inserted = cells.filter((cell) => insertedBy(cell, owner));
   if (
@@ -53,6 +66,7 @@ export const ownPendingTableInsertion = (
       : storyParagraphs({ content: staying.content }).at(0)?.paragraph;
   if (paragraph?.paraId === undefined) return undefined;
   return {
+    type: "cells",
     revisionIds: [
       ...(table.propertyChanges ?? []).map(({ info }) => info.id),
       ...inserted.flatMap(({ structuralChange }) =>

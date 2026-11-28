@@ -3271,10 +3271,14 @@ const dispatchCore = ({ document, op, purpose }: DispatchOptions): Applied => {
     case DOCUMENT_OP_TYPES.SET_REVISION_INFO:
       return setRevisionInfo(document, op);
     case DOCUMENT_OP_TYPES.DELETE_TABLE: {
-      // The author's own pending column goes outright before the rest of
-      // the table is suggested for deletion.
+      // A wholly own inserted table goes outright. An own pending column goes
+      // first, before the rest of the table is suggested for deletion.
       const pending = ownPendingTableInsertion(document, op);
       if (pending === undefined) return applyTableOp(document, op);
+      if (pending.type === "wholeTable") {
+        const { revision: _withdrawn, ...direct } = op;
+        return applyTableOp(document, direct);
+      }
       const { expected: _checked, ...rest } = op;
       return applyOps(document, [
         {
@@ -3338,10 +3342,11 @@ const dispatch = ({ document, op, purpose }: DispatchOptions): Applied => {
     op.type === DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS
   )
     return applied;
-  const cleaned =
-    "revision" in op && op.revision !== undefined
-      ? applied.value.document
-      : withoutOrphanedNotes(document, applied.value.document);
+  // A tracked deletion normally retains its note references inside review
+  // records, so the census changes nothing. Retractions of the author's own
+  // insertion remove those references physically and own the same lifecycle
+  // cleanup as a direct edit.
+  const cleaned = withoutOrphanedNotes(document, applied.value.document);
   let edit = applied.value;
   if (cleaned !== edit.document) {
     const cleanup = replaceNoteParts({
