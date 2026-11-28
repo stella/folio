@@ -17,6 +17,7 @@ import {
   TABLE_CELL_VERTICAL_MERGES,
   tableCellVerticalMerge,
 } from "../model/tableCellVerticalMerge";
+import { gridSpanInColumns } from "../model/tableGridLimits";
 import { rangeBoundaryDefinitions } from "./rangeBoundaries";
 import { tableGrid } from "./tableGrid";
 import { DOCUMENT_OP_TYPES } from "./types";
@@ -255,7 +256,7 @@ const spansOf = (row: TableRow | undefined) => {
   let at = row?.formatting?.gridBefore ?? 0;
   return (row?.cells ?? []).map((cell) => {
     const start = at;
-    at += cell.formatting?.gridSpan ?? 1;
+    at += gridSpanInColumns(cell.formatting?.gridSpan);
     return { cell, key: `${start}:${at}` };
   });
 };

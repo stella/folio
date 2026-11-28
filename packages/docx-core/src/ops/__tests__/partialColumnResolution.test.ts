@@ -138,6 +138,45 @@ describe("rejecting the rest of a partly accepted column insertion", () => {
   });
 });
 
+test("an imported zero grid span occupies one column during cell revision review", () => {
+  // ISO/IEC 29500-1 §17.4.17 allows zero. See MS-OI29500 §2.1.130.
+  const tracked: TableCell = {
+    ...cell("00000010"),
+    structuralChange: {
+      type: "tableCellDeletion",
+      info: { id: 9, author: "Reviewer" },
+    },
+  };
+  const withSpan = (gridSpan: number): Document =>
+    documentOf({
+      type: "table",
+      rows: [
+        {
+          type: "tableRow",
+          cells: [tracked, { ...cell("00000011"), formatting: { gridSpan } }],
+        },
+        { type: "tableRow", cells: [cell("00000020"), cell("00000021")] },
+      ],
+    });
+  const original = withSpan(0);
+  const apply = (document: Document) =>
+    applyDocumentOp(document, {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      decision: REVISION_DECISIONS.ACCEPT,
+      revisionIds: [9],
+    }).unwrap();
+  const accepted = apply(original);
+  expect(accepted.document).toStrictEqual(apply(withSpan(1)).document);
+  expect(shape(tableOf(accepted.document))).toEqual([
+    ["00000011:2"],
+    ["00000020:1", "00000021:1"],
+  ]);
+  expect(
+    applyDocumentOps(accepted.document, accepted.inverse).unwrap().document,
+  ).toStrictEqual(original);
+});
+
 test(
   "partly rejecting cell insertion records preserves vertical merges across omission positions",
   () => {
