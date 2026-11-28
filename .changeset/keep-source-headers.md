@@ -1,5 +1,0 @@
----
-"@stll/folio-core": minor
----
-
-A template plan may keep the source's page headers and footers (`sourceHeaders: "keep"`). The content of those the source's first section shows (text, tables, pictures, fields) is added after the template's own, in the header or footer that shows on the same pages: the first page, the other pages, even pages. Where the template has none for those pages a new header or footer part holds it. Pictures are copied with their parts, drawing ids renumbered, bookmarks and comment marks left out, and styles or lists the template does not define dropped from the copy. Verification holds each output header and footer to the template's content followed by the source's (`header-mismatch`), and the report (`sourceHeaders`) says where each went and what had no place: content only the source's first page or even pages show where the output does not set those pages apart, a template part shared by pages that take other content, and blocks that embed an object other than a picture.
