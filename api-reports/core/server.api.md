@@ -359,6 +359,9 @@ export type DocxBlockNumbering = {
     abstractNumId: number;
     bullet?: true;
     bulletFont?: string;
+    lvlText?: string;
+    numFmt?: string;
+    legal?: true;
 };
 
 // @public
@@ -2377,6 +2380,7 @@ export type TemplatePlanNumberingPatch = {
     lvlText?: string;
     start?: number;
     suff?: "tab" | "space" | "nothing";
+    isLgl?: boolean;
     font?: string;
     indent?: {
         left?: number;
