@@ -1,0 +1,10 @@
+{
+  "a batch of paragraph-structure operations equals its applied operations one at a time": [
+    {
+      "seed": -678248967,
+      "path": "33:2:2:4:2:4:3",
+      "note": "Tables placed before three paragraphs retain their authored gap order when a pending deletion joins the first two gaps.",
+      "date": "2026-11-28"
+    }
+  ]
+}
