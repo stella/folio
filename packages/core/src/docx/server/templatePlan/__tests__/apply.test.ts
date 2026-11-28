@@ -436,6 +436,46 @@ describe("applyTemplatePlan", () => {
     );
   });
 
+  test("switches legal numbering on a level and holds the output to it", async () => {
+    const plan = fullPlan();
+    const legal = {
+      ...plan,
+      numberingPatches: (plan.numberingPatches ?? []).map((patch) =>
+        patch.ilvl === 1
+          ? Object.assign(structuredClone(patch), { isLgl: true })
+          : patch,
+      ),
+    };
+    const { docx, report } = unwrap(
+      await applyTemplatePlan({
+        source: fixture.source,
+        template: fixture.template,
+        plan: legal,
+      }),
+    );
+    const numbering = (await readPart(docx, "word/numbering.xml")) ?? "";
+
+    expect(report.ok).toBe(true);
+    expect(numbering).toContain('<w:isLgl/><w:lvlText w:val="%2."/>');
+    // The level reads in arabic numerals: the source's clause labels it
+    // prints show the article's counter so.
+    const off = await replacePart(
+      docx,
+      "word/numbering.xml",
+      numbering.replace("<w:isLgl/>", ""),
+    );
+    expect(
+      unwrap(
+        await verifyTemplatePlanOutput({
+          source: fixture.source,
+          template: fixture.template,
+          output: off,
+          plan: legal,
+        }),
+      ).issues.map(({ code }) => code),
+    ).toContain("numbering-mismatch");
+  });
+
   test("freezes the planned field kinds and sets update on open", async () => {
     const { report } = applied;
     const footer = (await readPart(applied.docx, "word/footer1.xml")) ?? "";

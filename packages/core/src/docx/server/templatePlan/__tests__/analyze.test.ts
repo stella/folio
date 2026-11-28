@@ -151,6 +151,49 @@ describe("analyzeDocxBlocks", () => {
     expect(byId(blocks, TEMPLATE_IDS.tocLast).text).toBe("Second sample\t3");
   });
 
+  test("a numbered paragraph reports its level's text and legal numbering", async () => {
+    const numbering = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="upperRoman"/><w:lvlText w:val="%1."/></w:lvl><w:lvl w:ilvl="1"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:isLgl/><w:lvlText w:val="%1.%2"/></w:lvl></w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num></w:numbering>`;
+    const { blocks } = unwrap(
+      await analyzeDocxBlocks(
+        await buildMinimalDocx(
+          `${p(r("an article"), numPr(1, 0))}${p(r("its clause"), numPr(1, 1))}`,
+          {
+            "[Content_Types].xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/></Types>`,
+            "word/_rels/document.xml.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/></Relationships>`,
+            "word/numbering.xml": numbering,
+          },
+        ),
+      ),
+    );
+
+    // The clause prints the article's counter in arabic numerals.
+    expect(blocks.map(({ label, numbering: level }) => [label, level])).toEqual(
+      [
+        [
+          "I.",
+          {
+            numId: 1,
+            ilvl: 0,
+            abstractNumId: 0,
+            lvlText: "%1.",
+            numFmt: "upperRoman",
+          },
+        ],
+        [
+          "1.1",
+          {
+            numId: 1,
+            ilvl: 1,
+            abstractNumId: 0,
+            lvlText: "%1.%2",
+            numFmt: "decimal",
+            legal: true,
+          },
+        ],
+      ],
+    );
+  });
+
   test("a paragraph of a bullet level says so, whatever its mark", async () => {
     const numbering = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="o"/></w:lvl><w:lvl w:ilvl="1"><w:start w:val="1"/><w:numFmt w:val="lowerLetter"/><w:lvlText w:val="%2"/></w:lvl><w:lvl w:ilvl="2"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="o"/><w:rPr><w:rFonts w:ascii="Courier New" w:hAnsi="Courier New"/></w:rPr></w:lvl><w:lvl w:ilvl="3"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="·"/><w:rPr><w:rFonts w:ascii="Symbol" w:hAnsi="Symbol"/></w:rPr></w:lvl><w:lvl w:ilvl="4"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="–"/><w:rPr><w:rFonts w:ascii="Georgia" w:hAnsi="Georgia"/></w:rPr></w:lvl></w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num></w:numbering>`;
     const { blocks } = unwrap(
@@ -170,7 +213,16 @@ describe("analyzeDocxBlocks", () => {
     expect(blocks.map(({ label, numbering: level }) => [label, level])).toEqual(
       [
         ["○", { numId: 1, ilvl: 0, abstractNumId: 0, bullet: true }],
-        ["a", { numId: 1, ilvl: 1, abstractNumId: 0 }],
+        [
+          "a",
+          {
+            numId: 1,
+            ilvl: 1,
+            abstractNumId: 0,
+            lvlText: "%2",
+            numFmt: "lowerLetter",
+          },
+        ],
         // A letter of a text face is that letter only in that face; the
         // code of a symbol face is read as the shape it paints.
         [

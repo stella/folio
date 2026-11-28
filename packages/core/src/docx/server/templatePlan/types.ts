@@ -77,6 +77,16 @@ export type DocxBlockNumbering = {
    * prints it elsewhere needs the face too.
    */
   bulletFont?: string;
+  /**
+   * The level's text (`w:lvlText`): `%1.%2` prints the counters of the
+   * first two levels. Absent where the level states none.
+   */
+  lvlText?: string;
+  /** The format the level counts in (`w:numFmt`, `decimal` under legal
+   *  numbering); stated with `lvlText`. */
+  numFmt?: string;
+  /** The level prints its counters in arabic numerals (`w:isLgl`). */
+  legal?: true;
 };
 
 /**
@@ -727,6 +737,12 @@ export type TemplatePlanNumberingPatch = {
   lvlText?: string;
   start?: number;
   suff?: "tab" | "space" | "nothing";
+  /**
+   * Legal numbering: the level prints every counter of its text in arabic
+   * numerals, its own and those of the levels above (`w:isLgl`); false
+   * switches it off.
+   */
+  isLgl?: boolean;
   /**
    * The face the level's label is set in. Whatever else the level's run
    * properties state is kept.
