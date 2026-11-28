@@ -600,12 +600,17 @@ const crossReferencesOf = (
     const start = at;
     at += text.length;
     for (const [depth, index] of fields.entries()) {
+      // A field in the result of a table of contents stands as if alone:
+      // a contents line kept as text keeps its page reference.
+      const outermost = fields
+        .slice(0, depth)
+        .every((outer) => state.fields[outer]?.kind === "TOC");
       const span = spans.get(index);
       if (span === undefined) {
-        spans.set(index, { start, end: at, outermost: depth === 0 });
+        spans.set(index, { start, end: at, outermost });
       } else {
         span.end = at;
-        span.outermost &&= depth === 0;
+        span.outermost &&= outermost;
       }
     }
   }
