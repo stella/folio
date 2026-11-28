@@ -374,6 +374,36 @@ test("a moved nested table preserves drawing and rich-text control identities", 
     expect(xml.match(new RegExp(`<w:id w:val="${id}"`, "gu"))).toHaveLength(1);
 });
 
+test.each([
+  ["text", '<w:text w:multiLine="1"/>'],
+  [
+    "date",
+    '<w:date w:fullDate="2026-11-28T00:00:00Z"><w:dateFormat w:val="yyyy-MM-dd"/><w:calendar w:val="gregorian"/></w:date>',
+  ],
+  [
+    "dropDownList",
+    '<w:dropDownList w:lastValue="card"><w:listItem w:value="card" w:displayText="Card"/></w:dropDownList>',
+  ],
+  [
+    "comboBox",
+    '<w:comboBox w:lastValue="card"><w:listItem w:value="card" w:displayText="Card"/></w:comboBox>',
+  ],
+] as const)(
+  "a moved nested table keeps the native %s control kind",
+  (tag, props) => {
+    const original = sourceWith({
+      content: `<w:sdt><w:sdtPr><w:id w:val="72"/>${props}</w:sdtPr><w:sdtContent>${plain}</w:sdtContent></w:sdt>`,
+      wrap: (paragraph) =>
+        '<w:tbl><w:tblGrid><w:gridCol w:w="500"/></w:tblGrid><w:tr><w:tc>' +
+        `${paragraph}</w:tc></w:tr></w:tbl><w:p w14:paraId="00000005"/>`,
+    });
+    const { merge, controlIds } = allocateTrackedMerge(original);
+    expect(controlIds).toHaveLength(1);
+    const xml = assertSavedMove(original, merge);
+    expect(xml.match(new RegExp(`<w:${tag}( |/|>)`, "gu"))).toHaveLength(2);
+  },
+);
+
 test.each(["0", "1"] as const)(
   "a tracked cell merge preserves a checkbox with state %s",
   (checked) => {
