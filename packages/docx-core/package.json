@@ -58,7 +58,7 @@
   "dependencies": {
     "@stll/utf8-boundaries": "workspace:*",
     "better-result": "3.0.1",
-    "marked": "^18.2.0"
+    "marked": "^18.2.1"
   },
   "devDependencies": {
     "bun-types": "1.4.4",
