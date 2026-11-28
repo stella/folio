@@ -582,6 +582,71 @@ const laterSectionWrites = async (
   return Result.ok(writes);
 };
 
+/**
+ * The sections after the first that show a header or footer of their own:
+ * for the other pages or even pages, a part with text (or a picture, a
+ * field) other than the first section shows there. Read for a manifest,
+ * so a plan can keep such a section a section of its own.
+ */
+export const sectionsWithOwnHeaders = async (
+  document: Pick<AnalyzedDocument, "pkg">,
+  body: XmlElement,
+): Promise<Result<Set<number>, TemplatePlanError>> => {
+  const sections = sectionsOf(body);
+  const own = new Set<number>();
+  if (sections.length < 2) {
+    return Result.ok(own);
+  }
+  const parts = new Map<string, SourcePart | null>();
+  const shown = async (
+    path: string | null,
+  ): Promise<Result<SourcePart | null, TemplatePlanError>> => {
+    if (path === null) {
+      return Result.ok(null);
+    }
+    const known = parts.get(path);
+    if (known !== undefined) {
+      return Result.ok(known);
+    }
+    const part = await readFamilyPart(document as AnalyzedDocument, path);
+    if (Result.isError(part)) {
+      return part;
+    }
+    const value =
+      part.value !== null && showsAnything(part.value.root, part.value.texts)
+        ? part.value
+        : null;
+    parts.set(path, value);
+    return Result.ok(value);
+  };
+  for (const family of FAMILIES) {
+    for (const kind of LATER_KINDS) {
+      const pathAt = (index: number): string | null => {
+        const id = sectionReferences(sections, index, family).get(kind);
+        return id === undefined
+          ? null
+          : familyPathOf(document as AnalyzedDocument, family, id);
+      };
+      // oxlint-disable-next-line no-await-in-loop -- serialized reads keep the archive budget exact
+      const first = await shown(pathAt(0));
+      if (Result.isError(first)) {
+        return first;
+      }
+      for (let index = 1; index < sections.length; index += 1) {
+        // oxlint-disable-next-line no-await-in-loop -- serialized reads keep the archive budget exact
+        const part = await shown(pathAt(index));
+        if (Result.isError(part)) {
+          return part;
+        }
+        if (part.value !== null && !sameContent(part.value, first.value)) {
+          own.add(index);
+        }
+      }
+    }
+  }
+  return Result.ok(own);
+};
+
 /** The source paragraphs whose section the output keeps, in order. */
 export const keptSectionEnds = (
   resolved: ResolvedPlan,

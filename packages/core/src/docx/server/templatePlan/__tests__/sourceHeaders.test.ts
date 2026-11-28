@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 
+import { analyzeDocxBlocks } from "../blocks";
 import {
   buildTemplate,
   fieldRuns,
@@ -244,6 +245,12 @@ describe("the source's headers and footers", () => {
         '<w:sectPr><w:footerReference w:type="default" r:id="rId23"/></w:sectPr>',
       ),
     );
+    // The manifest says the second section shows a footer of its own.
+    const manifest = unwrap(await analyzeDocxBlocks(withLast));
+    expect(manifest.sections.map(({ ownHeaders }) => ownHeaders)).toEqual([
+      undefined,
+      true,
+    ]);
     const kept = unwrap(
       await applyFor({
         source: withLast,

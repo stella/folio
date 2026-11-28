@@ -286,6 +286,13 @@ export type DocxSection = {
   };
   /** Text columns of the section. */
   columns: number;
+  /**
+   * The section shows a header or footer of its own: for the other pages
+   * or even pages, content other than the first section shows there (an
+   * annex's header, a signature page's footer). Absent for the first
+   * section and any that shows the same.
+   */
+  ownHeaders?: true;
 };
 
 export type DocxBlockManifest = {
