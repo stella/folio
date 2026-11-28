@@ -243,7 +243,11 @@ export type NodeAttrsPropertyRevisionKind =
 export type PropertyRevisionCarrier = NodePropertyRevisionSite["carrier"];
 
 export type FolioNodeRevisionKind =
-  "paragraphMarkInserted" | "paragraphMarkDeleted" | PropertyRevisionCarrier;
+  | "insertion"
+  | "deletion"
+  | "paragraphMarkInserted"
+  | "paragraphMarkDeleted"
+  | PropertyRevisionCarrier;
 
 const NODE_PROPERTY_REVISION_SITES = Object.values(
   PROPERTY_REVISION_SITES,
@@ -376,6 +380,25 @@ export const getFolioNodeRevisionCarriers = (
   nodePos: number,
 ): FolioNodeRevisionCarrier[] => {
   const carriers: FolioNodeRevisionCarrier[] = [];
+
+  if (node.type.name === "blockCustomXml") {
+    for (const [attr, type] of [
+      ["insertion", "insertion"],
+      ["deletion", "deletion"],
+    ] as const) {
+      const record = node.attrs[attr];
+      if (!isObjectRecord(record)) continue;
+      const metadata = propertyRevisionMetadata(record["info"]);
+      if (!metadata) continue;
+      carriers.push({
+        ...metadata,
+        type,
+        text: node.textContent,
+        from: nodePos,
+        to: nodePos + node.nodeSize,
+      });
+    }
+  }
 
   if (node.type.name === "paragraph") {
     const paragraphText = getInlineDisplayText(node);
