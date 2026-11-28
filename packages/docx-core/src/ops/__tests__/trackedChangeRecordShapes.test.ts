@@ -1396,9 +1396,8 @@ describe("a pasted paragraph whose break is pending deletion", () => {
       info: { id: 93, ...earlier },
       deletion: { info: { id: 94, ...earlier } },
     },
-    { kind: "moveFrom", info: { id: 93, ...earlier }, resolutionJoin: 1 },
   ])(
-    "a copied mark that is no plain removal beside the paste's insertion is refused, suggested only (%o)",
+    "a copied mark that is no removal beside the paste's insertion is refused, suggested only (%o)",
     (pPrMark) => {
       const intent = paste(pPrMark);
       const refused = compileEditorIntent(document, {
@@ -1406,14 +1405,45 @@ describe("a pasted paragraph whose break is pending deletion", () => {
         mode: { type: "suggesting", revision: STAMP, newIds: NEW_IDS },
       });
       // An added mark is a format limit: `w:pPr/w:rPr` holds one `w:ins`,
-      // the paste's. A removal holding a cut of its own is one the record
-      // beside an added mark does not carry.
+      // the paste's.
       expect(refused.isErr() && refused.error.reason).toBe(
-        pPrMark.kind === "moveFrom"
-          ? DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE
-          : DOCUMENT_OP_REFUSAL_REASONS.NO_REVISION_RECORD,
+        DOCUMENT_OP_REFUSAL_REASONS.NO_REVISION_RECORD,
       );
       expect(compiled(document, intent, false).length).toBeGreaterThan(0);
+    },
+  );
+
+  test.each<ParagraphMarkChange>([
+    { kind: "del", info: { id: 93, ...earlier }, resolutionJoin: 1 },
+    { kind: "moveFrom", info: { id: 93, ...earlier }, resolutionJoin: 1 },
+    {
+      kind: "del",
+      info: { id: 93, ...earlier },
+      resolutionJoin: 1,
+      splitDate: "2025-12-01T00:00:00Z",
+    },
+  ])(
+    "a copied removal holding a cut goes beside the paste's insertion with the cut a level deeper (%o)",
+    (copied) => {
+      const { suggested } = assertSuggestionLaws(document, paste(copied));
+      const marks = suggested.document.package.document.content.flatMap(
+        (block) =>
+          block.type === "paragraph" && block.pPrMark?.deletion !== undefined
+            ? [block.pPrMark]
+            : [],
+      );
+      expect(marks).toEqual([
+        {
+          kind: "ins",
+          info: expect.objectContaining({ author: STAMP.author }),
+          resolutionJoin: 2,
+          splitDate: copied.splitDate ?? earlier.date,
+          deletion: {
+            info: expect.objectContaining(earlier),
+            ...(copied.kind === "moveFrom" ? { kind: copied.kind } : {}),
+          },
+        },
+      ]);
     },
   );
 

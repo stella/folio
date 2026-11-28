@@ -28,6 +28,7 @@ import {
   complexFieldXml,
   wrapParagraphContentInBookmark,
 } from "./builders";
+import { EMBEDDED_RELATIONSHIP_TYPES } from "./embeddedParts";
 import { runPropertiesXml } from "./emphasis";
 import {
   type ExpectedPiece,
@@ -44,7 +45,13 @@ import {
   keptDeletedRowOf,
   rowTextOf,
 } from "./revisions";
-import type { AtomLink, AtomRevision, StoryField } from "./story";
+import {
+  type AtomControl,
+  type AtomLink,
+  type AtomRevision,
+  isFormField,
+  type StoryField,
+} from "./story";
 import { TemplatePlanError } from "./types";
 import {
   elementChildren,
@@ -142,6 +149,7 @@ export type TemplateCharacterStyles = {
   endnoteReference: string | null;
   footnoteText: string | null;
   endnoteText: string | null;
+  commentReference: string | null;
 };
 
 const styleNamed = (
@@ -162,12 +170,18 @@ export const templateCharacterStyles = (
   endnoteReference: styleNamed(template, "character", "endnote reference"),
   footnoteText: styleNamed(template, "paragraph", "footnote text"),
   endnoteText: styleNamed(template, "paragraph", "endnote text"),
+  commentReference: styleNamed(template, "character", "annotation reference"),
 });
 
 export type NoteKind = "footnote" | "endnote";
 
-/** A media part of the source, read ahead so the emit stays synchronous. */
-export type SourceMedia = { bytes: Uint8Array; extension: string };
+/** A picture or embedded part of the source, read ahead so the emit stays
+ *  synchronous, with the relationship type it is reached by. */
+export type SourceMedia = {
+  bytes: Uint8Array;
+  extension: string;
+  relationshipType: string;
+};
 
 export type EmitShared = {
   styles: TemplateCharacterStyles;
@@ -183,6 +197,24 @@ export type EmitShared = {
   nextDrawingId: () => number;
   /** A fresh id for a tracked change the output carries. */
   nextRevisionId: () => number;
+  /**
+   * The output id a source comment mark is written with, or null when the
+   * output does not carry it: a comment whose reference is not placed, or
+   * a range whose other end is not.
+   */
+  commentId?: (mark: {
+    kind: "start" | "end" | "reference";
+    id: string;
+  }) => string | null;
+  /** The output bookmark a kept internal link of the source leads to, by
+   *  the source bookmark's name; null where the link is not kept. */
+  linkAnchor?: (name: string) => string | null;
+  /** The fields of the source's main story: a legacy form field whose
+   *  result the output places whole is written as the field again. */
+  sourceFields?: readonly StoryField[];
+  /** Whether the output defines a style of this id: a style reference in
+   *  the text of a moved object (a text box) to one it lacks is left out. */
+  hasStyle?: (styleId: string) => boolean;
 };
 
 export type EmitContext = EmitShared & {
@@ -229,12 +261,24 @@ export const linkAddressKey = (address: LinkAddress | null): string =>
     ? ""
     : `${address.url}${address.anchor === null ? "" : `#${address.anchor}`}`;
 
-type LinkTarget = { relationshipId: string; anchor: string | null } | null;
+/** Where a written link leads: an address through a relationship (with a
+ *  place in it), or a bookmark of the output (no relationship). */
+type LinkTarget = {
+  relationshipId: string | null;
+  anchor: string | null;
+} | null;
 
 const linkTargetOf = (
   { link, origin }: ExpectedPiece,
   context: EmitContext,
 ): LinkTarget => {
+  if (link?.kind === "anchor") {
+    const anchor =
+      origin === "document"
+        ? (context.linkAnchor?.(link.anchor) ?? null)
+        : null;
+    return anchor === null ? null : { relationshipId: null, anchor };
+  }
   const address = linkAddress(link, context.sourceRelationships[origin]);
   return address === null
     ? null
@@ -269,6 +313,105 @@ const sameLink = (left: AtomLink | null, right: AtomLink | null): boolean => {
 };
 
 type ObjectTransfer = Result<string, TemplatePlanError>;
+
+/** The prefixes an `mc:Choice`/`mc:Ignorable`-style attribute value names. */
+const MARKUP_COMPATIBILITY_PREFIX_LISTS: ReadonlySet<string> = new Set([
+  "Requires",
+  "Ignorable",
+  "ProcessContent",
+  "MustUnderstand",
+  "PreserveElements",
+  "PreserveAttributes",
+]);
+
+/**
+ * `element` declaring every namespace prefix used inside it (element and
+ * attribute names, and the prefixes markup-compatibility attributes name)
+ * that its source binds above it. A source may bind the drawing prefixes
+ * once at its root, which the template's root need not do; declared on the
+ * object itself, the copy reads the same wherever it lands.
+ */
+const declareInheritedNamespaces = (element: XmlElement): XmlElement => {
+  const used = new Set<string>();
+  const note = (prefix: string): void => {
+    if (prefix !== "" && prefix !== "xml" && prefix !== "xmlns") {
+      used.add(prefix);
+    }
+  };
+  const visit = (node: XmlElement): void => {
+    if (node.type !== "element") {
+      return;
+    }
+    const name = node.name ?? "";
+    const colon = name.indexOf(":");
+    if (colon !== -1) {
+      note(name.slice(0, colon));
+    }
+    for (const [attribute, value] of Object.entries(node.attributes ?? {})) {
+      if (attribute === "xmlns" || attribute.startsWith("xmlns:")) {
+        continue;
+      }
+      const at = attribute.indexOf(":");
+      if (at !== -1) {
+        note(attribute.slice(0, at));
+      }
+      const local = at === -1 ? attribute : attribute.slice(at + 1);
+      if (value !== undefined && MARKUP_COMPATIBILITY_PREFIX_LISTS.has(local)) {
+        for (const token of String(value).split(/\s+/u)) {
+          const tokenColon = token.indexOf(":");
+          note(tokenColon === -1 ? token : token.slice(0, tokenColon));
+        }
+      }
+    }
+    for (const child of node.elements ?? []) {
+      visit(child);
+    }
+  };
+  visit(element);
+  const own = element.attributes ?? {};
+  const declarations: Record<string, string> = {};
+  for (const prefix of used) {
+    const name = `xmlns:${prefix}`;
+    if (own[name] !== undefined) {
+      continue;
+    }
+    // A prefix bound only inside the object travels with its declaration.
+    const uri = resolveNamespaceUri(element.namespaceScope, prefix);
+    if (uri !== undefined) {
+      declarations[name] = uri;
+    }
+  }
+  return Object.keys(declarations).length === 0
+    ? element
+    : cloneElement(element, { attributes: { ...declarations, ...own } });
+};
+
+/** Elements of a moved object's text that name a style by its id. */
+const OBJECT_STYLE_REFERENCES: ReadonlySet<string> = new Set([
+  "pStyle",
+  "rStyle",
+  "tblStyle",
+]);
+
+/** Whether an element of a moved object's text is left out: a bookmark of
+ *  the source, or a reference to a style the output does not define. */
+const leftOutOfObject = (
+  node: XmlElement,
+  hasStyle: ((styleId: string) => boolean) | undefined,
+): boolean => {
+  if (node.type !== "element") {
+    return false;
+  }
+  const local = getLocalName(node.name);
+  if (local === "bookmarkStart" || local === "bookmarkEnd") {
+    return true;
+  }
+  return (
+    hasStyle !== undefined &&
+    OBJECT_STYLE_REFERENCES.has(local) &&
+    !hasStyle(wAttr(node, "val") ?? "")
+  );
+};
 
 /** An object of the source with its relationships and drawing ids re-homed. */
 const transferObject = (
@@ -307,16 +450,19 @@ const transferObject = (
     }
     const path = context.resolveSourceTarget(origin, relationship.target);
     const media = context.sourceMedia.get(path);
-    if (relationship.type !== RELATIONSHIP_TYPES.image || media === undefined) {
+    if (
+      !EMBEDDED_RELATIONSHIP_TYPES.has(relationship.type) ||
+      media === undefined
+    ) {
       refusal ??= new TemplatePlanError({
         code: "unsupported-content",
         message:
-          "An embedded object other than a picture cannot be moved onto a template.",
+          "An object refers to a part other than a picture or an embedded object, which cannot be moved onto a template.",
       });
       return id;
     }
     return context.relationships.add({
-      type: RELATIONSHIP_TYPES.image,
+      type: relationship.type,
       target: context.addMedia(path, media),
       external: false,
     });
@@ -328,6 +474,12 @@ const transferObject = (
     const attributes: Record<string, string | number | undefined> = {
       ...node.attributes,
     };
+    // The text of a text box goes without the source's bookmarks (a text
+    // box written twice, for two consumers, names each one twice) and
+    // without styles the output lacks.
+    const keptChildren = node.elements?.filter(
+      (child) => !leftOutOfObject(child, context.hasStyle),
+    );
     for (const [name, value] of Object.entries(node.attributes ?? {})) {
       const colon = name.indexOf(":");
       if (value === undefined || colon === -1 || name.startsWith("xmlns:")) {
@@ -346,12 +498,12 @@ const transferObject = (
     }
     return cloneElement(node, {
       attributes,
-      ...(node.elements === undefined
+      ...(keptChildren === undefined
         ? {}
-        : { elements: node.elements.map(rehome) }),
+        : { elements: keptChildren.map(rehome) }),
     });
   };
-  const xml = captureVerbatimXml(rehome(element));
+  const xml = captureVerbatimXml(declareInheritedNamespaces(rehome(element)));
   return refusal === null ? Result.ok(xml) : Result.err(refusal);
 };
 
@@ -574,6 +726,57 @@ const plainPieceRunXml = (
               .join(""),
       );
     }
+    case "codeField": {
+      const instruction = piece.atom?.instruction;
+      // The field is written whole: its code is its content.
+      return Result.ok(
+        instruction === undefined
+          ? ""
+          : [
+              `<${w}:fldChar ${w}:fldCharType="begin"/>`,
+              `<${w}:instrText xml:space="preserve"> ${escapeXmlText(instruction)} </${w}:instrText>`,
+              `<${w}:fldChar ${w}:fldCharType="end"/>`,
+            ]
+              .map((content) => run(content))
+              .join(""),
+      );
+    }
+    case "commentMark": {
+      const mark = piece.atom?.comment;
+      const id =
+        mark === undefined ? null : (context.commentId?.(mark) ?? null);
+      if (mark === undefined || id === null) {
+        return Result.ok("");
+      }
+      if (mark.kind === "reference") {
+        const style = context.styles.commentReference;
+        const look =
+          style === null
+            ? ""
+            : `<${w}:rPr><${w}:rStyle ${w}:val="${escapeXmlAttribute(style)}"/></${w}:rPr>`;
+        return Result.ok(
+          `<${w}:r>${look}<${w}:commentReference ${w}:id="${id}"/></${w}:r>`,
+        );
+      }
+      return Result.ok(
+        `<${w}:${mark.kind === "start" ? "commentRangeStart" : "commentRangeEnd"} ${w}:id="${id}"/>`,
+      );
+    }
+    case "formField": {
+      const { formData, instruction } = piece.atom ?? {};
+      if (formData === undefined || instruction === undefined) {
+        return Result.ok("");
+      }
+      return Result.ok(
+        [
+          `<${w}:fldChar ${w}:fldCharType="begin">${wSubtreeXml(formData, w)}</${w}:fldChar>`,
+          `<${w}:instrText xml:space="preserve"> ${escapeXmlText(instruction)} </${w}:instrText>`,
+          `<${w}:fldChar ${w}:fldCharType="end"/>`,
+        ]
+          .map((content) => run(content))
+          .join(""),
+      );
+    }
     case "object": {
       const transferred = transferObject(piece, context);
       if (Result.isError(transferred)) {
@@ -608,6 +811,8 @@ const mergedPieces = (pieces: readonly ExpectedPiece[]): ExpectedPiece[] => {
       // So is the mark of a checkbox: its control holds it alone.
       last.atom?.checkbox === undefined &&
       piece.atom?.checkbox === undefined &&
+      // Text of a control stays inside it, and other text outside.
+      last.atom?.control === piece.atom?.control &&
       sameLink(last.link, piece.link)
     ) {
       merged[merged.length - 1] = { ...last, text: last.text + piece.text };
@@ -618,14 +823,232 @@ const mergedPieces = (pieces: readonly ExpectedPiece[]): ExpectedPiece[] => {
   return merged;
 };
 
+/** The legacy form field of the source a piece is the result of, or null. */
+const formFieldOf = (
+  piece: ExpectedPiece | undefined,
+  context: EmitContext,
+): StoryField | null => {
+  if (piece?.origin !== "document" || context.sourceFields === undefined) {
+    return null;
+  }
+  for (const index of piece.atom?.fields ?? []) {
+    const field = context.sourceFields[index];
+    if (field !== undefined && isFormField(field)) {
+      return field;
+    }
+  }
+  return null;
+};
+
+/** Whether a run of pieces is the whole result of a form field that sits
+ *  in one paragraph, with no tracked change in it. */
+const isWholeResult = (
+  field: StoryField,
+  group: readonly ExpectedPiece[],
+): boolean =>
+  field.closed &&
+  field.paragraphOrdinal === field.endParagraphOrdinal &&
+  group.map(({ text }) => text).join("") === field.result &&
+  group.every((piece) => piece.atom?.revision === undefined);
+
+/** Children of a control's properties a copy leaves out: they name parts
+ *  of the source (its data, its building blocks) the output does not have. */
+const CONTROL_DROPPED: ReadonlySet<string> = new Set([
+  "dataBinding",
+  "placeholder",
+  "rPr",
+]);
+
+/** A control's properties as the output writes them. */
+export const controlPropertiesXml = (
+  properties: XmlElement,
+  w: string,
+): string =>
+  wSubtreeXml(
+    cloneElement(properties, {
+      elements: elementChildren(properties).filter(
+        (child) => !CONTROL_DROPPED.has(wName(child) ?? ""),
+      ),
+    }),
+    w,
+  );
+
+type RunsWriter = (
+  pieces: readonly ExpectedPiece[],
+  context: EmitContext,
+) => RunsResult;
+
+const controlOfPiece = (
+  piece: ExpectedPiece | undefined,
+): AtomControl | undefined =>
+  piece?.origin === "document" ? piece.atom?.control : undefined;
+
+/**
+ * Runs of pieces with content controls and legacy form fields kept: a form
+ * field whose result crosses a control's edge holds the controls, any other
+ * stands inside the control around it.
+ */
 const piecesRunsXml = (
+  pieces: readonly ExpectedPiece[],
+  context: EmitContext,
+): RunsResult => {
+  const out: string[] = [];
+  let plainStart = 0;
+  const flushPlain = (end: number): Result<void, TemplatePlanError> => {
+    if (end > plainStart) {
+      const runs = controlRunsXml(
+        pieces.slice(plainStart, end),
+        context,
+        formFieldRunsXml,
+      );
+      if (Result.isError(runs)) {
+        return runs;
+      }
+      out.push(runs.value);
+    }
+    return Result.ok(undefined);
+  };
+  let at = 0;
+  while (at < pieces.length) {
+    const field = formFieldOf(pieces[at], context);
+    let end = at + 1;
+    while (end < pieces.length && formFieldOf(pieces[end], context) === field) {
+      end += 1;
+    }
+    const group = pieces.slice(at, end);
+    const control = controlOfPiece(group[0]);
+    const crosses =
+      field !== null &&
+      group.some((piece) => controlOfPiece(piece) !== control);
+    if (crosses) {
+      const flushed = flushPlain(at);
+      if (Result.isError(flushed)) {
+        return flushed;
+      }
+      const runs = formFieldRunsXml(group, context, (inner, innerContext) =>
+        controlRunsXml(inner, innerContext, linkedRunsXml),
+      );
+      if (Result.isError(runs)) {
+        return runs;
+      }
+      out.push(runs.value);
+      plainStart = end;
+    }
+    at = end;
+  }
+  const flushed = flushPlain(pieces.length);
+  if (Result.isError(flushed)) {
+    return flushed;
+  }
+  return Result.ok(out.join(""));
+};
+
+/**
+ * Runs of pieces, a content control among runs around its content again
+ * where the output places all of that content, with no tracked change in
+ * it: a text, date or list control a reader fills in. Any other control's
+ * content is written as it reads.
+ */
+const controlRunsXml = (
+  pieces: readonly ExpectedPiece[],
+  context: EmitContext,
+  inner: RunsWriter,
+): RunsResult => {
+  const { w } = context.prefixes;
+  const out: string[] = [];
+  let at = 0;
+  while (at < pieces.length) {
+    const control = controlOfPiece(pieces[at]);
+    let end = at + 1;
+    while (end < pieces.length && controlOfPiece(pieces[end]) === control) {
+      end += 1;
+    }
+    const group = pieces.slice(at, end);
+    at = end;
+    const runs = inner(group, context);
+    if (Result.isError(runs)) {
+      return runs;
+    }
+    const whole =
+      control !== undefined &&
+      group.map(({ text }) => text).join("") === control.text &&
+      group.every((piece) => piece.atom?.revision === undefined);
+    out.push(
+      whole
+        ? `<${w}:sdt>${controlPropertiesXml(control.properties, w)}<${w}:sdtContent>${runs.value}</${w}:sdtContent></${w}:sdt>`
+        : runs.value,
+    );
+  }
+  return Result.ok(out.join(""));
+};
+
+/**
+ * Runs of pieces, a legacy form field's result inside the field again: the
+ * box, list or text input a reader fills in, with its form data. Only a
+ * field whose whole result stands here, in one paragraph, is written so;
+ * any other keeps its text.
+ */
+const formFieldRunsXml = (
+  pieces: readonly ExpectedPiece[],
+  context: EmitContext,
+  inner: RunsWriter = linkedRunsXml,
+): RunsResult => {
+  const { w } = context.prefixes;
+  const out: string[] = [];
+  let at = 0;
+  while (at < pieces.length) {
+    const field = formFieldOf(pieces[at], context);
+    let end = at + 1;
+    // A run of pieces of one form field, or of pieces of none.
+    while (end < pieces.length && formFieldOf(pieces[end], context) === field) {
+      end += 1;
+    }
+    const group = pieces.slice(at, end);
+    at = end;
+    const runs = inner(group, context);
+    if (Result.isError(runs)) {
+      return runs;
+    }
+    if (
+      field === null ||
+      field.formData === undefined ||
+      !isWholeResult(field, group)
+    ) {
+      out.push(runs.value);
+      continue;
+    }
+    const properties = runPropertiesXml({
+      prefix: w,
+      signature: group[0]?.signature ?? "",
+      escapeAttribute: escapeXmlAttribute,
+    });
+    const char = (content: string): string =>
+      `<${w}:r>${properties}${content}</${w}:r>`;
+    out.push(
+      [
+        char(
+          `<${w}:fldChar ${w}:fldCharType="begin">${wSubtreeXml(field.formData, w)}</${w}:fldChar>`,
+        ),
+        char(
+          `<${w}:instrText xml:space="preserve"> ${escapeXmlText(field.instruction.trim())} </${w}:instrText>`,
+        ),
+        char(`<${w}:fldChar ${w}:fldCharType="separate"/>`),
+        runs.value,
+        char(`<${w}:fldChar ${w}:fldCharType="end"/>`),
+      ].join(""),
+    );
+  }
+  return Result.ok(out.join(""));
+};
+
+const linkedRunsXml = (
   pieces: readonly ExpectedPiece[],
   context: EmitContext,
 ): RunsResult => {
   const { w, r } = context.prefixes;
   const out: string[] = [];
   let group: {
-    relationshipId: string;
+    relationshipId: string | null;
     anchor: string | null;
     link: AtomLink;
     runs: string[];
@@ -635,7 +1058,7 @@ const piecesRunsXml = (
       return;
     }
     out.push(
-      `<${w}:hyperlink${context.prefixes.rDeclaration} ${r}:id="${escapeXmlAttribute(group.relationshipId)}"${group.anchor === null ? "" : ` ${w}:anchor="${escapeXmlAttribute(group.anchor)}"`} ${w}:history="1">${group.runs.join("")}</${w}:hyperlink>`,
+      `<${w}:hyperlink${group.relationshipId === null ? "" : `${context.prefixes.rDeclaration} ${r}:id="${escapeXmlAttribute(group.relationshipId)}"`}${group.anchor === null ? "" : ` ${w}:anchor="${escapeXmlAttribute(group.anchor)}"`} ${w}:history="1">${group.runs.join("")}</${w}:hyperlink>`,
     );
     group = null;
   };
@@ -821,6 +1244,11 @@ export const paragraphXml = (
   if (alignment !== null) {
     properties.push(`<${w}:jc ${w}:val="${alignment}"/>`);
   }
+  // The outline level follows the alignment and stands before a section.
+  const { outlineLevel } = emit.paragraph;
+  if (outlineLevel !== null) {
+    properties.push(`<${w}:outlineLvl ${w}:val="${String(outlineLevel)}"/>`);
+  }
   // A section's properties close the paragraph's.
   if (emit.sectionXml !== null) {
     properties.push(emit.sectionXml);
@@ -847,11 +1275,13 @@ export const paragraphXml = (
   if (Result.isError(runs)) {
     return runs;
   }
-  // The paragraph's mark, when the source records it as inserted: its run
-  // properties stand in front of a section's.
+  // The paragraph's mark, when the source records it as inserted or hides
+  // it (the paragraph runs on into the next on screen): its run properties
+  // stand in front of a section's.
   const inserted = insertedMarkOf(emit.paragraph.segments);
-  if (inserted !== undefined) {
-    const mark = `<${w}:rPr><${w}:ins${revisionAttributesXml(inserted, context)}/></${w}:rPr>`;
+  const hidden = emit.paragraph.parts.at(-1)?.block.read?.markHidden === true;
+  if (inserted !== undefined || hidden) {
+    const mark = `<${w}:rPr>${inserted === undefined ? "" : `<${w}:ins${revisionAttributesXml(inserted, context)}/>`}${hidden ? `<${w}:vanish/>` : ""}</${w}:rPr>`;
     properties.splice(
       emit.sectionXml === null ? properties.length : properties.length - 1,
       0,

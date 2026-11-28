@@ -2420,6 +2420,26 @@ export type BlockCustomXml = WritableRecord & {
   closingXml: string;
   /** Parsed block children; `w:customXmlPr` remains a positioned preserved child. */
   content: BlockContent[];
+  /**
+   * The tracked insertion of the element's own tags, written as a
+   * `w:customXmlInsRangeStart` before the element and its
+   * `w:customXmlInsRangeEnd` after it (ECMA-376 Part 1, §17.13.5.6–7).
+   * Accepting it drops the record; rejecting it takes the tags away and
+   * leaves the content, which carries records of its own.
+   */
+  insertion?: CustomXmlMarkupRevision | undefined;
+  /**
+   * The tracked deletion of the element's own tags, written as a
+   * `w:customXmlDelRangeStart` before the element and its
+   * `w:customXmlDelRangeEnd` after it (§17.13.5.4–5). Accepting it takes the
+   * tags away and leaves the content; rejecting it drops the record.
+   */
+  deletion?: CustomXmlMarkupRevision | undefined;
+};
+
+/** One tracked change of a custom XML element's tags. */
+export type CustomXmlMarkupRevision = WritableRecord & {
+  info: TrackedChangeInfo;
 };
 
 // ============================================================================
@@ -2532,8 +2552,12 @@ export type ParagraphMarkChange = WritableRecord & {
   /**
    * When the split whose cut `resolutionJoin` records was made, on a deleted
    * mark that holds the cut of the inserted break it deletes after that
-   * insertion was accepted. Saved as folio's own ignorable review
-   * provenance; a reader that does not know it joins at the deletion's date.
+   * insertion was accepted, or on an added mark holding a copied removal
+   * whose cut it records (a suggested paste of a deleted break): that
+   * copied split's date, which rejecting the insertion and accepting the
+   * removal both join at. Saved as folio's own ignorable review provenance;
+   * a reader that does not know it joins at the deletion's date, or at the
+   * insertion's.
    */
   splitDate?: string | undefined;
   /**

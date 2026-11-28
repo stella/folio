@@ -24,6 +24,7 @@ import { paragraph } from "../docx/server/build";
 import { fromMarkdown } from "../markdown/fromMarkdown";
 import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import type { Document } from "../types/document";
+import { toArrayBuffer } from "../utils/docxInput";
 import { FolioDocxReviewer } from "./headless";
 
 const SESSIONS = [
@@ -200,3 +201,82 @@ describe.each(SESSIONS)(
     }
   },
 );
+
+test("a split runs before an insertion at its pending-join destination", async () => {
+  const source = await ensureParaIds(
+    await createDocx(
+      fromMarkdown(
+        "# Terms\n\n1. Numbered clause one\n\nUnnumbered body text.\n\n1. Numbered clause two\n\nClosing words.",
+      ),
+    ),
+  );
+  const original = await FolioDocxReviewer.fromBuffer(
+    await toArrayBuffer(source.docx),
+    {
+      author: "First",
+      session: "canonical",
+    },
+  );
+  const blocks = original.snapshot().blocks;
+  const numbered = blocks.find(({ text }) => text === "Numbered clause one");
+  const body = blocks.find(({ text }) => text === "Unnumbered body text.");
+  const later = blocks.find(({ text }) => text === "Numbered clause two");
+  if (numbered === undefined || body === undefined || later === undefined)
+    throw new Error("Missing batch-order fixture blocks");
+  const setup = original.applyOperations(
+    [
+      {
+        id: "merge",
+        type: "mergeBlockWithNext",
+        blockId: numbered.id,
+        separator: " ",
+        mergedParagraphProperties: { numbering: { kind: "none" } },
+      },
+      {
+        id: "later",
+        type: "insertBeforeBlock",
+        blockId: later.id,
+        text: "Later clause.",
+      },
+    ],
+    { mode: "tracked-changes", undefinedReferences: "refuse" },
+  );
+  expect(setup.skipped).toEqual([]);
+  const setupBytes = await original.toBuffer();
+  const open = () =>
+    FolioDocxReviewer.fromBuffer(setupBytes, {
+      author: "Second",
+      session: "canonical",
+    });
+  const batch = await open();
+  const sequential = await open();
+  const operations = [
+    {
+      id: "split",
+      type: "splitBlock",
+      blockId: numbered.id,
+      offset: 9,
+    },
+    {
+      id: "insert",
+      type: "insertBeforeBlock",
+      blockId: body.id,
+      text: "Inserted clause.",
+    },
+  ] satisfies FolioDocumentOperation[];
+  const applied = batch.applyOperations(operations, {
+    mode: "tracked-changes",
+    undefinedReferences: "refuse",
+  });
+  expect(applied.skipped).toEqual([]);
+  for (const operation of operations) {
+    const result = sequential.applyOperations([operation], {
+      mode: "tracked-changes",
+      undefinedReferences: "refuse",
+    });
+    expect(result.skipped).toEqual([]);
+  }
+  batch.acceptAll();
+  sequential.acceptAll();
+  expect(texts(batch)).toEqual(texts(sequential));
+});

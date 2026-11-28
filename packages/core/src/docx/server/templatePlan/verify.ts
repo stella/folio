@@ -33,6 +33,7 @@ import {
   analyzeKeptForm,
   analyzeSource,
   bookmarkEncloses,
+  bookmarkTargetsOf,
   viewOf,
 } from "./blocks";
 import {
@@ -71,6 +72,7 @@ import {
   type ResolvedPlan,
   resolvePlan,
   segmentPieces,
+  withPlanColors,
 } from "./plan";
 import {
   objectFingerprint,
@@ -81,13 +83,19 @@ import {
   type StoryResources,
 } from "./resources";
 import { tableRowRevisions } from "./revisions";
-import { verifyCarriedHeaders } from "./sourceHeaders";
+import {
+  keptSectionEnds,
+  outputSectionStarts,
+  verifyCarriedHeaders,
+} from "./sourceHeaders";
 import {
   type AtomKind,
   type AtomLink,
   type AtomRevision,
   createStoryState,
   endStory,
+  isCodeOnlyField,
+  isFormField,
   isSelfNumberingField,
   type ParagraphRead,
   readParagraph,
@@ -104,9 +112,11 @@ import type {
   TemplatePlanFieldLeftover,
   TemplatePlanIssue,
   TemplatePlanNoteCounts,
+  TemplatePlanReference,
   TemplatePlanReferenceResult,
   TemplatePlanReport,
   TemplatePlanSectionPage,
+  TemplatePlanSourceComments,
   TemplatePlanSourceHeaders,
   TemplatePlanSpanCounts,
   VerifyTemplatePlanOutputArgs,
@@ -232,6 +242,10 @@ const appendUnit = (
     content.marks.push(`${at}:break:${wAttr(element, "type") ?? "page"}`);
   } else if (kind === "selfNumber") {
     content.marks.push(`${at}:number:${instruction ?? ""}`);
+  } else if (kind === "formField") {
+    content.marks.push(`${at}:form:${instruction ?? ""}`);
+  } else if (kind === "codeField") {
+    content.marks.push(`${at}:code:${instruction ?? ""}`);
   } else if (kind === "object" && element !== null) {
     content.marks.push(
       `${at}:object:${objectFingerprint(element)}:${objectTargets(element, origin, resources).join(",")}`,
@@ -305,7 +319,9 @@ const outputContent = ({
       expectedStyle = styles.footnoteReference;
     } else if (atom.kind === "endnoteReference") {
       expectedStyle = styles.endnoteReference;
-    } else if (link !== "") {
+    } else if (link !== "" || atom.link?.kind === "anchor") {
+      // A link to a bookmark of the output has no address and the look of
+      // any other link.
       expectedStyle = styles.hyperlink;
     }
     const stated = isNoteReference
@@ -628,6 +644,23 @@ type ReportArgs = {
   resolved: ResolvedPlan;
   options: ApplyTemplatePlanOptions | undefined;
 };
+
+/**
+ * Whether a reference of the plan writes a field over part of a source
+ * field's result: the citation stays a field in the output, though not the
+ * source's own.
+ */
+const isRebuilt = (
+  field: StoryField,
+  spans: readonly TemplatePlanReference[] | undefined,
+): boolean =>
+  spans !== undefined &&
+  field.resultStart >= 0 &&
+  spans.some(
+    ({ start, end }) =>
+      start < field.resultStart + field.result.length &&
+      field.resultStart < end,
+  );
 
 /** Read `output` back and report how it compares with the resolved plan. */
 export const reportTemplatePlanOutput = async ({
@@ -969,6 +1002,13 @@ export const reportTemplatePlanOutput = async ({
             // A table of contents is kept without its cached entries: the
             // paragraph as the template sets it, with the text it holds in
             // front of the field and no more.
+            // The paragraph it ends in keeps what stands behind its end.
+            if (resolved.contentsTails.has(templateParagraph)) {
+              return (
+                sameStated(before, after) &&
+                templateParagraph.read.text.endsWith(outputParagraph.read.text)
+              );
+            }
             const textKept = emptiedContents.get(templateParagraph);
             if (textKept !== undefined) {
               return (
@@ -1192,6 +1232,7 @@ export const reportTemplatePlanOutput = async ({
     kind: "footnoteReference" | "endnoteReference",
     sourceNotes: AnalyzedNotes,
     outputNotes: AnalyzedNotes,
+    templateNotes: AnalyzedNotes,
   ): TemplatePlanNoteCounts => {
     const origin: StoryOrigin =
       kind === "footnoteReference" ? "footnotes" : "endnotes";
@@ -1201,6 +1242,11 @@ export const reportTemplatePlanOutput = async ({
       output: 0,
       identical: 0,
       mismatch: 0,
+      // The template's own notes the output no longer holds: notes of its
+      // sample text, left out with it.
+      templateLeftOut: templateNotes.notes.filter(
+        ({ id }) => !outputNotes.byId.has(id),
+      ).length,
     };
     for (const note of sourceNotes.notes) {
       tally(
@@ -1303,11 +1349,13 @@ export const reportTemplatePlanOutput = async ({
     "footnoteReference",
     source.footnotes,
     out.footnotes,
+    template.footnotes,
   );
   const endnotes = noteCounts(
     "endnoteReference",
     source.endnotes,
     out.endnotes,
+    template.endnotes,
   );
 
   // References: the field, its bookmark on the target, and its cached text.
@@ -1329,7 +1377,7 @@ export const reportTemplatePlanOutput = async ({
     const block = outputOf.get(paragraph);
     const fields = (block?.read?.fieldIndices ?? [])
       .map((index) => out.story.state.fields[index])
-      .filter((field) => field?.kind === "REF");
+      .filter((field) => field?.kind === "REF" || field?.kind === "PAGEREF");
     // Fields come in the order the segments were written, each over the
     // text its segment stands at.
     let offset = 0;
@@ -1356,7 +1404,8 @@ export const reportTemplatePlanOutput = async ({
       const hasNumberSwitch = NUMBER_SWITCH.test(entry.reference.instruction);
       const usesNumber = /\\n\b/u.test(entry.reference.instruction);
       let predictedText: string | null = null;
-      if (targetBlock !== undefined) {
+      // A page number is the layout's; no text predicts it.
+      if (targetBlock !== undefined && entry.reference.field !== "PAGEREF") {
         if (!hasNumberSwitch) {
           // A number a field counts itself is in no text, so the text
           // shows what such a heading prints only where it has none.
@@ -1461,6 +1510,23 @@ export const reportTemplatePlanOutput = async ({
       }
     }
   }
+  // A source list the plan keeps is an instance of a definition the output
+  // holds; the labels it prints are held to the source's below.
+  for (const { numId } of resolved.sourceLists) {
+    const instance = wChildren(outputNumbering?.root, "num").find(
+      (element) => integerOrNull(wAttr(element, "numId")) === numId,
+    );
+    const abstractNumId = integerOrNull(wChildVal(instance, "abstractNumId"));
+    if (
+      instance === undefined ||
+      !wChildren(outputNumbering?.root, "abstractNum").some(
+        (element) =>
+          integerOrNull(wAttr(element, "abstractNumId")) === abstractNumId,
+      )
+    ) {
+      numberingMismatch(`The kept source list ${numId} has no definition.`);
+    }
+  }
   for (const patch of plan.numberingPatches ?? []) {
     const definition = wChildren(outputNumbering?.root, "abstractNum").find(
       (element) =>
@@ -1475,6 +1541,14 @@ export const reportTemplatePlanOutput = async ({
       suff: patch.suff,
       lvlText: patch.lvlText,
     };
+    if (
+      patch.isLgl !== undefined &&
+      (toggleOf(wChild(level, "isLgl")) === true) !== patch.isLgl
+    ) {
+      numberingMismatch(
+        `Level ${patch.ilvl} of list definition ${patch.abstractNumId} does not carry the planned isLgl.`,
+      );
+    }
     for (const [name, value] of Object.entries(planned)) {
       if (value !== undefined && wChildVal(level, name) !== value) {
         numberingMismatch(
@@ -1884,6 +1958,7 @@ export const reportTemplatePlanOutput = async ({
       source,
       template,
       output: out,
+      starts: outputSectionStarts(source, keptSectionEnds(resolved)),
     });
     if (Result.isError(carried)) {
       return carried;
@@ -2033,7 +2108,12 @@ export const reportTemplatePlanOutput = async ({
     const labelAsText = part?.labelAsText ?? null;
     if (labelAsText !== null) {
       counts.labelAsText += 1;
-    } else if (sourceLabel !== null && outputLabel === null) {
+    } else if (
+      // A level that prints nothing shows no label to lose.
+      sourceLabel !== null &&
+      sourceLabel.trim() !== "" &&
+      outputLabel === null
+    ) {
       counts.labelLost += 1;
     } else if (
       sourceLabel !== null &&
@@ -2089,9 +2169,22 @@ export const reportTemplatePlanOutput = async ({
 
   // What the transfer leaves behind by design.
   const placedReads = resolvedParagraphs.flatMap(({ parts }) =>
-    parts.flatMap(({ block }) => (block.read === null ? [] : [block.read])),
+    parts.flatMap(({ block }) =>
+      block.read === null ? [] : [{ id: block.block.id, read: block.read }],
+    ),
   );
+  // The spans the plan writes a field of its own over, by block.
+  const rebuiltSpans = new Map<string, TemplatePlanReference[]>();
+  for (const { reference } of resolved.references) {
+    rebuiltSpans.set(reference.blockId, [
+      ...(rebuiltSpans.get(reference.blockId) ?? []),
+      reference,
+    ]);
+  }
   const droppedFields = new Map<string, number>();
+  // Legacy form fields of the source the output places, by kind; those it
+  // writes as fields again are no fields written as text.
+  const placedFormFields = new Map<string, number>();
   let pageShapes = 0;
   for (const paragraph of new Set(resolved.byBlockId.values())) {
     for (const part of paragraph.parts) {
@@ -2099,17 +2192,33 @@ export const reportTemplatePlanOutput = async ({
     }
   }
   let internalHyperlinks = 0;
-  for (const read of placedReads) {
+  // A link to a bookmark the source lacks leads nowhere there either: no
+  // link the output loses. The built-in top of the document is no bookmark.
+  const sourceBookmarks = bookmarkTargetsOf(source.story);
+  const notLost = (anchor: string): boolean =>
+    resolved.linkAnchors.has(anchor) ||
+    (anchor !== "_top" && !sourceBookmarks.has(anchor));
+  for (const { id, read } of placedReads) {
     for (const index of read.fieldIndices) {
       const field = source.story.state.fields[index];
       // A HYPERLINK field with an address is carried over as a link, a
-      // field that numbers itself as the field it is.
+      // field that numbers itself as the field it is, and a field whose
+      // result a reference of the plan writes anew as a field of its own.
       if (
         field !== undefined &&
         hyperlinkFieldLink(field) === null &&
-        !isSelfNumberingField(field.kind)
+        !isSelfNumberingField(field.kind) &&
+        !isRebuilt(field, rebuiltSpans.get(id)) &&
+        // Kept as its code where it caches no result.
+        !(isCodeOnlyField(field.kind) && field.resultStart < 0)
       ) {
         droppedFields.set(field.kind, (droppedFields.get(field.kind) ?? 0) + 1);
+      }
+      if (field !== undefined && isFormField(field)) {
+        placedFormFields.set(
+          field.kind,
+          (placedFormFields.get(field.kind) ?? 0) + 1,
+        );
       }
     }
     // Links the output cannot carry: to a bookmark or a part of the source.
@@ -2117,11 +2226,20 @@ export const reportTemplatePlanOutput = async ({
     for (const { link } of read.atoms) {
       const lost =
         link !== null &&
-        linkAddress(link, sourceResources.relationships.document) === null;
+        linkAddress(link, sourceResources.relationships.document) === null &&
+        !(link.kind === "anchor" && notLost(link.anchor));
       if (lost && link !== previous) {
         internalHyperlinks += 1;
       }
       previous = lost ? link : null;
+    }
+    // A HYPERLINK field to a bookmark of the source is one such link too.
+    for (const index of read.fieldIndices) {
+      const field = source.story.state.fields[index];
+      const link = field === undefined ? null : hyperlinkFieldLink(field);
+      if (link?.kind === "anchor" && !notLost(link.anchor)) {
+        internalHyperlinks += 1;
+      }
     }
   }
   // Direct paragraph formatting stays behind, and section ends with it.
@@ -2154,10 +2272,44 @@ export const reportTemplatePlanOutput = async ({
       `${omittedLabels} omitted block(s) showed a number or label in the source.`,
     );
   }
-  if (source.story.state.comments > 0) {
+  // The source's comments the output shows, when the plan keeps them.
+  const sourceComments: TemplatePlanSourceComments | undefined =
+    plan.comments === "keep"
+      ? {
+          kept: out.story.state.comments,
+          leftOut: Math.max(
+            0,
+            source.manifest.comments - out.story.state.comments,
+          ),
+        }
+      : undefined;
+  const droppedComments =
+    sourceComments === undefined
+      ? source.story.state.comments
+      : sourceComments.leftOut;
+  if (droppedComments > 0) {
     warnings.push(
-      `${source.story.state.comments} comment(s) of the source are not carried over.`,
+      `${droppedComments} comment(s) of the source are not carried over.`,
     );
+  }
+  const outputFormFields = new Map<string, number>();
+  for (const field of out.story.state.fields) {
+    if (isFormField(field)) {
+      outputFormFields.set(
+        field.kind,
+        (outputFormFields.get(field.kind) ?? 0) + 1,
+      );
+    }
+  }
+  for (const [kind, placed] of placedFormFields) {
+    const left =
+      (droppedFields.get(kind) ?? 0) -
+      Math.min(placed, outputFormFields.get(kind) ?? 0);
+    if (left > 0) {
+      droppedFields.set(kind, left);
+    } else {
+      droppedFields.delete(kind);
+    }
   }
   if (droppedFields.size > 0) {
     warnings.push(
@@ -2257,7 +2409,7 @@ export const reportTemplatePlanOutput = async ({
       ),
     },
     dropped: {
-      comments: source.story.state.comments,
+      comments: droppedComments,
       sourceFields: [...droppedFields].map(([kind, count]) => ({
         kind,
         count,
@@ -2269,6 +2421,7 @@ export const reportTemplatePlanOutput = async ({
     textEffects,
     updateFields,
     ...(sourceHeaders === undefined ? {} : { sourceHeaders }),
+    ...(sourceComments === undefined ? {} : { sourceComments }),
     conformance: {
       status: conformance.status,
       templateStatus: templateConformance.status,
@@ -2288,7 +2441,9 @@ const verifyUnguarded = async ({
 }: VerifyTemplatePlanOutputArgs): Promise<
   Result<TemplatePlanReport, TemplatePlanError>
 > => {
-  const analyzedSource = await analyzeSource(source, viewOf(plan));
+  const analyzedSource = (await analyzeSource(source, viewOf(plan))).map(
+    (document) => withPlanColors(document, plan),
+  );
   if (Result.isError(analyzedSource)) {
     return analyzedSource;
   }

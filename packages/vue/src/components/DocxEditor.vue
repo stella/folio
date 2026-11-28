@@ -36,15 +36,8 @@
     :data-folio-locale-pending="!localeReady || undefined"
     :aria-busy="localeStatus.type === 'loading' || undefined"
   >
-    <div
-      v-if="localeStatus.type === 'failed'"
-      class="docx-editor-vue__locale-loading docx-editor-vue__error"
-      role="alert"
-    >
-      {{ localeStatus.error.message }}
-    </div>
     <LocaleLoading
-      v-else-if="!localeReady"
+      v-if="!localeReady"
       class="docx-editor-vue__locale-loading"
     />
     <div class="docx-editor-vue__toolbar-shell">

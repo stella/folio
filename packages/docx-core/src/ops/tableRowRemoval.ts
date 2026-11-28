@@ -17,6 +17,7 @@ import {
   TABLE_CELL_VERTICAL_MERGES,
   tableCellVerticalMerge,
 } from "../model/tableCellVerticalMerge";
+import { gridSpanInColumns } from "../model/tableGridLimits";
 import { rangeBoundaryDefinitions } from "./rangeBoundaries";
 import { tableGrid } from "./tableGrid";
 import { DOCUMENT_OP_TYPES } from "./types";
@@ -65,11 +66,37 @@ const withMergesHandedOn = (
   let handed = false;
   const cells = nextRow.cells.map((cell, index) => {
     const slot = following.find((entry) => entry.index === index);
+    if (slot === undefined) return cell;
+    const merge = tableCellVerticalMerge(cell.formatting?.vMerge);
+    const change = cell.structuralChange;
     if (
-      slot === undefined ||
+      table.formatting?.gridChange?.geometryChange === undefined &&
+      merge !== TABLE_CELL_VERTICAL_MERGES.CONTINUE &&
+      change?.type === "tableCellMerge" &&
+      change.verticalMergeOriginal === TABLE_CELL_VERTICAL_MERGES.CONTINUE &&
+      removed.some(
+        (entry) =>
+          entry.start === slot.start &&
+          entry.end === slot.end &&
+          tableCellVerticalMerge(entry.cell.formatting?.vMerge) ===
+            TABLE_CELL_VERTICAL_MERGES.RESTART,
+      )
+    ) {
+      // Its earlier continuation used the row we just removed as its owner.
+      // A later rejection must keep the surviving merge anchored here.
+      handed = true;
+      const keepsContinuations = later.some(
+        ({ ownerRow, ownerIndex }) =>
+          ownerRow === rowIndex + 1 && ownerIndex === index,
+      );
+      const structuralChange = { ...change };
+      if (keepsContinuations) structuralChange.verticalMergeOriginal = "rest";
+      else delete structuralChange.verticalMergeOriginal;
+      return { ...cell, structuralChange };
+    }
+    if (
       slot.ownerRow !== rowIndex ||
-      tableCellVerticalMerge(cell.formatting?.vMerge) !==
-        TABLE_CELL_VERTICAL_MERGES.CONTINUE
+      merge !== TABLE_CELL_VERTICAL_MERGES.CONTINUE
     )
       return cell;
     const owner = removed.find((entry) => entry.index === slot.ownerIndex);
@@ -255,7 +282,7 @@ const spansOf = (row: TableRow | undefined) => {
   let at = row?.formatting?.gridBefore ?? 0;
   return (row?.cells ?? []).map((cell) => {
     const start = at;
-    at += cell.formatting?.gridSpan ?? 1;
+    at += gridSpanInColumns(cell.formatting?.gridSpan);
     return { cell, key: `${start}:${at}` };
   });
 };

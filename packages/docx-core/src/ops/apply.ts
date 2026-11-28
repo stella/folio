@@ -30,6 +30,7 @@ import {
   sameBlockList,
   storyBody,
   storyParagraphs,
+  survivingBlockListAnchor,
 } from "./blocks";
 /**
  * Apply a document operation and record its exact inverse.
@@ -94,6 +95,7 @@ import {
   copyOriginBoundaryKeysInBlocks,
   hasValidCopyOriginAncestors,
 } from "./copyOriginAncestors";
+import { setCustomXmlMarkup } from "./customXmlMarkup";
 import {
   isolateKeptDeletionBoundaries,
   keptDeletionBoundaries,
@@ -202,6 +204,7 @@ import {
 } from "./refusal";
 import { type ApplyOps, resolveRevision } from "./resolve";
 import {
+  carriesStamp,
   foldedParagraphPropertyChange,
   foldedRecordInfo,
   foldedRevisionIds,
@@ -228,6 +231,7 @@ import {
 import { setRevisionInfo } from "./revisionInfo";
 import { isOwnRecord } from "./revisionOwner";
 import {
+  blocksEnding,
   documentStories,
   findStoryBody,
   sameStory,
@@ -2821,20 +2825,6 @@ const replaceBlocks = (document: Document, op: ReplaceBlocksOp): Applied => {
         blocks: removalList,
         index: start.index,
       });
-    // A block-level `w:sdt` emptied of its only paragraph stays, holding an
-    // empty `w:sdtContent`; no operation addresses a block list without a
-    // paragraph, so nothing could put the paragraph back.
-    if (
-      inverseAt === undefined &&
-      !removalList.some(
-        (block) => block.type === "paragraph" && block.paraId !== undefined,
-      )
-    )
-      return refuse(
-        op,
-        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-        "An empty replacement needs a paragraph or table boundary that stays in its block list.",
-      );
     if (before.some(({ sectionProperties }) => sectionProperties !== undefined))
       return refuse(
         op,
@@ -2876,22 +2866,61 @@ const replaceBlocks = (document: Document, op: ReplaceBlocksOp): Applied => {
       );
     if (inverseAt === undefined) {
       const nextBody = storyBody(replaced.value, op.story);
-      const anchor = blockListAt(nextBody.content, start.list).findLast(
-        (block) => block.type === "paragraph" && block.paraId !== undefined,
-      );
-      if (anchor?.type !== "paragraph" || anchor.paraId === undefined)
-        return panic(
-          "A validated empty replacement lost its surviving paragraph.",
+      const anchor = survivingBlockListAnchor(nextBody, start.list);
+      if (anchor === undefined)
+        return refuse(
+          op,
+          DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+          "An empty replacement needs a surviving paragraph in its container.",
         );
+      const { list, blockId, ancestorDepth } = anchor;
+      const previousBlocks = blockListAt(body.content, list);
+      const nextBlocks = blockListAt(nextBody.content, list);
+      // An emptied wrapper has no paragraph of its own to address it. Check
+      // the enclosing splice with the same rules that will apply its inverse.
+      if (ancestorDepth !== undefined || !sameBlockList(list, start.list)) {
+        // Snapshot replay may restore an authored story that ended in a
+        // table, but a new replacement must keep its closing paragraph.
+        if (
+          list.length === 0 &&
+          blocksEnding(previousBlocks) === "paragraph" &&
+          blocksEnding(nextBlocks) !== "paragraph"
+        )
+          return refuse(
+            op,
+            DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+            "An empty replacement must leave its story ending with a paragraph.",
+          );
+        if (
+          op.sectionView !== undefined &&
+          !structurallyEqual(op.sectionView.expected, op.sectionView.restore)
+        )
+          return refuse(
+            op,
+            DOCUMENT_OP_REFUSAL_REASONS.SECTION_BOUNDARY,
+            "Removing a paragraph through its enclosing block list preserves section metadata.",
+          );
+        const structural = applyTableOp(document, {
+          type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+          story: op.story,
+          blockId,
+          ...(ancestorDepth === undefined ? {} : { ancestorDepth }),
+          expected: previousBlocks,
+          blocks: nextBlocks,
+        });
+        return structural.isErr()
+          ? refuse(op, structural.error.reason, structural.error.message)
+          : structural;
+      }
       return Result.ok({
         document: replaced.value,
         inverse: [
           {
             type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
             story: op.story,
-            blockId: anchor.paraId,
-            expected: blockListAt(nextBody.content, start.list),
-            blocks: blockListAt(body.content, start.list),
+            blockId,
+            expected: nextBlocks,
+            blocks: previousBlocks,
           },
         ],
         touched: touchedBetween(before, []),
@@ -3272,6 +3301,8 @@ const dispatchCore = ({ document, op, purpose }: DispatchOptions): Applied => {
       return applyPackageResourcesOp(document, op);
     case DOCUMENT_OP_TYPES.SET_CONTENT_CONTROL:
       return setContentControl(document, op);
+    case DOCUMENT_OP_TYPES.SET_CUSTOM_XML_MARKUP:
+      return setCustomXmlMarkup(document, op);
     case DOCUMENT_OP_TYPES.INSERT_COLUMN:
     case DOCUMENT_OP_TYPES.DELETE_COLUMN:
     case DOCUMENT_OP_TYPES.MERGE_CELLS:
@@ -3432,6 +3463,8 @@ export const stampOf = (op: DocumentOp): RevisionStamp | undefined => {
     case DOCUMENT_OP_TYPES.SET_TABLE_PROPS:
     case DOCUMENT_OP_TYPES.ADD_NOTE:
     case DOCUMENT_OP_TYPES.REMOVE_NOTE:
+    case DOCUMENT_OP_TYPES.SET_CUSTOM_XML_MARKUP:
+    case DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW:
       return op.revision;
     case DOCUMENT_OP_TYPES.CREATE_COMMENT:
     case DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT:
@@ -3445,7 +3478,6 @@ export const stampOf = (op: DocumentOp): RevisionStamp | undefined => {
     case DOCUMENT_OP_TYPES.SPLIT_INLINE:
     case DOCUMENT_OP_TYPES.JOIN_INLINE:
     case DOCUMENT_OP_TYPES.REPLACE_BLOCKS:
-    case DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW:
     case DOCUMENT_OP_TYPES.REPLACE_INLINE:
     case DOCUMENT_OP_TYPES.RESOLVE_REVISION:
     case DOCUMENT_OP_TYPES.SET_TABLE_ROWS:
@@ -3464,6 +3496,60 @@ export const stampOf = (op: DocumentOp): RevisionStamp | undefined => {
     }
   }
 };
+
+/**
+ * The ids of the custom XML elements' own records the stamp marks and the
+ * document did not hold, in document order, in content controls and table
+ * cells too.
+ */
+const stampedCustomXmlMarkupRevisionIds = ({
+  blocks,
+  stamp,
+  known,
+}: {
+  blocks: readonly BlockContent[];
+  stamp: RevisionStamp;
+  known: KeyMembership;
+}): number[] =>
+  blocks.flatMap((block): number[] => {
+    switch (block.type) {
+      case "blockCustomXml":
+        return [
+          ...[block.insertion, block.deletion].flatMap((record) =>
+            record !== undefined &&
+            carriesStamp(record.info, stamp) &&
+            !known.has(
+              slotKey({ space: IDENTITY_SPACES.REVISION, id: record.info.id }),
+            )
+              ? [record.info.id]
+              : [],
+          ),
+          ...stampedCustomXmlMarkupRevisionIds({
+            blocks: block.content,
+            stamp,
+            known,
+          }),
+        ];
+      case "blockSdt":
+        return stampedCustomXmlMarkupRevisionIds({
+          blocks: block.content,
+          stamp,
+          known,
+        });
+      case "table":
+        return block.rows.flatMap((row) =>
+          row.cells.flatMap((cell) =>
+            stampedCustomXmlMarkupRevisionIds({
+              blocks: cell.content,
+              stamp,
+              known,
+            }),
+          ),
+        );
+      default:
+        return [];
+    }
+  });
 
 /**
  * The blocks an edit replaced and the ones it left in their place. Shared
@@ -3566,6 +3652,11 @@ const recordedRevisions = ({
     if (blocks.after.length === 0) continue;
     tableRevisions.push(
       ...stampedTableRevisionIds({ blocks: blocks.after, stamp, known }),
+      ...stampedCustomXmlMarkupRevisionIds({
+        blocks: blocks.after,
+        stamp,
+        known,
+      }),
     );
     const replaced: Paragraph[] = [];
     for (const { paragraph } of storyParagraphs({ content: blocks.after })) {

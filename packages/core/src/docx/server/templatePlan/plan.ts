@@ -6,20 +6,27 @@
  */
 import { Result } from "better-result";
 
-import type { Style } from "../../../types/document";
+import type { ListRendering, Style } from "../../../types/document";
 import { parseFieldInstruction } from "../../fieldParser";
+import { listRenderingDefinitionsMatch } from "../../listRendering";
 import { computeListRendering } from "../../numberingParser";
 import { NAMESPACES, type XmlElement } from "../../xmlParser";
-import type { AnalyzedBlock, AnalyzedDocument } from "./blocks";
+import {
+  type AnalyzedBlock,
+  type AnalyzedDocument,
+  bookmarkTargetsOf,
+} from "./blocks";
 import {
   bookmarkIdsOf,
   type BookmarkWrap,
   mintRefBookmarkName,
+  pagerefFieldInstruction,
   refFieldInstruction,
 } from "./builders";
 import {
   type Emphasis,
   emphasisDeviation,
+  type EmphasisOverride,
   emphasisSignature,
   paragraphBaseline,
   readDirectEmphasis,
@@ -36,6 +43,7 @@ import type {
   AtomKind,
   AtomLink,
   InlineAtom,
+  ParagraphCommentMark,
   ParagraphRead,
   StoryField,
 } from "./story";
@@ -98,6 +106,9 @@ export type NumberingMint = {
   starts: Map<number, number>;
 };
 
+/** A list of the source the output carries, under its new instance id. */
+export type CarriedSourceList = { sourceNumId: number; numId: number };
+
 export type ResolvedNumbering =
   | { kind: "style" }
   | { kind: "none" }
@@ -140,6 +151,8 @@ export type ResolvedParagraph = {
   tabStops: readonly number[] | null;
   /** The paragraph's own alignment, or null. */
   alignment: TemplatePlanAlignment | null;
+  /** The paragraph's own outline level (0 for level 1), or null. */
+  outlineLevel: number | null;
   /** The paragraph's own space in front and behind, or null. */
   spacing: TemplatePlanSpacing | null;
   /** The section the paragraph is the last of, or null. */
@@ -174,6 +187,25 @@ export type ResolvedSlot = {
 };
 
 /** A `REF` switch that shows the target paragraph's number, not its text. */
+
+/** Whether two lists render a level alike: the same format, text and
+ *  look, whatever their numbers and where they start (the group's own
+ *  instance says where it starts; the labels it prints are verified). */
+const sameListRendering = (
+  left: ListRendering | null,
+  right: ListRendering | null,
+): boolean => {
+  if (left === null || right === null) {
+    return false;
+  }
+  const looks = ({
+    startOverride: _startOverride,
+    levelStarts: _levelStarts,
+    ...rest
+  }: ListRendering): ListRendering => ({ ...rest, numId: 0 });
+  return listRenderingDefinitionsMatch(looks(left), looks(right));
+};
+
 const SHOWS_NUMBER = /\\[nrw]\b/u;
 
 const fieldCharOf = (run: XmlElement): string | null =>
@@ -221,20 +253,33 @@ const holdsText = (element: XmlElement): boolean => {
  * began; text behind it stays, whatever field follows that text.
  */
 const endsOpenField = (paragraph: XmlElement): boolean => {
+  const end = openFieldEndRun(paragraph);
+  if (end === null) {
+    return false;
+  }
   const children = elementChildren(paragraph);
+  return !children.slice(children.indexOf(end) + 1).some(holdsText);
+};
+
+/**
+ * The run that ends the field left open in front of a paragraph: the first
+ * end that closes no field the paragraph began. Null when the paragraph
+ * does not end it in runs of its own.
+ */
+export const openFieldEndRun = (paragraph: XmlElement): XmlElement | null => {
   let depth = 0;
-  for (const [position, child] of children.entries()) {
+  for (const child of elementChildren(paragraph)) {
     const mark = fieldCharOf(child);
     if (mark === "begin") {
       depth += 1;
     } else if (mark === "end") {
       if (depth === 0) {
-        return !children.slice(position + 1).some(holdsText);
+        return child;
       }
       depth -= 1;
     }
   }
-  return false;
+  return null;
 };
 
 /**
@@ -248,11 +293,17 @@ const endsOpenField = (paragraph: XmlElement): boolean => {
 const contentsWithEntries = (
   template: AnalyzedDocument,
   keptIds: ReadonlySet<string>,
-): { first: AnalyzedBlock; textKept: number; rest: AnalyzedBlock[] }[] => {
+): {
+  first: AnalyzedBlock;
+  textKept: number;
+  rest: AnalyzedBlock[];
+  tail: AnalyzedBlock | null;
+}[] => {
   const found: {
     first: AnalyzedBlock;
     textKept: number;
     rest: AnalyzedBlock[];
+    tail: AnalyzedBlock | null;
   }[] = [];
   for (const field of template.story.state.fields) {
     if (
@@ -268,17 +319,29 @@ const contentsWithEntries = (
       field.endParagraphOrdinal + 1,
     );
     const last = rest.at(-1);
+    // A field that ends in the paragraph of the next heading (the end was
+    // left in front of it) keeps that paragraph from behind the end when
+    // the plan keeps it, and needs it not at all when the plan leaves it
+    // out as sample text: the field is closed in its first paragraph.
+    const alone = last !== undefined && endsOpenField(last.element);
+    const tailKept = last !== undefined && keptIds.has(last.block.id);
+    const entries = alone || tailKept ? rest : rest.slice(0, -1);
     if (
       first !== undefined &&
       last !== undefined &&
-      [first, ...rest].every(
+      [first, ...entries].every(
         ({ block, parentId }) => parentId === null && keptIds.has(block.id),
       ) &&
       field.resultStart >= 0 &&
       fieldSeparatorRun(first.element) !== null &&
-      endsOpenField(last.element)
+      openFieldEndRun(last.element) !== null
     ) {
-      found.push({ first, textKept: field.resultStart, rest });
+      found.push({
+        first,
+        textKept: field.resultStart,
+        rest: alone ? rest : rest.slice(0, -1),
+        tail: alone || !tailKept ? null : last,
+      });
     }
   }
   return found;
@@ -294,8 +357,13 @@ export type ResolvedPlan = {
   byBlockId: Map<string, ResolvedParagraph>;
   omitted: Map<string, TemplatePlanOmitReason>;
   mints: NumberingMint[];
+  /** The source's lists the output carries, in the order first named. */
+  sourceLists: CarriedSourceList[];
   /** The bookmark of every paragraph a reference targets. */
   bookmarks: Map<ResolvedParagraph, BookmarkWrap>;
+  /** The output bookmark a kept internal link points to, by the name of
+   *  the source bookmark it pointed to. */
+  linkAnchors: Map<string, string>;
   references: {
     reference: TemplatePlanReference;
     paragraph: ResolvedParagraph;
@@ -309,6 +377,9 @@ export type ResolvedPlan = {
    *  entries they cache: each with the length of the text it keeps in front
    *  of the field's result. */
   emptiedContents: Map<AnalyzedBlock, number>;
+  /** Kept paragraphs a table of contents ends in with text behind its end:
+   *  written from behind that end. */
+  contentsTails: Set<AnalyzedBlock>;
 };
 
 type Refusal = {
@@ -385,8 +456,105 @@ const showsLabel = ({ block }: AnalyzedBlock): boolean =>
 
 export type SignatureContext = Pick<
   AnalyzedDocument,
-  "styles" | "defaultStyleId" | "defaultEmphasis"
+  "styles" | "defaultStyleId" | "defaultEmphasis" | "keptColors"
 >;
+
+/** A deviation with only the colours a plan keeps. */
+/**
+ * A deviation with the colours a plan keeps: the colour and shading the
+ * text has in effect where they mark part of the text, whether a run or
+ * the paragraph's style gives them (the template's style gives neither);
+ * no other.
+ */
+const withKeptColors = (
+  deviation: EmphasisOverride,
+  effective: Emphasis,
+  kept: ReadonlySet<string> | undefined,
+): EmphasisOverride => {
+  const out = { ...deviation };
+  delete out.color;
+  delete out.shd;
+  if (effective.color !== null && kept?.has(`color:${effective.color}`)) {
+    out.color = effective.color;
+  }
+  if (effective.shd !== null && kept?.has(`shd:${effective.shd}`)) {
+    out.shd = effective.shd;
+  }
+  return out;
+};
+
+/** The amount of text a measure of colour counts: its characters that are
+ *  not blanks, whatever runs hold them. */
+const inkLength = (text: string): number => text.replace(/\s/gu, "").length;
+
+/** A source as a plan reads it: with the colours it keeps, if any. */
+export const withPlanColors = (
+  document: AnalyzedDocument,
+  plan: unknown,
+): AnalyzedDocument =>
+  typeof plan === "object" &&
+  plan !== null &&
+  "textColors" in plan &&
+  plan.textColors === "keep"
+    ? { ...document, keptColors: markingColorsOf(document) }
+    : document;
+
+/** The share of a document's text a colour may cover and still mark part
+ *  of it. */
+const MARKING_SHARE = 0.5;
+
+/**
+ * The colours and run shadings of a document that mark part of its text:
+ * each covering less than half of it. Read off the effective colour of
+ * every run of the main story and of its footnotes and endnotes, styles
+ * included.
+ */
+export const markingColorsOf = (document: AnalyzedDocument): Set<string> => {
+  const covered = new Map<string, number>();
+  let total = 0;
+  const reads = [
+    ...document.story.paragraphs.map(({ read }) => read),
+    ...[document.footnotes, document.endnotes].flatMap(({ notes }) =>
+      notes.flatMap(({ paragraphs }) => paragraphs),
+    ),
+  ];
+  for (const read of reads) {
+    if (read === null) {
+      continue;
+    }
+    const style = document.styles.get(
+      read.styleId ?? document.defaultStyleId ?? "",
+    );
+    const baseline = paragraphBaseline(style, document.defaultEmphasis);
+    for (const atom of read.atoms) {
+      const length = inkLength(atom.text);
+      if (length === 0) {
+        continue;
+      }
+      total += length;
+      const effective = withOverride(
+        withCharacterStyle(
+          baseline,
+          document.styles.get(wChildVal(atom.runProperties, "rStyle") ?? ""),
+        ),
+        readDirectEmphasis(atom.runProperties),
+      );
+      for (const key of [
+        effective.color === null ? null : `color:${effective.color}`,
+        effective.shd === null ? null : `shd:${effective.shd}`,
+      ]) {
+        if (key !== null) {
+          covered.set(key, (covered.get(key) ?? 0) + length);
+        }
+      }
+    }
+  }
+  return new Set(
+    [...covered]
+      .filter(([, length]) => length < total * MARKING_SHARE)
+      .map(([key]) => key),
+  );
+};
 
 export type ParagraphPiecesOptions = {
   read: ParagraphRead;
@@ -409,13 +577,16 @@ export const hyperlinkFieldLink = ({
     return null;
   }
   const { argument, switches } = parseFieldInstruction(instruction);
-  // Without an address the field points into its own document.
-  if (argument === undefined || argument === "") {
-    return null;
-  }
   const location = switches.find(
     ({ switch: name }) => name.toLowerCase() === LOCATION_SWITCH,
   )?.value;
+  // Without an address the field points into its own document: to the
+  // bookmark its location names, when it names one.
+  if (argument === undefined || argument === "") {
+    return location === undefined || location === ""
+      ? null
+      : { kind: "anchor", anchor: location };
+  }
   return { kind: "url", url: argument, anchor: location ?? null };
 };
 
@@ -465,7 +636,7 @@ const statedOver = (
 /** The pieces of one source paragraph, each with the emphasis it states. */
 export const paragraphPieces = ({
   read,
-  context: { styles, defaultStyleId, defaultEmphasis },
+  context: { styles, defaultStyleId, defaultEmphasis, keptColors },
   origin,
   fields,
 }: ParagraphPiecesOptions): ExpectedPiece[] => {
@@ -487,15 +658,15 @@ export const paragraphPieces = ({
       const isLinkLook =
         link !== null &&
         LINK_STYLE_NAMES.has(characterStyle?.name?.toLowerCase() ?? "");
+      const effective = withOverride(
+        isLinkLook ? baseline : withCharacterStyle(baseline, characterStyle),
+        readDirectEmphasis(atom.runProperties),
+      );
       signature = emphasisSignature(
-        emphasisDeviation(
-          withOverride(
-            isLinkLook
-              ? baseline
-              : withCharacterStyle(baseline, characterStyle),
-            readDirectEmphasis(atom.runProperties),
-          ),
-          over,
+        withKeptColors(
+          emphasisDeviation(effective, over),
+          effective,
+          keptColors,
         ),
       );
     }
@@ -508,6 +679,52 @@ export const paragraphPieces = ({
       origin,
     };
   });
+};
+
+/**
+ * A paragraph's pieces with a piece for each of its comment marks, in front
+ * of the atom the mark stands before. Each piece holds no text.
+ */
+export const withCommentMarks = (
+  pieces: readonly ExpectedPiece[],
+  marks: readonly ParagraphCommentMark[],
+): ExpectedPiece[] => {
+  if (marks.length === 0) {
+    return [...pieces];
+  }
+  const out: ExpectedPiece[] = [];
+  let next = 0;
+  const placeUpTo = (atomIndex: number): void => {
+    for (
+      let mark = marks[next];
+      mark !== undefined && mark.atomIndex <= atomIndex;
+      mark = marks[next]
+    ) {
+      next += 1;
+      out.push({
+        kind: "commentMark",
+        text: "",
+        signature: "",
+        link: mark.link,
+        atom: {
+          kind: "commentMark",
+          text: "",
+          runProperties: null,
+          link: mark.link,
+          element: null,
+          fields: [],
+          comment: { kind: mark.kind, id: mark.id },
+        },
+        origin: "document",
+      });
+    }
+  };
+  for (const [index, piece] of pieces.entries()) {
+    placeUpTo(index);
+    out.push(piece);
+  }
+  placeUpTo(Number.POSITIVE_INFINITY);
+  return out;
 };
 
 type PositionedPiece = { piece: ExpectedPiece; start: number; end: number };
@@ -742,7 +959,17 @@ const partSegments = ({
   const segments: ExpectedSegment[] = [];
   let open:
     { reference: TemplatePlanReference; pieces: ExpectedPiece[] } | undefined;
+  // Comment marks inside a reference stand right behind its field.
+  let held: ExpectedPiece[] = [];
   const close = (): Result<undefined, TemplatePlanError> => {
+    const closed = closeReference();
+    segments.push(
+      ...held.map((piece): ExpectedSegment => ({ kind: "piece", piece })),
+    );
+    held = [];
+    return closed;
+  };
+  const closeReference = (): Result<undefined, TemplatePlanError> => {
     if (open === undefined) {
       return Result.ok(undefined);
     }
@@ -796,6 +1023,10 @@ const partSegments = ({
         return closed;
       }
       segments.push({ kind: "piece", piece });
+      continue;
+    }
+    if (piece.kind === "commentMark") {
+      held.push(piece);
       continue;
     }
     if (piece.kind !== "text") {
@@ -931,6 +1162,7 @@ type ParagraphRequest = {
   indent?: TemplatePlanIndent | undefined;
   tabStops?: readonly number[] | undefined;
   alignment?: TemplatePlanAlignment | undefined;
+  outlineLevel?: number | undefined;
   spacing?: TemplatePlanSpacing | undefined;
   endsSection?: TemplatePlanSection | undefined;
 };
@@ -1054,6 +1286,7 @@ export const resolvePlan = (
   );
   let nextNumId = maxOf(usedNumIds, 0) + 1;
   const mints = new Map<string, NumberingMint>();
+  const sourceLists = new Map<number, CarriedSourceList>();
 
   const paragraphStyle = (
     styleId: string | undefined,
@@ -1093,9 +1326,28 @@ export const resolvePlan = (
     }
     const unknown = (message: string): Result<never, TemplatePlanError> =>
       Result.err(refuse({ code: "numbering-unknown", message, blockId }));
-    const { numId, ilvl, restartFrom, baseNumId, group } = numbering;
+    const { numId, ilvl, restartFrom, baseNumId, group, sourceNumId } =
+      numbering;
     if (templateNumbering === null) {
       return unknown("The template has no numbering definitions.");
+    }
+    if (sourceNumId !== undefined) {
+      if (
+        source.numbering === null ||
+        computeListRendering({ numId: sourceNumId, ilvl }, source.numbering) ===
+          null
+      ) {
+        return unknown(
+          `The source has no list ${sourceNumId} with level ${ilvl}.`,
+        );
+      }
+      let carried = sourceLists.get(sourceNumId);
+      if (carried === undefined) {
+        carried = { sourceNumId, numId: nextNumId };
+        nextNumId += 1;
+        sourceLists.set(sourceNumId, carried);
+      }
+      return Result.ok({ kind: "direct", numId: carried.numId, ilvl });
     }
     const mintsInstance =
       numId === "new" || restartFrom !== undefined || group !== undefined;
@@ -1149,7 +1401,20 @@ export const resolvePlan = (
       mints.set(key, mint);
       return Result.ok({ kind: "direct", numId: mint.numId, ilvl });
     }
-    if (mint.baseNumId !== base) {
+    // Two lists of one definition (a template that binds its heading and
+    // its clause styles to two instances of the same outline) count as
+    // one: the group's instance renders the level as the other list does.
+    if (
+      mint.baseNumId !== base &&
+      (mint.abstractNumId !== abstractNumId ||
+        !sameListRendering(
+          computeListRendering(
+            { numId: mint.baseNumId, ilvl },
+            templateNumbering,
+          ),
+          baseLevel,
+        ))
+    ) {
       return invalid(`List group ${key} spans two lists.`);
     }
     if (restartFrom !== undefined) {
@@ -1198,6 +1463,7 @@ export const resolvePlan = (
     indent,
     tabStops,
     alignment,
+    outlineLevel,
     spacing,
     endsSection,
   }: ParagraphRequest): Result<ResolvedParagraph, TemplatePlanError> => {
@@ -1322,12 +1588,16 @@ export const resolvePlan = (
       }
       // Marks of the page the source was laid out on go when the plan
       // says so; every other piece of the paragraph stays.
-      const every = paragraphPieces({
+      const read = paragraphPieces({
         read: block.read,
         context: source,
         origin: "document",
         fields: source.story.state.fields,
       });
+      const every =
+        plan.comments === "keep"
+          ? withCommentMarks(read, block.read.commentMarks)
+          : read;
       const kept =
         planned.dropPageShapes === true
           ? every.filter(
@@ -1444,6 +1714,7 @@ export const resolvePlan = (
       indent: indent ?? null,
       tabStops: tabStops ?? null,
       alignment: alignment ?? null,
+      outlineLevel: outlineLevel ?? null,
       spacing: spacing ?? null,
       endsSection: endsSection ?? null,
     };
@@ -1720,6 +1991,7 @@ export const resolvePlan = (
           indent: item.indent,
           tabStops: item.tabStops,
           alignment: item.alignment,
+          outlineLevel: item.outlineLevel,
           spacing: item.spacing,
           endsSection: item.endsSection,
         });
@@ -1920,11 +2192,20 @@ export const resolvePlan = (
     const from = templateOrder.indexOf(
       template.story.paragraphs[field.paragraphOrdinal]?.topLevelId ?? "",
     );
+    const endParagraph = field.closed
+      ? template.story.paragraphs[field.endParagraphOrdinal]
+      : undefined;
+    // A table of contents ending in the next heading's paragraph may leave
+    // that paragraph out: it is closed in its first paragraph.
+    const tailFree =
+      field.kind === "TOC" &&
+      endParagraph !== undefined &&
+      openFieldEndRun(endParagraph.element) !== null &&
+      !endsOpenField(endParagraph.element) &&
+      !keptPosition.has(endParagraph.topLevelId);
     const to = field.closed
-      ? templateOrder.indexOf(
-          template.story.paragraphs[field.endParagraphOrdinal]?.topLevelId ??
-            "",
-        )
+      ? templateOrder.indexOf(endParagraph?.topLevelId ?? "") -
+        (tailFree ? 1 : 0)
       : templateOrder.length - 1;
     if (from === -1 || to <= from) {
       continue;
@@ -1955,10 +2236,14 @@ export const resolvePlan = (
   // A plan that freezes such a field keeps its result as text instead, so
   // nothing of it is a field to empty.
   const emptiedContents = new Map<AnalyzedBlock, number>();
-  for (const { first, textKept, rest } of freezeKinds.includes("TOC")
+  const contentsTails = new Set<AnalyzedBlock>();
+  for (const { first, textKept, rest, tail } of freezeKinds.includes("TOC")
     ? []
     : contentsWithEntries(template, keptTemplateIds)) {
     emptiedContents.set(first, textKept);
+    if (tail !== null) {
+      contentsTails.add(tail);
+    }
     const gone = new Set(rest);
     for (let position = items.length - 1; position >= 0; position -= 1) {
       const item = items[position];
@@ -2078,10 +2363,11 @@ export const resolvePlan = (
       nextBookmarkId += 1;
       bookmarks.set(target, bookmark);
     }
-    const instruction = refFieldInstruction(
-      bookmark.name,
-      reference.instruction,
-    );
+    const instruction = (
+      reference.field === "PAGEREF"
+        ? pagerefFieldInstruction
+        : refFieldInstruction
+    )(bookmark.name, reference.instruction);
     if (instruction === null) {
       return invalid(
         `A reference in ${reference.blockId} carries more than field switches.`,
@@ -2116,6 +2402,46 @@ export const resolvePlan = (
     }
   }
 
+  // Internal links the plan keeps: each to the plan's bookmark on the
+  // output paragraph that stands for the one its source bookmark marks.
+  const linkAnchors = new Map<string, string>();
+  if (plan.internalLinks === "keep") {
+    const targets = bookmarkTargetsOf(source.story);
+    for (const paragraph of new Set(byBlockId.values())) {
+      for (const piece of segmentPieces(paragraph.segments)) {
+        const anchor = piece.link?.kind === "anchor" ? piece.link.anchor : null;
+        if (
+          anchor === null ||
+          piece.origin !== "document" ||
+          linkAnchors.has(anchor)
+        ) {
+          continue;
+        }
+        const targetBlockId = targets.get(anchor)?.blockId;
+        const target =
+          targetBlockId === undefined
+            ? undefined
+            : byBlockId.get(targetBlockId);
+        if (target === undefined) {
+          continue;
+        }
+        let bookmark = bookmarks.get(target);
+        if (bookmark === undefined) {
+          bookmark = {
+            id: nextBookmarkId,
+            name: mintRefBookmarkName(
+              `${source.manifest.sha256}:${target.parts.at(0)?.block.block.id ?? ""}`,
+              takenNames,
+            ),
+          };
+          nextBookmarkId += 1;
+          bookmarks.set(target, bookmark);
+        }
+        linkAnchors.set(anchor, bookmark.name);
+      }
+    }
+  }
+
   return Result.ok({
     items,
     nestedSlots,
@@ -2123,10 +2449,13 @@ export const resolvePlan = (
     byBlockId,
     omitted,
     mints: [...mints.values()],
+    sourceLists: [...sourceLists.values()],
     bookmarks,
+    linkAnchors,
     references: resolvedReferences,
     freezeKinds: new Set(freezeKinds),
     keptTemplateBlocks,
     emptiedContents,
+    contentsTails,
   });
 };

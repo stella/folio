@@ -27,7 +27,7 @@
         :on-cut="() => clipboardCallbackCounts.cut++"
         :on-paste="() => clipboardCallbackCounts.paste++"
         :onFindResultChange="(result) => findResultNotifications.push(result)"
-        :on-error="(error) => (status = error.message)"
+        :on-error="(error) => (editorError = error.message)"
         :on-editor-view-ready="scrollParityHost.onViewReady"
         @ready="scrollParityHost.onReady"
         :preserve-document-while-loading="
@@ -35,6 +35,9 @@
         "
       />
     </main>
+    <p v-if="editorError" class="pg-vue-error" role="alert">
+      {{ editorError }}
+    </p>
     <p v-if="status" class="pg-vue-status">{{ status }}</p>
   </div>
 </template>
@@ -91,6 +94,7 @@ const anonymizationTerms = shallowRef<
 const scrollParityHost = buildScrollParityBridge(() => editorRef.value);
 const documentBuffer = shallowRef<ArrayBuffer | null>(null);
 const currentDocument = shallowRef<FolioDocument | null>(null);
+const editorError = ref("");
 const status = ref("");
 const clipboardCallbackCounts = { copy: 0, cut: 0, paste: 0 };
 const findResultNotifications: (FindResult | null)[] = [];

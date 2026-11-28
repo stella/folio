@@ -3,6 +3,7 @@ import { panic } from "better-result";
 import path from "node:path";
 
 import type {
+  BlockContent,
   Document,
   Paragraph,
   SdtProperties,
@@ -1116,6 +1117,58 @@ export const envelopes = (): DocumentOpEnvelope[] => {
     out.push(toOpEnvelope(op));
     for (const inverse of result.value.inverse) out.push(toOpEnvelope(inverse));
     controls = result.value.document;
+  }
+
+  // A custom XML element put around a paragraph with the insertion of its
+  // tags recorded on it, and that paragraph's break recorded as deleted
+  // beside it (`setCustomXmlMarkup`, a stamped `setParagraphReview`).
+  const tagged: BlockContent[] = [
+    { type: "paragraph", paraId: "00000901", content: [] },
+    { type: "paragraph", paraId: "00000902", content: [] },
+  ];
+  const tagStamp = {
+    id: 901,
+    author: "Reviewer",
+    date: "2026-01-02T00:00:00Z",
+  };
+  const markupOps: DocumentOp[] = [
+    {
+      type: DOCUMENT_OP_TYPES.SET_CUSTOM_XML_MARKUP,
+      story: OP_STORIES.MAIN,
+      blockId: "00000901",
+      expected: tagged,
+      blocks: [
+        {
+          type: "blockCustomXml",
+          openingXml: '<w:customXml w:element="clause">',
+          closingXml: "</w:customXml>",
+          content: [tagged[0] ?? panic("A tagged paragraph is listed.")],
+          insertion: { info: tagStamp },
+        },
+        tagged[1] ?? panic("A tagged paragraph is listed."),
+      ],
+      revision: tagStamp,
+    },
+    {
+      type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
+      story: OP_STORIES.MAIN,
+      blockId: "00000901",
+      expected: {},
+      review: {
+        pPrMark: { kind: "del", info: { ...tagStamp, id: 902 } },
+      },
+      revision: { ...tagStamp, id: 902 },
+    },
+  ];
+  let markup: Document = {
+    package: { document: { content: cloneModel(tagged) } },
+  };
+  for (const op of markupOps) {
+    const result = applyDocumentOp(markup, op);
+    if (result.isErr()) throw result.error;
+    out.push(toOpEnvelope(op));
+    for (const inverse of result.value.inverse) out.push(toOpEnvelope(inverse));
+    markup = result.value.document;
   }
 
   // A comment's undo rebased over a later comment in another paragraph keeps

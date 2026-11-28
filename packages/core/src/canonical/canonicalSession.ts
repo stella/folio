@@ -383,6 +383,7 @@ const operationChangesStructure = (op: DocumentOp): boolean => {
     case DOCUMENT_OP_TYPES.REPLACE_BLOCKS:
     case DOCUMENT_OP_TYPES.INSERT_TABLE:
     case DOCUMENT_OP_TYPES.DELETE_TABLE:
+    case DOCUMENT_OP_TYPES.SET_CUSTOM_XML_MARKUP:
     case DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS:
     case DOCUMENT_OP_TYPES.INSERT_ROW:
     case DOCUMENT_OP_TYPES.DELETE_ROW:
@@ -1886,12 +1887,13 @@ const intentStory = (intent: EditorIntent): OpStory => {
     case "insertHyperlink":
     case "replaceFragment":
     case "pasteBlocks":
-    case "moveFragment":
-    case "moveBlocks":
     case "replaceText":
     case "formatRun":
     case "insertAtom":
       return intent.from.story;
+    case "moveFragment":
+    case "moveBlocks":
+      return intent.target.story;
     case "generateTOC":
     case "splitParagraph":
     case "formatParagraph":

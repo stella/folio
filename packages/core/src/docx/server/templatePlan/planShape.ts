@@ -24,6 +24,7 @@ export const PLAN_HIGHLIGHT_COLORS: ReadonlySet<string> = new Set(
 );
 const FIELD_KIND = /^[A-Z][A-Z0-9]*$/u;
 const MAX_LIST_LEVEL = 8;
+const MAX_OUTLINE_LEVEL = 8;
 
 type Json = Record<string, unknown>;
 
@@ -86,7 +87,20 @@ const numberingIssue = (value: unknown, where: string): string | null => {
   if (!isObject(value)) {
     return `${where} names a malformed list.`;
   }
-  const { numId, ilvl, restartFrom, baseNumId, group } = value;
+  const { numId, ilvl, restartFrom, baseNumId, group, sourceNumId } = value;
+  if (sourceNumId !== undefined) {
+    if (!isListId(sourceNumId)) {
+      return `${where} keeps a source list with a malformed id.`;
+    }
+    if (
+      numId !== "new" ||
+      restartFrom !== undefined ||
+      baseNumId !== undefined ||
+      group !== undefined
+    ) {
+      return `${where} keeps a source list beside a list of the template.`;
+    }
+  }
   if (numId !== "new" && !isListId(numId)) {
     return `${where} names a list that is neither an id nor "new".`;
   }
@@ -156,19 +170,24 @@ const MAX_INDENT = 31_680;
 /**
  * Whether `value` is an indent a plan may state: at least one of
  * `left`, `hanging` and `firstLine`, each a whole number of twentieths of a
- * point, and not both a hanging and a first-line indent.
+ * point, and not both a hanging and a first-line indent. Only `left` may be
+ * negative: a paragraph may reach into the margin, while a hanging or a
+ * first-line indent is a width.
  */
 const isIndent = (value: unknown): boolean => {
   if (!isObject(value)) {
     return false;
   }
   const keys = Object.keys(value);
+  const side = (key: string, amount: unknown): boolean =>
+    key === "left"
+      ? typeof amount === "number" &&
+        Number.isSafeInteger(amount) &&
+        Math.abs(amount) <= MAX_INDENT
+      : isCount(amount) && amount <= MAX_INDENT;
   return (
     keys.length > 0 &&
-    keys.every(
-      (key) =>
-        INDENT_KEYS.has(key) && isCount(value[key]) && value[key] <= MAX_INDENT,
-    ) &&
+    keys.every((key) => INDENT_KEYS.has(key) && side(key, value[key])) &&
     !(value["hanging"] !== undefined && value["firstLine"] !== undefined)
   );
 };
@@ -260,6 +279,18 @@ const sourceItemIssue = (item: Json, where: string): string | null => {
   }
   if (item["alignment"] !== undefined && !isAlignment(item["alignment"])) {
     return `${where} carries an unknown alignment.`;
+  }
+  const outlineLevel = item["outlineLevel"];
+  if (
+    outlineLevel !== undefined &&
+    !(
+      typeof outlineLevel === "number" &&
+      Number.isInteger(outlineLevel) &&
+      outlineLevel >= 0 &&
+      outlineLevel <= MAX_OUTLINE_LEVEL
+    )
+  ) {
+    return `${where} carries an outline level outside 0 to ${MAX_OUTLINE_LEVEL}.`;
   }
   if (item["spacing"] !== undefined && !isSpacing(item["spacing"])) {
     return `${where} carries a malformed spacing.`;
@@ -393,7 +424,7 @@ const patchesIssue = (patches: unknown): string | null => {
       return `Two numbering patches change level ${String(patch["ilvl"])} of list definition ${String(patch["abstractNumId"])}.`;
     }
     seen.add(key);
-    const { numFmt, lvlText, start, suff, indent, font } = patch;
+    const { numFmt, lvlText, start, suff, indent, font, isLgl } = patch;
     if (
       (font !== undefined && !isFontName(font)) ||
       (numFmt !== undefined &&
@@ -401,6 +432,7 @@ const patchesIssue = (patches: unknown): string | null => {
       (lvlText !== undefined && !(isString(lvlText) && isPlainText(lvlText))) ||
       (start !== undefined && !isCount(start)) ||
       (suff !== undefined && !(isString(suff) && SUFFIXES.has(suff))) ||
+      !isOptionalBoolean(isLgl) ||
       (indent !== undefined && !isIndent(indent))
     ) {
       return "A numbering patch carries a malformed value.";
@@ -422,7 +454,12 @@ const spansIssue = (plan: Json): string | null => {
         !isString(reference["targetBlockId"]) ||
         !isCount(reference["start"]) ||
         !isCount(reference["end"]) ||
-        !isString(reference["instruction"])
+        !isString(reference["instruction"]) ||
+        !(
+          reference["field"] === undefined ||
+          reference["field"] === "REF" ||
+          reference["field"] === "PAGEREF"
+        )
       ) {
         return "A reference is malformed.";
       }
@@ -471,6 +508,9 @@ const fieldsIssue = (fields: unknown): string | null => {
   }
   if (updateOnOpen !== undefined && typeof updateOnOpen !== "boolean") {
     return "The plan's update-on-open choice is not a boolean.";
+  }
+  if (!isOptionalBoolean(fields["contentsOutlineLevels"])) {
+    return "The plan's choice for outline levels in the contents is not a boolean.";
   }
   return null;
 };
@@ -522,6 +562,21 @@ export const planShapeIssue = (plan: unknown): string | null => {
     plan["sourceHeaders"] === "drop" ||
     plan["sourceHeaders"] === "keep"
       ? null
-      : "The plan's choice for the source's headers and footers is unknown.")
+      : "The plan's choice for the source's headers and footers is unknown.") ??
+    (plan["comments"] === undefined ||
+    plan["comments"] === "drop" ||
+    plan["comments"] === "keep"
+      ? null
+      : "The plan's choice for the source's comments is unknown.") ??
+    (plan["internalLinks"] === undefined ||
+    plan["internalLinks"] === "drop" ||
+    plan["internalLinks"] === "keep"
+      ? null
+      : "The plan's choice for the source's internal links is unknown.") ??
+    (plan["textColors"] === undefined ||
+    plan["textColors"] === "drop" ||
+    plan["textColors"] === "keep"
+      ? null
+      : "The plan's choice for the source's text colours is unknown.")
   );
 };

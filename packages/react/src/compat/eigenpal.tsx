@@ -4,8 +4,8 @@ import {
   type JSX,
   type ReactNode,
   type RefAttributes,
-  Suspense,
-  use,
+  useEffect,
+  useState,
 } from "react";
 
 import { IntlProvider, useTranslations } from "use-intl";
@@ -14,6 +14,8 @@ import {
   getLoadedFolioMessages,
   loadFolioMessages,
 } from "@stll/folio-core/i18n/loadMessages";
+import type { FolioMessages } from "@stll/folio-core/i18n/messages";
+import { messages as english } from "@stll/folio-core/i18n/messages/en";
 import { DEFAULT_KEYBOARD_SHORTCUT_SCOPE } from "@stll/folio-core/managers/editorShortcuts";
 import {
   createDocumentWithText,
@@ -48,6 +50,7 @@ export type LocaleProviderProps = {
   children?: ReactNode | undefined;
   i18n?: LegacyTranslations | undefined;
   locale?: string | undefined;
+  onError?: ((error: Error) => void) | undefined;
 };
 
 export type TFunction = (
@@ -131,12 +134,36 @@ export const locales: Record<LocaleCode, LegacyTranslations> = {
 const LoadedLocaleProvider = ({
   children,
   locale,
+  onError,
 }: {
   children: ReactNode;
   locale: string;
+  onError?: ((error: Error) => void) | undefined;
 }): JSX.Element => {
-  const messages =
-    getLoadedFolioMessages(locale) ?? use(loadFolioMessages(locale));
+  const [messages, setMessages] = useState<FolioMessages | undefined>(() =>
+    getLoadedFolioMessages(locale),
+  );
+  useEffect(() => {
+    if (messages !== undefined) return;
+    let active = true;
+    void loadFolioMessages(locale).then(
+      (loaded) => {
+        if (active) setMessages(loaded);
+        return undefined;
+      },
+      (cause: unknown) => {
+        if (!active) return undefined;
+        const error = cause instanceof Error ? cause : new Error(String(cause));
+        onError?.(error);
+        setMessages(english);
+        return undefined;
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [locale, messages, onError]);
+  if (messages === undefined) return localeLoading;
   return (
     <IntlProvider locale={locale} messages={messages}>
       {children}
@@ -150,13 +177,15 @@ export const LocaleProvider = ({
   children,
   i18n,
   locale,
-}: LocaleProviderProps): JSX.Element => (
-  <Suspense fallback={localeLoading}>
-    <LoadedLocaleProvider locale={resolveLocale(locale, i18n)}>
+  onError,
+}: LocaleProviderProps): JSX.Element => {
+  const resolved = resolveLocale(locale, i18n);
+  return (
+    <LoadedLocaleProvider key={resolved} locale={resolved} onError={onError}>
       {children}
     </LoadedLocaleProvider>
-  </Suspense>
-);
+  );
+};
 
 export const useTranslation = (): { t: TFunction } => {
   const t = useTranslations("folio");
@@ -230,7 +259,7 @@ export const DocxEditor: ForwardRefExoticComponent<
     },
     ref,
   ) => (
-    <LocaleProvider i18n={i18n} locale={locale}>
+    <LocaleProvider i18n={i18n} locale={locale} onError={props.onError}>
       <FolioDocxEditor
         {...props}
         // The legacy flag only ever switched the shortcuts off; an explicit

@@ -119,14 +119,9 @@ const hasInvalidXmlLexicalForm = (xml: string): boolean => {
   if (hasIllegalXmlCharacters(xml)) {
     return true;
   }
-  const byteOrderMark = xml.indexOf(BYTE_ORDER_MARK);
-  if (
-    byteOrderMark > 0 ||
-    (byteOrderMark === 0 &&
-      xml.indexOf(BYTE_ORDER_MARK, BYTE_ORDER_MARK.length) !== -1)
-  ) {
-    return true;
-  }
+  // U+FEFF past the start is a character like any other (a zero-width
+  // no-break space; word processors write it in document variables). A
+  // declaration behind it is caught where processing instructions are.
 
   let cursor = 0;
   while (cursor < xml.length) {

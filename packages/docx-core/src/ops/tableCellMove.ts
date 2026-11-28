@@ -3,12 +3,15 @@ import {
   type BlockContent,
   type BlockCustomXml,
   type BlockSdt,
+  type BookmarkEnd,
+  type BookmarkStart,
   type DocxPackage,
   type InlineSdt,
   type MathEquation,
   MAX_REVISION_ID,
   type Paragraph,
   type ParagraphContent,
+  type PositionedBookmarkMarker,
   type PreservedInline,
   type PreservedXmlContent,
   type Run,
@@ -42,6 +45,8 @@ import {
   IDENTITY_SPACES,
   identityKeysIn,
   idKey,
+  type PackageBookmark,
+  packageBookmarkCensus,
   packageDrawingIds,
   packageMoveRangeCensus,
   paragraphIdsIn,
@@ -73,6 +78,7 @@ export type NestedTableMoveSource = {
   paragraphs: string[];
   revisions: number[];
   ranges: TableMoveRanges[];
+  bookmarks: readonly PackageBookmark[];
   insertedRows: number;
   omittedAnchorCount: 0 | 2;
   controls: number[];
@@ -93,7 +99,6 @@ const movableAtom = (leaf: RunContent): boolean =>
     isNoteReferenceId(leaf.id));
 
 const movableRun = (run: Run, pictures: Set<number>): boolean =>
-  run.propertyChanges === undefined &&
   run.content.every((leaf) => {
     if (leaf.type !== "drawing") return movableAtom(leaf);
     const id = movableTablePictureId(leaf);
@@ -217,7 +222,7 @@ const movableMath = ({ display, ommlXml }: MathEquation): boolean => {
   );
 };
 
-const emptyElement = (xml: string) => {
+const readCapturedElement = (xml: string) => {
   const parsed = readXml(xml, {
     conformance: "ooxml",
     inheritedNamespaceScope: OOXML_NAMESPACE_SCOPE,
@@ -225,13 +230,17 @@ const emptyElement = (xml: string) => {
   if (parsed.status !== "parsed" || parsed.value.elements?.length !== 1)
     return undefined;
   const element = parsed.value.elements.at(0);
-  if (element?.type !== "element" || (element.elements?.length ?? 0) > 0)
-    return undefined;
+  if (element?.type !== "element") return undefined;
   const attributes = Object.entries(element.attributes ?? {}).filter(
     ([name]) => name !== "xmlns" && !name.startsWith("xmlns:"),
   );
   const localName = element.name?.slice(element.name.indexOf(":") + 1);
   return { element, localName, attributes };
+};
+
+const emptyElement = (xml: string) => {
+  const parsed = readCapturedElement(xml);
+  return (parsed?.element.elements?.length ?? 0) === 0 ? parsed : undefined;
 };
 
 /** An authored tag wrapper without a separately owned record. */
@@ -260,12 +269,63 @@ export const movableCustomXmlBlock = ({
   );
 };
 
+const localCheckbox = (element: XmlElement): boolean => {
+  const kinds = new Set<string>();
+  return (element.elements ?? []).every((child) => {
+    if (child.type === "text")
+      return typeof child.text === "string" && child.text.trim() === "";
+    if (
+      child.type !== "element" ||
+      child.namespaceUri !== OOXML_NS.w14 ||
+      (child.elements?.length ?? 0) > 0
+    )
+      return false;
+    const name = child.name?.slice(child.name.indexOf(":") + 1);
+    if (
+      (name !== "checked" &&
+        name !== "checkedState" &&
+        name !== "uncheckedState") ||
+      kinds.has(name)
+    )
+      return false;
+    const compatible = Object.keys(child.attributes ?? {}).every(
+      (attribute) => {
+        if (attribute === "xmlns" || attribute.startsWith("xmlns:"))
+          return true;
+        const colon = attribute.indexOf(":");
+        if (
+          colon < 1 ||
+          resolveNamespaceUri(
+            child.namespaceScope,
+            attribute.slice(0, colon),
+          ) !== OOXML_NS.w14
+        )
+          return false;
+        const property = attribute.slice(colon + 1);
+        return (
+          property === "val" || (name !== "checked" && property === "font")
+        );
+      },
+    );
+    if (compatible) kinds.add(name);
+    return compatible;
+  });
+};
+
 const controlPropertyKind = (
   xml: string,
-): "richText" | "binding" | undefined => {
-  const parsed = emptyElement(xml);
+): "richText" | "checkbox" | "binding" | undefined => {
+  const parsed = readCapturedElement(xml);
   if (parsed === undefined) return undefined;
   const { element, localName, attributes } = parsed;
+  if (
+    localName === "checkbox" &&
+    element.namespaceUri === OOXML_NS.w14 &&
+    attributes.length === 0 &&
+    localCheckbox(element)
+  )
+    return "checkbox";
+  if ((element.elements?.length ?? 0) > 0) return undefined;
   if (
     localName === "richText" &&
     wordNamespace(element.namespaceUri) &&
@@ -321,8 +381,9 @@ const movableControlId = (
   properties: InlineSdt["properties"],
 ): number | undefined => {
   const { id, preserved, rawEndPropertiesXml } = properties;
+  const checkbox = properties.sdtType === "checkbox";
   if (
-    properties.sdtType !== "richText" ||
+    (properties.sdtType !== "richText" && !checkbox) ||
     id === undefined ||
     !Number.isInteger(id) ||
     id < -MAX_REVISION_ID - 1 ||
@@ -337,7 +398,13 @@ const movableControlId = (
   const kinds = new Set<string>();
   for (const { xml } of preserved?.children ?? []) {
     const kind = controlPropertyKind(xml);
-    if (kind === undefined || kinds.has(kind)) return undefined;
+    if (
+      kind === undefined ||
+      kinds.has(kind) ||
+      (kind === "checkbox" && !checkbox) ||
+      (kind === "richText" && checkbox)
+    )
+      return undefined;
     kinds.add(kind);
   }
   return id;
@@ -403,6 +470,14 @@ type MoveContentContext = {
   controls: number[];
   proofing: Set<ProofingKind>;
   pictures: Set<number>;
+  priorRevisions?: number[];
+  collectBookmark?: (marker: BookmarkStart | BookmarkEnd) => boolean;
+};
+
+const nestedMoveContext = (context: MoveContentContext): MoveContentContext => {
+  if (context.priorRevisions === undefined) return context;
+  const { priorRevisions: _revisions, ...nested } = context;
+  return nested;
 };
 
 // Both sides of the move carry the inline content. Admit only records whose
@@ -415,7 +490,33 @@ const movableInlineContent = (
   content.every((item) => {
     switch (item.type) {
       case "run":
+        if (item.propertyChanges !== undefined) {
+          if (
+            context.priorRevisions === undefined ||
+            item.propertyChanges.some(
+              ({ boundaryJoins }) => boundaryJoins !== undefined,
+            )
+          )
+            return false;
+          for (const { info } of item.propertyChanges)
+            context.priorRevisions.push(info.id);
+        }
         return movableRun(item, context.pictures);
+      case "bookmarkStart":
+      case "bookmarkEnd":
+        return context.collectBookmark?.(item) ?? false;
+      case "insertion":
+      case "deletion": {
+        if (
+          context.priorRevisions === undefined ||
+          item.resolutionJoins !== undefined
+        )
+          return false;
+        context.priorRevisions.push(item.info.id);
+        // The nested table's native row owns the copy. Keep these older
+        // top-level run records independently reviewable in both copies.
+        return movableInlineContent(item.content, nestedMoveContext(context));
+      }
       case "mathEquation":
         return movableMath(item);
       case "preservedInline":
@@ -424,18 +525,21 @@ const movableInlineContent = (
         // A bidi wrapper can contain a link, but cannot hide a nested one.
         return (
           !context.withinLink &&
-          movableInlineContent(item.children, { ...context, withinLink: true })
+          movableInlineContent(item.children, {
+            ...nestedMoveContext(context),
+            withinLink: true,
+          })
         );
       case "inlineWrapper":
         return (
           (item.kind === "bidi" || item.propertiesXml === undefined) &&
-          movableInlineContent(item.content, context)
+          movableInlineContent(item.content, nestedMoveContext(context))
         );
       case "inlineSdt": {
         const id = movableControlId(item.properties);
         if (id === undefined) return false;
         context.controls.push(id);
-        return movableInlineContent(item.content, context);
+        return movableInlineContent(item.content, nestedMoveContext(context));
       }
       default:
         return false;
@@ -445,6 +549,7 @@ const movableInlineContent = (
 /** The run move can take the paragraph whole without duplicating an anchor. */
 export const tableMoveSource = (
   paragraph: Paragraph,
+  nested?: Pick<MoveContentContext, "priorRevisions" | "collectBookmark">,
 ): TableMoveSource | undefined => {
   const controls: number[] = [];
   const proofing = new Set<ProofingKind>();
@@ -452,7 +557,11 @@ export const tableMoveSource = (
   if (
     paragraph.paraId === undefined ||
     paragraph.pPrMark !== undefined ||
-    paragraph.propertyChanges !== undefined ||
+    (paragraph.propertyChanges !== undefined &&
+      (nested?.priorRevisions === undefined ||
+        paragraph.propertyChanges.some(
+          ({ resolvesWith }) => resolvesWith !== undefined,
+        ))) ||
     paragraph.sectionProperties !== undefined ||
     paragraph.reviewCarrier !== undefined ||
     (paragraph.content.length !== 0 &&
@@ -461,10 +570,13 @@ export const tableMoveSource = (
         controls,
         proofing,
         pictures,
+        ...nested,
       })) ||
     proofing.size !== 0
   )
     return undefined;
+  for (const { info } of paragraph.propertyChanges ?? [])
+    nested?.priorRevisions?.push(info.id);
   return { paragraph, id: paragraph.paraId, controls, pictures };
 };
 
@@ -482,10 +594,41 @@ const hasMoveResourceIds = ({
   values.size === (pairs?.length ?? 0) &&
   (pairs?.every((pair) => values.has(pair[side])) ?? true);
 
+type NestedBookmarkPairs = NonNullable<TableGeometryNestedMove["bookmarks"]>;
+
+const nestedBookmarkCensus = (table: Table) =>
+  packageBookmarkCensus({ document: { content: [table] } });
+
+const movableBookmark = (marker: BookmarkStart | BookmarkEnd): boolean => {
+  const bookmarkId = marker.id;
+  return (
+    Number.isInteger(bookmarkId) &&
+    bookmarkId >= 0 &&
+    bookmarkId <= MAX_REVISION_ID &&
+    marker.copyOriginAncestors === undefined &&
+    (marker.type === "bookmarkEnd" || marker.name.length > 0)
+  );
+};
+
+const movablePositionedBookmarks = (
+  bookmarks: PositionedBookmarkMarker[] | undefined,
+) =>
+  bookmarks?.every(
+    ({ marker, contentControls, carrierStack }) =>
+      contentControls === undefined &&
+      carrierStack === undefined &&
+      movableBookmark(marker),
+  ) ?? true;
+
 /** A structural copy may carry only records whose package identities stay unique. */
 export const nestedTableMoveSource = (
   table: Table,
 ): NestedTableMoveSource | undefined => {
+  let hasBookmarks = false;
+  const collectBookmark = (marker: BookmarkStart | BookmarkEnd) => {
+    hasBookmarks = true;
+    return movableBookmark(marker);
+  };
   const paragraphs: string[] = [];
   const revisions: number[] = [];
   const ranges: TableMoveRanges[] = [];
@@ -519,13 +662,13 @@ export const nestedTableMoveSource = (
     const { rows, ...tableProperties } = candidate;
     const grid = tableProperties.formatting?.gridChange;
     const geometry = grid?.geometryChange;
+    hasBookmarks ||= (tableProperties.bookmarks?.length ?? 0) > 0;
     if (
-      tableProperties.bookmarks !== undefined ||
+      !movablePositionedBookmarks(tableProperties.bookmarks) ||
       tableProperties.carrierStack !== undefined ||
       reachesPastRemovedCell(tableProperties) ||
       (geometry?.type === "mergeCells" &&
-        (geometry.nestedMoves !== undefined ||
-          !tableMoveOwnershipMatches(candidate, geometry))) ||
+        !tableMoveOwnershipMatches(candidate, geometry)) ||
       rows.length === 0
     )
       return false;
@@ -541,6 +684,7 @@ export const nestedTableMoveSource = (
     }
     collectProperties(tableProperties.propertyChanges);
     return rows.every((row) => {
+      hasBookmarks ||= (row.bookmarks?.length ?? 0) > 0;
       const {
         cells,
         contentControls: _rowControls,
@@ -548,7 +692,7 @@ export const nestedTableMoveSource = (
         ...rowProperties
       } = row;
       if (
-        rowProperties.bookmarks !== undefined ||
+        !movablePositionedBookmarks(rowProperties.bookmarks) ||
         !collectCarriers(row) ||
         reachesPastRemovedCell(rowProperties) ||
         !rowHasCellsOrOmissions(row)
@@ -595,6 +739,8 @@ export const nestedTableMoveSource = (
     });
   };
   const collectBlock = (block: BlockContent): boolean => {
+    if (block.type === "bookmarkStart" || block.type === "bookmarkEnd")
+      return collectBookmark(block);
     if (block.type === "table") return collect(block);
     if (block.type === "blockCustomXml")
       return movableCustomXmlBlock(block) && block.content.every(collectBlock);
@@ -639,7 +785,10 @@ export const nestedTableMoveSource = (
         plain = { ...paragraph, content: tracked.content };
       }
     }
-    const source = tableMoveSource(plain);
+    const source = tableMoveSource(plain, {
+      ...(move === undefined ? { priorRevisions: revisions } : {}),
+      collectBookmark,
+    });
     if (source === undefined) return false;
     if (move !== undefined && move.kind !== "empty") {
       const side = idKey(source.id) === idKey(move.source) ? 0 : 1;
@@ -669,6 +818,14 @@ export const nestedTableMoveSource = (
     ({ structuralChange }) => structuralChange === undefined,
   ).length;
   if (!collect(table)) return undefined;
+  const bookmarks = hasBookmarks ? nestedBookmarkCensus(table) : undefined;
+  if (
+    bookmarks !== undefined &&
+    (bookmarks.ids.size !== bookmarks.pairs.length ||
+      new Set(bookmarks.pairs.map(({ name }) => name.toLowerCase())).size !==
+        bookmarks.pairs.length)
+  )
+    return undefined;
   const revisionIds = new Set(revisions);
   if (gridMembers.some((id) => !revisionIds.has(id))) return undefined;
   const allowed = new Set([
@@ -686,6 +843,7 @@ export const nestedTableMoveSource = (
         paragraphs,
         revisions,
         ranges,
+        bookmarks: bookmarks?.pairs ?? [],
         controls: [...controls],
         pictures,
         insertedRows,
@@ -701,6 +859,47 @@ type NestedMoveIdentities = {
   controls: ReadonlyMap<number, number>;
   pictures: ReadonlyMap<number, number>;
   ranges: ReadonlyMap<number, { id: number; name: string }>;
+  bookmarks: ReadonlyMap<number, PackageBookmark>;
+  bookmarkNames: ReadonlyMap<string, string>;
+};
+
+const nestedBookmarkAliases = (
+  pairs: NestedBookmarkPairs,
+  reverse: boolean,
+) => {
+  const bookmarks = new Map<number, PackageBookmark>();
+  const bookmarkNames = new Map<string, string>();
+  for (const pair of pairs) {
+    const [before, after] = reverse ? [pair[1], pair[0]] : pair;
+    bookmarks.set(before.id, after);
+    bookmarkNames.set(before.name, after.name);
+  }
+  return { bookmarks, bookmarkNames };
+};
+
+const nestedBookmarkOwnershipMatches = (
+  source: Table,
+  target: Table,
+  aliases: NestedBookmarkPairs | undefined,
+): boolean => {
+  if (aliases === undefined) return true;
+  const originals = nestedBookmarkCensus(source);
+  const copies = nestedBookmarkCensus(target);
+  return (
+    originals.ids.size === aliases.length &&
+    copies.ids.size === aliases.length &&
+    new Set(aliases.map(([from]) => from.id)).size === aliases.length &&
+    new Set(aliases.map(([, to]) => to.id)).size === aliases.length &&
+    aliases.every(
+      ([from, to]) =>
+        from.id !== to.id &&
+        from.name.toLowerCase() !== to.name.toLowerCase() &&
+        originals.pairs.some(
+          ({ id, name }) => id === from.id && name === from.name,
+        ) &&
+        copies.pairs.some(({ id, name }) => id === to.id && name === to.name),
+    )
+  );
 };
 
 type NestedMoveRanges = NonNullable<TableGeometryNestedMove["moveRanges"]>;
@@ -722,6 +921,12 @@ const withNestedMoveIdentities = (
   table: Table,
   ids: NestedMoveIdentities,
 ): Table => {
+  const rewriteBookmark = (
+    bookmark: PositionedBookmarkMarker,
+  ): PositionedBookmarkMarker => {
+    const marker = withBookmarkIdentity(bookmark.marker, ids.bookmarks);
+    return marker === bookmark.marker ? bookmark : { ...bookmark, marker };
+  };
   const restampControl = (properties: SdtProperties): SdtProperties => {
     const id =
       properties.id === undefined ? undefined : ids.controls.get(properties.id);
@@ -754,9 +959,18 @@ const withNestedMoveIdentities = (
   };
   const rewriteMoveContent = (content: ParagraphContent): ParagraphContent => {
     switch (content.type) {
+      case "insertion":
+      case "deletion":
       case "moveFrom":
       case "moveTo":
         return restamp(content);
+      case "run":
+        return content.propertyChanges === undefined
+          ? content
+          : {
+              ...content,
+              propertyChanges: content.propertyChanges.map(restamp),
+            };
       case "moveFromRangeStart":
       case "moveToRangeStart": {
         const range = ids.ranges.get(content.id);
@@ -773,6 +987,8 @@ const withNestedMoveIdentities = (
   };
   const rewrite = (block: BlockContent): BlockContent => {
     if (block.type === "table") return withNestedMoveIdentities(block, ids);
+    if (block.type === "bookmarkStart" || block.type === "bookmarkEnd")
+      return withBookmarkIdentity(block, ids.bookmarks);
     if (block.type === "blockCustomXml")
       return { ...block, content: block.content.map(rewrite) };
     if (block.type === "blockSdt") {
@@ -792,18 +1008,25 @@ const withNestedMoveIdentities = (
           ...(block.pPrMark === undefined
             ? {}
             : { pPrMark: restamp(block.pPrMark) }),
+          ...(block.propertyChanges === undefined
+            ? {}
+            : { propertyChanges: block.propertyChanges.map(restamp) }),
           content: withMoveIdentities({
             content:
-              ids.ranges.size === 0
+              ids.ranges.size === 0 && ids.revisions.size === 0
                 ? block.content
                 : block.content.map(rewriteMoveContent),
             controls: ids.controls,
             pictures: ids.pictures,
+            bookmarkNames: ids.bookmarkNames,
+            bookmarkIds: ids.bookmarks,
           }),
         };
   };
   const grid = table.formatting?.gridChange;
   const gridId = grid === undefined ? undefined : ids.revisions.get(grid.id);
+  const revisionId = (id: number) => ids.revisions.get(id) ?? id;
+  const paragraphId = (id: string) => ids.paragraphs.get(idKey(id)) ?? id;
   const rewriteResources = (
     pairs: MoveResourcePairs,
     aliases: ReadonlyMap<number, number>,
@@ -814,18 +1037,16 @@ const withNestedMoveIdentities = (
     );
   const rewriteMove = (move: TableGeometryMove): TableGeometryMove => {
     const addresses = {
-      source: ids.paragraphs.get(idKey(move.source)) ?? move.source,
-      destination:
-        ids.paragraphs.get(idKey(move.destination)) ?? move.destination,
-      destinationMark:
-        ids.revisions.get(move.destinationMark) ?? move.destinationMark,
+      source: paragraphId(move.source),
+      destination: paragraphId(move.destination),
+      destinationMark: revisionId(move.destinationMark),
     };
     if (move.kind === "empty") return { ...addresses, kind: "empty" };
     return {
       ...move,
       ...addresses,
-      fromRevision: ids.revisions.get(move.fromRevision) ?? move.fromRevision,
-      toRevision: ids.revisions.get(move.toRevision) ?? move.toRevision,
+      fromRevision: revisionId(move.fromRevision),
+      toRevision: revisionId(move.toRevision),
       fromRange: ids.ranges.get(move.fromRange)?.id ?? move.fromRange,
       toRange: ids.ranges.get(move.toRange)?.id ?? move.toRange,
       ...(move.controls === undefined
@@ -836,28 +1057,78 @@ const withNestedMoveIdentities = (
         : { pictures: rewriteResources(move.pictures, ids.pictures) }),
     };
   };
+  const rewriteRanges = (ranges: TableMoveRanges): TableMoveRanges => {
+    const from = ids.ranges.get(ranges.fromRange);
+    const to = ids.ranges.get(ranges.toRange);
+    return {
+      fromRange: from?.id ?? ranges.fromRange,
+      toRange: to?.id ?? ranges.toRange,
+      name: from?.name ?? to?.name ?? ranges.name,
+    };
+  };
+  const rewriteNested = (
+    move: TableGeometryNestedMove,
+  ): TableGeometryNestedMove => ({
+    rows: move.rows.map(revisionId),
+    paragraphs: move.paragraphs.map(([from, to]) => [
+      paragraphId(from),
+      paragraphId(to),
+    ]),
+    ...(move.omittedTable === undefined
+      ? {}
+      : {
+          omittedTable: [
+            revisionId(move.omittedTable[0]),
+            revisionId(move.omittedTable[1]),
+          ] as const,
+        }),
+    ...(move.revisions === undefined
+      ? {}
+      : { revisions: rewriteResources(move.revisions, ids.revisions) }),
+    ...(move.controls === undefined
+      ? {}
+      : { controls: rewriteResources(move.controls, ids.controls) }),
+    ...(move.pictures === undefined
+      ? {}
+      : { pictures: rewriteResources(move.pictures, ids.pictures) }),
+    ...(move.moveRanges === undefined
+      ? {}
+      : {
+          moveRanges: move.moveRanges.map(
+            ([from, to]) => [rewriteRanges(from), rewriteRanges(to)] as const,
+          ),
+        }),
+    ...(move.bookmarks === undefined
+      ? {}
+      : {
+          bookmarks: move.bookmarks.map(
+            ([from, to]) =>
+              [
+                ids.bookmarks.get(from.id) ?? from,
+                ids.bookmarks.get(to.id) ?? to,
+              ] as const,
+          ),
+        }),
+  });
   const geometry = grid?.geometryChange;
   const rewrittenGeometry =
     geometry === undefined
       ? undefined
       : {
           ...geometry,
-          revisionIds: geometry.revisionIds.map(
-            (id) => ids.revisions.get(id) ?? id,
-          ),
+          revisionIds: geometry.revisionIds.map(revisionId),
           ...(geometry.type !== "mergeCells"
             ? {}
             : {
                 ...(geometry.moves === undefined
                   ? {}
                   : { moves: geometry.moves.map(rewriteMove) }),
+                ...(geometry.nestedMoves === undefined
+                  ? {}
+                  : { nestedMoves: geometry.nestedMoves.map(rewriteNested) }),
                 ...(geometry.emptyOwner === undefined
                   ? {}
-                  : {
-                      emptyOwner:
-                        ids.paragraphs.get(idKey(geometry.emptyOwner)) ??
-                        geometry.emptyOwner,
-                    }),
+                  : { emptyOwner: paragraphId(geometry.emptyOwner) }),
               }),
         };
   return {
@@ -879,8 +1150,14 @@ const withNestedMoveIdentities = (
     ...(table.propertyChanges === undefined
       ? {}
       : { propertyChanges: table.propertyChanges.map(restamp) }),
+    ...(table.bookmarks === undefined
+      ? {}
+      : { bookmarks: table.bookmarks.map(rewriteBookmark) }),
     rows: table.rows.map((row) => ({
       ...carrierIdentities(row),
+      ...(row.bookmarks === undefined
+        ? {}
+        : { bookmarks: row.bookmarks.map(rewriteBookmark) }),
       ...(row.structuralChange === undefined
         ? {}
         : { structuralChange: restamp(row.structuralChange) }),
@@ -926,6 +1203,7 @@ type MarkNestedTableMoveOptions = {
   recordStamps: readonly RevisionStamp[];
   anchorStamps: readonly RevisionStamp[];
   moveRanges: NestedMoveRanges;
+  bookmarks: NestedBookmarkPairs;
   controls: readonly (readonly [number, number])[];
   pictures: readonly (readonly [number, number])[];
 };
@@ -957,6 +1235,7 @@ export const markNestedTableMove = ({
   recordStamps,
   anchorStamps,
   moveRanges,
+  bookmarks,
   controls,
   pictures,
 }: MarkNestedTableMoveOptions): MarkedNestedTableMove | undefined => {
@@ -990,6 +1269,7 @@ export const markNestedTableMove = ({
     controls: new Map(controls),
     pictures: new Map(pictures),
     ranges: nestedMoveRangeMap(moveRanges, false),
+    ...nestedBookmarkAliases(bookmarks, false),
   });
   let nextStamp = 0;
   const rows = table.rows.map((row) => {
@@ -1022,6 +1302,7 @@ export const markNestedTableMove = ({
         : { omittedTable: [from.id, to.id] as const }),
       ...(revisions.length === 0 ? {} : { revisions }),
       ...(moveRanges.length === 0 ? {} : { moveRanges }),
+      ...(bookmarks.length === 0 ? {} : { bookmarks }),
       ...(controls.length === 0 ? {} : { controls }),
       ...(pictures.length === 0 ? {} : { pictures }),
     } satisfies TableGeometryNestedMove,
@@ -1043,14 +1324,30 @@ type MoveIdentityOptions = {
   content: ParagraphContent[];
   controls: ReadonlyMap<number, number>;
   pictures: ReadonlyMap<number, number>;
+  bookmarkNames?: ReadonlyMap<string, string>;
+  bookmarkIds?: ReadonlyMap<number, PackageBookmark>;
+};
+
+const withBookmarkIdentity = (
+  marker: BookmarkStart | BookmarkEnd,
+  ids: ReadonlyMap<number, PackageBookmark>,
+): BookmarkStart | BookmarkEnd => {
+  const alias = ids.get(marker.id);
+  if (alias === undefined) return marker;
+  return marker.type === "bookmarkStart"
+    ? { ...marker, ...alias }
+    : { ...marker, id: alias.id };
 };
 
 const withMoveIdentities = ({
   content,
   controls,
   pictures,
+  bookmarkNames,
+  bookmarkIds,
 }: MoveIdentityOptions): ParagraphContent[] => {
-  if (controls.size === 0 && pictures.size === 0) return content;
+  if (controls.size === 0 && pictures.size === 0 && !bookmarkNames?.size)
+    return content;
   const rewrite = (node: InlineNode): InlineNode => {
     const children = childNodes(node);
     const rewritten = children?.map(rewrite);
@@ -1069,6 +1366,24 @@ const withMoveIdentities = ({
       if (destination !== undefined)
         return withTablePictureIdentity(next, { source, destination });
     }
+    if (
+      next.type === "hyperlink" &&
+      next.rId === undefined &&
+      next.anchor !== undefined
+    ) {
+      const anchor = bookmarkNames?.get(next.anchor);
+      if (anchor !== undefined)
+        return {
+          ...next,
+          anchor,
+          ...(next.href === `#${next.anchor}` ? { href: `#${anchor}` } : {}),
+        };
+    }
+    if (
+      bookmarkIds !== undefined &&
+      (next.type === "bookmarkStart" || next.type === "bookmarkEnd")
+    )
+      return withBookmarkIdentity(next, bookmarkIds);
     return next;
   };
   return asParagraphContent(content.map(rewrite));
@@ -1083,6 +1398,22 @@ export const tablePictureIdAllocator = (
     return id <= MAX_TABLE_PICTURE_ID ? id++ : undefined;
   };
 };
+
+export const tableBookmarkAllocator = (pkg: DocxPackage) => {
+  const { ids, names } = packageBookmarkCensus(pkg);
+  const occupiedNames = new Set([...names].map((name) => name.toLowerCase()));
+  let nextId = 1;
+  let nextName = 1;
+  return (): PackageBookmark | undefined => {
+    while (nextId <= MAX_REVISION_ID && ids.has(nextId)) nextId++;
+    if (nextId > MAX_REVISION_ID) return undefined;
+    let name = `FolioBookmark${nextName++}`;
+    while (occupiedNames.has(name.toLowerCase()))
+      name = `FolioBookmark${nextName++}`;
+    return { id: nextId++, name };
+  };
+};
+
 export const moveRangeAllocator = (
   pkg: DocxPackage,
 ): (() => TableMoveRanges | undefined) => {
@@ -1304,6 +1635,7 @@ export const tableMoveOwnershipMatches = (
   const destinationTables = new Set<Table>();
   const movedRows = new Map<number, Table>();
   const nestedSources = new Map<string, { table: Table; ids: string[] }>();
+  const unaddressedSources: Table[] = [];
   const sourceOmittedTables = new Map<number, Table>();
   const targetOmittedTables = new Map<number, Table>();
   const collectMovedTables = (
@@ -1320,6 +1652,7 @@ export const tableMoveOwnershipMatches = (
           );
         if (side === "source") {
           const ids = paragraphIdsIn(block).map(idKey);
+          if (ids.length === 0) unaddressedSources.push(block);
           const source = { table: block, ids };
           for (const id of ids) nestedSources.set(id, source);
           continue;
@@ -1378,7 +1711,7 @@ export const tableMoveOwnershipMatches = (
     return false;
   const nestedTables = new Set<Table>();
   const omittedSources = new Set<Table>();
-  const claimedSources = new Set<readonly string[]>();
+  const claimedSources = new Set<Table>();
   const surviving = new Set(
     geometry.nestedMoves === undefined ? [] : paragraphIdsIn(table).map(idKey),
   );
@@ -1405,7 +1738,8 @@ export const tableMoveOwnershipMatches = (
         source === undefined ||
         target === undefined ||
         omittedSources.has(source) ||
-        nestedTables.has(target)
+        nestedTables.has(target) ||
+        !nestedBookmarkOwnershipMatches(source, target, move.bookmarks)
       )
         return false;
       omittedSources.add(source);
@@ -1445,10 +1779,15 @@ export const tableMoveOwnershipMatches = (
       const source = nestedSources.get(firstSource);
       if (
         source?.ids.length !== pairs.length ||
-        claimedSources.has(source.ids) ||
+        claimedSources.has(source.table) ||
         pairs.some(
           ([from, to], index) =>
             source.ids[index] !== from || destinationIds[index] !== to,
+        ) ||
+        !nestedBookmarkOwnershipMatches(
+          source.table,
+          destination,
+          move.bookmarks,
         ) ||
         !nestedRangeOwnershipMatches({
           source: source.table,
@@ -1458,7 +1797,16 @@ export const tableMoveOwnershipMatches = (
         })
       )
         return false;
-      claimedSources.add(source.ids);
+      claimedSources.add(source.table);
+    } else if (move.bookmarks !== undefined) {
+      const matchingSources = unaddressedSources.filter(
+        (source) =>
+          !claimedSources.has(source) &&
+          nestedBookmarkOwnershipMatches(source, destination, move.bookmarks),
+      );
+      const source = matchingSources.at(0);
+      if (matchingSources.length !== 1 || source === undefined) return false;
+      claimedSources.add(source);
     }
     nestedTables.add(destination);
   }
@@ -1715,6 +2063,7 @@ export const resolveTableMoves = ({
                     ]),
                   ),
                   ranges: nestedMoveRangeMap(record.moveRanges ?? [], true),
+                  ...nestedBookmarkAliases(record.bookmarks ?? [], true),
                 });
                 const stamps = new Set(record.rows);
                 placed.rows = placed.rows.map((child) => {

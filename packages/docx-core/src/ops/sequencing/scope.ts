@@ -245,6 +245,7 @@ const footprintOf = (op: DocumentOp): OpFootprint => {
       return scoped(op.blockIds);
     case DOCUMENT_OP_TYPES.REPLACE_INLINE:
       return scoped([op.blockId], heldRevisions(op.content));
+    case DOCUMENT_OP_TYPES.SET_CUSTOM_XML_MARKUP:
     case DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS:
       return scoped([op.blockId], heldRevisions(op.blocks));
     case DOCUMENT_OP_TYPES.DELETE_TABLE:

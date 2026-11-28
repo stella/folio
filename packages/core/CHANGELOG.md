@@ -1,5 +1,123 @@
 # @stll/folio-core
 
+## 0.84.0
+
+### Minor Changes
+
+- [#3786](https://github.com/stella/folio/pull/3786) [`2d9465e`](https://github.com/stella/folio/commit/2d9465e4b013e75ebdde4159a7c6a637752834e2) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A source item may carry its own outline level (`outlineLevel`, 0 for level 1), written as the paragraph's `w:outlineLvl`, and `fields.contentsOutlineLevels` gives the template's kept contents fields the `\u` switch, so they also list paragraphs by their own outline level: a heading the source's contents listed that the template's field does not collect by style.
+
+- [#3779](https://github.com/stella/folio/pull/3779) [`58b5c8f`](https://github.com/stella/folio/commit/58b5c8f94f742b0048bc0c4c91d8bcca8d4beccd) Thanks [@jan-kubica](https://github.com/jan-kubica)! - With `sourceHeaders: "keep"` the headers and footers of the source's later sections are no longer lost. An output section after the first that starts with a source section showing other content gets new parts of its own: the template's content for those pages followed by that section's, named by that output section alone. A later section the output merges into another is counted in `leftOut.laterSectionParts`, and each kept part of a later section names its output `section`.
+
+- [#3771](https://github.com/stella/folio/pull/3771) [`3569933`](https://github.com/stella/folio/commit/3569933d6f3cd619de711d8bbbbda20b9e7e93c4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A template plan may keep the source's comments: `comments: "keep"` carries each comment whose reference the output places, with its range where both ends are placed, and the parts that extend comments (replies, done state, durable ids, people). The report's `sourceComments` counts what was kept and what had no place.
+
+- [#3789](https://github.com/stella/folio/pull/3789) [`fba48c4`](https://github.com/stella/folio/commit/fba48c4bd3bee86a11f7b665819b3741cc4c2eaa) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A manifest section says when it shows a header or footer of its own (`ownHeaders`): for the other pages or even pages, content other than the section before it shows there, such as an annex's header or a signature page's footer. A plan can keep such a section a section, so that content gets a place. The last section of an output whose plan ends sections now begins on a new page unless the plan says otherwise, as every other section the plan ends does.
+
+- [#3788](https://github.com/stella/folio/pull/3788) [`b5a5b60`](https://github.com/stella/folio/commit/b5a5b606187ced569f2d442ae3a6ce2b2a81877e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - The block manifest reports, for a paragraph numbered by a list level other than a bullet, the level's text (`lvlText`, such as `%1. %2)`), the format it counts in (`numFmt`) and whether it prints its counters in arabic numerals (`legal`, from `w:isLgl`). A plan's numbering patch may switch legal numbering on or off for a level (`isLgl`); verification holds the output to it.
+
+### Patch Changes
+
+- [#3778](https://github.com/stella/folio/pull/3778) [`b9834d0`](https://github.com/stella/folio/commit/b9834d0223cd7490ef98aa40be4686d7ba762159) Thanks [@jan-kubica](https://github.com/jan-kubica)! - The block manifest reads a bookmark that ends between cells, rows or blocks (outside any paragraph) as ending behind the paragraph read before it, so a cross-reference field to a numbered table row (a bookmark started in the row's first cell and ended in the row) reports the paragraph it marks.
+
+- [#3774](https://github.com/stella/folio/pull/3774) [`966ff8d`](https://github.com/stella/folio/commit/966ff8d073ba256083b3aa4954cd11f21dc7060c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A kept table of contents whose field ends in the paragraph of the next heading (text behind the end) now loses its cached entries too: that paragraph is kept from behind the field's end, instead of the whole field staying with the entries of the template's sample.
+
+- [#3787](https://github.com/stella/folio/pull/3787) [`bd878a6`](https://github.com/stella/folio/commit/bd878a6070e6d1665d85bc59f504ab889aa7107d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A plan may leave out the paragraph a kept table of contents ends in when its field's end stands in front of that paragraph's text (the template's next heading): the field is closed in its first paragraph without it.
+
+- [#3781](https://github.com/stella/folio/pull/3781) [`1fbd7bc`](https://github.com/stella/folio/commit/1fbd7bca69113f43670ad20de3206f2858b91f31) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve block content controls and exact undo when removing their only paragraph.
+
+- [#3785](https://github.com/stella/folio/pull/3785) [`233dcce`](https://github.com/stella/folio/commit/233dcce95dc154c5e42090242b15e97f1ccf2e81) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve style-derived list markers while a suggested paragraph join is pending.
+
+- [#3792](https://github.com/stella/folio/pull/3792) [`91356ed`](https://github.com/stella/folio/commit/91356edc1361ead4a41b84f471f20e9f85b52ac8) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A template's inspection says for each style whether it starts its paragraphs on a new page (`pageBreakBefore`, through the styles it is based on and the document's defaults).
+
+- [#3784](https://github.com/stella/folio/pull/3784) [`af9e3f5`](https://github.com/stella/folio/commit/af9e3f51a0d0207921905135a7fa1cd78a2bfb5b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - The XML safety check no longer rejects a part that holds U+FEFF past its start (a zero-width no-break space, as document variables written by word processors hold): it is a legal XML character. A byte order mark still counts only at the very start, and a declaration behind it is still refused.
+- Updated dependencies [[`1fbd7bc`](https://github.com/stella/folio/commit/1fbd7bca69113f43670ad20de3206f2858b91f31)]:
+  - @stll/docx-core@0.50.2
+
+## 0.83.0
+
+### Minor Changes
+
+- [#3776](https://github.com/stella/folio/pull/3776) [`27c7488`](https://github.com/stella/folio/commit/27c7488e55245f9dc16b634f8e1ef92a80656e32) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Legacy form fields of the source stay form fields when a plan places them onto a template: a check box and a drop-down list keep their box and list entries, a text input keeps its default and its result inside the field. Fields written so no longer count among the source fields written as text.
+
+- [#3766](https://github.com/stella/folio/pull/3766) [`4319333`](https://github.com/stella/folio/commit/4319333063504bd32ae6a223949cfb4fa25b0df1) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A template plan carries more of the source. An object's embedded part travels whole with it: an OLE object's storage and an embedded package (a workbook, a document, a presentation) go into the output's `embeddings` folder with their content types, beside the picture that previews them, in the body and in carried headers and footers. A moved object declares on itself every namespace prefix its source bound further up (a source may bind the drawing prefixes once at its root, which the template's root need not do), so it reads back as its source. A plan's paragraph indent may give `left` a negative value, reaching into the margin as the source's paragraph does; a hanging or first-line indent stays a width.
+
+- [#3777](https://github.com/stella/folio/pull/3777) [`99370ed`](https://github.com/stella/folio/commit/99370ed15b790424fafce5b6b51fb99358d5ca6b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A template plan may keep the source's own list for a paragraph: `numbering: { numId: "new", ilvl, sourceNumId }`. The output carries a copy of the source's list instance and of its definition (a definition that only links a numbering style is followed to the one that defines its levels), numbered after the template's own; every paragraph naming the same `sourceNumId` counts in that copy, as the source counts them, and the level overrides the source's instance states go with it. What ties a definition to its package (its ids, the paragraph styles its levels name, picture bullets) stays behind, and the copy declares the namespaces the source's numbering part binds. Verification holds every kept list to a definition the output holds; the labels it prints are compared with the source's like any other.
+
+### Patch Changes
+
+- [#3762](https://github.com/stella/folio/pull/3762) [`d786701`](https://github.com/stella/folio/commit/d7867011e7f9591d72fc6d5cebae7a1a69281814) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A batch that deletes a paragraph beside the tables it puts there leaves what its operations leave one at a time: a table put after the paragraph before it lands once the deletion has run, unless the batch also puts a block before the paragraph or it ends its container, and a block put after a paragraph a pending deletion takes whole stands between that paragraph and the one the deletion reads. A merge the batch refuses once its next paragraph is gone gives the reason the merge alone gives.
+
+- [#3769](https://github.com/stella/folio/pull/3769) [`298f5d6`](https://github.com/stella/folio/commit/298f5d68da008967d522454728786fb97d57afb4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A plan may write a bullet's mark as text (`labelAsText`): the mark is written as the Unicode character the reader shows for it, so a bulleted paragraph placed where no list of the template prints its mark no longer refuses the whole document.
+
+- [#3777](https://github.com/stella/folio/pull/3777) [`99370ed`](https://github.com/stella/folio/commit/99370ed15b790424fafce5b6b51fb99358d5ca6b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - The report of a template plan no longer counts a label lost for a paragraph whose list level prints nothing.
+
+- [#3770](https://github.com/stella/folio/pull/3770) [`84670d1`](https://github.com/stella/folio/commit/84670d10646d8f6eb68ecc81ae515b8f6bd204af) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A plan's list group may run over two lists of the template that share one definition and render the level alike (a template that binds its heading and clause styles to two instances of the same outline), instead of refusing the plan.
+
+- [#3764](https://github.com/stella/folio/pull/3764) [`f6cb36e`](https://github.com/stella/folio/commit/f6cb36e33e6784d14e4802fe082c4d27b5ad0e41) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A template plan keeps a LISTNUM field of the source as the field it is, as it keeps an AUTONUM: it holds no result to write as text, so its number was lost. A field that counts in a list by name takes that list's definition along into the output's numbering, where the template does not define a list of that name, without what ties it to its source package (its id, template code and style links).
+
+- [#3769](https://github.com/stella/folio/pull/3769) [`298f5d6`](https://github.com/stella/folio/commit/298f5d68da008967d522454728786fb97d57afb4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A label whose level text cites a level in the format `none` (it counts and prints nothing) may be written as text.
+
+- [#3775](https://github.com/stella/folio/pull/3775) [`908b401`](https://github.com/stella/folio/commit/908b401fa6632699e69568da1101b0b08211320f) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep nested field review text stable across tracked saves.
+
+- [#3767](https://github.com/stella/folio/pull/3767) [`ac14062`](https://github.com/stella/folio/commit/ac14062f3c4f0f49c0aafc9584c15cc8f8028ce8) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Applying a plan leaves out the template's own footnotes and endnotes that the new body no longer refers to (notes of the sample text), and the report counts them as `templateLeftOut`.
+
+- [#3762](https://github.com/stella/folio/pull/3762) [`d786701`](https://github.com/stella/folio/commit/d7867011e7f9591d72fc6d5cebae7a1a69281814) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A tracked batch that deletes a paragraph a pending join runs into, beside a table it puts before the join, keeps the joined words out of that table, so accepting it gives what applying it directly does.
+
+- [#3768](https://github.com/stella/folio/pull/3768) [`4774ed5`](https://github.com/stella/folio/commit/4774ed52e54281b178ecbb32255468801c284f0a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - The conformance check reads an XML part written in UTF-16 (as word processors often write custom XML items) in that encoding instead of reporting it as not well formed.
+- Updated dependencies [[`1049297`](https://github.com/stella/folio/commit/10492971c0e34b591b6b2a42f3118b03e695409c), [`1049297`](https://github.com/stella/folio/commit/10492971c0e34b591b6b2a42f3118b03e695409c)]:
+  - @stll/docx-core@0.50.1
+
+## 0.82.0
+
+### Minor Changes
+
+- [#3761](https://github.com/stella/folio/pull/3761) [`20a6758`](https://github.com/stella/folio/commit/20a675868bc2d721345e30bb6bf86cd219a65f1b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Load translated UI catalogs from configurable UTF-8 package assets.
+
+### Patch Changes
+
+- [#3763](https://github.com/stella/folio/pull/3763) [`a85e93f`](https://github.com/stella/folio/commit/a85e93fad0835080acb76e2f014e408f73b804c3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A template plan's report no longer counts among the source fields written as text (`dropped.sourceFields`) a field whose result a reference of the plan writes anew as a field: the citation stays a field in the output.
+
+## 0.81.0
+
+### Minor Changes
+
+- [#3753](https://github.com/stella/folio/pull/3753) [`951f72f`](https://github.com/stella/folio/commit/951f72f4db6f128c43605d8667efdc469aad9bce) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A template plan may keep the source's page headers and footers (`sourceHeaders: "keep"`). The content of those the source's first section shows (text, tables, pictures, fields) is added after the template's own, in the header or footer that shows on the same pages: the first page, the other pages, even pages. Where the template has none for those pages a new header or footer part holds it. Pictures are copied with their parts, drawing ids renumbered, bookmarks and comment marks left out, and styles or lists the template does not define dropped from the copy. Verification holds each output header and footer to the template's content followed by the source's (`header-mismatch`), and the report (`sourceHeaders`) says where each went and what had no place: content only the source's first page or even pages show where the output does not set those pages apart, a template part shared by pages that take other content, and blocks that embed an object other than a picture.
+
+- [#3750](https://github.com/stella/folio/pull/3750) [`5dd0ec4`](https://github.com/stella/folio/commit/5dd0ec403e4a1e9be181ad1f27c9e034cee48b57) Thanks [@jan-kubica](https://github.com/jan-kubica)! - The block manifest reports `runsIn` on a paragraph whose mark is always hidden (`w:specVanish` in the mark's run properties, a style separator): the paragraph runs on into the one after it, on the same line, as a heading run into its text. A caller can join the two into one paragraph of the output, which keeps no hidden mark.
+
+- [#3740](https://github.com/stella/folio/pull/3740) [`2d466a5`](https://github.com/stella/folio/commit/2d466a550a16b769ba7e399a76f760bcdbd72ae7) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A paste of a chart, an embedded object or kept block markup no longer refuses with the `story-content-projection` ground. A paste made before the editor finished reading the copied package's parts waits for them; a part outside the main document's folder is copied into it; and a paste into a header, footer or note editor carries the parts into that story's own part. Content whose parts cannot come with it pastes as its preview picture or the text it holds, or is left out, and hosts receive each substitution as a structured warning through the new `onCanonicalPasteWarnings` prop; a paste that leaves out everything it holds changes nothing, the selection included, and still reports what it left out. The package model now also keeps each header's and footer's part relationships in `annotationRelationships`, keyed `header:<rId>` or `footer:<rId>`; removing a header or footer removes its entry, and undo restores it.
+
+- [#3756](https://github.com/stella/folio/pull/3756) [`c6d3c77`](https://github.com/stella/folio/commit/c6d3c77870d4de1e79e3a0316d9f2f05f6f6f449) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Pictures, links and kept markup placed from one part of a document into another (the body, a header, a footer, a footnote, an endnote or a comment) now keep naming their own image and link target there after a save and reopen, even where the destination part uses the same relationship ids for something else. Undo removes the relationships the placement added.
+
+- [#3735](https://github.com/stella/folio/pull/3735) [`840ace3`](https://github.com/stella/folio/commit/840ace3cc7df15e541aa1f02465aa3765cafe8ce) Thanks [@jan-kubica](https://github.com/jan-kubica)! - TIFF images are decoded in a worker loaded through `new URL(…, import.meta.url)` the first time a document holds one, so the decoder is no longer part of the editor's bundle. When decoding cannot run (the worker cannot load, or the image is over the pixel cap) the editor paints a placeholder box in the image's frame, and the document keeps the TIFF.
+
+  Hosts that cannot load the worker (offline use, a Content Security Policy without `worker-src`, a single-file CDN bundle) call `configureTiffDecoding({ decoder: await import("utif2") })` from `@stll/folio-core/tiff-decoding`, also exported by `@stll/folio-react` and `@stll/folio-vue`, to decode on the calling thread.
+
+### Patch Changes
+
+- [#3743](https://github.com/stella/folio/pull/3743) [`4450a7a`](https://github.com/stella/folio/commit/4450a7a171e91c8f26c52f619c7d2b9f265c9d0a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A paragraph break one reviewer inserted and another deleted now reads as a pending join, as any deleted break does: a paragraph suggested before it copies the properties of the paragraph the join leaves, a merge that runs on through it gives the joined paragraph the first paragraph's properties, and a paragraph put before the join's last part goes before the whole join. Accepting such a batch gives every block the kind, style and list level the same batch gives it applied directly.
+
+- [#3754](https://github.com/stella/folio/pull/3754) [`edbb56c`](https://github.com/stella/folio/commit/edbb56cbb0c49579b46d173faab9fa42b2b2f838) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A paragraph deleted directly before a table, a preserved block or a content control now goes whole after a block or past block-level bookmarks too, as accepting its tracked deletion removes it, so the list numbering after it matches in every mode; it stays only between two tables, bookmarks between them included. Rejecting a paragraph put after one whose break was added before a table now runs that paragraph into the table, as without the new one, also in a body ending in a content control.
+
+- [#3668](https://github.com/stella/folio/pull/3668) [`d5c2fac`](https://github.com/stella/folio/commit/d5c2faccc5fd4f2c3e05b0ba7d2ad5076379be4d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Blocks one canonical batch puts beside pending joins, pending deletions and paragraphs it deletes now land where and in the order the same insertions take one at a time, in direct and tracked mode alike.
+
+- [#3751](https://github.com/stella/folio/pull/3751) [`9cd0179`](https://github.com/stella/folio/commit/9cd017959c82dd8ad3e59a135a14cf9a0b2aaa9f) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Italic that a text paragraph style gives its paragraphs travels onto the template: every run of such a paragraph states it, so a drafting note or a comment set apart by an italic body style stays italic in a template style that is upright. A run that turns the style's italic off stays upright. A heading's style (one with an outline level, or named as a heading, title or subtitle) keeps its italic to itself, as the template gives headings their look.
+
+- [#3749](https://github.com/stella/folio/pull/3749) [`39c4215`](https://github.com/stella/folio/commit/39c42152c6717eb09ef7c5d9dc529dd0e41fd95d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Template-plan labels write a list's `cardinalText` and `ordinalText` counters in words when the paragraph's language is English (`One`, `Twenty-first`, `One hundred one`), as the reference consumer prints them, so such a label can be written as text. In a language whose words are not known the label still cannot be written as text.
+
+- [#3694](https://github.com/stella/folio/pull/3694) [`e528509`](https://github.com/stella/folio/commit/e5285098e039312d6e2cdb628e5598907032bc06) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep earlier nested table revisions, rich-text controls, and inline drawings intact through tracked cell merges.
+
+- [#3755](https://github.com/stella/folio/pull/3755) [`74c7535`](https://github.com/stella/folio/commit/74c7535be0ef34d6361837962daa29b99b998e5c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Home and End in header, footer and note editors move the caret to the start or end of the rendered line on every platform, and Shift extends the selection. On some platforms the browser's own Home and End only scrolled and left the caret where it was. The move is set in the editor's state as the key is handled.
+
+- [#3665](https://github.com/stella/folio/pull/3665) [`adf8f86`](https://github.com/stella/folio/commit/adf8f8686e8ba3c574df927a5c9012dd1829710e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A batch that deletes a paragraph beside a table, in the body, a text box or a cell, reads the blocks it puts there by where they land, so accepting it tracked gives what applying it directly does.
+
+- [#3713](https://github.com/stella/folio/pull/3713) [`b17e2c7`](https://github.com/stella/folio/commit/b17e2c76f3ae78dcbee39d94c8d33636ce0b0d1e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep independently tracked nested tables reviewable through cell merges when every row omits all cells.
+
+- [#3714](https://github.com/stella/folio/pull/3714) [`91e046a`](https://github.com/stella/folio/commit/91e046abe2b5f4224e3f7e0a5065db408e6281f4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep earlier native paragraph moves reviewable when an enclosing tracked merge moves their table.
+
+- [#3692](https://github.com/stella/folio/pull/3692) [`f2599ec`](https://github.com/stella/folio/commit/f2599ec6fb59b5de2b66088ee91a27efdb5b9854) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep inline pictures and their media relationships intact when tracked merges move table cell content.
+- Updated dependencies [[`4450a7a`](https://github.com/stella/folio/commit/4450a7a171e91c8f26c52f619c7d2b9f265c9d0a), [`edbb56c`](https://github.com/stella/folio/commit/edbb56cbb0c49579b46d173faab9fa42b2b2f838), [`10d9277`](https://github.com/stella/folio/commit/10d9277af3ef978dc3d5c37e34c417f617cac41b), [`e528509`](https://github.com/stella/folio/commit/e5285098e039312d6e2cdb628e5598907032bc06), [`2d466a5`](https://github.com/stella/folio/commit/2d466a550a16b769ba7e399a76f760bcdbd72ae7), [`188a73f`](https://github.com/stella/folio/commit/188a73f0c6940f92164f9f086718b5296eb52c57), [`b17e2c7`](https://github.com/stella/folio/commit/b17e2c76f3ae78dcbee39d94c8d33636ce0b0d1e), [`91e046a`](https://github.com/stella/folio/commit/91e046abe2b5f4224e3f7e0a5065db408e6281f4), [`f2599ec`](https://github.com/stella/folio/commit/f2599ec6fb59b5de2b66088ee91a27efdb5b9854), [`f2599ec`](https://github.com/stella/folio/commit/f2599ec6fb59b5de2b66088ee91a27efdb5b9854)]:
+  - @stll/docx-core@0.50.0
+
 ## 0.80.0
 
 ### Minor Changes

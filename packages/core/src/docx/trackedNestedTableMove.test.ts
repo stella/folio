@@ -7,6 +7,7 @@ import {
   createEditorIntentIdAllocator,
   DOCUMENT_OP_REFUSAL_REASONS,
   DOCUMENT_OP_TYPES,
+  normalizeForOps,
   OP_STORIES,
   REVISION_DECISIONS,
   type TableIntentOperation,
@@ -133,6 +134,182 @@ const tableOf = (document: Document): Table => {
   return block;
 };
 
+test.each(["table", "row", "paragraph", "block"] as const)(
+  "tracked horizontal merges keep nested %s bookmark pairs and their local links",
+  (placement) => {
+    const name = "NestedClause";
+    const start = { type: "bookmarkStart", id: 77, name } as const;
+    const end = { type: "bookmarkEnd", id: 77 } as const;
+    const bookmarks = [
+      { index: 0, marker: start },
+      { index: 1, marker: end },
+    ] satisfies NonNullable<Table["bookmarks"]>;
+    const link: Paragraph = {
+      ...paragraph("00000003"),
+      content: [
+        ...(placement === "paragraph" ? [start] : []),
+        {
+          type: "hyperlink",
+          anchor: name,
+          children: [
+            { type: "run", content: [{ type: "text", text: "Clause" }] },
+          ],
+        },
+        ...(placement === "paragraph" ? [end] : []),
+      ],
+    };
+    const moved: Table = {
+      type: "table",
+      columnWidths: [900],
+      ...(placement === "table" ? { bookmarks } : {}),
+      rows: [
+        {
+          type: "tableRow",
+          ...(placement === "row" ? { bookmarks } : {}),
+          cells: [
+            placement === "block"
+              ? cell(start, link, end, paragraph("00000005"))
+              : cell(link),
+          ],
+        },
+      ],
+    };
+    const table: Table = {
+      type: "table",
+      columnWidths: [1000, 1400],
+      rows: [
+        {
+          type: "tableRow",
+          cells: [
+            cell(paragraph("00000001", "Owner")),
+            cell(moved, paragraph("00000002")),
+          ],
+        },
+      ],
+    };
+    const outside: Paragraph = {
+      ...paragraph("00000004"),
+      content: [
+        { type: "bookmarkStart", id: 1, name: "foliobookmark1" },
+        { type: "run", content: [{ type: "text", text: "Outside" }] },
+        { type: "bookmarkEnd", id: 1 },
+      ],
+    };
+    const withTable = (block: Table): Document => ({
+      package: { document: { content: [block, outside] } },
+    });
+    const original = withTable(table);
+    const operation = {
+      type: DOCUMENT_OP_TYPES.MERGE_CELLS,
+      story: OP_STORIES.MAIN,
+      blockId: "00000001",
+      top: 0,
+      bottom: 1,
+      left: 0,
+      right: 2,
+    } as const;
+    const intent = { type: "table", operation } as const;
+    const ids = createEditorIntentIdAllocator()(original, intent);
+    const { ops } = compileEditorIntent(original, {
+      intent,
+      mode: {
+        type: "suggesting",
+        revision: {
+          id: ids.revisionId,
+          author: "Reviewer",
+          date: "2026-11-27T00:00:00Z",
+        },
+        newIds: ids.newIds,
+      },
+    }).unwrap();
+    const pending = applyDocumentOps(original, ops).unwrap();
+    expect(
+      applyDocumentOps(pending.document, pending.inverse).unwrap().document,
+    ).toStrictEqual(original);
+    const xml = serializeTable(tableOf(pending.document), serializeParagraph);
+    expect(xml).toContain('w:id="2" w:name="FolioBookmark2"');
+    expect(xml).toContain('w:anchor="FolioBookmark2"');
+    const reopened = parseSavedTable(xml);
+    const formatting = reopened.formatting;
+    const grid = formatting?.gridChange;
+    const geometry = grid?.geometryChange;
+    if (grid === undefined || geometry?.type !== "mergeCells")
+      throw new TypeError("Expected reopened merge records.");
+    const nestedMove = geometry.nestedMoves?.at(0);
+    expect(nestedMove?.bookmarks).toEqual([
+      [
+        { id: 77, name },
+        { id: 2, name: "FolioBookmark2" },
+      ],
+    ]);
+    const resolution = {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: [grid.id],
+    } as const;
+    const direct = applyDocumentOp(original, {
+      ...operation,
+      newBlockIds: [],
+    }).unwrap().document;
+    for (const decision of Object.values(REVISION_DECISIONS)) {
+      const reviewed = applyDocumentOp(withTable(reopened), {
+        ...resolution,
+        decision,
+      }).unwrap().document;
+      const expected =
+        decision === REVISION_DECISIONS.ACCEPT ? direct : original;
+      const expectedTable = parseSavedTable(
+        serializeTable(tableOf(expected), serializeParagraph),
+      );
+      const reviewedTable = tableOf(reviewed);
+      expect(projection(reviewedTable)).toEqual(projection(expectedTable));
+      const nestedXml = (outer: Table) =>
+        outer.rows.flatMap(({ cells }) =>
+          cells.flatMap(({ content }) =>
+            content.flatMap((block) =>
+              block.type === "table"
+                ? [serializeTable(block, serializeParagraph)]
+                : [],
+            ),
+          ),
+        );
+      expect(nestedXml(reviewedTable)).toEqual(nestedXml(expectedTable));
+    }
+    if (nestedMove === undefined)
+      throw new TypeError("Expected a nested move.");
+    const stale = withTable({
+      ...reopened,
+      formatting: {
+        ...formatting,
+        gridChange: {
+          ...grid,
+          geometryChange: {
+            ...geometry,
+            nestedMoves: [
+              {
+                ...nestedMove,
+                bookmarks: [
+                  [
+                    { id: 77, name },
+                    { id: 1, name: "foliobookmark1" },
+                  ],
+                ],
+              },
+            ],
+          },
+        },
+      },
+    });
+    const refused = applyDocumentOp(stale, {
+      ...resolution,
+      decision: REVISION_DECISIONS.ACCEPT,
+    });
+    expect(refused.isErr() && refused.error.reason).toBe(
+      DOCUMENT_OP_REFUSAL_REASONS.STALE,
+    );
+  },
+);
+
 const projection = (table: Table): unknown =>
   table.rows.map((row) =>
     row.cells.map((item) => ({
@@ -141,11 +318,175 @@ const projection = (table: Table): unknown =>
       content: item.content.map((block) => {
         if (block.type === "table") return projection(block);
         if (block.type === "paragraph")
-          return { paraId: block.paraId, content: block.content };
+          return {
+            paraId: block.paraId,
+            content: block.content,
+            alignment: block.formatting?.alignment,
+          };
         return block;
       }),
     })),
   );
+
+test("earlier inline and formatting revisions stay reviewable through a nested table move", () => {
+  const stamp = (id: number) => ({
+    id,
+    author: "Earlier",
+    date: "2026-11-27T00:00:00Z",
+  });
+  const marked: Paragraph = {
+    ...paragraph("00000003"),
+    formatting: { alignment: "center" },
+    propertyChanges: [
+      {
+        type: "paragraphPropertyChange",
+        info: stamp(43),
+        previousFormatting: { alignment: "right" },
+      },
+    ],
+    content: [
+      {
+        type: "insertion",
+        info: stamp(41),
+        content: [{ type: "run", content: [{ type: "text", text: "New " }] }],
+      },
+      {
+        type: "deletion",
+        info: stamp(42),
+        content: [{ type: "run", content: [{ type: "text", text: "Old " }] }],
+      },
+      {
+        type: "run",
+        content: [{ type: "text", text: "clause" }],
+        formatting: { bold: true },
+        propertyChanges: [
+          {
+            type: "runPropertyChange",
+            info: stamp(44),
+            previousFormatting: { italic: true },
+          },
+        ],
+      },
+    ],
+  };
+  const moved: Table = {
+    ...nested,
+    rows: [{ type: "tableRow", cells: [cell(marked)] }],
+  };
+  const table: Table = {
+    type: "table",
+    columnWidths: [1000, 1400],
+    rows: [
+      {
+        type: "tableRow",
+        cells: [
+          cell(paragraph("00000001", "Owner")),
+          cell(moved, paragraph("00000002")),
+        ],
+      },
+    ],
+  };
+  const withTable = (block: Table): Document => ({
+    package: { document: { content: [block, paragraph("00000004")] } },
+  });
+  const original = withTable(table);
+  const operation = {
+    type: DOCUMENT_OP_TYPES.MERGE_CELLS,
+    story: OP_STORIES.MAIN,
+    blockId: "00000001",
+    top: 0,
+    bottom: 1,
+    left: 0,
+    right: 2,
+  } as const;
+  const intent = { type: "table", operation } as const;
+  const ids = createEditorIntentIdAllocator()(original, intent);
+  const { ops } = compileEditorIntent(original, {
+    intent,
+    mode: {
+      type: "suggesting",
+      revision: stamp(ids.revisionId),
+      newIds: ids.newIds,
+    },
+  }).unwrap();
+  const pending = applyDocumentOps(original, ops).unwrap();
+  expect(
+    applyDocumentOps(pending.document, pending.inverse).unwrap().document,
+  ).toStrictEqual(original);
+  const reopened = normalizeForOps(
+    withTable(
+      parseSavedTable(
+        serializeTable(tableOf(pending.document), serializeParagraph),
+      ),
+    ),
+  );
+  const grid = tableOf(reopened).formatting?.gridChange;
+  const geometry = grid?.geometryChange;
+  const aliases =
+    geometry?.type === "mergeCells"
+      ? geometry.nestedMoves?.at(0)?.revisions
+      : undefined;
+  if (grid === undefined || aliases === undefined)
+    throw new TypeError("Expected paired run revision handoffs.");
+  expect(aliases.map(([id]) => id)).toEqual([41, 42, 44, 43]);
+  const projected = toProseDoc(reopened, { tableReviewGeometry: "physical" });
+  for (const [authored, copied] of aliases)
+    expect(getTrackedChangeGroupsForIds(projected, [authored]).at(0)).toContain(
+      copied,
+    );
+  const review = (
+    document: Document,
+    id: number,
+    decision: "accept" | "reject",
+  ) => {
+    const result = applyDocumentOp(document, {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: [id],
+      decision,
+    });
+    if (result.isErr()) throw result.error;
+    return result.value.document;
+  };
+  for (const [authored, copied] of aliases) {
+    for (const inner of Object.values(REVISION_DECISIONS)) {
+      for (const outer of Object.values(REVISION_DECISIONS)) {
+        const earlierFirst = review(
+          review(reopened, copied, inner),
+          grid.id,
+          outer,
+        );
+        const moveFirst = review(
+          review(reopened, grid.id, outer),
+          authored,
+          inner,
+        );
+        expect(projection(tableOf(earlierFirst))).toEqual(
+          projection(tableOf(moveFirst)),
+        );
+        const xml = serializeTable(tableOf(earlierFirst), serializeParagraph);
+        if (authored === 43) {
+          expect(xml).toContain(
+            inner === REVISION_DECISIONS.ACCEPT
+              ? '<w:jc w:val="center"'
+              : '<w:jc w:val="right"',
+          );
+        } else if (authored === 44) {
+          expect(xml).toContain(
+            inner === REVISION_DECISIONS.ACCEPT
+              ? "<w:b/></w:rPr><w:t>clause"
+              : "<w:i/></w:rPr><w:t>clause",
+          );
+        } else {
+          const inserted = authored === 41;
+          expect(xml.includes(inserted ? "New " : "Old ")).toBe(
+            inserted === (inner === REVISION_DECISIONS.ACCEPT),
+          );
+        }
+      }
+    }
+  }
+});
 
 test.each([
   "horizontal",
@@ -774,9 +1115,15 @@ test.each([
   },
 );
 
-test.each(["deleteColumn", "mergeCells", "merge with moved words"] as const)(
+test.each([
+  "deleteColumn",
+  "mergeCells",
+  "merge with moved words",
+  "merge with a nested move",
+] as const)(
   "a moved nested table keeps its earlier grouped geometry actionable (%s)",
   (kind) => {
+    const innermostRevision = 51;
     const inner = {
       type: "table",
       columnWidths: [700, 900],
@@ -795,6 +1142,27 @@ test.each(["deleteColumn", "mergeCells", "merge with moved words"] as const)(
           cells: [
             cell(paragraph("00000004", "Removed")),
             cell(
+              ...(kind === "merge with a nested move"
+                ? [
+                    {
+                      type: "table",
+                      formatting: { justification: "center" },
+                      propertyChanges: [
+                        {
+                          type: "tablePropertyChange",
+                          info: { id: innermostRevision, author: "Earlier" },
+                          previousFormatting: { justification: "left" },
+                        },
+                      ],
+                      rows: [
+                        {
+                          type: "tableRow",
+                          cells: [cell(paragraph("00000009", "Innermost"))],
+                        },
+                      ],
+                    } satisfies Table,
+                  ]
+                : []),
               ...(kind === "merge with moved words"
                 ? [paragraph("00000008")]
                 : []),
@@ -931,6 +1299,39 @@ test.each(["deleteColumn", "mergeCells", "merge with moved words"] as const)(
       earlier,
     );
     let earlierRevision = priorCopy[1];
+    if (kind === "merge with a nested move") {
+      const priorMove =
+        prior.geometryChange.type === "mergeCells"
+          ? prior.geometryChange.nestedMoves?.at(0)
+          : undefined;
+      const earlierCopy = priorMove?.revisions?.find(
+        ([id]) => id === innermostRevision,
+      );
+      const latestCopy =
+        earlierCopy === undefined ? undefined : members.get(earlierCopy[1]);
+      if (latestCopy === undefined)
+        throw new TypeError("Expected the innermost revision's copied record.");
+      for (const decision of [
+        REVISION_DECISIONS.ACCEPT,
+        REVISION_DECISIONS.REJECT,
+      ]) {
+        const settled = reopen(resolve(reopened, [latestCopy], decision));
+        const innerCopies = nestedTables(settled).flatMap((item) =>
+          item.rows.flatMap(({ cells }) =>
+            cells.flatMap(({ content }) =>
+              content.filter((block) => block.type === "table"),
+            ),
+          ),
+        );
+        expect(innerCopies).toHaveLength(4);
+        for (const table of innerCopies) {
+          expect(table.propertyChanges).toBeUndefined();
+          expect(table.formatting?.justification).toBe(
+            decision === REVISION_DECISIONS.ACCEPT ? "center" : "left",
+          );
+        }
+      }
+    }
     if (kind === "merge with moved words") {
       const ranges = nestedMove?.moveRanges?.at(0);
       if (nestedMove === undefined || ranges === undefined)

@@ -15,6 +15,8 @@ import type {
 } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { contractViolation } from "../contract";
+import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
+import { tableGrid } from "../tableGrid";
 import { removalOrphansAMerge, rowsWithoutRow } from "../tableRowRemoval";
 import {
   DOCUMENT_OP_TYPES,
@@ -182,4 +184,86 @@ describe("taking a row out of a table", () => {
       table.rows[3],
     ]);
   });
+});
+
+test("a row review can settle the selected column history before handing on a vertical merge", () => {
+  const table = mergeTable(3);
+  table.columnWidths = [1000, 1000, 2000];
+  table.rows.pop();
+  for (const record of table.rows) {
+    const first = record.cells.at(0);
+    if (first === undefined) throw new Error("Expected the merged first cell.");
+    first.formatting = { ...first.formatting, gridSpan: 2 };
+  }
+  const column = applied(documentOf(table), {
+    type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
+    story: OP_STORIES.MAIN,
+    blockId: "00000011",
+    column: 1,
+    revision,
+    newIds,
+  }).document;
+  const pending = structuredClone(firstTable(column));
+  const gridId = pending.formatting?.gridChange?.id;
+  const firstRow = pending.rows.at(0);
+  const secondOwner = pending.rows.at(1)?.cells.at(0);
+  if (
+    gridId === undefined ||
+    firstRow === undefined ||
+    secondOwner === undefined
+  )
+    throw new Error("Expected a grouped column revision on a vertical merge.");
+  // A newer native w:cellMerge restarts row B, while the earlier column's
+  // tcPrChange snapshots still say row B continues row A.
+  firstRow.structuralChange = {
+    type: "tableRowDeletion",
+    info: { ...revision, id: 50, author: "Other" },
+  };
+  secondOwner.formatting = { ...secondOwner.formatting, vMerge: "restart" };
+  secondOwner.structuralChange = {
+    type: "tableCellMerge",
+    info: { ...revision, id: 51, author: "Other" },
+    verticalMerge: "rest",
+    verticalMergeOriginal: "continue",
+  };
+  const document = documentOf(pending);
+  expect(contractViolation(document)).toBeUndefined();
+  expect(
+    tableGrid(firstTable(document), DOCUMENT_OP_TYPES.SET_TABLE).isOk(),
+  ).toBe(true);
+  const premature = applyDocumentOp(document, {
+    type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+    story: OP_STORIES.MAIN,
+    revisionIds: [50],
+    decision: REVISION_DECISIONS.ACCEPT,
+  });
+  expect(premature.isErr() && premature.error.reason).toBe(
+    DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
+  );
+  const columnsFirst = resolve(
+    document,
+    [gridId],
+    REVISION_DECISIONS.ACCEPT,
+  ).document;
+  const rowsLast = resolve(
+    columnsFirst,
+    [50],
+    REVISION_DECISIONS.ACCEPT,
+  ).document;
+  const together = resolve(
+    document,
+    [50, gridId],
+    REVISION_DECISIONS.ACCEPT,
+  ).document;
+  expect(together).toStrictEqual(rowsLast);
+  const resolved = firstTable(together);
+  expect(tableGrid(resolved, DOCUMENT_OP_TYPES.SET_TABLE).isOk()).toBe(true);
+  expect(resolved.rows).toHaveLength(2);
+  const remaining = resolved.rows.at(0)?.cells.at(0)?.structuralChange;
+  expect(
+    remaining?.type === "tableCellMerge" && remaining.verticalMergeOriginal,
+  ).toBe("rest");
+  expect(
+    resolve(together, [51], REVISION_DECISIONS.ACCEPT).document,
+  ).toStrictEqual(resolve(together, [51], REVISION_DECISIONS.REJECT).document);
 });

@@ -359,6 +359,9 @@ export type DocxBlockNumbering = {
     abstractNumId: number;
     bullet?: true;
     bulletFont?: string;
+    lvlText?: string;
+    numFmt?: string;
+    legal?: true;
 };
 
 // @public
@@ -401,6 +404,7 @@ export type DocxSection = {
         left: number | null;
     };
     columns: number;
+    ownHeaders?: true;
 };
 
 // @public (undocumented)
@@ -515,6 +519,7 @@ export type DocxTemplateStyle = {
     bold: boolean;
     size: number | null;
     keepNext: boolean;
+    pageBreakBefore: boolean;
     indentLeft: number | null;
     isDefault: boolean;
 };
@@ -2231,6 +2236,7 @@ export type TemplatePlan = {
     fields?: {
         freezeKinds?: string[];
         updateOnOpen?: boolean;
+        contentsOutlineLevels?: boolean;
     };
     compat?: {
         doNotExpandShiftReturn?: boolean;
@@ -2240,6 +2246,9 @@ export type TemplatePlan = {
     trackedChanges?: TemplatePlanTrackedChanges;
     textEffects?: "normalize" | "keep";
     sourceHeaders?: "drop" | "keep";
+    comments?: "drop" | "keep";
+    internalLinks?: "drop" | "keep";
+    textColors?: "drop" | "keep";
 };
 
 // @public
@@ -2356,6 +2365,7 @@ export type TemplatePlanNoteCounts = {
     output: number;
     identical: number;
     mismatch: number;
+    templateLeftOut: number;
 };
 
 // @public
@@ -2365,6 +2375,7 @@ export type TemplatePlanNumbering = {
     restartFrom?: number;
     baseNumId?: number;
     group?: string;
+    sourceNumId?: number;
 };
 
 // @public (undocumented)
@@ -2375,6 +2386,7 @@ export type TemplatePlanNumberingPatch = {
     lvlText?: string;
     start?: number;
     suff?: "tab" | "space" | "nothing";
+    isLgl?: boolean;
     font?: string;
     indent?: {
         left?: number;
@@ -2394,6 +2406,7 @@ export type TemplatePlanReference = {
     targetBlockId: string;
     instruction: string;
     expectedText: string;
+    field?: "REF" | "PAGEREF";
 };
 
 // @public (undocumented)
@@ -2474,6 +2487,7 @@ export type TemplatePlanReport = {
     };
     updateFields: "set" | "cleared" | "unchanged";
     sourceHeaders?: TemplatePlanSourceHeaders;
+    sourceComments?: TemplatePlanSourceComments;
     conformance: {
         status: "conformant" | "invalid" | "indeterminate";
         templateStatus: "conformant" | "invalid" | "indeterminate";
@@ -2503,6 +2517,12 @@ export type TemplatePlanSectionPage = {
 };
 
 // @public
+export type TemplatePlanSourceComments = {
+    kept: number;
+    leftOut: number;
+};
+
+// @public
 export type TemplatePlanSourceHeaders = {
     kept: {
         family: "header" | "footer";
@@ -2510,13 +2530,16 @@ export type TemplatePlanSourceHeaders = {
         part: string;
         paragraphs: number;
         created: boolean;
+        section?: number;
     }[];
     leftOut: {
         firstPageParts: number;
         evenPageParts: number;
         sharedParts: number;
         unsupportedObjects: number;
+        laterSectionParts: number;
     };
+    pageNumbersTwice: number;
 };
 
 // @public (undocumented)
@@ -2536,6 +2559,7 @@ export type TemplatePlanSourceItem = {
     indent?: TemplatePlanIndent;
     tabStops?: number[];
     alignment?: TemplatePlanAlignment;
+    outlineLevel?: number;
     spacing?: TemplatePlanSpacing;
     endsSection?: TemplatePlanSection;
     cellStyleId?: string;

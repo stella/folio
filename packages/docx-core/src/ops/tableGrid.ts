@@ -8,7 +8,10 @@ import {
   tableCellVerticalMerge,
 } from "../model/tableCellVerticalMerge";
 import { declaredUnmeasuredColumnCount } from "../model/tableColumnWidths";
-import { MAX_TABLE_GRID_COLUMNS } from "../model/tableGridLimits";
+import {
+  gridSpanInColumns,
+  MAX_TABLE_GRID_COLUMNS,
+} from "../model/tableGridLimits";
 import { tableReviewGeometry } from "../model/tableReviewGeometry";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import type { DocumentOpType } from "./types";
@@ -83,9 +86,8 @@ export const tableGrid = (
       if (review !== undefined && !review.holdsCell(cell)) continue;
       const formatting =
         review === undefined ? cell.formatting : review.cellFormatting(cell);
-      const span = formatting?.gridSpan ?? 1;
-      if (!nonnegative(span) || span === 0 || !nonnegative(position + span))
-        return refuse();
+      const span = gridSpanInColumns(formatting?.gridSpan);
+      if (!nonnegative(span) || !nonnegative(position + span)) return refuse();
       const start = position;
       const end = start + span;
       let ownerRow = rowIndex;

@@ -37,12 +37,15 @@ import {
   type XmlElement,
 } from "../../xmlParser";
 import type { AnalyzedDocument } from "./blocks";
+import { EMBEDDED_RELATIONSHIP_TYPES, extensionOf } from "./embeddedParts";
 import type { RelationshipsEditor, SourceMedia } from "./emit";
 import { readPartText, relationshipsPathFor } from "./package";
+import type { ResolvedPlan } from "./plan";
 import { createStoryState, readParagraph, toggleOf, walkBlocks } from "./story";
 import type { TemplatePlanError, TemplatePlanSourceHeaders } from "./types";
 import {
   elementChildren,
+  rangeOf,
   readRawPart,
   relationshipAttr,
   wAttr,
@@ -68,6 +71,7 @@ const NO_LEFT_OUT = (): LeftOut => ({
   evenPageParts: 0,
   sharedParts: 0,
   unsupportedObjects: 0,
+  laterSectionParts: 0,
 });
 
 /** A source header or footer part, read. */
@@ -91,6 +95,9 @@ export type HeaderWrite = {
   kind: HeaderKind;
   source: SourcePart;
   templatePath: string | null;
+  /** The output section a later section's content goes to: a new part
+   *  that section alone names. Absent for the content every section shows. */
+  section?: number;
 };
 
 const SHOWN: ReadonlySet<string> = new Set([
@@ -121,7 +128,8 @@ const showsAnything = (root: XmlElement, texts: readonly string[]): boolean => {
 };
 
 /** Whether every relationship a block refers to can be re-made in an
- *  output part: an external address, or a picture the package holds. */
+ *  output part: an external address, or a picture or embedded object the
+ *  package holds. */
 const carriable = (
   block: XmlElement,
   relationships: RelationshipMap,
@@ -149,7 +157,7 @@ const carriable = (
       const fine =
         relationship !== undefined &&
         (relationship.targetMode === "External" ||
-          (relationship.type === RELATIONSHIP_TYPES.image &&
+          (EMBEDDED_RELATIONSHIP_TYPES.has(relationship.type) &&
             holds(relationship.target)));
       if (!fine) {
         return false;
@@ -176,6 +184,22 @@ export const partParagraphTexts = (root: XmlElement): string[] => {
     tracked: () => {},
   });
   return texts;
+};
+
+/** Whether a part shows a page number: it holds a PAGE field. */
+export const showsPageNumber = (root: XmlElement): boolean => {
+  const state = createStoryState();
+  walkBlocks(root, {
+    paragraph: (paragraph) => {
+      readParagraph(paragraph, state);
+    },
+    tableStart: () => {},
+    cellStart: () => {},
+    tableEnd: () => {},
+    unread: () => {},
+    tracked: () => {},
+  });
+  return state.fields.some(({ kind }) => kind === "PAGE");
 };
 
 /** The first section's properties: the first a paragraph ends, else the body's. */
@@ -318,16 +342,50 @@ type FamilyPages = {
   sourceEven: boolean;
 };
 
-/** What the source's first section shows for one family, by the output
- *  kind that shows on the same pages. */
+/** The sections of a body in order: the properties each section-ending
+ *  paragraph holds, then the body's own. */
+export const sectionsOf = (body: XmlElement): XmlElement[] => {
+  const sections: XmlElement[] = [];
+  for (const block of elementChildren(body)) {
+    const sectPr =
+      wName(block) === "p" ? wChild(wChild(block, "pPr"), "sectPr") : null;
+    if (sectPr !== null) {
+      sections.push(sectPr);
+    }
+  }
+  const last = wChild(body, "sectPr");
+  if (last !== null) {
+    sections.push(last);
+  }
+  return sections;
+};
+
+/** The relationship ids section `index` shows for one family, by kind: its
+ *  own, else those of the sections before it. */
+const sectionReferences = (
+  sections: readonly XmlElement[],
+  index: number,
+  family: HeaderFamily,
+): Map<HeaderKind, string> => {
+  const out = new Map<HeaderKind, string>();
+  for (const section of sections.slice(0, index + 1)) {
+    for (const [kind, id] of referencesOf(section, family)) {
+      out.set(kind, id);
+    }
+  }
+  return out;
+};
+
+/** What a source section shows for one family, by the output kind that
+ *  shows on the same pages. */
 const carryFamily = async (
   source: AnalyzedDocument,
   family: HeaderFamily,
   section: XmlElement | null,
   { titlePage, evenPages, sourceEven }: FamilyPages,
   leftOut: LeftOut,
+  references: Map<HeaderKind, string> = referencesOf(section, family),
 ): Promise<Result<Map<HeaderKind, SourcePart>, TemplatePlanError>> => {
-  const references = referencesOf(section, family);
   const shown = new Map<HeaderKind, SourcePart | null>();
   for (const kind of HEADER_KINDS) {
     const id = references.get(kind);
@@ -379,6 +437,9 @@ const carryFamily = async (
 export const plannedHeaderWrites = async (
   source: AnalyzedDocument,
   template: AnalyzedDocument,
+  /** For each output section after the first, the index of the source
+   *  section it starts with. */
+  starts: readonly number[] = [],
 ): Promise<
   Result<{ writes: HeaderWrite[]; leftOut: LeftOut }, TemplatePlanError>
 > => {
@@ -434,11 +495,209 @@ export const plannedHeaderWrites = async (
       }
     }
   }
+  const later = await laterSectionWrites(
+    source,
+    template,
+    starts,
+    pages,
+    leftOut,
+  );
+  if (Result.isError(later)) {
+    return later;
+  }
+  writes.push(...later.value);
   leftOut.unsupportedObjects = writes.reduce(
     (total, { source: part }) => total + part.unsupported,
     0,
   );
   return Result.ok({ writes, leftOut });
+};
+
+/** Later output sections show no first page of their own. */
+const LATER_KINDS: readonly HeaderKind[] = ["default", "even"];
+
+/**
+ * Where the content of the source's later sections goes. An output section
+ * after the first starts with a source section; where that section shows
+ * other content than the first one for some pages, a new part holds the
+ * template's content for those pages followed by that content, and only
+ * that output section names it. A source section the output merges into
+ * another shows its content nowhere: each part with other content than
+ * the section it went into is counted.
+ */
+const laterSectionWrites = async (
+  source: AnalyzedDocument,
+  template: AnalyzedDocument,
+  starts: readonly number[],
+  pages: FamilyPages,
+  leftOut: LeftOut,
+): Promise<Result<HeaderWrite[], TemplatePlanError>> => {
+  const sections = sectionsOf(source.body);
+  const representatives = [0, ...starts];
+  const writes: HeaderWrite[] = [];
+  for (const family of FAMILIES) {
+    const shown: Map<HeaderKind, SourcePart>[] = [];
+    for (const [index, section] of sections.entries()) {
+      // oxlint-disable-next-line no-await-in-loop -- serialized reads keep the archive budget exact
+      const carried = await carryFamily(
+        source,
+        family,
+        section,
+        { ...pages, titlePage: index === 0 && pages.titlePage },
+        // What a later section has no place for is counted below.
+        NO_LEFT_OUT(),
+        sectionReferences(sections, index, family),
+      );
+      if (Result.isError(carried)) {
+        return carried;
+      }
+      shown.push(carried.value);
+    }
+    const first = shown[0] ?? new Map<HeaderKind, SourcePart>();
+    const references = outputReferences(template.body, family);
+    const counted = new Set<string>();
+    for (const [index, parts] of shown.entries()) {
+      // The output section the source section went into.
+      let output = 0;
+      for (const [position, start] of representatives.entries()) {
+        if (start <= index) {
+          output = position;
+        }
+      }
+      const representative = shown[representatives[output] ?? 0] ?? first;
+      for (const kind of LATER_KINDS) {
+        const part = parts.get(kind) ?? null;
+        if (part === null) {
+          continue;
+        }
+        if (output > 0 && index === representatives[output]) {
+          if (!sameContent(part, first.get(kind) ?? null)) {
+            const id = references.get(kind);
+            writes.push({
+              family,
+              kind,
+              source: part,
+              templatePath:
+                id === undefined ? null : familyPathOf(template, family, id),
+              section: output,
+            });
+          }
+          continue;
+        }
+        if (
+          index > 0 &&
+          !sameContent(part, representative.get(kind) ?? null) &&
+          !counted.has(part.path)
+        ) {
+          counted.add(part.path);
+          leftOut.laterSectionParts += 1;
+        }
+      }
+    }
+  }
+  return Result.ok(writes);
+};
+
+/**
+ * The sections after the first that show a header or footer of their own:
+ * for the other pages or even pages, a part with text (or a picture, a
+ * field) other than the section before it shows there. Read for a manifest,
+ * so a plan can keep such a section a section of its own.
+ */
+export const sectionsWithOwnHeaders = async (
+  document: Pick<AnalyzedDocument, "pkg">,
+  body: XmlElement,
+): Promise<Result<Set<number>, TemplatePlanError>> => {
+  const sections = sectionsOf(body);
+  const own = new Set<number>();
+  if (sections.length < 2) {
+    return Result.ok(own);
+  }
+  const parts = new Map<string, SourcePart | null>();
+  const shown = async (
+    path: string | null,
+  ): Promise<Result<SourcePart | null, TemplatePlanError>> => {
+    if (path === null) {
+      return Result.ok(null);
+    }
+    const known = parts.get(path);
+    if (known !== undefined) {
+      return Result.ok(known);
+    }
+    const part = await readFamilyPart(document as AnalyzedDocument, path);
+    if (Result.isError(part)) {
+      return part;
+    }
+    const value =
+      part.value !== null && showsAnything(part.value.root, part.value.texts)
+        ? part.value
+        : null;
+    parts.set(path, value);
+    return Result.ok(value);
+  };
+  for (const family of FAMILIES) {
+    for (const kind of LATER_KINDS) {
+      const pathAt = (index: number): string | null => {
+        const id = sectionReferences(sections, index, family).get(kind);
+        return id === undefined
+          ? null
+          : familyPathOf(document as AnalyzedDocument, family, id);
+      };
+      // oxlint-disable-next-line no-await-in-loop -- serialized reads keep the archive budget exact
+      const first = await shown(pathAt(0));
+      if (Result.isError(first)) {
+        return first;
+      }
+      let before = first.value;
+      for (let index = 1; index < sections.length; index += 1) {
+        // oxlint-disable-next-line no-await-in-loop -- serialized reads keep the archive budget exact
+        const part = await shown(pathAt(index));
+        if (Result.isError(part)) {
+          return part;
+        }
+        if (part.value !== null && !sameContent(part.value, before)) {
+          own.add(index);
+        }
+        before = part.value;
+      }
+    }
+  }
+  return Result.ok(own);
+};
+
+/** The source paragraphs whose section the output keeps, in order. */
+export const keptSectionEnds = (
+  resolved: ResolvedPlan,
+): (XmlElement | null)[] =>
+  resolved.items.flatMap((item) => {
+    if (item.kind !== "paragraph" || item.paragraph.endsSection === null) {
+      return [];
+    }
+    const { parts } = item.paragraph;
+    const ending =
+      parts.find(({ block }) => block.read?.hasSectionBreak === true) ??
+      parts.at(-1);
+    return [ending?.block.element ?? null];
+  });
+
+/** The source section each output section after the first starts with:
+ *  the one after the section its preceding section-ending paragraph ends.
+ *  `ends` are the source paragraphs whose section the output keeps. */
+export const outputSectionStarts = (
+  source: AnalyzedDocument,
+  ends: readonly (XmlElement | null)[],
+): number[] => {
+  const sections = sectionsOf(source.body);
+  return ends.map((paragraph) => {
+    const sectPr =
+      paragraph === null ? null : wChild(wChild(paragraph, "pPr"), "sectPr");
+    const at = sectPr === null ? undefined : rangeOf(sectPr)?.start;
+    const index =
+      at === undefined
+        ? -1
+        : sections.findIndex((section) => rangeOf(section)?.start === at);
+    return index === -1 ? sections.length : index + 1;
+  });
 };
 
 /** What a copy needs of the output: where its relationships go, how a
@@ -474,7 +733,8 @@ const DROPPED: ReadonlySet<string> = new Set([
 /** Paragraph ids a copy leaves out: the output's own parts hold theirs. */
 const DROPPED_ATTRIBUTES: ReadonlySet<string> = new Set(["paraId", "textId"]);
 
-/** The pictures a part refers to, read from the source package. */
+/** The pictures and embedded objects a part refers to, read from the
+ *  source package. */
 const picturesOf = async (
   part: SourcePart,
   target: CopyTarget,
@@ -482,7 +742,7 @@ const picturesOf = async (
   const media = new Map<string, SourceMedia>();
   for (const relationship of part.relationships.values()) {
     if (
-      relationship.type !== RELATIONSHIP_TYPES.image ||
+      !EMBEDDED_RELATIONSHIP_TYPES.has(relationship.type) ||
       relationship.targetMode === "External"
     ) {
       continue;
@@ -491,23 +751,34 @@ const picturesOf = async (
     // oxlint-disable-next-line no-await-in-loop -- serialized reads keep the archive budget exact
     const bytes = await target.readSourceBytes(path);
     if (bytes !== null) {
-      const dot = path.lastIndexOf(".");
       media.set(path, {
         bytes,
-        extension: dot === -1 ? "" : path.slice(dot + 1).toLowerCase(),
+        extension: extensionOf(path),
+        relationshipType: relationship.type,
       });
     }
   }
   return media;
 };
 
+/** How a copy treats the ids of what it copies. */
+export type CopyIds = {
+  /** Keep the paragraphs' own ids (`w14:paraId`, `w14:textId`): parts
+   *  that refer to them come along. */
+  keepParagraphIds?: boolean;
+  /** The id the copied block itself takes (`w:id` of a comment). */
+  blockId?: (id: string) => string;
+};
+
 /** One block of a source part re-homed for an output part, or null when
- *  it refers to anything other than a picture or an external address. */
+ *  it refers to anything other than a picture, an embedded object or an
+ *  external address. */
 const rehomedBlock = (
   block: XmlElement,
   part: SourcePart,
   media: ReadonlyMap<string, SourceMedia>,
   target: CopyTarget,
+  ids: CopyIds = {},
 ): string | null => {
   // Set by a relationship the output part cannot re-make.
   const state = { refused: false };
@@ -527,14 +798,14 @@ const rehomedBlock = (
     const path = target.resolveSourceTarget(part.path, relationship.target);
     const picture = media.get(path);
     if (
-      relationship.type !== RELATIONSHIP_TYPES.image ||
+      !EMBEDDED_RELATIONSHIP_TYPES.has(relationship.type) ||
       picture === undefined
     ) {
       state.refused = true;
       return id;
     }
     return target.relationships.add({
-      type: RELATIONSHIP_TYPES.image,
+      type: relationship.type,
       target: target.addMedia(path, picture),
       external: false,
     });
@@ -547,7 +818,9 @@ const rehomedBlock = (
       const colon = name.indexOf(":");
       if (
         value === undefined ||
-        (colon !== -1 && DROPPED_ATTRIBUTES.has(name.slice(colon + 1)))
+        (colon !== -1 &&
+          ids.keepParagraphIds !== true &&
+          DROPPED_ATTRIBUTES.has(name.slice(colon + 1)))
       ) {
         continue;
       }
@@ -594,10 +867,20 @@ const rehomedBlock = (
           }),
     });
   };
-  const rehomed = rehome(block);
-  if (state.refused || rehomed === null) {
+  const copied = rehome(block);
+  if (state.refused || copied === null) {
     return null;
   }
+  const ownId = wAttr(block, "id");
+  const idName = Object.keys(copied.attributes ?? {}).find(
+    (name) => name.endsWith(":id") && !name.startsWith("xmlns"),
+  );
+  const rehomed =
+    ids.blockId === undefined || ownId === null || idName === undefined
+      ? copied
+      : cloneElement(copied, {
+          attributes: { ...copied.attributes, [idName]: ids.blockId(ownId) },
+        });
   // The block brings the namespaces its part declares at the root.
   const declared: Record<string, string | number | undefined> = {};
   for (const [name, value] of Object.entries(part.root.attributes ?? {})) {
@@ -621,19 +904,21 @@ const rehomedBlock = (
 export const copyPartContent = async (
   part: SourcePart,
   target: CopyTarget,
+  ids: CopyIds = {},
+  blocks: readonly XmlElement[] = part.blocks,
 ): Promise<{ markup: string; unsupported: number }> => {
   const media = await picturesOf(part, target);
   let unsupported = 0;
-  const blocks: string[] = [];
-  for (const block of part.blocks) {
-    const xml = rehomedBlock(block, part, media, target);
+  const copied: string[] = [];
+  for (const block of blocks) {
+    const xml = rehomedBlock(block, part, media, target, ids);
     if (xml === null) {
       unsupported += 1;
     } else {
-      blocks.push(xml);
+      copied.push(xml);
     }
   }
-  return { markup: blocks.join(""), unsupported };
+  return { markup: copied.join(""), unsupported };
 };
 
 const partRootOf = async (
@@ -660,24 +945,34 @@ export const verifyCarriedHeaders = async ({
   source,
   template,
   output,
+  starts = [],
 }: {
   source: AnalyzedDocument;
   template: AnalyzedDocument;
   output: AnalyzedDocument;
+  starts?: readonly number[];
 }): Promise<
   Result<
     { report: TemplatePlanSourceHeaders; mismatched: string[] },
     TemplatePlanError
   >
 > => {
-  const planned = await plannedHeaderWrites(source, template);
+  const planned = await plannedHeaderWrites(source, template, starts);
   if (Result.isError(planned)) {
     return planned;
   }
+  const outputSections = sectionsOf(output.body);
   const kept: TemplatePlanSourceHeaders["kept"] = [];
+  let pageNumbersTwice = 0;
   const mismatched: string[] = [];
   for (const write of planned.value.writes) {
-    const id = outputReferences(output.body, write.family).get(write.kind);
+    // Every output section names its headers itself: the first section's
+    // show the content all of them share, a later one's its own.
+    const id = (
+      outputSections.length === 0
+        ? outputReferences(output.body, write.family)
+        : sectionReferences(outputSections, write.section ?? 0, write.family)
+    ).get(write.kind);
     const path =
       id === undefined ? null : familyPathOf(output, write.family, id);
     // oxlint-disable-next-line no-await-in-loop -- serialized reads keep the archive budget exact
@@ -707,16 +1002,28 @@ export const verifyCarriedHeaders = async ({
       mismatched.push(`${write.kind} ${write.family}`);
       continue;
     }
+    // The template's part numbers its pages and so does the content it
+    // takes: those pages show two numbers.
+    if (
+      templateRoot.value !== null &&
+      showsPageNumber(templateRoot.value) &&
+      showsPageNumber(
+        cloneElement(write.source.root, { elements: write.source.blocks }),
+      )
+    ) {
+      pageNumbersTwice += 1;
+    }
     kept.push({
       family: write.family,
       kind: write.kind,
       part: path,
       paragraphs: write.source.texts.length,
-      created: write.templatePath === null,
+      created: write.templatePath === null || write.section !== undefined,
+      ...(write.section === undefined ? {} : { section: write.section }),
     });
   }
   return Result.ok({
-    report: { kept, leftOut: planned.value.leftOut },
+    report: { kept, leftOut: planned.value.leftOut, pageNumbersTwice },
     mismatched,
   });
 };

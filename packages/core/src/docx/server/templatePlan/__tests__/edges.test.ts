@@ -7,13 +7,20 @@ import { innerRangeOf, readRawPart } from "../xml";
 import {
   buildMinimalDocx,
   buildTemplate,
+  numPr,
   p,
   r,
   readPart,
   replacePart,
   TEMPLATE_IDS,
 } from "./fixtures";
-import { planFor, unwrap, verifyFor } from "./planning";
+import {
+  applyFor,
+  buildSourceWith,
+  planFor,
+  unwrap,
+  verifyFor,
+} from "./planning";
 
 describe("innerRangeOf", () => {
   test("finds the content after an opening tag whose attribute holds '>'", () => {
@@ -135,6 +142,179 @@ describe("applyTemplatePlan edge content", () => {
     });
   });
 
+  test("keeps the source's own list where the plan asks for it", async () => {
+    const template = await buildTemplate();
+    const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    // List 7 links a numbering style; the definition with its levels is
+    // the one the style names. List 8 counts in it too, from 5 on.
+    const numbering = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:numbering xmlns:w="${W}"><w:abstractNum w:abstractNumId="3"><w:nsid w:val="11111111"/><w:multiLevelType w:val="multilevel"/><w:styleLink w:val="RowNumbers"/><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:pStyle w:val="Missing"/><w:lvlText w:val="%1."/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="360" w:hanging="360"/></w:pPr></w:lvl><w:lvl w:ilvl="1"><w:start w:val="1"/><w:numFmt w:val="lowerLetter"/><w:lvlText w:val="(%2)"/><w:lvlJc w:val="left"/></w:lvl></w:abstractNum><w:abstractNum w:abstractNumId="4"><w:nsid w:val="22222222"/><w:multiLevelType w:val="multilevel"/><w:numStyleLink w:val="RowNumbers"/></w:abstractNum><w:num w:numId="7"><w:abstractNumId w:val="4"/></w:num><w:num w:numId="8"><w:abstractNumId w:val="4"/><w:lvlOverride w:ilvl="0"><w:startOverride w:val="5"/></w:lvlOverride></w:num></w:numbering>`;
+    const source = await buildMinimalDocx(
+      [
+        p(r("First"), numPr(7, 0)),
+        p(r("Its item"), numPr(7, 1)),
+        p(r("Second"), numPr(7, 0)),
+        p(r("Fifth"), numPr(8, 0)),
+      ].join(""),
+      {
+        "word/_rels/document.xml.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/></Relationships>`,
+        "word/numbering.xml": numbering,
+      },
+    );
+    const sourceLabels = unwrap(await analyzeDocxBlocks(source)).blocks.map(
+      ({ label }) => label,
+    );
+    expect(sourceLabels).toEqual(["1.", "(a)", "2.", "5."]);
+    const plan = await planFor({
+      source,
+      template,
+      items: (blocks) =>
+        blocks.map(({ id, hash }, index) => ({
+          kind: "source" as const,
+          blockId: id,
+          hash,
+          styleId: "HouseBody",
+          numbering: {
+            numId: "new" as const,
+            ilvl: index === 1 ? 1 : 0,
+            sourceNumId: index === 3 ? 8 : 7,
+          },
+        })),
+    });
+    const { docx, report } = unwrap(
+      await applyTemplatePlan({ source, template, plan }),
+    );
+    const numberingOut = (await readPart(docx, "word/numbering.xml")) ?? "";
+
+    expect(report.ok).toBe(true);
+    expect(report.counts.labelChanged).toBe(0);
+    expect(report.counts.labelLost).toBe(0);
+    expect(
+      unwrap(await analyzeDocxBlocks(docx)).blocks.map(({ label }) => label),
+    ).toEqual(sourceLabels);
+    // One definition, the one with the levels, without its package ties;
+    // two instances, the second with its override.
+    expect(numberingOut.match(/w:lvlText w:val="%1\."/gu)).toHaveLength(1);
+    expect(numberingOut).not.toContain("RowNumbers");
+    expect(numberingOut).not.toContain("Missing");
+    expect(numberingOut).not.toContain("11111111");
+    expect(numberingOut).toContain('<w:startOverride w:val="5"/>');
+    // A source list never stands beside a list of the template.
+    expect(
+      (
+        await applyTemplatePlan({
+          source,
+          template,
+          plan: {
+            ...plan,
+            body: plan.body.map((item) =>
+              item.kind === "source"
+                ? Object.assign(structuredClone(item), {
+                    numbering: { numId: 1, ilvl: 0, sourceNumId: 7 },
+                  })
+                : item,
+            ),
+          },
+        })
+      ).isErr(),
+    ).toBe(true);
+  });
+
+  test("counts no label lost for a paragraph whose level prints nothing", async () => {
+    const template = await buildTemplate();
+    const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    const source = await buildMinimalDocx(
+      p(r("Counted, shown bare"), numPr(5, 0)),
+      {
+        "word/_rels/document.xml.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/></Relationships>`,
+        "word/numbering.xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:numbering xmlns:w="${W}"><w:abstractNum w:abstractNumId="1"><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val=""/></w:lvl></w:abstractNum><w:num w:numId="5"><w:abstractNumId w:val="1"/></w:num></w:numbering>`,
+      },
+    );
+    const plan = await planFor({
+      source,
+      template,
+      items: (blocks) =>
+        blocks.map(({ id, hash }) => ({
+          kind: "source" as const,
+          blockId: id,
+          hash,
+          styleId: "HouseBody",
+          numbering: null,
+        })),
+    });
+    const { report } = unwrap(
+      await applyTemplatePlan({ source, template, plan }),
+    );
+    expect(report.counts.labelLost).toBe(0);
+  });
+
+  test("keeps a field that counts in a list by name, with the list", async () => {
+    const template = await buildTemplate();
+    const listnum =
+      '<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> LISTNUM  AnnexNumbers </w:instrText></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r>';
+    const source = await buildMinimalDocx(
+      [
+        p(`${r("Annex ")}${listnum}${r(" - Prices")}`),
+        p(`${r("Annex ")}${listnum}${r(" - Terms")}`),
+      ].join(""),
+      {
+        "word/_rels/document.xml.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/></Relationships>`,
+        "word/numbering.xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml"><w:abstractNum w:abstractNumId="4" w15:restartNumberingAfterBreak="0"><w:nsid w:val="0A534828"/><w:multiLevelType w:val="multilevel"/><w:tmpl w:val="C024B46A"/><w:name w:val="AnnexNumbers"/><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:pStyle w:val="Missing"/><w:lvlText w:val="%1"/><w:lvlJc w:val="left"/><w:rPr><w:b/></w:rPr></w:lvl></w:abstractNum><w:num w:numId="7"><w:abstractNumId w:val="4"/></w:num></w:numbering>`,
+      },
+    );
+    const plan = await planFor({
+      source,
+      template,
+      items: (blocks) =>
+        blocks.map(({ id, hash }) => ({
+          kind: "source" as const,
+          blockId: id,
+          hash,
+          styleId: "HouseBody",
+        })),
+    });
+    const { docx, report } = unwrap(
+      await applyTemplatePlan({ source, template, plan }),
+    );
+    const document = (await readPart(docx, "word/document.xml")) ?? "";
+    const numbering = (await readPart(docx, "word/numbering.xml")) ?? "";
+
+    expect(report.ok).toBe(true);
+    expect(report.dropped.sourceFields).toEqual([]);
+    expect(document.match(/ LISTNUM {2}AnnexNumbers /gu)).toHaveLength(2);
+    // The list goes with its fields, without what ties it to its package,
+    // and with an instance after the template's.
+    expect(numbering).toContain(
+      '<w:abstractNum w:abstractNumId="2"><w:multiLevelType w:val="multilevel"/><w:name w:val="AnnexNumbers"/><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1"/><w:lvlJc w:val="left"/><w:rPr><w:b/></w:rPr></w:lvl></w:abstractNum><w:num w:numId="1">',
+    );
+    expect(numbering).toContain(
+      '<w:num w:numId="3"><w:abstractNumId w:val="2"/></w:num></w:numbering>',
+    );
+  });
+
+  test("reads a bookmark that ends between cells as ending behind the paragraph before", async () => {
+    const ref = (code: string, result: string): string =>
+      `<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve">${code}</w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>${r(result)}<w:r><w:fldChar w:fldCharType="end"/></w:r>`;
+    // A numbered row cell: the bookmark starts in its empty paragraph and
+    // ends in the row, in front of the next cell.
+    const source = await buildMinimalDocx(
+      [
+        `<w:tbl><w:tblGrid><w:gridCol w:w="500"/><w:gridCol w:w="4000"/></w:tblGrid><w:tr><w:tc>${p('<w:bookmarkStart w:id="7" w:name="row1"/>')}</w:tc><w:bookmarkEnd w:id="7"/><w:tc>${p(r("Customer"))}</w:tc></w:tr></w:tbl>`,
+        p(`${r("See item ")}${ref(" REF row1 \\w \\h ", "1")}${r(".")}`),
+      ].join(""),
+    );
+    const { blocks } = unwrap(await analyzeDocxBlocks(source));
+    const citing = blocks.find(({ text }) => text.startsWith("See item"));
+
+    expect(citing?.crossReferences).toEqual([
+      expect.objectContaining({
+        bookmark: "row1",
+        // The empty paragraph of the first cell.
+        targetBlockId: blocks.at(0)?.cells?.at(0)?.blockIds.at(0),
+        targetWhole: true,
+      }),
+    ]);
+  });
+
   test("reports a cross-reference field with the paragraph its bookmark marks", async () => {
     const template = await buildTemplate();
     const number =
@@ -226,10 +406,310 @@ describe("applyTemplatePlan edge content", () => {
       predictedText: null,
     });
     expect(report.references.predictionMismatch).toBe(0);
+    // The field the plan writes over the source's stands for it; the two
+    // the plan leaves are written as their text.
+    expect(report.dropped.sourceFields).toEqual([{ kind: "REF", count: 2 }]);
     expect(document).toContain(
       `<w:instrText xml:space="preserve"> REF ${result?.bookmark ?? ""} \\h \\* MERGEFORMAT </w:instrText>`,
     );
     expect(document).toContain(" AUTONUMLGL  \\* Arabic \\e ");
+  });
+
+  test("a page reference is reported and kept as a field to the plan's bookmark on its target", async () => {
+    const template = await buildTemplate();
+    const field = (code: string, result: string): string =>
+      `<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve">${code}</w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>${r(result)}<w:r><w:fldChar w:fldCharType="end"/></w:r>`;
+    const source = await buildMinimalDocx(
+      [
+        p(
+          `<w:bookmarkStart w:id="1" w:name="a19"/>${r("Dispute resolution")}<w:bookmarkEnd w:id="1"/>`,
+        ),
+        // A picture of words alone: the field shows them and links to the
+        // heading, as a drafter writes "clause " in front of its number.
+        p(
+          `${r("As set out in ")}${field("PAGEREF a19\\# \"'clause '\"  \\h", "clause ")}${r("19.")}`,
+        ),
+      ].join(""),
+    );
+    const { blocks } = unwrap(await analyzeDocxBlocks(source));
+    expect(blocks[1]?.crossReferences).toMatchObject([
+      { start: 14, end: 21, bookmark: "a19", targetBlockId: "p0" },
+    ]);
+    const plan = await planFor({
+      source,
+      template,
+      extra: {
+        references: [
+          {
+            blockId: "p1",
+            start: 14,
+            end: 21,
+            targetBlockId: "p0",
+            instruction: `\\# "'clause '" \\h`,
+            expectedText: "clause ",
+            field: "PAGEREF",
+          },
+        ],
+      },
+    });
+    const { docx, report } = unwrap(
+      await applyTemplatePlan({ source, template, plan }),
+    );
+    const document = (await readPart(docx, "word/document.xml")) ?? "";
+    const [result] = report.references.results;
+    expect(report.ok).toBe(true);
+    expect(result).toMatchObject({ status: "ok", predictedText: null });
+    expect(document).toContain(
+      `<w:instrText xml:space="preserve"> PAGEREF ${result?.bookmark ?? ""} \\# &quot;&apos;clause &apos;&quot; \\h </w:instrText>`,
+    );
+    // A switch a page reference cannot carry refuses the plan.
+    const odd = await applyTemplatePlan({
+      source,
+      template,
+      plan: {
+        ...plan,
+        references: (plan.references ?? []).map((reference) =>
+          Object.assign({}, reference, { instruction: "\\n" }),
+        ),
+      },
+    });
+    expect(odd.isErr()).toBe(true);
+  });
+
+  test("a link to a bookmark of the source leads to the output's target when the plan keeps it", async () => {
+    const template = await buildTemplate();
+    const field = (code: string, result: string): string =>
+      `<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve">${code}</w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>${r(result)}<w:r><w:fldChar w:fldCharType="end"/></w:r>`;
+    const source = await buildMinimalDocx(
+      [
+        p(`<w:hyperlink w:anchor="_Toc1">${r("Definitions")}</w:hyperlink>`),
+        p(`${r("See ")}${field(' HYPERLINK \\l "_Toc1" ', "the definitions")}`),
+        p(
+          `<w:bookmarkStart w:id="1" w:name="_Toc1"/>${r("Definitions")}<w:bookmarkEnd w:id="1"/>`,
+        ),
+        p(`<w:hyperlink w:anchor="nowhere">${r("Lost")}</w:hyperlink>`),
+      ].join(""),
+    );
+    const kept = unwrap(
+      await applyFor({ source, template, extra: { internalLinks: "keep" } }),
+    );
+    const document = (await readPart(kept.docx, "word/document.xml")) ?? "";
+    const bookmark =
+      /<w:bookmarkStart w:id="\d+" w:name="([^"]+)"\/><w:r>(?:<w:rPr>.*?<\/w:rPr>)?<w:t xml:space="preserve">Definitions/u.exec(
+        document,
+      )?.[1];
+    expect(bookmark).toBeDefined();
+    expect(
+      document.match(
+        new RegExp(`<w:hyperlink w:anchor="${bookmark ?? ""}"`, "gu"),
+      )?.length,
+    ).toBe(2);
+    expect(kept.report.ok).toBe(true);
+    // The link to a bookmark the source lacks led nowhere there: it stays
+    // text, and no link is lost.
+    expect(kept.report.dropped.internalHyperlinks).toBe(0);
+    const plain = unwrap(await applyFor({ source, template }));
+    expect(plain.report.dropped.internalHyperlinks).toBe(2);
+    expect(
+      (await readPart(plain.docx, "word/document.xml")) ?? "",
+    ).not.toContain("w:anchor");
+  });
+
+  test("a contents entry field and a macro button stay fields where their paragraph is placed", async () => {
+    const template = await buildTemplate();
+    const code = (instruction: string): string =>
+      `<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve">${instruction}</w:instrText></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r>`;
+    const source = await buildMinimalDocx(
+      [
+        p(`${code(' TC "12. Service credits" \\l 1 ')}${r("Service credits")}`),
+        p(
+          `${code(" MACROBUTTON optional [ ")}${r("The Supplier shall notify.]")}`,
+        ),
+      ].join(""),
+    );
+    const { docx, report } = unwrap(await applyFor({ source, template }));
+    const document = (await readPart(docx, "word/document.xml")) ?? "";
+    expect(report.ok).toBe(true);
+    expect(document).toContain(
+      '<w:instrText xml:space="preserve"> TC &quot;12. Service credits&quot; \\l 1 </w:instrText>',
+    );
+    expect(document).toContain(
+      '<w:instrText xml:space="preserve"> MACROBUTTON optional [ </w:instrText>',
+    );
+    expect(report.dropped.sourceFields).toEqual([]);
+  });
+
+  test("a colour that marks part of the text counts the text of the notes", async () => {
+    const template = await buildTemplate();
+    const separators =
+      '<w:footnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:footnote><w:footnote w:type="continuationSeparator" w:id="0"><w:p><w:r><w:continuationSeparator/></w:r></w:p></w:footnote>';
+    const source = await buildSourceWith({
+      body: p(
+        `${r("[Insert date]", '<w:color w:val="FF0000"/>')}<w:r><w:footnoteReference w:id="2"/></w:r>`,
+      ),
+      footnotes: `${separators}<w:footnote w:id="2">${p(r(" The date on which the last party signs this agreement."))}</w:footnote>`,
+    });
+    const kept = unwrap(
+      await applyFor({ source, template, extra: { textColors: "keep" } }),
+    );
+    expect((await readPart(kept.docx, "word/document.xml")) ?? "").toContain(
+      '<w:color w:val="FF0000"/>',
+    );
+  });
+
+  test("a colour that marks part of the text is kept when the plan keeps colours; the source's own look is not", async () => {
+    const template = await buildTemplate();
+    const source = await buildMinimalDocx(
+      [
+        p(
+          `${r("The Supplier shall deliver the goods on time and in full. ", '<w:color w:val="1F3864"/>')}${r("[Insert date]", '<w:color w:val="FF0000"/><w:shd w:val="clear" w:color="auto" w:fill="D9D9D9"/>')}`,
+        ),
+        p(
+          r(
+            "Each party bears its own costs of this agreement.",
+            '<w:color w:val="1F3864"/>',
+          ),
+        ),
+      ].join(""),
+    );
+    const kept = unwrap(
+      await applyFor({ source, template, extra: { textColors: "keep" } }),
+    );
+    const document = (await readPart(kept.docx, "word/document.xml")) ?? "";
+    expect(kept.report.ok).toBe(true);
+    expect(document).toContain(
+      '<w:color w:val="FF0000"/><w:shd w:val="clear" w:color="auto" w:fill="D9D9D9"/></w:rPr><w:t xml:space="preserve">[Insert date]',
+    );
+    // The blue that covers most of the text is the source's look.
+    expect(document).not.toContain("1F3864");
+    const plain = unwrap(await applyFor({ source, template }));
+    expect(
+      (await readPart(plain.docx, "word/document.xml")) ?? "",
+    ).not.toContain("w:color");
+  });
+
+  test("a marking colour a paragraph style gives is kept, and run boundaries do not change what marks", async () => {
+    const template = await buildTemplate();
+    const styled = await buildSourceWith({
+      body: [
+        p(
+          r("Note to draft: check the dates."),
+          '<w:pStyle w:val="DraftNote"/>',
+        ),
+        p(r("The Supplier shall deliver the goods on time and in full.")),
+        p(
+          r(
+            "Each party bears its own costs of this agreement and of its advisers.",
+          ),
+        ),
+      ].join(""),
+      styles:
+        '<w:style w:type="paragraph" w:styleId="DraftNote"><w:name w:val="Draft Note"/><w:rPr><w:color w:val="C00000"/></w:rPr></w:style>',
+    });
+    const kept = unwrap(
+      await applyFor({
+        source: styled,
+        template,
+        extra: { textColors: "keep" },
+      }),
+    );
+    expect((await readPart(kept.docx, "word/document.xml")) ?? "").toMatch(
+      /<w:color w:val="C00000"\/><\/w:rPr><w:t xml:space="preserve">Note to draft/u,
+    );
+    const colours = async (runs: string): Promise<boolean> => {
+      const source = await buildMinimalDocx(p(`${runs}${r("ccc")}`));
+      const applied = unwrap(
+        await applyFor({ source, template, extra: { textColors: "keep" } }),
+      );
+      return (
+        (await readPart(applied.docx, "word/document.xml")) ?? ""
+      ).includes("FF0000");
+    };
+    const red = '<w:color w:val="FF0000"/>';
+    expect(await colours(r("a b", red))).toBe(
+      await colours(`${r("a ", red)}${r("b", red)}`),
+    );
+  });
+
+  test("a content control among runs is kept around its content, without the parts it names", async () => {
+    const template = await buildTemplate();
+    const control = (properties: string, text: string): string =>
+      `<w:sdt><w:sdtPr>${properties}</w:sdtPr><w:sdtContent>${r(text)}</w:sdtContent></w:sdt>`;
+    const source = await buildMinimalDocx(
+      [
+        p(
+          `${r("Signed on ")}${control('<w:id w:val="7"/><w:placeholder><w:docPart w:val="ABC"/></w:placeholder><w:showingPlcHdr/><w:dataBinding w:xpath="/a" w:storeItemID="{1}"/><w:date><w:dateFormat w:val="d MMMM yyyy"/><w:lid w:val="en-GB"/></w:date>', "Click to enter a date.")}${r(" by the parties.")}`,
+        ),
+        p(
+          `${r("Name: ")}${control('<w:rPr><w:rStyle w:val="instructions"/></w:rPr><w:alias w:val="Name"/><w:text/>', "[Name]")}`,
+        ),
+      ].join(""),
+    );
+    const { docx, report } = unwrap(await applyFor({ source, template }));
+    const document = (await readPart(docx, "word/document.xml")) ?? "";
+    expect(report.ok).toBe(true);
+    expect(document).toContain(
+      '<w:sdt><w:sdtPr><w:id w:val="7"/><w:showingPlcHdr/><w:date><w:dateFormat w:val="d MMMM yyyy"/><w:lid w:val="en-GB"/></w:date></w:sdtPr><w:sdtContent>',
+    );
+    expect(document).not.toContain("dataBinding");
+    expect(document).not.toContain("docPart");
+    // Nor the look of a style the template does not define.
+    expect(document).not.toContain("instructions");
+    expect(document).toMatch(
+      /<w:sdt><w:sdtPr><w:alias w:val="Name"\/><w:text\/><\/w:sdtPr><w:sdtContent><w:r>(?:<w:rPr>.*?<\/w:rPr>)?<w:t xml:space="preserve">\[Name\]<\/w:t><\/w:r><\/w:sdtContent><\/w:sdt>/u,
+    );
+  });
+
+  test("a paragraph whose mark is hidden keeps it hidden, so it runs on into the next", async () => {
+    const template = await buildTemplate();
+    const source = await buildMinimalDocx(
+      [
+        p(r("Die Vergütung ist fällig. "), "<w:rPr><w:vanish/></w:rPr>"),
+        p(r("Der Auftraggeber zahlt binnen 14 Tagen.")),
+      ].join(""),
+    );
+    const { docx, report } = unwrap(await applyFor({ source, template }));
+    const document = (await readPart(docx, "word/document.xml")) ?? "";
+    expect(report.ok).toBe(true);
+    expect(document).toMatch(
+      /<w:rPr><w:vanish\/><\/w:rPr><\/w:pPr><w:r>(?:<w:rPr>.*?<\/w:rPr>)?<w:t xml:space="preserve">Die Vergütung/u,
+    );
+    expect(document.match(/<w:vanish\/>/gu)?.length).toBe(1);
+  });
+
+  test("a content control around paragraphs stays around them where the output writes them all", async () => {
+    const template = await buildTemplate();
+    const source = await buildMinimalDocx(
+      [
+        p(r("The parties agree as follows.")),
+        `<w:sdt><w:sdtPr><w:alias w:val="Schedule"/><w:dataBinding w:xpath="/a" w:storeItemID="{1}"/></w:sdtPr><w:sdtContent>${p(r("Item one of the schedule."))}${p(r("Item two of the schedule."))}</w:sdtContent></w:sdt>`,
+        p(r("Each party signs below.")),
+      ].join(""),
+    );
+    const { docx, report } = unwrap(await applyFor({ source, template }));
+    const document = (await readPart(docx, "word/document.xml")) ?? "";
+    expect(report.ok).toBe(true);
+    expect(document).toMatch(
+      /<w:sdt><w:sdtPr><w:alias w:val="Schedule"\/><\/w:sdtPr><w:sdtContent><w:p>.*?Item one of the schedule\..*?<\/w:p><w:p>.*?Item two of the schedule\..*?<\/w:p><\/w:sdtContent><\/w:sdt>/u,
+    );
+    expect(document).not.toContain("dataBinding");
+  });
+
+  test("a content control around paragraphs and an inner control stays around them both", async () => {
+    const template = await buildTemplate();
+    const source = await buildMinimalDocx(
+      [
+        p(r("The parties agree as follows.")),
+        `<w:sdt><w:sdtPr><w:alias w:val="Schedule"/></w:sdtPr><w:sdtContent>${p(r("Item one of the schedule."))}<w:sdt><w:sdtPr><w:alias w:val="Item"/></w:sdtPr><w:sdtContent>${p(r("Item two of the schedule."))}</w:sdtContent></w:sdt></w:sdtContent></w:sdt>`,
+        p(r("Each party signs below.")),
+      ].join(""),
+    );
+    const { docx, report } = unwrap(await applyFor({ source, template }));
+    const document = (await readPart(docx, "word/document.xml")) ?? "";
+    expect(report.ok).toBe(true);
+    expect(document).toMatch(
+      /<w:sdt><w:sdtPr><w:alias w:val="Schedule"\/><\/w:sdtPr><w:sdtContent><w:p>.*?Item one of the schedule\..*?<\/w:p><w:sdt><w:sdtPr><w:alias w:val="Item"\/><\/w:sdtPr><w:sdtContent><w:p>.*?Item two of the schedule\..*?<\/w:p><\/w:sdtContent><\/w:sdt><\/w:sdtContent><\/w:sdt>/u,
+    );
   });
 
   test("a paragraph cites its own number through a field", async () => {

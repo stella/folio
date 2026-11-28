@@ -11,6 +11,7 @@ import {
   setKeepShiftReturnSpacing,
 } from "../builders";
 import { isManualLabel } from "../plan";
+import { planShapeIssue } from "../planShape";
 import type {
   TemplatePlan,
   TemplatePlanItem,
@@ -1044,6 +1045,47 @@ describe("list instances and patches", () => {
     );
   });
 
+  test("a group may run over two lists of one definition that render alike, wherever they start", async () => {
+    const twin = await withNumbering((xml) =>
+      xml.replace(
+        '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>',
+        '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num><w:num w:numId="7"><w:abstractNumId w:val="0"/><w:lvlOverride w:ilvl="1"><w:startOverride w:val="1"/></w:lvlOverride></w:num>',
+      ),
+    );
+    const items = (blocks: PlannedBlock[]): TemplatePlanItem[] =>
+      blocks.map(({ id, hash }, index) => ({
+        kind: "source",
+        blockId: id,
+        hash,
+        styleId: "HouseBody",
+        numbering: {
+          numId: index === 0 ? 1 : 7,
+          ilvl: index === 0 ? 0 : 1,
+          group: "g",
+          ...(index === 0 ? { restartFrom: 3 } : {}),
+        },
+      }));
+    const { docx } = unwrap(
+      await applyFor({ source: await three(), template: twin, items }),
+    );
+    expect(
+      unwrap(await analyzeDocxBlocks(docx)).blocks.map(({ label }) => label),
+    ).toEqual(["Art. 3", "3.1.", "3.2."]);
+
+    // A second list that renders the level otherwise is another list.
+    const unlike = await withNumbering((xml) =>
+      xml.replace(
+        '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>',
+        `<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num><w:num w:numId="7"><w:abstractNumId w:val="0"/>${OVERRIDE}</w:num>`,
+      ),
+    );
+    expect(
+      codeOf(
+        await applyFor({ source: await three(), template: unlike, items }),
+      ),
+    ).toBe("plan-invalid");
+  });
+
   test("one level of a group cannot restart from two numbers", async () => {
     expect(
       codeOf(
@@ -1279,7 +1321,40 @@ describe("a kept table of contents", () => {
     expect(document).not.toContain("Second sample");
   });
 
-  test("text behind the field's own end keeps the contents as the template has them, whatever field follows it", async () => {
+  test("a line the plan gives an outline level is gathered by the kept contents through its \\u switch", async () => {
+    const source = await buildMinimalDocx(
+      `${p(r("Definitions"))}${p(r("The terms below have these meanings."))}`,
+    );
+    const plan = await planFor({
+      source,
+      template,
+      items: (blocks) => {
+        const items = withContents(blocks);
+        const heading = items[1];
+        if (heading?.kind === "source") {
+          heading.outlineLevel = 1;
+        }
+        return items;
+      },
+      extra: { fields: { contentsOutlineLevels: true } },
+    });
+    const applied = unwrap(await applyTemplatePlan({ source, template, plan }));
+    const document = await documentOf(applied.docx);
+    expect(applied.report.ok).toBe(true);
+    expect(document).toContain('TOC \\o "1-3" \\h \\z \\u </w:instrText>');
+    expect(document).toMatch(
+      /<w:outlineLvl w:val="1"\/><\/w:pPr><w:r>(?:<w:rPr>.*?<\/w:rPr>)?<w:t xml:space="preserve">Definitions</u,
+    );
+    expect(document.match(/w:outlineLvl/gu)?.length).toBe(1);
+    // Without the choice the field's code stays the template's.
+    const { document: plain } = await applyOnto(template);
+    expect(plain).toContain('TOC \\o "1-3" \\h \\z </w:instrText>');
+    expect(
+      planShapeIssue({ ...plan, body: [{ ...plan.body[1], outlineLevel: 9 }] }),
+    ).toContain("outline level");
+  });
+
+  test("text behind the field's own end stays, whatever field follows it; the entries in front of it go", async () => {
     const onto = await reshaped((document) => {
       const close = document.indexOf(
         `${FIELD_END}</w:p>`,
@@ -1287,11 +1362,14 @@ describe("a kept table of contents", () => {
       );
       return `${document.slice(0, close + FIELD_END.length)}${r(" Printed on page ")}${fieldRuns("PAGE", r("3"))}${document.slice(close + FIELD_END.length)}`;
     });
-    const { document } = await applyOnto(onto);
+    const { document, report } = await applyOnto(onto);
 
-    expect(document).toContain("Sample article");
-    expect(document).toContain("Second sample");
+    expect(report.ok).toBe(true);
+    expect(document).toContain(`\\z </w:instrText></w:r>${EMPTIED}`);
+    expect(document).not.toContain("Sample article");
+    expect(document).not.toContain("Second sample");
     expect(document).toContain(" Printed on page ");
+    expect(document).toContain(" PAGE ");
   });
 
   test("a bookmark that starts in front of the field and ends among its entries goes with them", async () => {
@@ -1467,6 +1545,51 @@ describe("a slot that drops the name of a field the template shows", () => {
   });
 });
 
+describe("a text box carried with its paragraph", () => {
+  const WP =
+    "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing";
+  const A = "http://schemas.openxmlformats.org/drawingml/2006/main";
+  const WPS =
+    "http://schemas.microsoft.com/office/word/2010/wordprocessingShape";
+  const MC = "http://schemas.openxmlformats.org/markup-compatibility/2006";
+  const W14 = "http://schemas.microsoft.com/office/word/2010/wordml";
+  const V = "urn:schemas-microsoft-com:vml";
+  // The box's text as a word processor writes it: a style the template
+  // lacks, a bookmark, and an outline effect that shows nothing.
+  const boxText = (id: number): string =>
+    `<w:p><w:pPr><w:pStyle w:val="SourceListStyle"/></w:pPr><w:bookmarkStart w:id="${String(id)}" w:name="_HlkBoxed"/><w:r><w:rPr><w14:textOutline xmlns:w14="${W14}" w14:w="0" w14:cap="flat" w14:cmpd="sng" w14:algn="ctr"><w14:noFill/></w14:textOutline></w:rPr><w:t>Boxed text</w:t></w:r><w:bookmarkEnd w:id="${String(id)}"/></w:p>`;
+  // Written twice, for two kinds of reader: both copies name the bookmark.
+  const box = `<w:r><mc:AlternateContent xmlns:mc="${MC}"><mc:Choice xmlns:wps="${WPS}" Requires="wps"><w:drawing><wp:anchor xmlns:wp="${WP}" distT="0" distB="0" distL="0" distR="0" simplePos="0" relativeHeight="1" behindDoc="0" locked="0" layoutInCell="1" allowOverlap="1"><wp:simplePos x="0" y="0"/><wp:positionH relativeFrom="column"><wp:posOffset>0</wp:posOffset></wp:positionH><wp:positionV relativeFrom="paragraph"><wp:posOffset>0</wp:posOffset></wp:positionV><wp:extent cx="900000" cy="300000"/><wp:wrapTopAndBottom/><wp:docPr id="7" name="Text Box 1"/><a:graphic xmlns:a="${A}"><a:graphicData uri="${WPS}"><wps:wsp><wps:spPr/><wps:txbx><w:txbxContent>${boxText(31)}</w:txbxContent></wps:txbx><wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:anchor></w:drawing></mc:Choice><mc:Fallback><w:pict><v:shape xmlns:v="${V}" id="Text Box 1"><v:textbox><w:txbxContent>${boxText(32)}</w:txbxContent></v:textbox></v:shape></w:pict></mc:Fallback></mc:AlternateContent></w:r>`;
+
+  test("goes without the source's bookmarks, foreign styles and effects that show nothing, and reads back", async () => {
+    const source = await buildSourceWith({
+      body: [p(box), p(r("After the box."))].join(""),
+      styles:
+        '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style><w:style w:type="paragraph" w:styleId="SourceListStyle"><w:name w:val="Source List Style"/></w:style>',
+    });
+    const { docx, report } = unwrap(
+      await applyFor({
+        source,
+        template,
+        items: (blocks) =>
+          blocks.map(({ id, hash }) => ({
+            kind: "source",
+            blockId: id,
+            hash,
+            styleId: "HouseBody",
+          })),
+      }),
+    );
+    const document = (await readPart(docx, "word/document.xml")) ?? "";
+
+    expect(report.ok).toBe(true);
+    expect(document.match(/Boxed text/gu)).toHaveLength(2);
+    expect(document).not.toContain("_HlkBoxed");
+    expect(document).not.toContain("SourceListStyle");
+    expect(document).not.toContain("textOutline");
+  });
+});
+
 describe("drawn shapes fixed to the page", () => {
   const WP =
     "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing";
@@ -1604,9 +1727,15 @@ describe("labels written as text", () => {
     );
   const NUMBERING = [
     `<w:abstractNum w:abstractNumId="0">${level(0, "upperRoman", "%1.")}${level(1, "decimal", "%1.%2", '<w:suff w:val="space"/>')}${level(2, "ordinal", "%1.%3")}</w:abstractNum>`,
+    // A level that only counts: it prints nothing in front of its children.
+    `<w:abstractNum w:abstractNumId="3">${level(0, "none", "%1")}${level(1, "decimal", "%1%2.")}</w:abstractNum>`,
     `<w:abstractNum w:abstractNumId="1">${level(0, "bullet", "\u2022")}</w:abstractNum>`,
+    // A code of a symbol font no table maps: read as a plain bullet.
+    `<w:abstractNum w:abstractNumId="2"><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="\uF0E8"/><w:rPr><w:rFonts w:ascii="House Dingbats" w:hAnsi="House Dingbats"/></w:rPr></w:lvl></w:abstractNum>`,
     '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>',
     '<w:num w:numId="2"><w:abstractNumId w:val="1"/></w:num>',
+    '<w:num w:numId="3"><w:abstractNumId w:val="2"/></w:num>',
+    '<w:num w:numId="4"><w:abstractNumId w:val="3"/></w:num>',
   ].join("");
   const source = async (): Promise<Uint8Array> =>
     await buildSourceWith({
@@ -1615,6 +1744,8 @@ describe("labels written as text", () => {
         numbered("The works.", 1, 1),
         numbered("A point.", 2, 0),
         numbered("A spelled number.", 1, 2),
+        numbered("A painted mark.", 3, 0),
+        numbered("Under a silent level.", 4, 1),
       ].join(""),
       numbering: NUMBERING,
     });
@@ -1634,7 +1765,7 @@ describe("labels written as text", () => {
       await applyFor({
         source: await source(),
         template,
-        items: asText(["p0", "p1"]),
+        items: asText(["p0", "p1", "p5"]),
       }),
     );
     const blocks = unwrap(await analyzeDocxBlocks(docx)).blocks;
@@ -1648,12 +1779,34 @@ describe("labels written as text", () => {
     expect(report.ok).toBe(true);
     expect(textOf("p0")).toBe("I.\tScope");
     expect(textOf("p1")).toBe("I.1 The works.");
-    // The other two say so: their labels are gone.
-    expect(report.counts).toMatchObject({ labelAsText: 2, labelLost: 2 });
+    expect(textOf("p5")).toBe("1.\tUnder a silent level.");
+    // The other three say so: their labels are gone.
+    expect(report.counts).toMatchObject({ labelAsText: 3, labelLost: 3 });
   });
 
-  test("a bullet and a number a language spells are not text", async () => {
-    for (const blockId of ["p2", "p3"]) {
+  test("a bullet's mark is written as the character the reader shows", async () => {
+    const { docx, report } = unwrap(
+      await applyFor({
+        source: await source(),
+        template,
+        items: asText(["p2", "p4"]),
+      }),
+    );
+    const blocks = unwrap(await analyzeDocxBlocks(docx)).blocks;
+    const textOf = (blockId: string): string | undefined => {
+      const outputBlockId = report.blocks.find(
+        (block) => block.blockId === blockId,
+      )?.outputBlockId;
+      return blocks.find(({ id }) => id === outputBlockId)?.text;
+    };
+
+    expect(report.ok).toBe(true);
+    expect(textOf("p2")).toBe("\u2022\tA point.");
+    expect(textOf("p4")).toBe("\u2022\tA painted mark.");
+  });
+
+  test("a number a language spells is not text", async () => {
+    for (const blockId of ["p3"]) {
       const applied = await applyFor({
         source: await source(),
         template,
@@ -2560,6 +2713,41 @@ describe("page starts", () => {
               hash,
               styleId: "HouseBody",
               indent: { hanging: 300, firstLine: 300 },
+            })),
+        }),
+      ),
+    ).toBe("plan-invalid");
+    // A paragraph may reach into the margin; a hanging indent is a width.
+    const intoMargin = unwrap(
+      await applyFor({
+        source,
+        template,
+        items: (blocks) =>
+          blocks.map(({ id, hash }) => ({
+            kind: "source",
+            blockId: id,
+            hash,
+            styleId: "HouseBody",
+            indent: { left: -28, firstLine: 30 },
+          })),
+      }),
+    );
+    expect(intoMargin.report.ok).toBe(true);
+    expect(await documentOf(intoMargin.docx)).toContain(
+      '<w:ind w:left="-28" w:firstLine="30"/>',
+    );
+    expect(
+      codeOf(
+        await applyFor({
+          source,
+          template,
+          items: (blocks) =>
+            blocks.map(({ id, hash }) => ({
+              kind: "source",
+              blockId: id,
+              hash,
+              styleId: "HouseBody",
+              indent: { left: 300, hanging: -300 },
             })),
         }),
       ),

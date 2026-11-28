@@ -245,6 +245,27 @@ export const refFieldInstruction = (
   return ` REF ${bookmark} ${parts.join(" ")}${parts.length === 0 ? "" : " "}`;
 };
 
+/** One switch a carried PAGEREF may hold: `\h`, `\p`, a numeric picture
+ *  (quoted or not) or a format that keeps the result's look. */
+const PAGEREF_SWITCH =
+  /\\[hp](?![A-Za-z])|\\#\s*(?:"[^"\\]*"|[^\s"\\]+)|\\\*\s*(?:mergeformat|charformat)\b/giu;
+
+/**
+ * The field code of a PAGEREF to `bookmark` with `switches`. Null when the
+ * switches hold anything else.
+ */
+export const pagerefFieldInstruction = (
+  bookmark: string,
+  switches: string,
+): string | null => {
+  const rest = switches.replace(PAGEREF_SWITCH, "").trim();
+  if (rest !== "") {
+    return null;
+  }
+  const parts = switches.match(PAGEREF_SWITCH) ?? [];
+  return ` PAGEREF ${bookmark} ${parts.join(" ")}${parts.length === 0 ? "" : " "}`;
+};
+
 /** The bookmark a REF, PAGEREF or NOTEREF instruction names. */
 export const fieldBookmarkOf = (instruction: string): string | null =>
   /^\s*(?:REF|PAGEREF|NOTEREF)\s+"?(?<name>[^\s"\\]+)/iu.exec(instruction)
@@ -435,6 +456,12 @@ export type SectionRewrite = {
    * section is written with its own alone.
    */
   inherited?: readonly string[];
+  /**
+   * Header and footer references (`headerReference:default`, …) given in
+   * `inherited` in place of the section's own: its own of those kinds are
+   * left out.
+   */
+  replaced?: ReadonlySet<string>;
 };
 
 /**
@@ -486,7 +513,7 @@ export const sectionPropertiesXml = (
   xml: string,
   sectPr: XmlElement,
   w: string,
-  { first, page, start, inherited = [] }: SectionRewrite,
+  { first, page, start, inherited = [], replaced }: SectionRewrite,
 ): string | null => {
   const attributes = (element: XmlElement, names: readonly string[]): string =>
     names
@@ -508,6 +535,9 @@ export const sectionPropertiesXml = (
     }
     if (
       name === "sectPrChange" ||
+      ((name === "headerReference" || name === "footerReference") &&
+        replaced?.has(`${name}:${wAttr(child, "type") ?? "default"}`) ===
+          true) ||
       (name === "type" && start !== null) ||
       (name === "titlePg" && !first)
     ) {

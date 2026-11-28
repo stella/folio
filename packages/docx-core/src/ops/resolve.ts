@@ -52,9 +52,13 @@ import {
   blockListAt,
   blockListEndsInParagraph,
   endsItsContainer,
+  ownBlockListAnchor,
   type ParagraphLocation,
+  sameBlockList,
   storyBody,
   storyParagraphs,
+  survivingBlockListAnchor,
+  updateBlockList,
   withBodyContent,
 } from "./blocks";
 import { linksEmptiedByRetirement, newlyExhaustedCommentIds } from "./comments";
@@ -63,6 +67,7 @@ import {
   acceptCopyOriginAncestor,
   rejectCopyOriginAncestorsInNodes,
 } from "./copyOriginAncestors";
+import { customXmlReadThrough, settleCustomXmlMarkup } from "./customXmlMarkup";
 import { keptDeletionBoundaryPaths } from "./deletionBoundaries";
 import {
   combineEditEffects,
@@ -202,6 +207,7 @@ import {
   type RevisionAbsorption,
   type RevisionDecision,
   SECTION_BOUNDARY_POLICIES,
+  type SetContainerBlocksOp,
   type SetParagraphReviewOp,
 } from "./types";
 
@@ -472,11 +478,12 @@ const markWasAdded = (kind: ParagraphMarkChangeKind): boolean =>
 
 /**
  * When the split whose cut a mark's `resolutionJoin` records was made: an
- * added mark's own date, and for a deleted mark, which holds the cut of the
- * inserted break it deletes, that split's date, not the deletion's.
+ * added mark's own date, or the copied split's it records beside a copied
+ * removal, and for a deleted mark, which holds the cut of the inserted break
+ * it deletes, that split's date, not the deletion's.
  */
 const splitDateOf = (mark: ParagraphMarkChange): string | undefined =>
-  markWasAdded(mark.kind) ? mark.info.date : mark.splitDate;
+  markWasAdded(mark.kind) ? (mark.splitDate ?? mark.info.date) : mark.splitDate;
 
 type PropertyChange = RunPropertyChange | ParagraphPropertyChange;
 
@@ -3927,6 +3934,24 @@ const resolveList = ({
         pending[index + 1] = into;
         out.splice(start);
         placed.before = true;
+      } else if (
+        record !== undefined &&
+        isTrackedWrapper(record) &&
+        resolution.ids.has(record.info.id) &&
+        removesContent(record, resolution.decision)
+      ) {
+        // Another removal in this batch stands between the markers and the
+        // surviving record. Hand it their piece and the closed join taking
+        // it: its own removal then routes them onward as resolving the two
+        // removals separately does.
+        handKeptBeside({
+          index,
+          side: "before",
+          from: node.info.id,
+          to: record.info.id,
+        });
+        pending[index + 1] = withJoinClosed(record, "before", joins.before);
+        placed.before = true;
       }
     }
     // The record before it may be content this resolution accepted, whose
@@ -4614,12 +4639,52 @@ const resolveList = ({
         // the record the piece continues.
         // A cut deferred by another edit can join the surrounding content.
         // It cannot give this removal's own boundaries solely to one side.
-        const piece =
+        const namedPiece =
           resolution.decision === REVISION_DECISIONS.REJECT &&
           joins !== undefined &&
           !resolution.deferredOnlyRemovals.has(joins)
             ? oneSidedKeptPiece(joins)
             : undefined;
+        // A removal cut with records on both sides routes its kept boundaries
+        // through that cut. A one-sided join added by resolving intervening
+        // content names the payload-facing side; the original cut's other
+        // piece takes its boundary as resolving the removal first does.
+        const oppositeNamedPiece = namedPiece === "before" ? "after" : "before";
+        const farEdge = edgeRecord(
+          removalContent,
+          namedPiece === "before" ? "last" : "first",
+        );
+        const farOuter =
+          namedPiece === "before"
+            ? removalContent.at(-1)
+            : removalContent.at(0);
+        const farEdgeDepth =
+          farOuter === undefined
+            ? 0
+            : edgeChain(farOuter, namedPiece === "before" ? "end" : "start")
+                .length - 1;
+        const splitPieceSelected = nodes.some(
+          (other) =>
+            isTrackedWrapper(other) &&
+            other !== node &&
+            resolution.ids.has(other.info.id) &&
+            sameStamp(node, other),
+        );
+        const namedJoin =
+          namedPiece === undefined ? 0 : (joins?.[namedPiece] ?? 0);
+        const piece =
+          namedPiece !== undefined &&
+          (joins?.remove ?? 0) > 0 &&
+          (joins?.remove ?? 0) >= farEdgeDepth &&
+          namedJoin > (joins?.remove ?? 0) &&
+          splitPieceSelected &&
+          (joins?.plainSides?.length ?? 0) === 0 &&
+          index > 0 &&
+          index + 1 < nodes.length &&
+          farEdge !== undefined &&
+          isKeptBoundaryCarrier(farEdge)
+            ? oppositeNamedPiece
+            : namedPiece;
         const records = removalContent.flatMap((child, at) =>
           childNodes(child) === undefined ? [] : [at],
         );
@@ -7270,8 +7335,24 @@ const deferSplitSeam = ({
     isAddedRevision(node) &&
     isTrackedWrapper(node) &&
     node.resolutionJoins !== undefined;
-  let leftEnd = left.length - 1;
-  let rightStart = 0;
+  // A kept boundary can stand between the paragraph edge and the insertion
+  // blocking its split seam. Read past those boundaries to defer the seam on
+  // the insertion; when it goes, the boundaries still land inside the source
+  // pieces as they do when both revisions are rejected together.
+  let leftBlockerEnd = left.length;
+  while (
+    leftBlockerEnd > 0 &&
+    standingInKeptCut(itemBefore(left, leftBlockerEnd))
+  )
+    leftBlockerEnd -= 1;
+  let rightBlockerStart = 0;
+  while (
+    rightBlockerStart < right.length &&
+    standingInKeptCut(right.at(rightBlockerStart))
+  )
+    rightBlockerStart += 1;
+  let leftEnd = leftBlockerEnd - 1;
+  let rightStart = rightBlockerStart;
   while (leftEnd >= 0 && blocking(left.at(leftEnd))) leftEnd -= 1;
   while (rightStart < right.length && blocking(right.at(rightStart)))
     rightStart += 1;
@@ -7279,13 +7360,17 @@ const deferSplitSeam = ({
   // those outside the blocker group; only insertions between them defer it.
   let sourcePair = false;
   for (
-    let leftIndex = left.length - 1;
+    let leftIndex = leftBlockerEnd - 1;
     leftIndex > leftEnd && !sourcePair;
     leftIndex -= 1
   ) {
     const leftSource = left.at(leftIndex);
     if (leftSource === undefined) panic("A scanned source fragment exists.");
-    for (let rightIndex = 0; rightIndex < rightStart; rightIndex += 1) {
+    for (
+      let rightIndex = rightBlockerStart;
+      rightIndex < rightStart;
+      rightIndex += 1
+    ) {
       const rightSource = right.at(rightIndex);
       if (rightSource === undefined) panic("A scanned source fragment exists.");
       if (!sameOwnFields(leftSource, rightSource)) continue;
@@ -7295,10 +7380,10 @@ const deferSplitSeam = ({
       break;
     }
   }
-  if (leftEnd !== left.length - 1 || rightStart !== 0) {
+  if (leftEnd !== leftBlockerEnd - 1 || rightStart !== rightBlockerStart) {
     const blockers = [
-      ...left.slice(leftEnd + 1),
-      ...right.slice(0, rightStart),
+      ...left.slice(leftEnd + 1, leftBlockerEnd),
+      ...right.slice(rightBlockerStart, rightStart),
     ].flatMap((node) => (isTrackedWrapper(node) ? [node.info.id] : []));
     const piecesBeyond = leftEnd >= 0 && rightStart < right.length;
     const deferred = (
@@ -7342,34 +7427,55 @@ const deferSplitSeam = ({
     };
     // Kept markers standing at the seam wait with the insertions beside them,
     // whose side is their cut's piece.
+    const leftSource = itemBefore(left, leftBlockerEnd);
+    const rightSource = right.at(rightBlockerStart);
+    const blockersAreSourcePieces =
+      leftSource !== undefined &&
+      rightSource !== undefined &&
+      isTrackedWrapper(leftSource) &&
+      isTrackedWrapper(rightSource) &&
+      sameStamp(leftSource, rightSource);
+    // Markers beyond two pieces of one change stand outside that change's
+    // split seam. Only markers between the pieces wait on their blockers.
     let keptFrom = leftEnd;
-    while (keptFrom >= 0 && standingInKeptCut(left.at(keptFrom))) keptFrom -= 1;
+    while (
+      !blockersAreSourcePieces &&
+      keptFrom >= 0 &&
+      standingInKeptCut(left.at(keptFrom))
+    )
+      keptFrom -= 1;
     let keptTo = rightStart;
-    while (standingInKeptCut(right.at(keptTo))) keptTo += 1;
+    while (!blockersAreSourcePieces && standingInKeptCut(right.at(keptTo)))
+      keptTo += 1;
     const known = new WeakMap<InlineNode, string>();
+    const leftHolderNode =
+      (leftEnd < leftBlockerEnd - 1 ? left[leftEnd + 1] : undefined) ??
+      (rightStart > rightBlockerStart
+        ? right.at(rightBlockerStart)
+        : undefined);
     const leftHolder = keptCutHolders({
-      after: changeAtEdge(
-        left[leftEnd + 1] ?? (rightStart > 0 ? right.at(0) : undefined),
-        "start",
-      ),
+      after: changeAtEdge(leftHolderNode, "start"),
     });
+    const rightHolderNode =
+      (rightStart > rightBlockerStart ? right[rightStart - 1] : undefined) ??
+      (leftEnd < leftBlockerEnd - 1
+        ? itemBefore(left, leftBlockerEnd)
+        : undefined);
     const rightHolder = keptCutHolders({
-      before: changeAtEdge(
-        right[rightStart - 1] ??
-          (leftEnd < left.length - 1 ? left.at(-1) : undefined),
-        "end",
-      ),
+      before: changeAtEdge(rightHolderNode, "end"),
     });
-    const leftRow = left.slice(leftEnd + 1).toReversed();
-    const rightRow = right.slice(0, rightStart);
+    const leftRow = left.slice(leftEnd + 1, leftBlockerEnd).toReversed();
+    const rightRow = right.slice(rightBlockerStart, rightStart);
     const atLeft = (node: InlineNode, index: number): InlineNode => {
-      if (index > leftEnd) return deferred(node, "after", leftRow);
+      if (index > leftEnd && index < leftBlockerEnd)
+        return deferred(node, "after", leftRow);
       return index > keptFrom && leftHolder !== undefined
         ? withKeptCutHoldersRecorded(node, leftHolder, known)
         : node;
     };
     const atRight = (node: InlineNode, index: number): InlineNode => {
-      if (index < rightStart) return deferred(node, "before", rightRow);
+      if (index >= rightBlockerStart && index < rightStart)
+        return deferred(node, "before", rightRow);
       return index < keptTo && rightHolder !== undefined
         ? withKeptCutHoldersRecorded(node, rightHolder, known)
         : node;
@@ -8124,10 +8230,26 @@ const joinOps = (
     blocks.length > 1 &&
     (next?.type === "table" || followsBlock)
   ) {
-    const anchor = blocks.find(
+    const directAnchor = blocks.find(
       (block, index): block is Paragraph =>
-        index !== location.index && block.type === "paragraph",
+        index !== location.index &&
+        block.type === "paragraph" &&
+        block.paraId !== undefined,
     );
+    let anchor =
+      directAnchor === undefined
+        ? undefined
+        : ownBlockListAnchor({ ...location, paragraph: directAnchor });
+    if (anchor === undefined && next?.type === "table")
+      anchor = survivingBlockListAnchor(
+        {
+          ...body,
+          content: updateBlockList(body.content, location.list, (items) =>
+            items.filter((_, index) => index !== location.index),
+          ),
+        },
+        location.list,
+      );
     if (anchor === undefined) {
       return Result.err(
         new DocumentOpRefusal({
@@ -8138,6 +8260,29 @@ const joinOps = (
         }),
       );
     }
+    const expandSnapshot = (items: readonly BlockContent[]) =>
+      sameBlockList(anchor.list, location.list)
+        ? items
+        : blockListAt(
+            updateBlockList(body.content, location.list, () => [...items]),
+            anchor.list,
+          );
+    const replaceStructuralBlocks = ({
+      expected,
+      blocks: replacement,
+    }: Pick<
+      SetContainerBlocksOp,
+      "expected" | "blocks"
+    >): SetContainerBlocksOp => ({
+      type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+      story,
+      blockId: anchor.blockId,
+      ...(anchor.ancestorDepth === undefined
+        ? {}
+        : { ancestorDepth: anchor.ancestorDepth }),
+      expected: expandSnapshot(expected),
+      blocks: expandSnapshot(replacement),
+    });
     if (tableOutcome === "remove") {
       const removal = removalBesideJoin({
         blocks,
@@ -8154,15 +8299,12 @@ const joinOps = (
         return paragraphMarkPlan(
           [
             ...breakRemoval.ops,
-            {
-              type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
-              story,
-              blockId: anchor.paraId ?? "",
+            replaceStructuralBlocks({
               expected: blocks.map((block, index) =>
                 index === location.index ? breakRemoval.paragraph : block,
               ),
               blocks: removal.blocks,
-            },
+            }),
           ],
           [...removal.effects],
         );
@@ -8177,15 +8319,12 @@ const joinOps = (
         standingBeforeBlock.length > 0 ? followerIndex : location.index + 1;
       return paragraphMarkPlan(
         [
-          {
-            type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
-            story,
-            blockId: anchor.paraId ?? "",
+          replaceStructuralBlocks({
             expected: blocks,
             blocks: blocks.filter(
               (_, index) => index < location.index || index >= kept,
             ),
-          },
+          }),
           {
             type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
             story,
@@ -8209,16 +8348,13 @@ const joinOps = (
       const replacement = runParagraphIntoTable(paragraph, tableTarget);
       return paragraphMarkPlan(
         [
-          {
-            type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
-            story,
-            blockId: anchor.paraId ?? "",
+          replaceStructuralBlocks({
             expected: blocks,
             blocks: blocks.flatMap((block, index) => {
               if (index === location.index) return [];
               return index === location.index + 1 ? [replacement] : [block];
             }),
-          },
+          }),
         ],
         [{ type: "table-run-in", receiver: tableTarget.receiver }],
       );
@@ -8780,6 +8916,10 @@ const settleTwoRecordMarks = (
     if (!ids.has(insertion) && !ids.has(deletion)) continue;
     const review = reviewFieldsOf(paragraph);
     if (op.decision === REVISION_DECISIONS.ACCEPT) {
+      // The cut was made when the break was inserted, or when the split a
+      // copied removal records was; a split as old as the deletion is the
+      // date a deleted mark joins at without one.
+      const splitDate = mark.splitDate ?? mark.info.date;
       review.pPrMark = {
         kind: mark.deletion.kind ?? "del",
         info: mark.deletion.info,
@@ -8787,9 +8927,10 @@ const settleTwoRecordMarks = (
           ? {}
           : {
               resolutionJoin: mark.resolutionJoin,
-              ...(mark.info.date === undefined
+              ...(splitDate === undefined ||
+              splitDate === mark.deletion.info.date
                 ? {}
-                : { splitDate: mark.info.date }),
+                : { splitDate }),
             }),
       };
       replacementMarks.set(insertion, deletion);
@@ -8881,6 +9022,70 @@ export const planRevisionResolution = (
   );
   if (grouped.isErr()) return Result.err(grouped.error);
   const op = grouped.value;
+  // A custom XML element's own tags settle first: what they wrap stays in
+  // either case, so the records it holds resolve the same after them.
+  const markup = Object.values(REVISION_DECISIONS).includes(op.decision)
+    ? settleCustomXmlMarkup({
+        document,
+        story: op.story,
+        revisionIds: op.revisionIds,
+        decision: op.decision,
+      })
+    : { ops: [], ids: [...op.revisionIds] };
+  if (markup.ops.length > 0) {
+    const unwrapped = applyOps(document, markup.ops);
+    if (unwrapped.isErr()) return Result.err(unwrapped.error);
+    const rest = planRevisionResolution({
+      ...options,
+      document: unwrapped.value.document,
+      op: { ...op, revisionIds: markup.ids },
+    });
+    if (rest.isErr()) return Result.err(rest.error);
+    return Result.ok({
+      edit: combineEdits(document, [unwrapped.value, rest.value.edit]),
+      receiverEffects: rest.value.receiverEffects,
+    });
+  }
+  // A resolution reaching into a custom XML element reads through its tags.
+  const through = Object.values(REVISION_DECISIONS).includes(op.decision)
+    ? customXmlReadThrough({
+        document,
+        story: op.story,
+        revisionIds: op.revisionIds,
+        decision: op.decision,
+      })
+    : undefined;
+  if (through !== undefined) {
+    const unwrapped = applyOps(document, [through.unwrap]);
+    const read = unwrapped.andThen((untagged) =>
+      planSectionAndMarkResolution({
+        ...options,
+        document: untagged.document,
+        op,
+      }).map((plan) => ({ untagged, plan })),
+    );
+    if (read.isOk()) {
+      const { untagged, plan } = read.value;
+      const rewrap = through.rewrap(plan.edit.document);
+      const tagged =
+        rewrap === undefined
+          ? undefined
+          : applyOps(plan.edit.document, [rewrap]);
+      if (tagged?.isOk() === true)
+        return Result.ok({
+          edit: combineEdits(document, [untagged, plan.edit, tagged.value]),
+          receiverEffects: plan.receiverEffects,
+        });
+    }
+  }
+  return planSectionAndMarkResolution({ ...options, op });
+};
+
+/** Section records, then paragraph marks, inline records and table rows. */
+const planSectionAndMarkResolution = (
+  options: RevisionResolutionPlanOptions,
+): Result<RevisionResolutionPlan, DocumentOpRefusal> => {
+  const { document, applyOps, op } = options;
   const sections = settleSectionRecords(document, op);
   if (sections.ops.length === 0) return planMarkResolution({ ...options, op });
   const settled = applyOps(document, sections.ops);
@@ -9200,7 +9405,7 @@ const planSingleRecordResolution = (
       const shared = {
         depth: mark.resolutionJoin ?? 0,
         resolution,
-        splitDate: mark.info.date ?? "",
+        splitDate: splitDateOf(mark) ?? "",
       };
       const trailing = closedSplitCutSides({
         ...shared,
@@ -9718,11 +9923,39 @@ const planSingleRecordResolution = (
   record(rows.value);
   let current = rows.value.document;
   const ranInto = new Set<string>();
-  const joinsBefore = new Set(joins.map(({ paraId }) => idKey(paraId)));
+  // Marks normally resolve last to first. A keep-first mark that took over a
+  // later mark is the exception: its join must happen first, as resolving it
+  // in a separate operation does. The absorbed paragraph then retargets the
+  // later join to the survivor carrying its mark and review fields.
+  const reversedJoins = joins.toReversed();
+  const takenOverMarkByRevision = new Map(
+    paragraphs.flatMap(({ paragraph: { pPrMark } }) =>
+      pPrMark?.takenOverMark === undefined
+        ? []
+        : [[pPrMark.info.id, pPrMark.takenOverMark] as const],
+    ),
+  );
+  const orderedJoins: JoinPlan[] = [];
+  const ordered = new Set<JoinPlan>();
+  const ordering = new Set<JoinPlan>();
+  const orderJoin = (join: JoinPlan): void => {
+    if (ordered.has(join)) return;
+    if (ordering.has(join))
+      panic("Paragraph-mark takeover chains are acyclic.");
+    ordering.add(join);
+    for (const candidate of reversedJoins)
+      if (takenOverMarkByRevision.get(candidate.revisionId) === join.revisionId)
+        orderJoin(candidate);
+    ordering.delete(join);
+    ordered.add(join);
+    orderedJoins.push(join);
+  };
+  for (const join of reversedJoins) orderJoin(join);
+  const joinsBefore = new Set(orderedJoins.map(({ paraId }) => idKey(paraId)));
   const rejoined = new Map(resolution.rejoined);
   const controlEnds: string[] = [];
   const vacated = new Set<string>();
-  for (const join of joins.toReversed()) {
+  for (const [joinIndex, join] of orderedJoins.entries()) {
     joinsBefore.delete(idKey(join.paraId));
     if (removedParagraphs.has(idKey(join.paraId))) continue;
     const unsectioned = dropAddedSection({ document: current, join, applyOps });
@@ -9767,9 +10000,14 @@ const planSingleRecordResolution = (
     // A paragraph ending a control that an earlier one now absorbs (a join
     // keeping the first) hands the control's end to that survivor.
     for (const { absorbed, survivor } of absorbing.touched.absorbed ?? []) {
+      const absorbedKey = idKey(absorbed);
+      const survivorKey = idKey(survivor);
+      for (const pending of orderedJoins.slice(joinIndex + 1))
+        if (idKey(pending.paraId) === absorbedKey) pending.paraId = survivor;
+      if (joinsBefore.delete(absorbedKey)) joinsBefore.add(survivorKey);
       for (const [index, end] of controlEnds.entries())
-        if (idKey(end) === idKey(absorbed)) controlEnds[index] = survivor;
-      if (holders.has(idKey(absorbed))) holders.add(idKey(survivor));
+        if (idKey(end) === absorbedKey) controlEnds[index] = survivor;
+      if (holders.has(absorbedKey)) holders.add(survivorKey);
     }
     if (planned.value.endsControl !== undefined)
       controlEnds.push(planned.value.endsControl);

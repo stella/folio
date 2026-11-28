@@ -28,6 +28,7 @@ import {
   ownedElsewhere,
   withPreservedChildren,
 } from "./containerChildren";
+import { withCustomXmlMarkupRevisions } from "./customXmlMarkupRevisions";
 import {
   computeListMarker,
   type ComputeListMarkerOptions,
@@ -474,10 +475,12 @@ const parseBlockContentWithState = (
     },
   });
 
-  return withPreservedChildren(modelled, preserved, (xml): PreservedBlock => ({
-    type: "preservedBlock",
-    xml,
-  }));
+  return withCustomXmlMarkupRevisions(
+    withPreservedChildren(modelled, preserved, (xml): PreservedBlock => ({
+      type: "preservedBlock",
+      xml,
+    })),
+  );
 };
 
 const parseBlockSdt = (

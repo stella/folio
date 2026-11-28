@@ -586,6 +586,29 @@ export const PACKAGE_OP_CASES = {
       ],
     },
   }),
+  setCustomXmlMarkup: (args: CaseArgs): GeneratedCase => {
+    const body = storyBody(args.document, args.story);
+    const target = targetFor(args);
+    return {
+      document: args.document,
+      op: {
+        type: "setCustomXmlMarkup",
+        story: args.story,
+        blockId: target.paraId ?? "",
+        expected: body.content,
+        blocks: body.content.map((block) =>
+          block === target
+            ? {
+                type: "blockCustomXml",
+                openingXml: '<w:customXml w:element="clause">',
+                closingXml: "</w:customXml>",
+                content: [target],
+              }
+            : block,
+        ),
+      },
+    };
+  },
   insertRow: (args: CaseArgs): GeneratedCase => ({
     document: args.document,
     op: {

@@ -96,6 +96,8 @@ type SectionViewChange = {
 /**
  * The operation schema this module reads and writes.
  *
+ * Version 19 adds `setCustomXmlMarkup`, which wraps blocks in a custom XML
+ * element, takes an element's tags away or sets its own tracked records.
  * Version 18 adds `comments` and `newCommentIds` to `insertContent`: a
  * pasted copy of a standing comment's anchors takes a fresh comment id and a
  * copy of the thread the paste carries, or is left out without one.
@@ -134,7 +136,7 @@ type SectionViewChange = {
  * and paragraph operations, and the review operations `setParagraphReview`,
  * `replaceInline` and `resolveRevision`.
  */
-export const DOCUMENT_OP_SCHEMA_VERSION = 18;
+export const DOCUMENT_OP_SCHEMA_VERSION = 19;
 
 /**
  * The main story has a fixed address; other editable parts use their stable
@@ -325,6 +327,7 @@ export const DOCUMENT_OP_TYPES: Readonly<{
   readonly SET_SECTION_ENDPOINT: "setSectionEndpoint";
   readonly SET_PACKAGE_RESOURCES: "setPackageResources";
   readonly SET_CONTENT_CONTROL: "setContentControl";
+  readonly SET_CUSTOM_XML_MARKUP: "setCustomXmlMarkup";
 }> = Object.freeze({
   CREATE_COMMENT: "createComment",
   UPDATE_COMMENT_CONTENT: "updateCommentContent",
@@ -373,6 +376,7 @@ export const DOCUMENT_OP_TYPES: Readonly<{
   SET_SECTION_ENDPOINT: "setSectionEndpoint",
   SET_PACKAGE_RESOURCES: "setPackageResources",
   SET_CONTENT_CONTROL: "setContentControl",
+  SET_CUSTOM_XML_MARKUP: "setCustomXmlMarkup",
 } as const);
 
 /** One of {@link DOCUMENT_OP_TYPES}. */
@@ -751,9 +755,9 @@ export type DeleteBlocksOp = {
 /**
  * Replace a run of adjacent paragraphs with other paragraphs, or remove it.
  * An empty replacement must preserve the containing story/cell invariants;
- * its inverse inserts the exact captured paragraphs at the surviving boundary.
- * Container-final marks and owned empty formatting refuse when that insertion
- * cannot restore the capture exactly.
+ * its inverse inserts the captured paragraphs at a surviving boundary or
+ * restores the enclosing block list exactly. An empty replacement cannot
+ * remove a captured container-final mark.
  *
  * `expected` is the paragraphs as they stand: they are found by `paraId` and
  * compared structurally (without the fields a relayout recomputes), so a
@@ -793,6 +797,11 @@ export type SetParagraphReviewOp = {
   blockId: string;
   expected: ParagraphReviewFields;
   review: ParagraphReviewFields;
+  /**
+   * The stamp of the records `review` adds, so they are reported as the
+   * revisions the operation made, as a suggestion's other records are.
+   */
+  revision?: RevisionStamp;
 };
 
 /**
@@ -1095,6 +1104,31 @@ export type SetContainerBlocksOp = {
   ancestorDepth?: number;
   expected: readonly BlockContent[];
   blocks: readonly BlockContent[];
+};
+
+/**
+ * Change the tags of the custom XML elements in one block list and nothing
+ * they wrap: wrap blocks in an element, take an element's tags away leaving
+ * its content, or set an element's own tracked records (`insertion`,
+ * `deletion`, written as ranges around it). The list is the one holding the
+ * paragraph `blockId`, `ancestorDepth` lists out, as for
+ * {@link SetContainerBlocksOp}; `expected` is that list now and `blocks` what
+ * it becomes. With every element's tags taken away the two read the same,
+ * so no content changes. The inverse swaps the two.
+ */
+export type SetCustomXmlMarkupOp = {
+  type: typeof DOCUMENT_OP_TYPES.SET_CUSTOM_XML_MARKUP;
+  story: OpStory;
+  blockId: string;
+  /** Number of enclosing lists between the paragraph and the target list. */
+  ancestorDepth?: number;
+  expected: readonly BlockContent[];
+  blocks: readonly BlockContent[];
+  /**
+   * The stamp of the records `blocks` adds, so they are reported as the
+   * revisions the operation made, as a suggestion's other records are.
+   */
+  revision?: RevisionStamp;
 };
 
 /** Create a deterministically identified part and bind it to one section variant. */
@@ -1410,6 +1444,7 @@ export type DocumentOp = (
   | SetSectionEndpointOp
   | SetPackageResourcesOp
   | SetContentControlOp
+  | SetCustomXmlMarkupOp
 ) & {
   /** Own undefined fields recorded by the operation capture boundary. */
   undefinedFields?: readonly (readonly string[])[];

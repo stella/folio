@@ -1321,6 +1321,8 @@ function stripSuggestedParagraphPropertyChanges(
  * Reads go through the typed attr readers (adapter-boundary convention).
  */
 function stripSuggestedNodeAttrs(node: PMNode): Record<string, unknown> | null {
+  const isSuggested = (info: object): boolean =>
+    "provenance" in info && info.provenance === "suggested";
   const name = node.type.name;
   if (name === "paragraph") {
     const stripped = stripSuggestedParagraphPropertyChanges(node);
@@ -1330,16 +1332,11 @@ function stripSuggestedNodeAttrs(node: PMNode): Record<string, unknown> | null {
     // The applier stamps the provenance onto the mark's info at run time; the
     // model type of that info does not declare it.
     const mark = expectParagraphAttrs(node).pPrMark;
-    const suggested = (info: unknown) =>
-      typeof info === "object" &&
-      info !== null &&
-      "provenance" in info &&
-      info.provenance === "suggested";
-    if (mark && suggested(mark.info)) {
+    if (mark && isSuggested(mark.info)) {
       return { ...(stripped ?? node.attrs), pPrMark: null };
     }
     // A suggested deletion of an added break goes; the insertion stays.
-    if (mark?.deletion && suggested(mark.deletion.info)) {
+    if (mark?.deletion && isSuggested(mark.deletion.info)) {
       const { deletion: _suggested, ...added } = mark;
       return { ...(stripped ?? node.attrs), pPrMark: added };
     }
@@ -1362,6 +1359,15 @@ function stripSuggestedNodeAttrs(node: PMNode): Record<string, unknown> | null {
     ) {
       return { ...cellAttrs, cellMarker: null };
     }
+  }
+  if (name === "blockCustomXml") {
+    const attrs = expectBlockCustomXmlAttrs(node);
+    if (
+      attrs.deletion !== undefined &&
+      attrs.deletion !== null &&
+      isSuggested(attrs.deletion.info)
+    )
+      return { ...attrs, deletion: null };
   }
   return null;
 }
@@ -1416,7 +1422,8 @@ const savedParagraphRunStyleContext = (
 function mapSuggestionStrippedNode(
   node: PMNode,
   readFormattingContext: () => RunFormattingContext,
-): PMNode | null {
+  styleEngine: StyleEngine | null,
+): PMNode | PMNode[] | null {
   if (node.isInline) {
     if (hasSuggestedInsertion(node.marks)) {
       return null;
@@ -1430,6 +1437,17 @@ function mapSuggestionStrippedNode(
   }
 
   const nextAttrs = stripSuggestedNodeAttrs(node);
+  const unwrapCustomXml =
+    node.type.name === "blockCustomXml" &&
+    (() => {
+      const insertion = expectBlockCustomXmlAttrs(node).insertion;
+      return (
+        insertion !== undefined &&
+        insertion !== null &&
+        "provenance" in insertion.info &&
+        insertion.info.provenance === "suggested"
+      );
+    })();
   const children: PMNode[] = [];
   let changed = nextAttrs !== null;
   // Ordinary paragraphs need no style resolution during suggestion stripping.
@@ -1455,9 +1473,18 @@ function mapSuggestionStrippedNode(
       : readFormattingContext;
   // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
   node.forEach((child) => {
-    const mapped = mapSuggestionStrippedNode(child, readChildFormattingContext);
+    const mapped = mapSuggestionStrippedNode(
+      child,
+      readChildFormattingContext,
+      styleEngine,
+    );
     if (mapped === null) {
       changed = true;
+      return;
+    }
+    if (Array.isArray(mapped)) {
+      changed = true;
+      children.push(...mapped);
       return;
     }
     if (mapped !== child) {
@@ -1465,6 +1492,17 @@ function mapSuggestionStrippedNode(
     }
     children.push(mapped);
   });
+  if (unwrapCustomXml) {
+    const { _originallyEmpty } = expectBlockCustomXmlAttrs(node);
+    if (_originallyEmpty === true) {
+      const innerDoc = node.type.schema.node("doc", null, children);
+      if (
+        isStillSyntheticFiller(extractBlocks(innerDoc, "inherit", styleEngine))
+      )
+        return [];
+    }
+    return children;
+  }
   if (!changed) {
     return node;
   }
@@ -1484,13 +1522,16 @@ function stripSuggestedProvenance(
   doc: PMNode,
   styleResolver: StyleEngine | null,
 ): PMNode {
-  return (
-    mapSuggestionStrippedNode(doc, () => ({
+  const stripped = mapSuggestionStrippedNode(
+    doc,
+    () => ({
       baseParagraphFormatting: undefined,
       inheritedFormatting: undefined,
       styleResolver,
-    })) ?? doc
+    }),
+    styleResolver,
   );
+  return stripped === null || Array.isArray(stripped) ? doc : stripped;
 }
 
 /**
@@ -1865,7 +1906,7 @@ function convertPMBlockCustomXml(
   node: PMNode,
   styleResolver: StyleEngine | null,
 ): BlockCustomXml {
-  const { openingXml, closingXml, _originallyEmpty } =
+  const { openingXml, closingXml, _originallyEmpty, insertion, deletion } =
     expectBlockCustomXmlAttrs(node);
   const innerDoc = node.type.schema.node("doc", null, node.content);
   const extracted = extractBlocks(innerDoc, "inherit", styleResolver);
@@ -1873,7 +1914,14 @@ function convertPMBlockCustomXml(
     _originallyEmpty === true && isStillSyntheticFiller(extracted)
       ? []
       : extracted;
-  return { type: "blockCustomXml", openingXml, closingXml, content };
+  return {
+    type: "blockCustomXml",
+    openingXml,
+    closingXml,
+    content,
+    ...(insertion === undefined || insertion === null ? {} : { insertion }),
+    ...(deletion === undefined || deletion === null ? {} : { deletion }),
+  };
 }
 
 function isStillSyntheticFiller(blocks: BlockContent[]): boolean {

@@ -1,12 +1,12 @@
 /**
  * Localization (behaviour) regression test.
  *
- * Proves folio's bundled translations render end-to-end: the playground merges
- * `getFolioMessages(locale)` into an `IntlProvider` and the toolbar's Bold
- * button exposes its localized `aria-label`. Switching the language switcher
- * re-renders the chrome in the chosen locale; Arabic also flips the shell to
- * RTL. Asserts content/attributes only (no screenshots), so it is stable across
- * machines and runs in CI's `interactions` project.
+ * Proves folio's fetched translations render end-to-end: the playground loads
+ * a catalog before merging `getFolioMessages(locale)` into an `IntlProvider`,
+ * and the toolbar's Bold button exposes its localized `aria-label`. Switching
+ * the language switcher re-renders the chrome in the chosen locale; Arabic also
+ * flips the shell to RTL. Asserts content/attributes only (no screenshots), so
+ * it is stable across machines and runs in CI's `interactions` project.
  */
 
 import { expect, test } from "@playwright/test";
@@ -34,7 +34,7 @@ async function switchLocale(page: Page, locale: string): Promise<void> {
   await page.getByTestId("language-select").selectOption(locale);
 }
 
-test("toolbar localizes to German via the bundled catalog", async ({
+test("toolbar localizes to German via the fetched catalog", async ({
   page,
 }) => {
   await openPlayground(page);
@@ -47,7 +47,7 @@ test("toolbar localizes to German via the bundled catalog", async ({
 });
 
 for (const locale of ["pt-BR", "zh-CN"] as const) {
-  test(`toolbar localizes to ${locale} via the bundled catalog`, async ({
+  test(`toolbar localizes to ${locale} via the fetched catalog`, async ({
     page,
   }) => {
     await openPlayground(page);

@@ -1294,23 +1294,148 @@ test.each([
   },
 );
 
-test("an empty replacement of a control's only paragraph is refused before it changes anything", () => {
-  const removed = makeParagraph("00000004", "");
-  const original = documentOf([
-    {
+test.each([
+  {
+    name: "before a story paragraph",
+    place: (control: BlockContent, survivor: Paragraph) => [control, survivor],
+  },
+  {
+    name: "after the story's remaining paragraph",
+    place: (control: BlockContent, survivor: Paragraph) => [survivor, control],
+  },
+  {
+    name: "inside a cell with a closing paragraph",
+    place: (control: BlockContent, survivor: Paragraph) => [
+      inCell([control, survivor]),
+    ],
+  },
+  {
+    name: "inside a cell whose closing paragraph is in a sibling control",
+    place: (control: BlockContent, survivor: Paragraph) => [
+      inCell([
+        control,
+        {
+          type: "blockSdt",
+          properties: { sdtType: "group", id: 5 },
+          content: [survivor],
+        },
+      ]),
+    ],
+    ancestorDepth: 1,
+  },
+])(
+  "removing a block control's only paragraph $name keeps the control and replays exactly",
+  ({ place, ancestorDepth }) => {
+    const removed: Paragraph = {
+      ...makeParagraph("00000004", ""),
+      formatting: {},
+    };
+    const survivor = makeParagraph("00000005", "survivor");
+    const control = {
       type: "blockSdt",
-      properties: { sdtType: "group", id: 4 },
+      properties: { sdtType: "group", id: 4, tag: "clause" },
       content: [removed],
-    },
-    makeParagraph("00000005", "survivor"),
-  ]);
-  const result = applyDocumentOp(original, {
-    type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+    } satisfies BlockContent;
+    const original = documentOf(place(control, survivor));
+    const shell = { ...control, content: [] };
+    const result = apply(original, {
+      type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+      story: OP_STORIES.MAIN,
+      expected: [removed],
+      blocks: [],
+    });
+    expect(result.document).toStrictEqual(documentOf(place(shell, survivor)));
+    expect(result.touched).toEqual({
+      inserted: [],
+      modified: [],
+      removed: ["00000004"],
+    });
+    expect(result.inverse).toMatchObject([
+      {
+        type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+        blockId: "00000005",
+        ...(ancestorDepth === undefined ? {} : { ancestorDepth }),
+      },
+    ]);
+    const undone = applyDocumentOps(
+      result.document,
+      JSON.parse(JSON.stringify(result.inverse)),
+    ).unwrap();
+    expect(undone.document).toStrictEqual(original);
+    expect(
+      applyDocumentOps(
+        undone.document,
+        JSON.parse(JSON.stringify(undone.inverse)),
+      ).unwrap().document,
+    ).toStrictEqual(result.document);
+    const stale = applyDocumentOps(
+      documentOf(place(shell, makeParagraph("00000005", "edited"))),
+      result.inverse,
+    );
+    expect(stale.isErr() && stale.error.reason).toBe(
+      DOCUMENT_OP_REFUSAL_REASONS.STALE,
+    );
+  },
+);
+
+test.each([
+  {
+    container: "story",
+    place: (control: BlockContent) => [control],
+    reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+  },
+  {
+    container: "cell",
+    place: (control: BlockContent) => [
+      inCell([control]),
+      makeParagraph("00000005", "outside the cell"),
+    ],
+    reason: DOCUMENT_OP_REFUSAL_REASONS.CONTAINER_FINAL_MARK,
+  },
+  {
+    container: "story after a table",
+    place: (control: BlockContent) => [
+      inCell([makeParagraph("00000005", "cell")]),
+      control,
+    ],
+    reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+  },
+])(
+  "removing a block control's only paragraph must leave its $container a terminator",
+  ({ place, reason }) => {
+    const removed = makeParagraph("00000004", "");
+    const original = documentOf(
+      place({
+        type: "blockSdt",
+        properties: { sdtType: "group", id: 4 },
+        content: [removed],
+      }),
+    );
+    const result = applyDocumentOp(original, {
+      type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+      story: OP_STORIES.MAIN,
+      expected: [removed],
+      blocks: [],
+    });
+    expect(result.isErr() && result.error.reason).toBe(reason);
+  },
+);
+
+test("an exact structural inverse restores a main story ending in a table and empty control", () => {
+  const table = inCell([makeParagraph("00000005", "cell")]);
+  const control = {
+    type: "blockSdt",
+    properties: { sdtType: "group", id: 4 },
+    content: [],
+  } satisfies BlockContent;
+  const original = documentOf([table, control]);
+  const inserted = apply(original, {
+    type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
     story: OP_STORIES.MAIN,
-    expected: [removed],
-    blocks: [],
+    blockId: "00000005",
+    ancestorDepth: 1,
+    expected: original.package.document.content,
+    blocks: [table, makeParagraph("00000006", ""), control],
   });
-  expect(result.isErr() && result.error.reason).toBe(
-    DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-  );
+  expect(undo(inserted)).toStrictEqual(original);
 });

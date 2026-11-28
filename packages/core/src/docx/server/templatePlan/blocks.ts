@@ -26,6 +26,7 @@ import {
   resolveTrackedChanges,
   withDeletedMarksJoined,
 } from "./revisions";
+import { sectionsWithOwnHeaders } from "./sourceHeaders";
 import {
   createStoryState,
   endStory,
@@ -402,6 +403,7 @@ type StatedLook = {
   /** In half-points. */
   size: number | null;
   keepNext: boolean | null;
+  pageBreakBefore: boolean | null;
   /** In twentieths of a point. */
   indentLeft: number | null;
 };
@@ -413,6 +415,7 @@ const statedLook = (
   bold: toggleOf(wChild(run, "b")),
   size: halfPointsOrNull(wChildVal(run, "sz")),
   keepNext: toggleOf(wChild(paragraph, "keepNext")),
+  pageBreakBefore: toggleOf(wChild(paragraph, "pageBreakBefore")),
   indentLeft: twipsOrNull(
     wAttr(wChild(paragraph, "ind"), "left") ??
       wAttr(wChild(paragraph, "ind"), "start"),
@@ -464,12 +467,14 @@ export const styleLook = (
   bold: boolean;
   size: number | null;
   keepNext: boolean;
+  pageBreakBefore: boolean;
   indentLeft: number | null;
 } => {
   const look: StatedLook = {
     bold: null,
     size: null,
     keepNext: null,
+    pageBreakBefore: null,
     indentLeft: null,
   };
   const seen = new Set<string>();
@@ -480,6 +485,7 @@ export const styleLook = (
     look.bold ??= own?.bold ?? null;
     look.size ??= own?.size ?? null;
     look.keepNext ??= own?.keepNext ?? null;
+    look.pageBreakBefore ??= own?.pageBreakBefore ?? null;
     look.indentLeft ??= own?.indentLeft ?? null;
     cursor = styles.get(cursor)?.basedOn;
   }
@@ -487,6 +493,7 @@ export const styleLook = (
     bold: look.bold ?? defaults.bold ?? false,
     size: look.size ?? defaults.size,
     keepNext: look.keepNext ?? defaults.keepNext ?? false,
+    pageBreakBefore: look.pageBreakBefore ?? defaults.pageBreakBefore ?? false,
     indentLeft: look.indentLeft ?? defaults.indentLeft,
   };
 };
@@ -513,6 +520,19 @@ export const storySections = ({
           columns: 1,
         },
       ];
+};
+
+/** Sections marked where they show headers or footers of their own. */
+const sectionsMarked = (
+  sections: DocxSection[],
+  own: ReadonlySet<number>,
+): DocxSection[] => {
+  for (const section of sections) {
+    if (own.has(section.index)) {
+      section.ownHeaders = true;
+    }
+  }
+  return sections;
 };
 
 /** Page breaks among a paragraph's runs; a column break is not one. */
@@ -612,12 +632,17 @@ const crossReferencesOf = (
     const start = at;
     at += text.length;
     for (const [depth, index] of fields.entries()) {
+      // A field in the result of a table of contents stands as if alone:
+      // a contents line kept as text keeps its page reference.
+      const outermost = fields
+        .slice(0, depth)
+        .every((outer) => state.fields[outer]?.kind === "TOC");
       const span = spans.get(index);
       if (span === undefined) {
-        spans.set(index, { start, end: at, outermost: depth === 0 });
+        spans.set(index, { start, end: at, outermost });
       } else {
         span.end = at;
-        span.outermost &&= depth === 0;
+        span.outermost &&= outermost;
       }
     }
   }
@@ -629,7 +654,7 @@ const crossReferencesOf = (
     if (
       field === undefined ||
       bookmark === null ||
-      field.kind !== "REF" ||
+      (field.kind !== "REF" && field.kind !== "PAGEREF") ||
       !field.closed ||
       field.nestedInCode ||
       !outermost ||
@@ -652,7 +677,7 @@ const crossReferencesOf = (
  * it starts at the paragraph's beginning. Null for one that ends in front
  * of its start or not at all. The first bookmark of a name counts.
  */
-const bookmarkTargetsOf = (
+export const bookmarkTargetsOf = (
   story: AnalyzedStory,
 ): Map<string, { blockId: string; whole: boolean } | null> => {
   const targets = new Map<string, { blockId: string; whole: boolean } | null>();
@@ -789,9 +814,22 @@ export const analyzeStory = ({
     tables.at(-1)?.cellTexts.at(-1)?.push(text);
   };
 
+  /** The paragraph read last: a bookmark ending between blocks ends behind
+   *  its mark. */
+  let lastRead: ParagraphRead | null = null;
   walkBlocks(container, {
+    bookmarkEnd: (element) => {
+      const read: ParagraphRead | null = lastRead;
+      if (read !== null) {
+        read.bookmarkEnds.push({
+          id: wAttr(element, "id") ?? "",
+          atomIndex: read.atoms.length,
+        });
+      }
+    },
     paragraph: (element) => {
       const read = readParagraph(element, state);
+      lastRead = read;
       const styleId = read.styleId;
       const style = resources.styles.get(
         styleId ?? resources.defaultStyleId ?? "",
@@ -1137,6 +1175,9 @@ const analyzeNotes = (
 };
 
 export type AnalyzedDocument = {
+  /** Text colours and run shading a plan keeps (`textColors: "keep"`), as
+   *  `color:RRGGBB` and `shd:RRGGBB`; absent where it keeps none. */
+  keptColors?: ReadonlySet<string>;
   pkg: LoadedPackage;
   document: RawPart;
   body: XmlElement;
@@ -1326,10 +1367,14 @@ export const analyzeDocument = async (
       `${formattingRevisions} tracked formatting change(s) are not counted as tracked changes.`,
     );
   }
+  const ownHeaders = await sectionsWithOwnHeaders({ pkg }, body);
+  if (Result.isError(ownHeaders)) {
+    return ownHeaders;
+  }
   const manifest: DocxBlockManifest = {
     sha256: pkg.sha256,
     blocks: story.topLevel.map(({ block }) => block),
-    sections: storySections(story),
+    sections: sectionsMarked(storySections(story), ownHeaders.value),
     compat: {
       doNotExpandShiftReturn:
         settingsXml !== null && keepsShiftReturnSpacing(settingsXml),

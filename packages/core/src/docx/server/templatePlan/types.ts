@@ -77,6 +77,16 @@ export type DocxBlockNumbering = {
    * prints it elsewhere needs the face too.
    */
   bulletFont?: string;
+  /**
+   * The level's text (`w:lvlText`): `%1.%2` prints the counters of the
+   * first two levels. Absent where the level states none.
+   */
+  lvlText?: string;
+  /** The format the level counts in (`w:numFmt`, `decimal` under legal
+   *  numbering); stated with `lvlText`. */
+  numFmt?: string;
+  /** The level prints its counters in arabic numerals (`w:isLgl`). */
+  legal?: true;
 };
 
 /**
@@ -286,6 +296,13 @@ export type DocxSection = {
   };
   /** Text columns of the section. */
   columns: number;
+  /**
+   * The section shows a header or footer of its own: for the other pages
+   * or even pages, content other than the section before it shows there
+   * (an annex's header, a signature page's footer). Absent for the first
+   * section and any that shows what the one before it shows.
+   */
+  ownHeaders?: true;
 };
 
 export type DocxBlockManifest = {
@@ -391,6 +408,11 @@ export type DocxTemplateStyle = {
    * (`w:keepNext`), inheritance and the document's defaults resolved.
    */
   keepNext: boolean;
+  /**
+   * Whether the style starts its paragraphs on a new page
+   * (`w:pageBreakBefore`), inheritance and the document's defaults resolved.
+   */
+  pageBreakBefore: boolean;
   /**
    * The left indent the style gives its paragraphs, in twentieths of a
    * point (`w:ind`), inheritance and the document's defaults resolved; null
@@ -509,6 +531,11 @@ export type TemplatePlanOmitReason =
  * its own over the definition `baseNumId` names, or over the list the item's
  * style is bound to. Items sharing a `group` share the instance the first of
  * them starts; `restartFrom` is the number that instance begins with.
+ *
+ * `sourceNumId` (with `numId: "new"` and nothing else) keeps the source's
+ * own list: the output carries a copy of the source's list instance and its
+ * definition, and every item naming the same `sourceNumId` counts in that
+ * copy, as the source counts them.
  */
 export type TemplatePlanNumbering = {
   numId: number | "new";
@@ -516,6 +543,7 @@ export type TemplatePlanNumbering = {
   restartFrom?: number;
   baseNumId?: number;
   group?: string;
+  sourceNumId?: number;
 };
 
 export type TemplatePlanMerge = "lineBreak" | "space" | "none";
@@ -523,7 +551,8 @@ export type TemplatePlanMerge = "lineBreak" | "space" | "none";
 /**
  * A paragraph's own indent, in twentieths of a point (`w:ind`). A side left
  * out stays what the style or the list level gives; a hanging indent and a
- * first-line indent exclude each other.
+ * first-line indent exclude each other. `left` may be negative (into the
+ * margin); the other two may not.
  */
 export type TemplatePlanIndent = {
   left?: number;
@@ -619,8 +648,9 @@ export type TemplatePlanSourceItem = {
    * the tab or space its list puts after it: for a label no list of the
    * template prints. The paragraph it leads must join no list
    * (`numbering: null`). Only a label that reads the same wherever the file
-   * is opened can be written: numbers, letters and roman numerals, not a
-   * bullet glyph and not a number a language spells.
+   * is opened can be written: numbers, letters and roman numerals, a
+   * bullet's mark as the Unicode character it shows, not a glyph left in a
+   * symbol font's private range and not a number a language spells.
    */
   labelAsText?: boolean;
   /**
@@ -673,6 +703,14 @@ export type TemplatePlanSourceItem = {
    */
   alignment?: TemplatePlanAlignment;
   /**
+   * The paragraph's own outline level (`w:outlineLvl`, 0 for level 1), over
+   * the one its style states: for a line the source's own contents list
+   * that the template's style does not head. A contents field gathers it
+   * only with its `\u` switch (`fields.contentsOutlineLevels`). Not for a
+   * table.
+   */
+  outlineLevel?: number;
+  /**
    * The paragraph's own space in front of it and behind it (`w:spacing`),
    * over what its style states: for a line the document sets tight or
    * apart by itself, such as the rows of a table. Not for a table.
@@ -720,6 +758,12 @@ export type TemplatePlanNumberingPatch = {
   start?: number;
   suff?: "tab" | "space" | "nothing";
   /**
+   * Legal numbering: the level prints every counter of its text in arabic
+   * numerals, its own and those of the levels above (`w:isLgl`); false
+   * switches it off.
+   */
+  isLgl?: boolean;
+  /**
    * The face the level's label is set in. Whatever else the level's run
    * properties state is kept.
    */
@@ -738,10 +782,18 @@ export type TemplatePlanReference = {
   start: number;
   end: number;
   targetBlockId: string;
-  /** The switches of the REF field, e.g. `\n \t \h`. */
+  /** The switches of the field, e.g. `\n \t \h`. */
   instruction: string;
   /** The cached result the field is written with. */
   expectedText: string;
+  /**
+   * The field the reference is written as: `REF`, the default, shows the
+   * target's text or number; `PAGEREF` its page (or, with a picture of
+   * words alone, those words, as a drafter's link to the target). Its
+   * switches may be `\h`, `\p`, a picture `\# "…"` and a format that
+   * keeps the result's look.
+   */
+  field?: "REF" | "PAGEREF";
 };
 
 export type TemplatePlanHighlight = {
@@ -764,7 +816,16 @@ export type TemplatePlan = {
   numberingPatches?: TemplatePlanNumberingPatch[];
   references?: TemplatePlanReference[];
   highlights?: TemplatePlanHighlight[];
-  fields?: { freezeKinds?: string[]; updateOnOpen?: boolean };
+  fields?: {
+    freezeKinds?: string[];
+    updateOnOpen?: boolean;
+    /**
+     * Whether the template's contents fields the output keeps also gather
+     * paragraphs by their own outline level (`outlineLevel` on an item):
+     * the field's code gains the `\u` switch where it lacks it.
+     */
+    contentsOutlineLevels?: boolean;
+  };
   /**
    * Compatibility settings to switch on in the output's settings, which are
    * otherwise the template's. `true` sets the setting at its place in the
@@ -812,6 +873,39 @@ export type TemplatePlan = {
    * it. The report says where each went and what had no place.
    */
   sourceHeaders?: "drop" | "keep";
+  /**
+   * What becomes of the source's comments. `drop`, the default, carries
+   * none. `keep` carries each comment whose reference the output places,
+   * with its range where both ends are placed, and the comments part with
+   * its extensions (replies, done state, people). The report counts what
+   * had no place: a comment anchored in a block the plan omits, or in a
+   * note or a header.
+   */
+  comments?: "drop" | "keep";
+  /**
+   * What becomes of the source's links to a place in itself (a bookmark, a
+   * heading a contents line jumps to). `drop`, the default, writes their
+   * text. `keep` links each to the output paragraph that stands for the
+   * paragraph its bookmark marks, through the plan's own bookmark there,
+   * where that paragraph is placed.
+   */
+  internalLinks?: "drop" | "keep";
+  /**
+   * What becomes of the colours the source's text states (`w:color`) and
+   * the shading of its runs (`w:shd`). `drop`, the default, leaves colour
+   * to the template. `keep` carries each colour that marks part of the
+   * text: one that covers less than half of the source's text (a colour
+   * covering more is the source's own look, the template's to set).
+   */
+  textColors?: "drop" | "keep";
+};
+
+/** What the output carries of the source's comments. */
+export type TemplatePlanSourceComments = {
+  /** Comments the output shows. */
+  kept: number;
+  /** Comments of the source the output does not show. */
+  leftOut: number;
 };
 
 /** What the output's headers and footers carry of the source's, and what
@@ -825,6 +919,9 @@ export type TemplatePlanSourceHeaders = {
     part: string;
     paragraphs: number;
     created: boolean;
+    /** The output section a later section's content went to, in a part
+     *  of its own; absent for the content every section shows. */
+    section?: number;
   }[];
   /** Counts of source parts and objects the output does not carry. */
   leftOut: {
@@ -838,7 +935,13 @@ export type TemplatePlanSourceHeaders = {
     sharedParts: number;
     /** Blocks that refer to an embedded object other than a picture. */
     unsupportedObjects: number;
+    /** Parts a later section of the source shows that differ from those
+     *  of the section the output merges it into. */
+    laterSectionParts: number;
   };
+  /** Output headers and footers that show two page numbers: the template's
+   *  part numbers its pages and so does the source's content it took. */
+  pageNumbersTwice: number;
 };
 
 export type TemplatePlanEffectCount = {
@@ -907,6 +1010,9 @@ export type TemplatePlanNoteCounts = {
   output: number;
   identical: number;
   mismatch: number;
+  /** Notes of the template's sample text that the output leaves out with
+   *  it: no kept template block refers to them. */
+  templateLeftOut: number;
 };
 
 export type TemplatePlanFieldLeftover = {
@@ -1015,6 +1121,9 @@ export type TemplatePlanReport = {
   };
   dropped: {
     comments: number;
+    /** Fields of the placed source paragraphs written as their text, by
+     *  kind. A field a reference of the plan writes anew over part of its
+     *  result is not one of them. */
     sourceFields: { kind: string; count: number }[];
     internalHyperlinks: number;
     sectionBreaks: number;
@@ -1033,6 +1142,8 @@ export type TemplatePlanReport = {
   updateFields: "set" | "cleared" | "unchanged";
   /** Present when the plan keeps the source's headers and footers. */
   sourceHeaders?: TemplatePlanSourceHeaders;
+  /** Present when the plan keeps the source's comments. */
+  sourceComments?: TemplatePlanSourceComments;
   conformance: {
     status: "conformant" | "invalid" | "indeterminate";
     /** The template's own status; the output may not be worse. */

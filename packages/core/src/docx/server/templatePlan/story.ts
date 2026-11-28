@@ -102,7 +102,16 @@ export type AtomKind =
   | "footnoteReference"
   | "endnoteReference"
   | "selfNumber"
-  | "object";
+  /** A legacy form field that shows its box or list without a result: the
+   *  field itself, with its form data, is the content. */
+  | "formField"
+  /** A field that shows no result and is kept as its code: a contents
+   *  entry (`TC`), a macro button whose code holds its display text. */
+  | "codeField"
+  | "object"
+  /** No reading yields it: the piece a plan that keeps comments places
+   *  for a paragraph's comment mark (`ParagraphRead.commentMarks`). */
+  | "commentMark";
 
 export type AtomLink =
   /** A link through a relationship; `anchor` is the fragment its element adds. */
@@ -122,8 +131,12 @@ export type InlineAtom = {
   element: XmlElement | null;
   /** Fields whose result the atom is part of, outermost first. */
   fields: readonly number[];
-  /** The code of the field a `selfNumber` atom stands for. */
+  /** The code of the field a `selfNumber` or `formField` atom stands for. */
   instruction?: string;
+  /** The form data (`w:ffData`) of the field a `formField` atom stands for. */
+  formData?: XmlElement;
+  /** The comment mark a `commentMark` piece stands for. */
+  comment?: { kind: "start" | "end" | "reference"; id: string };
   /** The tracked change the atom is part of, in a reading that keeps them. */
   revision?: AtomRevision;
   /**
@@ -132,7 +145,16 @@ export type InlineAtom = {
    * character.
    */
   checkbox?: XmlElement;
+  /**
+   * The content control among runs the atom is part of (other than a
+   * checkbox): its properties, and the whole text of its content, which a
+   * writer that places all of it wraps in the control again.
+   */
+  control?: AtomControl;
 };
+
+/** A content control among runs, shared by the atoms of its content. */
+export type AtomControl = { properties: XmlElement; text: string };
 
 /**
  * A tracked change an atom is part of, as a reading that keeps revisions
@@ -166,7 +188,19 @@ const SELF_NUMBERING_FIELDS: ReadonlySet<string> = new Set([
   "AUTONUM",
   "AUTONUMLGL",
   "AUTONUMOUT",
+  "LISTNUM",
 ]);
+
+/**
+ * Fields that hold their content in their code and cache no result: a
+ * contents entry (`TC`, hidden, read by a contents field) and a macro
+ * button (`MACROBUTTON`, which shows the text its code holds).
+ */
+const CODE_ONLY_FIELDS: ReadonlySet<string> = new Set(["TC", "MACROBUTTON"]);
+
+/** Whether a field kind is kept as its code when it caches no result. */
+export const isCodeOnlyField = (kind: string): boolean =>
+  CODE_ONLY_FIELDS.has(kind);
 
 /** Whether a field kind prints a number of its own and caches no text. */
 export const isSelfNumberingField = (kind: string): boolean =>
@@ -188,7 +222,20 @@ export type StoryField = {
   closed: boolean;
   /** Whether the field sits in the code of another field. */
   nestedInCode: boolean;
+  /** The form data (`w:ffData`) of a legacy form field's begin. */
+  formData?: XmlElement;
 };
+
+/** Legacy form fields: a text box, a check box, a drop-down list. */
+export const FORM_FIELDS: ReadonlySet<string> = new Set([
+  "FORMTEXT",
+  "FORMCHECKBOX",
+  "FORMDROPDOWN",
+]);
+
+/** Whether a field is a legacy form field that carries its form data. */
+export const isFormField = (field: StoryField): boolean =>
+  FORM_FIELDS.has(field.kind) && field.formData !== undefined;
 
 type OpenField = {
   field: StoryField;
@@ -246,6 +293,18 @@ export type ParagraphBookmark = { name: string; id: string; atomIndex: number };
 /** A bookmark end, with how many atoms of its paragraph come before it. */
 export type ParagraphBookmarkEnd = { id: string; atomIndex: number };
 
+/**
+ * A mark of a comment in a paragraph: where its range starts or ends, or
+ * the reference that shows it, with how many atoms come before it. The
+ * link is the one the content around the mark sits in.
+ */
+export type ParagraphCommentMark = {
+  kind: "start" | "end" | "reference";
+  id: string;
+  atomIndex: number;
+  link: AtomLink | null;
+};
+
 /** The sides of `w:ind` that count in characters of the document grid. */
 const CHARACTER_INDENTS = [
   "leftChars",
@@ -302,6 +361,8 @@ export type ParagraphRead = {
   openFieldsAtStart: number;
   bookmarks: ParagraphBookmark[];
   bookmarkEnds: ParagraphBookmarkEnd[];
+  /** Comment marks, in document order. */
+  commentMarks: ParagraphCommentMark[];
   inlineObjects: number;
   /** How many of them are drawn shapes fixed to the page. */
   pageShapes: number;
@@ -324,6 +385,10 @@ export type ParagraphRead = {
   indentInCharacters: boolean;
   /** Whether the paragraph mark is a tracked insertion or deletion. */
   hasTrackedMark: boolean;
+  /** Whether the paragraph's mark is hidden (`w:vanish` on the mark): the
+   *  paragraph runs on into the next on screen, or vanishes when its text
+   *  is hidden too. */
+  markHidden: boolean;
 };
 
 const TOGGLE_OFF = new Set(["0", "false", "off"]);
@@ -525,6 +590,8 @@ type RunContext = {
   checkbox?: XmlElement | undefined;
   /** The insertion or deletion the content sits in, when revisions are kept. */
   revision?: AtomRevision | undefined;
+  /** The content control among runs the content sits in. */
+  control?: AtomControl | undefined;
 };
 
 /** What a deleted run holds as text; null for content that is none. */
@@ -547,7 +614,7 @@ const deletedTextOf = (child: XmlElement): string | null => {
 const readDeletedRun = (
   run: XmlElement,
   walk: ParagraphWalk,
-  { link, revision }: RunContext & { revision: AtomRevision },
+  { link, revision, control }: RunContext & { revision: AtomRevision },
 ): void => {
   let deleted = "";
   for (const child of elementChildren(run)) {
@@ -567,8 +634,28 @@ const readDeletedRun = (
       link,
       element: null,
       revision: { ...revision, deleted },
+      ...(control === undefined ? {} : { control }),
     });
   }
+};
+
+/** A comment mark where the walk stands; none inside a field's code. */
+const pushCommentMark = (
+  walk: ParagraphWalk,
+  kind: ParagraphCommentMark["kind"],
+  element: XmlElement,
+  link: AtomLink | null,
+): void => {
+  const id = wAttr(element, "id");
+  if (id === null || inCode(walk.state)) {
+    return;
+  }
+  walk.read.commentMarks.push({
+    kind,
+    id,
+    atomIndex: walk.read.atoms.length,
+    link,
+  });
 };
 
 const readRun = (
@@ -576,14 +663,18 @@ const readRun = (
   walk: ParagraphWalk,
   context: RunContext,
 ): void => {
-  const { link, revision, checkbox } = context;
+  const { link, revision, checkbox, control } = context;
   const { state, read } = walk;
   const runProperties = wChild(run, "rPr");
   if (wChild(runProperties, "rPrChange") !== null) {
     state.formattingRevisions += 1;
   }
   if (revision?.kind === "del") {
-    readDeletedRun(run, walk, { link, revision });
+    readDeletedRun(run, walk, {
+      link,
+      revision,
+      ...(control === undefined ? {} : { control }),
+    });
     return;
   }
   const atom = (
@@ -599,6 +690,7 @@ const readRun = (
       element,
       ...(revision === undefined ? {} : { revision }),
       ...(checkbox === undefined || kind !== "text" ? {} : { checkbox }),
+      ...(control === undefined ? {} : { control }),
     });
   };
   // An object travels whole, so what it holds inside is checked here.
@@ -664,11 +756,17 @@ const readRun = (
         break;
       case "commentReference":
         state.comments += 1;
+        pushCommentMark(walk, "reference", child, link);
         break;
       case "fldChar": {
         const type = wAttr(child, "fldCharType");
         if (type === "begin") {
-          state.open.push({ field: beginField(walk, ""), phase: "code" });
+          const field = beginField(walk, "");
+          const formData = wChild(child, "ffData");
+          if (formData !== null) {
+            field.formData = formData;
+          }
+          state.open.push({ field, phase: "code" });
         } else if (type === "separate") {
           const top = state.open.at(-1);
           if (top === undefined || top.phase === "result") {
@@ -695,6 +793,34 @@ const readRun = (
                 link,
                 element: null,
                 instruction: top.field.instruction.trim(),
+              });
+            } else if (
+              top.phase === "code" &&
+              isCodeOnlyField(top.field.kind)
+            ) {
+              pushAtom(walk, {
+                kind: "codeField",
+                text: "",
+                runProperties,
+                link,
+                element: null,
+                instruction: top.field.instruction.trim(),
+              });
+            } else if (
+              top.field.result === "" &&
+              top.field.formData !== undefined &&
+              isFormField(top.field)
+            ) {
+              // A box or a list that caches no text shows what its form
+              // data says: the field is the content.
+              pushAtom(walk, {
+                kind: "formField",
+                text: "",
+                runProperties,
+                link,
+                element: null,
+                instruction: top.field.instruction.trim(),
+                formData: top.field.formData,
               });
             }
           }
@@ -761,6 +887,9 @@ const readInline = (
           ...(context.revision === undefined
             ? {}
             : { revision: context.revision }),
+          ...(context.control === undefined
+            ? {}
+            : { control: context.control }),
         });
       } else if (!inCode(state)) {
         read.unsupported.push(child.name ?? "");
@@ -778,7 +907,10 @@ const readInline = (
       } else if (anchor !== null) {
         link = { kind: "anchor", anchor };
       }
-      readInline(child, walk, { link });
+      readInline(child, walk, {
+        link,
+        ...(context.control === undefined ? {} : { control: context.control }),
+      });
     } else if (name === "fldSimple") {
       const field = beginField(walk, wAttr(child, "instr") ?? "");
       field.resultStart = walk.textLength;
@@ -794,6 +926,9 @@ const readInline = (
           link: context.link,
           element: null,
           instruction: field.instruction.trim(),
+          ...(context.control === undefined
+            ? {}
+            : { control: context.control }),
         });
       }
     } else if (REVISION_INCLUDED.has(name) || REVISION_EXCLUDED.has(name)) {
@@ -822,11 +957,27 @@ const readInline = (
       const content = wChild(child, "sdtContent");
       if (content !== null) {
         const checkbox = checkboxOf(child, content);
-        readInline(
-          content,
-          walk,
-          checkbox === null ? context : { ...context, checkbox },
-        );
+        const properties = wChild(child, "sdtPr");
+        if (
+          checkbox === null &&
+          context.control === undefined &&
+          properties !== null
+        ) {
+          // A control among runs: its atoms carry it, with its whole text.
+          const control: AtomControl = { properties, text: "" };
+          const first = read.atoms.length;
+          readInline(content, walk, { ...context, control });
+          control.text = read.atoms
+            .slice(first)
+            .map(({ text }) => text)
+            .join("");
+        } else {
+          readInline(
+            content,
+            walk,
+            checkbox === null ? context : { ...context, checkbox },
+          );
+        }
       }
     } else if (TRANSPARENT_WRAPPERS.has(name)) {
       readInline(child, walk, context);
@@ -841,6 +992,13 @@ const readInline = (
         id: wAttr(child, "id") ?? "",
         atomIndex: read.atoms.length,
       });
+    } else if (name === "commentRangeStart" || name === "commentRangeEnd") {
+      pushCommentMark(
+        walk,
+        name === "commentRangeStart" ? "start" : "end",
+        child,
+        context.link,
+      );
     } else if (!IGNORED_INLINE_CHILDREN.has(name) && !inCode(state)) {
       read.unsupported.push(name);
     }
@@ -911,6 +1069,7 @@ export const readParagraph = (
     openFieldsAtStart: state.open.length,
     bookmarks: [],
     bookmarkEnds: [],
+    commentMarks: [],
     inlineObjects: 0,
     pageShapes: 0,
     unsupported: [],
@@ -924,6 +1083,7 @@ export const readParagraph = (
       return value !== null && !/^[+-]?0*$/u.test(value.trim());
     }),
     hasTrackedMark,
+    markHidden: toggleOf(wChild(mark, "vanish")) === true,
   };
   state.paragraphOrdinal += 1;
   const walk: ParagraphWalk = { state, read, textLength: 0 };
@@ -951,6 +1111,11 @@ export type StoryBlockVisitor = {
   unread: (element: XmlElement) => void;
   /** A tracked insertion, deletion or move of a block, row or cell. */
   tracked: (element: XmlElement) => void;
+  /**
+   * A bookmark end between blocks, rows or cells: the bookmark ends behind
+   * the paragraph read last.
+   */
+  bookmarkEnd?: (element: XmlElement) => void;
 };
 
 const BLOCK_WRAPPERS = new Set(["customXml"]);
@@ -1009,6 +1174,8 @@ const walkRows = (
             visitor.cellStart(row, col);
             col += 1;
             walkBlocks(cell, visitor, depth + 1);
+          } else if (cellName === "bookmarkEnd") {
+            visitor.bookmarkEnd?.(cell);
           } else if (cellName === "sdt") {
             const content = wChild(cell, "sdtContent");
             if (content !== null) {
@@ -1025,6 +1192,8 @@ const walkRows = (
         }
       };
       walkCells(child);
+    } else if (name === "bookmarkEnd") {
+      visitor.bookmarkEnd?.(child);
     } else if (name === "sdt") {
       const content = wChild(child, "sdtContent");
       if (content !== null) {
@@ -1071,6 +1240,8 @@ export const walkBlocks = (
       if (REVISION_INCLUDED.has(name)) {
         walkBlocks(child, visitor, depth);
       }
+    } else if (name === "bookmarkEnd") {
+      visitor.bookmarkEnd?.(child);
     } else if (name === null || !IGNORED_BLOCK_CHILDREN.has(name)) {
       visitor.unread(child);
     }

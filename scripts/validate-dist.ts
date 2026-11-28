@@ -426,9 +426,12 @@ const runtimeExpect: Record<string, Record<string, string[]>> = {
       "SplitCellDialog",
     ],
     "@stll/folio-react/messages": [
+      "configureFolioMessageAssets",
       "getFolioMessages",
       "FOLIO_LOCALES",
       "isFolioLocale",
+      "loadFolioMessages",
+      "preloadFolioMessages",
     ],
   },
   agents: {
@@ -537,6 +540,29 @@ try {
 `
     : "";
 
+// A translated catalog must load as UTF-8 data from the installed package,
+// not from JavaScript carried by the editor bundle.
+const localeCatalogRuntimeCheck =
+  target === "core"
+    ? `
+try {
+  const { readFileSync } = await import("node:fs");
+  const { fileURLToPath } = await import("node:url");
+  const messages = await import("@stll/folio-core/i18n/messages");
+  const czech = await messages.loadFolioMessages("cs-CZ");
+  if (czech.folio.bold !== "Tučné") {
+    failed = true;
+    console.error("the Czech locale data returned an unexpected bold label");
+  }
+  const file = fileURLToPath(import.meta.resolve("@stll/folio-core/i18n/cs.json"));
+  if (JSON.parse(readFileSync(file, "utf8")).folio.bold !== "Tučné") {
+    failed = true;
+    console.error("the exported Czech locale asset is not the catalog data");
+  }
+} catch (err) { failed = true; console.error("locale catalog threw: " + (err?.message ?? err)); }
+`
+    : "";
+
 // The tarball must carry every file the catalogue and the stylesheet name, and
 // the Node reader must find them from wherever the package is installed.
 const fontsRuntimeCheck =
@@ -602,6 +628,7 @@ for (const [spec, names] of Object.entries(expect)) {
 ${messagesRuntimeCheck}
 ${shaperBytesRuntimeCheck}
 ${hyphenationRuntimeCheck}
+${localeCatalogRuntimeCheck}
 ${fontsRuntimeCheck}
 ${nuxtRuntimeCheck}
 process.exit(failed ? 1 : 0);

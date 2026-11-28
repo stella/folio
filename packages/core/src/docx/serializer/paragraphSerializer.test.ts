@@ -368,6 +368,45 @@ describe("serializeParagraph tracked-change hardening", () => {
     expect(xml).toContain("<w:delText>1</w:delText>");
   });
 
+  test("lowers a captured simple field inside a tracked link wrapper", () => {
+    const paragraph: Paragraph = {
+      type: "paragraph",
+      content: [
+        {
+          type: "deletion",
+          info: { id: 1, author: "Reviewer" },
+          content: [
+            {
+              type: "hyperlink",
+              anchor: "page",
+              children: [
+                {
+                  type: "inlineWrapper",
+                  kind: "bidi",
+                  control: "embedding",
+                  content: [
+                    {
+                      type: "preservedInline",
+                      xml: '<w:fldSimple w:instr="PAGE"><w:r><w:t>3</w:t></w:r></w:fldSimple>',
+                      text: "3",
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const xml = serializeParagraph(paragraph);
+
+    expect(xml).not.toContain("<w:fldSimple");
+    expect(xml).toContain('<w:hyperlink w:anchor="page"><w:del ');
+    expect(xml).toContain("<w:dir><w:r><w:fldChar");
+    expect(xml).toContain("<w:delText>3</w:delText>");
+  });
+
   test("keeps a complex field inside its authored revision wrapper through the editor model", () => {
     const namespace =
       'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';

@@ -6,9 +6,11 @@ import { build, type Metafile } from "esbuild";
 import path from "node:path";
 import { gzipSync } from "node:zlib";
 
+import { messages as english } from "@stll/folio-core/i18n/messages/en";
 import { FOLIO_LOCALES } from "@stll/folio-core/i18n/messages/locales";
 
 const catalogDir = "packages/core/src/i18n/messages";
+const catalogAssetDir = "packages/core/assets/i18n";
 
 const root = path.resolve(import.meta.dir, "../../..");
 const ADAPTERS = ["react", "vue"] as const;
@@ -16,33 +18,13 @@ type Adapter = (typeof ADAPTERS)[number];
 type Metrics = { minified: number; gzip: number; docxOps: number };
 
 const BUDGETS = {
-  // docxOps +1.1 kB: table row and table removal keep the ends of ranges
-  // reaching past them. +0.5 kB: rejecting changes at once carries a cut
-  // through the pieces it empties. +2.2 kB: moving blocks, tables included,
-  // is one intent. The docxOps ceilings then keep about 5 kB of room, so a
-  // correctness fix in the ops can land without editing this line; they come
-  // down again once the queue is quiet.
-  // minified +1.3 kB, gzip +0.5 kB: a session opening a story aligns each
-  // paragraph's text when it is first addressed. docxOps +3.8 kB, past the
-  // room left: a pasted or dragged block container (content control, text
-  // box) is placed whole, with its notes and comments. docxOps +6.5 kB: room
-  // again for ops correctness fixes; the ops measure about 674 kB. docxOps
-  // +3.5 kB: a suggested deletion keeps the comment ranges it crosses, a
-  // suggested join or paste keeps the records at its seam, and rejecting a
-  // link insertion that cut an inline control gives one result in every order.
-  // Room for the tracked table records now landing in a series (rows, cells,
-  // nested tables and their moves; the ops measure about 694 kB), so
-  // each one needs no edit here: docxOps to 715 kB, minified +18.5 kB, gzip
-  // +6 kB. All six come down to the measured size plus a small margin once
-  // the series has landed. minified +5 kB, gzip +1 kB: a pasted note or
-  // comment keeps the parts its kept markup names in its own part's
-  // relationships. The series outgrew its room (the ops measure about 715 kB
-  // with five of its changes still to land, each about 6 kB): docxOps to
-  // 745 kB, minified +30 kB, gzip +10 kB. The ops bytes count toward the
-  // totals too, so the totals keep the room the ops ceiling still leaves
-  // (about 19 kB): minified +21 kB, gzip +7 kB.
-  react: { minified: 3_833_600, gzip: 1_206_800, docxOps: 745_000 },
-  vue: { minified: 3_527_400, gzip: 1_101_000, docxOps: 745_000 },
+  // Main measured React 3,833,737/1,206,336/740,273 and Vue 3,527,470/1,101,917/740,222 (minified/gzip/ops).
+  // Ceilings sit a few kB above measured; raise with a reason, then ratchet down after a series.
+  // Custom XML revision records measure React 3,854,169/1,212,264/756,432 and
+  // Vue 3,547,921/1,107,933/756,377; retain the same 8/3/5 kB margins.
+  // Preserving earlier nested table revisions measures 762,516 React and 762,456 Vue ops bytes.
+  react: { minified: 3_862_169, gzip: 1_215_264, docxOps: 762_516 },
+  vue: { minified: 3_555_921, gzip: 1_110_933, docxOps: 762_456 },
 } as const satisfies Record<Adapter, Metrics>;
 
 const HOST_PEERS = [
@@ -81,25 +63,94 @@ const eagerOutputs = ({ outputs }: Metafile): Set<string> => {
 
 const checkCatalogs = (metafile: Metafile, eager: Set<string>) => {
   const eagerInputs = new Set<string>();
-  const lazyInputs = new Set<string>();
+  const allInputs = new Set<string>();
   for (const [name, output] of Object.entries(metafile.outputs)) {
-    const inputs = eager.has(name) ? eagerInputs : lazyInputs;
     for (const [source, input] of Object.entries(output.inputs)) {
-      if (input.bytesInOutput > 0 && source.startsWith(`${catalogDir}/`))
-        inputs.add(source);
+      if (input.bytesInOutput === 0 || !source.startsWith(`${catalogDir}/`))
+        continue;
+      allInputs.add(source);
+      if (eager.has(name)) eagerInputs.add(source);
     }
   }
-  if (eagerInputs.has(`${catalogDir}/catalogs.gen.ts`))
-    throw new Error("The aggregate message catalog is eager");
+  if (allInputs.has(`${catalogDir}/catalogs.gen.ts`))
+    throw new Error("The aggregate message catalog is bundled");
   for (const locale of FOLIO_LOCALES) {
     const input = `${catalogDir}/${locale}.gen.ts`;
     const isEnglish = locale === "en";
-    if (
-      isEnglish
-        ? !eagerInputs.has(input)
-        : eagerInputs.has(input) || !lazyInputs.has(input)
-    )
+    if (isEnglish ? !eagerInputs.has(input) : allInputs.has(input))
       throw new Error(`Unexpected bundle placement for the ${locale} catalog`);
+  }
+};
+
+const checkSingleFileCatalogs = async (adapter: Adapter): Promise<void> => {
+  const packageName = `@stll/folio-${adapter}`;
+  const result = await build({
+    absWorkingDir: root,
+    stdin: {
+      contents: `
+        import { renderAsync } from "${packageName}";
+        const input = await fetch("/document.docx").then((response) => response.arrayBuffer());
+        await renderAsync(input, document.body, { locale: "en" });
+      `,
+      resolveDir: root,
+    },
+    alias: {
+      [packageName]: path.join(root, "packages", adapter, "dist/index.js"),
+    },
+    bundle: true,
+    format: "esm",
+    platform: "browser",
+    target: "es2022",
+    minify: true,
+    metafile: true,
+    write: false,
+    outfile: path.join(root, ".cache/editor-eager-budget", `${adapter}.js`),
+    external: HOST_PEERS,
+    loader: { ".css": "empty" },
+  });
+  const inputs = new Set(
+    Object.values(result.metafile.outputs).flatMap((output) =>
+      Object.entries(output.inputs)
+        .filter(([, input]) => input.bytesInOutput > 0)
+        .map(([source]) => source),
+    ),
+  );
+  const javascript = result.outputFiles
+    .filter(({ path: outputPath }) => outputPath.endsWith(".js"))
+    .map(({ text }) => text)
+    .join("\n");
+  const collectStrings = (value: unknown, found: string[]): void => {
+    if (typeof value === "string") {
+      found.push(value);
+      return;
+    }
+    if (typeof value !== "object" || value === null) return;
+    for (const child of Object.values(value)) collectStrings(child, found);
+  };
+  const englishStrings: string[] = [];
+  collectStrings(english, englishStrings);
+  const englishSet = new Set(englishStrings);
+  for (const locale of FOLIO_LOCALES) {
+    if (locale === "en") continue;
+    const catalog: unknown = await Bun.file(
+      path.join(root, catalogAssetDir, `${locale}.json`),
+    ).json();
+    const translatedStrings: string[] = [];
+    collectStrings(catalog, translatedStrings);
+    const marker = translatedStrings.find(
+      (value) => value.length >= 8 && !englishSet.has(value),
+    );
+    if (marker === undefined)
+      throw new Error(`The ${locale} catalog has no distinct guard string`);
+    if (
+      inputs.has(`${catalogDir}/${locale}.gen.ts`) ||
+      inputs.has(`${catalogAssetDir}/${locale}.json`) ||
+      javascript.includes(marker)
+    ) {
+      throw new Error(
+        `${packageName} single-file bundle carried the ${locale} catalog`,
+      );
+    }
   }
 };
 
@@ -179,6 +230,7 @@ const measure = async (adapter: Adapter): Promise<Metrics> => {
   }
   if (metrics.docxOps === 0)
     throw new Error(`${packageName} did not include docx-core ops`);
+  await checkSingleFileCatalogs(adapter);
   return metrics;
 };
 
