@@ -3932,6 +3932,24 @@ const resolveList = ({
         pending[index + 1] = into;
         out.splice(start);
         placed.before = true;
+      } else if (
+        record !== undefined &&
+        isTrackedWrapper(record) &&
+        resolution.ids.has(record.info.id) &&
+        removesContent(record, resolution.decision)
+      ) {
+        // Another removal in this batch stands between the markers and the
+        // surviving record. Hand it their piece and the closed join taking
+        // it: its own removal then routes them onward as resolving the two
+        // removals separately does.
+        handKeptBeside({
+          index,
+          side: "before",
+          from: node.info.id,
+          to: record.info.id,
+        });
+        pending[index + 1] = withJoinClosed(record, "before", joins.before);
+        placed.before = true;
       }
     }
     // The record before it may be content this resolution accepted, whose
@@ -7388,23 +7406,21 @@ const deferSplitSeam = ({
     while (!blockersAreSourcePieces && standingInKeptCut(right.at(keptTo)))
       keptTo += 1;
     const known = new WeakMap<InlineNode, string>();
+    const leftHolderNode =
+      (leftEnd < leftBlockerEnd - 1 ? left[leftEnd + 1] : undefined) ??
+      (rightStart > rightBlockerStart
+        ? right.at(rightBlockerStart)
+        : undefined);
     const leftHolder = keptCutHolders({
-      after: changeAtEdge(
-        left[leftEnd + 1] ??
-          (rightStart > rightBlockerStart
-            ? right.at(rightBlockerStart)
-            : undefined),
-        "start",
-      ),
+      after: changeAtEdge(leftHolderNode, "start"),
     });
+    const rightHolderNode =
+      (rightStart > rightBlockerStart ? right[rightStart - 1] : undefined) ??
+      (leftEnd < leftBlockerEnd - 1
+        ? itemBefore(left, leftBlockerEnd)
+        : undefined);
     const rightHolder = keptCutHolders({
-      before: changeAtEdge(
-        right[rightStart - 1] ??
-          (leftEnd < leftBlockerEnd - 1
-            ? itemBefore(left, leftBlockerEnd)
-            : undefined),
-        "end",
-      ),
+      before: changeAtEdge(rightHolderNode, "end"),
     });
     const leftRow = left.slice(leftEnd + 1, leftBlockerEnd).toReversed();
     const rightRow = right.slice(rightBlockerStart, rightStart);
