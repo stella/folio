@@ -1518,7 +1518,11 @@ const writeOutput = async ({
               first: sectionEnds.length === 0,
               page: lastSection?.page,
               start:
-                sectionEnds.length === 0 ? null : (lastSection?.start ?? null),
+                // A later section begins on a new page unless the plan says
+                // otherwise, as every other section the plan ends does.
+                sectionEnds.length === 0
+                  ? null
+                  : (lastSection?.start ?? "nextPage"),
               ...sectionReferencesOf(sectionEnds.length),
             },
           )

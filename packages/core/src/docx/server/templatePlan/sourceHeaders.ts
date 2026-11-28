@@ -585,7 +585,7 @@ const laterSectionWrites = async (
 /**
  * The sections after the first that show a header or footer of their own:
  * for the other pages or even pages, a part with text (or a picture, a
- * field) other than the first section shows there. Read for a manifest,
+ * field) other than the section before it shows there. Read for a manifest,
  * so a plan can keep such a section a section of its own.
  */
 export const sectionsWithOwnHeaders = async (
@@ -632,15 +632,17 @@ export const sectionsWithOwnHeaders = async (
       if (Result.isError(first)) {
         return first;
       }
+      let before = first.value;
       for (let index = 1; index < sections.length; index += 1) {
         // oxlint-disable-next-line no-await-in-loop -- serialized reads keep the archive budget exact
         const part = await shown(pathAt(index));
         if (Result.isError(part)) {
           return part;
         }
-        if (part.value !== null && !sameContent(part.value, first.value)) {
+        if (part.value !== null && !sameContent(part.value, before)) {
           own.add(index);
         }
+        before = part.value;
       }
     }
   }
