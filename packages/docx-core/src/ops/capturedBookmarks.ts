@@ -39,14 +39,11 @@ export const readCapturedBookmark = (
   if (localName !== "bookmarkStart" && localName !== "bookmarkEnd")
     return undefined;
   const idEntry = nativeAttribute(node, "id");
-  if (
-    idEntry === undefined ||
-    typeof idEntry[1] !== "string" ||
-    !/^[+-]?\d+$/u.test(idEntry[1])
-  )
-    return undefined;
+  if (idEntry === undefined || typeof idEntry[1] !== "string") return undefined;
   const [idAttribute, rawId] = idEntry;
-  const id = Number(rawId);
+  const spelling = rawId.replace(/^[ \t\r\n]+|[ \t\r\n]+$/gu, "");
+  if (!/^[+-]?\d+$/u.test(spelling)) return undefined;
+  const id = Number(spelling);
   if (!Number.isSafeInteger(id)) return undefined;
   if (localName === "bookmarkEnd")
     return { marker: { type: localName, id }, idAttribute };

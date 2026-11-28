@@ -233,6 +233,37 @@ test.each(["inline", "equation"] as const)(
   },
 );
 
+test("a tracked merge reserves a padded bookmark id in an equation outside the merged cells", () => {
+  const original = sourceWith({
+    content:
+      '<w:bookmarkStart w:id="42" w:name="Formula"/>' +
+      '<w:r><w:t>Formula</w:t></w:r><w:bookmarkEnd w:id="42"/>' +
+      '<w:hyperlink w:anchor="Formula"><w:r><w:t>See formula</w:t></w:r></w:hyperlink>',
+  });
+  const outside = tableOf(
+    sourceWith({
+      content:
+        '<m:oMath><w:bookmarkStart w:id="  +1  " w:name="FolioBookmark1"/>' +
+        '<m:r><m:t>y</m:t></m:r><w:bookmarkEnd w:id=" 1 "/></m:oMath>',
+    }),
+  )
+    .rows.at(0)
+    ?.cells.at(1)
+    ?.content.at(0);
+  if (outside?.type !== "paragraph")
+    throw new TypeError("Expected the standing equation.");
+  original.package.document.content.splice(1, 1, {
+    ...outside,
+    paraId: "00000003",
+  });
+  expect(serializeParagraph(outside)).toContain(
+    'w:id="  +1  " w:name="FolioBookmark1"',
+  );
+  const xml = assertSavedMove(original);
+  expect(xml).toContain('w:id="2" w:name="FolioBookmark2"');
+  expect(xml).toContain('w:anchor="FolioBookmark2"');
+});
+
 test.each([
   `${direction}${link}${atoms}</w:hyperlink></w:dir>`,
   `${link}${direction}${atoms}</w:dir></w:hyperlink>`,
