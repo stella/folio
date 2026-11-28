@@ -306,24 +306,28 @@ const contentsWithEntries = (
       field.endParagraphOrdinal + 1,
     );
     const last = rest.at(-1);
+    // A field that ends in the paragraph of the next heading (the end was
+    // left in front of it) keeps that paragraph from behind the end when
+    // the plan keeps it, and needs it not at all when the plan leaves it
+    // out as sample text: the field is closed in its first paragraph.
+    const alone = last !== undefined && endsOpenField(last.element);
+    const tailKept = last !== undefined && keptIds.has(last.block.id);
+    const entries = alone || tailKept ? rest : rest.slice(0, -1);
     if (
       first !== undefined &&
       last !== undefined &&
-      [first, ...rest].every(
+      [first, ...entries].every(
         ({ block, parentId }) => parentId === null && keptIds.has(block.id),
       ) &&
       field.resultStart >= 0 &&
       fieldSeparatorRun(first.element) !== null &&
       openFieldEndRun(last.element) !== null
     ) {
-      // A field that ends in the paragraph of the next heading (the end
-      // was left in front of it) keeps that paragraph, from behind the end.
-      const alone = endsOpenField(last.element);
       found.push({
         first,
         textKept: field.resultStart,
         rest: alone ? rest : rest.slice(0, -1),
-        tail: alone ? null : last,
+        tail: alone || !tailKept ? null : last,
       });
     }
   }
@@ -1995,11 +1999,20 @@ export const resolvePlan = (
     const from = templateOrder.indexOf(
       template.story.paragraphs[field.paragraphOrdinal]?.topLevelId ?? "",
     );
+    const endParagraph = field.closed
+      ? template.story.paragraphs[field.endParagraphOrdinal]
+      : undefined;
+    // A table of contents ending in the next heading's paragraph may leave
+    // that paragraph out: it is closed in its first paragraph.
+    const tailFree =
+      field.kind === "TOC" &&
+      endParagraph !== undefined &&
+      openFieldEndRun(endParagraph.element) !== null &&
+      !endsOpenField(endParagraph.element) &&
+      !keptPosition.has(endParagraph.topLevelId);
     const to = field.closed
-      ? templateOrder.indexOf(
-          template.story.paragraphs[field.endParagraphOrdinal]?.topLevelId ??
-            "",
-        )
+      ? templateOrder.indexOf(endParagraph?.topLevelId ?? "") -
+        (tailFree ? 1 : 0)
       : templateOrder.length - 1;
     if (from === -1 || to <= from) {
       continue;
