@@ -292,11 +292,13 @@ const tableGridRevisionId = (node: PMNode): number | null => {
 type CollectNestedTableRevisionsOptions = {
   node: PMNode;
   copies: Map<number, number>;
+  originals: Set<number>;
   groupId: number | null;
 };
 const collectNestedTableRevisionCopies = ({
   node,
   copies,
+  originals,
   groupId,
 }: CollectNestedTableRevisionsOptions): void => {
   const formatting: unknown = node.attrs["_originalFormatting"];
@@ -322,8 +324,10 @@ const collectNestedTableRevisionCopies = ({
         typeof source === "number" &&
         typeof temporary === "number" &&
         source !== temporary
-      )
+      ) {
         copies.set(temporary, source);
+        originals.add(source);
+      }
     }
   }
   if (groupId === null || anchors.size === 0) return;
@@ -419,6 +423,7 @@ const getTrackedChangeGroupsFromProjectedDoc = (
   // Resolving the entry reaches them.
   const foldedIds = new Map<string, Set<number>>();
   const nestedTableRevisionCopies = new Map<number, number>();
+  const nestedTableRevisionOriginals = new Set<number>();
   const fold = (key: string, ids: Iterable<number>) => {
     const folded = foldedIds.get(key) ?? new Set<number>();
     for (const id of ids) folded.add(id);
@@ -514,6 +519,7 @@ const getTrackedChangeGroupsFromProjectedDoc = (
       collectNestedTableRevisionCopies({
         node,
         copies: nestedTableRevisionCopies,
+        originals: nestedTableRevisionOriginals,
         groupId:
           nodeRevisionCarriers.find(
             ({ type }) => type === "tablePropertiesChanged",
@@ -855,6 +861,8 @@ const getTrackedChangeGroupsFromProjectedDoc = (
       const rowScope = rowRevisionScopes.at(-1);
       if (
         rowScope?.kind === layerKind &&
+        !nestedTableRevisionCopies.has(revision.id) &&
+        !nestedTableRevisionOriginals.has(revision.id) &&
         isTableRowRevisionCompanion({
           row: rowScope.change,
           candidate: revision,
@@ -927,6 +935,8 @@ const getTrackedChangeGroupsFromProjectedDoc = (
     const keys = new Map<number, string>();
     for (const [key, change] of grouped) {
       switch (change.type) {
+        case "insertion":
+        case "deletion":
         case "tablePropertiesChanged":
         case "tablePropertyExceptionsChanged":
         case "rowPropertiesChanged":

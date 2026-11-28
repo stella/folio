@@ -98,6 +98,10 @@ const revisionSlots = (table: Table): ReadonlyMap<number, string> => {
     const content = block.content.at(1);
     if (content?.type === "moveFrom" || content?.type === "moveTo")
       slots.set(content.info.id, `${position}:${content.type}`);
+    for (const [index, item] of block.content.entries()) {
+      if (item.type === "insertion" || item.type === "deletion")
+        slots.set(item.info.id, `${position}:inline:${index}:${item.type}`);
+    }
   });
   for (const [index, owner] of owners.entries()) {
     const grid = owner.formatting?.gridChange;

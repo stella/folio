@@ -7,6 +7,7 @@ import {
   createEditorIntentIdAllocator,
   DOCUMENT_OP_REFUSAL_REASONS,
   DOCUMENT_OP_TYPES,
+  normalizeForOps,
   OP_STORIES,
   REVISION_DECISIONS,
   type TableIntentOperation,
@@ -314,6 +315,133 @@ const projection = (table: Table): unknown =>
       }),
     })),
   );
+
+test("earlier inline insertions and deletions stay reviewable through a nested table move", () => {
+  const stamp = (id: number) => ({
+    id,
+    author: "Earlier",
+    date: "2026-11-27T00:00:00Z",
+  });
+  const marked: Paragraph = {
+    ...paragraph("00000003"),
+    content: [
+      {
+        type: "insertion",
+        info: stamp(41),
+        content: [{ type: "run", content: [{ type: "text", text: "New " }] }],
+      },
+      {
+        type: "deletion",
+        info: stamp(42),
+        content: [{ type: "run", content: [{ type: "text", text: "Old " }] }],
+      },
+      { type: "run", content: [{ type: "text", text: "clause" }] },
+    ],
+  };
+  const moved: Table = {
+    ...nested,
+    rows: [{ type: "tableRow", cells: [cell(marked)] }],
+  };
+  const table: Table = {
+    type: "table",
+    columnWidths: [1000, 1400],
+    rows: [
+      {
+        type: "tableRow",
+        cells: [
+          cell(paragraph("00000001", "Owner")),
+          cell(moved, paragraph("00000002")),
+        ],
+      },
+    ],
+  };
+  const withTable = (block: Table): Document => ({
+    package: { document: { content: [block, paragraph("00000004")] } },
+  });
+  const original = withTable(table);
+  const operation = {
+    type: DOCUMENT_OP_TYPES.MERGE_CELLS,
+    story: OP_STORIES.MAIN,
+    blockId: "00000001",
+    top: 0,
+    bottom: 1,
+    left: 0,
+    right: 2,
+  } as const;
+  const intent = { type: "table", operation } as const;
+  const ids = createEditorIntentIdAllocator()(original, intent);
+  const { ops } = compileEditorIntent(original, {
+    intent,
+    mode: {
+      type: "suggesting",
+      revision: stamp(ids.revisionId),
+      newIds: ids.newIds,
+    },
+  }).unwrap();
+  const pending = applyDocumentOps(original, ops).unwrap();
+  expect(
+    applyDocumentOps(pending.document, pending.inverse).unwrap().document,
+  ).toStrictEqual(original);
+  const reopened = normalizeForOps(
+    withTable(
+      parseSavedTable(
+        serializeTable(tableOf(pending.document), serializeParagraph),
+      ),
+    ),
+  );
+  const grid = tableOf(reopened).formatting?.gridChange;
+  const geometry = grid?.geometryChange;
+  const aliases =
+    geometry?.type === "mergeCells"
+      ? geometry.nestedMoves?.at(0)?.revisions
+      : undefined;
+  if (grid === undefined || aliases === undefined)
+    throw new TypeError("Expected paired run revision handoffs.");
+  expect(aliases.map(([id]) => id)).toEqual([41, 42]);
+  const projected = toProseDoc(reopened, { tableReviewGeometry: "physical" });
+  for (const [authored, copied] of aliases)
+    expect(getTrackedChangeGroupsForIds(projected, [authored]).at(0)).toContain(
+      copied,
+    );
+  const review = (
+    document: Document,
+    id: number,
+    decision: "accept" | "reject",
+  ) => {
+    const result = applyDocumentOp(document, {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: [id],
+      decision,
+    });
+    if (result.isErr()) throw result.error;
+    return result.value.document;
+  };
+  for (const [authored, copied] of aliases) {
+    for (const inner of Object.values(REVISION_DECISIONS)) {
+      for (const outer of Object.values(REVISION_DECISIONS)) {
+        const earlierFirst = review(
+          review(reopened, copied, inner),
+          grid.id,
+          outer,
+        );
+        const moveFirst = review(
+          review(reopened, grid.id, outer),
+          authored,
+          inner,
+        );
+        expect(projection(tableOf(earlierFirst))).toEqual(
+          projection(tableOf(moveFirst)),
+        );
+        const xml = serializeTable(tableOf(earlierFirst), serializeParagraph);
+        const inserted = authored === 41;
+        expect(xml.includes(inserted ? "New " : "Old ")).toBe(
+          inserted === (inner === REVISION_DECISIONS.ACCEPT),
+        );
+      }
+    }
+  }
+});
 
 test.each([
   "horizontal",

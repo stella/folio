@@ -469,6 +469,13 @@ type MoveContentContext = {
   controls: number[];
   proofing: Set<ProofingKind>;
   pictures: Set<number>;
+  priorRevisions?: number[];
+};
+
+const nestedMoveContext = (context: MoveContentContext): MoveContentContext => {
+  if (context.priorRevisions === undefined) return context;
+  const { priorRevisions: _revisions, ...nested } = context;
+  return nested;
 };
 
 // Both sides of the move carry the inline content. Admit only records whose
@@ -482,6 +489,18 @@ const movableInlineContent = (
     switch (item.type) {
       case "run":
         return movableRun(item, context.pictures);
+      case "insertion":
+      case "deletion": {
+        if (
+          context.priorRevisions === undefined ||
+          item.resolutionJoins !== undefined
+        )
+          return false;
+        context.priorRevisions.push(item.info.id);
+        // The nested table's native row owns the copy. Keep these older
+        // top-level run records independently reviewable in both copies.
+        return movableInlineContent(item.content, nestedMoveContext(context));
+      }
       case "mathEquation":
         return movableMath(item);
       case "preservedInline":
@@ -490,18 +509,21 @@ const movableInlineContent = (
         // A bidi wrapper can contain a link, but cannot hide a nested one.
         return (
           !context.withinLink &&
-          movableInlineContent(item.children, { ...context, withinLink: true })
+          movableInlineContent(item.children, {
+            ...nestedMoveContext(context),
+            withinLink: true,
+          })
         );
       case "inlineWrapper":
         return (
           (item.kind === "bidi" || item.propertiesXml === undefined) &&
-          movableInlineContent(item.content, context)
+          movableInlineContent(item.content, nestedMoveContext(context))
         );
       case "inlineSdt": {
         const id = movableControlId(item.properties);
         if (id === undefined) return false;
         context.controls.push(id);
-        return movableInlineContent(item.content, context);
+        return movableInlineContent(item.content, nestedMoveContext(context));
       }
       default:
         return false;
@@ -511,6 +533,7 @@ const movableInlineContent = (
 /** The run move can take the paragraph whole without duplicating an anchor. */
 export const tableMoveSource = (
   paragraph: Paragraph,
+  priorRevisions?: number[],
 ): TableMoveSource | undefined => {
   const controls: number[] = [];
   const proofing = new Set<ProofingKind>();
@@ -527,6 +550,7 @@ export const tableMoveSource = (
         controls,
         proofing,
         pictures,
+        ...(priorRevisions === undefined ? {} : { priorRevisions }),
       })) ||
     proofing.size !== 0
   )
@@ -728,7 +752,10 @@ export const nestedTableMoveSource = (
         plain = { ...paragraph, content: tracked.content };
       }
     }
-    const source = tableMoveSource(plain);
+    const source = tableMoveSource(
+      plain,
+      move === undefined ? revisions : undefined,
+    );
     if (source === undefined) return false;
     if (move !== undefined && move.kind !== "empty") {
       const side = idKey(source.id) === idKey(move.source) ? 0 : 1;
@@ -907,6 +934,8 @@ const withNestedMoveIdentities = (
   };
   const rewriteMoveContent = (content: ParagraphContent): ParagraphContent => {
     switch (content.type) {
+      case "insertion":
+      case "deletion":
       case "moveFrom":
       case "moveTo":
         return restamp(content);
@@ -947,7 +976,7 @@ const withNestedMoveIdentities = (
             : { pPrMark: restamp(block.pPrMark) }),
           content: withMoveIdentities({
             content:
-              ids.ranges.size === 0
+              ids.ranges.size === 0 && ids.revisions.size === 0
                 ? block.content
                 : block.content.map(rewriteMoveContent),
             controls: ids.controls,
