@@ -1,5 +1,37 @@
 # @stll/folio-core
 
+## 0.84.0
+
+### Minor Changes
+
+- [#3786](https://github.com/stella/folio/pull/3786) [`2d9465e`](https://github.com/stella/folio/commit/2d9465e4b013e75ebdde4159a7c6a637752834e2) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A source item may carry its own outline level (`outlineLevel`, 0 for level 1), written as the paragraph's `w:outlineLvl`, and `fields.contentsOutlineLevels` gives the template's kept contents fields the `\u` switch, so they also list paragraphs by their own outline level: a heading the source's contents listed that the template's field does not collect by style.
+
+- [#3779](https://github.com/stella/folio/pull/3779) [`58b5c8f`](https://github.com/stella/folio/commit/58b5c8f94f742b0048bc0c4c91d8bcca8d4beccd) Thanks [@jan-kubica](https://github.com/jan-kubica)! - With `sourceHeaders: "keep"` the headers and footers of the source's later sections are no longer lost. An output section after the first that starts with a source section showing other content gets new parts of its own: the template's content for those pages followed by that section's, named by that output section alone. A later section the output merges into another is counted in `leftOut.laterSectionParts`, and each kept part of a later section names its output `section`.
+
+- [#3771](https://github.com/stella/folio/pull/3771) [`3569933`](https://github.com/stella/folio/commit/3569933d6f3cd619de711d8bbbbda20b9e7e93c4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A template plan may keep the source's comments: `comments: "keep"` carries each comment whose reference the output places, with its range where both ends are placed, and the parts that extend comments (replies, done state, durable ids, people). The report's `sourceComments` counts what was kept and what had no place.
+
+- [#3789](https://github.com/stella/folio/pull/3789) [`fba48c4`](https://github.com/stella/folio/commit/fba48c4bd3bee86a11f7b665819b3741cc4c2eaa) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A manifest section says when it shows a header or footer of its own (`ownHeaders`): for the other pages or even pages, content other than the section before it shows there, such as an annex's header or a signature page's footer. A plan can keep such a section a section, so that content gets a place. The last section of an output whose plan ends sections now begins on a new page unless the plan says otherwise, as every other section the plan ends does.
+
+- [#3788](https://github.com/stella/folio/pull/3788) [`b5a5b60`](https://github.com/stella/folio/commit/b5a5b606187ced569f2d442ae3a6ce2b2a81877e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - The block manifest reports, for a paragraph numbered by a list level other than a bullet, the level's text (`lvlText`, such as `%1. %2)`), the format it counts in (`numFmt`) and whether it prints its counters in arabic numerals (`legal`, from `w:isLgl`). A plan's numbering patch may switch legal numbering on or off for a level (`isLgl`); verification holds the output to it.
+
+### Patch Changes
+
+- [#3778](https://github.com/stella/folio/pull/3778) [`b9834d0`](https://github.com/stella/folio/commit/b9834d0223cd7490ef98aa40be4686d7ba762159) Thanks [@jan-kubica](https://github.com/jan-kubica)! - The block manifest reads a bookmark that ends between cells, rows or blocks (outside any paragraph) as ending behind the paragraph read before it, so a cross-reference field to a numbered table row (a bookmark started in the row's first cell and ended in the row) reports the paragraph it marks.
+
+- [#3774](https://github.com/stella/folio/pull/3774) [`966ff8d`](https://github.com/stella/folio/commit/966ff8d073ba256083b3aa4954cd11f21dc7060c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A kept table of contents whose field ends in the paragraph of the next heading (text behind the end) now loses its cached entries too: that paragraph is kept from behind the field's end, instead of the whole field staying with the entries of the template's sample.
+
+- [#3787](https://github.com/stella/folio/pull/3787) [`bd878a6`](https://github.com/stella/folio/commit/bd878a6070e6d1665d85bc59f504ab889aa7107d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A plan may leave out the paragraph a kept table of contents ends in when its field's end stands in front of that paragraph's text (the template's next heading): the field is closed in its first paragraph without it.
+
+- [#3781](https://github.com/stella/folio/pull/3781) [`1fbd7bc`](https://github.com/stella/folio/commit/1fbd7bca69113f43670ad20de3206f2858b91f31) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve block content controls and exact undo when removing their only paragraph.
+
+- [#3785](https://github.com/stella/folio/pull/3785) [`233dcce`](https://github.com/stella/folio/commit/233dcce95dc154c5e42090242b15e97f1ccf2e81) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve style-derived list markers while a suggested paragraph join is pending.
+
+- [#3792](https://github.com/stella/folio/pull/3792) [`91356ed`](https://github.com/stella/folio/commit/91356edc1361ead4a41b84f471f20e9f85b52ac8) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A template's inspection says for each style whether it starts its paragraphs on a new page (`pageBreakBefore`, through the styles it is based on and the document's defaults).
+
+- [#3784](https://github.com/stella/folio/pull/3784) [`af9e3f5`](https://github.com/stella/folio/commit/af9e3f51a0d0207921905135a7fa1cd78a2bfb5b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - The XML safety check no longer rejects a part that holds U+FEFF past its start (a zero-width no-break space, as document variables written by word processors hold): it is a legal XML character. A byte order mark still counts only at the very start, and a declaration behind it is still refused.
+- Updated dependencies [[`1fbd7bc`](https://github.com/stella/folio/commit/1fbd7bca69113f43670ad20de3206f2858b91f31)]:
+  - @stll/docx-core@0.50.2
+
 ## 0.83.0
 
 ### Minor Changes

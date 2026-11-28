@@ -205,6 +205,9 @@ export type EmitShared = {
     kind: "start" | "end" | "reference";
     id: string;
   }) => string | null;
+  /** The output bookmark a kept internal link of the source leads to, by
+   *  the source bookmark's name; null where the link is not kept. */
+  linkAnchor?: (name: string) => string | null;
   /** The fields of the source's main story: a legacy form field whose
    *  result the output places whole is written as the field again. */
   sourceFields?: readonly StoryField[];
@@ -254,12 +257,24 @@ export const linkAddressKey = (address: LinkAddress | null): string =>
     ? ""
     : `${address.url}${address.anchor === null ? "" : `#${address.anchor}`}`;
 
-type LinkTarget = { relationshipId: string; anchor: string | null } | null;
+/** Where a written link leads: an address through a relationship (with a
+ *  place in it), or a bookmark of the output (no relationship). */
+type LinkTarget = {
+  relationshipId: string | null;
+  anchor: string | null;
+} | null;
 
 const linkTargetOf = (
   { link, origin }: ExpectedPiece,
   context: EmitContext,
 ): LinkTarget => {
+  if (link?.kind === "anchor") {
+    const anchor =
+      origin === "document"
+        ? (context.linkAnchor?.(link.anchor) ?? null)
+        : null;
+    return anchor === null ? null : { relationshipId: null, anchor };
+  }
   const address = linkAddress(link, context.sourceRelationships[origin]);
   return address === null
     ? null
@@ -674,6 +689,21 @@ const plainPieceRunXml = (
               .join(""),
       );
     }
+    case "codeField": {
+      const instruction = piece.atom?.instruction;
+      // The field is written whole: its code is its content.
+      return Result.ok(
+        instruction === undefined
+          ? ""
+          : [
+              `<${w}:fldChar ${w}:fldCharType="begin"/>`,
+              `<${w}:instrText xml:space="preserve"> ${escapeXmlText(instruction)} </${w}:instrText>`,
+              `<${w}:fldChar ${w}:fldCharType="end"/>`,
+            ]
+              .map((content) => run(content))
+              .join(""),
+      );
+    }
     case "commentMark": {
       const mark = piece.atom?.comment;
       const id =
@@ -915,7 +945,7 @@ const linkedRunsXml = (
   const { w, r } = context.prefixes;
   const out: string[] = [];
   let group: {
-    relationshipId: string;
+    relationshipId: string | null;
     anchor: string | null;
     link: AtomLink;
     runs: string[];
@@ -925,7 +955,7 @@ const linkedRunsXml = (
       return;
     }
     out.push(
-      `<${w}:hyperlink${context.prefixes.rDeclaration} ${r}:id="${escapeXmlAttribute(group.relationshipId)}"${group.anchor === null ? "" : ` ${w}:anchor="${escapeXmlAttribute(group.anchor)}"`} ${w}:history="1">${group.runs.join("")}</${w}:hyperlink>`,
+      `<${w}:hyperlink${group.relationshipId === null ? "" : `${context.prefixes.rDeclaration} ${r}:id="${escapeXmlAttribute(group.relationshipId)}"`}${group.anchor === null ? "" : ` ${w}:anchor="${escapeXmlAttribute(group.anchor)}"`} ${w}:history="1">${group.runs.join("")}</${w}:hyperlink>`,
     );
     group = null;
   };

@@ -245,6 +245,27 @@ export const refFieldInstruction = (
   return ` REF ${bookmark} ${parts.join(" ")}${parts.length === 0 ? "" : " "}`;
 };
 
+/** One switch a carried PAGEREF may hold: `\h`, `\p`, a numeric picture
+ *  (quoted or not) or a format that keeps the result's look. */
+const PAGEREF_SWITCH =
+  /\\[hp](?![A-Za-z])|\\#\s*(?:"[^"\\]*"|[^\s"\\]+)|\\\*\s*(?:mergeformat|charformat)\b/giu;
+
+/**
+ * The field code of a PAGEREF to `bookmark` with `switches`. Null when the
+ * switches hold anything else.
+ */
+export const pagerefFieldInstruction = (
+  bookmark: string,
+  switches: string,
+): string | null => {
+  const rest = switches.replace(PAGEREF_SWITCH, "").trim();
+  if (rest !== "") {
+    return null;
+  }
+  const parts = switches.match(PAGEREF_SWITCH) ?? [];
+  return ` PAGEREF ${bookmark} ${parts.join(" ")}${parts.length === 0 ? "" : " "}`;
+};
+
 /** The bookmark a REF, PAGEREF or NOTEREF instruction names. */
 export const fieldBookmarkOf = (instruction: string): string | null =>
   /^\s*(?:REF|PAGEREF|NOTEREF)\s+"?(?<name>[^\s"\\]+)/iu.exec(instruction)

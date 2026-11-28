@@ -1179,6 +1179,7 @@ const writeOutput = async ({
   const shared: EmitShared = {
     commentId: (mark) => commentIdOf?.(mark) ?? null,
     sourceFields: source.story.state.fields,
+    linkAnchor: (name) => resolved.linkAnchors.get(name) ?? null,
     styles: templateCharacterStyles(template),
     sourceRelationships: sourceResources.value.relationships,
     sourceMedia,

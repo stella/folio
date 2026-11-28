@@ -2247,6 +2247,7 @@ export type TemplatePlan = {
     textEffects?: "normalize" | "keep";
     sourceHeaders?: "drop" | "keep";
     comments?: "drop" | "keep";
+    internalLinks?: "drop" | "keep";
     textColors?: "drop" | "keep";
 };
 
@@ -2405,6 +2406,7 @@ export type TemplatePlanReference = {
     targetBlockId: string;
     instruction: string;
     expectedText: string;
+    field?: "REF" | "PAGEREF";
 };
 
 // @public (undocumented)
