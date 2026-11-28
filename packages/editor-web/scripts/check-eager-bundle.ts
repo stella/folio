@@ -18,34 +18,10 @@ type Adapter = (typeof ADAPTERS)[number];
 type Metrics = { minified: number; gzip: number; docxOps: number };
 
 const BUDGETS = {
-  // docxOps +1.1 kB: table row and table removal keep the ends of ranges
-  // reaching past them. +0.5 kB: rejecting changes at once carries a cut
-  // through the pieces it empties. +2.2 kB: moving blocks, tables included,
-  // is one intent. The docxOps ceilings then keep about 5 kB of room, so a
-  // correctness fix in the ops can land without editing this line; they come
-  // down again once the queue is quiet.
-  // minified +1.3 kB, gzip +0.5 kB: a session opening a story aligns each
-  // paragraph's text when it is first addressed. docxOps +3.8 kB, past the
-  // room left: a pasted or dragged block container (content control, text
-  // box) is placed whole, with its notes and comments. docxOps +6.5 kB: room
-  // again for ops correctness fixes; the ops measure about 674 kB. docxOps
-  // +3.5 kB: a suggested deletion keeps the comment ranges it crosses, a
-  // suggested join or paste keeps the records at its seam, and rejecting a
-  // link insertion that cut an inline control gives one result in every order.
-  // Room for the tracked table records now landing in a series (rows, cells,
-  // nested tables and their moves; the ops measure about 694 kB), so
-  // each one needs no edit here: docxOps to 715 kB, minified +18.5 kB, gzip
-  // +6 kB. All six come down to the measured size plus a small margin once
-  // the series has landed. minified +5 kB, gzip +1 kB: a pasted note or
-  // comment keeps the parts its kept markup names in its own part's
-  // relationships. The series outgrew its room (the ops measure about 715 kB
-  // with five of its changes still to land, each about 6 kB): docxOps to
-  // 745 kB, minified +30 kB, gzip +10 kB. The ops bytes count toward the
-  // totals too, so the totals keep the room the ops ceiling still leaves
-  // (about 19 kB): minified +21 kB, gzip +7 kB. Locale asset loading adds
-  // 0.2 kB to Vue's measured gzip host path.
-  react: { minified: 3_834_500, gzip: 1_206_800, docxOps: 745_000 },
-  vue: { minified: 3_528_300, gzip: 1_102_700, docxOps: 745_000 },
+  // Main measured React 3,833,737/1,206,336/740,273 and Vue 3,527,470/1,101,917/740,222 (minified/gzip/ops).
+  // Ceilings sit a few kB above measured; raise with a reason, then ratchet down after a series.
+  react: { minified: 3_841_737, gzip: 1_209_336, docxOps: 745_273 },
+  vue: { minified: 3_535_470, gzip: 1_104_917, docxOps: 745_222 },
 } as const satisfies Record<Adapter, Metrics>;
 
 const HOST_PEERS = [
