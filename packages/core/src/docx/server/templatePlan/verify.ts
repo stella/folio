@@ -2060,7 +2060,12 @@ export const reportTemplatePlanOutput = async ({
     const labelAsText = part?.labelAsText ?? null;
     if (labelAsText !== null) {
       counts.labelAsText += 1;
-    } else if (sourceLabel !== null && outputLabel === null) {
+    } else if (
+      // A level that prints nothing shows no label to lose.
+      sourceLabel !== null &&
+      sourceLabel.trim() !== "" &&
+      outputLabel === null
+    ) {
       counts.labelLost += 1;
     } else if (
       sourceLabel !== null &&

@@ -191,6 +191,34 @@ describe("applyTemplatePlan edge content", () => {
     ).toBe(true);
   });
 
+  test("counts no label lost for a paragraph whose level prints nothing", async () => {
+    const template = await buildTemplate();
+    const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    const source = await buildMinimalDocx(
+      p(r("Counted, shown bare"), numPr(5, 0)),
+      {
+        "word/_rels/document.xml.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/></Relationships>`,
+        "word/numbering.xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:numbering xmlns:w="${W}"><w:abstractNum w:abstractNumId="1"><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val=""/></w:lvl></w:abstractNum><w:num w:numId="5"><w:abstractNumId w:val="1"/></w:num></w:numbering>`,
+      },
+    );
+    const plan = await planFor({
+      source,
+      template,
+      items: (blocks) =>
+        blocks.map(({ id, hash }) => ({
+          kind: "source" as const,
+          blockId: id,
+          hash,
+          styleId: "HouseBody",
+          numbering: null,
+        })),
+    });
+    const { report } = unwrap(
+      await applyTemplatePlan({ source, template, plan }),
+    );
+    expect(report.counts.labelLost).toBe(0);
+  });
+
   test("keeps a field that counts in a list by name, with the list", async () => {
     const template = await buildTemplate();
     const listnum =
