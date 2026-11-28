@@ -11,6 +11,12 @@
       "path": "219:6:8:5",
       "note": "A table put after an emptied paragraph ahead of a table, then a paragraph put before that table from its cell: the paragraph stops at the table the batch put there, after it.",
       "date": "2026-11-27"
+    },
+    {
+      "seed": 1971420711,
+      "path": "7:9",
+      "note": "A paragraph and a table placed in one tracked-join gap remain in batch order when the joined paragraph is deleted.",
+      "date": "2026-11-28"
     }
   ]
 }
