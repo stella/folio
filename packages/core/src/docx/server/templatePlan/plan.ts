@@ -6,7 +6,7 @@
  */
 import { Result } from "better-result";
 
-import type { Style } from "../../../types/document";
+import type { ListRendering, Style } from "../../../types/document";
 import { parseFieldInstruction } from "../../fieldParser";
 import { listRenderingDefinitionsMatch } from "../../listRendering";
 import { computeListRendering } from "../../numberingParser";
@@ -176,20 +176,19 @@ export type ResolvedSlot = {
  *  look, whatever their numbers and where they start (the group's own
  *  instance says where it starts; the labels it prints are verified). */
 const sameListRendering = (
-  left: ReturnType<typeof computeListRendering>,
-  right: ReturnType<typeof computeListRendering>,
-): boolean =>
-  left !== null &&
-  right !== null &&
-  listRenderingDefinitionsMatch(
-    {
-      ...left,
-      numId: right.numId,
-      startOverride: right.startOverride,
-      levelStarts: right.levelStarts,
-    },
-    right,
-  );
+  left: ListRendering | null,
+  right: ListRendering | null,
+): boolean => {
+  if (left === null || right === null) {
+    return false;
+  }
+  const looks = ({
+    startOverride: _startOverride,
+    levelStarts: _levelStarts,
+    ...rest
+  }: ListRendering): ListRendering => ({ ...rest, numId: 0 });
+  return listRenderingDefinitionsMatch(looks(left), looks(right));
+};
 
 const SHOWS_NUMBER = /\\[nrw]\b/u;
 
