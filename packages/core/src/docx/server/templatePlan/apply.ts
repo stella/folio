@@ -35,6 +35,7 @@ import {
   isPicturePart,
 } from "./embeddedParts";
 import {
+  controlPropertiesXml,
   createRelationshipsEditor,
   type EmitContext,
   type EmitShared,
@@ -921,6 +922,82 @@ const outlineSwitchSplices = (
   ];
 };
 
+/** A content control around blocks of the source: its properties and the
+ *  paragraphs and tables its content holds, in order. */
+type BlockControl = { properties: XmlElement; members: XmlElement[] };
+
+/** The content controls around blocks of a body, by each block they hold. */
+const blockControlsOf = (body: XmlElement): Map<XmlElement, BlockControl> => {
+  const out = new Map<XmlElement, BlockControl>();
+  for (const child of elementChildren(body)) {
+    if (wName(child) !== "sdt") {
+      continue;
+    }
+    const properties = wChild(child, "sdtPr");
+    const members = elementChildren(wChild(child, "sdtContent")).filter(
+      (block) => wName(block) === "p" || wName(block) === "tbl",
+    );
+    if (properties === null || members.length === 0) {
+      continue;
+    }
+    const control = { properties, members };
+    for (const member of members) {
+      out.set(member, control);
+    }
+  }
+  return out;
+};
+
+/** The source block a body item writes whole, or null. */
+const wholeSourceOf = (
+  item: ResolvedPlan["items"][number],
+): XmlElement | null => {
+  if (item.kind === "table") {
+    return item.block.element;
+  }
+  if (item.kind === "paragraph" && item.paragraph.parts.length === 1) {
+    return item.paragraph.parts[0]?.block.element ?? null;
+  }
+  return null;
+};
+
+/**
+ * Puts a content control of the source around the body entries that write
+ * all of its blocks, in order and one after another: a section a reader
+ * fills in or repeats keeps its control. Any other control's blocks stand
+ * as they are written.
+ */
+const wrapBlockControls = (
+  body: string[],
+  sources: (XmlElement | null)[],
+  controls: ReadonlyMap<XmlElement, BlockControl>,
+  w: string,
+): void => {
+  for (let at = 0; at < body.length; at += 1) {
+    const first = sources[at];
+    const control =
+      first === null || first === undefined ? undefined : controls.get(first);
+    if (control === undefined || control.members[0] !== first) {
+      continue;
+    }
+    const count = control.members.length;
+    const whole = control.members.every(
+      (member, index) => sources[at + index] === member,
+    );
+    if (!whole) {
+      continue;
+    }
+    const inner = body.slice(at, at + count).join("");
+    body.splice(
+      at,
+      count,
+      `<${w}:sdt>${controlPropertiesXml(control.properties, w)}<${w}:sdtContent>${inner}</${w}:sdtContent></${w}:sdt>`,
+    );
+    // The entries the control took are one entry now.
+    sources.splice(at, count, null);
+  }
+};
+
 type NotePartState = {
   kind: NoteKind;
   /** The part the output keeps its notes in; created when the template has none. */
@@ -1650,6 +1727,8 @@ const writeOutput = async ({
   };
 
   const body: string[] = [];
+  // The source block each body entry writes whole, for block controls.
+  const bodySources: (XmlElement | null)[] = [];
   for (const item of resolved.items) {
     let xml: Result<string, TemplatePlanError>;
     switch (item.kind) {
@@ -1687,7 +1766,14 @@ const writeOutput = async ({
       return xml;
     }
     body.push(xml.value);
+    bodySources.push(wholeSourceOf(item));
   }
+  wrapBlockControls(
+    body,
+    bodySources,
+    blockControlsOf(source.body),
+    documentContext.prefixes.w,
+  );
   if (bodySection !== null) {
     const { lastSection } = plan;
     const split = sectionEnds.length > 0 || lastSection !== undefined;

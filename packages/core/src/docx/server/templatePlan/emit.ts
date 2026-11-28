@@ -793,7 +793,10 @@ const CONTROL_DROPPED: ReadonlySet<string> = new Set([
 ]);
 
 /** A control's properties as the output writes them. */
-const controlPropertiesXml = (properties: XmlElement, w: string): string =>
+export const controlPropertiesXml = (
+  properties: XmlElement,
+  w: string,
+): string =>
   wSubtreeXml(
     cloneElement(properties, {
       elements: elementChildren(properties).filter(
