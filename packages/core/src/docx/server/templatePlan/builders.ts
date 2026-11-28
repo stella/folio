@@ -492,6 +492,11 @@ export const inheritedReferencesXml = (
   for (const block of elementChildren(body)) {
     const sectPr =
       wName(block) === "p" ? wChild(wChild(block, "pPr"), "sectPr") : null;
+    // A section the output is built from inherits from those before it
+    // only.
+    if (sectPr !== null && sectPr === last) {
+      break;
+    }
     for (const [key, reference] of referencesOf(sectPr)) {
       inEffect.set(key, reference);
     }
