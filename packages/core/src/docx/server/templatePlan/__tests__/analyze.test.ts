@@ -151,6 +151,24 @@ describe("analyzeDocxBlocks", () => {
     expect(byId(blocks, TEMPLATE_IDS.tocLast).text).toBe("Second sample\t3");
   });
 
+  test("a paragraph on a list that links a numbering style takes the indent of that style's levels", async () => {
+    const numbering = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:abstractNum w:abstractNumId="0"><w:styleLink w:val="Definitions"/><w:lvl w:ilvl="0"><w:numFmt w:val="none"/><w:lvlText w:val=""/><w:pPr><w:ind w:left="964" w:firstLine="0"/></w:pPr></w:lvl></w:abstractNum><w:abstractNum w:abstractNumId="1"><w:numStyleLink w:val="Definitions"/></w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="1"/></w:num></w:numbering>`;
+    const { blocks } = unwrap(
+      await analyzeDocxBlocks(
+        await buildMinimalDocx(
+          `${p(r("A term means a thing."), numPr(1, 0))}`,
+          {
+            "[Content_Types].xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/></Types>`,
+            "word/_rels/document.xml.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/></Relationships>`,
+            "word/numbering.xml": numbering,
+          },
+        ),
+      ),
+    );
+
+    expect(blocks.at(0)?.indent).toEqual({ left: 964, firstLine: 0 });
+  });
+
   test("a numbered paragraph reports its level's text and legal numbering", async () => {
     const numbering = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="upperRoman"/><w:lvlText w:val="%1."/></w:lvl><w:lvl w:ilvl="1"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:isLgl/><w:lvlText w:val="%1.%2"/></w:lvl></w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num></w:numbering>`;
     const { blocks } = unwrap(

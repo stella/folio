@@ -224,9 +224,24 @@ const statedLevelIndents = (
     numberingPath === null || numberingXml === null
       ? null
       : readRawPart(numberingPath, numberingXml);
-  for (const definition of wChildren(part?.root, "abstractNum")) {
+  const definitions = wChildren(part?.root, "abstractNum");
+  // A definition that only links a numbering style takes its levels from
+  // the definition that style names.
+  const byStyleLink = new Map<string, XmlElement>();
+  for (const definition of definitions) {
+    const name = wAttr(wChild(definition, "styleLink"), "val");
+    if (name !== null) {
+      byStyleLink.set(name, definition);
+    }
+  }
+  for (const definition of definitions) {
     const abstractNumId = integerOrNull(wAttr(definition, "abstractNumId"));
-    for (const level of wChildren(definition, "lvl")) {
+    const link = wAttr(wChild(definition, "numStyleLink"), "val");
+    const levelsFrom =
+      wChildren(definition, "lvl").length === 0 && link !== null
+        ? (byStyleLink.get(link) ?? definition)
+        : definition;
+    for (const level of wChildren(levelsFrom, "lvl")) {
       const ilvl = integerOrNull(wAttr(level, "ilvl"));
       if (abstractNumId !== null && ilvl !== null) {
         indents.set(
