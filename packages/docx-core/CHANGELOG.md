@@ -1,5 +1,31 @@
 # @stll/docx-core
 
+## 0.50.0
+
+### Minor Changes
+
+- [#3740](https://github.com/stella/folio/pull/3740) [`2d466a5`](https://github.com/stella/folio/commit/2d466a550a16b769ba7e399a76f760bcdbd72ae7) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A paste of a chart, an embedded object or kept block markup no longer refuses with the `story-content-projection` ground. A paste made before the editor finished reading the copied package's parts waits for them; a part outside the main document's folder is copied into it; and a paste into a header, footer or note editor carries the parts into that story's own part. Content whose parts cannot come with it pastes as its preview picture or the text it holds, or is left out, and hosts receive each substitution as a structured warning through the new `onCanonicalPasteWarnings` prop; a paste that leaves out everything it holds changes nothing, the selection included, and still reports what it left out. The package model now also keeps each header's and footer's part relationships in `annotationRelationships`, keyed `header:<rId>` or `footer:<rId>`; removing a header or footer removes its entry, and undo restores it.
+
+### Patch Changes
+
+- [#3743](https://github.com/stella/folio/pull/3743) [`4450a7a`](https://github.com/stella/folio/commit/4450a7a171e91c8f26c52f619c7d2b9f265c9d0a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A paragraph break one reviewer inserted and another deleted now reads as a pending join, as any deleted break does: a paragraph suggested before it copies the properties of the paragraph the join leaves, a merge that runs on through it gives the joined paragraph the first paragraph's properties, and a paragraph put before the join's last part goes before the whole join. Accepting such a batch gives every block the kind, style and list level the same batch gives it applied directly.
+
+- [#3754](https://github.com/stella/folio/pull/3754) [`edbb56c`](https://github.com/stella/folio/commit/edbb56cbb0c49579b46d173faab9fa42b2b2f838) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A paragraph deleted directly before a table, a preserved block or a content control now goes whole after a block or past block-level bookmarks too, as accepting its tracked deletion removes it, so the list numbering after it matches in every mode; it stays only between two tables, bookmarks between them included. Rejecting a paragraph put after one whose break was added before a table now runs that paragraph into the table, as without the new one, also in a body ending in a content control.
+
+- [#3747](https://github.com/stella/folio/pull/3747) [`10d9277`](https://github.com/stella/folio/commit/10d9277af3ef978dc3d5c37e34c417f617cac41b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A paragraph put after one that ends a section now applies as a tracked change wherever its suggestion does, and rejecting every change gives the original back: an added paragraph left with nothing goes from before the block-level bookmarks after it, which stay where they stood; an added paragraph opening a section before trailing bookmarks goes as it does with the paragraphs joining it set aside; a mark before a table resolves where the body ends past bookmarks, or in a block another producer ended it with; a paragraph with content of its own whose added mark joins it into an emptied added paragraph keeps its properties; and a mark before a table that has nothing to anchor its removal stays pending in the proof as other blocked marks do. A suggested deletion whose accepted join would run words into a last paragraph keeping another reviewer's pending property change is refused, as one restyling that paragraph is.
+
+- [#3694](https://github.com/stella/folio/pull/3694) [`e528509`](https://github.com/stella/folio/commit/e5285098e039312d6e2cdb628e5598907032bc06) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep earlier nested table revisions, rich-text controls, and inline drawings intact through tracked cell merges.
+
+- [#3742](https://github.com/stella/folio/pull/3742) [`188a73f`](https://github.com/stella/folio/commit/188a73f0c6940f92164f9f086718b5296eb52c57) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Rejecting an insertion made inside another pending insertion now treats that insertion's pieces as the pieces its seam joins, so new content put beside the seam waits on it as it does once the pieces are accepted. Accepting that content keeps the pieces apart, and range markers kept at the seam stay beside it, whichever revisions are resolved first.
+
+- [#3713](https://github.com/stella/folio/pull/3713) [`b17e2c7`](https://github.com/stella/folio/commit/b17e2c76f3ae78dcbee39d94c8d33636ce0b0d1e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep independently tracked nested tables reviewable through cell merges when every row omits all cells.
+
+- [#3714](https://github.com/stella/folio/pull/3714) [`91e046a`](https://github.com/stella/folio/commit/91e046abe2b5f4224e3f7e0a5065db408e6281f4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep earlier native paragraph moves reviewable when an enclosing tracked merge moves their table.
+
+- [#3692](https://github.com/stella/folio/pull/3692) [`f2599ec`](https://github.com/stella/folio/commit/f2599ec6fb59b5de2b66088ee91a27efdb5b9854) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep inline pictures and their media relationships intact when tracked merges move table cell content.
+
+- [#3692](https://github.com/stella/folio/pull/3692) [`f2599ec`](https://github.com/stella/folio/commit/f2599ec6fb59b5de2b66088ee91a27efdb5b9854) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve authored custom XML wrappers when tracked cell merges move paragraphs and nested tables.
+
 ## 0.49.0
 
 ### Minor Changes

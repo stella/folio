@@ -1,5 +1,20 @@
 # @stll/folio-react
 
+## 0.41.0
+
+### Minor Changes
+
+- [#3740](https://github.com/stella/folio/pull/3740) [`2d466a5`](https://github.com/stella/folio/commit/2d466a550a16b769ba7e399a76f760bcdbd72ae7) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A paste of a chart, an embedded object or kept block markup no longer refuses with the `story-content-projection` ground. A paste made before the editor finished reading the copied package's parts waits for them; a part outside the main document's folder is copied into it; and a paste into a header, footer or note editor carries the parts into that story's own part. Content whose parts cannot come with it pastes as its preview picture or the text it holds, or is left out, and hosts receive each substitution as a structured warning through the new `onCanonicalPasteWarnings` prop; a paste that leaves out everything it holds changes nothing, the selection included, and still reports what it left out. The package model now also keeps each header's and footer's part relationships in `annotationRelationships`, keyed `header:<rId>` or `footer:<rId>`; removing a header or footer removes its entry, and undo restores it.
+
+- [#3735](https://github.com/stella/folio/pull/3735) [`840ace3`](https://github.com/stella/folio/commit/840ace3cc7df15e541aa1f02465aa3765cafe8ce) Thanks [@jan-kubica](https://github.com/jan-kubica)! - TIFF images are decoded in a worker loaded through `new URL(…, import.meta.url)` the first time a document holds one, so the decoder is no longer part of the editor's bundle. When decoding cannot run (the worker cannot load, or the image is over the pixel cap) the editor paints a placeholder box in the image's frame, and the document keeps the TIFF.
+
+  Hosts that cannot load the worker (offline use, a Content Security Policy without `worker-src`, a single-file CDN bundle) call `configureTiffDecoding({ decoder: await import("utif2") })` from `@stll/folio-core/tiff-decoding`, also exported by `@stll/folio-react` and `@stll/folio-vue`, to decode on the calling thread.
+
+### Patch Changes
+
+- Updated dependencies [[`4450a7a`](https://github.com/stella/folio/commit/4450a7a171e91c8f26c52f619c7d2b9f265c9d0a), [`edbb56c`](https://github.com/stella/folio/commit/edbb56cbb0c49579b46d173faab9fa42b2b2f838), [`d5c2fac`](https://github.com/stella/folio/commit/d5c2faccc5fd4f2c3e05b0ba7d2ad5076379be4d), [`9cd0179`](https://github.com/stella/folio/commit/9cd017959c82dd8ad3e59a135a14cf9a0b2aaa9f), [`951f72f`](https://github.com/stella/folio/commit/951f72f4db6f128c43605d8667efdc469aad9bce), [`39c4215`](https://github.com/stella/folio/commit/39c42152c6717eb09ef7c5d9dc529dd0e41fd95d), [`5dd0ec4`](https://github.com/stella/folio/commit/5dd0ec403e4a1e9be181ad1f27c9e034cee48b57), [`e528509`](https://github.com/stella/folio/commit/e5285098e039312d6e2cdb628e5598907032bc06), [`2d466a5`](https://github.com/stella/folio/commit/2d466a550a16b769ba7e399a76f760bcdbd72ae7), [`c6d3c77`](https://github.com/stella/folio/commit/c6d3c77870d4de1e79e3a0316d9f2f05f6f6f449), [`74c7535`](https://github.com/stella/folio/commit/74c7535be0ef34d6361837962daa29b99b998e5c), [`840ace3`](https://github.com/stella/folio/commit/840ace3cc7df15e541aa1f02465aa3765cafe8ce), [`adf8f86`](https://github.com/stella/folio/commit/adf8f8686e8ba3c574df927a5c9012dd1829710e), [`b17e2c7`](https://github.com/stella/folio/commit/b17e2c76f3ae78dcbee39d94c8d33636ce0b0d1e), [`91e046a`](https://github.com/stella/folio/commit/91e046abe2b5f4224e3f7e0a5065db408e6281f4), [`f2599ec`](https://github.com/stella/folio/commit/f2599ec6fb59b5de2b66088ee91a27efdb5b9854)]:
+  - @stll/folio-core@0.81.0
+
 ## 0.40.0
 
 ### Minor Changes
