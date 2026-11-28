@@ -509,6 +509,11 @@ export type TemplatePlanOmitReason =
  * its own over the definition `baseNumId` names, or over the list the item's
  * style is bound to. Items sharing a `group` share the instance the first of
  * them starts; `restartFrom` is the number that instance begins with.
+ *
+ * `sourceNumId` (with `numId: "new"` and nothing else) keeps the source's
+ * own list: the output carries a copy of the source's list instance and its
+ * definition, and every item naming the same `sourceNumId` counts in that
+ * copy, as the source counts them.
  */
 export type TemplatePlanNumbering = {
   numId: number | "new";
@@ -516,6 +521,7 @@ export type TemplatePlanNumbering = {
   restartFrom?: number;
   baseNumId?: number;
   group?: string;
+  sourceNumId?: number;
 };
 
 export type TemplatePlanMerge = "lineBreak" | "space" | "none";

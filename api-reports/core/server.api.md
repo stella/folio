@@ -2366,6 +2366,7 @@ export type TemplatePlanNumbering = {
     restartFrom?: number;
     baseNumId?: number;
     group?: string;
+    sourceNumId?: number;
 };
 
 // @public (undocumented)

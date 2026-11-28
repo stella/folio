@@ -99,6 +99,9 @@ export type NumberingMint = {
   starts: Map<number, number>;
 };
 
+/** A list of the source the output carries, under its new instance id. */
+export type CarriedSourceList = { sourceNumId: number; numId: number };
+
 export type ResolvedNumbering =
   | { kind: "style" }
   | { kind: "none" }
@@ -310,6 +313,8 @@ export type ResolvedPlan = {
   byBlockId: Map<string, ResolvedParagraph>;
   omitted: Map<string, TemplatePlanOmitReason>;
   mints: NumberingMint[];
+  /** The source's lists the output carries, in the order first named. */
+  sourceLists: CarriedSourceList[];
   /** The bookmark of every paragraph a reference targets. */
   bookmarks: Map<ResolvedParagraph, BookmarkWrap>;
   references: {
@@ -1070,6 +1075,7 @@ export const resolvePlan = (
   );
   let nextNumId = maxOf(usedNumIds, 0) + 1;
   const mints = new Map<string, NumberingMint>();
+  const sourceLists = new Map<number, CarriedSourceList>();
 
   const paragraphStyle = (
     styleId: string | undefined,
@@ -1109,9 +1115,28 @@ export const resolvePlan = (
     }
     const unknown = (message: string): Result<never, TemplatePlanError> =>
       Result.err(refuse({ code: "numbering-unknown", message, blockId }));
-    const { numId, ilvl, restartFrom, baseNumId, group } = numbering;
+    const { numId, ilvl, restartFrom, baseNumId, group, sourceNumId } =
+      numbering;
     if (templateNumbering === null) {
       return unknown("The template has no numbering definitions.");
+    }
+    if (sourceNumId !== undefined) {
+      if (
+        source.numbering === null ||
+        computeListRendering({ numId: sourceNumId, ilvl }, source.numbering) ===
+          null
+      ) {
+        return unknown(
+          `The source has no list ${sourceNumId} with level ${ilvl}.`,
+        );
+      }
+      let carried = sourceLists.get(sourceNumId);
+      if (carried === undefined) {
+        carried = { sourceNumId, numId: nextNumId };
+        nextNumId += 1;
+        sourceLists.set(sourceNumId, carried);
+      }
+      return Result.ok({ kind: "direct", numId: carried.numId, ilvl });
     }
     const mintsInstance =
       numId === "new" || restartFrom !== undefined || group !== undefined;
@@ -2143,6 +2168,7 @@ export const resolvePlan = (
     byBlockId,
     omitted,
     mints: [...mints.values()],
+    sourceLists: [...sourceLists.values()],
     bookmarks,
     references: resolvedReferences,
     freezeKinds: new Set(freezeKinds),
