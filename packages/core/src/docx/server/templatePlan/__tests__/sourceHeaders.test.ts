@@ -104,6 +104,7 @@ describe("the source's headers and footers", () => {
       evenPageParts: 0,
       sharedParts: 0,
       unsupportedObjects: 0,
+      laterSectionParts: 0,
     });
     const other = (await readPart(applied.docx, "word/header1.xml")) ?? "";
     expect(other.indexOf("House letterhead")).toBeLessThan(
@@ -214,5 +215,75 @@ describe("the source's headers and footers", () => {
     expect(report.ok).toBe(false);
     expect(report.issues.map(({ code }) => code)).toContain("header-mismatch");
     expect(issuesOf(await applyFor({ source, template }))).toEqual([]);
+  });
+
+  test("a later section's own footer goes to the output section it starts, or is counted where sections merge", async () => {
+    const source = await buildSourceWith({
+      body: [
+        p(
+          r("The parties agree as follows."),
+          '<w:sectPr><w:footerReference w:type="default" r:id="rId22"/></w:sectPr>',
+        ),
+        p(r("Signed by the parties.")),
+      ].join(""),
+      relationships: [
+        { id: "rId22", type: "footer", target: "footer2.xml" },
+        { id: "rId23", type: "footer", target: "footer3.xml" },
+      ],
+      parts: {
+        "word/footer2.xml": footer(p(r("Version 3"))),
+        "word/footer3.xml": footer(p(r("Signature page to the agreement"))),
+      },
+    });
+    // The body's own section names the signature-page footer.
+    const withLast = await replacePart(
+      source,
+      "word/document.xml",
+      ((await readPart(source, "word/document.xml")) ?? "").replace(
+        "<w:sectPr/>",
+        '<w:sectPr><w:footerReference w:type="default" r:id="rId23"/></w:sectPr>',
+      ),
+    );
+    const kept = unwrap(
+      await applyFor({
+        source: withLast,
+        template,
+        items: (blocks) =>
+          blocks.map(({ id, hash }, index) => ({
+            kind: "source" as const,
+            blockId: id,
+            hash,
+            ...(index === 0 ? { endsSection: {} } : {}),
+          })),
+        extra: { sourceHeaders: "keep" },
+      }),
+    );
+    const later = kept.report.sourceHeaders?.kept.find(
+      ({ section }) => section === 1,
+    );
+    expect(later).toMatchObject({ family: "footer", kind: "default" });
+    const laterXml = (await readPart(kept.docx, later?.part ?? "")) ?? "";
+    expect(laterXml).toContain("Signature page to the agreement");
+    expect(laterXml).not.toContain("Version 3");
+    const document = (await readPart(kept.docx, "word/document.xml")) ?? "";
+    // Each section names one default footer.
+    for (const section of document.match(/<w:sectPr>.*?<\/w:sectPr>/gu) ?? []) {
+      expect(section.match(/footerReference w:type="default"/gu)?.length).toBe(
+        1,
+      );
+    }
+    const merged = unwrap(
+      await applyFor({
+        source: withLast,
+        template,
+        extra: { sourceHeaders: "keep" },
+      }),
+    );
+    expect(merged.report.sourceHeaders?.leftOut.laterSectionParts).toBe(1);
+    expect(
+      merged.report.sourceHeaders?.kept.some(
+        ({ section }) => section !== undefined,
+      ),
+    ).toBe(false);
   });
 });

@@ -850,6 +850,9 @@ export type TemplatePlanSourceHeaders = {
     part: string;
     paragraphs: number;
     created: boolean;
+    /** The output section a later section's content went to, in a part
+     *  of its own; absent for the content every section shows. */
+    section?: number;
   }[];
   /** Counts of source parts and objects the output does not carry. */
   leftOut: {
@@ -863,6 +866,9 @@ export type TemplatePlanSourceHeaders = {
     sharedParts: number;
     /** Blocks that refer to an embedded object other than a picture. */
     unsupportedObjects: number;
+    /** Parts a later section of the source shows that differ from those
+     *  of the section the output merges it into. */
+    laterSectionParts: number;
   };
 };
 

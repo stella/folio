@@ -81,7 +81,11 @@ import {
   type StoryResources,
 } from "./resources";
 import { tableRowRevisions } from "./revisions";
-import { verifyCarriedHeaders } from "./sourceHeaders";
+import {
+  keptSectionEnds,
+  outputSectionStarts,
+  verifyCarriedHeaders,
+} from "./sourceHeaders";
 import {
   type AtomKind,
   type AtomLink,
@@ -990,6 +994,13 @@ export const reportTemplatePlanOutput = async ({
             // A table of contents is kept without its cached entries: the
             // paragraph as the template sets it, with the text it holds in
             // front of the field and no more.
+            // The paragraph it ends in keeps what stands behind its end.
+            if (resolved.contentsTails.has(templateParagraph)) {
+              return (
+                sameStated(before, after) &&
+                templateParagraph.read.text.endsWith(outputParagraph.read.text)
+              );
+            }
             const textKept = emptiedContents.get(templateParagraph);
             if (textKept !== undefined) {
               return (
@@ -1922,6 +1933,7 @@ export const reportTemplatePlanOutput = async ({
       source,
       template,
       output: out,
+      starts: outputSectionStarts(source, keptSectionEnds(resolved)),
     });
     if (Result.isError(carried)) {
       return carried;

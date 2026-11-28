@@ -40,10 +40,12 @@ import type { AnalyzedDocument } from "./blocks";
 import { EMBEDDED_RELATIONSHIP_TYPES, extensionOf } from "./embeddedParts";
 import type { RelationshipsEditor, SourceMedia } from "./emit";
 import { readPartText, relationshipsPathFor } from "./package";
+import type { ResolvedPlan } from "./plan";
 import { createStoryState, readParagraph, toggleOf, walkBlocks } from "./story";
 import type { TemplatePlanError, TemplatePlanSourceHeaders } from "./types";
 import {
   elementChildren,
+  rangeOf,
   readRawPart,
   relationshipAttr,
   wAttr,
@@ -69,6 +71,7 @@ const NO_LEFT_OUT = (): LeftOut => ({
   evenPageParts: 0,
   sharedParts: 0,
   unsupportedObjects: 0,
+  laterSectionParts: 0,
 });
 
 /** A source header or footer part, read. */
@@ -92,6 +95,9 @@ export type HeaderWrite = {
   kind: HeaderKind;
   source: SourcePart;
   templatePath: string | null;
+  /** The output section a later section's content goes to: a new part
+   *  that section alone names. Absent for the content every section shows. */
+  section?: number;
 };
 
 const SHOWN: ReadonlySet<string> = new Set([
@@ -320,16 +326,50 @@ type FamilyPages = {
   sourceEven: boolean;
 };
 
-/** What the source's first section shows for one family, by the output
- *  kind that shows on the same pages. */
+/** The sections of a body in order: the properties each section-ending
+ *  paragraph holds, then the body's own. */
+export const sectionsOf = (body: XmlElement): XmlElement[] => {
+  const sections: XmlElement[] = [];
+  for (const block of elementChildren(body)) {
+    const sectPr =
+      wName(block) === "p" ? wChild(wChild(block, "pPr"), "sectPr") : null;
+    if (sectPr !== null) {
+      sections.push(sectPr);
+    }
+  }
+  const last = wChild(body, "sectPr");
+  if (last !== null) {
+    sections.push(last);
+  }
+  return sections;
+};
+
+/** The relationship ids section `index` shows for one family, by kind: its
+ *  own, else those of the sections before it. */
+const sectionReferences = (
+  sections: readonly XmlElement[],
+  index: number,
+  family: HeaderFamily,
+): Map<HeaderKind, string> => {
+  const out = new Map<HeaderKind, string>();
+  for (const section of sections.slice(0, index + 1)) {
+    for (const [kind, id] of referencesOf(section, family)) {
+      out.set(kind, id);
+    }
+  }
+  return out;
+};
+
+/** What a source section shows for one family, by the output kind that
+ *  shows on the same pages. */
 const carryFamily = async (
   source: AnalyzedDocument,
   family: HeaderFamily,
   section: XmlElement | null,
   { titlePage, evenPages, sourceEven }: FamilyPages,
   leftOut: LeftOut,
+  references: Map<HeaderKind, string> = referencesOf(section, family),
 ): Promise<Result<Map<HeaderKind, SourcePart>, TemplatePlanError>> => {
-  const references = referencesOf(section, family);
   const shown = new Map<HeaderKind, SourcePart | null>();
   for (const kind of HEADER_KINDS) {
     const id = references.get(kind);
@@ -381,6 +421,9 @@ const carryFamily = async (
 export const plannedHeaderWrites = async (
   source: AnalyzedDocument,
   template: AnalyzedDocument,
+  /** For each output section after the first, the index of the source
+   *  section it starts with. */
+  starts: readonly number[] = [],
 ): Promise<
   Result<{ writes: HeaderWrite[]; leftOut: LeftOut }, TemplatePlanError>
 > => {
@@ -436,11 +479,142 @@ export const plannedHeaderWrites = async (
       }
     }
   }
+  const later = await laterSectionWrites(
+    source,
+    template,
+    starts,
+    pages,
+    leftOut,
+  );
+  if (Result.isError(later)) {
+    return later;
+  }
+  writes.push(...later.value);
   leftOut.unsupportedObjects = writes.reduce(
     (total, { source: part }) => total + part.unsupported,
     0,
   );
   return Result.ok({ writes, leftOut });
+};
+
+/** Later output sections show no first page of their own. */
+const LATER_KINDS: readonly HeaderKind[] = ["default", "even"];
+
+/**
+ * Where the content of the source's later sections goes. An output section
+ * after the first starts with a source section; where that section shows
+ * other content than the first one for some pages, a new part holds the
+ * template's content for those pages followed by that content, and only
+ * that output section names it. A source section the output merges into
+ * another shows its content nowhere: each part with other content than
+ * the section it went into is counted.
+ */
+const laterSectionWrites = async (
+  source: AnalyzedDocument,
+  template: AnalyzedDocument,
+  starts: readonly number[],
+  pages: FamilyPages,
+  leftOut: LeftOut,
+): Promise<Result<HeaderWrite[], TemplatePlanError>> => {
+  const sections = sectionsOf(source.body);
+  const representatives = [0, ...starts];
+  const writes: HeaderWrite[] = [];
+  for (const family of FAMILIES) {
+    const shown: Map<HeaderKind, SourcePart>[] = [];
+    for (const [index, section] of sections.entries()) {
+      // oxlint-disable-next-line no-await-in-loop -- serialized reads keep the archive budget exact
+      const carried = await carryFamily(
+        source,
+        family,
+        section,
+        { ...pages, titlePage: index === 0 && pages.titlePage },
+        // What a later section has no place for is counted below.
+        NO_LEFT_OUT(),
+        sectionReferences(sections, index, family),
+      );
+      if (Result.isError(carried)) {
+        return carried;
+      }
+      shown.push(carried.value);
+    }
+    const first = shown[0] ?? new Map<HeaderKind, SourcePart>();
+    const references = outputReferences(template.body, family);
+    const counted = new Set<string>();
+    for (const [index, parts] of shown.entries()) {
+      // The output section the source section went into.
+      let output = 0;
+      for (const [position, start] of representatives.entries()) {
+        if (start <= index) {
+          output = position;
+        }
+      }
+      const representative = shown[representatives[output] ?? 0] ?? first;
+      for (const kind of LATER_KINDS) {
+        const part = parts.get(kind) ?? null;
+        if (part === null) {
+          continue;
+        }
+        if (output > 0 && index === representatives[output]) {
+          if (!sameContent(part, first.get(kind) ?? null)) {
+            const id = references.get(kind);
+            writes.push({
+              family,
+              kind,
+              source: part,
+              templatePath:
+                id === undefined ? null : familyPathOf(template, family, id),
+              section: output,
+            });
+          }
+          continue;
+        }
+        if (
+          index > 0 &&
+          !sameContent(part, representative.get(kind) ?? null) &&
+          !counted.has(part.path)
+        ) {
+          counted.add(part.path);
+          leftOut.laterSectionParts += 1;
+        }
+      }
+    }
+  }
+  return Result.ok(writes);
+};
+
+/** The source paragraphs whose section the output keeps, in order. */
+export const keptSectionEnds = (
+  resolved: ResolvedPlan,
+): (XmlElement | null)[] =>
+  resolved.items.flatMap((item) => {
+    if (item.kind !== "paragraph" || item.paragraph.endsSection === null) {
+      return [];
+    }
+    const { parts } = item.paragraph;
+    const ending =
+      parts.find(({ block }) => block.read?.hasSectionBreak === true) ??
+      parts.at(-1);
+    return [ending?.block.element ?? null];
+  });
+
+/** The source section each output section after the first starts with:
+ *  the one after the section its preceding section-ending paragraph ends.
+ *  `ends` are the source paragraphs whose section the output keeps. */
+export const outputSectionStarts = (
+  source: AnalyzedDocument,
+  ends: readonly (XmlElement | null)[],
+): number[] => {
+  const sections = sectionsOf(source.body);
+  return ends.map((paragraph) => {
+    const sectPr =
+      paragraph === null ? null : wChild(wChild(paragraph, "pPr"), "sectPr");
+    const at = sectPr === null ? undefined : rangeOf(sectPr)?.start;
+    const index =
+      at === undefined
+        ? -1
+        : sections.findIndex((section) => rangeOf(section)?.start === at);
+    return index === -1 ? sections.length : index + 1;
+  });
 };
 
 /** What a copy needs of the output: where its relationships go, how a
@@ -664,24 +838,33 @@ export const verifyCarriedHeaders = async ({
   source,
   template,
   output,
+  starts = [],
 }: {
   source: AnalyzedDocument;
   template: AnalyzedDocument;
   output: AnalyzedDocument;
+  starts?: readonly number[];
 }): Promise<
   Result<
     { report: TemplatePlanSourceHeaders; mismatched: string[] },
     TemplatePlanError
   >
 > => {
-  const planned = await plannedHeaderWrites(source, template);
+  const planned = await plannedHeaderWrites(source, template, starts);
   if (Result.isError(planned)) {
     return planned;
   }
+  const outputSections = sectionsOf(output.body);
   const kept: TemplatePlanSourceHeaders["kept"] = [];
   const mismatched: string[] = [];
   for (const write of planned.value.writes) {
-    const id = outputReferences(output.body, write.family).get(write.kind);
+    // Every output section names its headers itself: the first section's
+    // show the content all of them share, a later one's its own.
+    const id = (
+      outputSections.length === 0
+        ? outputReferences(output.body, write.family)
+        : sectionReferences(outputSections, write.section ?? 0, write.family)
+    ).get(write.kind);
     const path =
       id === undefined ? null : familyPathOf(output, write.family, id);
     // oxlint-disable-next-line no-await-in-loop -- serialized reads keep the archive budget exact
@@ -716,7 +899,8 @@ export const verifyCarriedHeaders = async ({
       kind: write.kind,
       part: path,
       paragraphs: write.source.texts.length,
-      created: write.templatePath === null,
+      created: write.templatePath === null || write.section !== undefined,
+      ...(write.section === undefined ? {} : { section: write.section }),
     });
   }
   return Result.ok({
