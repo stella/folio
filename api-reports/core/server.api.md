@@ -2240,6 +2240,7 @@ export type TemplatePlan = {
     trackedChanges?: TemplatePlanTrackedChanges;
     textEffects?: "normalize" | "keep";
     sourceHeaders?: "drop" | "keep";
+    comments?: "drop" | "keep";
 };
 
 // @public
@@ -2474,6 +2475,7 @@ export type TemplatePlanReport = {
     };
     updateFields: "set" | "cleared" | "unchanged";
     sourceHeaders?: TemplatePlanSourceHeaders;
+    sourceComments?: TemplatePlanSourceComments;
     conformance: {
         status: "conformant" | "invalid" | "indeterminate";
         templateStatus: "conformant" | "invalid" | "indeterminate";
