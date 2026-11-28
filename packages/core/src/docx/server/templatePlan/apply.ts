@@ -55,6 +55,7 @@ import {
   type CarriedSourceList,
   type ExpectedSegment,
   fieldSeparatorRun,
+  openFieldEndRun,
   type PieceOrigin,
   type ResolvedParagraph,
   type ResolvedPlan,
@@ -1299,6 +1300,22 @@ const writeOutput = async ({
     // A range that starts in front of the result and ends in it has lost
     // its end: the pass below takes its start out too.
     replaced.push({ start, end: inner.end });
+  }
+  // A paragraph a kept table of contents ends in, with the next heading's
+  // text behind the end, keeps that text: the cached entries in front of
+  // it and the end go (the field is closed in its first paragraph).
+  for (const { element } of resolved.contentsTails) {
+    const end = openFieldEndRun(element);
+    const endRange = end === null ? null : rangeOf(end);
+    const inner = innerRangeOf(template.document.xml, element);
+    if (endRange === null || inner === null) {
+      continue;
+    }
+    const properties = wChild(element, "pPr");
+    const start =
+      (properties === null ? null : rangeOf(properties)?.end) ?? inner.start;
+    templateSplices.push({ start, end: endRange.end, newXml: "" });
+    replaced.push({ start, end: endRange.end });
   }
   const keptElements = [
     ...resolved.keptTemplateBlocks.map(({ element }) => element),
