@@ -3492,6 +3492,23 @@ type ExpireJoinedDestinationPredictionOptions = {
   operationType: string;
   footprint: ReturnType<typeof sourceOperationFootprint> | undefined;
 };
+
+/** Whether an effect reaches the live interval a pending join collapses. */
+const touchesPendingJoinSpan = (
+  model: Model,
+  members: readonly Row[],
+  ids: ReadonlySet<string>,
+): boolean => {
+  const positions = members.map(({ id }) =>
+    model.sourceRows.findIndex((row) => row.id === id),
+  );
+  if (positions.some((position) => position === -1))
+    return members.some(({ id }) => ids.has(id));
+  const first = Math.min(...positions);
+  const last = Math.max(...positions);
+  return model.sourceRows.slice(first, last + 1).some(({ id }) => ids.has(id));
+};
+
 /** An unmodelled applied effect cannot prove its joined paragraph's final owner or quote. */
 const expireJoinedDestinationPrediction = ({
   model,
@@ -3509,8 +3526,10 @@ const expireJoinedDestinationPrediction = ({
     );
   for (const ownership of model.pendingJoins.values())
     if (
-      [...ownership.sources, ownership.destination].some(({ id }) =>
-        footprint.ids.has(id),
+      touchesPendingJoinSpan(
+        model,
+        [...ownership.sources, ownership.destination],
+        footprint.ids,
       )
     )
       ownership.destinationPrediction = { type: "unknown", operationType };
