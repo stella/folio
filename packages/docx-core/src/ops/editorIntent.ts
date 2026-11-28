@@ -53,7 +53,6 @@ import {
 import {
   isCustomXmlProperties,
   withoutCustomXmlRecords,
-  withoutElementRecords,
 } from "./customXmlMarkup";
 import { packageIdOccupancy } from "./editorIntentCensus";
 import { combineEdits } from "./edits";
@@ -1390,6 +1389,14 @@ const holdsTableLevelIdentities = (block: BlockContent): boolean => {
   );
 };
 
+/** Whether a block contains a table at any container depth. */
+const containsTable = (block: BlockContent): boolean => {
+  if (block.type === "table") return true;
+  if (block.type === "blockSdt" || block.type === "blockCustomXml")
+    return block.content.some(containsTable);
+  return false;
+};
+
 /**
  * A pasted block's paragraphs in document order, a table's cells' and a
  * container's among them.
@@ -2054,6 +2061,11 @@ const removeContainerBlock = ({
       "The moved block is no longer where the range found it.",
     );
   if (mode.type === "suggesting" && block.type === "blockCustomXml") {
+    if (block.content.some(containsTable))
+      return refuse(
+        DOCUMENT_OP_REFUSAL_REASONS.INVALID_OPERATION,
+        "A suggested custom XML element move cannot contain a table.",
+      );
     // Tags already recorded as deleted stay so.
     if (block.deletion !== undefined)
       return Result.ok({ ops: [], document, inverse: [] });
@@ -2191,15 +2203,13 @@ const compileBlockPlacement = (
   const blocks = intent.blocks.map((block): PastedBlock => {
     const mapped = mapPastedBlockParagraphs(block, take);
     // The element's earlier records belong to the copied document.
-    let placed = mapped;
-    if (moved !== true && mapped.type === "blockCustomXml")
-      placed = withoutElementRecords(mapped);
-    else if (moved !== true && mapped.type === "table") {
+    let placed: PastedBlock = mapped;
+    if (moved !== true) {
       const stripped = withoutCustomXmlRecords([mapped]).at(0);
       placed =
         stripped !== undefined && isPastedBlock(stripped)
           ? stripped
-          : panic("A copied table lost its kind.");
+          : panic("A copied block lost its kind.");
     }
     if (placed.type === "paragraph" || placed.type === "preservedBlock")
       return placed;

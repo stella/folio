@@ -208,6 +208,7 @@ const resolvedShapes = (
       together.flatMap(([ids]) => ids),
       decision,
     );
+    expect(validateOpsDocument(resolved).isOk()).toBe(true);
     expect(revisionIdsOf(resolved).some((id) => selected.has(id))).toBe(false);
     outcomes.add(JSON.stringify(shapeOf(resolved.package.document.content)));
   }
@@ -433,6 +434,46 @@ describe("a suggested move of a custom XML element", () => {
     ).toEqual(MOVED);
   });
 
+  test("refuses a suggested move whose element contains a table", () => {
+    const heldTable: BlockContent = {
+      type: "table",
+      rows: [
+        {
+          type: "tableRow",
+          cells: [
+            {
+              type: "tableCell",
+              content: [paragraph("held", "00000005")],
+            },
+          ],
+        },
+      ],
+    };
+    const dragged = document();
+    dragged.package.document.content[2] = element([PROPERTIES, heldTable]);
+    const compiled = compileEditorIntent(dragged, {
+      intent: {
+        type: "moveBlocks",
+        from: at("00000002", 3),
+        to: at("00000003", 0),
+        target: at("00000004", 2),
+        blocks: [
+          paragraph(""),
+          element([PROPERTIES, heldTable]),
+          paragraph(""),
+        ],
+        openStart: 1,
+        openEnd: 1,
+      },
+      mode: SUGGESTING,
+    });
+    expect(compiled.isErr()).toBe(true);
+    if (compiled.isErr())
+      expect(compiled.error.reason).toBe(
+        DOCUMENT_OP_REFUSAL_REASONS.INVALID_OPERATION,
+      );
+  });
+
   test("resolves to one document in every order, the direct move accepted and the original rejected", () => {
     const { applied } = drag(SUGGESTING);
     const elements = applied.document.package.document.content.filter(
@@ -464,5 +505,74 @@ describe("a suggested move of a custom XML element", () => {
               ),
             ]);
         }
+  });
+});
+
+describe("custom XML markup structural guards", () => {
+  test("allows an SDT content list to end in a custom XML element", () => {
+    const inside = paragraph("inside", "00000011");
+    const wrapped = element([inside]);
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "blockSdt",
+              properties: { sdtType: "richText", id: 7 },
+              content: [wrapped],
+            },
+            paragraph("after", "00000012"),
+          ],
+        },
+      },
+    };
+    const result = applyDocumentOps(document, [
+      {
+        type: DOCUMENT_OP_TYPES.SET_CUSTOM_XML_MARKUP,
+        story: OP_STORIES.MAIN,
+        blockId: "00000011",
+        ancestorDepth: 1,
+        expected: [wrapped],
+        blocks: [
+          {
+            ...wrapped,
+            insertion: { info: { id: 40, author: "R" } },
+          },
+        ],
+      },
+    ]);
+    expect(result.isOk()).toBe(true);
+  });
+
+  test("refuses moving a section end between sibling elements", () => {
+    const sectionEnd: Paragraph = {
+      ...paragraph("section", "00000022"),
+      sectionProperties: {},
+    };
+    const first = element([paragraph("first", "00000021"), sectionEnd]);
+    const second = element([paragraph("second", "00000023")]);
+    const after = paragraph("after", "00000024");
+    const document: Document = {
+      package: { document: { content: [first, second, after] } },
+    };
+    const result = applyDocumentOps(document, [
+      {
+        type: DOCUMENT_OP_TYPES.SET_CUSTOM_XML_MARKUP,
+        story: OP_STORIES.MAIN,
+        blockId: "00000021",
+        ancestorDepth: 1,
+        expected: [first, second, after],
+        blocks: [
+          element([paragraph("first", "00000021")]),
+          element([sectionEnd, paragraph("second", "00000023")]),
+          after,
+        ],
+      },
+    ]);
+    expect(result.isErr()).toBe(true);
+    if (result.isErr())
+      expect(result.error.reason).toBe(
+        DOCUMENT_OP_REFUSAL_REASONS.SECTION_BOUNDARY,
+      );
   });
 });

@@ -262,4 +262,30 @@ describe("block/table suggestion strip", () => {
     if (retained?.type === "blockCustomXml")
       expect(retained.deletion).toBeUndefined();
   });
+
+  test("rejecting an originally empty suggested tag insertion drops its filler", () => {
+    // SAFETY: editor schema always defines blockCustomXml.
+    const empty = schema.nodes["blockCustomXml"]!.create(
+      {
+        openingXml: '<w:customXml w:element="empty">',
+        closingXml: "</w:customXml>",
+        _originallyEmpty: true,
+        insertion: {
+          info: {
+            id: 32,
+            author: "AI",
+            date: DATE,
+            provenance: "suggested",
+            suggestionId: "s10",
+          },
+        },
+      },
+      [para("")],
+    );
+    const model = fromProseDoc(doc([empty, para("after")]), undefined, {
+      stylesheetSource: { type: "package" },
+    });
+    expect(blocks(model).map(({ type }) => type)).toEqual(["paragraph"]);
+    expect(plainText(model)).toContain("after");
+  });
 });

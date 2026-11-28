@@ -1422,6 +1422,7 @@ const savedParagraphRunStyleContext = (
 function mapSuggestionStrippedNode(
   node: PMNode,
   readFormattingContext: () => RunFormattingContext,
+  styleEngine: StyleEngine | null,
 ): PMNode | PMNode[] | null {
   if (node.isInline) {
     if (hasSuggestedInsertion(node.marks)) {
@@ -1472,7 +1473,11 @@ function mapSuggestionStrippedNode(
       : readFormattingContext;
   // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
   node.forEach((child) => {
-    const mapped = mapSuggestionStrippedNode(child, readChildFormattingContext);
+    const mapped = mapSuggestionStrippedNode(
+      child,
+      readChildFormattingContext,
+      styleEngine,
+    );
     if (mapped === null) {
       changed = true;
       return;
@@ -1487,7 +1492,17 @@ function mapSuggestionStrippedNode(
     }
     children.push(mapped);
   });
-  if (unwrapCustomXml) return children;
+  if (unwrapCustomXml) {
+    const { _originallyEmpty } = expectBlockCustomXmlAttrs(node);
+    if (_originallyEmpty === true) {
+      const innerDoc = node.type.schema.node("doc", null, children);
+      if (
+        isStillSyntheticFiller(extractBlocks(innerDoc, "inherit", styleEngine))
+      )
+        return [];
+    }
+    return children;
+  }
   if (!changed) {
     return node;
   }
@@ -1507,11 +1522,15 @@ function stripSuggestedProvenance(
   doc: PMNode,
   styleResolver: StyleEngine | null,
 ): PMNode {
-  const stripped = mapSuggestionStrippedNode(doc, () => ({
-    baseParagraphFormatting: undefined,
-    inheritedFormatting: undefined,
+  const stripped = mapSuggestionStrippedNode(
+    doc,
+    () => ({
+      baseParagraphFormatting: undefined,
+      inheritedFormatting: undefined,
+      styleResolver,
+    }),
     styleResolver,
-  }));
+  );
   return stripped === null || Array.isArray(stripped) ? doc : stripped;
 }
 

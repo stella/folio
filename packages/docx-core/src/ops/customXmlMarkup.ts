@@ -96,28 +96,47 @@ export const withoutCustomXmlTags = (
     }
   });
 
-/**
- * How deep in custom XML elements each paragraph ending a section stands,
- * outside tables: a section ends in the list holding it, so no change of the
- * tags may move one.
- */
-const sectionEndDepths = (
-  blocks: readonly BlockContent[],
-  depth = 0,
-): number[] =>
-  blocks.flatMap((block): number[] => {
-    if (block.type === "paragraph")
-      return block.sectionProperties === undefined ? [] : [depth];
-    if (block.type === "blockCustomXml")
-      return sectionEndDepths(block.content, depth + 1);
-    if (block.type === "blockSdt")
-      return sectionEndDepths(block.content, depth);
-    return [];
-  });
-
 /** Every paragraph a block list holds, at any depth, in order. */
 const paragraphsIn = (blocks: readonly BlockContent[]): Paragraph[] =>
   storyParagraphs({ content: [...blocks] }).map(({ paragraph }) => paragraph);
+
+/**
+ * The custom XML groups owning each paragraph that ends a section. Each group
+ * is identified by its paragraph span in the tagless order, so moving a
+ * section end between sibling elements cannot masquerade as an equal depth.
+ */
+const sectionEndOwners = (
+  blocks: readonly BlockContent[],
+): readonly (readonly string[])[] => {
+  const owners: string[][] = [];
+  let paragraphIndex = 0;
+  const visit = (
+    items: readonly BlockContent[],
+    groups: readonly string[],
+  ): void => {
+    for (const block of items) {
+      if (block.type === "paragraph") {
+        if (block.sectionProperties !== undefined) owners.push([...groups]);
+        paragraphIndex++;
+        continue;
+      }
+      if (block.type === "blockCustomXml") {
+        const start = paragraphIndex;
+        const group = `${String(start)}:${String(start + paragraphsIn(block.content).length)}`;
+        visit(block.content, [...groups, group]);
+        continue;
+      }
+      if (block.type === "blockSdt") {
+        visit(block.content, groups);
+        continue;
+      }
+      if (block.type === "table")
+        paragraphIndex += paragraphsIn([block]).length;
+    }
+  };
+  visit(blocks, []);
+  return owners;
+};
 
 /** Whether story and table-cell lists keep their required final paragraph. */
 const validTerminalParagraphs = (
@@ -184,13 +203,16 @@ export const setCustomXmlMarkup = (
     );
   // Story bodies and table cells keep their final paragraph outside tags;
   // content-control lists need no synthetic terminal paragraph.
-  if (!validTerminalParagraphs(op.blocks, true))
+  const owner = list.at(-1);
+  const requiresTerminalParagraph =
+    owner === undefined || owner.kind === "tableCell";
+  if (!validTerminalParagraphs(op.blocks, requiresTerminalParagraph))
     return refuse(
       op,
       DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
       "A block list ending in a paragraph keeps it outside every custom XML element.",
     );
-  if (!structurallyEqual(sectionEndDepths(before), sectionEndDepths(op.blocks)))
+  if (!structurallyEqual(sectionEndOwners(before), sectionEndOwners(op.blocks)))
     return refuse(
       op,
       DOCUMENT_OP_REFUSAL_REASONS.SECTION_BOUNDARY,

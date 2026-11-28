@@ -33,6 +33,18 @@ const inserted = (text: string, id: number): Paragraph => ({
   ],
 });
 
+const deleted = (text: string, id: number): Paragraph => ({
+  type: "paragraph",
+  paraId: `0000000${String(id)}`,
+  content: [
+    {
+      type: "deletion",
+      info: { ...SUGGESTED, id },
+      content: [{ type: "run", content: [{ type: "text", text }] }],
+    },
+  ],
+});
+
 const element = (
   info: TrackedChangeInfo,
   content: Paragraph[],
@@ -81,6 +93,34 @@ describe("a custom XML element's own record on the review surface", () => {
     ).toEqual([
       { type: "customXmlInserted", revisionId: 9, author: "Tagger" },
       { type: "insertion", revisionId: 1, author: "Reviewer" },
+    ]);
+  });
+
+  test("stays separate from unrelated content with the same metadata", () => {
+    const entries = entriesOf([
+      element({ ...SUGGESTED, id: 9 }, [
+        { type: "paragraph", paraId: "00000001", content: [] },
+      ]),
+      inserted("Outside", 1),
+    ]);
+    expect(
+      entries.map(({ type, revisionId }) => ({ type, revisionId })),
+    ).toEqual([
+      { type: "customXmlInserted", revisionId: 9 },
+      { type: "insertion", revisionId: 1 },
+    ]);
+  });
+
+  test("stays separate from an opposite-direction change inside it", () => {
+    const entries = entriesOf([
+      element({ ...SUGGESTED, id: 9 }, [deleted("Removed", 1)]),
+      { type: "paragraph", paraId: "00000002", content: [] },
+    ]);
+    expect(
+      entries.map(({ type, revisionId }) => ({ type, revisionId })),
+    ).toEqual([
+      { type: "customXmlInserted", revisionId: 9 },
+      { type: "deletion", revisionId: 1 },
     ]);
   });
 });

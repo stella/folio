@@ -168,6 +168,27 @@ describe.each([
   });
 });
 
+test("a copied content control drops nested custom XML revision records", () => {
+  const copied = control();
+  copied.content = [
+    {
+      type: "blockCustomXml",
+      openingXml: '<w:customXml w:element="nested">',
+      closingXml: "</w:customXml>",
+      content: [paragraph("Nested")],
+      insertion: { info: { id: 7, author: "Elsewhere" } },
+      deletion: { info: { id: 8, author: "Elsewhere" } },
+    },
+  ];
+  const { document, compiled } = pasted([copied], DIRECT);
+  if (compiled.isErr()) throw compiled.error;
+  const applied = applyDocumentOps(document, compiled.value.ops);
+  if (applied.isErr()) throw applied.error;
+  const serialized = JSON.stringify(applied.value.document.package.document);
+  expect(serialized).not.toContain('"id":7,"author":"Elsewhere"');
+  expect(serialized).not.toContain('"id":8,"author":"Elsewhere"');
+});
+
 describe("dragging a block content control", () => {
   const document = (): Document => ({
     package: {
