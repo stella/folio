@@ -1,6 +1,11 @@
 {
   "the change count never exceeds the blocks the script touched (${name})": [
     {
+      "seed": 1532356400,
+      "note": "#3748: a relocation that drops preserved highlight provenance is budgeted from its comparison, not the narrower preview-run projection. Found on upstream-complex-styles.docx; seed only because this property key covers every fixture.",
+      "date": "2026-11-28"
+    },
+    {
       "seed": -508007194,
       "path": "4:3:2:2:2:2:2:2:2:2:2:2:2:2:2",
       "note": "#1127: upstream-complex-styles.docx, a moved paragraph's undefined Heading2 style",
