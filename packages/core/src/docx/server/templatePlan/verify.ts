@@ -1192,6 +1192,7 @@ export const reportTemplatePlanOutput = async ({
     kind: "footnoteReference" | "endnoteReference",
     sourceNotes: AnalyzedNotes,
     outputNotes: AnalyzedNotes,
+    templateNotes: AnalyzedNotes,
   ): TemplatePlanNoteCounts => {
     const origin: StoryOrigin =
       kind === "footnoteReference" ? "footnotes" : "endnotes";
@@ -1201,6 +1202,11 @@ export const reportTemplatePlanOutput = async ({
       output: 0,
       identical: 0,
       mismatch: 0,
+      // The template's own notes the output no longer holds: notes of its
+      // sample text, left out with it.
+      templateLeftOut: templateNotes.notes.filter(
+        ({ id }) => !outputNotes.byId.has(id),
+      ).length,
     };
     for (const note of sourceNotes.notes) {
       tally(
@@ -1303,11 +1309,13 @@ export const reportTemplatePlanOutput = async ({
     "footnoteReference",
     source.footnotes,
     out.footnotes,
+    template.footnotes,
   );
   const endnotes = noteCounts(
     "endnoteReference",
     source.endnotes,
     out.endnotes,
+    template.endnotes,
   );
 
   // References: the field, its bookmark on the target, and its cached text.

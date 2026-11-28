@@ -2356,6 +2356,7 @@ export type TemplatePlanNoteCounts = {
     output: number;
     identical: number;
     mismatch: number;
+    templateLeftOut: number;
 };
 
 // @public

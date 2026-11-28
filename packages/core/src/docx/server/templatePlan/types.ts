@@ -907,6 +907,9 @@ export type TemplatePlanNoteCounts = {
   output: number;
   identical: number;
   mismatch: number;
+  /** Notes of the template's sample text that the output leaves out with
+   *  it: no kept template block refers to them. */
+  templateLeftOut: number;
 };
 
 export type TemplatePlanFieldLeftover = {

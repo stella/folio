@@ -313,6 +313,7 @@ describe("applyTemplatePlan", () => {
       output: 1,
       identical: 1,
       mismatch: 0,
+      templateLeftOut: 0,
     });
     expect(output.footnotes).toEqual([{ id: "1", text: SOURCE_TEXT.footnote }]);
     const footnotes =
@@ -1086,6 +1087,46 @@ describe("applyTemplatePlan refusals", () => {
   });
 });
 
+describe("applyTemplatePlan onto a template whose sample text has a note", () => {
+  test("leaves the sample's note out with the sample and keeps the source's", async () => {
+    const separators = `<w:footnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:footnote><w:footnote w:type="continuationSeparator" w:id="0"><w:p><w:r><w:continuationSeparator/></w:r></w:p></w:footnote>`;
+    const sampleNote = `<w:footnote w:id="1"><w:p><w:r><w:t xml:space="preserve">Sample note, see </w:t></w:r>${fieldRuns("REF _Ref900 \\h", r("clause 9"))}</w:p></w:footnote>`;
+    let template = await replacePart(
+      fixture.template,
+      "word/footnotes.xml",
+      `${XML}<w:footnotes ${NS}>${separators}${sampleNote}</w:footnotes>`,
+    );
+    const documentXml = (await readPart(template, "word/document.xml")) ?? "";
+    template = await replacePart(
+      template,
+      "word/document.xml",
+      documentXml.replace(
+        "Sample clause text.</w:t></w:r>",
+        'Sample clause text.</w:t></w:r><w:r><w:footnoteReference w:id="1"/></w:r>',
+      ),
+    );
+    const inspection = unwrap(await inspectDocxTemplate(template));
+    const result = unwrap(
+      await applyTemplatePlan({
+        source: fixture.source,
+        template,
+        plan: { ...fullPlan(), templateSha256: inspection.sha256 },
+      }),
+    );
+    const footnotes = (await readPart(result.docx, "word/footnotes.xml")) ?? "";
+
+    expect(footnotes).not.toContain("Sample note");
+    expect(footnotes).not.toContain("_Ref900");
+    expect(footnotes).toContain('w:type="separator" w:id="-1"');
+    expect(footnotes).toContain("emphasised");
+    expect(result.report.footnotes).toMatchObject({
+      identical: 1,
+      mismatch: 0,
+      templateLeftOut: 1,
+    });
+  });
+});
+
 describe("applyTemplatePlan onto a template without notes", () => {
   test("creates the footnotes part with its relationship and content type", async () => {
     const template = await buildTemplate({ withoutFootnotes: true });
@@ -1246,6 +1287,7 @@ describe("applyTemplatePlan with objects, fields and endnotes", () => {
       output: 1,
       identical: 1,
       mismatch: 0,
+      templateLeftOut: 0,
     });
     expect(await readPart(docx, "word/endnotes.xml")).toContain(
       '<w:endnote w:id="1"><w:p><w:r><w:rPr><w:vertAlign w:val="superscript"/></w:rPr><w:endnoteRef/></w:r>',
