@@ -405,11 +405,21 @@ describe("a pasted paragraph whose copied deletion of its break holds a cut", ()
           info: { ...EARLIER, id: cut.pPrMark?.deletion?.info.id ?? -1 },
         },
       });
-      // The paste's insertions meet open at the seam the cut joins.
-      for (const side of [cut.content.at(-1), after.content.at(0)])
+      // The paste's insertions meet open at the seam the cut joins while
+      // retaining the acceptance policy that rejoins their plain runs.
+      for (const [side, openSide] of [
+        [cut.content.at(-1), "after"],
+        [after.content.at(0), "before"],
+      ] as const)
         expect(
           side?.type === "insertion" ? side.resolutionJoins : "not inserted",
-        ).toBeUndefined();
+        ).toEqual({
+          before: 0,
+          after: 0,
+          remove: 0,
+          acceptance: "merge-plain-runs",
+          openSides: [openSide],
+        });
       expect(apply(pasted.document, pasted.inverse).document).toStrictEqual(
         document,
       );
