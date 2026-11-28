@@ -37,8 +37,8 @@ export type ParagraphLabel = {
   paragraphNumber: string | null;
   /**
    * The label and what its list puts after it, when the label can stand as
-   * text: it reads the same wherever the file is opened. Null for a bullet,
-   * whose glyph belongs to a font, and for an ordinal or a number in words
+   * text: it reads the same wherever the file is opened. A bullet stands as
+   * the character its mark shows. Null for an ordinal or a number in words
    * in a language whose way of writing it is not known.
    */
   asText: { label: string; suffix: LevelSuffix } | null;
@@ -98,6 +98,23 @@ const bulletFacts = (
     ? { bullet: true }
     : { bullet: true, bulletFont: face };
 };
+
+/** A character of the private use area: a glyph of a symbol font. */
+const PRIVATE_USE = /[\uE000-\uF8FF]/u;
+
+/**
+ * A bullet's mark as text: the mark as the reader shows it, a character of
+ * Unicode (a symbol font's code is read as the character it paints, an
+ * unknown one as a plain bullet). A mark left in a symbol font's private
+ * range is written nowhere.
+ */
+const bulletAsText = (
+  label: string,
+  suffix: LevelSuffix | undefined,
+): ParagraphLabel["asText"] =>
+  label.trim() === "" || PRIVATE_USE.test(label)
+    ? null
+    : { label, suffix: suffix ?? "tab" };
 
 type AsTextOptions = {
   label: string;
@@ -444,7 +461,7 @@ export const createLabelCounter = ({
           numbering: numberingInfo,
           numberOnly: null,
           paragraphNumber: null,
-          asText: null,
+          asText: bulletAsText(label, listRendering.markerSuffix),
         };
       }
       return {

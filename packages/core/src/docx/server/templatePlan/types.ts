@@ -619,8 +619,9 @@ export type TemplatePlanSourceItem = {
    * the tab or space its list puts after it: for a label no list of the
    * template prints. The paragraph it leads must join no list
    * (`numbering: null`). Only a label that reads the same wherever the file
-   * is opened can be written: numbers, letters and roman numerals, not a
-   * bullet glyph and not a number a language spells.
+   * is opened can be written: numbers, letters and roman numerals, a
+   * bullet's mark as the Unicode character it shows, not a glyph left in a
+   * symbol font's private range and not a number a language spells.
    */
   labelAsText?: boolean;
   /**
