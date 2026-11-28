@@ -775,7 +775,7 @@ const writeOutput = async ({
           unsupportedMedia ??= sourcePath;
         }
         // A name neither the template nor an earlier part of this run holds;
-        // embedded objects go where Word keeps them.
+        // embedded objects go in the embeddings folder.
         const folder = isPicturePart(sourceItem.relationshipType)
           ? "media"
           : "embeddings";
