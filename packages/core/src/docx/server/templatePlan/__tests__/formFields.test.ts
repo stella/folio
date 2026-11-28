@@ -60,4 +60,18 @@ describe("legacy form fields of the source", () => {
     );
     expect(applied.report.dropped.sourceFields).toEqual([]);
   });
+  test("stay whole when their result crosses a content control's edge", async () => {
+    const control = `<w:sdt><w:sdtPr><w:alias w:val="Party"/><w:text/></w:sdtPr><w:sdtContent>${r("[Name]")}</w:sdtContent></w:sdt>`;
+    const source = await buildSourceWith({
+      body: p(
+        `${r("Signed by ")}${begin(TEXT_INPUT)}${instruction("FORMTEXT")}${separate}${control}${r(" (Party)")}${end}${r(" below.")}`,
+      ),
+    });
+    const applied = unwrap(await applyFor({ source, template }));
+    const document = (await readPart(applied.docx, "word/document.xml")) ?? "";
+    expect(document.match(/FORMTEXT/gu)).toEqual(["FORMTEXT"]);
+    expect(document).toMatch(
+      /<w:fldChar w:fldCharType="separate"\/><\/w:r><w:sdt><w:sdtPr><w:alias w:val="Party"\/><w:text\/><\/w:sdtPr><w:sdtContent>.*?\[Name\].*?<\/w:sdtContent><\/w:sdt>.*? \(Party\).*?<w:fldChar w:fldCharType="end"\/>/u,
+    );
+  });
 });

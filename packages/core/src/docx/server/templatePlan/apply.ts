@@ -35,6 +35,7 @@ import {
   isPicturePart,
 } from "./embeddedParts";
 import {
+  controlPropertiesXml,
   createRelationshipsEditor,
   type EmitContext,
   type EmitShared,
@@ -921,6 +922,92 @@ const outlineSwitchSplices = (
   ];
 };
 
+/** A content control around blocks of the source: its properties and the
+ *  paragraphs and tables its content holds, in order. */
+type BlockControl = {
+  /** The control's own element; an outer control counts it as one member. */
+  element: XmlElement;
+  properties: XmlElement;
+  /** Its paragraphs, tables and inner controls, in source order. */
+  members: XmlElement[];
+};
+
+/**
+ * The content controls around blocks of a body, inner ones before the
+ * controls that hold them. A control without properties lends its blocks
+ * to the control around it.
+ */
+const blockControlsOf = (body: XmlElement): BlockControl[] => {
+  const out: BlockControl[] = [];
+  const membersOf = (content: XmlElement | null): XmlElement[] => {
+    const members: XmlElement[] = [];
+    for (const child of elementChildren(content)) {
+      const name = wName(child);
+      if (name === "p" || name === "tbl") {
+        members.push(child);
+      } else if (name === "sdt") {
+        const inner = membersOf(wChild(child, "sdtContent"));
+        const properties = wChild(child, "sdtPr");
+        if (properties === null) {
+          members.push(...inner);
+        } else if (inner.length > 0) {
+          out.push({ element: child, properties, members: inner });
+          members.push(child);
+        }
+      }
+    }
+    return members;
+  };
+  membersOf(body);
+  return out;
+};
+
+/** The source block a body item writes whole, or null. */
+const wholeSourceOf = (
+  item: ResolvedPlan["items"][number],
+): XmlElement | null => {
+  if (item.kind === "table") {
+    return item.block.element;
+  }
+  if (item.kind === "paragraph" && item.paragraph.parts.length === 1) {
+    return item.paragraph.parts[0]?.block.element ?? null;
+  }
+  return null;
+};
+
+/**
+ * Puts a content control of the source around the body entries that write
+ * all of its blocks, in order and one after another: a section a reader
+ * fills in or repeats keeps its control. Any other control's blocks stand
+ * as they are written.
+ */
+const wrapBlockControls = (
+  body: string[],
+  sources: (XmlElement | null)[],
+  controls: readonly BlockControl[],
+  w: string,
+): void => {
+  for (const control of controls) {
+    const at = sources.indexOf(control.members[0] ?? null);
+    const count = control.members.length;
+    const whole =
+      at !== -1 &&
+      control.members.every((member, index) => sources[at + index] === member);
+    if (!whole) {
+      continue;
+    }
+    const inner = body.slice(at, at + count).join("");
+    body.splice(
+      at,
+      count,
+      `<${w}:sdt>${controlPropertiesXml(control.properties, w)}<${w}:sdtContent>${inner}</${w}:sdtContent></${w}:sdt>`,
+    );
+    // The entries the control took are one entry now, which a control
+    // around it counts as its member.
+    sources.splice(at, count, control.element);
+  }
+};
+
 type NotePartState = {
   kind: NoteKind;
   /** The part the output keeps its notes in; created when the template has none. */
@@ -1652,6 +1739,8 @@ const writeOutput = async ({
   };
 
   const body: string[] = [];
+  // The source block each body entry writes whole, for block controls.
+  const bodySources: (XmlElement | null)[] = [];
   for (const item of resolved.items) {
     let xml: Result<string, TemplatePlanError>;
     switch (item.kind) {
@@ -1689,7 +1778,14 @@ const writeOutput = async ({
       return xml;
     }
     body.push(xml.value);
+    bodySources.push(wholeSourceOf(item));
   }
+  wrapBlockControls(
+    body,
+    bodySources,
+    blockControlsOf(source.body),
+    documentContext.prefixes.w,
+  );
   if (bodySection !== null) {
     const { lastSection } = plan;
     const split = sectionEnds.length > 0 || lastSection !== undefined;

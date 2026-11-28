@@ -385,6 +385,10 @@ export type ParagraphRead = {
   indentInCharacters: boolean;
   /** Whether the paragraph mark is a tracked insertion or deletion. */
   hasTrackedMark: boolean;
+  /** Whether the paragraph's mark is hidden (`w:vanish` on the mark): the
+   *  paragraph runs on into the next on screen, or vanishes when its text
+   *  is hidden too. */
+  markHidden: boolean;
 };
 
 const TOGGLE_OFF = new Set(["0", "false", "off"]);
@@ -610,7 +614,7 @@ const deletedTextOf = (child: XmlElement): string | null => {
 const readDeletedRun = (
   run: XmlElement,
   walk: ParagraphWalk,
-  { link, revision }: RunContext & { revision: AtomRevision },
+  { link, revision, control }: RunContext & { revision: AtomRevision },
 ): void => {
   let deleted = "";
   for (const child of elementChildren(run)) {
@@ -630,6 +634,7 @@ const readDeletedRun = (
       link,
       element: null,
       revision: { ...revision, deleted },
+      ...(control === undefined ? {} : { control }),
     });
   }
 };
@@ -665,7 +670,11 @@ const readRun = (
     state.formattingRevisions += 1;
   }
   if (revision?.kind === "del") {
-    readDeletedRun(run, walk, { link, revision });
+    readDeletedRun(run, walk, {
+      link,
+      revision,
+      ...(control === undefined ? {} : { control }),
+    });
     return;
   }
   const atom = (
@@ -878,6 +887,9 @@ const readInline = (
           ...(context.revision === undefined
             ? {}
             : { revision: context.revision }),
+          ...(context.control === undefined
+            ? {}
+            : { control: context.control }),
         });
       } else if (!inCode(state)) {
         read.unsupported.push(child.name ?? "");
@@ -914,6 +926,9 @@ const readInline = (
           link: context.link,
           element: null,
           instruction: field.instruction.trim(),
+          ...(context.control === undefined
+            ? {}
+            : { control: context.control }),
         });
       }
     } else if (REVISION_INCLUDED.has(name) || REVISION_EXCLUDED.has(name)) {
@@ -1068,6 +1083,7 @@ export const readParagraph = (
       return value !== null && !/^[+-]?0*$/u.test(value.trim());
     }),
     hasTrackedMark,
+    markHidden: toggleOf(wChild(mark, "vanish")) === true,
   };
   state.paragraphOrdinal += 1;
   const walk: ParagraphWalk = { state, read, textLength: 0 };

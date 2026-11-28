@@ -46,6 +46,7 @@ import {
   rowTextOf,
 } from "./revisions";
 import {
+  type AtomControl,
   type AtomLink,
   type AtomRevision,
   isFormField,
@@ -859,7 +860,10 @@ const CONTROL_DROPPED: ReadonlySet<string> = new Set([
 ]);
 
 /** A control's properties as the output writes them. */
-const controlPropertiesXml = (properties: XmlElement, w: string): string =>
+export const controlPropertiesXml = (
+  properties: XmlElement,
+  w: string,
+): string =>
   wSubtreeXml(
     cloneElement(properties, {
       elements: elementChildren(properties).filter(
@@ -869,34 +873,99 @@ const controlPropertiesXml = (properties: XmlElement, w: string): string =>
     w,
   );
 
+type RunsWriter = (
+  pieces: readonly ExpectedPiece[],
+  context: EmitContext,
+) => RunsResult;
+
+const controlOfPiece = (
+  piece: ExpectedPiece | undefined,
+): AtomControl | undefined =>
+  piece?.origin === "document" ? piece.atom?.control : undefined;
+
+/**
+ * Runs of pieces with content controls and legacy form fields kept: a form
+ * field whose result crosses a control's edge holds the controls, any other
+ * stands inside the control around it.
+ */
+const piecesRunsXml = (
+  pieces: readonly ExpectedPiece[],
+  context: EmitContext,
+): RunsResult => {
+  const out: string[] = [];
+  let plainStart = 0;
+  const flushPlain = (end: number): Result<void, TemplatePlanError> => {
+    if (end > plainStart) {
+      const runs = controlRunsXml(
+        pieces.slice(plainStart, end),
+        context,
+        formFieldRunsXml,
+      );
+      if (Result.isError(runs)) {
+        return runs;
+      }
+      out.push(runs.value);
+    }
+    return Result.ok(undefined);
+  };
+  let at = 0;
+  while (at < pieces.length) {
+    const field = formFieldOf(pieces[at], context);
+    let end = at + 1;
+    while (end < pieces.length && formFieldOf(pieces[end], context) === field) {
+      end += 1;
+    }
+    const group = pieces.slice(at, end);
+    const control = controlOfPiece(group[0]);
+    const crosses =
+      field !== null &&
+      group.some((piece) => controlOfPiece(piece) !== control);
+    if (crosses) {
+      const flushed = flushPlain(at);
+      if (Result.isError(flushed)) {
+        return flushed;
+      }
+      const runs = formFieldRunsXml(group, context, (inner, innerContext) =>
+        controlRunsXml(inner, innerContext, linkedRunsXml),
+      );
+      if (Result.isError(runs)) {
+        return runs;
+      }
+      out.push(runs.value);
+      plainStart = end;
+    }
+    at = end;
+  }
+  const flushed = flushPlain(pieces.length);
+  if (Result.isError(flushed)) {
+    return flushed;
+  }
+  return Result.ok(out.join(""));
+};
+
 /**
  * Runs of pieces, a content control among runs around its content again
  * where the output places all of that content, with no tracked change in
  * it: a text, date or list control a reader fills in. Any other control's
  * content is written as it reads.
  */
-const piecesRunsXml = (
+const controlRunsXml = (
   pieces: readonly ExpectedPiece[],
   context: EmitContext,
+  inner: RunsWriter,
 ): RunsResult => {
   const { w } = context.prefixes;
   const out: string[] = [];
   let at = 0;
   while (at < pieces.length) {
-    const control =
-      pieces[at]?.origin === "document" ? pieces[at]?.atom?.control : undefined;
+    const control = controlOfPiece(pieces[at]);
     let end = at + 1;
-    while (
-      end < pieces.length &&
-      (pieces[end]?.origin === "document"
-        ? pieces[end]?.atom?.control
-        : undefined) === control
-    ) {
+    while (end < pieces.length && controlOfPiece(pieces[end]) === control) {
       end += 1;
     }
     const group = pieces.slice(at, end);
     at = end;
-    const runs = formFieldRunsXml(group, context);
+    const runs = inner(group, context);
     if (Result.isError(runs)) {
       return runs;
     }
@@ -922,6 +991,7 @@ const piecesRunsXml = (
 const formFieldRunsXml = (
   pieces: readonly ExpectedPiece[],
   context: EmitContext,
+  inner: RunsWriter = linkedRunsXml,
 ): RunsResult => {
   const { w } = context.prefixes;
   const out: string[] = [];
@@ -935,7 +1005,7 @@ const formFieldRunsXml = (
     }
     const group = pieces.slice(at, end);
     at = end;
-    const runs = linkedRunsXml(group, context);
+    const runs = inner(group, context);
     if (Result.isError(runs)) {
       return runs;
     }
@@ -952,8 +1022,8 @@ const formFieldRunsXml = (
       signature: group[0]?.signature ?? "",
       escapeAttribute: escapeXmlAttribute,
     });
-    const char = (inner: string): string =>
-      `<${w}:r>${properties}${inner}</${w}:r>`;
+    const char = (content: string): string =>
+      `<${w}:r>${properties}${content}</${w}:r>`;
     out.push(
       [
         char(
@@ -1173,11 +1243,13 @@ export const paragraphXml = (
   if (Result.isError(runs)) {
     return runs;
   }
-  // The paragraph's mark, when the source records it as inserted: its run
-  // properties stand in front of a section's.
+  // The paragraph's mark, when the source records it as inserted or hides
+  // it (the paragraph runs on into the next on screen): its run properties
+  // stand in front of a section's.
   const inserted = insertedMarkOf(emit.paragraph.segments);
-  if (inserted !== undefined) {
-    const mark = `<${w}:rPr><${w}:ins${revisionAttributesXml(inserted, context)}/></${w}:rPr>`;
+  const hidden = emit.paragraph.parts.at(-1)?.block.read?.markHidden === true;
+  if (inserted !== undefined || hidden) {
+    const mark = `<${w}:rPr>${inserted === undefined ? "" : `<${w}:ins${revisionAttributesXml(inserted, context)}/>`}${hidden ? `<${w}:vanish/>` : ""}</${w}:rPr>`;
     properties.splice(
       emit.sectionXml === null ? properties.length : properties.length - 1,
       0,

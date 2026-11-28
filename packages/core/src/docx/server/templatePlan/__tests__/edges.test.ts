@@ -517,6 +517,24 @@ describe("applyTemplatePlan edge content", () => {
     expect(report.dropped.sourceFields).toEqual([]);
   });
 
+  test("a colour that marks part of the text counts the text of the notes", async () => {
+    const template = await buildTemplate();
+    const separators =
+      '<w:footnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:footnote><w:footnote w:type="continuationSeparator" w:id="0"><w:p><w:r><w:continuationSeparator/></w:r></w:p></w:footnote>';
+    const source = await buildSourceWith({
+      body: p(
+        `${r("[Insert date]", '<w:color w:val="FF0000"/>')}<w:r><w:footnoteReference w:id="2"/></w:r>`,
+      ),
+      footnotes: `${separators}<w:footnote w:id="2">${p(r(" The date on which the last party signs this agreement."))}</w:footnote>`,
+    });
+    const kept = unwrap(
+      await applyFor({ source, template, extra: { textColors: "keep" } }),
+    );
+    expect((await readPart(kept.docx, "word/document.xml")) ?? "").toContain(
+      '<w:color w:val="FF0000"/>',
+    );
+  });
+
   test("a colour that marks part of the text is kept when the plan keeps colours; the source's own look is not", async () => {
     const template = await buildTemplate();
     const source = await buildMinimalDocx(
@@ -617,6 +635,58 @@ describe("applyTemplatePlan edge content", () => {
     expect(document).not.toContain("instructions");
     expect(document).toMatch(
       /<w:sdt><w:sdtPr><w:alias w:val="Name"\/><w:text\/><\/w:sdtPr><w:sdtContent><w:r>(?:<w:rPr>.*?<\/w:rPr>)?<w:t xml:space="preserve">\[Name\]<\/w:t><\/w:r><\/w:sdtContent><\/w:sdt>/u,
+    );
+  });
+
+  test("a paragraph whose mark is hidden keeps it hidden, so it runs on into the next", async () => {
+    const template = await buildTemplate();
+    const source = await buildMinimalDocx(
+      [
+        p(r("Die Vergütung ist fällig. "), "<w:rPr><w:vanish/></w:rPr>"),
+        p(r("Der Auftraggeber zahlt binnen 14 Tagen.")),
+      ].join(""),
+    );
+    const { docx, report } = unwrap(await applyFor({ source, template }));
+    const document = (await readPart(docx, "word/document.xml")) ?? "";
+    expect(report.ok).toBe(true);
+    expect(document).toMatch(
+      /<w:rPr><w:vanish\/><\/w:rPr><\/w:pPr><w:r>(?:<w:rPr>.*?<\/w:rPr>)?<w:t xml:space="preserve">Die Vergütung/u,
+    );
+    expect(document.match(/<w:vanish\/>/gu)?.length).toBe(1);
+  });
+
+  test("a content control around paragraphs stays around them where the output writes them all", async () => {
+    const template = await buildTemplate();
+    const source = await buildMinimalDocx(
+      [
+        p(r("The parties agree as follows.")),
+        `<w:sdt><w:sdtPr><w:alias w:val="Schedule"/><w:dataBinding w:xpath="/a" w:storeItemID="{1}"/></w:sdtPr><w:sdtContent>${p(r("Item one of the schedule."))}${p(r("Item two of the schedule."))}</w:sdtContent></w:sdt>`,
+        p(r("Each party signs below.")),
+      ].join(""),
+    );
+    const { docx, report } = unwrap(await applyFor({ source, template }));
+    const document = (await readPart(docx, "word/document.xml")) ?? "";
+    expect(report.ok).toBe(true);
+    expect(document).toMatch(
+      /<w:sdt><w:sdtPr><w:alias w:val="Schedule"\/><\/w:sdtPr><w:sdtContent><w:p>.*?Item one of the schedule\..*?<\/w:p><w:p>.*?Item two of the schedule\..*?<\/w:p><\/w:sdtContent><\/w:sdt>/u,
+    );
+    expect(document).not.toContain("dataBinding");
+  });
+
+  test("a content control around paragraphs and an inner control stays around them both", async () => {
+    const template = await buildTemplate();
+    const source = await buildMinimalDocx(
+      [
+        p(r("The parties agree as follows.")),
+        `<w:sdt><w:sdtPr><w:alias w:val="Schedule"/></w:sdtPr><w:sdtContent>${p(r("Item one of the schedule."))}<w:sdt><w:sdtPr><w:alias w:val="Item"/></w:sdtPr><w:sdtContent>${p(r("Item two of the schedule."))}</w:sdtContent></w:sdt></w:sdtContent></w:sdt>`,
+        p(r("Each party signs below.")),
+      ].join(""),
+    );
+    const { docx, report } = unwrap(await applyFor({ source, template }));
+    const document = (await readPart(docx, "word/document.xml")) ?? "";
+    expect(report.ok).toBe(true);
+    expect(document).toMatch(
+      /<w:sdt><w:sdtPr><w:alias w:val="Schedule"\/><\/w:sdtPr><w:sdtContent><w:p>.*?Item one of the schedule\..*?<\/w:p><w:sdt><w:sdtPr><w:alias w:val="Item"\/><\/w:sdtPr><w:sdtContent><w:p>.*?Item two of the schedule\..*?<\/w:p><\/w:sdtContent><\/w:sdt><\/w:sdtContent><\/w:sdt>/u,
     );
   });
 
