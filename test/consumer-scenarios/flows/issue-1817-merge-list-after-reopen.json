@@ -27,17 +27,6 @@
         { "type": "mergeBlockWithNext", "blockId": "@1", "separator": " " }
       ],
       "atomic": true
-    },
-    {
-      "action": "suggest_changes",
-      "seed": 1588791909,
-      "operations": [
-        {
-          "type": "mergeBlockWithNext",
-          "blockId": "412DDC7F",
-          "separator": " "
-        }
-      ]
     }
   ],
   "origin": "shrunk from collisions flow seed 900591342"
