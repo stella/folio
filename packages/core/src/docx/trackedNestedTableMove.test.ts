@@ -1289,11 +1289,25 @@ test.each([
   "deleteColumn",
   "mergeCells",
   "merge with moved words",
+  "merge with bookmarked words",
   "merge with a nested move",
 ] as const)(
   "a moved nested table keeps its earlier grouped geometry actionable (%s)",
   (kind) => {
     const innermostRevision = 51;
+    const carriesBookmark = kind === "merge with bookmarked words";
+    const survivor = paragraph(
+      "00000007",
+      kind === "mergeCells" ? undefined : "Survivor",
+    );
+    if (carriesBookmark) {
+      survivor.content.unshift({
+        type: "bookmarkStart",
+        id: 80,
+        name: "NestedWords",
+      });
+      survivor.content.push({ type: "bookmarkEnd", id: 80 });
+    }
     const inner = {
       type: "table",
       columnWidths: [700, 900],
@@ -1336,10 +1350,7 @@ test.each([
               ...(kind === "merge with moved words"
                 ? [paragraph("00000008")]
                 : []),
-              paragraph(
-                "00000007",
-                kind === "mergeCells" ? undefined : "Survivor",
-              ),
+              survivor,
             ),
           ],
         },
@@ -1502,10 +1513,11 @@ test.each([
         }
       }
     }
-    if (kind === "merge with moved words") {
+    if (kind === "merge with moved words" || carriesBookmark) {
       const ranges = nestedMove?.moveRanges?.at(0);
       if (nestedMove === undefined || ranges === undefined)
         throw new TypeError("Expected tracked paragraph range handoffs.");
+      if (carriesBookmark) expect(nestedMove.bookmarks).toHaveLength(2);
       const [authored, temporary] = ranges;
       expect(
         new Set([

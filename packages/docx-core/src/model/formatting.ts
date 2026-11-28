@@ -592,6 +592,8 @@ export type TableGeometryMove = {
       readonly controls?: readonly (readonly [number, number])[];
       /** Authored drawing IDs paired with their temporary destination IDs. */
       readonly pictures?: readonly (readonly [number, number])[];
+      /** Local bookmarks paired with their temporary destination identities. */
+      readonly bookmarks?: TableMoveBookmarkPairs;
     }
   | { readonly kind: "empty" }
 );
@@ -630,11 +632,13 @@ export type TableGeometryNestedMove = {
   /** Authored drawing IDs paired with temporary destination IDs. */
   readonly pictures?: readonly (readonly [number, number])[];
   /** Positioned bookmarks and the identities used by the destination copy. */
-  readonly bookmarks?: readonly (readonly [
-    { readonly id: number; readonly name: string },
-    { readonly id: number; readonly name: string },
-  ])[];
+  readonly bookmarks?: TableMoveBookmarkPairs;
 };
+
+type TableMoveBookmarkPairs = readonly (readonly [
+  { readonly id: number; readonly name: string },
+  { readonly id: number; readonly name: string },
+])[];
 
 /**
  * The grid a reviewer replaced, as `w:tblGridChange` records it.
