@@ -519,13 +519,7 @@ const movableInlineContent = (
     switch (item.type) {
       case "run":
         if (item.propertyChanges !== undefined) {
-          if (
-            context.priorRevisions === undefined ||
-            item.propertyChanges.some(
-              ({ boundaryJoins }) => boundaryJoins !== undefined,
-            )
-          )
-            return false;
+          if (context.priorRevisions === undefined) return false;
           for (const { info } of item.propertyChanges)
             context.priorRevisions.push(info.id);
         }

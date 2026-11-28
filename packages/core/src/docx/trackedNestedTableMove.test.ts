@@ -494,12 +494,18 @@ test("earlier inline, formatting and break revisions stay reviewable through a n
       },
       {
         type: "run",
+        formatting: { italic: true },
+        content: [{ type: "text", text: "Prior " }],
+      },
+      {
+        type: "run",
         content: [{ type: "text", text: "clause" }],
         formatting: { bold: true },
         propertyChanges: [
           {
             type: "runPropertyChange",
             info: stamp(44),
+            boundaryJoins: ["before"],
             previousFormatting: { italic: true },
           },
         ],
@@ -630,7 +636,7 @@ test("earlier inline, formatting and break revisions stay reviewable through a n
           expect(xml).toContain(
             inner === REVISION_DECISIONS.ACCEPT
               ? "<w:b/></w:rPr><w:t>clause"
-              : "<w:i/></w:rPr><w:t>clause",
+              : "<w:i/></w:rPr><w:t>Prior clause",
           );
         } else if (authored === 45 || authored === 46) {
           const deleted = authored === 45;
