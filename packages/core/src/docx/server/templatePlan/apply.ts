@@ -855,6 +855,48 @@ const editNumbering = (
     : Result.ok(edited);
 };
 
+/** The `\u` switch: a contents field gathers paragraphs by their own
+ *  outline level too. */
+const OUTLINE_SWITCH = /\\u(?![A-Za-z])/u;
+
+/**
+ * Splices that give the contents field starting in `element` the `\u`
+ * switch, after the last piece of its code in front of `separatorEnd`;
+ * none when the code has it already or holds no piece of text.
+ */
+const outlineSwitchSplices = (
+  xml: string,
+  element: XmlElement,
+  separatorEnd: number,
+): XmlSplice[] => {
+  const pieces: XmlElement[] = [];
+  walkElements(element, (child) => {
+    const range = rangeOf(child);
+    if (
+      isW(child, "instrText") &&
+      range !== null &&
+      range.end <= separatorEnd
+    ) {
+      pieces.push(child);
+    }
+  });
+  const code = pieces
+    .map((piece) => {
+      const inner = innerRangeOf(xml, piece);
+      return inner === null ? "" : xml.slice(inner.start, inner.end);
+    })
+    .join("");
+  const last = pieces.at(-1);
+  const inner = last === undefined ? null : innerRangeOf(xml, last);
+  if (inner === null || OUTLINE_SWITCH.test(code)) {
+    return [];
+  }
+  const ends = xml.slice(inner.start, inner.end).endsWith(" ");
+  return [
+    { start: inner.end, end: inner.end, newXml: ends ? "\\u " : " \\u " },
+  ];
+};
+
 type NotePartState = {
   kind: NoteKind;
   /** The part the output keeps its notes in; created when the template has none. */
@@ -1289,6 +1331,11 @@ const writeOutput = async ({
     const inner = innerRangeOf(template.document.xml, element);
     if (start === undefined || inner === null) {
       continue;
+    }
+    if (plan.fields?.contentsOutlineLevels === true) {
+      templateSplices.push(
+        ...outlineSwitchSplices(template.document.xml, element, start),
+      );
     }
     const { w } = documentContext.prefixes;
     templateSplices.push({

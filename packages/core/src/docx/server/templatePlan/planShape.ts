@@ -24,6 +24,7 @@ export const PLAN_HIGHLIGHT_COLORS: ReadonlySet<string> = new Set(
 );
 const FIELD_KIND = /^[A-Z][A-Z0-9]*$/u;
 const MAX_LIST_LEVEL = 8;
+const MAX_OUTLINE_LEVEL = 8;
 
 type Json = Record<string, unknown>;
 
@@ -279,6 +280,18 @@ const sourceItemIssue = (item: Json, where: string): string | null => {
   if (item["alignment"] !== undefined && !isAlignment(item["alignment"])) {
     return `${where} carries an unknown alignment.`;
   }
+  const outlineLevel = item["outlineLevel"];
+  if (
+    outlineLevel !== undefined &&
+    !(
+      typeof outlineLevel === "number" &&
+      Number.isInteger(outlineLevel) &&
+      outlineLevel >= 0 &&
+      outlineLevel <= MAX_OUTLINE_LEVEL
+    )
+  ) {
+    return `${where} carries an outline level outside 0 to ${MAX_OUTLINE_LEVEL}.`;
+  }
   if (item["spacing"] !== undefined && !isSpacing(item["spacing"])) {
     return `${where} carries a malformed spacing.`;
   }
@@ -489,6 +502,9 @@ const fieldsIssue = (fields: unknown): string | null => {
   }
   if (updateOnOpen !== undefined && typeof updateOnOpen !== "boolean") {
     return "The plan's update-on-open choice is not a boolean.";
+  }
+  if (!isOptionalBoolean(fields["contentsOutlineLevels"])) {
+    return "The plan's choice for outline levels in the contents is not a boolean.";
   }
   return null;
 };

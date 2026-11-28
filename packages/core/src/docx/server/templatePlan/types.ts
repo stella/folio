@@ -681,6 +681,14 @@ export type TemplatePlanSourceItem = {
    */
   alignment?: TemplatePlanAlignment;
   /**
+   * The paragraph's own outline level (`w:outlineLvl`, 0 for level 1), over
+   * the one its style states: for a line the source's own contents list
+   * that the template's style does not head. A contents field gathers it
+   * only with its `\u` switch (`fields.contentsOutlineLevels`). Not for a
+   * table.
+   */
+  outlineLevel?: number;
+  /**
    * The paragraph's own space in front of it and behind it (`w:spacing`),
    * over what its style states: for a line the document sets tight or
    * apart by itself, such as the rows of a table. Not for a table.
@@ -772,7 +780,16 @@ export type TemplatePlan = {
   numberingPatches?: TemplatePlanNumberingPatch[];
   references?: TemplatePlanReference[];
   highlights?: TemplatePlanHighlight[];
-  fields?: { freezeKinds?: string[]; updateOnOpen?: boolean };
+  fields?: {
+    freezeKinds?: string[];
+    updateOnOpen?: boolean;
+    /**
+     * Whether the template's contents fields the output keeps also gather
+     * paragraphs by their own outline level (`outlineLevel` on an item):
+     * the field's code gains the `\u` switch where it lacks it.
+     */
+    contentsOutlineLevels?: boolean;
+  };
   /**
    * Compatibility settings to switch on in the output's settings, which are
    * otherwise the template's. `true` sets the setting at its place in the
