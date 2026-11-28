@@ -561,14 +561,31 @@ export const bookmarkEncloses = (
       ({ revision }) => revision?.deleted === DELETED_PARAGRAPH_MARK,
     ) + 1;
   const marked = read.atoms.at(-1)?.revision?.mark === true ? 1 : 0;
-  const led = read.atoms
-    .slice(own, start.atomIndex)
-    .map(({ text }) => text)
-    .join("");
-  return (
+  if (end.atomIndex !== read.atoms.length - marked) {
+    return false;
+  }
+  if (lead === "") {
+    return start.atomIndex === own;
+  }
+  // The label stands in front of the bookmark and nothing else does: no
+  // number a field counts, which is content of the paragraph's own.
+  const skipped = read.atoms.slice(own, start.atomIndex);
+  if (
     start.atomIndex >= own &&
-    led === lead &&
-    end.atomIndex === read.atoms.length - marked
+    skipped.every(({ kind }) => kind !== "selfNumber") &&
+    skipped.map(({ text }) => text).join("") === lead
+  ) {
+    return true;
+  }
+  // A label written in front of a paragraph mark somebody deleted stands
+  // before the paragraph's own content, which then starts the bookmark.
+  return (
+    start.atomIndex === own &&
+    read.atoms
+      .slice(0, own)
+      .map(({ text }) => text)
+      .join("")
+      .startsWith(lead)
   );
 };
 

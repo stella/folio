@@ -113,6 +113,28 @@ describe("applyTemplatePlan edge content", () => {
     ]);
   });
 
+  test("a bookmark behind a number a field counts does not hold the whole paragraph", async () => {
+    const number =
+      '<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> AUTONUM </w:instrText></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r>';
+    const ref =
+      '<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> REF fees \\h </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>Fees</w:t></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r>';
+    const source = await buildMinimalDocx(
+      [
+        p(
+          `${number}<w:bookmarkStart w:id="1" w:name="fees"/>${r("Fees")}<w:bookmarkEnd w:id="1"/>`,
+        ),
+        p(`${r("See ")}${ref}`),
+      ].join(""),
+    );
+    const { blocks } = unwrap(await analyzeDocxBlocks(source));
+
+    // The field's number is content of the paragraph the bookmark leaves out.
+    expect(blocks[1]?.crossReferences?.[0]).toMatchObject({
+      targetBlockId: "p0",
+      targetWhole: false,
+    });
+  });
+
   test("reports a cross-reference field with the paragraph its bookmark marks", async () => {
     const template = await buildTemplate();
     const number =
