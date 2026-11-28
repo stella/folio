@@ -3342,10 +3342,11 @@ const dispatch = ({ document, op, purpose }: DispatchOptions): Applied => {
     op.type === DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS
   )
     return applied;
-  const cleaned =
-    "revision" in op && op.revision !== undefined
-      ? applied.value.document
-      : withoutOrphanedNotes(document, applied.value.document);
+  // A tracked deletion normally retains its note references inside review
+  // records, so the census changes nothing. Retractions of the author's own
+  // insertion remove those references physically and own the same lifecycle
+  // cleanup as a direct edit.
+  const cleaned = withoutOrphanedNotes(document, applied.value.document);
   let edit = applied.value;
   if (cleaned !== edit.document) {
     const cleanup = replaceNoteParts({

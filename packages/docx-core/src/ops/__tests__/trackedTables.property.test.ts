@@ -251,7 +251,7 @@ const canonical = (document: Document): Document => ({
     },
   },
 });
-const insertionFor = (shape: Shape) =>
+const insertionFor = (shape: Shape, table = makeTable(shape)) =>
   ({
     type: DOCUMENT_OP_TYPES.INSERT_TABLE,
     story: OP_STORIES.MAIN,
@@ -259,7 +259,7 @@ const insertionFor = (shape: Shape) =>
       type: shape.placement === "before" ? "before" : "after",
       blockId: shape.placement === "terminal" ? id(3) : id(1),
     },
-    table: makeTable(shape),
+    table,
     ...(shape.placement === "terminal"
       ? { terminal: { beforeBlockId: id(4) } }
       : {}),
@@ -857,6 +857,127 @@ test(
       {
         id: "deleting a wholly own inserted table withdraws it across table shapes",
         numRuns: 200,
+      },
+    );
+  },
+  propertyTestTimeout(30_000),
+);
+
+test(
+  "whole-table and whole-column withdrawal clean up the inserted table's final note reference",
+  () => {
+    assertProperty(
+      fc.property(
+        shapes.filter(
+          ({ placement, rows, cells }) =>
+            placement !== "terminal" && rows === 1 && cells === 3,
+        ),
+        fc.constantFrom("table", "column"),
+        fc.constantFrom("footnote", "endnote"),
+        (shape, deletion, kind) => {
+          const anchors = [
+            makeParagraph(1, shape),
+            makeParagraph(2, shape),
+            makeParagraph(3, shape),
+          ];
+          const base = documentOf(shape, anchors);
+          const original: Document = {
+            ...base,
+            package:
+              kind === "footnote"
+                ? {
+                    ...base.package,
+                    footnotes: [
+                      {
+                        type: "footnote",
+                        id: 2,
+                        content: [makeParagraph(0x500, shape)],
+                      },
+                    ],
+                  }
+                : {
+                    ...base.package,
+                    endnotes: [
+                      {
+                        type: "endnote",
+                        id: 2,
+                        content: [makeParagraph(0x500, shape)],
+                      },
+                    ],
+                  },
+          };
+          const table = makeTable(shape);
+          const row = table.rows.at(0);
+          const cell = row?.cells.at(0);
+          const paragraph = cell?.content.at(0);
+          if (row === undefined || cell === undefined)
+            throw new Error("Generated one-column tables have a first cell.");
+          if (paragraph?.type !== "paragraph")
+            throw new Error("Generated table cells start with a paragraph.");
+          const reference =
+            kind === "footnote"
+              ? ({ type: "footnoteRef", id: 2 } as const)
+              : ({ type: "endnoteRef", id: 2 } as const);
+          const referenced: Table = {
+            ...table,
+            rows: [
+              {
+                ...row,
+                cells: [
+                  {
+                    ...cell,
+                    content: [
+                      {
+                        ...paragraph,
+                        content: [
+                          ...paragraph.content,
+                          { type: "run", content: [reference] },
+                        ],
+                      },
+                      ...cell.content.slice(1),
+                    ],
+                  },
+                  ...row.cells.slice(1),
+                ],
+              },
+            ],
+          };
+          const inserted = applied(original, {
+            ...insertionFor(shape, referenced),
+            revision: stamp(),
+            newIds: freshIds(),
+          });
+          const target = {
+            story: OP_STORIES.MAIN,
+            blockId: id(0x100),
+            revision: stamp(2_000),
+            newIds: freshIds(2_000),
+          } as const;
+          const withdrawn = applied(
+            inserted.document,
+            deletion === "table"
+              ? { ...target, type: DOCUMENT_OP_TYPES.DELETE_TABLE }
+              : {
+                  ...target,
+                  type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
+                  column: 0,
+                },
+          );
+          expect(withdrawn.document.package.document).toStrictEqual(
+            original.package.document,
+          );
+          expect(
+            withdrawn.document.package[
+              kind === "footnote" ? "footnotes" : "endnotes"
+            ],
+          ).toEqual([]);
+          expect(withdrawn.revisions).toEqual([]);
+          exactInverse(inserted.document, withdrawn);
+        },
+      ),
+      {
+        id: "whole-table and whole-column withdrawal clean up the inserted table's final note reference",
+        numRuns: 100,
       },
     );
   },
