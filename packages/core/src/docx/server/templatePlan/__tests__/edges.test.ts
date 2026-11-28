@@ -428,7 +428,7 @@ describe("applyTemplatePlan edge content", () => {
           `${r("Signed on ")}${control('<w:id w:val="7"/><w:placeholder><w:docPart w:val="ABC"/></w:placeholder><w:showingPlcHdr/><w:dataBinding w:xpath="/a" w:storeItemID="{1}"/><w:date><w:dateFormat w:val="d MMMM yyyy"/><w:lid w:val="en-GB"/></w:date>', "Click to enter a date.")}${r(" by the parties.")}`,
         ),
         p(
-          `${r("Name: ")}${control('<w:alias w:val="Name"/><w:text/>', "[Name]")}`,
+          `${r("Name: ")}${control('<w:rPr><w:rStyle w:val="instructions"/></w:rPr><w:alias w:val="Name"/><w:text/>', "[Name]")}`,
         ),
       ].join(""),
     );
@@ -440,6 +440,8 @@ describe("applyTemplatePlan edge content", () => {
     );
     expect(document).not.toContain("dataBinding");
     expect(document).not.toContain("docPart");
+    // Nor the look of a style the template does not define.
+    expect(document).not.toContain("instructions");
     expect(document).toMatch(
       /<w:sdt><w:sdtPr><w:alias w:val="Name"\/><w:text\/><\/w:sdtPr><w:sdtContent><w:r>(?:<w:rPr>.*?<\/w:rPr>)?<w:t xml:space="preserve">\[Name\]<\/w:t><\/w:r><\/w:sdtContent><\/w:sdt>/u,
     );
