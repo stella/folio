@@ -1,5 +1,15 @@
 # @stll/docx-core
 
+## 0.51.1
+
+### Patch Changes
+
+- [#3817](https://github.com/stella/folio/pull/3817) [`5041ecc`](https://github.com/stella/folio/commit/5041ecc40a0fb7775662ed4e0cb143ac8409bb90) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve exact copied-cut seams and insertion acceptance through pasted review resolution.
+
+- [#3808](https://github.com/stella/folio/pull/3808) [`8a77a79`](https://github.com/stella/folio/commit/8a77a79e4af0c500045b4d01f7205331126e3539) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep accepted nested table merges aligned with their direct batch result.
+
+- [#3820](https://github.com/stella/folio/pull/3820) [`23b4857`](https://github.com/stella/folio/commit/23b48578a03652627b5974b7f45b6175ac1fe169) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve independently reviewable native inline moves when a tracked merge relocates a nested table.
+
 ## 0.51.0
 
 ### Minor Changes

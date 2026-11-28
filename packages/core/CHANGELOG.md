@@ -1,5 +1,25 @@
 # @stll/folio-core
 
+## 0.86.0
+
+### Minor Changes
+
+- [#3824](https://github.com/stella/folio/pull/3824) [`9a3d4c0`](https://github.com/stella/folio/commit/9a3d4c0730de8c4af4f9910eb32af3199e378f52) Thanks [@jan-kubica](https://github.com/jan-kubica)! - The block manifest gives a paragraph's tab stops in effect (`tabStops`: position, alignment and leader, from its style chain and its own `w:tabs`, cleared stops left out). A template plan item's `tabStops` may name a stop's alignment and leader beside a bare left position, and `tabStopsOnly` clears every other stop the paragraph's style sets, so a line laid out by tabs (a signature block) keeps the source's stops. A plan may give a paragraph up to sixteen stops.
+
+- [#3822](https://github.com/stella/folio/pull/3822) [`6af15a5`](https://github.com/stella/folio/commit/6af15a543916a8f8954cca6f96ccd5ca04a78f7d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A plan may name the template section its output is built from (`bodySection`): its page and the headers and footers it shows. Left out, the template's last section as before; a template whose last section is an annex or a signature page names the one holding its sample body.
+
+### Patch Changes
+
+- [#3765](https://github.com/stella/folio/pull/3765) [`92cb96c`](https://github.com/stella/folio/commit/92cb96c78c970d829e6451cb327236bc1c26a2c4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A reference target whose automatic label a template plan writes as text gets its bookmark behind that label, as the source's bookmark stood behind the automatic label it could not hold. A field that shows the target's text then shows what it showed in the source, without the label. Verification expects the label in front of the bookmark and predicts the field's text without it.
+
+- [#3814](https://github.com/stella/folio/pull/3814) [`f063ed3`](https://github.com/stella/folio/commit/f063ed38864e7bb626fe92f6a76df57264307bad) Thanks [@jan-kubica](https://github.com/jan-kubica)! - The block manifest reads the indent a list level gives through a definition that only links a numbering style (`w:numStyleLink`): such a paragraph takes the indent of the linked definition's level, as it takes its label.
+
+- [#3817](https://github.com/stella/folio/pull/3817) [`5041ecc`](https://github.com/stella/folio/commit/5041ecc40a0fb7775662ed4e0cb143ac8409bb90) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve exact copied-cut seams and insertion acceptance through pasted review resolution.
+
+- [#3819](https://github.com/stella/folio/pull/3819) [`ddb93f1`](https://github.com/stella/folio/commit/ddb93f13e418cc00f1e209acde0eba2c05dd5edf) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep batch insertions at pending-join destinations aligned with earlier paragraph splits.
+- Updated dependencies [[`5041ecc`](https://github.com/stella/folio/commit/5041ecc40a0fb7775662ed4e0cb143ac8409bb90), [`8a77a79`](https://github.com/stella/folio/commit/8a77a79e4af0c500045b4d01f7205331126e3539), [`23b4857`](https://github.com/stella/folio/commit/23b48578a03652627b5974b7f45b6175ac1fe169)]:
+  - @stll/docx-core@0.51.1
+
 ## 0.85.0
 
 ### Minor Changes
