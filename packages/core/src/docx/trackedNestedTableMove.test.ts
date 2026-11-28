@@ -311,6 +311,129 @@ test.each(["table", "row", "paragraph", "block"] as const)(
   },
 );
 
+test("a moved nested table keeps proofing endpoints that cross rows", () => {
+  // ISO/IEC 29500-1 §17.13.8.1 pairs proofErr endpoints by kind and
+  // document order. Keep both positions when the whole range is copied.
+  const w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+  const proof = (type: "spellStart" | "spellEnd") =>
+    ({
+      type: "preservedInline",
+      text: "",
+      xml: `<w:proofErr xmlns:w="${w}" w:type="${type}"/>`,
+    }) as const;
+  const first = paragraph("00000003", "Mis");
+  const last = paragraph("00000004", "spelling");
+  const withEnd = { ...last, content: [...last.content, proof("spellEnd")] };
+  const make = (endOutside: boolean): Document => ({
+    package: {
+      document: {
+        content: [
+          {
+            type: "table",
+            columnWidths: [1000, 1200],
+            rows: [
+              {
+                type: "tableRow",
+                cells: [
+                  cell(paragraph("00000001", "Owner")),
+                  cell(
+                    {
+                      ...nested,
+                      rows: [
+                        {
+                          type: "tableRow",
+                          cells: [
+                            cell({
+                              ...first,
+                              content: [proof("spellStart"), ...first.content],
+                            }),
+                          ],
+                        },
+                        {
+                          type: "tableRow",
+                          cells: [cell(endOutside ? last : withEnd)],
+                        },
+                      ],
+                    },
+                    paragraph("00000002"),
+                  ),
+                ],
+              },
+            ],
+          },
+          endOutside
+            ? { ...withEnd, paraId: "00000005" }
+            : paragraph("00000005"),
+        ],
+      },
+    },
+  });
+  const propose = (document: Document) => {
+    const intent = {
+      type: "table",
+      operation: {
+        type: DOCUMENT_OP_TYPES.MERGE_CELLS,
+        story: OP_STORIES.MAIN,
+        blockId: "00000001",
+        top: 0,
+        bottom: 1,
+        left: 0,
+        right: 2,
+      },
+    } as const;
+    const ids = createEditorIntentIdAllocator()(document, intent);
+    return compileEditorIntent(document, {
+      intent,
+      mode: {
+        type: "suggesting",
+        revision: {
+          id: ids.revisionId,
+          author: "Reviewer",
+          date: "2026-11-28T00:00:00Z",
+        },
+        newIds: ids.newIds,
+      },
+    }).andThen(({ ops }) => applyDocumentOps(document, ops));
+  };
+  const source = make(false);
+  const pending = propose(source).unwrap();
+  expect(
+    applyDocumentOps(pending.document, pending.inverse).unwrap().document,
+  ).toStrictEqual(source);
+  const pendingXml = serializeTable(
+    tableOf(pending.document),
+    serializeParagraph,
+  );
+  expect(pendingXml.match(/spell(?:Start|End)/g)).toEqual([
+    "spellStart",
+    "spellEnd",
+    "spellStart",
+    "spellEnd",
+  ]);
+
+  const table = parseSavedTable(pendingXml);
+  const reopened = {
+    package: { document: { content: [table, paragraph("00000005")] } },
+  };
+  const grid = table.formatting?.gridChange;
+  if (grid === undefined)
+    throw new TypeError("Expected the saved grid revision.");
+  for (const decision of Object.values(REVISION_DECISIONS)) {
+    const settled = applyDocumentOp(normalizeForOps(reopened), {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: [grid.id],
+      decision,
+    }).unwrap().document;
+    const xml = serializeTable(tableOf(settled), serializeParagraph);
+    expect(xml.match(/spell(?:Start|End)/g)).toEqual([
+      "spellStart",
+      "spellEnd",
+    ]);
+  }
+  expect(propose(make(true)).isErr()).toBe(true);
+});
+
 const projection = (table: Table): unknown =>
   table.rows.map((row) =>
     row.cells.map((item) => ({

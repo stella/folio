@@ -554,10 +554,12 @@ const movableInlineContent = (
 /** The run move can take the paragraph whole without duplicating an anchor. */
 export const tableMoveSource = (
   paragraph: Paragraph,
-  nested?: Pick<MoveContentContext, "priorRevisions" | "collectBookmark">,
+  nested?: Pick<MoveContentContext, "priorRevisions" | "collectBookmark"> & {
+    proofing?: Set<ProofingKind>;
+  },
 ): TableMoveSource | undefined => {
   const controls: number[] = [];
-  const proofing = new Set<ProofingKind>();
+  const proofing = nested?.proofing ?? new Set<ProofingKind>();
   const pictures = new Set<number>();
   if (
     paragraph.paraId === undefined ||
@@ -573,11 +575,11 @@ export const tableMoveSource = (
       !movableInlineContent(paragraph.content, {
         withinLink: false,
         controls,
-        proofing,
         pictures,
         ...nested,
+        proofing,
       })) ||
-    proofing.size !== 0
+    (nested?.proofing === undefined && proofing.size !== 0)
   )
     return undefined;
   for (const { info } of paragraph.propertyChanges ?? [])
@@ -634,6 +636,7 @@ export const nestedTableMoveSource = (
   table: Table,
 ): NestedTableMoveSource | undefined => {
   let hasBookmarks = false;
+  const proofing = new Set<ProofingKind>();
   const collectBookmark = (marker: BookmarkStart | BookmarkEnd) => {
     hasBookmarks = true;
     return movableBookmark(marker);
@@ -805,7 +808,7 @@ export const nestedTableMoveSource = (
         plain = { ...block, content: native.content };
     }
     const source = tableMoveSource(plain, {
-      ...(move === undefined ? { priorRevisions: revisions } : {}),
+      ...(move === undefined ? { priorRevisions: revisions, proofing } : {}),
       collectBookmark,
     });
     if (source === undefined) return false;
@@ -836,7 +839,7 @@ export const nestedTableMoveSource = (
   const insertedRows = table.rows.filter(
     ({ structuralChange }) => structuralChange === undefined,
   ).length;
-  if (!collect(table)) return undefined;
+  if (!collect(table) || proofing.size !== 0) return undefined;
   const nativeMoves = pairedNativeCellMoves(nativeHalves);
   if (nativeMoves === undefined) return undefined;
   for (const { name, fromRange, toRange } of nativeMoves)
