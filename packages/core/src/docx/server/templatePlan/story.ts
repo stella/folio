@@ -102,6 +102,9 @@ export type AtomKind =
   | "footnoteReference"
   | "endnoteReference"
   | "selfNumber"
+  /** A legacy form field that shows its box or list without a result: the
+   *  field itself, with its form data, is the content. */
+  | "formField"
   | "object";
 
 export type AtomLink =
@@ -122,8 +125,10 @@ export type InlineAtom = {
   element: XmlElement | null;
   /** Fields whose result the atom is part of, outermost first. */
   fields: readonly number[];
-  /** The code of the field a `selfNumber` atom stands for. */
+  /** The code of the field a `selfNumber` or `formField` atom stands for. */
   instruction?: string;
+  /** The form data (`w:ffData`) of the field a `formField` atom stands for. */
+  formData?: XmlElement;
   /** The tracked change the atom is part of, in a reading that keeps them. */
   revision?: AtomRevision;
   /**
@@ -189,7 +194,20 @@ export type StoryField = {
   closed: boolean;
   /** Whether the field sits in the code of another field. */
   nestedInCode: boolean;
+  /** The form data (`w:ffData`) of a legacy form field's begin. */
+  formData?: XmlElement;
 };
+
+/** Legacy form fields: a text box, a check box, a drop-down list. */
+export const FORM_FIELDS: ReadonlySet<string> = new Set([
+  "FORMTEXT",
+  "FORMCHECKBOX",
+  "FORMDROPDOWN",
+]);
+
+/** Whether a field is a legacy form field that carries its form data. */
+export const isFormField = (field: StoryField): boolean =>
+  FORM_FIELDS.has(field.kind) && field.formData !== undefined;
 
 type OpenField = {
   field: StoryField;
@@ -669,7 +687,12 @@ const readRun = (
       case "fldChar": {
         const type = wAttr(child, "fldCharType");
         if (type === "begin") {
-          state.open.push({ field: beginField(walk, ""), phase: "code" });
+          const field = beginField(walk, "");
+          const formData = wChild(child, "ffData");
+          if (formData !== null) {
+            field.formData = formData;
+          }
+          state.open.push({ field, phase: "code" });
         } else if (type === "separate") {
           const top = state.open.at(-1);
           if (top === undefined || top.phase === "result") {
@@ -696,6 +719,22 @@ const readRun = (
                 link,
                 element: null,
                 instruction: top.field.instruction.trim(),
+              });
+            } else if (
+              top.field.result === "" &&
+              top.field.formData !== undefined &&
+              isFormField(top.field)
+            ) {
+              // A box or a list that caches no text shows what its form
+              // data says: the field is the content.
+              pushAtom(walk, {
+                kind: "formField",
+                text: "",
+                runProperties,
+                link,
+                element: null,
+                instruction: top.field.instruction.trim(),
+                formData: top.field.formData,
               });
             }
           }

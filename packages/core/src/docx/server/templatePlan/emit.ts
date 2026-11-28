@@ -44,7 +44,12 @@ import {
   keptDeletedRowOf,
   rowTextOf,
 } from "./revisions";
-import type { AtomLink, AtomRevision, StoryField } from "./story";
+import {
+  type AtomLink,
+  type AtomRevision,
+  isFormField,
+  type StoryField,
+} from "./story";
 import { TemplatePlanError } from "./types";
 import {
   elementChildren,
@@ -183,6 +188,9 @@ export type EmitShared = {
   nextDrawingId: () => number;
   /** A fresh id for a tracked change the output carries. */
   nextRevisionId: () => number;
+  /** The fields of the source's main story: a legacy form field whose
+   *  result the output places whole is written as the field again. */
+  sourceFields?: readonly StoryField[];
 };
 
 export type EmitContext = EmitShared & {
@@ -574,6 +582,21 @@ const plainPieceRunXml = (
               .join(""),
       );
     }
+    case "formField": {
+      const { formData, instruction } = piece.atom ?? {};
+      if (formData === undefined || instruction === undefined) {
+        return Result.ok("");
+      }
+      return Result.ok(
+        [
+          `<${w}:fldChar ${w}:fldCharType="begin">${wSubtreeXml(formData, w)}</${w}:fldChar>`,
+          `<${w}:instrText xml:space="preserve"> ${escapeXmlText(instruction)} </${w}:instrText>`,
+          `<${w}:fldChar ${w}:fldCharType="end"/>`,
+        ]
+          .map((content) => run(content))
+          .join(""),
+      );
+    }
     case "object": {
       const transferred = transferObject(piece, context);
       if (Result.isError(transferred)) {
@@ -618,7 +641,93 @@ const mergedPieces = (pieces: readonly ExpectedPiece[]): ExpectedPiece[] => {
   return merged;
 };
 
+/** The legacy form field of the source a piece is the result of, or null. */
+const formFieldOf = (
+  piece: ExpectedPiece | undefined,
+  context: EmitContext,
+): StoryField | null => {
+  if (piece?.origin !== "document" || context.sourceFields === undefined) {
+    return null;
+  }
+  for (const index of piece.atom?.fields ?? []) {
+    const field = context.sourceFields[index];
+    if (field !== undefined && isFormField(field)) {
+      return field;
+    }
+  }
+  return null;
+};
+
+/** Whether a run of pieces is the whole result of a form field that sits
+ *  in one paragraph, with no tracked change in it. */
+const isWholeResult = (
+  field: StoryField,
+  group: readonly ExpectedPiece[],
+): boolean =>
+  field.closed &&
+  field.paragraphOrdinal === field.endParagraphOrdinal &&
+  group.map(({ text }) => text).join("") === field.result &&
+  group.every((piece) => piece.atom?.revision === undefined);
+
+/**
+ * Runs of pieces, a legacy form field's result inside the field again: the
+ * box, list or text input a reader fills in, with its form data. Only a
+ * field whose whole result stands here, in one paragraph, is written so;
+ * any other keeps its text.
+ */
 const piecesRunsXml = (
+  pieces: readonly ExpectedPiece[],
+  context: EmitContext,
+): RunsResult => {
+  const { w } = context.prefixes;
+  const out: string[] = [];
+  let at = 0;
+  while (at < pieces.length) {
+    const field = formFieldOf(pieces[at], context);
+    let end = at + 1;
+    // A run of pieces of one form field, or of pieces of none.
+    while (end < pieces.length && formFieldOf(pieces[end], context) === field) {
+      end += 1;
+    }
+    const group = pieces.slice(at, end);
+    at = end;
+    const runs = linkedRunsXml(group, context);
+    if (Result.isError(runs)) {
+      return runs;
+    }
+    if (
+      field === null ||
+      field.formData === undefined ||
+      !isWholeResult(field, group)
+    ) {
+      out.push(runs.value);
+      continue;
+    }
+    const properties = runPropertiesXml({
+      prefix: w,
+      signature: group[0]?.signature ?? "",
+      escapeAttribute: escapeXmlAttribute,
+    });
+    const char = (inner: string): string =>
+      `<${w}:r>${properties}${inner}</${w}:r>`;
+    out.push(
+      [
+        char(
+          `<${w}:fldChar ${w}:fldCharType="begin">${wSubtreeXml(field.formData, w)}</${w}:fldChar>`,
+        ),
+        char(
+          `<${w}:instrText xml:space="preserve"> ${escapeXmlText(field.instruction.trim())} </${w}:instrText>`,
+        ),
+        char(`<${w}:fldChar ${w}:fldCharType="separate"/>`),
+        runs.value,
+        char(`<${w}:fldChar ${w}:fldCharType="end"/>`),
+      ].join(""),
+    );
+  }
+  return Result.ok(out.join(""));
+};
+
+const linkedRunsXml = (
   pieces: readonly ExpectedPiece[],
   context: EmitContext,
 ): RunsResult => {

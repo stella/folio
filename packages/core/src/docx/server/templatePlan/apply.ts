@@ -911,6 +911,7 @@ const writeOutput = async ({
     noteDrawingIds(part.root);
   }
   const shared: EmitShared = {
+    sourceFields: source.story.state.fields,
     styles: templateCharacterStyles(template),
     sourceRelationships: sourceResources.value.relationships,
     sourceMedia,
