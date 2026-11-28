@@ -2511,12 +2511,14 @@ export type TemplatePlanSourceHeaders = {
         part: string;
         paragraphs: number;
         created: boolean;
+        section?: number;
     }[];
     leftOut: {
         firstPageParts: number;
         evenPageParts: number;
         sharedParts: number;
         unsupportedObjects: number;
+        laterSectionParts: number;
     };
 };
 
