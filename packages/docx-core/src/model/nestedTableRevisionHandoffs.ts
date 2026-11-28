@@ -88,8 +88,16 @@ const revisionSlots = (table: Table): ReadonlyMap<number, string> => {
       slots.set(info.id, `${position}:${type}:${index}`);
   };
   const owners = [table];
+  let paragraphIndex = 0;
   visitBlocks(tableBlocks(table), (block) => {
     if (block.type === "table") owners.push(block);
+    if (block.type !== "paragraph") return;
+    const position = `paragraph:${paragraphIndex++}`;
+    const mark = block.pPrMark;
+    if (mark !== undefined) slots.set(mark.info.id, `${position}:${mark.kind}`);
+    const content = block.content.at(1);
+    if (content?.type === "moveFrom" || content?.type === "moveTo")
+      slots.set(content.info.id, `${position}:${content.type}`);
   });
   for (const [index, owner] of owners.entries()) {
     const grid = owner.formatting?.gridChange;

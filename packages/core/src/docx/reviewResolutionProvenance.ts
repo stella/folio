@@ -879,6 +879,35 @@ const validPictureHandoff: ValidHandoff = (source, destination) =>
 const validRevisionHandoff: ValidHandoff = (source, destination) =>
   isRevisionId(source) && isRevisionId(destination);
 
+const validMoveRangeHandoffs = (value: unknown): boolean => {
+  if (value === undefined) return true;
+  if (!Array.isArray(value) || value.length === 0) return false;
+  const ids = new Set<number>();
+  const names = new Set<string>();
+  for (const pair of value) {
+    if (!Array.isArray(pair) || pair.length !== 2) return false;
+    for (const range of pair) {
+      if (!record(range)) return false;
+      const { fromRange, toRange, name } = range;
+      if (
+        !isRevisionId(fromRange) ||
+        !isRevisionId(toRange) ||
+        fromRange === toRange ||
+        typeof name !== "string" ||
+        name.length === 0 ||
+        ids.has(fromRange) ||
+        ids.has(toRange) ||
+        names.has(name)
+      )
+        return false;
+      ids.add(fromRange);
+      ids.add(toRange);
+      names.add(name);
+    }
+  }
+  return true;
+};
+
 const isTableMove = (value: unknown): value is TableMove =>
   record(value) &&
   typeof value["source"] === "string" &&
@@ -919,6 +948,7 @@ const isNestedTableMove = (value: unknown): value is NestedTableMove => {
         pair.every((id) => typeof id === "string" && /^[\da-f]{8}$/iu.test(id)),
     ) &&
     validIdentityHandoffs(value["revisions"], validRevisionHandoff) &&
+    validMoveRangeHandoffs(value["moveRanges"]) &&
     validIdentityHandoffs(value["controls"], validControlHandoff) &&
     validIdentityHandoffs(value["pictures"], validPictureHandoff)
   );
