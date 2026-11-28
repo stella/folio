@@ -3273,31 +3273,26 @@ const gapAnchorBeforeFollower = ({
   }
   if (next?.type.name !== "paragraph") return anchor;
   const follower =
-    projection.paragraphStartingAt(position) ??
-    panic("An insertion lost its following paragraph.");
+    projection.paragraphStartingAt(position) ?? invalidInsertionReplay();
   return removedBlockIds.has(follower.blockId)
     ? anchor
     : { type: "paragraph", at: { type: "before", blockId: follower.blockId } };
 };
 
+const invalidInsertionReplay = (): never => panic("Invalid insertion replay.");
+
 type InsertionGapOptions = {
-  operation: BlockInsertion | TableInsertion;
-  /** The public request before pending-join placement changes its anchor. */
-  sourceOperation: BlockInsertion | TableInsertion;
+  operation: FolioDocumentOperation;
   intents: readonly EditorIntent[];
   projection: CanonicalProjection;
   /** `BesidePendingJoinOptions.landedEarlier`, for the gap of a block put before. */
   landedEarlier?: ReadonlySet<number>;
-  /** Earlier inserted paragraph boundaries, which can end a pending join. */
-  paragraphsLandedEarlier?: ReadonlySet<number>;
 };
 
 /** The physical anchor and accepted source gap, before this batch inserts. */
 const canonicalInsertionGap = ({
   landedEarlier,
-  paragraphsLandedEarlier,
   operation,
-  sourceOperation,
   intents,
   projection,
 }: InsertionGapOptions) => {
@@ -3338,18 +3333,17 @@ const canonicalInsertionGap = ({
     if (type === "containerStart")
       anchor = { type, at: { type: "after", blockId } };
     else if (type === undefined || side === undefined)
-      return panic("A table insertion needs an anchor and side.");
+      return invalidInsertionReplay();
     else anchor = { type, at: { type: side, blockId } };
   } else return undefined;
-  const paragraph = projection.paragraph(anchor.at.blockId);
-  if (paragraph === undefined)
-    panic("A resolved insertion lost its source anchor.");
+  const paragraph =
+    projection.paragraph(anchor.at.blockId) ?? invalidInsertionReplay();
   const outer =
     anchor.type === "table"
       ? findOutermostTableBoundary(projection.doc, paragraph.start - 1)
       : null;
   if (anchor.type === "table" && outer === null)
-    panic("A resolved table insertion lost its source table.");
+    return invalidInsertionReplay();
   let boundary: number;
   if (anchor.type === "containerStart")
     boundary = projection.doc.resolve(paragraph.start - 1).start();
@@ -3360,46 +3354,28 @@ const canonicalInsertionGap = ({
           1 +
           (anchor.at.type === "after" ? paragraph.node.nodeSize : 0)
         : outer[anchor.at.type];
+  if (!placesBlock(operation)) return undefined;
   const source =
-    projection.paragraph(sourceOperation.blockId) ??
-    projection.paragraph(operation.blockId);
-  if (source === undefined) panic("An insertion lost its source block.");
+    projection.paragraph(operation.blockId) ?? invalidInsertionReplay();
   const sourceTable = findOutermostTableBoundary(
     projection.doc,
     source.start - 1,
   );
-  const blockSide =
-    sourceOperation.type === "insertBeforeBlock" ? "before" : "after";
   const gapOf = (at: number, side: "before" | "after") =>
     side === "before"
       ? gapStartAsTheBatchRuns(projection.doc, at, landedEarlier)
       : insertionGap(projection.doc, at, side);
-  const requestedSide = isBlockInsertion(sourceOperation)
-    ? blockSide
-    : (sourceOperation.position ?? "after");
-  const sourceBoundary =
-    source.start - 1 + (requestedSide === "after" ? source.node.nodeSize : 0);
-  const joinEndedAtSource =
-    sourceTable === null &&
-    requestedSide === "after" &&
-    boundary > sourceBoundary &&
-    [...(paragraphsLandedEarlier ?? [])].some(
-      (position) => position >= sourceBoundary && position <= boundary,
-    );
-  let gapBoundary = boundary;
-  if (sourceTable !== null) gapBoundary = sourceTable[requestedSide];
-  else if (joinEndedAtSource) gapBoundary = sourceBoundary;
+  const requestedSide = placementSide(operation);
   return {
     anchor,
     boundary,
-    joinEndedAtSource,
     // Lowering an insertion after a table to before its next paragraph
     // changes its physical anchor, not its accepted source gap. Before a
     // block, the gap stops where the placement does: at a paragraph an
     // earlier operation puts among the blocks accepting removes
     // (`gapStartAsTheBatchRuns`).
     gap: gapOf(
-      gapBoundary,
+      sourceTable?.[requestedSide] ?? boundary,
       sourceTable === null ? anchor.at.type : requestedSide,
     ),
   };
@@ -3408,14 +3384,14 @@ const canonicalInsertionGap = ({
 type PlaceInsertionIntentsOptions = {
   intents: readonly EditorIntent[];
   anchor: InsertionAnchor;
-  placement: "first" | "following" | "followingParagraph" | "replayFirst";
+  paragraphAfter: "empty" | "none" | undefined;
 };
 
 /** Placement changes; authored formatting, lists and operation ownership stay put. */
 const placeInsertionIntents = ({
   intents,
   anchor,
-  placement,
+  paragraphAfter,
 }: PlaceInsertionIntentsOptions): readonly EditorIntent[] =>
   intents.map((intent) => {
     if (intent.type === "insertParagraphs") {
@@ -3470,11 +3446,6 @@ const placeInsertionIntents = ({
           side: anchor.at.type,
         },
       };
-    let paragraphAfter: "empty" | "none" = "none";
-    if (placement === "followingParagraph" || placement === "replayFirst")
-      paragraphAfter = "empty";
-    else if (placement === "first" && operation.anchor === "paragraph")
-      paragraphAfter = operation.paragraphAfter ?? "empty";
     return {
       type: "tableBlock",
       operation: {
@@ -3488,7 +3459,11 @@ const placeInsertionIntents = ({
         operation.separated !== undefined
           ? { separated: operation.separated }
           : {}),
-        paragraphAfter,
+        paragraphAfter:
+          paragraphAfter ??
+          (operation.anchor === "paragraph"
+            ? (operation.paragraphAfter ?? "empty")
+            : "none"),
       },
     };
   });
@@ -6945,15 +6920,6 @@ export class CanonicalPublicOperations {
     const inputOrder = new Map(
       batch.operations.map(({ id }, index) => [id, index]),
     );
-    const inputOperationById = new Map(
-      batch.operations.map((operation) => [operation.id, operation]),
-    );
-    const sourceBlockOperationOf = ({ operation }: AdmittedOperation) => {
-      const source = inputOperationById.get(operation.id);
-      if (source === undefined || !placesBlock(source))
-        return panic("A resolved insertion lost its source operation.");
-      return source;
-    };
     const batchRemovedBlockIds = new Set(
       batch.mode === "direct"
         ? resolved.flatMap(({ operation, keepsTablesApart }) =>
@@ -6965,10 +6931,13 @@ export class CanonicalPublicOperations {
         : [],
     );
     const orderOf = ({ operation }: AdmittedOperation) => {
-      const order = inputOrder.get(operation.id);
-      if (order === undefined)
-        panic("A resolved insertion lost its batch order.");
-      return order;
+      return inputOrder.get(operation.id) ?? invalidInsertionReplay();
+    };
+    const sourceBlockOperationOf = (member: AdmittedOperation) => {
+      const source = batch.operations.at(orderOf(member));
+      if (source === undefined || !placesBlock(source))
+        return invalidInsertionReplay();
+      return source;
     };
     /**
      * Where an insertion stands among those at its gap: in batch order, but a
@@ -6982,45 +6951,43 @@ export class CanonicalPublicOperations {
         ? orderOf(member) - batch.operations.length
         : orderOf(member);
     const gaps = new Map<number, AdmittedOperation[]>();
-    const joinEndedAtSource = new Set<AdmittedOperation>();
+    const sourceJoinEnded = new Set<AdmittedOperation>();
     for (const member of executionOrder) {
       if (!placesBlock(member.operation)) continue;
       const sourceOperation = sourceBlockOperationOf(member);
-      const inputIndex = orderOf(member);
-      const earlierParagraphAtSource = batch.operations
-        .slice(0, inputIndex)
-        .some(
-          (operation) =>
-            isBlockInsertion(operation) &&
-            placementSide(operation) === "after" &&
-            operation.blockId === sourceOperation.blockId,
+      const ended =
+        member.operation.blockId !== sourceOperation.blockId &&
+        batch.operations
+          .slice(0, orderOf(member))
+          .some(
+            (operation) =>
+              operation.type === "insertAfterBlock" &&
+              operation.blockId === sourceOperation.blockId,
+          );
+      const place =
+        canonicalInsertionGap({
+          operation: member.operation,
+          intents: member.intents,
+          projection: projected.value,
+          landedEarlier: besideDeletions.blocksLandedEarlier(
+            member.operation.id,
+          ),
+        }) ?? invalidInsertionReplay();
+      let { gap } = place;
+      if (ended) {
+        sourceJoinEnded.add(member);
+        const source =
+          projected.value.paragraph(sourceOperation.blockId) ??
+          invalidInsertionReplay();
+        gap = insertionGap(
+          projected.value.doc,
+          source.start - 1 + source.node.nodeSize,
+          "after",
         );
-      const place = canonicalInsertionGap({
-        operation: member.operation,
-        sourceOperation,
-        intents: member.intents,
-        projection: projected.value,
-        ...(orderOf(member) === 0
-          ? {}
-          : {
-              landedEarlier: besideDeletions.blocksLandedEarlier(
-                member.operation.id,
-              ),
-            }),
-        ...(earlierParagraphAtSource
-          ? {
-              paragraphsLandedEarlier: besideDeletions.landedEarlier(
-                member.operation.id,
-              ),
-            }
-          : {}),
-      });
-      if (place === undefined)
-        panic("A resolved block insertion lost its placement.");
-      if (place.joinEndedAtSource) joinEndedAtSource.add(member);
-      const members = gaps.get(place.gap) ?? [];
+      }
+      const members = gaps.get(gap) ?? [];
       members.push(member);
-      gaps.set(place.gap, members);
+      gaps.set(gap, members);
     }
     const indices = new Map(
       executionOrder.map((member, index) => [member, index] as const),
@@ -7029,12 +6996,10 @@ export class CanonicalPublicOperations {
     const groupOf = new Map<AdmittedOperation, readonly AdmittedOperation[]>();
     for (const members of gaps.values()) {
       if (members.length < 2) continue;
-      const first = members.at(0),
-        last = members.at(-1);
-      const from = first === undefined ? undefined : indices.get(first);
-      const to = last === undefined ? undefined : indices.get(last);
-      if (from === undefined || to === undefined)
-        panic("An insertion group lost its execution interval.");
+      const first = members.at(0) ?? invalidInsertionReplay();
+      const last = members.at(-1) ?? invalidInsertionReplay();
+      const from = indices.get(first) ?? invalidInsertionReplay();
+      const to = indices.get(last) ?? invalidInsertionReplay();
       intervals.push({ first: from, last: to });
       for (const member of members) groupOf.set(member, members);
     }
@@ -7096,15 +7061,13 @@ export class CanonicalPublicOperations {
     };
     /** The anchor a gap's insertions replay against, read from its first. */
     const replayAnchorOf = (first: AdmittedOperation) => {
-      if (!placesBlock(first.operation))
-        return panic("An insertion gap lost its block placement.");
+      if (!placesBlock(first.operation)) return invalidInsertionReplay();
       const place =
         canonicalInsertionGap({
           operation: first.operation,
-          sourceOperation: sourceBlockOperationOf(first),
           intents: first.intents,
           projection: projected.value,
-        }) ?? panic("An admitted insertion lost its source placement.");
+        }) ?? invalidInsertionReplay();
       // Beside a table, by the paragraph on that side, unless the batch
       // removes that one first.
       const lowered = tableSideAsParagraph(place.anchor, projected.value);
@@ -7120,9 +7083,8 @@ export class CanonicalPublicOperations {
     };
     const windows = new Map<AdmittedOperation, readonly AdmittedOperation[]>();
     for (const interval of merged) {
-      const first = executionOrder.at(interval.first);
-      if (first === undefined)
-        panic("An insertion window lost its first operation.");
+      const first =
+        executionOrder.at(interval.first) ?? invalidInsertionReplay();
       const window = executionOrder.slice(interval.first, interval.last + 1);
       if (
         batchLease === undefined &&
@@ -7225,7 +7187,7 @@ export class CanonicalPublicOperations {
               intents: placeInsertionIntents({
                 intents: member.intents,
                 anchor: replayAnchorOf(lead),
-                placement: "following",
+                paragraphAfter: "none",
               }),
             },
           });
@@ -7279,7 +7241,7 @@ export class CanonicalPublicOperations {
         member: AdmittedMember;
         operation: AdmittedOperation;
       }[] = [];
-      const tablePredecessorOf = new Map<AdmittedMember, AdmittedMember>();
+      const replaysAfterTable = new Set<AdmittedMember>();
       const scheduled = new Set<AdmittedOperation>();
       for (const member of admitted) {
         if (scheduled.has(member.resolvedOperation)) continue;
@@ -7297,54 +7259,37 @@ export class CanonicalPublicOperations {
           ordered.push({ member, operation: member.resolvedOperation });
           continue;
         }
-        const placementFirst = partners.toSorted(
-          (left, right) =>
-            placementOrderOf(left.resolvedOperation) -
-            placementOrderOf(right.resolvedOperation),
-        )[0];
-        if (placementFirst === undefined)
-          panic("An insertion group lost its first placement.");
-        const sourceBlockIds = new Set(
-          partners.map(({ resolvedOperation: entry }) => {
-            const source = inputOperationById.get(entry.operation.id);
-            if (source === undefined || !placesBlock(source))
-              return panic("A replayed insertion lost its source.");
-            return source.blockId;
-          }),
-        );
-        const sourceSides = new Set(
-          partners.map(({ resolvedOperation: entry }) => {
-            const source = inputOperationById.get(entry.operation.id);
-            if (source === undefined || !placesBlock(source))
-              return panic("A replayed insertion lost its source side.");
-            return placementSide(source);
-          }),
-        );
+        const source = sourceBlockOperationOf(first.resolvedOperation);
         // A paragraph inserted after a pending-join source ends that join.
         // A following table at the same authored side replays from the far
         // edge, chaining through the block just inserted so batch order wins.
         const reverseReplay =
-          sourceBlockIds.size === 1 &&
-          sourceSides.size === 1 &&
-          sourceSides.has("after") &&
+          placementSide(source) === "after" &&
+          partners.every(({ resolvedOperation: partnerOperation }) => {
+            const other = sourceBlockOperationOf(partnerOperation);
+            return (
+              other.blockId === source.blockId &&
+              placementSide(other) === "after"
+            );
+          }) &&
           partners.some(({ resolvedOperation: entry }) =>
             placesTable(entry.operation),
           ) &&
           partners.some(({ resolvedOperation: entry }) =>
-            joinEndedAtSource.has(entry),
+            sourceJoinEnded.has(entry),
           );
-        const anchorSource = reverseReplay ? placementFirst : first;
-        const anchor = replayAnchorOf(anchorSource.resolvedOperation);
-        let replayDirection = -1;
-        if (!reverseReplay && anchor.at.type === "before") replayDirection = 1;
+        let anchor = replayAnchorOf(first.resolvedOperation);
         const placed = partners.toSorted(
           (left, right) =>
-            (placementOrderOf(left.resolvedOperation) -
-              placementOrderOf(right.resolvedOperation)) *
-            replayDirection,
+            placementOrderOf(left.resolvedOperation) -
+            placementOrderOf(right.resolvedOperation),
         );
+        if (reverseReplay || anchor.at.type !== "before") placed.reverse();
+        if (reverseReplay) {
+          const anchorSource = placed.at(-1) ?? invalidInsertionReplay();
+          anchor = replayAnchorOf(anchorSource.resolvedOperation);
+        }
         let replayAnchor = anchor;
-        let followsInsertedParagraph = false;
         for (const [index, partner] of placed.entries()) {
           const previous = index === 0 ? undefined : placed[index - 1];
           if (
@@ -7353,12 +7298,16 @@ export class CanonicalPublicOperations {
             placesTable(previous.resolvedOperation.operation) &&
             isBlockInsertion(partner.resolvedOperation.operation)
           )
-            tablePredecessorOf.set(partner, previous);
-          let placement: PlaceInsertionIntentsOptions["placement"] =
-            "following";
-          if (index === 0) placement = reverseReplay ? "replayFirst" : "first";
-          else if (reverseReplay && followsInsertedParagraph)
-            placement = "followingParagraph";
+            replaysAfterTable.add(partner);
+          let paragraphAfter: PlaceInsertionIntentsOptions["paragraphAfter"] =
+            "none";
+          if (index === 0) paragraphAfter = reverseReplay ? "empty" : undefined;
+          else if (
+            reverseReplay &&
+            previous !== undefined &&
+            isBlockInsertion(previous.resolvedOperation.operation)
+          )
+            paragraphAfter = "empty";
           scheduled.add(partner.resolvedOperation);
           ordered.push({
             member: partner,
@@ -7367,15 +7316,12 @@ export class CanonicalPublicOperations {
               intents: placeInsertionIntents({
                 intents: partner.resolvedOperation.intents,
                 anchor: replayAnchor,
-                placement,
+                paragraphAfter,
               }),
             },
           });
-          followsInsertedParagraph = isBlockInsertion(
-            partner.resolvedOperation.operation,
-          );
           if (!reverseReplay) continue;
-          if (followsInsertedParagraph) {
+          if (isBlockInsertion(partner.resolvedOperation.operation)) {
             const paragraphId = plainInsertedParagraphIds(partner.ops)?.at(-1);
             if (paragraphId !== undefined)
               replayAnchor = {
@@ -7405,13 +7351,11 @@ export class CanonicalPublicOperations {
           declinedMember.resolvedOperation,
           declinedMember.prepared,
         );
-      const replayedTableBlockId = new Map<AdmittedMember, string>();
+      let replayedTableBlockId: string | undefined;
       for (const { member, operation: replayOperation } of ordered) {
-        const tablePredecessor = tablePredecessorOf.get(member);
-        const tableBlockId =
-          tablePredecessor === undefined
-            ? undefined
-            : replayedTableBlockId.get(tablePredecessor);
+        const tableBlockId = replaysAfterTable.has(member)
+          ? replayedTableBlockId
+          : undefined;
         const operationToReplay =
           tableBlockId === undefined
             ? replayOperation
@@ -7423,7 +7367,7 @@ export class CanonicalPublicOperations {
                     type: "table",
                     at: { type: "before", blockId: tableBlockId },
                   },
-                  placement: "following",
+                  paragraphAfter: "none",
                 }),
               };
         const idLease =
@@ -7438,11 +7382,9 @@ export class CanonicalPublicOperations {
         let reservedBlockIds = session.reservedBlockIds;
         let paragraphAllocationLease: IdLease | undefined;
         if (paragraphReplay.type === "admitted") {
-          paragraphAllocationLease = paragraphReplay.leases.get(
-            operationToReplay.operation.id,
-          );
-          if (paragraphAllocationLease === undefined)
-            panic("An insertion lost its paragraph lease.");
+          paragraphAllocationLease =
+            paragraphReplay.leases.get(operationToReplay.operation.id) ??
+            invalidInsertionReplay();
         } else {
           const reserved = new Set(session.reservedBlockIds);
           for (const other of admitted) {
@@ -7506,8 +7448,7 @@ export class CanonicalPublicOperations {
           tableInsertion === undefined
             ? undefined
             : modelParagraphIdsIn([tableInsertion.table]).at(0);
-        if (insertedTableBlockId !== undefined)
-          replayedTableBlockId.set(member, insertedTableBlockId);
+        replayedTableBlockId = insertedTableBlockId;
         commitOperation(operationToReplay, prepared);
       }
       nextRevisionId = Math.max(nextRevisionId, admissionRevisionId);
