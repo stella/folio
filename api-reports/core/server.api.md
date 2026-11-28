@@ -2505,6 +2505,12 @@ export type TemplatePlanSectionPage = {
 };
 
 // @public
+export type TemplatePlanSourceComments = {
+    kept: number;
+    leftOut: number;
+};
+
+// @public
 export type TemplatePlanSourceHeaders = {
     kept: {
         family: "header" | "footer";

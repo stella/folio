@@ -35,7 +35,23 @@ const WORDPROCESSINGML =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.";
 
 /** The comments part and the parts that extend it, by what they hold. */
-export const COMMENT_PARTS = {
+/** What names one of the comment parts in a package. */
+export type CommentPartDefinition = {
+  type: string;
+  contentType: string;
+  fileName: string;
+};
+
+export type CommentPartKind =
+  | "comments"
+  | "commentsExtended"
+  | "commentsIds"
+  | "commentsExtensible"
+  | "people";
+
+export const COMMENT_PARTS: Readonly<
+  Record<CommentPartKind, CommentPartDefinition>
+> = {
   comments: {
     type: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments",
     contentType: `${WORDPROCESSINGML}comments+xml`,
@@ -61,9 +77,9 @@ export const COMMENT_PARTS = {
     contentType: `${WORDPROCESSINGML}people+xml`,
     fileName: "people.xml",
   },
-} as const;
+};
 
-export type CommentExtension = Exclude<keyof typeof COMMENT_PARTS, "comments">;
+export type CommentExtension = Exclude<CommentPartKind, "comments">;
 
 export const COMMENT_EXTENSIONS: readonly CommentExtension[] = [
   "commentsExtended",
