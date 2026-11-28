@@ -9,7 +9,10 @@ import {
   cloneListCounterState,
   createListCounterState,
 } from "../../prosemirror/listMarker";
-import { paragraphNumberingAttr } from "../../prosemirror/numberingAttr";
+import {
+  paragraphNumberingAttr,
+  paragraphNumberingFromAttrValue,
+} from "../../prosemirror/numberingAttr";
 import type { ParagraphAttrs } from "../../prosemirror/schema/nodes";
 import type { Document, Paragraph } from "../../types/document";
 import { toFlowBlocks } from "./toFlowBlocks";
@@ -285,6 +288,44 @@ describe("toFlowBlocks counter sharing by abstractNumId", () => {
       "final",
       "original",
     ]);
+  });
+
+  test("a pending property change can retain a style-derived original marker", () => {
+    const streams = {
+      final: createListCounterState(),
+      original: createListCounterState(),
+    };
+    const projected = advanceVisibleListMarker(
+      {
+        _propertyChanges: [
+          {
+            type: "paragraphPropertyChange",
+            info: INS_MARK.info,
+            resolvesWith: 2,
+            previousFormatting: {
+              numPrFromStyle: paragraphNumberingFromAttrValue({
+                kind: "reference",
+                numId: 7,
+                ilvl: 0,
+              }),
+              listMarkerTemplate: "(%1)",
+              listNumFmt: "decimal",
+            },
+          },
+        ],
+      },
+      streams,
+    );
+
+    expect(projected).toMatchObject({
+      marker: "(1)",
+      stream: "original",
+      counterAttrs: {
+        numPrFromStyle: { kind: "reference", numId: 7, ilvl: 0 },
+      },
+    });
+    expect(streams.final.counters.size).toBe(0);
+    expect(streams.original.counters.get(7)?.at(0)).toBe(1);
   });
 
   test("reader labels count paragraphs whose numbering comes from their style", () => {

@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "title": "PINNED #1738, reported seed 810354176: a suggested join into a style-numbered heading retains its original marker while showing the pending joined properties",
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "styleNumbered",
+  "mode": "suggested",
+  "seed": 810354176,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 2698284886,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "483CD5EB",
+          "separator": " "
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from collisions flow seed 810354176"
+}
