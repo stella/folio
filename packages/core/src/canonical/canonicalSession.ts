@@ -1887,12 +1887,13 @@ const intentStory = (intent: EditorIntent): OpStory => {
     case "insertHyperlink":
     case "replaceFragment":
     case "pasteBlocks":
-    case "moveFragment":
-    case "moveBlocks":
     case "replaceText":
     case "formatRun":
     case "insertAtom":
       return intent.from.story;
+    case "moveFragment":
+    case "moveBlocks":
+      return intent.target.story;
     case "generateTOC":
     case "splitParagraph":
     case "formatParagraph":

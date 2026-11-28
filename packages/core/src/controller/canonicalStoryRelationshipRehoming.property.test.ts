@@ -21,6 +21,7 @@ import {
   DOCUMENT_OP_TYPES,
   OP_STORIES,
   type OpStory,
+  paragraphLength,
 } from "@stll/docx-core/ops";
 
 import { assertExactModel } from "../../../../test/exactModel";
@@ -66,6 +67,13 @@ type Placement = {
   selectiveSave: boolean;
 };
 
+type MovePlacement = {
+  source: (typeof STORY_PARTS)[number];
+  destination: (typeof STORY_PARTS)[number];
+  route: "fragment" | "blocks";
+  selectiveSave: boolean;
+};
+
 const placementArbitrary: fc.Arbitrary<Placement> = fc
   .record({
     source: fc.constantFrom(...STORY_PARTS),
@@ -91,6 +99,36 @@ const EVERY_PAIR: [Placement][] = STORY_PARTS.flatMap((source) =>
     destination,
     route: index % 2 === 0 ? "intent" : "operation",
     suggesting: index % 4 < 2,
+    selectiveSave: index % 3 === 0,
+  },
+]);
+
+const EDITABLE_STORY_PARTS = STORY_PARTS.filter(
+  ({ story }) => story !== "comments",
+);
+
+const movePlacementArbitrary: fc.Arbitrary<MovePlacement> = fc
+  .record({
+    source: fc.constantFrom(...EDITABLE_STORY_PARTS),
+    destination: fc.constantFrom(...EDITABLE_STORY_PARTS),
+    route: fc.constantFrom("fragment" as const, "blocks" as const),
+    selectiveSave: fc.boolean(),
+  })
+  .filter(({ source, destination }) => source.name !== destination.name);
+
+const EVERY_MOVE_PAIR: [MovePlacement][] = EDITABLE_STORY_PARTS.flatMap(
+  (source) =>
+    EDITABLE_STORY_PARTS.filter(({ name }) => name !== source.name).map(
+      (destination) => ({
+        source,
+        destination,
+      }),
+    ),
+).map(({ source, destination }, index): [MovePlacement] => [
+  {
+    source,
+    destination,
+    route: index % 2 === 0 ? "fragment" : "blocks",
     selectiveSave: index % 3 === 0,
   },
 ]);
@@ -193,6 +231,62 @@ const placeInto = (
   };
 };
 
+const moveInto = (
+  session: CanonicalSession,
+  document: Document,
+  {
+    paragraph,
+    from,
+    to,
+    route,
+  }: {
+    paragraph: Paragraph;
+    from: RelationshipStory;
+    to: RelationshipStory;
+    route: MovePlacement["route"];
+  },
+): { commit: CanonicalCommit; state: EditorState; story: OpStory } => {
+  if (from === "comments" || to === "comments")
+    panic("A comment is not an independently projected editor story.");
+  const sourceId = paragraph.paraId ?? panic("The source has no paragraph id.");
+  const target =
+    paragraphsHolding(document, to, "").at(0) ??
+    panic("The destination has no paragraph.");
+  const targetId = target.paraId ?? panic("The target has no paragraph id.");
+  const { paraId: _sourceId, ...fragment } = paragraph;
+  const range = {
+    from: { story: from, blockId: sourceId, offset: 0 },
+    to: { story: from, blockId: sourceId, offset: paragraphLength(paragraph) },
+    target: {
+      story: to,
+      blockId: targetId,
+      offset: 0,
+    },
+  };
+  const state = stateOf(session, to);
+  const commit =
+    route === "fragment"
+      ? session
+          .prepareIntent(state, {
+            type: "moveFragment",
+            ...range,
+            openStart: 1,
+            openEnd: 1,
+            paragraphs: [fragment],
+          })
+          .unwrap()
+      : session
+          .prepareIntent(state, {
+            type: "moveBlocks",
+            ...range,
+            openStart: 1,
+            openEnd: 1,
+            blocks: [fragment],
+          })
+          .unwrap();
+  return { commit, state, story: to };
+};
+
 const placements = () =>
   fc.asyncProperty(placementArbitrary, async (placement) => {
     const { source, destination, route, suggesting, selectiveSave } = placement;
@@ -249,6 +343,52 @@ const placements = () =>
     assertExactModel(session.captureSaveSnapshot().document, before);
   });
 
+const moves = () =>
+  fc.asyncProperty(movePlacementArbitrary, async (placement) => {
+    const { source, destination, route, selectiveSave } = placement;
+    if (source.story === "comments" || destination.story === "comments")
+      panic("A move case must use independently projected editor stories.");
+    const opened = await read(await storyRelationshipPackage());
+    const session = createCanonicalSession(opened).unwrap();
+    const before = session.captureSaveSnapshot().document;
+    const paragraph = structuredClone(
+      only(paragraphsHolding(opened, source.story, sourceText(source.name))),
+    );
+    const { commit, state, story } = moveInto(session, opened, {
+      paragraph,
+      from: source.story,
+      to: destination.story,
+      route,
+    });
+    const after = state.apply(commit.transaction);
+    commit.publish().unwrap();
+    const held = pictureAndLink(
+      only(
+        paragraphsHolding(
+          session.captureSaveSnapshot().document,
+          destination.story,
+          sourceText(source.name),
+        ),
+      ),
+    );
+    expect(held.image.rId).not.toBe("rIdPic");
+    const saved = await serializeCanonicalSave({
+      snapshot: session.captureSaveSnapshot(),
+      featureFlags: { selectiveSave },
+    });
+    const reopened = await read(saved.buffer);
+    const moved = pictureAndLink(
+      only(
+        paragraphsHolding(reopened, destination.story, sourceText(source.name)),
+      ),
+    );
+    expect(moved.image.rId).toBe(held.image.rId);
+    expect(moved.image.src).toBe(pictureAndLink(paragraph).image.src);
+    expect(moved.href).toBe(linkTarget(source.name));
+    session.prepareUndo(after, story).unwrap().publish().unwrap();
+    assertExactModel(session.captureSaveSnapshot().document, before);
+  });
+
 describe("content placed across parts", () => {
   test(
     "a picture and a link placed from one part into another resolve to their own after a save and reopen, and undo restores the document",
@@ -257,6 +397,18 @@ describe("content placed across parts", () => {
         id: "a picture and a link placed from one part into another resolve to their own after a save and reopen, and undo restores the document",
         numRuns: 60,
         examples: EVERY_PAIR,
+      });
+    },
+    propertyTestTimeout(240_000),
+  );
+
+  test(
+    "a move from one projected story into another uses the destination editor state, re-homes relationships, and undoes exactly",
+    async () => {
+      await assertProperty(moves(), {
+        id: "a cross-story move uses the destination projection and preserves relationship identity",
+        numRuns: 40,
+        examples: EVERY_MOVE_PAIR,
       });
     },
     propertyTestTimeout(240_000),
