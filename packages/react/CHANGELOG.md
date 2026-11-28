@@ -1,5 +1,13 @@
 # @stll/folio-react
 
+## 0.42.5
+
+### Patch Changes
+
+- [#3829](https://github.com/stella/folio/pull/3829) [`bd0a2aa`](https://github.com/stella/folio/commit/bd0a2aac6e3a81619721aa2cb2bfdd9b03692e95) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Retire the general tracked-change gap now that the remaining untrackable cases are table structure.
+- Updated dependencies [[`bd0a2aa`](https://github.com/stella/folio/commit/bd0a2aac6e3a81619721aa2cb2bfdd9b03692e95), [`1b2d07e`](https://github.com/stella/folio/commit/1b2d07ef4c9a8b249edc5471f892a153b519e313), [`1b2d07e`](https://github.com/stella/folio/commit/1b2d07ef4c9a8b249edc5471f892a153b519e313), [`1b2d07e`](https://github.com/stella/folio/commit/1b2d07ef4c9a8b249edc5471f892a153b519e313)]:
+  - @stll/folio-core@0.86.1
+
 ## 0.42.4
 
 ### Patch Changes
