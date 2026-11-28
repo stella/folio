@@ -104,6 +104,7 @@ export const INVERSE_KINDS = {
   insertTable: ["setContainerBlocks"],
   deleteTable: ["setContainerBlocks", "replaceInline", "setParagraphReview"],
   setContainerBlocks: ["setContainerBlocks"],
+  setCustomXmlMarkup: ["setCustomXmlMarkup"],
   insertRow: ["setTableRows"],
   deleteRow: ["setTableRows", "replaceInline", "setParagraphReview"],
   setTableRows: ["setTableRows"],
@@ -155,6 +156,8 @@ export const INVERSE_KINDS = {
     "setParagraphReview",
     "joinBlocks",
     "replaceBlocks",
+    // A custom XML element's own records, and the tags a mark joins across.
+    "setCustomXmlMarkup",
     ...NOTE_LIFECYCLE_INVERSE_KINDS.resolveRevision,
   ],
   createNumberingInstance: ["deleteNumberingInstance"],

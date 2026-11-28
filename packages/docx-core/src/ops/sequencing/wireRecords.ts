@@ -528,6 +528,8 @@ const blockContentKinds = {
     openingXml: string,
     closingXml: string,
     content: blocks,
+    insertion: optional(object({ info: trackedChangeInfo })),
+    deletion: optional(object({ info: trackedChangeInfo })),
   },
   preservedBlock: { type: string, xml: string, readerText: optional(string) },
   bookmarkStart: inlineContentKinds.bookmarkStart,
