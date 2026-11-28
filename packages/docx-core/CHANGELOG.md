@@ -1,5 +1,21 @@
 # @stll/docx-core
 
+## 0.51.2
+
+### Patch Changes
+
+- [#3831](https://github.com/stella/folio/pull/3831) [`761e95f`](https://github.com/stella/folio/commit/761e95fa9648e427b0d205e4f02d512521d64575) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Retire pending paragraph property reviews when an edit restores their recorded baseline.
+
+- [#3829](https://github.com/stella/folio/pull/3829) [`bd0a2aa`](https://github.com/stella/folio/commit/bd0a2aac6e3a81619721aa2cb2bfdd9b03692e95) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Retire the general tracked-change gap now that the remaining untrackable cases are table structure.
+
+- [#3821](https://github.com/stella/folio/pull/3821) [`1b2d07e`](https://github.com/stella/folio/commit/1b2d07ef4c9a8b249edc5471f892a153b519e313) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve independently reviewable native paragraph break insertions and deletions within a moved nested table cell.
+
+- [#3821](https://github.com/stella/folio/pull/3821) [`1b2d07e`](https://github.com/stella/folio/commit/1b2d07ef4c9a8b249edc5471f892a153b519e313) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve proofing ranges spanning multiple rows when a tracked merge relocates their entire nested table.
+
+- [#3821](https://github.com/stella/folio/pull/3821) [`1b2d07e`](https://github.com/stella/folio/commit/1b2d07ef4c9a8b249edc5471f892a153b519e313) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep positioned bookmarks inside their row and cell content control wrappers when moving nested tables.
+
+- [#3827](https://github.com/stella/folio/pull/3827) [`0e4fd1d`](https://github.com/stella/folio/commit/0e4fd1deac00fa52f6cc542f5a2675075ec67f4f) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Deleting a suggested table, including through its final column, now withdraws the current suggestion's wholly inserted rows and retires notes they alone referenced.
+
 ## 0.51.1
 
 ### Patch Changes
