@@ -877,6 +877,14 @@ export type TemplatePlan = {
    * note or a header.
    */
   comments?: "drop" | "keep";
+  /**
+   * What becomes of the source's links to a place in itself (a bookmark, a
+   * heading a contents line jumps to). `drop`, the default, writes their
+   * text. `keep` links each to the output paragraph that stands for the
+   * paragraph its bookmark marks, through the plan's own bookmark there,
+   * where that paragraph is placed.
+   */
+  internalLinks?: "drop" | "keep";
 };
 
 /** What the output carries of the source's comments. */

@@ -14,7 +14,7 @@ import {
   replacePart,
   TEMPLATE_IDS,
 } from "./fixtures";
-import { planFor, unwrap, verifyFor } from "./planning";
+import { applyFor, planFor, unwrap, verifyFor } from "./planning";
 
 describe("innerRangeOf", () => {
   test("finds the content after an opening tag whose attribute holds '>'", () => {
@@ -446,6 +446,44 @@ describe("applyTemplatePlan edge content", () => {
       },
     });
     expect(odd.isErr()).toBe(true);
+  });
+
+  test("a link to a bookmark of the source leads to the output's target when the plan keeps it", async () => {
+    const template = await buildTemplate();
+    const field = (code: string, result: string): string =>
+      `<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve">${code}</w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>${r(result)}<w:r><w:fldChar w:fldCharType="end"/></w:r>`;
+    const source = await buildMinimalDocx(
+      [
+        p(`<w:hyperlink w:anchor="_Toc1">${r("Definitions")}</w:hyperlink>`),
+        p(`${r("See ")}${field(' HYPERLINK \\l "_Toc1" ', "the definitions")}`),
+        p(
+          `<w:bookmarkStart w:id="1" w:name="_Toc1"/>${r("Definitions")}<w:bookmarkEnd w:id="1"/>`,
+        ),
+        p(`<w:hyperlink w:anchor="nowhere">${r("Lost")}</w:hyperlink>`),
+      ].join(""),
+    );
+    const kept = unwrap(
+      await applyFor({ source, template, extra: { internalLinks: "keep" } }),
+    );
+    const document = (await readPart(kept.docx, "word/document.xml")) ?? "";
+    const bookmark =
+      /<w:bookmarkStart w:id="\d+" w:name="([^"]+)"\/><w:r>(?:<w:rPr>.*?<\/w:rPr>)?<w:t xml:space="preserve">Definitions/u.exec(
+        document,
+      )?.[1];
+    expect(bookmark).toBeDefined();
+    expect(
+      document.match(
+        new RegExp(`<w:hyperlink w:anchor="${bookmark ?? ""}"`, "gu"),
+      )?.length,
+    ).toBe(2);
+    expect(kept.report.ok).toBe(true);
+    // The link to a bookmark no paragraph holds stays text, and counts.
+    expect(kept.report.dropped.internalHyperlinks).toBe(1);
+    const plain = unwrap(await applyFor({ source, template }));
+    expect(plain.report.dropped.internalHyperlinks).toBe(3);
+    expect(
+      (await readPart(plain.docx, "word/document.xml")) ?? "",
+    ).not.toContain("w:anchor");
   });
 
   test("a paragraph cites its own number through a field", async () => {

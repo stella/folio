@@ -645,7 +645,7 @@ const crossReferencesOf = (
  * it starts at the paragraph's beginning. Null for one that ends in front
  * of its start or not at all. The first bookmark of a name counts.
  */
-const bookmarkTargetsOf = (
+export const bookmarkTargetsOf = (
   story: AnalyzedStory,
 ): Map<string, { blockId: string; whole: boolean } | null> => {
   const targets = new Map<string, { blockId: string; whole: boolean } | null>();

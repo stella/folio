@@ -314,7 +314,9 @@ const outputContent = ({
       expectedStyle = styles.footnoteReference;
     } else if (atom.kind === "endnoteReference") {
       expectedStyle = styles.endnoteReference;
-    } else if (link !== "") {
+    } else if (link !== "" || atom.link?.kind === "anchor") {
+      // A link to a bookmark of the output has no address and the look of
+      // any other link.
       expectedStyle = styles.hyperlink;
     }
     const stated = isNoteReference
@@ -2203,11 +2205,20 @@ export const reportTemplatePlanOutput = async ({
     for (const { link } of read.atoms) {
       const lost =
         link !== null &&
-        linkAddress(link, sourceResources.relationships.document) === null;
+        linkAddress(link, sourceResources.relationships.document) === null &&
+        !(link.kind === "anchor" && resolved.linkAnchors.has(link.anchor));
       if (lost && link !== previous) {
         internalHyperlinks += 1;
       }
       previous = lost ? link : null;
+    }
+    // A HYPERLINK field to a bookmark of the source is one such link too.
+    for (const index of read.fieldIndices) {
+      const field = source.story.state.fields[index];
+      const link = field === undefined ? null : hyperlinkFieldLink(field);
+      if (link?.kind === "anchor" && !resolved.linkAnchors.has(link.anchor)) {
+        internalHyperlinks += 1;
+      }
     }
   }
   // Direct paragraph formatting stays behind, and section ends with it.
