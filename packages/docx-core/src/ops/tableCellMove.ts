@@ -3,6 +3,8 @@ import {
   type BlockContent,
   type BlockCustomXml,
   type BlockSdt,
+  type BookmarkEnd,
+  type BookmarkStart,
   type DocxPackage,
   type InlineSdt,
   type MathEquation,
@@ -470,6 +472,7 @@ type MoveContentContext = {
   proofing: Set<ProofingKind>;
   pictures: Set<number>;
   priorRevisions?: number[];
+  collectBookmark?: (marker: BookmarkStart | BookmarkEnd) => boolean;
 };
 
 const nestedMoveContext = (context: MoveContentContext): MoveContentContext => {
@@ -489,6 +492,9 @@ const movableInlineContent = (
     switch (item.type) {
       case "run":
         return movableRun(item, context.pictures);
+      case "bookmarkStart":
+      case "bookmarkEnd":
+        return context.collectBookmark?.(item) ?? false;
       case "insertion":
       case "deletion": {
         if (
@@ -533,7 +539,7 @@ const movableInlineContent = (
 /** The run move can take the paragraph whole without duplicating an anchor. */
 export const tableMoveSource = (
   paragraph: Paragraph,
-  priorRevisions?: number[],
+  nested?: Pick<MoveContentContext, "priorRevisions" | "collectBookmark">,
 ): TableMoveSource | undefined => {
   const controls: number[] = [];
   const proofing = new Set<ProofingKind>();
@@ -550,7 +556,7 @@ export const tableMoveSource = (
         controls,
         proofing,
         pictures,
-        ...(priorRevisions === undefined ? {} : { priorRevisions }),
+        ...nested,
       })) ||
     proofing.size !== 0
   )
@@ -577,27 +583,36 @@ type NestedBookmarkPairs = NonNullable<TableGeometryNestedMove["bookmarks"]>;
 const nestedBookmarkCensus = (table: Table) =>
   packageBookmarkCensus({ document: { content: [table] } });
 
+const movableBookmark = (marker: BookmarkStart | BookmarkEnd): boolean => {
+  const bookmarkId = marker.id;
+  return (
+    Number.isInteger(bookmarkId) &&
+    bookmarkId >= 0 &&
+    bookmarkId <= MAX_REVISION_ID &&
+    marker.copyOriginAncestors === undefined &&
+    (marker.type === "bookmarkEnd" || marker.name.length > 0)
+  );
+};
+
 const movablePositionedBookmarks = (
   bookmarks: PositionedBookmarkMarker[] | undefined,
 ) =>
-  bookmarks?.every(({ marker, contentControls, carrierStack }) => {
-    const bookmarkId = marker.id;
-    return (
-      Number.isInteger(bookmarkId) &&
-      bookmarkId >= 0 &&
-      bookmarkId <= MAX_REVISION_ID &&
-      marker.copyOriginAncestors === undefined &&
+  bookmarks?.every(
+    ({ marker, contentControls, carrierStack }) =>
       contentControls === undefined &&
       carrierStack === undefined &&
-      (marker.type === "bookmarkEnd" || marker.name.length > 0)
-    );
-  }) ?? true;
+      movableBookmark(marker),
+  ) ?? true;
 
 /** A structural copy may carry only records whose package identities stay unique. */
 export const nestedTableMoveSource = (
   table: Table,
 ): NestedTableMoveSource | undefined => {
   let hasBookmarks = false;
+  const collectBookmark = (marker: BookmarkStart | BookmarkEnd) => {
+    hasBookmarks = true;
+    return movableBookmark(marker);
+  };
   const paragraphs: string[] = [];
   const revisions: number[] = [];
   const ranges: TableMoveRanges[] = [];
@@ -708,6 +723,8 @@ export const nestedTableMoveSource = (
     });
   };
   const collectBlock = (block: BlockContent): boolean => {
+    if (block.type === "bookmarkStart" || block.type === "bookmarkEnd")
+      return collectBookmark(block);
     if (block.type === "table") return collect(block);
     if (block.type === "blockCustomXml")
       return movableCustomXmlBlock(block) && block.content.every(collectBlock);
@@ -752,10 +769,10 @@ export const nestedTableMoveSource = (
         plain = { ...paragraph, content: tracked.content };
       }
     }
-    const source = tableMoveSource(
-      plain,
-      move === undefined ? revisions : undefined,
-    );
+    const source = tableMoveSource(plain, {
+      ...(move === undefined ? { priorRevisions: revisions } : {}),
+      collectBookmark,
+    });
     if (source === undefined) return false;
     if (move !== undefined && move.kind !== "empty") {
       const side = idKey(source.id) === idKey(move.source) ? 0 : 1;
@@ -891,16 +908,8 @@ const withNestedMoveIdentities = (
   const rewriteBookmark = (
     bookmark: PositionedBookmarkMarker,
   ): PositionedBookmarkMarker => {
-    const { marker } = bookmark;
-    const alias = ids.bookmarks.get(marker.id);
-    if (alias === undefined) return bookmark;
-    return {
-      ...bookmark,
-      marker:
-        marker.type === "bookmarkStart"
-          ? { ...marker, ...alias }
-          : { ...marker, id: alias.id },
-    };
+    const marker = withBookmarkIdentity(bookmark.marker, ids.bookmarks);
+    return marker === bookmark.marker ? bookmark : { ...bookmark, marker };
   };
   const restampControl = (properties: SdtProperties): SdtProperties => {
     const id =
@@ -955,6 +964,8 @@ const withNestedMoveIdentities = (
   };
   const rewrite = (block: BlockContent): BlockContent => {
     if (block.type === "table") return withNestedMoveIdentities(block, ids);
+    if (block.type === "bookmarkStart" || block.type === "bookmarkEnd")
+      return withBookmarkIdentity(block, ids.bookmarks);
     if (block.type === "blockCustomXml")
       return { ...block, content: block.content.map(rewrite) };
     if (block.type === "blockSdt") {
@@ -982,6 +993,7 @@ const withNestedMoveIdentities = (
             controls: ids.controls,
             pictures: ids.pictures,
             bookmarkNames: ids.bookmarkNames,
+            bookmarkIds: ids.bookmarks,
           }),
         };
   };
@@ -1287,6 +1299,18 @@ type MoveIdentityOptions = {
   controls: ReadonlyMap<number, number>;
   pictures: ReadonlyMap<number, number>;
   bookmarkNames?: ReadonlyMap<string, string>;
+  bookmarkIds?: ReadonlyMap<number, PackageBookmark>;
+};
+
+const withBookmarkIdentity = (
+  marker: BookmarkStart | BookmarkEnd,
+  ids: ReadonlyMap<number, PackageBookmark>,
+): BookmarkStart | BookmarkEnd => {
+  const alias = ids.get(marker.id);
+  if (alias === undefined) return marker;
+  return marker.type === "bookmarkStart"
+    ? { ...marker, ...alias }
+    : { ...marker, id: alias.id };
 };
 
 const withMoveIdentities = ({
@@ -1294,6 +1318,7 @@ const withMoveIdentities = ({
   controls,
   pictures,
   bookmarkNames,
+  bookmarkIds,
 }: MoveIdentityOptions): ParagraphContent[] => {
   if (controls.size === 0 && pictures.size === 0 && !bookmarkNames?.size)
     return content;
@@ -1328,6 +1353,11 @@ const withMoveIdentities = ({
           ...(next.href === `#${next.anchor}` ? { href: `#${anchor}` } : {}),
         };
     }
+    if (
+      bookmarkIds !== undefined &&
+      (next.type === "bookmarkStart" || next.type === "bookmarkEnd")
+    )
+      return withBookmarkIdentity(next, bookmarkIds);
     return next;
   };
   return asParagraphContent(content.map(rewrite));

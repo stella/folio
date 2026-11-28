@@ -134,17 +134,20 @@ const tableOf = (document: Document): Table => {
   return block;
 };
 
-test.each(["table", "row"] as const)(
+test.each(["table", "row", "paragraph", "block"] as const)(
   "tracked horizontal merges keep nested %s bookmark pairs and their local links",
   (placement) => {
     const name = "NestedClause";
+    const start = { type: "bookmarkStart", id: 77, name } as const;
+    const end = { type: "bookmarkEnd", id: 77 } as const;
     const bookmarks = [
-      { index: 0, marker: { type: "bookmarkStart", id: 77, name } },
-      { index: 1, marker: { type: "bookmarkEnd", id: 77 } },
+      { index: 0, marker: start },
+      { index: 1, marker: end },
     ] satisfies NonNullable<Table["bookmarks"]>;
     const link: Paragraph = {
       ...paragraph("00000003"),
       content: [
+        ...(placement === "paragraph" ? [start] : []),
         {
           type: "hyperlink",
           anchor: name,
@@ -152,6 +155,7 @@ test.each(["table", "row"] as const)(
             { type: "run", content: [{ type: "text", text: "Clause" }] },
           ],
         },
+        ...(placement === "paragraph" ? [end] : []),
       ],
     };
     const moved: Table = {
@@ -162,7 +166,11 @@ test.each(["table", "row"] as const)(
         {
           type: "tableRow",
           ...(placement === "row" ? { bookmarks } : {}),
-          cells: [cell(link)],
+          cells: [
+            placement === "block"
+              ? cell(start, link, end, paragraph("00000005"))
+              : cell(link),
+          ],
         },
       ],
     };
