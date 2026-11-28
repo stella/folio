@@ -47,6 +47,7 @@ import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
 import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
+import { toArrayBuffer } from "../utils/docxInput";
 import { FolioDocxReviewer } from "./headless";
 
 type Mode = "direct" | "tracked-changes" | "suggested";
@@ -979,6 +980,97 @@ test(
         id: "blocks put beside one anchor land in requested order in every mode",
         numRuns: 80,
         examples,
+      },
+    );
+  },
+  propertyTestTimeout(120_000),
+);
+
+test(
+  "an insertion at a pending-join destination follows every earlier split of its source",
+  async () => {
+    const source = await ensureParaIds(
+      await createDocx(
+        fromMarkdown(
+          "1. Numbered clause one\n\nUnnumbered body text.\n\nClosing words.",
+        ),
+      ),
+    );
+    const original = await FolioDocxReviewer.fromBuffer(
+      await toArrayBuffer(source.docx),
+      { author: "First", session: "canonical" },
+    );
+    const numbered = original
+      .snapshot()
+      .blocks.find(({ text }) => text === "Numbered clause one");
+    const body = original
+      .snapshot()
+      .blocks.find(({ text }) => text === "Unnumbered body text.");
+    if (numbered === undefined || body === undefined)
+      throw new Error("Missing split insertion property blocks");
+    const setup = original.applyOperations(
+      [
+        {
+          id: "merge",
+          type: "mergeBlockWithNext",
+          blockId: numbered.id,
+          separator: " ",
+          mergedParagraphProperties: { numbering: { kind: "none" } },
+        },
+      ],
+      { mode: "tracked-changes", undefinedReferences: "refuse" },
+    );
+    expect(setup.skipped).toEqual([]);
+    const setupBytes = await original.toBuffer();
+    const openSetup = () =>
+      FolioDocxReviewer.fromBuffer(setupBytes, {
+        author: "Second",
+        session: "canonical",
+      });
+    const read = (reviewer: FolioDocxReviewer) =>
+      reviewer.snapshot().blocks.map(({ text }) => text);
+
+    await assertProperty(
+      fc.asyncProperty(
+        fc.integer({ min: 1, max: "Numbered clause one".length }),
+        fc.constantFrom("Inserted.", "Élément.", "合同条項。", "😀 clause."),
+        async (offset, text) => {
+          const batch = await openSetup();
+          const sequential = await openSetup();
+          const operations = [
+            {
+              id: "split",
+              type: "splitBlock",
+              blockId: numbered.id,
+              offset,
+            },
+            {
+              id: "insert",
+              type: "insertBeforeBlock",
+              blockId: body.id,
+              text,
+            },
+          ] satisfies FolioDocumentOperation[];
+          const applied = batch.applyOperations(operations, {
+            mode: "tracked-changes",
+            undefinedReferences: "refuse",
+          });
+          expect(applied.skipped).toEqual([]);
+          for (const operation of operations) {
+            const result = sequential.applyOperations([operation], {
+              mode: "tracked-changes",
+              undefinedReferences: "refuse",
+            });
+            expect(result.skipped).toEqual([]);
+          }
+          batch.acceptAll();
+          sequential.acceptAll();
+          expect(read(batch)).toEqual(read(sequential));
+        },
+      ),
+      {
+        id: "pending-join-destination-insertion-follows-source-split",
+        numRuns: 24,
       },
     );
   },
