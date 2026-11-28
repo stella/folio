@@ -105,6 +105,9 @@ export type AtomKind =
   /** A legacy form field that shows its box or list without a result: the
    *  field itself, with its form data, is the content. */
   | "formField"
+  /** A field that shows no result and is kept as its code: a contents
+   *  entry (`TC`), a macro button whose code holds its display text. */
+  | "codeField"
   | "object"
   /** No reading yields it: the piece a plan that keeps comments places
    *  for a paragraph's comment mark (`ParagraphRead.commentMarks`). */
@@ -187,6 +190,17 @@ const SELF_NUMBERING_FIELDS: ReadonlySet<string> = new Set([
   "AUTONUMOUT",
   "LISTNUM",
 ]);
+
+/**
+ * Fields that hold their content in their code and cache no result: a
+ * contents entry (`TC`, hidden, read by a contents field) and a macro
+ * button (`MACROBUTTON`, which shows the text its code holds).
+ */
+const CODE_ONLY_FIELDS: ReadonlySet<string> = new Set(["TC", "MACROBUTTON"]);
+
+/** Whether a field kind is kept as its code when it caches no result. */
+export const isCodeOnlyField = (kind: string): boolean =>
+  CODE_ONLY_FIELDS.has(kind);
 
 /** Whether a field kind prints a number of its own and caches no text. */
 export const isSelfNumberingField = (kind: string): boolean =>
@@ -765,6 +779,18 @@ const readRun = (
             if (top.phase === "code" && isSelfNumberingField(top.field.kind)) {
               pushAtom(walk, {
                 kind: "selfNumber",
+                text: "",
+                runProperties,
+                link,
+                element: null,
+                instruction: top.field.instruction.trim(),
+              });
+            } else if (
+              top.phase === "code" &&
+              isCodeOnlyField(top.field.kind)
+            ) {
+              pushAtom(walk, {
+                kind: "codeField",
                 text: "",
                 runProperties,
                 link,

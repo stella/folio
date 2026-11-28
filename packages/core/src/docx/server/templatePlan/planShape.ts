@@ -454,7 +454,12 @@ const spansIssue = (plan: Json): string | null => {
         !isString(reference["targetBlockId"]) ||
         !isCount(reference["start"]) ||
         !isCount(reference["end"]) ||
-        !isString(reference["instruction"])
+        !isString(reference["instruction"]) ||
+        !(
+          reference["field"] === undefined ||
+          reference["field"] === "REF" ||
+          reference["field"] === "PAGEREF"
+        )
       ) {
         return "A reference is malformed.";
       }
@@ -563,6 +568,11 @@ export const planShapeIssue = (plan: unknown): string | null => {
     plan["comments"] === "keep"
       ? null
       : "The plan's choice for the source's comments is unknown.") ??
+    (plan["internalLinks"] === undefined ||
+    plan["internalLinks"] === "drop" ||
+    plan["internalLinks"] === "keep"
+      ? null
+      : "The plan's choice for the source's internal links is unknown.") ??
     (plan["textColors"] === undefined ||
     plan["textColors"] === "drop" ||
     plan["textColors"] === "keep"

@@ -11,11 +11,16 @@ import { parseFieldInstruction } from "../../fieldParser";
 import { listRenderingDefinitionsMatch } from "../../listRendering";
 import { computeListRendering } from "../../numberingParser";
 import { NAMESPACES, type XmlElement } from "../../xmlParser";
-import type { AnalyzedBlock, AnalyzedDocument } from "./blocks";
+import {
+  type AnalyzedBlock,
+  type AnalyzedDocument,
+  bookmarkTargetsOf,
+} from "./blocks";
 import {
   bookmarkIdsOf,
   type BookmarkWrap,
   mintRefBookmarkName,
+  pagerefFieldInstruction,
   refFieldInstruction,
 } from "./builders";
 import {
@@ -352,6 +357,9 @@ export type ResolvedPlan = {
   sourceLists: CarriedSourceList[];
   /** The bookmark of every paragraph a reference targets. */
   bookmarks: Map<ResolvedParagraph, BookmarkWrap>;
+  /** The output bookmark a kept internal link points to, by the name of
+   *  the source bookmark it pointed to. */
+  linkAnchors: Map<string, string>;
   references: {
     reference: TemplatePlanReference;
     paragraph: ResolvedParagraph;
@@ -551,13 +559,16 @@ export const hyperlinkFieldLink = ({
     return null;
   }
   const { argument, switches } = parseFieldInstruction(instruction);
-  // Without an address the field points into its own document.
-  if (argument === undefined || argument === "") {
-    return null;
-  }
   const location = switches.find(
     ({ switch: name }) => name.toLowerCase() === LOCATION_SWITCH,
   )?.value;
+  // Without an address the field points into its own document: to the
+  // bookmark its location names, when it names one.
+  if (argument === undefined || argument === "") {
+    return location === undefined || location === ""
+      ? null
+      : { kind: "anchor", anchor: location };
+  }
   return { kind: "url", url: argument, anchor: location ?? null };
 };
 
@@ -2328,10 +2339,11 @@ export const resolvePlan = (
       nextBookmarkId += 1;
       bookmarks.set(target, bookmark);
     }
-    const instruction = refFieldInstruction(
-      bookmark.name,
-      reference.instruction,
-    );
+    const instruction = (
+      reference.field === "PAGEREF"
+        ? pagerefFieldInstruction
+        : refFieldInstruction
+    )(bookmark.name, reference.instruction);
     if (instruction === null) {
       return invalid(
         `A reference in ${reference.blockId} carries more than field switches.`,
@@ -2366,6 +2378,46 @@ export const resolvePlan = (
     }
   }
 
+  // Internal links the plan keeps: each to the plan's bookmark on the
+  // output paragraph that stands for the one its source bookmark marks.
+  const linkAnchors = new Map<string, string>();
+  if (plan.internalLinks === "keep") {
+    const targets = bookmarkTargetsOf(source.story);
+    for (const paragraph of new Set(byBlockId.values())) {
+      for (const piece of segmentPieces(paragraph.segments)) {
+        const anchor = piece.link?.kind === "anchor" ? piece.link.anchor : null;
+        if (
+          anchor === null ||
+          piece.origin !== "document" ||
+          linkAnchors.has(anchor)
+        ) {
+          continue;
+        }
+        const targetBlockId = targets.get(anchor)?.blockId;
+        const target =
+          targetBlockId === undefined
+            ? undefined
+            : byBlockId.get(targetBlockId);
+        if (target === undefined) {
+          continue;
+        }
+        let bookmark = bookmarks.get(target);
+        if (bookmark === undefined) {
+          bookmark = {
+            id: nextBookmarkId,
+            name: mintRefBookmarkName(
+              `${source.manifest.sha256}:${target.parts.at(0)?.block.block.id ?? ""}`,
+              takenNames,
+            ),
+          };
+          nextBookmarkId += 1;
+          bookmarks.set(target, bookmark);
+        }
+        linkAnchors.set(anchor, bookmark.name);
+      }
+    }
+  }
+
   return Result.ok({
     items,
     nestedSlots,
@@ -2375,6 +2427,7 @@ export const resolvePlan = (
     mints: [...mints.values()],
     sourceLists: [...sourceLists.values()],
     bookmarks,
+    linkAnchors,
     references: resolvedReferences,
     freezeKinds: new Set(freezeKinds),
     keptTemplateBlocks,
