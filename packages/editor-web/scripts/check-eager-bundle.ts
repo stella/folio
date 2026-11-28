@@ -22,8 +22,9 @@ const BUDGETS = {
   // Ceilings sit a few kB above measured; raise with a reason, then ratchet down after a series.
   // Custom XML revision records measure React 3,854,169/1,212,264/756,432 and
   // Vue 3,547,921/1,107,933/756,377; retain the same 8/3/5 kB margins.
-  react: { minified: 3_862_169, gzip: 1_215_264, docxOps: 761_432 },
-  vue: { minified: 3_555_921, gzip: 1_110_933, docxOps: 761_377 },
+  // Preserving earlier nested table revisions measures 762,516 React and 762,456 Vue ops bytes.
+  react: { minified: 3_862_169, gzip: 1_215_264, docxOps: 762_516 },
+  vue: { minified: 3_555_921, gzip: 1_110_933, docxOps: 762_456 },
 } as const satisfies Record<Adapter, Metrics>;
 
 const HOST_PEERS = [
