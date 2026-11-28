@@ -1545,6 +1545,51 @@ describe("a slot that drops the name of a field the template shows", () => {
   });
 });
 
+describe("a text box carried with its paragraph", () => {
+  const WP =
+    "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing";
+  const A = "http://schemas.openxmlformats.org/drawingml/2006/main";
+  const WPS =
+    "http://schemas.microsoft.com/office/word/2010/wordprocessingShape";
+  const MC = "http://schemas.openxmlformats.org/markup-compatibility/2006";
+  const W14 = "http://schemas.microsoft.com/office/word/2010/wordml";
+  const V = "urn:schemas-microsoft-com:vml";
+  // The box's text as a word processor writes it: a style the template
+  // lacks, a bookmark, and an outline effect that shows nothing.
+  const boxText = (id: number): string =>
+    `<w:p><w:pPr><w:pStyle w:val="SourceListStyle"/></w:pPr><w:bookmarkStart w:id="${String(id)}" w:name="_HlkBoxed"/><w:r><w:rPr><w14:textOutline xmlns:w14="${W14}" w14:w="0" w14:cap="flat" w14:cmpd="sng" w14:algn="ctr"><w14:noFill/></w14:textOutline></w:rPr><w:t>Boxed text</w:t></w:r><w:bookmarkEnd w:id="${String(id)}"/></w:p>`;
+  // Written twice, for two kinds of reader: both copies name the bookmark.
+  const box = `<w:r><mc:AlternateContent xmlns:mc="${MC}"><mc:Choice xmlns:wps="${WPS}" Requires="wps"><w:drawing><wp:anchor xmlns:wp="${WP}" distT="0" distB="0" distL="0" distR="0" simplePos="0" relativeHeight="1" behindDoc="0" locked="0" layoutInCell="1" allowOverlap="1"><wp:simplePos x="0" y="0"/><wp:positionH relativeFrom="column"><wp:posOffset>0</wp:posOffset></wp:positionH><wp:positionV relativeFrom="paragraph"><wp:posOffset>0</wp:posOffset></wp:positionV><wp:extent cx="900000" cy="300000"/><wp:wrapTopAndBottom/><wp:docPr id="7" name="Text Box 1"/><a:graphic xmlns:a="${A}"><a:graphicData uri="${WPS}"><wps:wsp><wps:spPr/><wps:txbx><w:txbxContent>${boxText(31)}</w:txbxContent></wps:txbx><wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:anchor></w:drawing></mc:Choice><mc:Fallback><w:pict><v:shape xmlns:v="${V}" id="Text Box 1"><v:textbox><w:txbxContent>${boxText(32)}</w:txbxContent></v:textbox></v:shape></w:pict></mc:Fallback></mc:AlternateContent></w:r>`;
+
+  test("goes without the source's bookmarks, foreign styles and effects that show nothing, and reads back", async () => {
+    const source = await buildSourceWith({
+      body: [p(box), p(r("After the box."))].join(""),
+      styles:
+        '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style><w:style w:type="paragraph" w:styleId="SourceListStyle"><w:name w:val="Source List Style"/></w:style>',
+    });
+    const { docx, report } = unwrap(
+      await applyFor({
+        source,
+        template,
+        items: (blocks) =>
+          blocks.map(({ id, hash }) => ({
+            kind: "source",
+            blockId: id,
+            hash,
+            styleId: "HouseBody",
+          })),
+      }),
+    );
+    const document = (await readPart(docx, "word/document.xml")) ?? "";
+
+    expect(report.ok).toBe(true);
+    expect(document.match(/Boxed text/gu)).toHaveLength(2);
+    expect(document).not.toContain("_HlkBoxed");
+    expect(document).not.toContain("SourceListStyle");
+    expect(document).not.toContain("textOutline");
+  });
+});
+
 describe("drawn shapes fixed to the page", () => {
   const WP =
     "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing";

@@ -211,6 +211,9 @@ export type EmitShared = {
   /** The fields of the source's main story: a legacy form field whose
    *  result the output places whole is written as the field again. */
   sourceFields?: readonly StoryField[];
+  /** Whether the output defines a style of this id: a style reference in
+   *  the text of a moved object (a text box) to one it lacks is left out. */
+  hasStyle?: (styleId: string) => boolean;
 };
 
 export type EmitContext = EmitShared & {
@@ -382,6 +385,33 @@ const declareInheritedNamespaces = (element: XmlElement): XmlElement => {
     : cloneElement(element, { attributes: { ...declarations, ...own } });
 };
 
+/** Elements of a moved object's text that name a style by its id. */
+const OBJECT_STYLE_REFERENCES: ReadonlySet<string> = new Set([
+  "pStyle",
+  "rStyle",
+  "tblStyle",
+]);
+
+/** Whether an element of a moved object's text is left out: a bookmark of
+ *  the source, or a reference to a style the output does not define. */
+const leftOutOfObject = (
+  node: XmlElement,
+  hasStyle: ((styleId: string) => boolean) | undefined,
+): boolean => {
+  if (node.type !== "element") {
+    return false;
+  }
+  const local = getLocalName(node.name);
+  if (local === "bookmarkStart" || local === "bookmarkEnd") {
+    return true;
+  }
+  return (
+    hasStyle !== undefined &&
+    OBJECT_STYLE_REFERENCES.has(local) &&
+    !hasStyle(wAttr(node, "val") ?? "")
+  );
+};
+
 /** An object of the source with its relationships and drawing ids re-homed. */
 const transferObject = (
   { atom, origin }: ExpectedPiece,
@@ -443,6 +473,12 @@ const transferObject = (
     const attributes: Record<string, string | number | undefined> = {
       ...node.attributes,
     };
+    // The text of a text box goes without the source's bookmarks (a text
+    // box written twice, for two consumers, names each one twice) and
+    // without styles the output lacks.
+    const keptChildren = node.elements?.filter(
+      (child) => !leftOutOfObject(child, context.hasStyle),
+    );
     for (const [name, value] of Object.entries(node.attributes ?? {})) {
       const colon = name.indexOf(":");
       if (value === undefined || colon === -1 || name.startsWith("xmlns:")) {
@@ -461,9 +497,9 @@ const transferObject = (
     }
     return cloneElement(node, {
       attributes,
-      ...(node.elements === undefined
+      ...(keptChildren === undefined
         ? {}
-        : { elements: node.elements.map(rehome) }),
+        : { elements: keptChildren.map(rehome) }),
     });
   };
   const xml = captureVerbatimXml(declareInheritedNamespaces(rehome(element)));

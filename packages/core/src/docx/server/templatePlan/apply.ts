@@ -1103,6 +1103,7 @@ const writeOutput = async ({
     sourceFields: source.story.state.fields,
     linkAnchor: (name) => resolved.linkAnchors.get(name) ?? null,
     styles: templateCharacterStyles(template),
+    hasStyle: (styleId) => template.styles.has(styleId),
     sourceRelationships: sourceResources.value.relationships,
     sourceMedia,
     resolveSourceTarget: sourceResources.value.resolveTarget,
