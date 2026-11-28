@@ -18,8 +18,10 @@ import type {
 import {
   getAttributeByNamespaceUri,
   getLocalName,
+  getNamespaceUri,
   OOXML_NAMESPACE_SCOPE,
   parseXml,
+  resolveAttributeNamespaceUri,
   WORDPROCESSINGML_NAMESPACE_URIS,
   type XmlElement,
 } from "./xmlParser";
@@ -69,13 +71,21 @@ const markerOf = (block: BlockContent | undefined): ReadMarker | undefined => {
     ({ type }) => type === "element",
   );
   if (element === undefined) return undefined;
+  if (!WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? ""))
+    return undefined;
   const marker = MARKERS.get(getLocalName(element.name));
   if (marker === undefined) return undefined;
   if ((element.elements ?? []).length > 0) return undefined;
   const allowed = marker.edge === "start" ? START_ATTRIBUTES : END_ATTRIBUTES;
   for (const name of Object.keys(element.attributes ?? {})) {
     if (name === "xmlns" || name.startsWith("xmlns:")) continue;
-    if (!allowed.has(getLocalName(name))) return undefined;
+    if (
+      !allowed.has(getLocalName(name)) ||
+      !WORDPROCESSINGML_NAMESPACE_URIS.has(
+        resolveAttributeNamespaceUri(element, name) ?? "",
+      )
+    )
+      return undefined;
   }
   const read = (name: string) =>
     getAttributeByNamespaceUri(element, WORDPROCESSINGML_NAMESPACE_URIS, name);

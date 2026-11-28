@@ -187,6 +187,7 @@ const resolvedShapes = (
   decisions: readonly Decision[],
 ): Set<string> => {
   const outcomes = new Set<string>();
+  const selected = new Set(groups.flat());
   const steps = groups.map((ids, index): [readonly number[], Decision] => [
     ids,
     decisions[index] ?? REVISION_DECISIONS.ACCEPT,
@@ -196,22 +197,19 @@ const resolvedShapes = (
     for (const [ids, decision] of order)
       current = resolve(current, ids, decision);
     expect(validateOpsDocument(current).isOk()).toBe(true);
+    expect(revisionIdsOf(current).some((id) => selected.has(id))).toBe(false);
     outcomes.add(JSON.stringify(shapeOf(current.package.document.content)));
   }
   for (const decision of DECISIONS) {
     const together = steps.filter(([, each]) => each === decision);
     if (together.length !== steps.length) continue;
-    outcomes.add(
-      JSON.stringify(
-        shapeOf(
-          resolve(
-            document,
-            together.flatMap(([ids]) => ids),
-            decision,
-          ).package.document.content,
-        ),
-      ),
+    const resolved = resolve(
+      document,
+      together.flatMap(([ids]) => ids),
+      decision,
     );
+    expect(revisionIdsOf(resolved).some((id) => selected.has(id))).toBe(false);
+    outcomes.add(JSON.stringify(shapeOf(resolved.package.document.content)));
   }
   return outcomes;
 };

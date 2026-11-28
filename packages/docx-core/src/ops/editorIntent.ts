@@ -52,6 +52,7 @@ import {
 } from "./comments";
 import {
   isCustomXmlProperties,
+  withoutCustomXmlRecords,
   withoutElementRecords,
 } from "./customXmlMarkup";
 import { packageIdOccupancy } from "./editorIntentCensus";
@@ -1461,6 +1462,7 @@ type BlockPlacementOptions = {
   intent: Omit<BlockPasteIntent, "annotations">;
   mode: EditorIntentMode;
   firstBlockId?: number | undefined;
+  moved?: true | undefined;
 };
 type AnchoredPlacement = {
   ops: DocumentOp[];
@@ -1627,6 +1629,7 @@ const compileBlockPaste = (
       intent: placement,
       mode,
       firstBlockId,
+      ...(moved === true ? { moved } : {}),
     });
   const refuse = (message: string) =>
     Result.err(
@@ -2144,7 +2147,7 @@ const removeContainerBlock = ({
 
 const compileBlockPlacement = (
   document: Document,
-  { intent, mode, firstBlockId }: BlockPlacementOptions,
+  { intent, mode, firstBlockId, moved }: BlockPlacementOptions,
 ): Result<CompiledEditorIntent, DocumentOpRefusal> => {
   const { from, to, openStart, openEnd } = intent;
   const paragraphs = intent.blocks.filter(
@@ -2188,8 +2191,11 @@ const compileBlockPlacement = (
   const blocks = intent.blocks.map((block): PastedBlock => {
     const mapped = mapPastedBlockParagraphs(block, take);
     // The element's earlier records belong to the copied document.
-    const placed =
-      mapped.type === "blockCustomXml" ? withoutElementRecords(mapped) : mapped;
+    let placed = mapped;
+    if (moved !== true && mapped.type === "blockCustomXml")
+      placed = withoutElementRecords(mapped);
+    else if (moved !== true && mapped.type === "table")
+      placed = withoutCustomXmlRecords([mapped]).at(0) ?? mapped;
     if (placed.type === "paragraph" || placed.type === "preservedBlock")
       return placed;
     const [withControls] = withBlockControls([placed], controls);
@@ -4048,9 +4054,10 @@ const compileBlockMove = (
   if (intent.target.story === story && target > first && target < last)
     return Result.ok({ ops: [], selection: intent.target });
   const covered = blockListAt(body.content, start.list)
+    .map((block, index) => ({ block, index }))
     .slice(start.index + 1, end.index)
     .filter(
-      (block) =>
+      ({ block }) =>
         block.type === "table" ||
         block.type === "blockSdt" ||
         block.type === "blockCustomXml" ||
@@ -4067,7 +4074,18 @@ const compileBlockMove = (
   // the moved blocks carry to the target.
   const movedNoteBodies: DocumentOp[] = [];
   // The latest block first, so that no removal moves the place of another.
-  for (const table of covered.toReversed()) {
+  for (const { block: original, index } of covered.toReversed()) {
+    const table = blockListAt(storyBody(current, story).content, start.list).at(
+      index,
+    );
+    if (table === undefined || table.type !== original.type)
+      return Result.err(
+        new DocumentOpRefusal({
+          reason: DOCUMENT_OP_REFUSAL_REASONS.STALE,
+          message: "A moved container changed before it could be removed.",
+          opType: DOCUMENT_OP_TYPES.DELETE_RANGE,
+        }),
+      );
     if (table.type !== "table") {
       const removed = removeContainerBlock({
         document: current,

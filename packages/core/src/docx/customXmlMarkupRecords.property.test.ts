@@ -164,6 +164,30 @@ const revisionIdsOf = (document: Document): number[] => {
   return [...ids];
 };
 
+/** Every tracked record's location, kind and metadata. */
+const revisionFactsOf = (document: Document): string[] => {
+  const facts: string[] = [];
+  const visit = (value: unknown, path: string): void => {
+    if (typeof value !== "object" || value === null) return;
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => visit(item, `${path}[${index}]`));
+      return;
+    }
+    if (
+      "info" in value &&
+      typeof value.info === "object" &&
+      value.info !== null &&
+      "id" in value.info &&
+      "author" in value.info
+    )
+      facts.push(JSON.stringify({ path, info: value.info }));
+    for (const [key, field] of Object.entries(value))
+      visit(field, `${path}.${key}`);
+  };
+  visit(document.package.document.content, "content");
+  return facts.toSorted();
+};
+
 const elementOf = (document: Document): BlockCustomXml => {
   const found = document.package.document.content.find(
     (block): block is BlockCustomXml => block.type === "blockCustomXml",
@@ -272,9 +296,7 @@ test("a suggested custom XML element resolves alike in every order, and after a 
         expect(elementOf(reopened).insertion?.info).toEqual(
           elementOf(suggested).insertion?.info,
         );
-        expect(revisionIdsOf(reopened).length).toBe(
-          revisionIdsOf(suggested).length,
-        );
+        expect(revisionFactsOf(reopened)).toEqual(revisionFactsOf(suggested));
         expect([...outcomes(reopened, { element, content })]).toEqual([
           ...here,
         ]);

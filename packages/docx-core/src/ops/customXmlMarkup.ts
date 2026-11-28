@@ -119,6 +119,28 @@ const sectionEndDepths = (
 const paragraphsIn = (blocks: readonly BlockContent[]): Paragraph[] =>
   storyParagraphs({ content: [...blocks] }).map(({ paragraph }) => paragraph);
 
+/** Whether story and table-cell lists keep their required final paragraph. */
+const validTerminalParagraphs = (
+  blocks: readonly BlockContent[],
+  required: boolean,
+): boolean => {
+  const untagged = withoutCustomXmlTags(blocks);
+  if (
+    required &&
+    untagged.at(-1)?.type === "paragraph" &&
+    blocks.at(-1)?.type !== "paragraph"
+  )
+    return false;
+  return untagged.every((block) => {
+    if (block.type === "blockSdt")
+      return validTerminalParagraphs(block.content, false);
+    if (block.type !== "table") return true;
+    return block.rows.every((row) =>
+      row.cells.every((cell) => validTerminalParagraphs(cell.content, true)),
+    );
+  });
+};
+
 /** Apply a {@link SetCustomXmlMarkupOp}; its inverse swaps `expected` and `blocks`. */
 export const setCustomXmlMarkup = (
   document: Document,
@@ -160,11 +182,9 @@ export const setCustomXmlMarkup = (
       DOCUMENT_OP_REFUSAL_REASONS.INVALID_OPERATION,
       "Custom XML markup changes only the elements' tags and their own records, never what they wrap.",
     );
-  // A list a paragraph must end (a story body or a table cell) keeps one.
-  if (
-    before.at(-1)?.type === "paragraph" &&
-    op.blocks.at(-1)?.type !== "paragraph"
-  )
+  // Story bodies and table cells keep their final paragraph outside tags;
+  // content-control lists need no synthetic terminal paragraph.
+  if (!validTerminalParagraphs(op.blocks, true))
     return refuse(
       op,
       DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
@@ -428,6 +448,7 @@ const wrapsContent = (element: BlockCustomXml): boolean =>
 type Placements = {
   byKey: Map<string, Chain>;
   byRecord: WeakMap<object, Chain>;
+  byOpaque: Map<string, Chain[]>;
   shells: Shell[];
   /** The elements put back, around content or emptied. */
   placed: Set<Shell>;
@@ -435,6 +456,11 @@ type Placements = {
 
 const placementKey = (depth: number, paraKey: string): string =>
   `${String(depth)}:${paraKey}`;
+
+const opaqueKey = (block: BlockContent): string | undefined =>
+  block.type === "blockCustomXml" || block.type === "preservedBlock"
+    ? JSON.stringify(block)
+    : undefined;
 
 /** Whether a resolved block is the one `original` was, or what it became. */
 const sameOrigin = (
@@ -511,6 +537,12 @@ const untagInto = (
       for (const key of paragraphKeysIn(block))
         placements.byKey.set(placementKey(depth, key), chain);
     placements.byRecord.set(placed, chain);
+    const opaque = opaqueKey(placed);
+    if (opaque !== undefined) {
+      const chains = placements.byOpaque.get(opaque) ?? [];
+      chains.push(chain);
+      placements.byOpaque.set(opaque, chains);
+    }
     out.push(placed);
   }
 };
@@ -537,6 +569,20 @@ const chainOf = (
 ): Chain | undefined => {
   const byRecord = placements.byRecord.get(block);
   if (byRecord !== undefined) return byRecord;
+  const opaque = opaqueKey(block);
+  if (opaque !== undefined) {
+    const chains = placements.byOpaque.get(opaque) ?? [];
+    const first = chains.at(0);
+    if (
+      first !== undefined &&
+      chains.every(
+        (chain) =>
+          chain.length === first.length &&
+          chain.every((shell, index) => shell === first[index]),
+      )
+    )
+      return first;
+  }
   if (
     block.type !== "paragraph" &&
     block.type !== "table" &&
@@ -581,6 +627,12 @@ const retagged = (
   const found = blocks.map((block) => chainOf(block, depth, placements));
   const entries: { block: BlockContent | undefined; chain: Chain }[] =
     blocks.map((block, index) => {
+      if (
+        depth === 0 &&
+        index === blocks.length - 1 &&
+        block.type === "paragraph"
+      )
+        return { block, chain: [] };
       const chain = found[index];
       if (chain !== undefined) return { block, chain };
       const before = found
@@ -706,6 +758,16 @@ const holdsSelectedBoundary = (
       return block.pPrMark !== undefined && ids.has(block.pPrMark.info.id);
     if (block.type === "blockCustomXml")
       return holdsSelectedBoundary(block.content, ids);
+    if (block.type === "table")
+      return (
+        block.rows.length > 0 &&
+        block.rows.every(
+          (row) =>
+            row.cells.length > 0 &&
+            row.structuralChange?.type === "tableRowInsertion" &&
+            ids.has(row.structuralChange.info.id),
+        )
+      );
     return false;
   });
 
@@ -771,6 +833,7 @@ export const customXmlReadThrough = ({
   const placements: Placements = {
     byKey: new Map(),
     byRecord: new WeakMap(),
+    byOpaque: new Map(),
     shells: [],
     placed: new Set(),
   };

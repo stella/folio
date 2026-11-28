@@ -669,8 +669,8 @@ export function extractTrackedChanges(
       family: "deletion",
       priority: 2,
     },
-    customXmlInserted: { type: "coalesce", family: "insertion", priority: 2 },
-    customXmlDeleted: { type: "coalesce", family: "deletion", priority: 2 },
+    customXmlInserted: { type: "separate" },
+    customXmlDeleted: { type: "separate" },
     paragraphPropertiesChanged: {
       type: "coalesce",
       family: "properties",

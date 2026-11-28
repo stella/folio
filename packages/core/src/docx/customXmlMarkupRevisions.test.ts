@@ -110,6 +110,32 @@ describe("a block custom XML element's own records", () => {
     ]);
   });
 
+  test("keeps foreign same-named markers as captured markup", async () => {
+    const blocks = await parsedBlocks(
+      `<x:customXmlInsRangeStart xmlns:x="urn:extension" w:id="5" w:author="Ines"/>` +
+        wrap(paragraph("Clause.", "11111111")) +
+        `<x:customXmlInsRangeEnd xmlns:x="urn:extension" w:id="5"/>`,
+    );
+    expect(blocks.map(({ type }) => type)).toEqual([
+      "preservedBlock",
+      "blockCustomXml",
+      "preservedBlock",
+    ]);
+  });
+
+  test("keeps markers carrying foreign same-named attributes", async () => {
+    const blocks = await parsedBlocks(
+      `<w:customXmlInsRangeStart xmlns:x="urn:extension" w:id="5" w:author="Ines" x:date="keep"/>` +
+        wrap(paragraph("Clause.", "11111111")) +
+        insEnd(5),
+    );
+    expect(blocks.map(({ type }) => type)).toEqual([
+      "preservedBlock",
+      "blockCustomXml",
+      "preservedBlock",
+    ]);
+  });
+
   test.each([
     { route: "the model", viaEditor: false },
     { route: "the editor projection", viaEditor: true },
