@@ -23,8 +23,10 @@ const BUDGETS = {
   // Custom XML revision records measure React 3,854,169/1,212,264/756,432 and
   // Vue 3,547,921/1,107,933/756,377; retain the same 8/3/5 kB margins.
   // Preserving earlier nested table revisions measures 762,516 React and 762,456 Vue ops bytes.
-  react: { minified: 3_862_169, gzip: 1_215_264, docxOps: 762_516 },
-  vue: { minified: 3_555_921, gzip: 1_110_933, docxOps: 762_456 },
+  // Settling empty nested move boundaries adds 733 React and 729 Vue ops bytes.
+  // The merge group measures 3,862,697 React and 3,556,475 Vue minified bytes.
+  react: { minified: 3_862_697, gzip: 1_215_264, docxOps: 763_249 },
+  vue: { minified: 3_556_475, gzip: 1_110_933, docxOps: 763_185 },
 } as const satisfies Record<Adapter, Metrics>;
 
 const HOST_PEERS = [
