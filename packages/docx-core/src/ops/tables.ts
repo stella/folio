@@ -47,7 +47,7 @@ import {
   pendingParagraphMarkReason,
 } from "./refusal";
 import { stampInfo, WRAP_KINDS } from "./review";
-import { replaceStoryBody } from "./stories";
+import { blocksEnding, replaceStoryBody } from "./stories";
 import { rowHasCellsOrOmissions } from "./tableGrid";
 import {
   locateBlockInsertion,
@@ -201,6 +201,13 @@ const commitBlocks = ({
     op.story === OP_STORIES.MAIN &&
     anchor.list.length === 0 &&
     blockListEndsInTable(blocks);
+  // An exact story snapshot can end in an empty control. The last paragraph
+  // or table still determines whether the story has its closing paragraph.
+  const endsInParagraph =
+    op.type === DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS &&
+    anchor.list.length === 0
+      ? (items: readonly BlockContent[]) => blocksEnding(items) === "paragraph"
+      : blockListEndsInParagraph;
   if (
     blocks.length === 0 ||
     !validStructure(before) ||
@@ -209,8 +216,8 @@ const commitBlocks = ({
     // table, as a body may, is left no worse.
     (!restoresMainTable &&
       endsItsContainer(body, { list: anchor.list, index: before.length - 1 }) &&
-      blockListEndsInParagraph(before) &&
-      !blockListEndsInParagraph(blocks))
+      endsInParagraph(before) &&
+      !endsInParagraph(blocks))
   ) {
     return refuse({
       op,

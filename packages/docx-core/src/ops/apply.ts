@@ -30,6 +30,7 @@ import {
   sameBlockList,
   storyBody,
   storyParagraphs,
+  survivingBlockListAnchor,
 } from "./blocks";
 /**
  * Apply a document operation and record its exact inverse.
@@ -2821,20 +2822,6 @@ const replaceBlocks = (document: Document, op: ReplaceBlocksOp): Applied => {
         blocks: removalList,
         index: start.index,
       });
-    // A block-level `w:sdt` emptied of its only paragraph stays, holding an
-    // empty `w:sdtContent`; no operation addresses a block list without a
-    // paragraph, so nothing could put the paragraph back.
-    if (
-      inverseAt === undefined &&
-      !removalList.some(
-        (block) => block.type === "paragraph" && block.paraId !== undefined,
-      )
-    )
-      return refuse(
-        op,
-        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-        "An empty replacement needs a paragraph or table boundary that stays in its block list.",
-      );
     if (before.some(({ sectionProperties }) => sectionProperties !== undefined))
       return refuse(
         op,
@@ -2876,22 +2863,49 @@ const replaceBlocks = (document: Document, op: ReplaceBlocksOp): Applied => {
       );
     if (inverseAt === undefined) {
       const nextBody = storyBody(replaced.value, op.story);
-      const anchor = blockListAt(nextBody.content, start.list).findLast(
-        (block) => block.type === "paragraph" && block.paraId !== undefined,
-      );
-      if (anchor?.type !== "paragraph" || anchor.paraId === undefined)
-        return panic(
-          "A validated empty replacement lost its surviving paragraph.",
+      const anchor = survivingBlockListAnchor(nextBody, start.list);
+      if (anchor === undefined)
+        return refuse(
+          op,
+          DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+          "An empty replacement needs a surviving paragraph in its container.",
         );
+      const { list, blockId, ancestorDepth } = anchor;
+      const previousBlocks = blockListAt(body.content, list);
+      const nextBlocks = blockListAt(nextBody.content, list);
+      // An emptied wrapper has no paragraph of its own to address it. Check
+      // the enclosing splice with the same rules that will apply its inverse.
+      if (ancestorDepth !== undefined || !sameBlockList(list, start.list)) {
+        if (
+          op.sectionView !== undefined &&
+          !structurallyEqual(op.sectionView.expected, op.sectionView.restore)
+        )
+          return refuse(
+            op,
+            DOCUMENT_OP_REFUSAL_REASONS.SECTION_BOUNDARY,
+            "Removing a paragraph through its enclosing block list preserves section metadata.",
+          );
+        const structural = applyTableOp(document, {
+          type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+          story: op.story,
+          blockId,
+          ...(ancestorDepth === undefined ? {} : { ancestorDepth }),
+          expected: previousBlocks,
+          blocks: nextBlocks,
+        });
+        return structural.isErr()
+          ? refuse(op, structural.error.reason, structural.error.message)
+          : structural;
+      }
       return Result.ok({
         document: replaced.value,
         inverse: [
           {
             type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
             story: op.story,
-            blockId: anchor.paraId,
-            expected: blockListAt(nextBody.content, start.list),
-            blocks: blockListAt(body.content, start.list),
+            blockId,
+            expected: nextBlocks,
+            blocks: previousBlocks,
           },
         ],
         touched: touchedBetween(before, []),
