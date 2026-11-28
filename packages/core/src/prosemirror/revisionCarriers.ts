@@ -7,6 +7,8 @@ import {
   type PropertyRevisionKind,
 } from "@stll/docx-core/model";
 
+import { getInlineDisplayText } from "./inlineDisplayText";
+
 export function isPPrMarkAttr(value: unknown): value is ParagraphMarkChange {
   if (
     typeof value !== "object" ||
@@ -360,7 +362,7 @@ const appendPropertyCarriers = ({
     if (!metadata) {
       continue;
     }
-    text ??= node.textContent;
+    text ??= getInlineDisplayText(node);
     carriers.push({ ...metadata, type, text, from, to });
   }
 };
@@ -376,6 +378,7 @@ export const getFolioNodeRevisionCarriers = (
   const carriers: FolioNodeRevisionCarrier[] = [];
 
   if (node.type.name === "paragraph") {
+    const paragraphText = getInlineDisplayText(node);
     const paragraphMark = node.attrs["pPrMark"];
     const paragraphMarkKind =
       isObjectRecord(paragraphMark) &&
@@ -388,7 +391,7 @@ export const getFolioNodeRevisionCarriers = (
         carriers.push({
           ...metadata,
           type: paragraphMarkKind,
-          text: node.textContent,
+          text: paragraphText,
           from: nodePos + node.nodeSize - 1,
           to: nodePos + node.nodeSize,
         });
@@ -402,7 +405,7 @@ export const getFolioNodeRevisionCarriers = (
         carriers.push({
           ...deletionMetadata,
           type: "paragraphMarkDeleted",
-          text: node.textContent,
+          text: paragraphText,
           from: nodePos + node.nodeSize - 1,
           to: nodePos + node.nodeSize,
         });

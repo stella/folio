@@ -763,9 +763,22 @@ export const analyzeStory = ({
     tables.at(-1)?.cellTexts.at(-1)?.push(text);
   };
 
+  /** The paragraph read last: a bookmark ending between blocks ends behind
+   *  its mark. */
+  let lastRead: ParagraphRead | null = null;
   walkBlocks(container, {
+    bookmarkEnd: (element) => {
+      const read: ParagraphRead | null = lastRead;
+      if (read !== null) {
+        read.bookmarkEnds.push({
+          id: wAttr(element, "id") ?? "",
+          atomIndex: read.atoms.length,
+        });
+      }
+    },
     paragraph: (element) => {
       const read = readParagraph(element, state);
+      lastRead = read;
       const styleId = read.styleId;
       const style = resources.styles.get(
         styleId ?? resources.defaultStyleId ?? "",

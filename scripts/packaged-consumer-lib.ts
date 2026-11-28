@@ -56,9 +56,34 @@ export const reactPeerFloor = (peers: ReactPeers) => {
 export const REACT_PEER_FLOOR = reactPeerFloor(reactManifest.peerDependencies);
 
 const DOCX_KERNEL_WASM_ASSET = /(?:^|\/)docx_kernel_bg(?:-[^/]+)?\.wasm$/u;
+const CZECH_JSON_ASSET = /(?:^|\/)cs(?:-[^/]+)?\.json$/u;
 
 export const isDocxKernelWasmAsset = (file: string): boolean =>
   DOCX_KERNEL_WASM_ASSET.test(file);
+
+export const findCzechCatalogAsset = async (
+  directory: string,
+  files: readonly string[],
+): Promise<string | undefined> => {
+  for (const file of files) {
+    if (!CZECH_JSON_ASSET.test(file)) continue;
+    const value: unknown = JSON.parse(
+      await readFile(path.join(directory, file), "utf8"),
+    );
+    if (typeof value !== "object" || value === null || !("folio" in value))
+      continue;
+    const { folio } = value;
+    if (
+      typeof folio === "object" &&
+      folio !== null &&
+      "bold" in folio &&
+      folio.bold === "Tučné"
+    ) {
+      return file;
+    }
+  }
+  return undefined;
+};
 
 export const reactPeerInstallArgs = () => [
   `react@${REACT_PEER_FLOOR.version}`,

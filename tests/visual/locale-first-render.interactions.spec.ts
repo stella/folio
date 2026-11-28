@@ -2,7 +2,8 @@ import { expect, test } from "@playwright/test";
 
 import { PLAYGROUND_HOSTS } from "../parity/playgroundHosts";
 
-const czechCatalog = /\/cs(?:\.gen)?-[\w-]+\.js$/u;
+const czechCatalog = /\/cs-[\w-]+\.json$/u;
+const slovakCatalog = /\/sk-[\w-]+\.json$/u;
 
 for (const [adapter, host] of Object.entries(PLAYGROUND_HOSTS)) {
   test(`${adapter} waits for the requested locale before painting editor chrome`, async ({
@@ -45,15 +46,17 @@ for (const [adapter, host] of Object.entries(PLAYGROUND_HOSTS)) {
   });
 }
 
-test("a directly mounted Vue editor shows failure when its locale cannot load", async ({
+test("a directly mounted Vue editor reports failure and falls back to English", async ({
   page,
 }) => {
-  await page.route(czechCatalog, (route) => route.abort());
-  await page.goto(`${PLAYGROUND_HOSTS.vue}/?locale=cs&file=sample.docx`);
+  await page.route(slovakCatalog, (route) => route.abort());
+  await page.goto(`${PLAYGROUND_HOSTS.vue}/?locale=sk&file=sample.docx`);
   const editor = page.locator(".docx-editor-vue");
-  await expect(editor.getByRole("alert")).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveText(
+    "The sk message catalog could not be loaded.",
+  );
   await expect(editor.locator("[aria-busy='true']")).toHaveCount(0);
   await expect(
     editor.getByRole("button", { name: "Bold", exact: true }),
-  ).toHaveCount(0);
+  ).toBeVisible();
 });

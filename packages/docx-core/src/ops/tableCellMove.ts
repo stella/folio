@@ -217,7 +217,7 @@ const movableMath = ({ display, ommlXml }: MathEquation): boolean => {
   );
 };
 
-const emptyElement = (xml: string) => {
+const readCapturedElement = (xml: string) => {
   const parsed = readXml(xml, {
     conformance: "ooxml",
     inheritedNamespaceScope: OOXML_NAMESPACE_SCOPE,
@@ -225,13 +225,17 @@ const emptyElement = (xml: string) => {
   if (parsed.status !== "parsed" || parsed.value.elements?.length !== 1)
     return undefined;
   const element = parsed.value.elements.at(0);
-  if (element?.type !== "element" || (element.elements?.length ?? 0) > 0)
-    return undefined;
+  if (element?.type !== "element") return undefined;
   const attributes = Object.entries(element.attributes ?? {}).filter(
     ([name]) => name !== "xmlns" && !name.startsWith("xmlns:"),
   );
   const localName = element.name?.slice(element.name.indexOf(":") + 1);
   return { element, localName, attributes };
+};
+
+const emptyElement = (xml: string) => {
+  const parsed = readCapturedElement(xml);
+  return (parsed?.element.elements?.length ?? 0) === 0 ? parsed : undefined;
 };
 
 /** An authored tag wrapper without a separately owned record. */
@@ -260,12 +264,63 @@ export const movableCustomXmlBlock = ({
   );
 };
 
+const localCheckbox = (element: XmlElement): boolean => {
+  const kinds = new Set<string>();
+  return (element.elements ?? []).every((child) => {
+    if (child.type === "text")
+      return typeof child.text === "string" && child.text.trim() === "";
+    if (
+      child.type !== "element" ||
+      child.namespaceUri !== OOXML_NS.w14 ||
+      (child.elements?.length ?? 0) > 0
+    )
+      return false;
+    const name = child.name?.slice(child.name.indexOf(":") + 1);
+    if (
+      (name !== "checked" &&
+        name !== "checkedState" &&
+        name !== "uncheckedState") ||
+      kinds.has(name)
+    )
+      return false;
+    const compatible = Object.keys(child.attributes ?? {}).every(
+      (attribute) => {
+        if (attribute === "xmlns" || attribute.startsWith("xmlns:"))
+          return true;
+        const colon = attribute.indexOf(":");
+        if (
+          colon < 1 ||
+          resolveNamespaceUri(
+            child.namespaceScope,
+            attribute.slice(0, colon),
+          ) !== OOXML_NS.w14
+        )
+          return false;
+        const property = attribute.slice(colon + 1);
+        return (
+          property === "val" || (name !== "checked" && property === "font")
+        );
+      },
+    );
+    if (compatible) kinds.add(name);
+    return compatible;
+  });
+};
+
 const controlPropertyKind = (
   xml: string,
-): "richText" | "binding" | undefined => {
-  const parsed = emptyElement(xml);
+): "richText" | "checkbox" | "binding" | undefined => {
+  const parsed = readCapturedElement(xml);
   if (parsed === undefined) return undefined;
   const { element, localName, attributes } = parsed;
+  if (
+    localName === "checkbox" &&
+    element.namespaceUri === OOXML_NS.w14 &&
+    attributes.length === 0 &&
+    localCheckbox(element)
+  )
+    return "checkbox";
+  if ((element.elements?.length ?? 0) > 0) return undefined;
   if (
     localName === "richText" &&
     wordNamespace(element.namespaceUri) &&
@@ -321,8 +376,9 @@ const movableControlId = (
   properties: InlineSdt["properties"],
 ): number | undefined => {
   const { id, preserved, rawEndPropertiesXml } = properties;
+  const checkbox = properties.sdtType === "checkbox";
   if (
-    properties.sdtType !== "richText" ||
+    (properties.sdtType !== "richText" && !checkbox) ||
     id === undefined ||
     !Number.isInteger(id) ||
     id < -MAX_REVISION_ID - 1 ||
@@ -337,7 +393,13 @@ const movableControlId = (
   const kinds = new Set<string>();
   for (const { xml } of preserved?.children ?? []) {
     const kind = controlPropertyKind(xml);
-    if (kind === undefined || kinds.has(kind)) return undefined;
+    if (
+      kind === undefined ||
+      kinds.has(kind) ||
+      (kind === "checkbox" && !checkbox) ||
+      (kind === "richText" && checkbox)
+    )
+      return undefined;
     kinds.add(kind);
   }
   return id;
@@ -524,8 +586,7 @@ export const nestedTableMoveSource = (
       tableProperties.carrierStack !== undefined ||
       reachesPastRemovedCell(tableProperties) ||
       (geometry?.type === "mergeCells" &&
-        (geometry.nestedMoves !== undefined ||
-          !tableMoveOwnershipMatches(candidate, geometry))) ||
+        !tableMoveOwnershipMatches(candidate, geometry)) ||
       rows.length === 0
     )
       return false;
@@ -804,6 +865,8 @@ const withNestedMoveIdentities = (
   };
   const grid = table.formatting?.gridChange;
   const gridId = grid === undefined ? undefined : ids.revisions.get(grid.id);
+  const revisionId = (id: number) => ids.revisions.get(id) ?? id;
+  const paragraphId = (id: string) => ids.paragraphs.get(idKey(id)) ?? id;
   const rewriteResources = (
     pairs: MoveResourcePairs,
     aliases: ReadonlyMap<number, number>,
@@ -814,18 +877,16 @@ const withNestedMoveIdentities = (
     );
   const rewriteMove = (move: TableGeometryMove): TableGeometryMove => {
     const addresses = {
-      source: ids.paragraphs.get(idKey(move.source)) ?? move.source,
-      destination:
-        ids.paragraphs.get(idKey(move.destination)) ?? move.destination,
-      destinationMark:
-        ids.revisions.get(move.destinationMark) ?? move.destinationMark,
+      source: paragraphId(move.source),
+      destination: paragraphId(move.destination),
+      destinationMark: revisionId(move.destinationMark),
     };
     if (move.kind === "empty") return { ...addresses, kind: "empty" };
     return {
       ...move,
       ...addresses,
-      fromRevision: ids.revisions.get(move.fromRevision) ?? move.fromRevision,
-      toRevision: ids.revisions.get(move.toRevision) ?? move.toRevision,
+      fromRevision: revisionId(move.fromRevision),
+      toRevision: revisionId(move.toRevision),
       fromRange: ids.ranges.get(move.fromRange)?.id ?? move.fromRange,
       toRange: ids.ranges.get(move.toRange)?.id ?? move.toRange,
       ...(move.controls === undefined
@@ -836,28 +897,67 @@ const withNestedMoveIdentities = (
         : { pictures: rewriteResources(move.pictures, ids.pictures) }),
     };
   };
+  const rewriteRanges = (ranges: TableMoveRanges): TableMoveRanges => {
+    const from = ids.ranges.get(ranges.fromRange);
+    const to = ids.ranges.get(ranges.toRange);
+    return {
+      fromRange: from?.id ?? ranges.fromRange,
+      toRange: to?.id ?? ranges.toRange,
+      name: from?.name ?? to?.name ?? ranges.name,
+    };
+  };
+  const rewriteNested = (
+    move: TableGeometryNestedMove,
+  ): TableGeometryNestedMove => ({
+    rows: move.rows.map(revisionId),
+    paragraphs: move.paragraphs.map(([from, to]) => [
+      paragraphId(from),
+      paragraphId(to),
+    ]),
+    ...(move.omittedTable === undefined
+      ? {}
+      : {
+          omittedTable: [
+            revisionId(move.omittedTable[0]),
+            revisionId(move.omittedTable[1]),
+          ] as const,
+        }),
+    ...(move.revisions === undefined
+      ? {}
+      : { revisions: rewriteResources(move.revisions, ids.revisions) }),
+    ...(move.controls === undefined
+      ? {}
+      : { controls: rewriteResources(move.controls, ids.controls) }),
+    ...(move.pictures === undefined
+      ? {}
+      : { pictures: rewriteResources(move.pictures, ids.pictures) }),
+    ...(move.moveRanges === undefined
+      ? {}
+      : {
+          moveRanges: move.moveRanges.map(
+            ([from, to]) => [rewriteRanges(from), rewriteRanges(to)] as const,
+          ),
+        }),
+  });
   const geometry = grid?.geometryChange;
   const rewrittenGeometry =
     geometry === undefined
       ? undefined
       : {
           ...geometry,
-          revisionIds: geometry.revisionIds.map(
-            (id) => ids.revisions.get(id) ?? id,
-          ),
+          revisionIds: geometry.revisionIds.map(revisionId),
           ...(geometry.type !== "mergeCells"
             ? {}
             : {
                 ...(geometry.moves === undefined
                   ? {}
                   : { moves: geometry.moves.map(rewriteMove) }),
+                ...(geometry.nestedMoves === undefined
+                  ? {}
+                  : { nestedMoves: geometry.nestedMoves.map(rewriteNested) }),
                 ...(geometry.emptyOwner === undefined
                   ? {}
-                  : {
-                      emptyOwner:
-                        ids.paragraphs.get(idKey(geometry.emptyOwner)) ??
-                        geometry.emptyOwner,
-                    }),
+                  : { emptyOwner: paragraphId(geometry.emptyOwner) }),
               }),
         };
   return {

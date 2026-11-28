@@ -435,6 +435,12 @@ export type SectionRewrite = {
    * section is written with its own alone.
    */
   inherited?: readonly string[];
+  /**
+   * Header and footer references (`headerReference:default`, …) given in
+   * `inherited` in place of the section's own: its own of those kinds are
+   * left out.
+   */
+  replaced?: ReadonlySet<string>;
 };
 
 /**
@@ -486,7 +492,7 @@ export const sectionPropertiesXml = (
   xml: string,
   sectPr: XmlElement,
   w: string,
-  { first, page, start, inherited = [] }: SectionRewrite,
+  { first, page, start, inherited = [], replaced }: SectionRewrite,
 ): string | null => {
   const attributes = (element: XmlElement, names: readonly string[]): string =>
     names
@@ -508,6 +514,9 @@ export const sectionPropertiesXml = (
     }
     if (
       name === "sectPrChange" ||
+      ((name === "headerReference" || name === "footerReference") &&
+        replaced?.has(`${name}:${wAttr(child, "type") ?? "default"}`) ===
+          true) ||
       (name === "type" && start !== null) ||
       (name === "titlePg" && !first)
     ) {

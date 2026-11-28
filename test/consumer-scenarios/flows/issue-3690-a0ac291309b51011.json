@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "title": "PINNED #3690, fingerprint a0ac291309b51011: deleting the story's last paragraph a pending join runs into, as a table goes after the paragraph before the join, keeps that paragraph out of the table's first cell",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "comments",
+  "mode": "tracked-changes",
+  "seed": 1123835967,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 2259624913,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "5E88C024",
+          "separator": " ",
+          "mergedParagraphProperties": { "alignment": null }
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 2067801322,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "31617F9A",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        },
+        { "type": "deleteBlock", "blockId": "483CD5EB" }
+      ]
+    }
+  ],
+  "weights": { "version": 1, "cells": {}, "operations": [] },
+  "origin": "shrunk from random flow seed 1123835967"
+}

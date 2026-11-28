@@ -24,6 +24,7 @@
 
 import { TaggedError, type TaggedErrorClass } from "better-result";
 
+import { readRuntimeJsonAsset } from "../../utils/runtimeJsonAsset";
 import { recordHyphenationDictionaryError } from "../layoutInstrumentation";
 
 export type HyphenateWord = (text: string) => string;
@@ -97,52 +98,6 @@ const dictionaryUrl = (dictionary: HyphenationDictionaryId): URL => {
   return url;
 };
 
-/**
- * The file reader of a runtime with Node's built-in modules, reached through
- * `process.getBuiltinModule` so that no bundler sees a `node:` import.
- */
-const builtinReadFile = ():
-  ((url: URL, encoding: "utf8") => Promise<string>) | undefined => {
-  const runtimeProcess: unknown = Reflect.get(globalThis, "process");
-  if (
-    typeof runtimeProcess !== "object" ||
-    runtimeProcess === null ||
-    !("getBuiltinModule" in runtimeProcess) ||
-    typeof runtimeProcess.getBuiltinModule !== "function"
-  ) {
-    return undefined;
-  }
-  const fs: unknown = runtimeProcess.getBuiltinModule("node:fs/promises");
-  if (
-    typeof fs !== "object" ||
-    fs === null ||
-    !("readFile" in fs) ||
-    typeof fs.readFile !== "function"
-  ) {
-    return undefined;
-  }
-  const { readFile } = fs;
-  return (url, encoding) => readFile(url, encoding);
-};
-
-const readPatterns = async (url: URL): Promise<HyphenationPatterns> => {
-  // Node's fetch does not read files, so a package installed on disk is read
-  // through the runtime's file system. A runtime without
-  // `process.getBuiltinModule` (Node before 22.3) is handed the dictionaries.
-  if (url.protocol === "file:") {
-    const readFile = builtinReadFile();
-    if (readFile === undefined) {
-      throw new Error(`This runtime cannot read ${url.href}`);
-    }
-    return JSON.parse(await readFile(url, "utf8"));
-  }
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`${url.href} answered ${response.status}`);
-  }
-  return response.json();
-};
-
 const hyphenatorFor = async (
   patterns: HyphenationPatterns,
 ): Promise<HyphenateWord> => {
@@ -163,7 +118,7 @@ const loadDictionary = async (
 ): Promise<HyphenateWord> =>
   hyphenatorFor(
     assetOptions.dictionaries?.[dictionary] ??
-      (await readPatterns(dictionaryUrl(dictionary))),
+      (await readRuntimeJsonAsset(dictionaryUrl(dictionary))),
   );
 
 const HYPHENATION_DICTIONARY_LOADERS = {

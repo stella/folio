@@ -102,6 +102,9 @@ export type AtomKind =
   | "footnoteReference"
   | "endnoteReference"
   | "selfNumber"
+  /** A legacy form field that shows its box or list without a result: the
+   *  field itself, with its form data, is the content. */
+  | "formField"
   | "object"
   /** No reading yields it: the piece a plan that keeps comments places
    *  for a paragraph's comment mark (`ParagraphRead.commentMarks`). */
@@ -125,8 +128,10 @@ export type InlineAtom = {
   element: XmlElement | null;
   /** Fields whose result the atom is part of, outermost first. */
   fields: readonly number[];
-  /** The code of the field a `selfNumber` atom stands for. */
+  /** The code of the field a `selfNumber` or `formField` atom stands for. */
   instruction?: string;
+  /** The form data (`w:ffData`) of the field a `formField` atom stands for. */
+  formData?: XmlElement;
   /** The comment mark a `commentMark` piece stands for. */
   comment?: { kind: "start" | "end" | "reference"; id: string };
   /** The tracked change the atom is part of, in a reading that keeps them. */
@@ -171,6 +176,7 @@ const SELF_NUMBERING_FIELDS: ReadonlySet<string> = new Set([
   "AUTONUM",
   "AUTONUMLGL",
   "AUTONUMOUT",
+  "LISTNUM",
 ]);
 
 /** Whether a field kind prints a number of its own and caches no text. */
@@ -193,7 +199,20 @@ export type StoryField = {
   closed: boolean;
   /** Whether the field sits in the code of another field. */
   nestedInCode: boolean;
+  /** The form data (`w:ffData`) of a legacy form field's begin. */
+  formData?: XmlElement;
 };
+
+/** Legacy form fields: a text box, a check box, a drop-down list. */
+export const FORM_FIELDS: ReadonlySet<string> = new Set([
+  "FORMTEXT",
+  "FORMCHECKBOX",
+  "FORMDROPDOWN",
+]);
+
+/** Whether a field is a legacy form field that carries its form data. */
+export const isFormField = (field: StoryField): boolean =>
+  FORM_FIELDS.has(field.kind) && field.formData !== undefined;
 
 type OpenField = {
   field: StoryField;
@@ -707,7 +726,12 @@ const readRun = (
       case "fldChar": {
         const type = wAttr(child, "fldCharType");
         if (type === "begin") {
-          state.open.push({ field: beginField(walk, ""), phase: "code" });
+          const field = beginField(walk, "");
+          const formData = wChild(child, "ffData");
+          if (formData !== null) {
+            field.formData = formData;
+          }
+          state.open.push({ field, phase: "code" });
         } else if (type === "separate") {
           const top = state.open.at(-1);
           if (top === undefined || top.phase === "result") {
@@ -734,6 +758,22 @@ const readRun = (
                 link,
                 element: null,
                 instruction: top.field.instruction.trim(),
+              });
+            } else if (
+              top.field.result === "" &&
+              top.field.formData !== undefined &&
+              isFormField(top.field)
+            ) {
+              // A box or a list that caches no text shows what its form
+              // data says: the field is the content.
+              pushAtom(walk, {
+                kind: "formField",
+                text: "",
+                runProperties,
+                link,
+                element: null,
+                instruction: top.field.instruction.trim(),
+                formData: top.field.formData,
               });
             }
           }
@@ -998,6 +1038,11 @@ export type StoryBlockVisitor = {
   unread: (element: XmlElement) => void;
   /** A tracked insertion, deletion or move of a block, row or cell. */
   tracked: (element: XmlElement) => void;
+  /**
+   * A bookmark end between blocks, rows or cells: the bookmark ends behind
+   * the paragraph read last.
+   */
+  bookmarkEnd?: (element: XmlElement) => void;
 };
 
 const BLOCK_WRAPPERS = new Set(["customXml"]);
@@ -1056,6 +1101,8 @@ const walkRows = (
             visitor.cellStart(row, col);
             col += 1;
             walkBlocks(cell, visitor, depth + 1);
+          } else if (cellName === "bookmarkEnd") {
+            visitor.bookmarkEnd?.(cell);
           } else if (cellName === "sdt") {
             const content = wChild(cell, "sdtContent");
             if (content !== null) {
@@ -1072,6 +1119,8 @@ const walkRows = (
         }
       };
       walkCells(child);
+    } else if (name === "bookmarkEnd") {
+      visitor.bookmarkEnd?.(child);
     } else if (name === "sdt") {
       const content = wChild(child, "sdtContent");
       if (content !== null) {
@@ -1118,6 +1167,8 @@ export const walkBlocks = (
       if (REVISION_INCLUDED.has(name)) {
         walkBlocks(child, visitor, depth);
       }
+    } else if (name === "bookmarkEnd") {
+      visitor.bookmarkEnd?.(child);
     } else if (name === null || !IGNORED_BLOCK_CHILDREN.has(name)) {
       visitor.unread(child);
     }

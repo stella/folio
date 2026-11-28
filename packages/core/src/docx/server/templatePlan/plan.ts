@@ -6,8 +6,9 @@
  */
 import { Result } from "better-result";
 
-import type { Style } from "../../../types/document";
+import type { ListRendering, Style } from "../../../types/document";
 import { parseFieldInstruction } from "../../fieldParser";
+import { listRenderingDefinitionsMatch } from "../../listRendering";
 import { computeListRendering } from "../../numberingParser";
 import { NAMESPACES, type XmlElement } from "../../xmlParser";
 import type { AnalyzedBlock, AnalyzedDocument } from "./blocks";
@@ -99,6 +100,9 @@ export type NumberingMint = {
   starts: Map<number, number>;
 };
 
+/** A list of the source the output carries, under its new instance id. */
+export type CarriedSourceList = { sourceNumId: number; numId: number };
+
 export type ResolvedNumbering =
   | { kind: "style" }
   | { kind: "none" }
@@ -171,6 +175,25 @@ export type ResolvedSlot = {
 };
 
 /** A `REF` switch that shows the target paragraph's number, not its text. */
+
+/** Whether two lists render a level alike: the same format, text and
+ *  look, whatever their numbers and where they start (the group's own
+ *  instance says where it starts; the labels it prints are verified). */
+const sameListRendering = (
+  left: ListRendering | null,
+  right: ListRendering | null,
+): boolean => {
+  if (left === null || right === null) {
+    return false;
+  }
+  const looks = ({
+    startOverride: _startOverride,
+    levelStarts: _levelStarts,
+    ...rest
+  }: ListRendering): ListRendering => ({ ...rest, numId: 0 });
+  return listRenderingDefinitionsMatch(looks(left), looks(right));
+};
+
 const SHOWS_NUMBER = /\\[nrw]\b/u;
 
 const fieldCharOf = (run: XmlElement): string | null =>
@@ -218,20 +241,33 @@ const holdsText = (element: XmlElement): boolean => {
  * began; text behind it stays, whatever field follows that text.
  */
 const endsOpenField = (paragraph: XmlElement): boolean => {
+  const end = openFieldEndRun(paragraph);
+  if (end === null) {
+    return false;
+  }
   const children = elementChildren(paragraph);
+  return !children.slice(children.indexOf(end) + 1).some(holdsText);
+};
+
+/**
+ * The run that ends the field left open in front of a paragraph: the first
+ * end that closes no field the paragraph began. Null when the paragraph
+ * does not end it in runs of its own.
+ */
+export const openFieldEndRun = (paragraph: XmlElement): XmlElement | null => {
   let depth = 0;
-  for (const [position, child] of children.entries()) {
+  for (const child of elementChildren(paragraph)) {
     const mark = fieldCharOf(child);
     if (mark === "begin") {
       depth += 1;
     } else if (mark === "end") {
       if (depth === 0) {
-        return !children.slice(position + 1).some(holdsText);
+        return child;
       }
       depth -= 1;
     }
   }
-  return false;
+  return null;
 };
 
 /**
@@ -245,11 +281,17 @@ const endsOpenField = (paragraph: XmlElement): boolean => {
 const contentsWithEntries = (
   template: AnalyzedDocument,
   keptIds: ReadonlySet<string>,
-): { first: AnalyzedBlock; textKept: number; rest: AnalyzedBlock[] }[] => {
+): {
+  first: AnalyzedBlock;
+  textKept: number;
+  rest: AnalyzedBlock[];
+  tail: AnalyzedBlock | null;
+}[] => {
   const found: {
     first: AnalyzedBlock;
     textKept: number;
     rest: AnalyzedBlock[];
+    tail: AnalyzedBlock | null;
   }[] = [];
   for (const field of template.story.state.fields) {
     if (
@@ -273,9 +315,17 @@ const contentsWithEntries = (
       ) &&
       field.resultStart >= 0 &&
       fieldSeparatorRun(first.element) !== null &&
-      endsOpenField(last.element)
+      openFieldEndRun(last.element) !== null
     ) {
-      found.push({ first, textKept: field.resultStart, rest });
+      // A field that ends in the paragraph of the next heading (the end
+      // was left in front of it) keeps that paragraph, from behind the end.
+      const alone = endsOpenField(last.element);
+      found.push({
+        first,
+        textKept: field.resultStart,
+        rest: alone ? rest : rest.slice(0, -1),
+        tail: alone ? null : last,
+      });
     }
   }
   return found;
@@ -291,6 +341,8 @@ export type ResolvedPlan = {
   byBlockId: Map<string, ResolvedParagraph>;
   omitted: Map<string, TemplatePlanOmitReason>;
   mints: NumberingMint[];
+  /** The source's lists the output carries, in the order first named. */
+  sourceLists: CarriedSourceList[];
   /** The bookmark of every paragraph a reference targets. */
   bookmarks: Map<ResolvedParagraph, BookmarkWrap>;
   references: {
@@ -306,6 +358,9 @@ export type ResolvedPlan = {
    *  entries they cache: each with the length of the text it keeps in front
    *  of the field's result. */
   emptiedContents: Map<AnalyzedBlock, number>;
+  /** Kept paragraphs a table of contents ends in with text behind its end:
+   *  written from behind that end. */
+  contentsTails: Set<AnalyzedBlock>;
 };
 
 type Refusal = {
@@ -1111,6 +1166,7 @@ export const resolvePlan = (
   );
   let nextNumId = maxOf(usedNumIds, 0) + 1;
   const mints = new Map<string, NumberingMint>();
+  const sourceLists = new Map<number, CarriedSourceList>();
 
   const paragraphStyle = (
     styleId: string | undefined,
@@ -1150,9 +1206,28 @@ export const resolvePlan = (
     }
     const unknown = (message: string): Result<never, TemplatePlanError> =>
       Result.err(refuse({ code: "numbering-unknown", message, blockId }));
-    const { numId, ilvl, restartFrom, baseNumId, group } = numbering;
+    const { numId, ilvl, restartFrom, baseNumId, group, sourceNumId } =
+      numbering;
     if (templateNumbering === null) {
       return unknown("The template has no numbering definitions.");
+    }
+    if (sourceNumId !== undefined) {
+      if (
+        source.numbering === null ||
+        computeListRendering({ numId: sourceNumId, ilvl }, source.numbering) ===
+          null
+      ) {
+        return unknown(
+          `The source has no list ${sourceNumId} with level ${ilvl}.`,
+        );
+      }
+      let carried = sourceLists.get(sourceNumId);
+      if (carried === undefined) {
+        carried = { sourceNumId, numId: nextNumId };
+        nextNumId += 1;
+        sourceLists.set(sourceNumId, carried);
+      }
+      return Result.ok({ kind: "direct", numId: carried.numId, ilvl });
     }
     const mintsInstance =
       numId === "new" || restartFrom !== undefined || group !== undefined;
@@ -1206,7 +1281,20 @@ export const resolvePlan = (
       mints.set(key, mint);
       return Result.ok({ kind: "direct", numId: mint.numId, ilvl });
     }
-    if (mint.baseNumId !== base) {
+    // Two lists of one definition (a template that binds its heading and
+    // its clause styles to two instances of the same outline) count as
+    // one: the group's instance renders the level as the other list does.
+    if (
+      mint.baseNumId !== base &&
+      (mint.abstractNumId !== abstractNumId ||
+        !sameListRendering(
+          computeListRendering(
+            { numId: mint.baseNumId, ilvl },
+            templateNumbering,
+          ),
+          baseLevel,
+        ))
+    ) {
       return invalid(`List group ${key} spans two lists.`);
     }
     if (restartFrom !== undefined) {
@@ -2007,10 +2095,14 @@ export const resolvePlan = (
   // A plan that freezes such a field keeps its result as text instead, so
   // nothing of it is a field to empty.
   const emptiedContents = new Map<AnalyzedBlock, number>();
-  for (const { first, textKept, rest } of freezeKinds.includes("TOC")
+  const contentsTails = new Set<AnalyzedBlock>();
+  for (const { first, textKept, rest, tail } of freezeKinds.includes("TOC")
     ? []
     : contentsWithEntries(template, keptTemplateIds)) {
     emptiedContents.set(first, textKept);
+    if (tail !== null) {
+      contentsTails.add(tail);
+    }
     const gone = new Set(rest);
     for (let position = items.length - 1; position >= 0; position -= 1) {
       const item = items[position];
@@ -2175,10 +2267,12 @@ export const resolvePlan = (
     byBlockId,
     omitted,
     mints: [...mints.values()],
+    sourceLists: [...sourceLists.values()],
     bookmarks,
     references: resolvedReferences,
     freezeKinds: new Set(freezeKinds),
     keptTemplateBlocks,
     emptiedContents,
+    contentsTails,
   });
 };

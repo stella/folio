@@ -30,6 +30,11 @@ import {
 } from "./builders";
 import { removeInvisibleEffects } from "./effects";
 import {
+  embeddedContentType,
+  extensionOf,
+  isPicturePart,
+} from "./embeddedParts";
+import {
   createRelationshipsEditor,
   type EmitContext,
   type EmitShared,
@@ -47,8 +52,10 @@ import { readHeaderFooterParts } from "./inspect";
 import { styleNumbering } from "./labels";
 import { guarded, readPartText, relationshipsPathFor } from "./package";
 import {
+  type CarriedSourceList,
   type ExpectedSegment,
   fieldSeparatorRun,
+  openFieldEndRun,
   type PieceOrigin,
   type ResolvedParagraph,
   type ResolvedPlan,
@@ -72,6 +79,9 @@ import {
   copyPartContent,
   type CopyTarget,
   type HeaderFamily,
+  type HeaderWrite,
+  keptSectionEnds,
+  outputSectionStarts,
   plannedHeaderWrites,
 } from "./sourceHeaders";
 import type {
@@ -102,10 +112,28 @@ import {
   wChild,
   wChildren,
   wName,
+  type XmlRange,
   type XmlSplice,
 } from "./xml";
 
 const CONTENT_TYPES_PATH = "[Content_Types].xml";
+
+/** The ids of the notes of `kind` the body of `documentXml` refers to. */
+const referencedNoteIds = (
+  documentXml: string,
+  w: string,
+  kind: NoteKind,
+): Set<string> => {
+  const ids = new Set<string>();
+  const reference = new RegExp(
+    `<${w}:${kind}Reference\\b[^>]*?\\b${w}:id="([^"]*)"`,
+    "gu",
+  );
+  for (const match of documentXml.matchAll(reference)) {
+    ids.add(match[1] ?? "");
+  }
+  return ids;
+};
 const FAMILY_CONTENT_TYPES: Record<HeaderFamily, string> = {
   header:
     "application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml",
@@ -116,20 +144,6 @@ const WORDPROCESSINGML_CONTENT_TYPE_PREFIX =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.";
 const RELATIONSHIPS_NAMESPACE =
   "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
-
-const MEDIA_CONTENT_TYPES: Readonly<Record<string, string>> = {
-  png: "image/png",
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  gif: "image/gif",
-  bmp: "image/bmp",
-  tif: "image/tiff",
-  tiff: "image/tiff",
-  emf: "image/x-emf",
-  wmf: "image/x-wmf",
-  svg: "image/svg+xml",
-  webp: "image/webp",
-};
 
 const NOTE_PARTS = {
   footnote: {
@@ -384,12 +398,256 @@ const levelRunPropertiesXml = ({
 type NumberingEdit = {
   patches: readonly TemplatePlanNumberingPatch[];
   mints: ResolvedPlan["mints"];
+  /** List definitions and instances copied from the source, as markup. */
+  copied: CopiedLists;
+};
+
+type CopiedLists = { abstracts: string[]; nums: string[] };
+
+/** Built-in lists a LISTNUM field may name, which need no definition. */
+const BUILT_IN_LISTS: ReadonlySet<string> = new Set([
+  "NUMBERDEFAULT",
+  "OUTLINEDEFAULT",
+  "LEGALDEFAULT",
+]);
+
+/** The list a LISTNUM field counts in by name, unless it is built in. */
+export const namedListOf = (instruction: string): string | null => {
+  const match = /^\s*LISTNUM\s+(?:"([^"]+)"|([^\s"\\]+))/iu.exec(instruction);
+  const name = match?.[1] ?? match?.[2] ?? null;
+  return name === null || BUILT_IN_LISTS.has(name.toUpperCase()) ? null : name;
+};
+
+/** The lists the LISTNUM fields the output keeps count in by name. */
+const namedListsOf = (resolved: ResolvedPlan): Set<string> => {
+  const names = new Set<string>();
+  for (const paragraph of new Set(resolved.byBlockId.values())) {
+    for (const { block } of paragraph.parts) {
+      for (const atom of block.read?.atoms ?? []) {
+        const name =
+          atom.kind === "selfNumber" && atom.instruction !== undefined
+            ? namedListOf(atom.instruction)
+            : null;
+        if (name !== null) {
+          names.add(name);
+        }
+      }
+    }
+  }
+  return names;
+};
+
+/** Children of a list definition that tie it to its own package. */
+const PACKAGE_BOUND_LIST_CHILDREN: ReadonlySet<string> = new Set([
+  "nsid",
+  "tmpl",
+  "numStyleLink",
+  "styleLink",
+]);
+
+/**
+ * The source's definitions of the lists `names` that the template does not
+ * define, numbered after the template's own, each with an instance from
+ * `firstNumId` on: a LISTNUM field finds its list by name. A definition
+ * bound to its package (a style it links, a prefix other than the
+ * template's) stays behind; its field counts in the default list.
+ */
+const copiedListsOf = (
+  source: RawPart,
+  template: RawPart,
+  names: ReadonlySet<string>,
+  firstNumId: number,
+): CopiedLists => {
+  const copied: CopiedLists = { abstracts: [], nums: [] };
+  const w = partPrefixes(template.root)?.w;
+  if (
+    names.size === 0 ||
+    w === undefined ||
+    partPrefixes(source.root)?.w !== w
+  ) {
+    return copied;
+  }
+  const nameOf = (element: XmlElement): string | null =>
+    wAttr(wChild(element, "name"), "val");
+  const templateLists = wChildren(template.root, "abstractNum");
+  const defined = new Set(templateLists.map(nameOf));
+  let abstractNumId =
+    maxOf(
+      templateLists.map(
+        (element) => integerOrNull(wAttr(element, "abstractNumId")) ?? 0,
+      ),
+      0,
+    ) + 1;
+  const foreign = new RegExp(
+    `<\\/?(?!${w}:)[\\w.-]+:|\\s(?!${w}:)[\\w.-]+:[\\w.-]+=`,
+    "u",
+  );
+  for (const element of wChildren(source.root, "abstractNum")) {
+    const name = nameOf(element);
+    const inner = innerRangeOf(source.xml, element);
+    if (
+      name === null ||
+      !names.has(name) ||
+      defined.has(name) ||
+      inner === null
+    ) {
+      continue;
+    }
+    const left: XmlSplice[] = elementChildren(element).flatMap((child) => {
+      const bound = PACKAGE_BOUND_LIST_CHILDREN.has(wName(child) ?? "")
+        ? child
+        : wChild(child, "pStyle");
+      const range = bound === null ? null : rangeOf(bound);
+      return range === null ? [] : [{ ...range, newXml: "" }];
+    });
+    const body = sliceWithSplices(source.xml, inner, left);
+    if (body === null || foreign.test(body)) {
+      continue;
+    }
+    const numId = firstNumId + copied.nums.length;
+    copied.abstracts.push(
+      `<${w}:abstractNum ${w}:abstractNumId="${abstractNumId}">${body}</${w}:abstractNum>`,
+    );
+    copied.nums.push(
+      `<${w}:num ${w}:numId="${numId}"><${w}:abstractNumId ${w}:val="${abstractNumId}"/></${w}:num>`,
+    );
+    defined.add(name);
+    abstractNumId += 1;
+  }
+  return copied;
+};
+
+/** Children of a list level that tie it to its own package. */
+const PACKAGE_BOUND_LEVEL_CHILDREN: ReadonlySet<string> = new Set([
+  "pStyle",
+  "lvlPicBulletId",
+]);
+
+/**
+ * The source's lists `lists` names, copied for the output: each definition
+ * once (a definition that only links a numbering style is followed to the
+ * one that defines its levels), numbered from `firstAbstractNumId`, and each
+ * instance under the id the plan gave it, with the level overrides the
+ * source states. What ties a definition to its package (its ids, the
+ * styles its levels name, picture bullets) stays behind. The copies declare
+ * the namespaces the source's numbering part binds, so they read the same
+ * under the template's root. Null when a list cannot be found.
+ */
+const carriedSourceListsOf = (
+  source: RawPart,
+  template: RawPart,
+  lists: readonly CarriedSourceList[],
+  firstAbstractNumId: number,
+): CopiedLists | null => {
+  const carried: CopiedLists = { abstracts: [], nums: [] };
+  const w = partPrefixes(template.root)?.w;
+  if (lists.length === 0) {
+    return carried;
+  }
+  if (w === undefined) {
+    return null;
+  }
+  const templateDeclarations = template.root.attributes ?? {};
+  const declarations = Object.entries(source.root.attributes ?? {})
+    .filter(
+      ([name, value]) =>
+        name.startsWith("xmlns:") &&
+        value !== undefined &&
+        templateDeclarations[name] !== value,
+    )
+    .map(([name, value]) => ` ${name}="${escapeXmlAttribute(String(value))}"`)
+    .join("");
+  const abstracts = wChildren(source.root, "abstractNum");
+  const abstractById = new Map(
+    abstracts.map((element) => [
+      integerOrNull(wAttr(element, "abstractNumId")),
+      element,
+    ]),
+  );
+  const definitionOf = (abstract: XmlElement): XmlElement => {
+    const link = wAttr(wChild(abstract, "numStyleLink"), "val");
+    return (
+      (link === null
+        ? undefined
+        : abstracts.find(
+            (element) =>
+              element !== abstract &&
+              wAttr(wChild(element, "styleLink"), "val") === link,
+          )) ?? abstract
+    );
+  };
+  /** Markup of `element`'s content without what ties it to its package. */
+  const contentOf = (element: XmlElement): string | null => {
+    const inner = innerRangeOf(source.xml, element);
+    if (inner === null) {
+      return "";
+    }
+    const left: XmlSplice[] = elementChildren(element).flatMap((child) => {
+      const bound = PACKAGE_BOUND_LIST_CHILDREN.has(wName(child) ?? "")
+        ? [child]
+        : elementChildren(child).filter((grandchild) =>
+            PACKAGE_BOUND_LEVEL_CHILDREN.has(wName(grandchild) ?? ""),
+          );
+      return bound.flatMap((node) => {
+        const range = rangeOf(node);
+        return range === null ? [] : [{ ...range, newXml: "" }];
+      });
+    });
+    return sliceWithSplices(source.xml, inner, left);
+  };
+  const copiedIds = new Map<XmlElement, number>();
+  for (const { sourceNumId, numId } of lists) {
+    const num = wChildren(source.root, "num").find(
+      (element) => integerOrNull(wAttr(element, "numId")) === sourceNumId,
+    );
+    const abstract = abstractById.get(
+      integerOrNull(wAttr(wChild(num, "abstractNumId"), "val")),
+    );
+    if (num === undefined || abstract === undefined) {
+      return null;
+    }
+    const definition = definitionOf(abstract);
+    let abstractNumId = copiedIds.get(definition);
+    if (abstractNumId === undefined) {
+      const body = contentOf(definition);
+      if (body === null) {
+        return null;
+      }
+      abstractNumId = firstAbstractNumId + copiedIds.size;
+      copiedIds.set(definition, abstractNumId);
+      carried.abstracts.push(
+        `<${w}:abstractNum ${w}:abstractNumId="${abstractNumId}"${declarations}>${body}</${w}:abstractNum>`,
+      );
+    }
+    const overrides = wChildren(num, "lvlOverride")
+      .map((override) => {
+        const range = rangeOf(override);
+        if (range === null) {
+          return "";
+        }
+        const inner = innerRangeOf(source.xml, override);
+        if (inner === null) {
+          return source.xml.slice(range.start, range.end);
+        }
+        const content = contentOf(override);
+        return content === null
+          ? ""
+          : source.xml.slice(range.start, inner.start) +
+              content +
+              source.xml.slice(inner.end, range.end);
+      })
+      .join("");
+    carried.nums.push(
+      `<${w}:num ${w}:numId="${numId}"${declarations}><${w}:abstractNumId ${w}:val="${abstractNumId}"/>${overrides}</${w}:num>`,
+    );
+  }
+  return carried;
 };
 
 /** The template numbering part with level patches and new list instances. */
 const editNumbering = (
   part: RawPart,
-  { patches, mints }: NumberingEdit,
+  { patches, mints, copied }: NumberingEdit,
 ): Result<string, TemplatePlanError> => {
   const prefixes = partPrefixes(part.root);
   if (prefixes === null) {
@@ -503,70 +761,90 @@ const editNumbering = (
       });
     }
   }
-  if (mints.length > 0) {
+  if (copied.abstracts.length > 0) {
+    const lastAbstract = wChildren(part.root, "abstractNum").at(-1);
+    const firstNum = wChild(part.root, "num");
+    const at =
+      (lastAbstract === undefined ? null : rangeOf(lastAbstract)?.end) ??
+      (firstNum === null ? null : rangeOf(firstNum)?.start) ??
+      innerRangeOf(part.xml, part.root)?.end;
+    if (at === undefined) {
+      return Result.err(
+        unreadable(part.path, "The numbering part has no place for a list."),
+      );
+    }
+    insert(at, copied.abstracts.join(""));
+  }
+  if (mints.length > 0 || copied.nums.length > 0) {
     const nums = wChildren(part.root, "num");
-    const markup = mints
-      .map(({ numId, baseNumId, abstractNumId, starts }) => {
-        // The new instance keeps what its base list overrides, level by level.
-        const base = nums.find(
-          (element) => integerOrNull(wAttr(element, "numId")) === baseNumId,
-        );
-        const inherited = new Map<number, XmlElement>();
-        for (const override of wChildren(base, "lvlOverride")) {
-          const level = integerOrNull(wAttr(override, "ilvl"));
-          if (level !== null) {
-            inherited.set(level, override);
+    const markup =
+      mints
+        .map(({ numId, baseNumId, abstractNumId, starts }) => {
+          // The new instance keeps what its base list overrides, level by level.
+          const base = nums.find(
+            (element) => integerOrNull(wAttr(element, "numId")) === baseNumId,
+          );
+          const inherited = new Map<number, XmlElement>();
+          for (const override of wChildren(base, "lvlOverride")) {
+            const level = integerOrNull(wAttr(override, "ilvl"));
+            if (level !== null) {
+              inherited.set(level, override);
+            }
           }
-        }
-        const raw = (element: XmlElement | null | undefined): string => {
-          const range =
-            element === null || element === undefined ? null : rangeOf(element);
-          return range === null ? "" : part.xml.slice(range.start, range.end);
-        };
-        const overrides = [...new Set([...inherited.keys(), ...starts.keys()])]
-          .toSorted((left, right) => left - right)
-          .map((level) => {
-            const start = starts.get(level);
-            const kept = inherited.get(level);
-            if (start === undefined) {
-              return raw(kept);
-            }
-            const startOverride = (prefix: string): string =>
-              `<${prefix}:startOverride ${prefix}:val="${start}"/>`;
-            const keptRange = kept === undefined ? null : rangeOf(kept);
-            const keptInner =
-              kept === undefined ? null : innerRangeOf(part.xml, kept);
-            const keptPrefix = kept?.name?.includes(":")
-              ? kept.name.slice(0, kept.name.indexOf(":"))
-              : null;
-            if (
-              kept === undefined ||
-              keptRange === null ||
-              keptInner === null ||
-              keptPrefix === null
-            ) {
-              return `<${w}:lvlOverride ${w}:ilvl="${level}">${startOverride(w)}</${w}:lvlOverride>`;
-            }
-            // The restart goes into the base override as written, so a
-            // prefix that override binds stays bound for the level it holds.
-            const replaced = wChild(kept, "startOverride");
-            const replacedRange = replaced === null ? null : rangeOf(replaced);
-            const rest =
-              replacedRange === null
-                ? part.xml.slice(keptInner.start, keptInner.end)
-                : part.xml.slice(keptInner.start, replacedRange.start) +
-                  part.xml.slice(replacedRange.end, keptInner.end);
-            return (
-              part.xml.slice(keptRange.start, keptInner.start) +
-              startOverride(keptPrefix) +
-              rest +
-              part.xml.slice(keptInner.end, keptRange.end)
-            );
-          })
-          .join("");
-        return `<${w}:num ${w}:numId="${numId}"><${w}:abstractNumId ${w}:val="${abstractNumId}"/>${overrides}</${w}:num>`;
-      })
-      .join("");
+          const raw = (element: XmlElement | null | undefined): string => {
+            const range =
+              element === null || element === undefined
+                ? null
+                : rangeOf(element);
+            return range === null ? "" : part.xml.slice(range.start, range.end);
+          };
+          const overrides = [
+            ...new Set([...inherited.keys(), ...starts.keys()]),
+          ]
+            .toSorted((left, right) => left - right)
+            .map((level) => {
+              const start = starts.get(level);
+              const kept = inherited.get(level);
+              if (start === undefined) {
+                return raw(kept);
+              }
+              const startOverride = (prefix: string): string =>
+                `<${prefix}:startOverride ${prefix}:val="${start}"/>`;
+              const keptRange = kept === undefined ? null : rangeOf(kept);
+              const keptInner =
+                kept === undefined ? null : innerRangeOf(part.xml, kept);
+              const keptPrefix = kept?.name?.includes(":")
+                ? kept.name.slice(0, kept.name.indexOf(":"))
+                : null;
+              if (
+                kept === undefined ||
+                keptRange === null ||
+                keptInner === null ||
+                keptPrefix === null
+              ) {
+                return `<${w}:lvlOverride ${w}:ilvl="${level}">${startOverride(w)}</${w}:lvlOverride>`;
+              }
+              // The restart goes into the base override as written, so a
+              // prefix that override binds stays bound for the level it holds.
+              const replaced = wChild(kept, "startOverride");
+              const replacedRange =
+                replaced === null ? null : rangeOf(replaced);
+              const rest =
+                replacedRange === null
+                  ? part.xml.slice(keptInner.start, keptInner.end)
+                  : part.xml.slice(keptInner.start, replacedRange.start) +
+                    part.xml.slice(replacedRange.end, keptInner.end);
+              return (
+                part.xml.slice(keptRange.start, keptInner.start) +
+                startOverride(keptPrefix) +
+                rest +
+                part.xml.slice(keptInner.end, keptRange.end)
+              );
+            })
+            .join("");
+          return `<${w}:num ${w}:numId="${numId}"><${w}:abstractNumId ${w}:val="${abstractNumId}"/>${overrides}</${w}:num>`;
+        })
+        .join("") + copied.nums.join("");
     const lastNum = nums.at(-1);
     const cleanup = wChild(part.root, "numIdMacAtCleanup");
     const inner = innerRangeOf(part.xml, part.root);
@@ -646,10 +924,11 @@ const writeOutput = async ({
   }
   const sourceMedia = new Map<string, SourceMedia>();
   for (const [path, bytes] of sourceResources.value.media) {
-    const dot = path.lastIndexOf(".");
     sourceMedia.set(path, {
       bytes,
-      extension: dot === -1 ? "" : path.slice(dot + 1).toLowerCase(),
+      extension: extensionOf(path),
+      relationshipType:
+        sourceResources.value.mediaTypes.get(path) ?? RELATIONSHIP_TYPES.image,
     });
   }
 
@@ -774,6 +1053,7 @@ const writeOutput = async ({
   let commentIdOf: EmitShared["commentId"];
   const shared: EmitShared = {
     commentId: (mark) => commentIdOf?.(mark) ?? null,
+    sourceFields: source.story.state.fields,
     styles: templateCharacterStyles(template),
     sourceRelationships: sourceResources.value.relationships,
     sourceMedia,
@@ -792,15 +1072,24 @@ const writeOutput = async ({
     addMedia: (sourcePath, sourceItem) => {
       let entry = media.get(sourcePath);
       if (entry === undefined) {
-        if (MEDIA_CONTENT_TYPES[sourceItem.extension] === undefined) {
+        if (
+          embeddedContentType(
+            sourceItem.relationshipType,
+            sourceItem.extension,
+          ) === undefined
+        ) {
           unsupportedMedia ??= sourcePath;
         }
-        // A name neither the template nor an earlier picture of this run holds.
+        // A name neither the template nor an earlier part of this run holds;
+        // embedded objects go in the embeddings folder.
+        const folder = isPicturePart(sourceItem.relationshipType)
+          ? "media"
+          : "embeddings";
         let index = media.size + 1;
-        let path = `${documentDirectory}media/placed${index}.${sourceItem.extension}`;
+        let path = `${documentDirectory}${folder}/placed${index}.${sourceItem.extension}`;
         while (pkg.paths.has(path) || mediaPaths.has(path)) {
           index += 1;
-          path = `${documentDirectory}media/placed${index}.${sourceItem.extension}`;
+          path = `${documentDirectory}${folder}/placed${index}.${sourceItem.extension}`;
         }
         mediaPaths.add(path);
         entry = { path, media: sourceItem };
@@ -969,15 +1258,111 @@ const writeOutput = async ({
     createdXml: string | null;
     markup: string;
     relationships: RelationshipsEditor;
+    /** The relationships a new part copied from the template's starts with. */
+    seededRelationships: string | null;
   }[] = [];
   const sectionReferences = [...inherited];
+  // References a later output section names in place of those every
+  // section shares, by section and by `headerReference:default` key.
+  const sectionOverrides = new Map<number, Map<string, string>>();
+  /** A new part for a later output section: the template's content for
+   *  those pages, then the source section's. */
+  const laterSectionPart = async (
+    write: HeaderWrite & { section: number },
+  ): Promise<Result<undefined, TemplatePlanError>> => {
+    const { w, wUri, r } = documentPrefixes;
+    let index = 1;
+    const free = (candidate: string): boolean =>
+      !pkg.paths.has(candidate) &&
+      carriedParts.every((carried) => carried.path !== candidate);
+    while (!free(`${documentDirectory}${write.family}${index}.xml`)) {
+      index += 1;
+    }
+    const path = `${documentDirectory}${write.family}${index}.xml`;
+    const id = documentRelationships.add({
+      type: RELATIONSHIP_TYPES[write.family],
+      target: `${write.family}${index}.xml`,
+      external: false,
+    });
+    const overrides = sectionOverrides.get(write.section) ?? new Map();
+    overrides.set(
+      `${write.family}Reference:${write.kind}`,
+      `<${w}:${write.family}Reference ${w}:type="${write.kind}" ${r}:id="${escapeXmlAttribute(id)}"/>`,
+    );
+    sectionOverrides.set(write.section, overrides);
+    const templatePart =
+      write.templatePath === null
+        ? undefined
+        : headerFooterParts.find(({ path: at }) => at === write.templatePath);
+    const seedPath =
+      templatePart === undefined
+        ? null
+        : relationshipsPathFor(templatePart.path);
+    const seed =
+      seedPath === null || !pkg.paths.has(seedPath)
+        ? Result.ok(null)
+        : await readTemplateText(seedPath);
+    if (Result.isError(seed)) {
+      return seed;
+    }
+    const relationshipsPath = relationshipsPathFor(path);
+    const relationships = createRelationshipsEditor(
+      relationshipsPath,
+      seed.value,
+    );
+    if (relationships === null) {
+      return Result.err(
+        unreadable(relationshipsPath, "A relationships part is not one."),
+      );
+    }
+    const copy = await copyPartContent(write.source, {
+      relationships,
+      addMedia: shared.addMedia,
+      nextDrawingId: shared.nextDrawingId,
+      readSourceBytes: async (target) => await source.pkg.readBytes(target),
+      resolveSourceTarget: (fromPart, target) =>
+        resolveRelativePath(relationshipsPathFor(fromPart), target),
+      hasStyle: (styleId) => template.styles.has(styleId),
+    });
+    const root = write.family === "header" ? "hdr" : "ftr";
+    carriedParts.push({
+      family: write.family,
+      path,
+      createdXml:
+        templatePart === undefined
+          ? `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><${w}:${root} xmlns:${w}="${wUri}" xmlns:${r}="${NAMESPACES.r}">${copy.markup}</${w}:${root}>`
+          : appendToXmlRoot(templatePart.xml, {
+              rootName: templatePart.root.name ?? "",
+              markup: copy.markup,
+            }),
+      markup: copy.markup,
+      relationships,
+      seededRelationships: seed.value,
+    });
+    return Result.ok(undefined);
+  };
   if (plan.sourceHeaders === "keep") {
-    const planned = await plannedHeaderWrites(source, template);
+    const planned = await plannedHeaderWrites(
+      source,
+      template,
+      outputSectionStarts(source, keptSectionEnds(resolved)),
+    );
     if (Result.isError(planned)) {
       return planned;
     }
     const { w, wUri, r } = documentPrefixes;
     for (const write of planned.value.writes) {
+      if (write.section !== undefined) {
+        // oxlint-disable-next-line no-await-in-loop -- serialized reads keep the archive budget exact
+        const later = await laterSectionPart({
+          ...write,
+          section: write.section,
+        });
+        if (Result.isError(later)) {
+          return later;
+        }
+        continue;
+      }
       let path = write.templatePath;
       if (path === null) {
         let index = 1;
@@ -1033,6 +1418,7 @@ const writeOutput = async ({
             : null,
         markup: copy.markup,
         relationships,
+        seededRelationships: null,
       });
     }
   }
@@ -1041,6 +1427,28 @@ const writeOutput = async ({
       ? [item.paragraph]
       : [],
   );
+  /** The references output section `position` names, and the template's
+   *  own it names others in place of. */
+  const sectionReferencesOf = (
+    position: number,
+  ): { inherited: string[]; replaced: Set<string> } => {
+    const overrides =
+      sectionOverrides.get(position) ?? new Map<string, string>();
+    const keyOf = (xml: string): string => {
+      const name = /^<[^:\s]+:(headerReference|footerReference)/u.exec(
+        xml,
+      )?.[1];
+      const kind = /:type="([^"]+)"/u.exec(xml)?.[1] ?? "default";
+      return `${name ?? ""}:${kind}`;
+    };
+    return {
+      inherited: [
+        ...sectionReferences.filter((xml) => !overrides.has(keyOf(xml))),
+        ...overrides.values(),
+      ],
+      replaced: new Set(overrides.keys()),
+    };
+  };
   const sectionXmlOf = new Map<ResolvedParagraph, string>();
   for (const [position, paragraph] of sectionEnds.entries()) {
     const section = paragraph.endsSection;
@@ -1055,7 +1463,7 @@ const writeOutput = async ({
               first: position === 0,
               page: section.page,
               start: position === 0 ? null : (section.start ?? "nextPage"),
-              inherited: sectionReferences,
+              ...sectionReferencesOf(position),
             },
           );
     if (xml === null) {
@@ -1145,6 +1553,22 @@ const writeOutput = async ({
     // its end: the pass below takes its start out too.
     replaced.push({ start, end: inner.end });
   }
+  // A paragraph a kept table of contents ends in, with the next heading's
+  // text behind the end, keeps that text: the cached entries in front of
+  // it and the end go (the field is closed in its first paragraph).
+  for (const { element } of resolved.contentsTails) {
+    const end = openFieldEndRun(element);
+    const endRange = end === null ? null : rangeOf(end);
+    const inner = innerRangeOf(template.document.xml, element);
+    if (endRange === null || inner === null) {
+      continue;
+    }
+    const properties = wChild(element, "pPr");
+    const start =
+      (properties === null ? null : rangeOf(properties)?.end) ?? inner.start;
+    templateSplices.push({ start, end: endRange.end, newXml: "" });
+    replaced.push({ start, end: endRange.end });
+  }
   const keptElements = [
     ...resolved.keptTemplateBlocks.map(({ element }) => element),
     ...resolved.items.flatMap((item) =>
@@ -1215,7 +1639,7 @@ const writeOutput = async ({
     const { lastSection } = plan;
     const split = sectionEnds.length > 0 || lastSection !== undefined;
     const rebuilt =
-      split || sectionReferences.length > 0
+      split || sectionReferences.length > 0 || sectionOverrides.size > 0
         ? sectionPropertiesXml(
             template.document.xml,
             bodySection,
@@ -1225,7 +1649,7 @@ const writeOutput = async ({
               page: lastSection?.page,
               start:
                 sectionEnds.length === 0 ? null : (lastSection?.start ?? null),
-              inherited: sectionReferences,
+              ...sectionReferencesOf(sectionEnds.length),
             },
           )
         : null;
@@ -1282,10 +1706,38 @@ const writeOutput = async ({
     }
     let partXml: string | null = null;
     if (state.existing.part !== null) {
-      const frozen = spliceXml(
-        state.existing.part.xml,
-        freezeFields(state.existing.part, resolved.freezeKinds).splices,
+      // The template's own notes belong to its sample text: one the new
+      // body no longer refers to is left out, so the sample's notes (and
+      // the fields in them that name its bookmarks) do not stay behind.
+      const referenced = referencedNoteIds(
+        documentXml,
+        documentPrefixes.w,
+        kind,
       );
+      const orphans: XmlRange[] = [];
+      for (const element of elementChildren(state.existing.part.root)) {
+        const type = wAttr(element, "type");
+        const id = wAttr(element, "id");
+        const range = rangeOf(element);
+        if (
+          isW(element, kind) &&
+          (type === null || type === "normal") &&
+          id !== null &&
+          !referenced.has(id) &&
+          range !== null
+        ) {
+          orphans.push(range);
+        }
+      }
+      const inOrphan = ({ start, end }: XmlRange): boolean =>
+        orphans.some((range) => start >= range.start && end <= range.end);
+      const frozen = spliceXml(state.existing.part.xml, [
+        ...freezeFields(
+          state.existing.part,
+          resolved.freezeKinds,
+        ).splices.filter((splice) => !inOrphan(splice)),
+        ...orphans.map(({ start, end }) => ({ start, end, newXml: "" })),
+      ]);
       if (frozen === null) {
         return Result.err(
           unreadable(state.path, "The notes part could not be rewritten."),
@@ -1419,7 +1871,7 @@ const writeOutput = async ({
       new TemplatePlanError({
         code: "unsupported-content",
         message:
-          "A picture of the source is in a format the output cannot declare.",
+          "A picture or embedded object of the source is in a format the output cannot declare.",
         part: unsupportedMedia,
       }),
     );
@@ -1436,7 +1888,8 @@ const writeOutput = async ({
     parts.set(path, item.bytes);
     newContentTypes.push({
       partName: `/${path}`,
-      contentType: MEDIA_CONTENT_TYPES[item.extension] ?? "",
+      contentType:
+        embeddedContentType(item.relationshipType, item.extension) ?? "",
     });
   }
   const documentRelationshipsOut = documentRelationships.xml();
@@ -1477,11 +1930,66 @@ const writeOutput = async ({
   }
 
   const patches = plan.numberingPatches ?? [];
-  if (patches.length > 0 || resolved.mints.length > 0) {
-    const numberingPart =
-      template.numberingPath === null || template.numberingXml === null
-        ? null
-        : readRawPart(template.numberingPath, template.numberingXml);
+  const numberingPart =
+    template.numberingPath === null || template.numberingXml === null
+      ? null
+      : readRawPart(template.numberingPath, template.numberingXml);
+  const sourceNumbering =
+    source.numberingPath === null || source.numberingXml === null
+      ? null
+      : readRawPart(source.numberingPath, source.numberingXml);
+  // A LISTNUM field the output keeps counts in its list by name.
+  const copied: CopiedLists =
+    numberingPart === null || sourceNumbering === null
+      ? { abstracts: [], nums: [] }
+      : copiedListsOf(
+          sourceNumbering,
+          numberingPart,
+          namedListsOf(resolved),
+          maxOf(
+            [
+              ...wChildren(numberingPart.root, "num").map(
+                (element) => integerOrNull(wAttr(element, "numId")) ?? 0,
+              ),
+              ...resolved.mints.map(({ numId }) => numId),
+              ...resolved.sourceLists.map(({ numId }) => numId),
+            ],
+            0,
+          ) + 1,
+        );
+  // A source list the plan keeps goes with its definition, numbered after
+  // the template's and the lists copied for fields.
+  const carriedLists =
+    numberingPart === null || sourceNumbering === null
+      ? null
+      : carriedSourceListsOf(
+          sourceNumbering,
+          numberingPart,
+          resolved.sourceLists,
+          maxOf(
+            wChildren(numberingPart.root, "abstractNum").map(
+              (element) => integerOrNull(wAttr(element, "abstractNumId")) ?? 0,
+            ),
+            0,
+          ) +
+            1 +
+            copied.abstracts.length,
+        );
+  if (carriedLists === null && resolved.sourceLists.length > 0) {
+    return Result.err(
+      new TemplatePlanError({
+        code: "numbering-unknown",
+        message: "A source list the plan keeps cannot be carried.",
+      }),
+    );
+  }
+  copied.abstracts.push(...(carriedLists?.abstracts ?? []));
+  copied.nums.push(...(carriedLists?.nums ?? []));
+  if (
+    patches.length > 0 ||
+    resolved.mints.length > 0 ||
+    copied.nums.length > 0
+  ) {
     if (numberingPart === null) {
       return Result.err(
         new TemplatePlanError({
@@ -1493,6 +2001,7 @@ const writeOutput = async ({
     const numbering = editNumbering(numberingPart, {
       patches,
       mints: resolved.mints,
+      copied,
     });
     if (Result.isError(numbering)) {
       return numbering;
@@ -1516,7 +2025,13 @@ const writeOutput = async ({
     }
   }
 
-  for (const { path, createdXml, markup, relationships } of carriedParts) {
+  for (const {
+    path,
+    createdXml,
+    markup,
+    relationships,
+    seededRelationships,
+  } of carriedParts) {
     let xml = createdXml;
     if (xml === null) {
       const part = headerFooterParts.find(
@@ -1548,7 +2063,7 @@ const writeOutput = async ({
       );
     }
     parts.set(path, frozen);
-    const relationshipsXml = relationships.xml();
+    const relationshipsXml = relationships.xml() ?? seededRelationships;
     if (relationshipsXml !== null) {
       parts.set(relationships.path, relationshipsXml);
     }

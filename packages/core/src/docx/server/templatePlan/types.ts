@@ -509,6 +509,11 @@ export type TemplatePlanOmitReason =
  * its own over the definition `baseNumId` names, or over the list the item's
  * style is bound to. Items sharing a `group` share the instance the first of
  * them starts; `restartFrom` is the number that instance begins with.
+ *
+ * `sourceNumId` (with `numId: "new"` and nothing else) keeps the source's
+ * own list: the output carries a copy of the source's list instance and its
+ * definition, and every item naming the same `sourceNumId` counts in that
+ * copy, as the source counts them.
  */
 export type TemplatePlanNumbering = {
   numId: number | "new";
@@ -516,6 +521,7 @@ export type TemplatePlanNumbering = {
   restartFrom?: number;
   baseNumId?: number;
   group?: string;
+  sourceNumId?: number;
 };
 
 export type TemplatePlanMerge = "lineBreak" | "space" | "none";
@@ -523,7 +529,8 @@ export type TemplatePlanMerge = "lineBreak" | "space" | "none";
 /**
  * A paragraph's own indent, in twentieths of a point (`w:ind`). A side left
  * out stays what the style or the list level gives; a hanging indent and a
- * first-line indent exclude each other.
+ * first-line indent exclude each other. `left` may be negative (into the
+ * margin); the other two may not.
  */
 export type TemplatePlanIndent = {
   left?: number;
@@ -619,8 +626,9 @@ export type TemplatePlanSourceItem = {
    * the tab or space its list puts after it: for a label no list of the
    * template prints. The paragraph it leads must join no list
    * (`numbering: null`). Only a label that reads the same wherever the file
-   * is opened can be written: numbers, letters and roman numerals, not a
-   * bullet glyph and not a number a language spells.
+   * is opened can be written: numbers, letters and roman numerals, a
+   * bullet's mark as the Unicode character it shows, not a glyph left in a
+   * symbol font's private range and not a number a language spells.
    */
   labelAsText?: boolean;
   /**
@@ -842,6 +850,9 @@ export type TemplatePlanSourceHeaders = {
     part: string;
     paragraphs: number;
     created: boolean;
+    /** The output section a later section's content went to, in a part
+     *  of its own; absent for the content every section shows. */
+    section?: number;
   }[];
   /** Counts of source parts and objects the output does not carry. */
   leftOut: {
@@ -855,6 +866,9 @@ export type TemplatePlanSourceHeaders = {
     sharedParts: number;
     /** Blocks that refer to an embedded object other than a picture. */
     unsupportedObjects: number;
+    /** Parts a later section of the source shows that differ from those
+     *  of the section the output merges it into. */
+    laterSectionParts: number;
   };
 };
 
@@ -924,6 +938,9 @@ export type TemplatePlanNoteCounts = {
   output: number;
   identical: number;
   mismatch: number;
+  /** Notes of the template's sample text that the output leaves out with
+   *  it: no kept template block refers to them. */
+  templateLeftOut: number;
 };
 
 export type TemplatePlanFieldLeftover = {
@@ -1032,6 +1049,9 @@ export type TemplatePlanReport = {
   };
   dropped: {
     comments: number;
+    /** Fields of the placed source paragraphs written as their text, by
+     *  kind. A field a reference of the plan writes anew over part of its
+     *  result is not one of them. */
     sourceFields: { kind: string; count: number }[];
     internalHyperlinks: number;
     sectionBreaks: number;

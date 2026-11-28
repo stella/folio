@@ -313,6 +313,7 @@ describe("applyTemplatePlan", () => {
       output: 1,
       identical: 1,
       mismatch: 0,
+      templateLeftOut: 0,
     });
     expect(output.footnotes).toEqual([{ id: "1", text: SOURCE_TEXT.footnote }]);
     const footnotes =
@@ -1086,6 +1087,82 @@ describe("applyTemplatePlan refusals", () => {
   });
 });
 
+describe("applyTemplatePlan onto a template whose sample text has a note", () => {
+  test("leaves the sample's note out with the sample and keeps the source's", async () => {
+    const separators = `<w:footnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:footnote><w:footnote w:type="continuationSeparator" w:id="0"><w:p><w:r><w:continuationSeparator/></w:r></w:p></w:footnote>`;
+    const sampleNote = `<w:footnote w:id="1"><w:p><w:r><w:t xml:space="preserve">Sample note, see </w:t></w:r>${fieldRuns("REF _Ref900 \\h", r("clause 9"))}</w:p></w:footnote>`;
+    let template = await replacePart(
+      fixture.template,
+      "word/footnotes.xml",
+      `${XML}<w:footnotes ${NS}>${separators}${sampleNote}</w:footnotes>`,
+    );
+    const documentXml = (await readPart(template, "word/document.xml")) ?? "";
+    template = await replacePart(
+      template,
+      "word/document.xml",
+      documentXml.replace(
+        "Sample clause text.</w:t></w:r>",
+        'Sample clause text.</w:t></w:r><w:r><w:footnoteReference w:id="1"/></w:r>',
+      ),
+    );
+    const inspection = unwrap(await inspectDocxTemplate(template));
+    const result = unwrap(
+      await applyTemplatePlan({
+        source: fixture.source,
+        template,
+        plan: { ...fullPlan(), templateSha256: inspection.sha256 },
+      }),
+    );
+    const footnotes = (await readPart(result.docx, "word/footnotes.xml")) ?? "";
+
+    expect(footnotes).not.toContain("Sample note");
+    expect(footnotes).not.toContain("_Ref900");
+    expect(footnotes).toContain('w:type="separator" w:id="-1"');
+    expect(footnotes).toContain("emphasised");
+    expect(result.report.footnotes).toMatchObject({
+      identical: 1,
+      mismatch: 0,
+      templateLeftOut: 1,
+    });
+  });
+});
+
+describe("applyTemplatePlan onto a template whose contents end in the next paragraph", () => {
+  test("drops the cached entries and keeps that paragraph from behind the end", async () => {
+    const end = '<w:r><w:fldChar w:fldCharType="end"/></w:r>';
+    const documentXml =
+      (await readPart(fixture.template, "word/document.xml")) ?? "";
+    const lastEntryEnd = documentXml.indexOf(`${end}</w:p>`);
+    const toLine = documentXml.indexOf("To: ", lastEntryEnd);
+    const runStart = documentXml.lastIndexOf("<w:r>", toLine);
+    expect(lastEntryEnd).toBeGreaterThan(0);
+    // The field's end moved to the front of the paragraph after the entries.
+    const moved = `${documentXml.slice(0, lastEntryEnd)}${documentXml.slice(lastEntryEnd + end.length, runStart)}${end}${documentXml.slice(runStart)}`;
+    const template = await replacePart(
+      fixture.template,
+      "word/document.xml",
+      moved,
+    );
+    const inspection = unwrap(await inspectDocxTemplate(template));
+    const result = unwrap(
+      await applyTemplatePlan({
+        source: fixture.source,
+        template,
+        plan: { ...fullPlan(), templateSha256: inspection.sha256 },
+      }),
+    );
+    const output = (await readPart(result.docx, "word/document.xml")) ?? "";
+
+    expect(result.report.ok).toBe(true);
+    expect(output).not.toContain("PAGEREF");
+    expect(output).not.toContain("Second sample");
+    expect(output).toContain("Recipient name");
+    expect(output).toContain(
+      '<w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>',
+    );
+  });
+});
+
 describe("applyTemplatePlan onto a template without notes", () => {
   test("creates the footnotes part with its relationship and content type", async () => {
     const template = await buildTemplate({ withoutFootnotes: true });
@@ -1199,6 +1276,83 @@ describe("applyTemplatePlan with objects, fields and endnotes", () => {
     ).toBe(1);
   });
 
+  test("moves a picture whose drawing prefixes the source binds at its root", async () => {
+    const declarations = [
+      'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"',
+      'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"',
+      'xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"',
+    ];
+    const bare = PICTURE_RUN.replaceAll(/ xmlns:(?:wp|a|pic)="[^"]*"/gu, "");
+    expect(bare).not.toContain("xmlns:");
+    const source = await buildMinimalDocx("", {
+      "word/document.xml": `${XML}<w:document ${NS} ${declarations.join(" ")}><w:body>${p(`${r("Picture: ")}${bare}`)}<w:sectPr/></w:body></w:document>`,
+      "word/_rels/document.xml.rels": `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId5" Type="${REL_NS}/image" Target="media/image1.png"/></Relationships>`,
+      "word/media/image1.png": PIXEL_PNG,
+    });
+    const { docx, report } = unwrap(
+      await applyTemplatePlan({
+        source,
+        template: fixture.template,
+        plan: await planFor(source),
+      }),
+    );
+    const document = (await readPart(docx, "word/document.xml")) ?? "";
+
+    expect(report.ok).toBe(true);
+    // The copy declares what its source bound at the root.
+    for (const declaration of declarations) {
+      expect(document).toContain(declaration);
+    }
+    expect(
+      unwrap(await analyzeDocxBlocks(docx)).blocks.at(0)?.inlineObjects,
+    ).toBe(1);
+  });
+
+  test("moves an embedded object with its storage, its preview and their content types", async () => {
+    const storage = Uint8Array.from([0xd0, 0xcf, 0x11, 0xe0, 1, 2, 3, 4]);
+    const preview = Uint8Array.from([0xd7, 0xcd, 0xc6, 0x9a, 5, 6]);
+    const object =
+      '<w:r><w:object w:dxaOrig="780" w:dyaOrig="660"><v:shape xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" id="_x0000_i1026" type="#_x0000_t75" style="width:35pt;height:36pt" o:ole=""><v:imagedata r:id="rId7" o:title=""/></v:shape><o:OLEObject xmlns:o="urn:schemas-microsoft-com:office:office" Type="Embed" ProgID="Equation.3" ShapeID="_x0000_i1026" DrawAspect="Content" ObjectID="_1" r:id="rId8"/></w:object></w:r>';
+    const source = await buildMinimalDocx(p(`${r("A = ")}${object}`), {
+      "word/_rels/document.xml.rels": `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId7" Type="${REL_NS}/image" Target="media/image7.wmf"/><Relationship Id="rId8" Type="${REL_NS}/oleObject" Target="embeddings/oleObject1.bin"/></Relationships>`,
+      "word/media/image7.wmf": preview,
+      "word/embeddings/oleObject1.bin": storage,
+    });
+    const { docx, report } = unwrap(
+      await applyTemplatePlan({
+        source,
+        template: fixture.template,
+        plan: await planFor(source),
+      }),
+    );
+    const document = (await readPart(docx, "word/document.xml")) ?? "";
+    const relationships =
+      (await readPart(docx, "word/_rels/document.xml.rels")) ?? "";
+    const contentTypes = (await readPart(docx, "[Content_Types].xml")) ?? "";
+    const archive = await ZipArchive.read(docx);
+    const objectId =
+      /Id="(?<id>rId\d+)"[^>]*relationships\/oleObject" Target="\/word\/embeddings\/placed\d+\.bin"/u.exec(
+        relationships,
+      )?.groups?.["id"];
+
+    expect(report.ok).toBe(true);
+    expect(objectId).toBeDefined();
+    expect(document).toContain(`ProgID="Equation.3"`);
+    expect(document).toContain(`r:id="${objectId}"`);
+    expect(await archive.entry("word/embeddings/placed2.bin")?.bytes()).toEqual(
+      storage,
+    );
+    expect(await archive.entry("word/media/placed1.wmf")?.bytes()).toEqual(
+      preview,
+    );
+    expect(contentTypes).toContain(
+      '<Override PartName="/word/embeddings/placed2.bin" ContentType="application/vnd.openxmlformats-officedocument.oleObject"/>',
+    );
+    expect(contentTypes).toContain(
+      '<Override PartName="/word/media/placed1.wmf" ContentType="image/x-wmf"/>',
+    );
+  });
+
   test("keeps field results as text and a HYPERLINK field as a link", async () => {
     const source = await buildObjectSource();
     const { docx, report } = unwrap(
@@ -1246,6 +1400,7 @@ describe("applyTemplatePlan with objects, fields and endnotes", () => {
       output: 1,
       identical: 1,
       mismatch: 0,
+      templateLeftOut: 0,
     });
     expect(await readPart(docx, "word/endnotes.xml")).toContain(
       '<w:endnote w:id="1"><w:p><w:r><w:rPr><w:vertAlign w:val="superscript"/></w:rPr><w:endnoteRef/></w:r>',

@@ -149,10 +149,14 @@ export const runFormattingInlineAtomCleanText = (
  */
 export const runFormattingInlineAtomResultText = (
   node: PMNode,
-): string | null =>
-  runFormattingInlineAtomDisposition(node) === "field-run"
+): string | null => {
+  if (node.type.name === "preservedXml") {
+    return expectPreservedXmlAttrs(node).text;
+  }
+  return runFormattingInlineAtomDisposition(node) === "field-run"
     ? (expectFieldAttrs(node).displayText ?? "")
     : null;
+};
 
 export const runFormattingInlineControlNodeName = (
   character: string,

@@ -86,7 +86,20 @@ const numberingIssue = (value: unknown, where: string): string | null => {
   if (!isObject(value)) {
     return `${where} names a malformed list.`;
   }
-  const { numId, ilvl, restartFrom, baseNumId, group } = value;
+  const { numId, ilvl, restartFrom, baseNumId, group, sourceNumId } = value;
+  if (sourceNumId !== undefined) {
+    if (!isListId(sourceNumId)) {
+      return `${where} keeps a source list with a malformed id.`;
+    }
+    if (
+      numId !== "new" ||
+      restartFrom !== undefined ||
+      baseNumId !== undefined ||
+      group !== undefined
+    ) {
+      return `${where} keeps a source list beside a list of the template.`;
+    }
+  }
   if (numId !== "new" && !isListId(numId)) {
     return `${where} names a list that is neither an id nor "new".`;
   }
@@ -156,19 +169,24 @@ const MAX_INDENT = 31_680;
 /**
  * Whether `value` is an indent a plan may state: at least one of
  * `left`, `hanging` and `firstLine`, each a whole number of twentieths of a
- * point, and not both a hanging and a first-line indent.
+ * point, and not both a hanging and a first-line indent. Only `left` may be
+ * negative: a paragraph may reach into the margin, while a hanging or a
+ * first-line indent is a width.
  */
 const isIndent = (value: unknown): boolean => {
   if (!isObject(value)) {
     return false;
   }
   const keys = Object.keys(value);
+  const side = (key: string, amount: unknown): boolean =>
+    key === "left"
+      ? typeof amount === "number" &&
+        Number.isSafeInteger(amount) &&
+        Math.abs(amount) <= MAX_INDENT
+      : isCount(amount) && amount <= MAX_INDENT;
   return (
     keys.length > 0 &&
-    keys.every(
-      (key) =>
-        INDENT_KEYS.has(key) && isCount(value[key]) && value[key] <= MAX_INDENT,
-    ) &&
+    keys.every((key) => INDENT_KEYS.has(key) && side(key, value[key])) &&
     !(value["hanging"] !== undefined && value["firstLine"] !== undefined)
   );
 };

@@ -5,7 +5,6 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { StringLiteral } from "oxc-parser";
 
-import { getFolioMessages } from "../packages/core/src/i18n/messages";
 import { FOLIO_LOCALES } from "../packages/core/src/i18n/messages/locales";
 import { scanTestTimeout } from "../test/scan-timeout";
 import {
@@ -140,7 +139,6 @@ for (const packageName of packages) {
       );
       const module = await import(entry);
       expect(module.default).toBe(module.messages);
-      expect(module.messages).toEqual(getFolioMessages(locale));
       expect(module.messages).toEqual(
         JSON.parse(
           readFileSync(

@@ -1,5 +1,15 @@
 # @stll/folio-core
 
+## 0.82.0
+
+### Minor Changes
+
+- [#3761](https://github.com/stella/folio/pull/3761) [`20a6758`](https://github.com/stella/folio/commit/20a675868bc2d721345e30bb6bf86cd219a65f1b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Load translated UI catalogs from configurable UTF-8 package assets.
+
+### Patch Changes
+
+- [#3763](https://github.com/stella/folio/pull/3763) [`a85e93f`](https://github.com/stella/folio/commit/a85e93fad0835080acb76e2f014e408f73b804c3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A template plan's report no longer counts among the source fields written as text (`dropped.sourceFields`) a field whose result a reference of the plan writes anew as a field: the citation stays a field in the output.
+
 ## 0.81.0
 
 ### Minor Changes

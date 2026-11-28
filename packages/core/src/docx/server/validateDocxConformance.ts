@@ -2,7 +2,6 @@ import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
 import { XmlResourceLimitError } from "@stll/docx-core/xml/limits";
 
 import type { DocxConformanceClass } from "../../types/document";
-import { decodeText } from "../../utils/textEncoding";
 import { detectDocxConformanceClass } from "../conformance";
 import {
   detectDocxContainerType,
@@ -13,6 +12,7 @@ import {
   validateFolioDocumentModel,
 } from "../modelValidation";
 import { DocxParseError, parseDocx } from "../parser";
+import { decodeXmlBytes } from "../xmlEncoding";
 import {
   findChildByLocalName,
   getAttributeAnyPrefix,
@@ -263,15 +263,24 @@ const readPartForInspection = async (
   archive: DocxArchive,
   part: string,
 ): Promise<string | null> => {
+  let xml: string | null;
   try {
-    return await archive.readEntryString(part);
+    xml = await archive.readEntryString(part);
   } catch (error) {
     if (!(error instanceof XmlResourceLimitError) || error.limit !== "syntax") {
       throw error;
     }
     const bytes = await archive.readEntryUint8(part);
-    return bytes === null ? null : decodeText(bytes, { ignoreBOM: true });
+    return bytes === null ? null : decodeXmlBytes(bytes);
   }
+  // A part in UTF-16 (custom XML items are often written so) reads as UTF-8 with a
+  // NUL beside every character; XML processors must accept it, so it is
+  // read again in the encoding its first bytes declare.
+  if (xml !== null && xml.includes("\u0000")) {
+    const bytes = await archive.readEntryUint8(part);
+    return bytes === null ? null : decodeXmlBytes(bytes);
+  }
+  return xml;
 };
 
 const validateXmlParts = async (

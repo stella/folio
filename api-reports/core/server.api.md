@@ -2357,6 +2357,7 @@ export type TemplatePlanNoteCounts = {
     output: number;
     identical: number;
     mismatch: number;
+    templateLeftOut: number;
 };
 
 // @public
@@ -2366,6 +2367,7 @@ export type TemplatePlanNumbering = {
     restartFrom?: number;
     baseNumId?: number;
     group?: string;
+    sourceNumId?: number;
 };
 
 // @public (undocumented)
@@ -2518,12 +2520,14 @@ export type TemplatePlanSourceHeaders = {
         part: string;
         paragraphs: number;
         created: boolean;
+        section?: number;
     }[];
     leftOut: {
         firstPageParts: number;
         evenPageParts: number;
         sharedParts: number;
         unsupportedObjects: number;
+        laterSectionParts: number;
     };
 };
 

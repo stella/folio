@@ -33,7 +33,8 @@ import { CanonicalSessionError } from "../canonical/canonicalSession";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { createDocx } from "../docx/rezip";
-import type { Document } from "../types/document";
+import type { Document, ParagraphContent, Run } from "../types/document";
+import { createEmptyDocument } from "../utils/createDocument";
 import { FolioDocxReviewer } from "./headless";
 
 const FIXTURES_DIR = path.join(
@@ -231,6 +232,69 @@ const generatedSaves = (tally: Map<SaveOutcome, number>) =>
     },
   );
 
+type FieldKind = "simple" | "complex";
+
+/** A linked, wrapped field: the simple form is captured on its first parse. */
+const fieldDeletionDocument = (kind: FieldKind, result: string): Document => {
+  const document = createEmptyDocument();
+  const paragraph = document.package.document.content.at(0);
+  if (paragraph?.type !== "paragraph") {
+    throw new Error("an empty document must start with a paragraph");
+  }
+  const run = {
+    type: "run",
+    content: [{ type: "text", text: result }],
+  } satisfies Run;
+  const field: ParagraphContent =
+    kind === "simple"
+      ? {
+          type: "simpleField",
+          fieldType: "PAGE",
+          instruction: "PAGE",
+          content: [run],
+        }
+      : {
+          type: "complexField",
+          fieldType: "PAGE",
+          instruction: "PAGE",
+          fieldCode: [],
+          fieldResult: [run],
+        };
+  paragraph.content = [
+    {
+      type: "hyperlink",
+      anchor: "page",
+      children: [
+        {
+          type: "inlineWrapper",
+          kind: "bidi",
+          control: "embedding",
+          content: [field],
+        },
+      ],
+    },
+  ];
+  document.package.document.content.push({ type: "paragraph", content: [] });
+  return document;
+};
+
+const trackedFieldDeletionSaves = fc.asyncProperty(
+  fc.constantFrom<FieldKind>("simple", "complex"),
+  fc.constantFrom("3", "page", "é"),
+  async (kind, result) => {
+    const buffer = await packaged(fieldDeletionDocument(kind, result));
+    expect(buffer).not.toBeNull();
+    if (buffer === null) return;
+    expect(
+      await saveLaws(
+        buffer,
+        { kind: "deleteBlock", block: 0, word: 0, text: "" },
+        "tracked-changes",
+      ),
+    ).toBe("saved");
+  },
+);
+
 const GENERATED_RUNS = 30;
 const COVERAGE_RUNS = 30;
 
@@ -271,6 +335,21 @@ describe("a canonical reviewer's save gives back what it reads", () => {
       });
     },
     propertyTestTimeout(120_000),
+  );
+
+  test(
+    "tracked field deletions save and reopen across field kinds",
+    async () => {
+      await assertProperty(trackedFieldDeletionSaves, {
+        id: "tracked field deletions save and reopen across field kinds",
+        numRuns: 12,
+        examples: [
+          ["simple", "3"],
+          ["complex", "3"],
+        ],
+      });
+    },
+    propertyTestTimeout(30_000),
   );
 
   test(
