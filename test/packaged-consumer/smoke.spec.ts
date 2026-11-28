@@ -132,6 +132,7 @@ test("packaged consumer mounts, lays out via the worker, and logs no errors", as
 
   // --- Surface 2: the toolbar renders (chrome + catalog strings). -----------
   await expect(page.getByRole("toolbar").first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Tučné" })).toBeVisible();
 
   // --- Surface 3: a popover surface opens (context menu on a paragraph). -----
   // Force the deferred ProseMirror view to materialise so the document body is

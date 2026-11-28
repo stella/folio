@@ -231,6 +231,14 @@ export {
   type HyphenationDictionaryId,
   type HyphenationPatterns,
 } from "@stll/folio-core/hyphenation";
+// Where translated UI catalogs come from; English stays in the eager bundle.
+export {
+  configureFolioMessageAssets,
+  FolioMessageCatalogError,
+  loadFolioMessages,
+  preloadFolioMessages,
+  type FolioMessageAssetOptions,
+} from "@stll/folio-core/i18n/messages";
 
 // DOCX-document ↔ Markdown bridge (also available at `@stll/folio/markdown`).
 export {

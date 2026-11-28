@@ -49,6 +49,7 @@
     "./i18n/messages/*": "./src/i18n/messages/*.gen.ts",
     "./i18n/messages/*.gen": "./src/i18n/messages/*.gen.ts",
     "./i18n/messages/locales": "./src/i18n/messages/locales.ts",
+    "./i18n/*.json": "./assets/i18n/*.json",
     "./markdown": "./src/markdown/index.ts",
     "./server": "./src/server.ts",
     "./redline": "./src/redline.ts",

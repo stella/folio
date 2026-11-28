@@ -30,13 +30,15 @@ const isBundled = (id: string): boolean =>
 export default defineConfig({
   build: {
     outDir: "dist",
-    lib: {
-      entry: "src/main.ts",
-      formats: ["es"],
-      fileName: "main",
-    },
+    // Exercise an application build, not Vite's library mode: library mode
+    // always inlines data assets, which would hide the host-visible catalog
+    // URL contract this clean-room consumer is meant to verify.
+    assetsInlineLimit: 0,
     rollupOptions: {
+      input: "src/main.ts",
       external: (id: string) => !isBundled(id),
+      preserveEntrySignatures: "strict",
+      output: { entryFileNames: "main.js" },
     },
   },
 });

@@ -30,7 +30,11 @@ import type {
   FolioAnonymizationTerm,
   FontDefinition,
 } from "@stll/folio-react";
-import { FOLIO_LOCALES, getFolioMessages } from "@stll/folio-react/messages";
+import {
+  FOLIO_LOCALES,
+  getFolioMessages,
+  loadFolioMessages,
+} from "@stll/folio-react/messages";
 
 import type { FolioParityBridge } from "../../../scripts/parity/bridge-contract";
 import { buildScrollParityBridge } from "./scrollParityBridge";
@@ -53,7 +57,7 @@ const ZOOM_INITIAL = 1;
 const DEFAULT_LOCALE = "en";
 const SHOWCASE_FILE_NAME = "folio-showcase.docx";
 const SHOWCASE_URL = `/${SHOWCASE_FILE_NAME}`;
-// Only Arabic in the bundled set needs RTL; flip the shell so the editor chrome
+// Only Arabic in the supported set needs RTL; flip the shell so the editor chrome
 // (built on logical CSS properties) mirrors.
 const RTL_LOCALES = new Set<string>(["ar", "he"]);
 
@@ -853,6 +857,20 @@ const DocumentPlayground = () => {
     setStatus({ type: PLAYGROUND_STATUS_TYPE.ERROR, message: error.message });
   }, []);
 
+  const handleLocaleChange = useCallback(
+    ({ currentTarget }: ChangeEvent<HTMLSelectElement>) => {
+      const nextLocale = currentTarget.value;
+      void loadFolioMessages(nextLocale).then(
+        () => setLocale(nextLocale),
+        (cause: unknown) =>
+          handleError(
+            cause instanceof Error ? cause : new Error(String(cause)),
+          ),
+      );
+    },
+    [handleError],
+  );
+
   const handleInsertImage = useCallback(() => {
     const view = editorRef.current?.getEditorRef()?.getView();
     if (!view) {
@@ -1044,7 +1062,7 @@ const DocumentPlayground = () => {
             aria-label="Editor language"
             className="pg-button"
             value={locale}
-            onChange={(event) => setLocale(event.currentTarget.value)}
+            onChange={handleLocaleChange}
           >
             {FOLIO_LOCALES.map((loc) => (
               <option key={loc} value={loc}>

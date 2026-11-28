@@ -31,6 +31,7 @@ import { Component } from 'vue';
 import { ComponentOptionsMixin } from 'vue';
 import { ComponentProvideOptions } from 'vue';
 import { ComputedRef } from 'vue';
+import { configureFolioMessageAssets } from '@stll/folio-core/i18n/messages';
 import { configureHyphenationAssets } from '@stll/folio-core/hyphenation';
 import { configureTiffDecoding } from '@stll/folio-core/tiff-decoding';
 import { consumeTemplateSlashQuery } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
@@ -101,6 +102,8 @@ import { FolioDocumentOperationUndoHandle } from '@stll/folio-core/ai-edits';
 import { FolioDocumentOperationUndoResult } from '@stll/folio-core/ai-edits';
 import { FolioEditor } from '@stll/folio-core/controller/folioEditor';
 import { FolioFieldInsertion } from '@stll/folio-core/types/fields';
+import { FolioMessageAssetOptions } from '@stll/folio-core/i18n/messages';
+import { FolioMessageCatalogError } from '@stll/folio-core/i18n/messages';
 import { FolioPendingSuggestionLoadResult } from '@stll/folio-core/ai-edits';
 import { FolioPendingSuggestionRecord } from '@stll/folio-core/ai-edits';
 import { FolioReviewChange } from '@stll/folio-core/ai-edits';
@@ -136,6 +139,7 @@ import { isSuggestionStale } from '@stll/folio-core/ai-suggestions/conflict';
 import { KeyboardShortcutScope } from '@stll/folio-core/managers/editorShortcuts';
 import { Layout } from '@stll/folio-core/layout-engine';
 import { ListState } from '@stll/folio-core/prosemirror';
+import { loadFolioMessages } from '@stll/folio-core/i18n/messages';
 import { MarkdownOptions } from '@stll/folio-core/markdown';
 import { MarkdownResult } from '@stll/folio-core/markdown';
 import { MaybeRefOrGetter } from 'vue';
@@ -145,6 +149,7 @@ import { PageRendererName } from '@stll/folio-core/display-list/editor/pageRende
 import { PictureWatermark } from '@stll/folio-core/watermark';
 import { Plugin as Plugin_2 } from 'prosemirror-state';
 import { PositionalText } from '@stll/folio-core/ai-suggestions/text-positions';
+import { preloadFolioMessages } from '@stll/folio-core/i18n/messages';
 import { preloadHyphenationDictionaries } from '@stll/folio-core/hyphenation';
 import { PublicProps } from 'vue';
 import { ReadonlyDocument } from '@stll/folio-core/types/documentModel';
@@ -258,6 +263,8 @@ export type ColorPreset = {
     value: string;
     color?: string;
 };
+
+export { configureFolioMessageAssets }
 
 export { configureHyphenationAssets }
 
@@ -597,6 +604,10 @@ export { FolioDerivedFields }
 
 export { FolioFieldInsertion }
 
+export { FolioMessageAssetOptions }
+
+export { FolioMessageCatalogError }
+
 export { FolioSuggestion }
 
 // @public
@@ -727,6 +738,8 @@ export { isSuggestionStale }
 
 export { KeyboardShortcutScope }
 
+export { loadFolioMessages }
+
 export { MarkdownOptions }
 
 export { MarkdownResult }
@@ -747,6 +760,8 @@ export type OutlineItem = {
 export { PictureWatermark }
 
 export { PositionalText }
+
+export { preloadFolioMessages }
 
 export { preloadHyphenationDictionaries }
 
