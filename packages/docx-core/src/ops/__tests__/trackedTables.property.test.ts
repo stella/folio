@@ -826,6 +826,44 @@ describe("tracked whole table properties", () => {
 });
 
 test(
+  "deleting a wholly own inserted table withdraws it across table shapes",
+  () => {
+    assertProperty(
+      fc.property(
+        shapes.filter(({ placement }) => placement !== "terminal"),
+        (shape) => {
+          const original = documentOf(shape, [
+            makeParagraph(1, shape),
+            makeParagraph(2, shape),
+            makeParagraph(3, shape),
+          ]);
+          const inserted = applied(original, {
+            ...insertionFor(shape),
+            revision: stamp(),
+            newIds: freshIds(),
+          });
+          const withdrawn = applied(inserted.document, {
+            type: DOCUMENT_OP_TYPES.DELETE_TABLE,
+            story: OP_STORIES.MAIN,
+            blockId: id(0x100),
+            revision: stamp(2_000),
+            newIds: freshIds(2_000),
+          });
+          expect(withdrawn.document).toStrictEqual(original);
+          expect(withdrawn.revisions).toEqual([]);
+          exactInverse(inserted.document, withdrawn);
+        },
+      ),
+      {
+        id: "deleting a wholly own inserted table withdraws it across table shapes",
+        numRuns: 200,
+      },
+    );
+  },
+  propertyTestTimeout(30_000),
+);
+
+test(
   "tables in a wrapper without a local paragraph resolve and undo at the outer anchor",
   () => {
     assertProperty(

@@ -3271,10 +3271,14 @@ const dispatchCore = ({ document, op, purpose }: DispatchOptions): Applied => {
     case DOCUMENT_OP_TYPES.SET_REVISION_INFO:
       return setRevisionInfo(document, op);
     case DOCUMENT_OP_TYPES.DELETE_TABLE: {
-      // The author's own pending column goes outright before the rest of
-      // the table is suggested for deletion.
+      // A wholly own inserted table goes outright. An own pending column goes
+      // first, before the rest of the table is suggested for deletion.
       const pending = ownPendingTableInsertion(document, op);
       if (pending === undefined) return applyTableOp(document, op);
+      if (pending.type === "wholeTable") {
+        const { revision: _withdrawn, ...direct } = op;
+        return applyTableOp(document, direct);
+      }
       const { expected: _checked, ...rest } = op;
       return applyOps(document, [
         {
