@@ -1144,6 +1144,9 @@ const analyzeNotes = (
 };
 
 export type AnalyzedDocument = {
+  /** Text colours and run shading a plan keeps (`textColors: "keep"`), as
+   *  `color:RRGGBB` and `shd:RRGGBB`; absent where it keeps none. */
+  keptColors?: ReadonlySet<string>;
   pkg: LoadedPackage;
   document: RawPart;
   body: XmlElement;

@@ -28,6 +28,10 @@ export type Emphasis = Record<Toggle, boolean> & {
   u: string | null;
   vertAlign: "superscript" | "subscript" | null;
   highlight: string | null;
+  /** The text colour as RGB hex; null for automatic. */
+  color: string | null;
+  /** The run's shading fill as RGB hex; null for none. */
+  shd: string | null;
 };
 
 /** What a run states: a toggle on or off, a value, or `null` for "cleared". */
@@ -35,6 +39,8 @@ export type EmphasisOverride = Partial<Record<Toggle, boolean>> & {
   u?: string | null;
   vertAlign?: "superscript" | "subscript" | null;
   highlight?: string | null;
+  color?: string | null;
+  shd?: string | null;
 };
 
 export const NO_EMPHASIS: Emphasis = Object.freeze({
@@ -50,6 +56,8 @@ export const NO_EMPHASIS: Emphasis = Object.freeze({
   u: null,
   vertAlign: null,
   highlight: null,
+  color: null,
+  shd: null,
 });
 
 type RunFormatting = Style["rPr"];
@@ -105,6 +113,14 @@ const vertAlignOf = (
 const highlightOf = (value: string | null | undefined): string | null =>
   value === undefined || value === null || value === "none" ? null : value;
 
+const HEX_COLOR = /^[0-9A-Fa-f]{6}$/u;
+
+/** A colour as RGB hex in capitals; null for automatic or unreadable. */
+const colorOf = (value: string | null | undefined): string | null =>
+  value !== undefined && value !== null && HEX_COLOR.test(value)
+    ? value.toUpperCase()
+    : null;
+
 /** `base` under one more style tier's resolved run formatting. */
 const withStyleTier = (base: Emphasis, rPr: RunFormatting): Emphasis => {
   if (rPr === undefined) {
@@ -130,6 +146,12 @@ const withStyleTier = (base: Emphasis, rPr: RunFormatting): Emphasis => {
   }
   if (rPr.highlight !== undefined) {
     next.highlight = highlightOf(rPr.highlight);
+  }
+  if (rPr.color !== undefined) {
+    next.color = rPr.color.auto === true ? null : colorOf(rPr.color.rgb);
+  }
+  if (rPr.shading !== undefined) {
+    next.shd = colorOf(rPr.shading.fill?.rgb);
   }
   return next;
 };
@@ -178,6 +200,13 @@ export const readDirectEmphasis = (
   if (wChild(rPr, "highlight") !== null) {
     override.highlight = highlightOf(wChildVal(rPr, "highlight"));
   }
+  if (wChild(rPr, "color") !== null) {
+    override.color = colorOf(wChildVal(rPr, "color"));
+  }
+  const shading = wChild(rPr, "shd");
+  if (shading !== null) {
+    override.shd = colorOf(wAttr(shading, "fill"));
+  }
   return override;
 };
 
@@ -206,6 +235,12 @@ export const emphasisDeviation = (
   if (effective.highlight !== baseline.highlight) {
     deviation.highlight = effective.highlight;
   }
+  if (effective.color !== baseline.color) {
+    deviation.color = effective.color;
+  }
+  if (effective.shd !== baseline.shd) {
+    deviation.shd = effective.shd;
+  }
   return deviation;
 };
 
@@ -228,6 +263,12 @@ export const emphasisSignature = (override: EmphasisOverride): string => {
   }
   if (override.vertAlign !== undefined) {
     parts.push(`vertAlign=${override.vertAlign ?? "baseline"}`);
+  }
+  if (override.color !== undefined) {
+    parts.push(`color=${override.color ?? "auto"}`);
+  }
+  if (override.shd !== undefined) {
+    parts.push(`shd=${override.shd ?? "auto"}`);
   }
   return parts.join(SIGNATURE_SEPARATOR);
 };
@@ -261,8 +302,12 @@ export const withSignatureHighlight = (
   const parts = signature
     .split(SIGNATURE_SEPARATOR)
     .filter((entry) => entry !== "" && !entry.startsWith("highlight="));
-  const toggles = parts.filter((entry) => !/^(?:u|vertAlign)=/u.test(entry));
-  const rest = parts.filter((entry) => /^(?:u|vertAlign)=/u.test(entry));
+  const toggles = parts.filter(
+    (entry) => !/^(?:u|vertAlign|color|shd)=/u.test(entry),
+  );
+  const rest = parts.filter((entry) =>
+    /^(?:u|vertAlign|color|shd)=/u.test(entry),
+  );
   return [...toggles, `highlight=${color}`, ...rest].join(SIGNATURE_SEPARATOR);
 };
 
@@ -306,13 +351,32 @@ export const runPropertiesXml = ({
       out.push(onOff(prefix, name, value === "1"));
     }
   }
-  for (const name of ["highlight", "u", "vertAlign"] as const) {
+  // `CT_RPr` order: colour, highlight, underline, shading, vertical place.
+  const color = stated.get("color");
+  if (color !== undefined) {
+    out.push(`<${prefix}:color ${prefix}:val="${escapeAttribute(color)}"/>`);
+  }
+  for (const name of ["highlight", "u"] as const) {
     const value = stated.get(name);
     if (value !== undefined) {
       out.push(
         `<${prefix}:${name} ${prefix}:val="${escapeAttribute(value)}"/>`,
       );
     }
+  }
+  const shd = stated.get("shd");
+  if (shd !== undefined) {
+    out.push(
+      shd === "auto"
+        ? `<${prefix}:shd ${prefix}:val="clear" ${prefix}:color="auto" ${prefix}:fill="auto"/>`
+        : `<${prefix}:shd ${prefix}:val="clear" ${prefix}:color="auto" ${prefix}:fill="${escapeAttribute(shd)}"/>`,
+    );
+  }
+  const vertAlign = stated.get("vertAlign");
+  if (vertAlign !== undefined) {
+    out.push(
+      `<${prefix}:vertAlign ${prefix}:val="${escapeAttribute(vertAlign)}"/>`,
+    );
   }
   return out.length === 0
     ? ""

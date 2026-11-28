@@ -14,7 +14,7 @@ import {
   replacePart,
   TEMPLATE_IDS,
 } from "./fixtures";
-import { planFor, unwrap, verifyFor } from "./planning";
+import { applyFor, planFor, unwrap, verifyFor } from "./planning";
 
 describe("innerRangeOf", () => {
   test("finds the content after an opening tag whose attribute holds '>'", () => {
@@ -385,6 +385,37 @@ describe("applyTemplatePlan edge content", () => {
       `<w:instrText xml:space="preserve"> REF ${result?.bookmark ?? ""} \\h \\* MERGEFORMAT </w:instrText>`,
     );
     expect(document).toContain(" AUTONUMLGL  \\* Arabic \\e ");
+  });
+
+  test("a colour that marks part of the text is kept when the plan keeps colours; the source's own look is not", async () => {
+    const template = await buildTemplate();
+    const source = await buildMinimalDocx(
+      [
+        p(
+          `${r("The Supplier shall deliver the goods on time and in full. ", '<w:color w:val="1F3864"/>')}${r("[Insert date]", '<w:color w:val="FF0000"/><w:shd w:val="clear" w:color="auto" w:fill="D9D9D9"/>')}`,
+        ),
+        p(
+          r(
+            "Each party bears its own costs of this agreement.",
+            '<w:color w:val="1F3864"/>',
+          ),
+        ),
+      ].join(""),
+    );
+    const kept = unwrap(
+      await applyFor({ source, template, extra: { textColors: "keep" } }),
+    );
+    const document = (await readPart(kept.docx, "word/document.xml")) ?? "";
+    expect(kept.report.ok).toBe(true);
+    expect(document).toContain(
+      '<w:color w:val="FF0000"/><w:shd w:val="clear" w:color="auto" w:fill="D9D9D9"/></w:rPr><w:t xml:space="preserve">[Insert date]',
+    );
+    // The blue that covers most of the text is the source's look.
+    expect(document).not.toContain("1F3864");
+    const plain = unwrap(await applyFor({ source, template }));
+    expect(
+      (await readPart(plain.docx, "word/document.xml")) ?? "",
+    ).not.toContain("w:color");
   });
 
   test("a paragraph cites its own number through a field", async () => {

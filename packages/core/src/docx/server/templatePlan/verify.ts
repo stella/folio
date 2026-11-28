@@ -71,6 +71,7 @@ import {
   type ResolvedPlan,
   resolvePlan,
   segmentPieces,
+  withPlanColors,
 } from "./plan";
 import {
   objectFingerprint,
@@ -2408,7 +2409,9 @@ const verifyUnguarded = async ({
 }: VerifyTemplatePlanOutputArgs): Promise<
   Result<TemplatePlanReport, TemplatePlanError>
 > => {
-  const analyzedSource = await analyzeSource(source, viewOf(plan));
+  const analyzedSource = (await analyzeSource(source, viewOf(plan))).map(
+    (document) => withPlanColors(document, plan),
+  );
   if (Result.isError(analyzedSource)) {
     return analyzedSource;
   }
