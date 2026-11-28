@@ -1044,6 +1044,47 @@ describe("list instances and patches", () => {
     );
   });
 
+  test("a group may run over two lists of one definition that render alike", async () => {
+    const twin = await withNumbering((xml) =>
+      xml.replace(
+        '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>',
+        '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num><w:num w:numId="7"><w:abstractNumId w:val="0"/></w:num>',
+      ),
+    );
+    const items = (blocks: PlannedBlock[]): TemplatePlanItem[] =>
+      blocks.map(({ id, hash }, index) => ({
+        kind: "source",
+        blockId: id,
+        hash,
+        styleId: "HouseBody",
+        numbering: {
+          numId: index === 0 ? 1 : 7,
+          ilvl: index === 0 ? 0 : 1,
+          group: "g",
+          ...(index === 0 ? { restartFrom: 3 } : {}),
+        },
+      }));
+    const { docx } = unwrap(
+      await applyFor({ source: await three(), template: twin, items }),
+    );
+    expect(
+      unwrap(await analyzeDocxBlocks(docx)).blocks.map(({ label }) => label),
+    ).toEqual(["Art. 3", "3.1.", "3.2."]);
+
+    // A second list that renders the level otherwise is another list.
+    const unlike = await withNumbering((xml) =>
+      xml.replace(
+        '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>',
+        `<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num><w:num w:numId="7"><w:abstractNumId w:val="0"/>${OVERRIDE}</w:num>`,
+      ),
+    );
+    expect(
+      codeOf(
+        await applyFor({ source: await three(), template: unlike, items }),
+      ),
+    ).toBe("plan-invalid");
+  });
+
   test("one level of a group cannot restart from two numbers", async () => {
     expect(
       codeOf(

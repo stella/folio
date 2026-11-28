@@ -8,6 +8,7 @@ import { Result } from "better-result";
 
 import type { Style } from "../../../types/document";
 import { parseFieldInstruction } from "../../fieldParser";
+import { listRenderingDefinitionsMatch } from "../../listRendering";
 import { computeListRendering } from "../../numberingParser";
 import { NAMESPACES, type XmlElement } from "../../xmlParser";
 import type { AnalyzedBlock, AnalyzedDocument } from "./blocks";
@@ -170,6 +171,17 @@ export type ResolvedSlot = {
 };
 
 /** A `REF` switch that shows the target paragraph's number, not its text. */
+
+/** Whether two lists render a level alike: the same format, text, start
+ *  and look, whatever their numbers. */
+const sameListRendering = (
+  left: ReturnType<typeof computeListRendering>,
+  right: ReturnType<typeof computeListRendering>,
+): boolean =>
+  left !== null &&
+  right !== null &&
+  listRenderingDefinitionsMatch({ ...left, numId: right.numId }, right);
+
 const SHOWS_NUMBER = /\\[nrw]\b/u;
 
 const fieldCharOf = (run: XmlElement): string | null =>
@@ -1145,7 +1157,20 @@ export const resolvePlan = (
       mints.set(key, mint);
       return Result.ok({ kind: "direct", numId: mint.numId, ilvl });
     }
-    if (mint.baseNumId !== base) {
+    // Two lists of one definition (a template that binds its heading and
+    // its clause styles to two instances of the same outline) count as
+    // one: the group's instance renders the level as the other list does.
+    if (
+      mint.baseNumId !== base &&
+      (mint.abstractNumId !== abstractNumId ||
+        !sameListRendering(
+          computeListRendering(
+            { numId: mint.baseNumId, ilvl },
+            templateNumbering,
+          ),
+          baseLevel,
+        ))
+    ) {
       return invalid(`List group ${key} spans two lists.`);
     }
     if (restartFrom !== undefined) {
