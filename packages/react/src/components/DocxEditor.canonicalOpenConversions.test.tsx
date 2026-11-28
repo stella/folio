@@ -157,7 +157,7 @@ test("a refused seed opens from the state the pages convert, converting once", a
   const refuse = () =>
     Result.err(
       new canonicalSessions.CanonicalSessionError({
-        ground: { gap: CANONICAL_GAP.trackedChangeRecords },
+        ground: { gap: CANONICAL_GAP.trackedTableStructure },
         message: "The session cannot hold this document.",
         reason: "refused",
       }),

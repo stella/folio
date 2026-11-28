@@ -16,9 +16,9 @@ const INVALID_REQUEST = {
  * The ground of every document operation refusal: a moved-on document is
  * stale, an exhausted id space names it, a link suggestion review records
  * cannot hold and content OOXML has no revision record for are the
- * document's rules, content the tracked-change records cannot express yet is
- * a gap, and every other reason describes a request the document does not
- * allow.
+ * document's rules, table structure the tracked-change records cannot
+ * express yet is a gap, and every other reason describes a request the
+ * document does not allow.
  */
 const DOCUMENT_OP_REFUSAL_GROUNDS = {
   unsupportedSchema: INVALID_REQUEST,
@@ -49,7 +49,7 @@ const DOCUMENT_OP_REFUSAL_GROUNDS = {
   joinIntoPendingTable: INVALID_REQUEST,
   containerFinalMark: INVALID_REQUEST,
   insideInlineControl: INVALID_REQUEST,
-  untrackable: { gap: CANONICAL_GAP.trackedChangeRecords },
+  untrackable: { gap: CANONICAL_GAP.trackedTableStructure },
   tableSnapshotPresence: { rule: CANONICAL_RULE.tableSnapshotPresence },
   pendingBreakTakeover: INVALID_REQUEST,
   pendingParagraphMarkDeletion: INVALID_REQUEST,

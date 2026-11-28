@@ -1,7 +1,6 @@
 /** Remaining seams to retire before the canonical session becomes the only authority. */
 export const CANONICAL_GAP = {
   trackedTableStructure: "tracked-table-structure",
-  trackedChangeRecords: "tracked-change-records",
 } as const;
 
 export type CanonicalGap = (typeof CANONICAL_GAP)[keyof typeof CANONICAL_GAP];
@@ -164,12 +163,6 @@ export const CANONICAL_CAPABILITIES: {
     readonly adapters: readonly ["react", "vue"];
     readonly summary: "Suggested table changes refuse markup the tracked table records cannot express: a row insertion or deletion in a table holding captured markup, wrapper stacks or row content controls; a column or cell edit in a table whose rows keep captured markup between their cells; a table inserted or deleted with captured markup, bookmarks, wrapper stacks or property revisions; a column deletion through a cell spanning other columns.";
   };
-  readonly "tracked-change-records": {
-    readonly owner: "document-operations";
-    readonly kind: "refusal";
-    readonly adapters: readonly ["react", "vue"];
-    readonly summary: "A suggested change whose content the tracked-change records cannot express yet is refused: the removal of a block content control's only paragraph, and a pasted paragraph whose copied deleted or moved-away mark holds a cut reaching a copied record of its own at the seam rather than the paste's insertion.";
-  };
 } = {
   [CANONICAL_GAP.trackedTableStructure]: {
     owner: "controller",
@@ -177,13 +170,6 @@ export const CANONICAL_CAPABILITIES: {
     adapters: ["react", "vue"],
     summary:
       "Suggested table changes refuse markup the tracked table records cannot express: a row insertion or deletion in a table holding captured markup, wrapper stacks or row content controls; a column or cell edit in a table whose rows keep captured markup between their cells; a table inserted or deleted with captured markup, bookmarks, wrapper stacks or property revisions; a column deletion through a cell spanning other columns.",
-  },
-  [CANONICAL_GAP.trackedChangeRecords]: {
-    owner: "document-operations",
-    kind: "refusal",
-    adapters: ["react", "vue"],
-    summary:
-      "A suggested change whose content the tracked-change records cannot express yet is refused: the removal of a block content control's only paragraph, and a pasted paragraph whose copied deleted or moved-away mark holds a cut reaching a copied record of its own at the seam rather than the paste's insertion.",
   },
 } as const satisfies Record<CanonicalGap, CanonicalCapability>;
 

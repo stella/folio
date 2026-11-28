@@ -59,7 +59,7 @@ describe("canonical cutover guard", () => {
         fc.boolean(),
         (name, bracket) => {
           const relay =
-            "const forward = (message: string, ground: CanonicalRefusalGround = { gap: CANONICAL_GAP.trackedChangeRecords }) => {};";
+            "const forward = (message: string, ground: CanonicalRefusalGround = { gap: CANONICAL_GAP.trackedTableStructure }) => {};";
           const error = bracket ? `${name}["error"]` : `${name}.error`;
           const message = bracket ? `${error}["message"]` : `${error}.message`;
           const ground = bracket ? `${error}["ground"]` : `${error}.ground`;
@@ -68,7 +68,7 @@ describe("canonical cutover guard", () => {
           ).toEqual([]);
           for (const argument of [
             "",
-            ", { gap: CANONICAL_GAP.trackedChangeRecords }",
+            ", { gap: CANONICAL_GAP.trackedTableStructure }",
             ", other.error.ground",
           ])
             expect(
@@ -135,7 +135,7 @@ describe("canonical cutover guard", () => {
   });
 
   test("the headless session factory is no gap source", () => {
-    const gap = CANONICAL_GAP.trackedChangeRecords;
+    const gap = CANONICAL_GAP.trackedTableStructure;
     const file = "packages/core/src/ai-edits/headless.ts";
     const method = "static fromBuffer() {}";
     expect(failuresOf(`class Reviewer {\n${method}\n}`, file)).toEqual([]);
@@ -163,7 +163,7 @@ describe("canonical cutover guard", () => {
   test("cannot keep a dead source alive with an orphan comment", () => {
     expect(
       failuresOf(
-        `// canonical-gap: ${CANONICAL_GAP.trackedChangeRecords}\nconst unrelated = true;`,
+        `// canonical-gap: ${CANONICAL_GAP.trackedTableStructure}\nconst unrelated = true;`,
       ).some((failure) => failure.includes("orphan canonical gap marker")),
     ).toBe(true);
   });
