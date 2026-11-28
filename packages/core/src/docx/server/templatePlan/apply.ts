@@ -924,27 +924,41 @@ const outlineSwitchSplices = (
 
 /** A content control around blocks of the source: its properties and the
  *  paragraphs and tables its content holds, in order. */
-type BlockControl = { properties: XmlElement; members: XmlElement[] };
+type BlockControl = {
+  /** The control's own element; an outer control counts it as one member. */
+  element: XmlElement;
+  properties: XmlElement;
+  /** Its paragraphs, tables and inner controls, in source order. */
+  members: XmlElement[];
+};
 
-/** The content controls around blocks of a body, by each block they hold. */
-const blockControlsOf = (body: XmlElement): Map<XmlElement, BlockControl> => {
-  const out = new Map<XmlElement, BlockControl>();
-  for (const child of elementChildren(body)) {
-    if (wName(child) !== "sdt") {
-      continue;
+/**
+ * The content controls around blocks of a body, inner ones before the
+ * controls that hold them. A control without properties lends its blocks
+ * to the control around it.
+ */
+const blockControlsOf = (body: XmlElement): BlockControl[] => {
+  const out: BlockControl[] = [];
+  const membersOf = (content: XmlElement | null): XmlElement[] => {
+    const members: XmlElement[] = [];
+    for (const child of elementChildren(content)) {
+      const name = wName(child);
+      if (name === "p" || name === "tbl") {
+        members.push(child);
+      } else if (name === "sdt") {
+        const inner = membersOf(wChild(child, "sdtContent"));
+        const properties = wChild(child, "sdtPr");
+        if (properties === null) {
+          members.push(...inner);
+        } else if (inner.length > 0) {
+          out.push({ element: child, properties, members: inner });
+          members.push(child);
+        }
+      }
     }
-    const properties = wChild(child, "sdtPr");
-    const members = elementChildren(wChild(child, "sdtContent")).filter(
-      (block) => wName(block) === "p" || wName(block) === "tbl",
-    );
-    if (properties === null || members.length === 0) {
-      continue;
-    }
-    const control = { properties, members };
-    for (const member of members) {
-      out.set(member, control);
-    }
-  }
+    return members;
+  };
+  membersOf(body);
   return out;
 };
 
@@ -970,20 +984,15 @@ const wholeSourceOf = (
 const wrapBlockControls = (
   body: string[],
   sources: (XmlElement | null)[],
-  controls: ReadonlyMap<XmlElement, BlockControl>,
+  controls: readonly BlockControl[],
   w: string,
 ): void => {
-  for (let at = 0; at < body.length; at += 1) {
-    const first = sources[at];
-    const control =
-      first === null || first === undefined ? undefined : controls.get(first);
-    if (control === undefined || control.members[0] !== first) {
-      continue;
-    }
+  for (const control of controls) {
+    const at = sources.indexOf(control.members[0] ?? null);
     const count = control.members.length;
-    const whole = control.members.every(
-      (member, index) => sources[at + index] === member,
-    );
+    const whole =
+      at !== -1 &&
+      control.members.every((member, index) => sources[at + index] === member);
     if (!whole) {
       continue;
     }
@@ -993,8 +1002,9 @@ const wrapBlockControls = (
       count,
       `<${w}:sdt>${controlPropertiesXml(control.properties, w)}<${w}:sdtContent>${inner}</${w}:sdtContent></${w}:sdt>`,
     );
-    // The entries the control took are one entry now.
-    sources.splice(at, count, null);
+    // The entries the control took are one entry now, which a control
+    // around it counts as its member.
+    sources.splice(at, count, control.element);
   }
 };
 

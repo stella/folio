@@ -654,6 +654,23 @@ describe("applyTemplatePlan edge content", () => {
     expect(document).not.toContain("dataBinding");
   });
 
+  test("a content control around paragraphs and an inner control stays around them both", async () => {
+    const template = await buildTemplate();
+    const source = await buildMinimalDocx(
+      [
+        p(r("The parties agree as follows.")),
+        `<w:sdt><w:sdtPr><w:alias w:val="Schedule"/></w:sdtPr><w:sdtContent>${p(r("Item one of the schedule."))}<w:sdt><w:sdtPr><w:alias w:val="Item"/></w:sdtPr><w:sdtContent>${p(r("Item two of the schedule."))}</w:sdtContent></w:sdt></w:sdtContent></w:sdt>`,
+        p(r("Each party signs below.")),
+      ].join(""),
+    );
+    const { docx, report } = unwrap(await applyFor({ source, template }));
+    const document = (await readPart(docx, "word/document.xml")) ?? "";
+    expect(report.ok).toBe(true);
+    expect(document).toMatch(
+      /<w:sdt><w:sdtPr><w:alias w:val="Schedule"\/><\/w:sdtPr><w:sdtContent><w:p>.*?Item one of the schedule\..*?<\/w:p><w:sdt><w:sdtPr><w:alias w:val="Item"\/><\/w:sdtPr><w:sdtContent><w:p>.*?Item two of the schedule\..*?<\/w:p><\/w:sdtContent><\/w:sdt><\/w:sdtContent><\/w:sdt>/u,
+    );
+  });
+
   test("a paragraph cites its own number through a field", async () => {
     const template = await buildTemplate();
     const source = await buildMinimalDocx(
