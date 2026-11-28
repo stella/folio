@@ -88,10 +88,28 @@ import {
   wChild,
   wChildren,
   wName,
+  type XmlRange,
   type XmlSplice,
 } from "./xml";
 
 const CONTENT_TYPES_PATH = "[Content_Types].xml";
+
+/** The ids of the notes of `kind` the body of `documentXml` refers to. */
+const referencedNoteIds = (
+  documentXml: string,
+  w: string,
+  kind: NoteKind,
+): Set<string> => {
+  const ids = new Set<string>();
+  const reference = new RegExp(
+    `<${w}:${kind}Reference\\b[^>]*?\\b${w}:id="([^"]*)"`,
+    "gu",
+  );
+  for (const match of documentXml.matchAll(reference)) {
+    ids.add(match[1] ?? "");
+  }
+  return ids;
+};
 const FAMILY_CONTENT_TYPES: Record<HeaderFamily, string> = {
   header:
     "application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml",
@@ -1289,10 +1307,38 @@ const writeOutput = async ({
     }
     let partXml: string | null = null;
     if (state.existing.part !== null) {
-      const frozen = spliceXml(
-        state.existing.part.xml,
-        freezeFields(state.existing.part, resolved.freezeKinds).splices,
+      // The template's own notes belong to its sample text: one the new
+      // body no longer refers to is left out, so the sample's notes (and
+      // the fields in them that name its bookmarks) do not stay behind.
+      const referenced = referencedNoteIds(
+        documentXml,
+        documentPrefixes.w,
+        kind,
       );
+      const orphans: XmlRange[] = [];
+      for (const element of elementChildren(state.existing.part.root)) {
+        const type = wAttr(element, "type");
+        const id = wAttr(element, "id");
+        const range = rangeOf(element);
+        if (
+          isW(element, kind) &&
+          (type === null || type === "normal") &&
+          id !== null &&
+          !referenced.has(id) &&
+          range !== null
+        ) {
+          orphans.push(range);
+        }
+      }
+      const inOrphan = ({ start, end }: XmlRange): boolean =>
+        orphans.some((range) => start >= range.start && end <= range.end);
+      const frozen = spliceXml(state.existing.part.xml, [
+        ...freezeFields(
+          state.existing.part,
+          resolved.freezeKinds,
+        ).splices.filter((splice) => !inOrphan(splice)),
+        ...orphans.map(({ start, end }) => ({ start, end, newXml: "" })),
+      ]);
       if (frozen === null) {
         return Result.err(
           unreadable(state.path, "The notes part could not be rewritten."),
