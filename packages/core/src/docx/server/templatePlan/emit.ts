@@ -1153,13 +1153,31 @@ export const paragraphContentXml = (
   { paragraph, bookmark, instructionOf }: ParagraphEmit,
   context: EmitContext,
 ): RunsResult => {
-  const runs = segmentsRunsXml(paragraph.segments, context, instructionOf);
-  if (Result.isError(runs) || bookmark === undefined) {
+  if (bookmark === undefined) {
+    return segmentsRunsXml(paragraph.segments, context, instructionOf);
+  }
+  // A label written as text stands in front of the bookmark, as the
+  // source's automatic label stood outside its bookmark.
+  const lead = paragraph.writtenLabel?.segments ?? 0;
+  const label = segmentsRunsXml(
+    paragraph.segments.slice(0, lead),
+    context,
+    instructionOf,
+  );
+  if (Result.isError(label)) {
+    return label;
+  }
+  const runs = segmentsRunsXml(
+    paragraph.segments.slice(lead),
+    context,
+    instructionOf,
+  );
+  if (Result.isError(runs)) {
     return runs;
   }
   const { w } = context.prefixes;
   return Result.ok(
-    `${bookmarkStartXml({ prefix: w, ...bookmark })}${runs.value}${bookmarkEndXml({ prefix: w, id: bookmark.id })}`,
+    `${label.value}${bookmarkStartXml({ prefix: w, ...bookmark })}${runs.value}${bookmarkEndXml({ prefix: w, id: bookmark.id })}`,
   );
 };
 
@@ -1238,8 +1256,22 @@ export const paragraphXml = (
   if (emit.sectionXml !== null) {
     properties.push(emit.sectionXml);
   }
+  // A label written as text stands in front of a reference target's
+  // bookmark, as the source's automatic label stood outside its bookmark.
+  const lead =
+    emit.bookmark === undefined
+      ? 0
+      : (emit.paragraph.writtenLabel?.segments ?? 0);
+  const label = segmentsRunsXml(
+    emit.paragraph.segments.slice(0, lead),
+    context,
+    emit.instructionOf,
+  );
+  if (Result.isError(label)) {
+    return label;
+  }
   const runs = segmentsRunsXml(
-    emit.paragraph.segments,
+    emit.paragraph.segments.slice(lead),
     context,
     emit.instructionOf,
   );
@@ -1266,7 +1298,9 @@ export const paragraphXml = (
   // A deleted paragraph mark inside the block: what stands in front of it
   // is a paragraph of its own, in the block's style and in no list, whose
   // mark is the deleted one. The block's own paragraph comes last.
-  const [last = "", ...earlier] = runs.value.split(MARK_SPLIT).toReversed();
+  const [last = "", ...earlier] = (label.value + runs.value)
+    .split(MARK_SPLIT)
+    .toReversed();
   const halves: string[] = [];
   const parted = earlier.toReversed();
   for (let at = 0; at + 1 < parted.length; at += 2) {
@@ -1285,6 +1319,11 @@ export const paragraphXml = (
   const xml = `<${w}:p>${pPr}${last}</${w}:p>`;
   if (emit.bookmark === undefined) {
     return Result.ok(`${halves.join("")}${xml}`);
+  }
+  if (lead > 0 && earlier.length === 0) {
+    return Result.ok(
+      `<${w}:p>${pPr}${label.value}${bookmarkStartXml({ prefix: w, ...emit.bookmark })}${runs.value}${bookmarkEndXml({ prefix: w, id: emit.bookmark.id })}</${w}:p>`,
+    );
   }
   const wrapped = wrapParagraphContentInBookmark({
     paragraphXml: xml,

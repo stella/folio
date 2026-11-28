@@ -796,6 +796,43 @@ describe("applyTemplatePlan numbering", () => {
     ).toEqual(report.counts);
   });
 
+  test("starts a target's bookmark behind its label written as text", async () => {
+    const plan = fullPlan();
+    plan.body = plan.body.map((item) =>
+      item.kind === "source" && item.blockId === SOURCE_IDS.letterA
+        ? { ...item, numbering: null, labelAsText: true }
+        : item,
+    );
+    const start = SOURCE_TEXT.clause.indexOf("Article II");
+    plan.references = [
+      {
+        blockId: SOURCE_IDS.clause,
+        start,
+        end: start + "Article II".length,
+        targetBlockId: SOURCE_IDS.letterA,
+        instruction: "\\h",
+        expectedText: "Article II",
+      },
+    ];
+    const { docx, report } = await apply(plan);
+    const document = (await readPart(docx, "word/document.xml")) ?? "";
+    const [result] = report.references.results;
+
+    expect(report.ok).toBe(true);
+    // The field shows the item's text, as the source's showed it without
+    // its automatic label.
+    expect(result).toMatchObject({
+      status: "ok",
+      predictedText: SOURCE_TEXT.letterA,
+    });
+    expect(document).toMatch(
+      new RegExp(
+        `>a\\)</w:t>.*?<w:bookmarkStart w:id="\\d+" w:name="${result?.bookmark ?? ""}"/>.*?first item`,
+        "su",
+      ),
+    );
+  });
+
   test("refuses to write a label as text beside a list or where none shows", async () => {
     const asText = (blockId: string, numbering?: null): TemplatePlan => {
       const plan = fullPlan();
