@@ -42,9 +42,10 @@ const BUDGETS = {
   // with five of its changes still to land, each about 6 kB): docxOps to
   // 745 kB, minified +30 kB, gzip +10 kB. The ops bytes count toward the
   // totals too, so the totals keep the room the ops ceiling still leaves
-  // (about 19 kB): minified +21 kB, gzip +7 kB.
+  // (about 19 kB): minified +21 kB, gzip +7 kB. Locale asset loading adds
+  // 0.2 kB to Vue's measured gzip host path.
   react: { minified: 3_833_600, gzip: 1_206_800, docxOps: 745_000 },
-  vue: { minified: 3_527_400, gzip: 1_101_000, docxOps: 745_000 },
+  vue: { minified: 3_527_400, gzip: 1_101_500, docxOps: 745_000 },
 } as const satisfies Record<Adapter, Metrics>;
 
 const HOST_PEERS = [
