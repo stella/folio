@@ -774,6 +774,8 @@ const mergedPieces = (pieces: readonly ExpectedPiece[]): ExpectedPiece[] => {
       // So is the mark of a checkbox: its control holds it alone.
       last.atom?.checkbox === undefined &&
       piece.atom?.checkbox === undefined &&
+      // Text of a control stays inside it, and other text outside.
+      last.atom?.control === piece.atom?.control &&
       sameLink(last.link, piece.link)
     ) {
       merged[merged.length - 1] = { ...last, text: last.text + piece.text };
@@ -812,13 +814,76 @@ const isWholeResult = (
   group.map(({ text }) => text).join("") === field.result &&
   group.every((piece) => piece.atom?.revision === undefined);
 
+/** Children of a control's properties a copy leaves out: they name parts
+ *  of the source (its data, its building blocks) the output does not have. */
+const CONTROL_DROPPED: ReadonlySet<string> = new Set([
+  "dataBinding",
+  "placeholder",
+  "rPr",
+]);
+
+/** A control's properties as the output writes them. */
+const controlPropertiesXml = (properties: XmlElement, w: string): string =>
+  wSubtreeXml(
+    cloneElement(properties, {
+      elements: elementChildren(properties).filter(
+        (child) => !CONTROL_DROPPED.has(wName(child) ?? ""),
+      ),
+    }),
+    w,
+  );
+
+/**
+ * Runs of pieces, a content control among runs around its content again
+ * where the output places all of that content, with no tracked change in
+ * it: a text, date or list control a reader fills in. Any other control's
+ * content is written as it reads.
+ */
+const piecesRunsXml = (
+  pieces: readonly ExpectedPiece[],
+  context: EmitContext,
+): RunsResult => {
+  const { w } = context.prefixes;
+  const out: string[] = [];
+  let at = 0;
+  while (at < pieces.length) {
+    const control =
+      pieces[at]?.origin === "document" ? pieces[at]?.atom?.control : undefined;
+    let end = at + 1;
+    while (
+      end < pieces.length &&
+      (pieces[end]?.origin === "document"
+        ? pieces[end]?.atom?.control
+        : undefined) === control
+    ) {
+      end += 1;
+    }
+    const group = pieces.slice(at, end);
+    at = end;
+    const runs = formFieldRunsXml(group, context);
+    if (Result.isError(runs)) {
+      return runs;
+    }
+    const whole =
+      control !== undefined &&
+      group.map(({ text }) => text).join("") === control.text &&
+      group.every((piece) => piece.atom?.revision === undefined);
+    out.push(
+      whole
+        ? `<${w}:sdt>${controlPropertiesXml(control.properties, w)}<${w}:sdtContent>${runs.value}</${w}:sdtContent></${w}:sdt>`
+        : runs.value,
+    );
+  }
+  return Result.ok(out.join(""));
+};
+
 /**
  * Runs of pieces, a legacy form field's result inside the field again: the
  * box, list or text input a reader fills in, with its form data. Only a
  * field whose whole result stands here, in one paragraph, is written so;
  * any other keeps its text.
  */
-const piecesRunsXml = (
+const formFieldRunsXml = (
   pieces: readonly ExpectedPiece[],
   context: EmitContext,
 ): RunsResult => {

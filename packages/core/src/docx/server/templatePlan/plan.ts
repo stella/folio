@@ -26,6 +26,7 @@ import {
 import {
   type Emphasis,
   emphasisDeviation,
+  type EmphasisOverride,
   emphasisSignature,
   paragraphBaseline,
   readDirectEmphasis,
@@ -451,8 +452,98 @@ const showsLabel = ({ block }: AnalyzedBlock): boolean =>
 
 export type SignatureContext = Pick<
   AnalyzedDocument,
-  "styles" | "defaultStyleId" | "defaultEmphasis"
+  "styles" | "defaultStyleId" | "defaultEmphasis" | "keptColors"
 >;
+
+/** A deviation with only the colours a plan keeps. */
+/**
+ * A deviation with the colours a plan keeps: the colour and shading the
+ * text has in effect where they mark part of the text, whether a run or
+ * the paragraph's style gives them (the template's style gives neither);
+ * no other.
+ */
+const withKeptColors = (
+  deviation: EmphasisOverride,
+  effective: Emphasis,
+  kept: ReadonlySet<string> | undefined,
+): EmphasisOverride => {
+  const out = { ...deviation };
+  delete out.color;
+  delete out.shd;
+  if (effective.color !== null && kept?.has(`color:${effective.color}`)) {
+    out.color = effective.color;
+  }
+  if (effective.shd !== null && kept?.has(`shd:${effective.shd}`)) {
+    out.shd = effective.shd;
+  }
+  return out;
+};
+
+/** The amount of text a measure of colour counts: its characters that are
+ *  not blanks, whatever runs hold them. */
+const inkLength = (text: string): number => text.replace(/\s/gu, "").length;
+
+/** A source as a plan reads it: with the colours it keeps, if any. */
+export const withPlanColors = (
+  document: AnalyzedDocument,
+  plan: unknown,
+): AnalyzedDocument =>
+  typeof plan === "object" &&
+  plan !== null &&
+  "textColors" in plan &&
+  plan.textColors === "keep"
+    ? { ...document, keptColors: markingColorsOf(document) }
+    : document;
+
+/** The share of a document's text a colour may cover and still mark part
+ *  of it. */
+const MARKING_SHARE = 0.5;
+
+/**
+ * The colours and run shadings of a document that mark part of its text:
+ * each covering less than half of it. Read off the effective colour of
+ * every run of the main story, styles included.
+ */
+export const markingColorsOf = (document: AnalyzedDocument): Set<string> => {
+  const covered = new Map<string, number>();
+  let total = 0;
+  for (const { read } of document.story.paragraphs) {
+    if (read === null) {
+      continue;
+    }
+    const style = document.styles.get(
+      read.styleId ?? document.defaultStyleId ?? "",
+    );
+    const baseline = paragraphBaseline(style, document.defaultEmphasis);
+    for (const atom of read.atoms) {
+      const length = inkLength(atom.text);
+      if (length === 0) {
+        continue;
+      }
+      total += length;
+      const effective = withOverride(
+        withCharacterStyle(
+          baseline,
+          document.styles.get(wChildVal(atom.runProperties, "rStyle") ?? ""),
+        ),
+        readDirectEmphasis(atom.runProperties),
+      );
+      for (const key of [
+        effective.color === null ? null : `color:${effective.color}`,
+        effective.shd === null ? null : `shd:${effective.shd}`,
+      ]) {
+        if (key !== null) {
+          covered.set(key, (covered.get(key) ?? 0) + length);
+        }
+      }
+    }
+  }
+  return new Set(
+    [...covered]
+      .filter(([, length]) => length < total * MARKING_SHARE)
+      .map(([key]) => key),
+  );
+};
 
 export type ParagraphPiecesOptions = {
   read: ParagraphRead;
@@ -534,7 +625,7 @@ const statedOver = (
 /** The pieces of one source paragraph, each with the emphasis it states. */
 export const paragraphPieces = ({
   read,
-  context: { styles, defaultStyleId, defaultEmphasis },
+  context: { styles, defaultStyleId, defaultEmphasis, keptColors },
   origin,
   fields,
 }: ParagraphPiecesOptions): ExpectedPiece[] => {
@@ -556,15 +647,15 @@ export const paragraphPieces = ({
       const isLinkLook =
         link !== null &&
         LINK_STYLE_NAMES.has(characterStyle?.name?.toLowerCase() ?? "");
+      const effective = withOverride(
+        isLinkLook ? baseline : withCharacterStyle(baseline, characterStyle),
+        readDirectEmphasis(atom.runProperties),
+      );
       signature = emphasisSignature(
-        emphasisDeviation(
-          withOverride(
-            isLinkLook
-              ? baseline
-              : withCharacterStyle(baseline, characterStyle),
-            readDirectEmphasis(atom.runProperties),
-          ),
-          over,
+        withKeptColors(
+          emphasisDeviation(effective, over),
+          effective,
+          keptColors,
         ),
       );
     }

@@ -2248,6 +2248,7 @@ export type TemplatePlan = {
     sourceHeaders?: "drop" | "keep";
     comments?: "drop" | "keep";
     internalLinks?: "drop" | "keep";
+    textColors?: "drop" | "keep";
 };
 
 // @public
@@ -2538,6 +2539,7 @@ export type TemplatePlanSourceHeaders = {
         unsupportedObjects: number;
         laterSectionParts: number;
     };
+    pageNumbersTwice: number;
 };
 
 // @public (undocumented)

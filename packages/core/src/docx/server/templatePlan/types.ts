@@ -890,6 +890,14 @@ export type TemplatePlan = {
    * where that paragraph is placed.
    */
   internalLinks?: "drop" | "keep";
+  /**
+   * What becomes of the colours the source's text states (`w:color`) and
+   * the shading of its runs (`w:shd`). `drop`, the default, leaves colour
+   * to the template. `keep` carries each colour that marks part of the
+   * text: one that covers less than half of the source's text (a colour
+   * covering more is the source's own look, the template's to set).
+   */
+  textColors?: "drop" | "keep";
 };
 
 /** What the output carries of the source's comments. */
@@ -931,6 +939,9 @@ export type TemplatePlanSourceHeaders = {
      *  of the section the output merges it into. */
     laterSectionParts: number;
   };
+  /** Output headers and footers that show two page numbers: the template's
+   *  part numbers its pages and so does the source's content it took. */
+  pageNumbersTwice: number;
 };
 
 export type TemplatePlanEffectCount = {

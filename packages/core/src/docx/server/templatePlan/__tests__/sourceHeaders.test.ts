@@ -107,6 +107,8 @@ describe("the source's headers and footers", () => {
       unsupportedObjects: 0,
       laterSectionParts: 0,
     });
+    // The template's header numbers its pages and so does the source's.
+    expect(report?.pageNumbersTwice).toBe(1);
     const other = (await readPart(applied.docx, "word/header1.xml")) ?? "";
     expect(other.indexOf("House letterhead")).toBeLessThan(
       other.indexOf("Draft for discussion"),

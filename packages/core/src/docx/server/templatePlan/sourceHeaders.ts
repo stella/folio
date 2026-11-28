@@ -186,6 +186,22 @@ export const partParagraphTexts = (root: XmlElement): string[] => {
   return texts;
 };
 
+/** Whether a part shows a page number: it holds a PAGE field. */
+export const showsPageNumber = (root: XmlElement): boolean => {
+  const state = createStoryState();
+  walkBlocks(root, {
+    paragraph: (paragraph) => {
+      readParagraph(paragraph, state);
+    },
+    tableStart: () => {},
+    cellStart: () => {},
+    tableEnd: () => {},
+    unread: () => {},
+    tracked: () => {},
+  });
+  return state.fields.some(({ kind }) => kind === "PAGE");
+};
+
 /** The first section's properties: the first a paragraph ends, else the body's. */
 export const firstSectionOf = (body: XmlElement): XmlElement | null => {
   for (const block of elementChildren(body)) {
@@ -947,6 +963,7 @@ export const verifyCarriedHeaders = async ({
   }
   const outputSections = sectionsOf(output.body);
   const kept: TemplatePlanSourceHeaders["kept"] = [];
+  let pageNumbersTwice = 0;
   const mismatched: string[] = [];
   for (const write of planned.value.writes) {
     // Every output section names its headers itself: the first section's
@@ -985,6 +1002,17 @@ export const verifyCarriedHeaders = async ({
       mismatched.push(`${write.kind} ${write.family}`);
       continue;
     }
+    // The template's part numbers its pages and so does the content it
+    // takes: those pages show two numbers.
+    if (
+      templateRoot.value !== null &&
+      showsPageNumber(templateRoot.value) &&
+      showsPageNumber(
+        cloneElement(write.source.root, { elements: write.source.blocks }),
+      )
+    ) {
+      pageNumbersTwice += 1;
+    }
     kept.push({
       family: write.family,
       kind: write.kind,
@@ -995,7 +1023,7 @@ export const verifyCarriedHeaders = async ({
     });
   }
   return Result.ok({
-    report: { kept, leftOut: planned.value.leftOut },
+    report: { kept, leftOut: planned.value.leftOut, pageNumbersTwice },
     mismatched,
   });
 };

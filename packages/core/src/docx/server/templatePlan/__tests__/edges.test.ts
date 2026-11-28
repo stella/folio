@@ -14,7 +14,13 @@ import {
   replacePart,
   TEMPLATE_IDS,
 } from "./fixtures";
-import { applyFor, planFor, unwrap, verifyFor } from "./planning";
+import {
+  applyFor,
+  buildSourceWith,
+  planFor,
+  unwrap,
+  verifyFor,
+} from "./planning";
 
 describe("innerRangeOf", () => {
   test("finds the content after an opening tag whose attribute holds '>'", () => {
@@ -508,6 +514,109 @@ describe("applyTemplatePlan edge content", () => {
       '<w:instrText xml:space="preserve"> MACROBUTTON optional [ </w:instrText>',
     );
     expect(report.dropped.sourceFields).toEqual([]);
+  });
+
+  test("a colour that marks part of the text is kept when the plan keeps colours; the source's own look is not", async () => {
+    const template = await buildTemplate();
+    const source = await buildMinimalDocx(
+      [
+        p(
+          `${r("The Supplier shall deliver the goods on time and in full. ", '<w:color w:val="1F3864"/>')}${r("[Insert date]", '<w:color w:val="FF0000"/><w:shd w:val="clear" w:color="auto" w:fill="D9D9D9"/>')}`,
+        ),
+        p(
+          r(
+            "Each party bears its own costs of this agreement.",
+            '<w:color w:val="1F3864"/>',
+          ),
+        ),
+      ].join(""),
+    );
+    const kept = unwrap(
+      await applyFor({ source, template, extra: { textColors: "keep" } }),
+    );
+    const document = (await readPart(kept.docx, "word/document.xml")) ?? "";
+    expect(kept.report.ok).toBe(true);
+    expect(document).toContain(
+      '<w:color w:val="FF0000"/><w:shd w:val="clear" w:color="auto" w:fill="D9D9D9"/></w:rPr><w:t xml:space="preserve">[Insert date]',
+    );
+    // The blue that covers most of the text is the source's look.
+    expect(document).not.toContain("1F3864");
+    const plain = unwrap(await applyFor({ source, template }));
+    expect(
+      (await readPart(plain.docx, "word/document.xml")) ?? "",
+    ).not.toContain("w:color");
+  });
+
+  test("a marking colour a paragraph style gives is kept, and run boundaries do not change what marks", async () => {
+    const template = await buildTemplate();
+    const styled = await buildSourceWith({
+      body: [
+        p(
+          r("Note to draft: check the dates."),
+          '<w:pStyle w:val="DraftNote"/>',
+        ),
+        p(r("The Supplier shall deliver the goods on time and in full.")),
+        p(
+          r(
+            "Each party bears its own costs of this agreement and of its advisers.",
+          ),
+        ),
+      ].join(""),
+      styles:
+        '<w:style w:type="paragraph" w:styleId="DraftNote"><w:name w:val="Draft Note"/><w:rPr><w:color w:val="C00000"/></w:rPr></w:style>',
+    });
+    const kept = unwrap(
+      await applyFor({
+        source: styled,
+        template,
+        extra: { textColors: "keep" },
+      }),
+    );
+    expect((await readPart(kept.docx, "word/document.xml")) ?? "").toMatch(
+      /<w:color w:val="C00000"\/><\/w:rPr><w:t xml:space="preserve">Note to draft/u,
+    );
+    const colours = async (runs: string): Promise<boolean> => {
+      const source = await buildMinimalDocx(p(`${runs}${r("ccc")}`));
+      const applied = unwrap(
+        await applyFor({ source, template, extra: { textColors: "keep" } }),
+      );
+      return (
+        (await readPart(applied.docx, "word/document.xml")) ?? ""
+      ).includes("FF0000");
+    };
+    const red = '<w:color w:val="FF0000"/>';
+    expect(await colours(r("a b", red))).toBe(
+      await colours(`${r("a ", red)}${r("b", red)}`),
+    );
+  });
+
+  test("a content control among runs is kept around its content, without the parts it names", async () => {
+    const template = await buildTemplate();
+    const control = (properties: string, text: string): string =>
+      `<w:sdt><w:sdtPr>${properties}</w:sdtPr><w:sdtContent>${r(text)}</w:sdtContent></w:sdt>`;
+    const source = await buildMinimalDocx(
+      [
+        p(
+          `${r("Signed on ")}${control('<w:id w:val="7"/><w:placeholder><w:docPart w:val="ABC"/></w:placeholder><w:showingPlcHdr/><w:dataBinding w:xpath="/a" w:storeItemID="{1}"/><w:date><w:dateFormat w:val="d MMMM yyyy"/><w:lid w:val="en-GB"/></w:date>', "Click to enter a date.")}${r(" by the parties.")}`,
+        ),
+        p(
+          `${r("Name: ")}${control('<w:rPr><w:rStyle w:val="instructions"/></w:rPr><w:alias w:val="Name"/><w:text/>', "[Name]")}`,
+        ),
+      ].join(""),
+    );
+    const { docx, report } = unwrap(await applyFor({ source, template }));
+    const document = (await readPart(docx, "word/document.xml")) ?? "";
+    expect(report.ok).toBe(true);
+    expect(document).toContain(
+      '<w:sdt><w:sdtPr><w:id w:val="7"/><w:showingPlcHdr/><w:date><w:dateFormat w:val="d MMMM yyyy"/><w:lid w:val="en-GB"/></w:date></w:sdtPr><w:sdtContent>',
+    );
+    expect(document).not.toContain("dataBinding");
+    expect(document).not.toContain("docPart");
+    // Nor the look of a style the template does not define.
+    expect(document).not.toContain("instructions");
+    expect(document).toMatch(
+      /<w:sdt><w:sdtPr><w:alias w:val="Name"\/><w:text\/><\/w:sdtPr><w:sdtContent><w:r>(?:<w:rPr>.*?<\/w:rPr>)?<w:t xml:space="preserve">\[Name\]<\/w:t><\/w:r><\/w:sdtContent><\/w:sdt>/u,
+    );
   });
 
   test("a paragraph cites its own number through a field", async () => {

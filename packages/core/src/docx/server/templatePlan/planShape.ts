@@ -572,6 +572,11 @@ export const planShapeIssue = (plan: unknown): string | null => {
     plan["internalLinks"] === "drop" ||
     plan["internalLinks"] === "keep"
       ? null
-      : "The plan's choice for the source's internal links is unknown.")
+      : "The plan's choice for the source's internal links is unknown.") ??
+    (plan["textColors"] === undefined ||
+    plan["textColors"] === "drop" ||
+    plan["textColors"] === "keep"
+      ? null
+      : "The plan's choice for the source's text colours is unknown.")
   );
 };

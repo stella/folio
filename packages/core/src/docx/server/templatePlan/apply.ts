@@ -60,6 +60,7 @@ import {
   type ResolvedParagraph,
   type ResolvedPlan,
   resolvePlan,
+  withPlanColors,
 } from "./plan";
 import { readStoryResources } from "./resources";
 import {
@@ -2270,7 +2271,9 @@ const applyUnguarded = async ({
 }: ApplyTemplatePlanArgs): Promise<
   Result<ApplyTemplatePlanResult, TemplatePlanError>
 > => {
-  const analyzedSource = await analyzeSource(source, viewOf(plan));
+  const analyzedSource = (await analyzeSource(source, viewOf(plan))).map(
+    (document) => withPlanColors(document, plan),
+  );
   if (Result.isError(analyzedSource)) {
     return analyzedSource;
   }

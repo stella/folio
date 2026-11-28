@@ -145,7 +145,16 @@ export type InlineAtom = {
    * character.
    */
   checkbox?: XmlElement;
+  /**
+   * The content control among runs the atom is part of (other than a
+   * checkbox): its properties, and the whole text of its content, which a
+   * writer that places all of it wraps in the control again.
+   */
+  control?: AtomControl;
 };
+
+/** A content control among runs, shared by the atoms of its content. */
+export type AtomControl = { properties: XmlElement; text: string };
 
 /**
  * A tracked change an atom is part of, as a reading that keeps revisions
@@ -577,6 +586,8 @@ type RunContext = {
   checkbox?: XmlElement | undefined;
   /** The insertion or deletion the content sits in, when revisions are kept. */
   revision?: AtomRevision | undefined;
+  /** The content control among runs the content sits in. */
+  control?: AtomControl | undefined;
 };
 
 /** What a deleted run holds as text; null for content that is none. */
@@ -647,7 +658,7 @@ const readRun = (
   walk: ParagraphWalk,
   context: RunContext,
 ): void => {
-  const { link, revision, checkbox } = context;
+  const { link, revision, checkbox, control } = context;
   const { state, read } = walk;
   const runProperties = wChild(run, "rPr");
   if (wChild(runProperties, "rPrChange") !== null) {
@@ -670,6 +681,7 @@ const readRun = (
       element,
       ...(revision === undefined ? {} : { revision }),
       ...(checkbox === undefined || kind !== "text" ? {} : { checkbox }),
+      ...(control === undefined ? {} : { control }),
     });
   };
   // An object travels whole, so what it holds inside is checked here.
@@ -883,7 +895,10 @@ const readInline = (
       } else if (anchor !== null) {
         link = { kind: "anchor", anchor };
       }
-      readInline(child, walk, { link });
+      readInline(child, walk, {
+        link,
+        ...(context.control === undefined ? {} : { control: context.control }),
+      });
     } else if (name === "fldSimple") {
       const field = beginField(walk, wAttr(child, "instr") ?? "");
       field.resultStart = walk.textLength;
@@ -927,11 +942,27 @@ const readInline = (
       const content = wChild(child, "sdtContent");
       if (content !== null) {
         const checkbox = checkboxOf(child, content);
-        readInline(
-          content,
-          walk,
-          checkbox === null ? context : { ...context, checkbox },
-        );
+        const properties = wChild(child, "sdtPr");
+        if (
+          checkbox === null &&
+          context.control === undefined &&
+          properties !== null
+        ) {
+          // A control among runs: its atoms carry it, with its whole text.
+          const control: AtomControl = { properties, text: "" };
+          const first = read.atoms.length;
+          readInline(content, walk, { ...context, control });
+          control.text = read.atoms
+            .slice(first)
+            .map(({ text }) => text)
+            .join("");
+        } else {
+          readInline(
+            content,
+            walk,
+            checkbox === null ? context : { ...context, checkbox },
+          );
+        }
       }
     } else if (TRANSPARENT_WRAPPERS.has(name)) {
       readInline(child, walk, context);
