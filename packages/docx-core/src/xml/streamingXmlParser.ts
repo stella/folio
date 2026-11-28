@@ -739,6 +739,7 @@ export const scanStreamingXmlNumericIdAttributes = (
 export const scanStreamingXmlElements = (
   xml: string,
   visitElement: ElementScanVisitor,
+  inheritedNamespaceScope: XmlNamespaceScope = EMPTY_NAMESPACE_SCOPE,
 ):
   | {
       status: "unsupported";
@@ -752,6 +753,7 @@ export const scanStreamingXmlElements = (
     mode: "attributes",
     visitOpenTag: () => null,
     visitElement,
+    inheritedNamespaceScope,
   });
   return parsed.status === "parsed"
     ? { status: "scanned" as const }

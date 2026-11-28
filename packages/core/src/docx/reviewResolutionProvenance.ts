@@ -938,14 +938,16 @@ const isTableMove = (value: unknown): value is TableMove =>
   isRevisionId(value["destinationMark"]) &&
   ((value["kind"] === "empty" &&
     value["controls"] === undefined &&
-    value["pictures"] === undefined) ||
+    value["pictures"] === undefined &&
+    value["bookmarks"] === undefined) ||
     (value["kind"] === undefined &&
       isRevisionId(value["fromRevision"]) &&
       isRevisionId(value["toRevision"]) &&
       isRevisionId(value["fromRange"]) &&
       isRevisionId(value["toRange"]) &&
       validIdentityHandoffs(value["controls"], validControlHandoff) &&
-      validIdentityHandoffs(value["pictures"], validPictureHandoff)));
+      validIdentityHandoffs(value["pictures"], validPictureHandoff) &&
+      validBookmarkHandoffs(value["bookmarks"])));
 const isNestedTableMove = (value: unknown): value is NestedTableMove => {
   if (!record(value)) return false;
   const rows = value["rows"];

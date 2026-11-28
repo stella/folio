@@ -145,7 +145,7 @@ const allocateTrackedMerge = (document: Document, blockId = ownerId) => {
 };
 
 test.each([
-  '<m:oMath><w:bookmarkStart w:id="42" w:name="Formula"/><m:r><m:t>x</m:t></m:r><w:bookmarkEnd w:id="42"/></m:oMath>',
+  '<w:bookmarkStart w:id="42" w:name="Formula"/><w:r><w:t>A</w:t></w:r>',
   '<w:proofErr w:type="spellStart"/><w:r><w:t>A</w:t></w:r>',
 ])(
   "a tracked move preserves range ownership when its payload cannot move as a unit: %s",
@@ -213,6 +213,56 @@ const assertSavedMove = (
   }
   return xml;
 };
+
+test.each(["inline", "equation"] as const)(
+  "a tracked table merge moves a paragraph's %s bookmarks and links",
+  (placement) => {
+    const start = '<w:bookmarkStart w:id="42" w:name="Formula"/>';
+    const end = '<w:bookmarkEnd w:id="42"/>';
+    const target =
+      placement === "inline"
+        ? `${start}<w:r><w:t>Formula</w:t></w:r>${end}`
+        : `<m:oMath>${start}<m:r><m:t>x</m:t></m:r>${end}</m:oMath>`;
+    const bookmarkLink =
+      '<w:hyperlink w:anchor="Formula"><w:r><w:t>See formula</w:t></w:r></w:hyperlink>';
+    const original = sourceWith({ content: target + bookmarkLink });
+    const xml = assertSavedMove(original);
+    expect(xml).toContain('w:id="42" w:name="Formula"');
+    expect(xml).toContain('w:id="1" w:name="FolioBookmark1"');
+    expect(xml).toContain('w:anchor="FolioBookmark1"');
+  },
+);
+
+test("a tracked merge reserves a padded bookmark id in an equation outside the merged cells", () => {
+  const original = sourceWith({
+    content:
+      '<w:bookmarkStart w:id="42" w:name="Formula"/>' +
+      '<w:r><w:t>Formula</w:t></w:r><w:bookmarkEnd w:id="42"/>' +
+      '<w:hyperlink w:anchor="Formula"><w:r><w:t>See formula</w:t></w:r></w:hyperlink>',
+  });
+  const outside = tableOf(
+    sourceWith({
+      content:
+        '<m:oMath><w:bookmarkStart w:id="  +1  " w:name="FolioBookmark1"/>' +
+        '<m:r><m:t>y</m:t></m:r><w:bookmarkEnd w:id=" 1 "/></m:oMath>',
+    }),
+  )
+    .rows.at(0)
+    ?.cells.at(1)
+    ?.content.at(0);
+  if (outside?.type !== "paragraph")
+    throw new TypeError("Expected the standing equation.");
+  original.package.document.content.splice(1, 1, {
+    ...outside,
+    paraId: "00000003",
+  });
+  expect(serializeParagraph(outside)).toContain(
+    'w:id="  +1  " w:name="FolioBookmark1"',
+  );
+  const xml = assertSavedMove(original);
+  expect(xml).toContain('w:id="2" w:name="FolioBookmark2"');
+  expect(xml).toContain('w:anchor="FolioBookmark2"');
+});
 
 test.each([
   `${direction}${link}${atoms}</w:hyperlink></w:dir>`,

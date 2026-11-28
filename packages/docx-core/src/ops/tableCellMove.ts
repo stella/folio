@@ -40,12 +40,17 @@ import {
   XML_NAMESPACE_URI,
 } from "../xml/xmlNamespaceContext";
 import { blockListEndsInParagraph, storyParagraphs } from "./blocks";
+import {
+  readCapturedBookmark,
+  withCapturedBookmarkAliases,
+} from "./capturedBookmarks";
 import { structurallyEqual } from "./equality";
 import {
   IDENTITY_SPACES,
   identityKeysIn,
   idKey,
   type PackageBookmark,
+  type PackageBookmarkCensus,
   packageBookmarkCensus,
   packageDrawingIds,
   packageMoveRangeCensus,
@@ -74,6 +79,7 @@ import type { RevisionStamp } from "./types";
 export type TableMoveSource = {
   paragraph: Paragraph;
   id: string;
+  bookmarks: readonly PackageBookmark[];
   controls: number[];
   pictures: ReadonlySet<number>;
 };
@@ -185,10 +191,25 @@ const mathNamespace = (uri: string | undefined): boolean =>
   uri === OOXML_NS.m ||
   uri === "http://purl.oclc.org/ooxml/officeDocument/math";
 
-const localMathNode = (node: XmlElement): boolean => {
+const localMathNode = (
+  node: XmlElement,
+  collectBookmark: MoveContentContext["collectBookmark"],
+): boolean => {
   if (node.type === "text" || node.type === "comment") return true;
-  if (node.type !== "element" || !mathNamespace(node.namespaceUri))
-    return false;
+  if (node.type !== "element") return false;
+  if (!mathNamespace(node.namespaceUri)) {
+    if (collectBookmark === undefined || (node.elements?.length ?? 0) !== 0)
+      return false;
+    const bookmark = readCapturedBookmark(node);
+    if (bookmark === undefined) return false;
+    const names = Object.keys(node.attributes ?? {}).filter(
+      (name) => name !== "xmlns" && !name.startsWith("xmlns:"),
+    );
+    return (
+      names.length === (bookmark.marker.type === "bookmarkStart" ? 2 : 1) &&
+      collectBookmark(bookmark.marker)
+    );
+  }
   return (
     Object.keys(node.attributes ?? {}).every((name) => {
       if (name === "xmlns" || name.startsWith("xmlns:")) return true;
@@ -203,12 +224,16 @@ const localMathNode = (node: XmlElement): boolean => {
         (namespace === XML_NAMESPACE_URI && name.slice(colon + 1) === "space")
       );
     }) &&
-    (node.elements?.every(localMathNode) ?? true)
+    (node.elements?.every((child) => localMathNode(child, collectBookmark)) ??
+      true)
   );
 };
 
 /** A native equation can appear in both move halves if it owns no other markup. */
-const movableMath = ({ display, ommlXml }: MathEquation): boolean => {
+const movableMath = (
+  { display, ommlXml }: MathEquation,
+  collectBookmark: MoveContentContext["collectBookmark"],
+): boolean => {
   const parsed = readXml(ommlXml, {
     conformance: "ooxml",
     inheritedNamespaceScope: OOXML_NAMESPACE_SCOPE,
@@ -222,7 +247,8 @@ const movableMath = ({ display, ommlXml }: MathEquation): boolean => {
     name !== undefined &&
     name.slice(name.indexOf(":") + 1) ===
       (display === "inline" ? "oMath" : "oMathPara") &&
-    localMathNode(root)
+    mathNamespace(root.namespaceUri) &&
+    localMathNode(root, collectBookmark)
   );
 };
 
@@ -495,13 +521,7 @@ const movableInlineContent = (
     switch (item.type) {
       case "run":
         if (item.propertyChanges !== undefined) {
-          if (
-            context.priorRevisions === undefined ||
-            item.propertyChanges.some(
-              ({ boundaryJoins }) => boundaryJoins !== undefined,
-            )
-          )
-            return false;
+          if (context.priorRevisions === undefined) return false;
           for (const { info } of item.propertyChanges)
             context.priorRevisions.push(info.id);
         }
@@ -522,7 +542,7 @@ const movableInlineContent = (
         return movableInlineContent(item.content, nestedMoveContext(context));
       }
       case "mathEquation":
-        return movableMath(item);
+        return movableMath(item, context.collectBookmark);
       case "preservedInline":
         return recordProofingMarker(item, context.proofing);
       case "hyperlink":
@@ -559,6 +579,13 @@ export const tableMoveSource = (
 ): TableMoveSource | undefined => {
   const controls: number[] = [];
   const proofing = nested?.proofing ?? new Set<ProofingKind>();
+  let hasLocalBookmarks = false;
+  const collectBookmark =
+    nested?.collectBookmark ??
+    ((marker: BookmarkStart | BookmarkEnd) => {
+      hasLocalBookmarks = true;
+      return movableBookmark(marker);
+    });
   const pictures = new Set<number>();
   if (
     paragraph.paraId === undefined ||
@@ -577,13 +604,23 @@ export const tableMoveSource = (
         pictures,
         ...nested,
         proofing,
+        collectBookmark,
       })) ||
     (nested?.proofing === undefined && proofing.size !== 0)
   )
     return undefined;
+  const bookmarks = hasLocalBookmarks ? bookmarksIn(paragraph) : undefined;
+  if (bookmarks !== undefined && !completeBookmarks(bookmarks))
+    return undefined;
   for (const { info } of paragraph.propertyChanges ?? [])
     nested?.priorRevisions?.push(info.id);
-  return { paragraph, id: paragraph.paraId, controls, pictures };
+  return {
+    paragraph,
+    id: paragraph.paraId,
+    bookmarks: bookmarks?.pairs ?? [],
+    controls,
+    pictures,
+  };
 };
 
 type MoveResourcePairs = readonly (readonly [number, number])[];
@@ -600,10 +637,14 @@ const hasMoveResourceIds = ({
   values.size === (pairs?.length ?? 0) &&
   (pairs?.every((pair) => values.has(pair[side])) ?? true);
 
-type NestedBookmarkPairs = NonNullable<TableGeometryNestedMove["bookmarks"]>;
+type MoveBookmarkPairs = NonNullable<TableGeometryNestedMove["bookmarks"]>;
 
-const nestedBookmarkCensus = (table: Table) =>
-  packageBookmarkCensus({ document: { content: [table] } });
+const bookmarksIn = (block: BlockContent) =>
+  packageBookmarkCensus({ document: { content: [block] } });
+
+const completeBookmarks = ({ ids, pairs }: PackageBookmarkCensus): boolean =>
+  ids.size === pairs.length &&
+  new Set(pairs.map(({ name }) => name.toLowerCase())).size === pairs.length;
 
 const movableBookmark = (marker: BookmarkStart | BookmarkEnd): boolean => {
   const bookmarkId = marker.id;
@@ -862,13 +903,8 @@ export const nestedTableMoveSource = (
   if (nativeMoves === undefined) return undefined;
   for (const { name, fromRange, toRange } of nativeMoves)
     ranges.push({ name, fromRange, toRange });
-  const bookmarks = hasBookmarks ? nestedBookmarkCensus(table) : undefined;
-  if (
-    bookmarks !== undefined &&
-    (bookmarks.ids.size !== bookmarks.pairs.length ||
-      new Set(bookmarks.pairs.map(({ name }) => name.toLowerCase())).size !==
-        bookmarks.pairs.length)
-  )
+  const bookmarks = hasBookmarks ? bookmarksIn(table) : undefined;
+  if (bookmarks !== undefined && !completeBookmarks(bookmarks))
     return undefined;
   const revisionIds = new Set(revisions);
   if (gridMembers.some((id) => !revisionIds.has(id))) return undefined;
@@ -907,10 +943,7 @@ type NestedMoveIdentities = {
   bookmarkNames: ReadonlyMap<string, string>;
 };
 
-const nestedBookmarkAliases = (
-  pairs: NestedBookmarkPairs,
-  reverse: boolean,
-) => {
+const bookmarkAliases = (pairs: MoveBookmarkPairs, reverse: boolean) => {
   const bookmarks = new Map<number, PackageBookmark>();
   const bookmarkNames = new Map<string, string>();
   for (const pair of pairs) {
@@ -921,20 +954,25 @@ const nestedBookmarkAliases = (
   return { bookmarks, bookmarkNames };
 };
 
-const nestedBookmarkOwnershipMatches = (
-  source: Table,
-  target: Table,
-  aliases: NestedBookmarkPairs | undefined,
+const bookmarkOwnershipMatches = (
+  source: BlockContent,
+  target: BlockContent,
+  aliases: MoveBookmarkPairs | undefined,
 ): boolean => {
   if (aliases === undefined) return true;
-  const originals = nestedBookmarkCensus(source);
-  const copies = nestedBookmarkCensus(target);
+  const originals = bookmarksIn(source);
+  const copies = bookmarksIn(target);
+  // Resolving an earlier move can remove the corresponding pair from both
+  // nested copies while their containing move is still pending.
+  const active = aliases.filter(
+    ([from, to]) => originals.ids.has(from.id) || copies.ids.has(to.id),
+  );
   return (
-    originals.ids.size === aliases.length &&
-    copies.ids.size === aliases.length &&
-    new Set(aliases.map(([from]) => from.id)).size === aliases.length &&
-    new Set(aliases.map(([, to]) => to.id)).size === aliases.length &&
-    aliases.every(
+    originals.ids.size === active.length &&
+    copies.ids.size === active.length &&
+    new Set(active.map(([from]) => from.id)).size === active.length &&
+    new Set(active.map(([, to]) => to.id)).size === active.length &&
+    active.every(
       ([from, to]) =>
         from.id !== to.id &&
         from.name.toLowerCase() !== to.name.toLowerCase() &&
@@ -1083,6 +1121,11 @@ const withNestedMoveIdentities = (
       ([from, to]) =>
         [aliases.get(from) ?? from, aliases.get(to) ?? to] as const,
     );
+  const rewriteBookmarkPairs = (pairs: MoveBookmarkPairs): MoveBookmarkPairs =>
+    pairs.map(([from, to]) => [
+      ids.bookmarks.get(from.id) ?? from,
+      ids.bookmarks.get(to.id) ?? to,
+    ]);
   const rewriteMove = (move: TableGeometryMove): TableGeometryMove => {
     const addresses = {
       source: paragraphId(move.source),
@@ -1103,6 +1146,9 @@ const withNestedMoveIdentities = (
       ...(move.pictures === undefined
         ? {}
         : { pictures: rewriteResources(move.pictures, ids.pictures) }),
+      ...(move.bookmarks === undefined
+        ? {}
+        : { bookmarks: rewriteBookmarkPairs(move.bookmarks) }),
     };
   };
   const rewriteRanges = (ranges: TableMoveRanges): TableMoveRanges => {
@@ -1148,15 +1194,7 @@ const withNestedMoveIdentities = (
         }),
     ...(move.bookmarks === undefined
       ? {}
-      : {
-          bookmarks: move.bookmarks.map(
-            ([from, to]) =>
-              [
-                ids.bookmarks.get(from.id) ?? from,
-                ids.bookmarks.get(to.id) ?? to,
-              ] as const,
-          ),
-        }),
+      : { bookmarks: rewriteBookmarkPairs(move.bookmarks) }),
   });
   const geometry = grid?.geometryChange;
   const rewrittenGeometry =
@@ -1251,7 +1289,7 @@ type MarkNestedTableMoveOptions = {
   recordStamps: readonly RevisionStamp[];
   anchorStamps: readonly RevisionStamp[];
   moveRanges: NestedMoveRanges;
-  bookmarks: NestedBookmarkPairs;
+  bookmarks: MoveBookmarkPairs;
   controls: readonly (readonly [number, number])[];
   pictures: readonly (readonly [number, number])[];
 };
@@ -1317,7 +1355,7 @@ export const markNestedTableMove = ({
     controls: new Map(controls),
     pictures: new Map(pictures),
     ranges: nestedMoveRangeMap(moveRanges, false),
-    ...nestedBookmarkAliases(bookmarks, false),
+    ...bookmarkAliases(bookmarks, false),
   });
   let nextStamp = 0;
   const rows = table.rows.map((row) => {
@@ -1364,6 +1402,7 @@ type MarkTableMoveOptions = {
   to: RevisionStamp;
   mark: RevisionStamp;
   ranges: TableMoveRanges;
+  bookmarks: MoveBookmarkPairs;
   controls: readonly (readonly [number, number])[];
   pictures: readonly (readonly [number, number])[];
 };
@@ -1427,11 +1466,14 @@ const withMoveIdentities = ({
           ...(next.href === `#${next.anchor}` ? { href: `#${anchor}` } : {}),
         };
     }
-    if (
-      bookmarkIds !== undefined &&
-      (next.type === "bookmarkStart" || next.type === "bookmarkEnd")
-    )
-      return withBookmarkIdentity(next, bookmarkIds);
+    if (bookmarkIds !== undefined && bookmarkIds.size > 0) {
+      if (next.type === "bookmarkStart" || next.type === "bookmarkEnd")
+        return withBookmarkIdentity(next, bookmarkIds);
+      if (next.type === "mathEquation") {
+        const ommlXml = withCapturedBookmarkAliases(next.ommlXml, bookmarkIds);
+        if (ommlXml !== next.ommlXml) return { ...next, ommlXml };
+      }
+    }
     return next;
   };
   return asParagraphContent(content.map(rewrite));
@@ -1494,10 +1536,12 @@ export const markTableMove = ({
   to,
   mark,
   ranges,
+  bookmarks,
   controls,
   pictures,
 }: MarkTableMoveOptions): MarkedTableMove => {
   const { fromRange, toRange, name } = ranges;
+  const aliases = bookmarkAliases(bookmarks, false);
   const record = {
     source: source.id,
     destination,
@@ -1508,6 +1552,7 @@ export const markTableMove = ({
     destinationMark: mark.id,
     ...(controls.length === 0 ? {} : { controls }),
     ...(pictures.length === 0 ? {} : { pictures }),
+    ...(bookmarks.length === 0 ? {} : { bookmarks }),
   } satisfies TableGeometryMove;
   return {
     record,
@@ -1548,6 +1593,8 @@ export const markTableMove = ({
             content: source.paragraph.content,
             controls: new Map(controls),
             pictures: new Map(pictures),
+            bookmarkNames: aliases.bookmarkNames,
+            bookmarkIds: aliases.bookmarks,
           }),
         },
         { type: "moveToRangeEnd", id: toRange },
@@ -1840,7 +1887,7 @@ export const tableMoveOwnershipMatches = (
         target === undefined ||
         omittedSources.has(source) ||
         nestedTables.has(target) ||
-        !nestedBookmarkOwnershipMatches(source, target, move.bookmarks)
+        !bookmarkOwnershipMatches(source, target, move.bookmarks)
       )
         return false;
       omittedSources.add(source);
@@ -1885,11 +1932,7 @@ export const tableMoveOwnershipMatches = (
           ([from, to], index) =>
             source.ids[index] !== from || destinationIds[index] !== to,
         ) ||
-        !nestedBookmarkOwnershipMatches(
-          source.table,
-          destination,
-          move.bookmarks,
-        ) ||
+        !bookmarkOwnershipMatches(source.table, destination, move.bookmarks) ||
         !nestedRangeOwnershipMatches({
           source: source.table,
           target: destination,
@@ -1903,7 +1946,7 @@ export const tableMoveOwnershipMatches = (
       const matchingSources = unaddressedSources.filter(
         (source) =>
           !claimedSources.has(source) &&
-          nestedBookmarkOwnershipMatches(source, destination, move.bookmarks),
+          bookmarkOwnershipMatches(source, destination, move.bookmarks),
       );
       const source = matchingSources.at(0);
       if (matchingSources.length !== 1 || source === undefined) return false;
@@ -1957,7 +2000,13 @@ export const tableMoveOwnershipMatches = (
       to.info.id !== move.toRevision ||
       toEnd?.type !== "moveToRangeEnd" ||
       toEnd.id !== move.toRange ||
-      fromStart.name !== toStart.name
+      fromStart.name !== toStart.name ||
+      (move.bookmarks !== undefined &&
+        !bookmarkOwnershipMatches(
+          { ...source, content: from.content },
+          { ...destination, content: to.content },
+          move.bookmarks,
+        ))
     )
       return false;
   }
@@ -2213,7 +2262,7 @@ export const resolveTableMoves = ({
                     ]),
                   ),
                   ranges: nestedMoveRangeMap(record.moveRanges ?? [], true),
-                  ...nestedBookmarkAliases(record.bookmarks ?? [], true),
+                  ...bookmarkAliases(record.bookmarks ?? [], true),
                 });
                 const stamps = new Set(record.rows);
                 placed.rows = placed.rows.map((child) => {
@@ -2273,26 +2322,21 @@ export const resolveTableMoves = ({
                   }
                 },
               );
-              const restored =
-                reject ||
-                move.kind === "empty" ||
-                (move.controls === undefined && move.pictures === undefined)
-                  ? content
-                  : withMoveIdentities({
-                      content,
-                      controls: new Map(
-                        move.controls?.map(([old, temporary]) => [
-                          temporary,
-                          old,
-                        ]),
-                      ),
-                      pictures: new Map(
-                        move.pictures?.map(([old, temporary]) => [
-                          temporary,
-                          old,
-                        ]),
-                      ),
-                    });
+              let restored = content;
+              if (!reject && move.kind !== "empty") {
+                const aliases = bookmarkAliases(move.bookmarks ?? [], true);
+                restored = withMoveIdentities({
+                  content,
+                  controls: new Map(
+                    move.controls?.map(([old, temporary]) => [temporary, old]),
+                  ),
+                  pictures: new Map(
+                    move.pictures?.map(([old, temporary]) => [temporary, old]),
+                  ),
+                  bookmarkNames: aliases.bookmarkNames,
+                  bookmarkIds: aliases.bookmarks,
+                });
+              }
               const paragraph = {
                 ...block,
                 paraId: move.source,
