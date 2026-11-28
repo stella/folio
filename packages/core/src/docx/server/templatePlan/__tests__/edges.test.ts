@@ -486,6 +486,30 @@ describe("applyTemplatePlan edge content", () => {
     ).not.toContain("w:anchor");
   });
 
+  test("a contents entry field and a macro button stay fields where their paragraph is placed", async () => {
+    const template = await buildTemplate();
+    const code = (instruction: string): string =>
+      `<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve">${instruction}</w:instrText></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r>`;
+    const source = await buildMinimalDocx(
+      [
+        p(`${code(' TC "12. Service credits" \\l 1 ')}${r("Service credits")}`),
+        p(
+          `${code(" MACROBUTTON optional [ ")}${r("The Supplier shall notify.]")}`,
+        ),
+      ].join(""),
+    );
+    const { docx, report } = unwrap(await applyFor({ source, template }));
+    const document = (await readPart(docx, "word/document.xml")) ?? "";
+    expect(report.ok).toBe(true);
+    expect(document).toContain(
+      '<w:instrText xml:space="preserve"> TC &quot;12. Service credits&quot; \\l 1 </w:instrText>',
+    );
+    expect(document).toContain(
+      '<w:instrText xml:space="preserve"> MACROBUTTON optional [ </w:instrText>',
+    );
+    expect(report.dropped.sourceFields).toEqual([]);
+  });
+
   test("a paragraph cites its own number through a field", async () => {
     const template = await buildTemplate();
     const source = await buildMinimalDocx(

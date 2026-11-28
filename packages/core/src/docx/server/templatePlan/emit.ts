@@ -689,6 +689,21 @@ const plainPieceRunXml = (
               .join(""),
       );
     }
+    case "codeField": {
+      const instruction = piece.atom?.instruction;
+      // The field is written whole: its code is its content.
+      return Result.ok(
+        instruction === undefined
+          ? ""
+          : [
+              `<${w}:fldChar ${w}:fldCharType="begin"/>`,
+              `<${w}:instrText xml:space="preserve"> ${escapeXmlText(instruction)} </${w}:instrText>`,
+              `<${w}:fldChar ${w}:fldCharType="end"/>`,
+            ]
+              .map((content) => run(content))
+              .join(""),
+      );
+    }
     case "commentMark": {
       const mark = piece.atom?.comment;
       const id =

@@ -92,6 +92,7 @@ import {
   type AtomRevision,
   createStoryState,
   endStory,
+  isCodeOnlyField,
   isFormField,
   isSelfNumberingField,
   type ParagraphRead,
@@ -241,6 +242,8 @@ const appendUnit = (
     content.marks.push(`${at}:number:${instruction ?? ""}`);
   } else if (kind === "formField") {
     content.marks.push(`${at}:form:${instruction ?? ""}`);
+  } else if (kind === "codeField") {
+    content.marks.push(`${at}:code:${instruction ?? ""}`);
   } else if (kind === "object" && element !== null) {
     content.marks.push(
       `${at}:object:${objectFingerprint(element)}:${objectTargets(element, origin, resources).join(",")}`,
@@ -2189,7 +2192,9 @@ export const reportTemplatePlanOutput = async ({
         field !== undefined &&
         hyperlinkFieldLink(field) === null &&
         !isSelfNumberingField(field.kind) &&
-        !isRebuilt(field, rebuiltSpans.get(id))
+        !isRebuilt(field, rebuiltSpans.get(id)) &&
+        // Kept as its code where it caches no result.
+        !(isCodeOnlyField(field.kind) && field.resultStart < 0)
       ) {
         droppedFields.set(field.kind, (droppedFields.get(field.kind) ?? 0) + 1);
       }
