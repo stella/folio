@@ -4637,12 +4637,52 @@ const resolveList = ({
         // the record the piece continues.
         // A cut deferred by another edit can join the surrounding content.
         // It cannot give this removal's own boundaries solely to one side.
-        const piece =
+        const namedPiece =
           resolution.decision === REVISION_DECISIONS.REJECT &&
           joins !== undefined &&
           !resolution.deferredOnlyRemovals.has(joins)
             ? oneSidedKeptPiece(joins)
             : undefined;
+        // A removal cut with records on both sides routes its kept boundaries
+        // through that cut. A one-sided join added by resolving intervening
+        // content names the payload-facing side; the original cut's other
+        // piece takes its boundary as resolving the removal first does.
+        const oppositeNamedPiece = namedPiece === "before" ? "after" : "before";
+        const farEdge = edgeRecord(
+          removalContent,
+          namedPiece === "before" ? "last" : "first",
+        );
+        const farOuter =
+          namedPiece === "before"
+            ? removalContent.at(-1)
+            : removalContent.at(0);
+        const farEdgeDepth =
+          farOuter === undefined
+            ? 0
+            : edgeChain(farOuter, namedPiece === "before" ? "end" : "start")
+                .length - 1;
+        const splitPieceSelected = nodes.some(
+          (other) =>
+            isTrackedWrapper(other) &&
+            other !== node &&
+            resolution.ids.has(other.info.id) &&
+            sameStamp(node, other),
+        );
+        const namedJoin =
+          namedPiece === undefined ? 0 : (joins?.[namedPiece] ?? 0);
+        const piece =
+          namedPiece !== undefined &&
+          (joins?.remove ?? 0) > 0 &&
+          (joins?.remove ?? 0) >= farEdgeDepth &&
+          namedJoin > (joins?.remove ?? 0) &&
+          splitPieceSelected &&
+          (joins?.plainSides?.length ?? 0) === 0 &&
+          index > 0 &&
+          index + 1 < nodes.length &&
+          farEdge !== undefined &&
+          isKeptBoundaryCarrier(farEdge)
+            ? oppositeNamedPiece
+            : namedPiece;
         const records = removalContent.flatMap((child, at) =>
           childNodes(child) === undefined ? [] : [at],
         );
