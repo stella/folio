@@ -1,5 +1,12 @@
 # @stll/folio-react
 
+## 0.42.2
+
+### Patch Changes
+
+- Updated dependencies [[`b9834d0`](https://github.com/stella/folio/commit/b9834d0223cd7490ef98aa40be4686d7ba762159), [`966ff8d`](https://github.com/stella/folio/commit/966ff8d073ba256083b3aa4954cd11f21dc7060c), [`2d9465e`](https://github.com/stella/folio/commit/2d9465e4b013e75ebdde4159a7c6a637752834e2), [`bd878a6`](https://github.com/stella/folio/commit/bd878a6070e6d1665d85bc59f504ab889aa7107d), [`1fbd7bc`](https://github.com/stella/folio/commit/1fbd7bca69113f43670ad20de3206f2858b91f31), [`58b5c8f`](https://github.com/stella/folio/commit/58b5c8f94f742b0048bc0c4c91d8bcca8d4beccd), [`3569933`](https://github.com/stella/folio/commit/3569933d6f3cd619de711d8bbbbda20b9e7e93c4), [`fba48c4`](https://github.com/stella/folio/commit/fba48c4bd3bee86a11f7b665819b3741cc4c2eaa), [`233dcce`](https://github.com/stella/folio/commit/233dcce95dc154c5e42090242b15e97f1ccf2e81), [`b5a5b60`](https://github.com/stella/folio/commit/b5a5b606187ced569f2d442ae3a6ce2b2a81877e), [`91356ed`](https://github.com/stella/folio/commit/91356edc1361ead4a41b84f471f20e9f85b52ac8), [`af9e3f5`](https://github.com/stella/folio/commit/af9e3f51a0d0207921905135a7fa1cd78a2bfb5b)]:
+  - @stll/folio-core@0.84.0
+
 ## 0.42.1
 
 ### Patch Changes
