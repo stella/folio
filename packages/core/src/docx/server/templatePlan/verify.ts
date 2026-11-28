@@ -33,6 +33,7 @@ import {
   analyzeKeptForm,
   analyzeSource,
   bookmarkEncloses,
+  bookmarkTargetsOf,
   viewOf,
 } from "./blocks";
 import {
@@ -2182,6 +2183,12 @@ export const reportTemplatePlanOutput = async ({
     }
   }
   let internalHyperlinks = 0;
+  // A link to a bookmark the source lacks leads nowhere there either: no
+  // link the output loses. The built-in top of the document is no bookmark.
+  const sourceBookmarks = bookmarkTargetsOf(source.story);
+  const notLost = (anchor: string): boolean =>
+    resolved.linkAnchors.has(anchor) ||
+    (anchor !== "_top" && !sourceBookmarks.has(anchor));
   for (const { id, read } of placedReads) {
     for (const index of read.fieldIndices) {
       const field = source.story.state.fields[index];
@@ -2211,7 +2218,7 @@ export const reportTemplatePlanOutput = async ({
       const lost =
         link !== null &&
         linkAddress(link, sourceResources.relationships.document) === null &&
-        !(link.kind === "anchor" && resolved.linkAnchors.has(link.anchor));
+        !(link.kind === "anchor" && notLost(link.anchor));
       if (lost && link !== previous) {
         internalHyperlinks += 1;
       }
@@ -2221,7 +2228,7 @@ export const reportTemplatePlanOutput = async ({
     for (const index of read.fieldIndices) {
       const field = source.story.state.fields[index];
       const link = field === undefined ? null : hyperlinkFieldLink(field);
-      if (link?.kind === "anchor" && !resolved.linkAnchors.has(link.anchor)) {
+      if (link?.kind === "anchor" && !notLost(link.anchor)) {
         internalHyperlinks += 1;
       }
     }

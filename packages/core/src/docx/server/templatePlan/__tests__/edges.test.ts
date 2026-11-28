@@ -477,10 +477,11 @@ describe("applyTemplatePlan edge content", () => {
       )?.length,
     ).toBe(2);
     expect(kept.report.ok).toBe(true);
-    // The link to a bookmark no paragraph holds stays text, and counts.
-    expect(kept.report.dropped.internalHyperlinks).toBe(1);
+    // The link to a bookmark the source lacks led nowhere there: it stays
+    // text, and no link is lost.
+    expect(kept.report.dropped.internalHyperlinks).toBe(0);
     const plain = unwrap(await applyFor({ source, template }));
-    expect(plain.report.dropped.internalHyperlinks).toBe(3);
+    expect(plain.report.dropped.internalHyperlinks).toBe(2);
     expect(
       (await readPart(plain.docx, "word/document.xml")) ?? "",
     ).not.toContain("w:anchor");
