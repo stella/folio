@@ -8491,7 +8491,8 @@ export class CanonicalPublicOperations {
       return deletedParagraphPlacement({
         beside: besideDeletions.placedBeside(blockId),
         lastBefore: lastPutBefore(
-          before?.type.name === "paragraph" &&
+          after !== null &&
+            before?.type.name === "paragraph" &&
             isDeletedPPrMark(before.attrs["pPrMark"]) &&
             paragraph.source.formatting === undefined
             ? undefined
