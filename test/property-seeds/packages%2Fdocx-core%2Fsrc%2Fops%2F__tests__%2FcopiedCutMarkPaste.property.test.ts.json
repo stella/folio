@@ -1,0 +1,10 @@
+{
+  "copied cut mark beside a pasted break": [
+    {
+      "seed": 467992792,
+      "path": "9:1:0:1:2:2:2:2",
+      "note": "A pasted insertion must retain its plain-run acceptance policy while its copied-cut seam stays exactly open.",
+      "date": "2026-11-28"
+    }
+  ]
+}

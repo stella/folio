@@ -178,6 +178,53 @@ const contentOf = (document: Document): ParagraphContent[] => {
   return first.content;
 };
 
+test("adjacent opened seams consume a transferred middle payload once", () => {
+  const openInsertion = (
+    id: number,
+    text: string,
+    openSides: ("before" | "after")[],
+  ): ParagraphContent => ({
+    type: "insertion",
+    info: { id, ...EARLIER },
+    resolutionJoins: {
+      before: openSides.includes("before") ? 1 : 0,
+      after: openSides.includes("after") ? 1 : 0,
+      remove: 0,
+      openSides,
+    },
+    content: [
+      {
+        type: "hyperlink",
+        href: "https://example.org",
+        children: [run(text)],
+      },
+    ],
+  });
+  const pending = documentOf([
+    {
+      type: "paragraph",
+      paraId: "00000001",
+      content: [
+        openInsertion(1, "A", ["after"]),
+        openInsertion(2, "B", ["before", "after"]),
+        openInsertion(3, "C", ["before"]),
+      ],
+    },
+  ]);
+  const accepted = resolve(
+    pending,
+    [1, 2, 3],
+    REVISION_DECISIONS.ACCEPT,
+  ).document;
+  const textOf = (nodes: readonly InlineNode[]): string =>
+    nodes
+      .map((node) =>
+        node.type === "text" ? node.text : textOf(childNodes(node) ?? []),
+      )
+      .join("");
+  expect(textOf(contentOf(accepted))).toBe("ABC");
+});
+
 const copyOrigins = (document: Document): CopyOriginAncestorList[] =>
   bookmarkEnds(contentOf(document)).flatMap((boundary) => {
     const origins = copyOriginAncestorsOf(boundary);
@@ -405,11 +452,21 @@ describe("a pasted paragraph whose copied deletion of its break holds a cut", ()
           info: { ...EARLIER, id: cut.pPrMark?.deletion?.info.id ?? -1 },
         },
       });
-      // The paste's insertions meet open at the seam the cut joins.
-      for (const side of [cut.content.at(-1), after.content.at(0)])
+      // The paste's insertions meet open at the seam the cut joins while
+      // retaining the acceptance policy that rejoins their plain runs.
+      for (const [side, openSide] of [
+        [cut.content.at(-1), "after"],
+        [after.content.at(0), "before"],
+      ] as const)
         expect(
           side?.type === "insertion" ? side.resolutionJoins : "not inserted",
-        ).toBeUndefined();
+        ).toEqual({
+          before: 0,
+          after: 0,
+          remove: 0,
+          acceptance: "merge-plain-runs",
+          openSides: [openSide],
+        });
       expect(apply(pasted.document, pasted.inverse).document).toStrictEqual(
         document,
       );

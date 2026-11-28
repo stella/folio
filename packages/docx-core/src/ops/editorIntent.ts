@@ -3007,7 +3007,10 @@ const openedPastedSeam = ({
   story: OpStory;
   stamp: { id: number; author: string; date?: string | undefined };
 }): DocumentOp[] | undefined => {
-  const opened = (paragraph: Paragraph): DocumentOp | undefined => {
+  const opened = (
+    paragraph: Paragraph,
+    side: "before" | "after",
+  ): DocumentOp | undefined => {
     const [only, ...rest] = paragraph.content;
     if (
       only === undefined ||
@@ -3018,7 +3021,13 @@ const openedPastedSeam = ({
     )
       return undefined;
     if (only.resolutionJoins === undefined) return undefined;
-    const { resolutionJoins: _closed, ...open } = only;
+    const open = Object.assign({}, only, {
+      resolutionJoins: Object.assign({}, only.resolutionJoins, {
+        openSides: [
+          ...new Set([...(only.resolutionJoins.openSides ?? []), side]),
+        ],
+      }),
+    });
     return {
       type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
       story,
@@ -3027,8 +3036,8 @@ const openedPastedSeam = ({
       content: [open],
     };
   };
-  const left = opened(before);
-  const right = opened(after);
+  const left = opened(before, "after");
+  const right = opened(after, "before");
   return left === undefined || right === undefined ? undefined : [left, right];
 };
 

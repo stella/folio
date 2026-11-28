@@ -90,12 +90,22 @@ const EARLIER = { author: "Earlier", date: "2026-01-01T00:00:00Z" };
  * A copied piece either side of the cut: a link, which a cut of depth one
  * joins, and whose run a cut of depth two joins too.
  */
-const piece = (text: string): ParagraphContent => ({
-  type: "hyperlink",
-  rId: "rId9",
-  href: "https://example.org",
-  children: [run(text)],
-});
+const pieces = (
+  text: string,
+  side: "left" | "right",
+  record: boolean,
+): ParagraphContent[] => {
+  const link: ParagraphContent = {
+    type: "hyperlink",
+    rId: "rId9",
+    href: "https://example.org",
+    children: [run(text)],
+  };
+  if (!record) return [link];
+  return side === "left"
+    ? [link, { type: "bookmarkStart", id: 7, name: "copied" }]
+    : [{ type: "bookmarkEnd", id: 7 }, link];
+};
 
 type Case = {
   left: string;
@@ -103,28 +113,37 @@ type Case = {
   depth: 1 | 2;
   kind: "del" | "moveFrom";
   splitDate: boolean;
+  seamRecord: boolean;
   copied: RevisionDecision;
   pasted: RevisionDecision;
 };
 
-const intentFor = ({ left, right, depth, kind, splitDate }: Case) => {
+const intentFor = ({
+  left,
+  right,
+  depth,
+  kind,
+  splitDate,
+  seamRecord,
+}: Case) => {
   const pPrMark: ParagraphMarkChange = {
     kind,
     info: { id: 93, ...EARLIER },
     resolutionJoin: depth,
     ...(splitDate ? { splitDate: "2025-12-01T00:00:00Z" } : {}),
   };
+  const hasSeamRecord = seamRecord && left !== "" && right !== "";
   const paragraphs: Paragraph[] = [
     {
       type: "paragraph",
       paraId: "0000000D",
       pPrMark,
-      content: left === "" ? [] : [piece(left)],
+      content: left === "" ? [] : pieces(left, "left", hasSeamRecord),
     },
     {
       type: "paragraph",
       paraId: "0000000E",
-      content: right === "" ? [] : [piece(right)],
+      content: right === "" ? [] : pieces(right, "right", hasSeamRecord),
     },
     { type: "paragraph", content: [run("tail")] },
   ];
@@ -151,6 +170,7 @@ const caseArbitrary: fc.Arbitrary<Case> = fc.record({
   depth: fc.constantFrom<1 | 2>(1, 2),
   kind: fc.constantFrom<"del" | "moveFrom">("del", "moveFrom"),
   splitDate: fc.boolean(),
+  seamRecord: fc.boolean(),
   copied: fc.constantFrom(REVISION_DECISIONS.ACCEPT, REVISION_DECISIONS.REJECT),
   pasted: fc.constantFrom(REVISION_DECISIONS.ACCEPT, REVISION_DECISIONS.REJECT),
 });
@@ -206,7 +226,11 @@ test("a copied removal holding a cut resolves alike in every order beside the pa
           ),
         ]);
       }
-      if (input.pasted === REVISION_DECISIONS.REJECT)
+      if (
+        input.pasted === REVISION_DECISIONS.REJECT &&
+        // Rejection retains pasted range boundaries as zero-width positions.
+        !(input.seamRecord && input.left !== "" && input.right !== "")
+      )
         expect([...outcomes]).toEqual([shape(destination())]);
     }),
     { id: "copied cut mark beside a pasted break", numRuns: 60 },

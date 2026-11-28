@@ -65,6 +65,7 @@ const plainSeamKeys: ReadonlySet<string> = new Set([
   "before",
   "after",
   "remove",
+  "openSides",
   "plainSides",
 ]);
 

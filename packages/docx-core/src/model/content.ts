@@ -1786,6 +1786,12 @@ type TrackedResolutionJoins = WritableRecord & {
   /** Exact join depth when the wrapper is removed. */
   remove: number;
   /**
+   * Sides opened to an exact seam while the wrapper retains the rest of its
+   * provenance. Resolving it joins every compatible inline node there, as a
+   * wrapper without resolution joins does.
+   */
+  openSides?: readonly ("before" | "after")[];
+  /**
    * Sides where the wrapper meets no source piece of its cut: accepted new
    * content beside it, or, at the edge of accepted content it stands in,
    * whatever lies beyond that content. Resolving it joins plain runs there
