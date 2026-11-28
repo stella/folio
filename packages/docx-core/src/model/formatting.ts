@@ -606,6 +606,11 @@ export type TableMoveRanges = {
   readonly name: string;
 };
 
+export type TableGeometryNativeMove = TableMoveRanges & {
+  readonly fromRevision: number;
+  readonly toRevision: number;
+};
+
 /** Native table-row records and stable paragraph identities for a nested move. */
 export type TableGeometryNestedMove = {
   readonly rows: readonly number[];
@@ -615,7 +620,7 @@ export type TableGeometryNestedMove = {
   readonly omittedTable?: readonly [number, number];
   /** Authored table revisions paired with their temporary copies. */
   readonly revisions?: readonly (readonly [number, number])[];
-  /** Authored inner paragraph moves paired with their temporary range identities. */
+  /** Authored inner moves paired with their temporary range identities. */
   readonly moveRanges?: readonly (readonly [
     TableMoveRanges,
     TableMoveRanges,

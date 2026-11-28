@@ -96,11 +96,13 @@ const revisionSlots = (table: Table): ReadonlyMap<number, string> => {
     record(block.propertyChanges, position);
     const mark = block.pPrMark;
     if (mark !== undefined) slots.set(mark.info.id, `${position}:${mark.kind}`);
-    const content = block.content.at(1);
-    if (content?.type === "moveFrom" || content?.type === "moveTo")
-      slots.set(content.info.id, `${position}:${content.type}`);
     for (const [index, item] of block.content.entries()) {
-      if (item.type === "insertion" || item.type === "deletion")
+      if (
+        item.type === "insertion" ||
+        item.type === "deletion" ||
+        item.type === "moveFrom" ||
+        item.type === "moveTo"
+      )
         slots.set(item.info.id, `${position}:inline:${index}:${item.type}`);
       if (item.type === "run")
         record(item.propertyChanges, `${position}:inline:${index}`);

@@ -195,6 +195,7 @@ import { resolveSectionChange, sectionResolutionPatch } from "./sectionReview";
 import { identitySlots, withInlineIdentity } from "./slots";
 import { findStoryBody } from "./stories";
 import { sectionEnds, storyLifecycleTouched } from "./storyLifecycle";
+import { settledNativeMoveRangeEdits } from "./tableNativeMoves";
 import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
@@ -9021,7 +9022,28 @@ export const planRevisionResolution = (
     withBelongingPropertyChanges(document, options.op),
   );
   if (grouped.isErr()) return Result.err(grouped.error);
-  const op = grouped.value;
+  const { op, nativeMoves } = grouped.value;
+  const rangeEdits = Object.values(REVISION_DECISIONS).includes(op.decision)
+    ? settledNativeMoveRangeEdits({
+        document,
+        story: op.story,
+        moves: nativeMoves,
+      })
+    : [];
+  if (rangeEdits.length > 0) {
+    const settled = applyOps(document, rangeEdits);
+    if (settled.isErr()) return Result.err(settled.error);
+    const rest = planRevisionResolution({
+      ...options,
+      document: settled.value.document,
+      op,
+    });
+    if (rest.isErr()) return Result.err(rest.error);
+    return Result.ok({
+      edit: combineEdits(document, [settled.value, rest.value.edit]),
+      receiverEffects: rest.value.receiverEffects,
+    });
+  }
   // A custom XML element's own tags settle first: what they wrap stays in
   // either case, so the records it holds resolve the same after them.
   const markup = Object.values(REVISION_DECISIONS).includes(op.decision)

@@ -11,6 +11,7 @@ import type {
   TableStructuralChangeInfo,
 } from "../model/document";
 import { maxOf } from "../model/extremes";
+import type { TableGeometryNativeMove } from "../model/formatting";
 import { activeNestedTableRevisionHandoffs } from "../model/nestedTableRevisionHandoffs";
 import { TABLE_CELL_VERTICAL_MERGES } from "../model/tableCellVerticalMerge";
 import {
@@ -31,6 +32,7 @@ import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import type { ApplyOps } from "./resolve";
 import { reviewFieldsOf } from "./review";
 import {
+  nestedNativeMovePairs,
   resolveTableMoves,
   tableBlockControlHandoffs,
   type TableMoveHandoffs,
@@ -44,6 +46,7 @@ import {
   tableContainerEdit,
   tableRowAnchor,
 } from "./tableLocation";
+import { selectedNativeTableMoves } from "./tableNativeMoves";
 import { CELL_GRID_FIELDS, restatedCell } from "./tablePropertyGeometry";
 import {
   removalOrphansAMerge,
@@ -95,14 +98,20 @@ const tablesIn = (document: Document, story: OpStory): Table[] => {
   return out;
 };
 
+type TableReviewSelection = {
+  op: ResolveRevisionOp;
+  nativeMoves: readonly TableGeometryNativeMove[];
+};
+
 /** A geometry decision removes or retains the cells and the grid together. */
 export const withBelongingTableGeometry = (
   document: Document,
   op: ResolveRevisionOp,
-): Result<ResolveRevisionOp, DocumentOpRefusal> => {
+): Result<TableReviewSelection, DocumentOpRefusal> => {
   const ids = new Set(op.revisionIds);
   const uniqueCount = ids.size;
   const tables = tablesIn(document, op.story);
+  const nativeMoves = selectedNativeTableMoves(tables, ids);
   for (const table of tables) {
     const grid = table.formatting?.gridChange;
     const geometry = grid?.geometryChange;
@@ -111,13 +120,32 @@ export const withBelongingTableGeometry = (
       Array.isArray(geometry.nestedMoves)
     ) {
       for (const move of geometry.nestedMoves) {
-        for (const [source, temporary] of activeNestedTableRevisionHandoffs(
-          table,
-          move,
-        )) {
+        const handoffs = activeNestedTableRevisionHandoffs(table, move);
+        let selected = false;
+        for (const [source, temporary] of handoffs) {
           if (!ids.has(source) && !ids.has(temporary)) continue;
+          selected = true;
           ids.add(source);
           ids.add(temporary);
+        }
+        if (!selected || move.moveRanges === undefined) continue;
+        for (const pair of nestedNativeMovePairs({
+          table,
+          move,
+          handoffs: new Map(handoffs),
+        })) {
+          if (
+            !pair.some(
+              ({ fromRevision, toRevision }) =>
+                ids.has(fromRevision) || ids.has(toRevision),
+            )
+          )
+            continue;
+          for (const item of pair) {
+            ids.add(item.fromRevision);
+            ids.add(item.toRevision);
+            nativeMoves.push(item);
+          }
         }
       }
     }
@@ -172,11 +200,13 @@ export const withBelongingTableGeometry = (
     // source ids. An independent inline decision would lose the handoff.
     for (const id of moves) ids.delete(id);
   }
-  return Result.ok(
-    ids.size === uniqueCount && op.revisionIds.every((id) => ids.has(id))
-      ? op
-      : { ...op, revisionIds: [...ids] },
-  );
+  return Result.ok({
+    op:
+      ids.size === uniqueCount && op.revisionIds.every((id) => ids.has(id))
+        ? op
+        : { ...op, revisionIds: [...ids] },
+    nativeMoves,
+  });
 };
 
 const propertyIds = (
