@@ -1200,6 +1200,36 @@ describe("applyTemplatePlan onto a template whose contents end in the next parag
     expect(output).toContain(
       '<w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>',
     );
+
+    // A plan that leaves that paragraph out as sample text may: the field
+    // is closed in its first paragraph all the same.
+    const plan = fullPlan();
+    const withoutTail = unwrap(
+      await applyTemplatePlan({
+        source: fixture.source,
+        template,
+        plan: {
+          ...plan,
+          templateSha256: inspection.sha256,
+          body: plan.body.map((item) => {
+            if (item.kind === "template") {
+              item.templateBlockIds = item.templateBlockIds.filter(
+                (id) => id !== TEMPLATE_IDS.fillIn,
+              );
+            }
+            return item;
+          }),
+        },
+      }),
+    );
+    const leftOut =
+      (await readPart(withoutTail.docx, "word/document.xml")) ?? "";
+    expect(withoutTail.report.ok).toBe(true);
+    expect(leftOut).not.toContain("Recipient name");
+    expect(leftOut).not.toContain("Second sample");
+    expect(leftOut).toContain(
+      '<w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>',
+    );
   });
 });
 
