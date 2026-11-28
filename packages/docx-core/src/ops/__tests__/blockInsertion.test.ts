@@ -1392,6 +1392,14 @@ test.each([
     ],
     reason: DOCUMENT_OP_REFUSAL_REASONS.CONTAINER_FINAL_MARK,
   },
+  {
+    container: "story after a table",
+    place: (control: BlockContent) => [
+      inCell([makeParagraph("00000005", "cell")]),
+      control,
+    ],
+    reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+  },
 ])(
   "removing a block control's only paragraph must leave its $container a terminator",
   ({ place, reason }) => {
@@ -1412,3 +1420,22 @@ test.each([
     expect(result.isErr() && result.error.reason).toBe(reason);
   },
 );
+
+test("an exact structural inverse restores a main story ending in a table and empty control", () => {
+  const table = inCell([makeParagraph("00000005", "cell")]);
+  const control = {
+    type: "blockSdt",
+    properties: { sdtType: "group", id: 4 },
+    content: [],
+  } satisfies BlockContent;
+  const original = documentOf([table, control]);
+  const inserted = apply(original, {
+    type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+    story: OP_STORIES.MAIN,
+    blockId: "00000005",
+    ancestorDepth: 1,
+    expected: original.package.document.content,
+    blocks: [table, makeParagraph("00000006", ""), control],
+  });
+  expect(undo(inserted)).toStrictEqual(original);
+});

@@ -229,6 +229,7 @@ import {
 import { setRevisionInfo } from "./revisionInfo";
 import { isOwnRecord } from "./revisionOwner";
 import {
+  blocksEnding,
   documentStories,
   findStoryBody,
   sameStory,
@@ -2876,6 +2877,18 @@ const replaceBlocks = (document: Document, op: ReplaceBlocksOp): Applied => {
       // An emptied wrapper has no paragraph of its own to address it. Check
       // the enclosing splice with the same rules that will apply its inverse.
       if (ancestorDepth !== undefined || !sameBlockList(list, start.list)) {
+        // Snapshot replay may restore an authored story that ended in a
+        // table, but a new replacement must keep its closing paragraph.
+        if (
+          list.length === 0 &&
+          blocksEnding(previousBlocks) === "paragraph" &&
+          blocksEnding(nextBlocks) !== "paragraph"
+        )
+          return refuse(
+            op,
+            DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+            "An empty replacement must leave its story ending with a paragraph.",
+          );
         if (
           op.sectionView !== undefined &&
           !structurallyEqual(op.sectionView.expected, op.sectionView.restore)
