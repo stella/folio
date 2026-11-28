@@ -52,9 +52,13 @@ import {
   blockListAt,
   blockListEndsInParagraph,
   endsItsContainer,
+  ownBlockListAnchor,
   type ParagraphLocation,
+  sameBlockList,
   storyBody,
   storyParagraphs,
+  survivingBlockListAnchor,
+  updateBlockList,
   withBodyContent,
 } from "./blocks";
 import { linksEmptiedByRetirement, newlyExhaustedCommentIds } from "./comments";
@@ -202,6 +206,7 @@ import {
   type RevisionAbsorption,
   type RevisionDecision,
   SECTION_BOUNDARY_POLICIES,
+  type SetContainerBlocksOp,
   type SetParagraphReviewOp,
 } from "./types";
 
@@ -8124,10 +8129,26 @@ const joinOps = (
     blocks.length > 1 &&
     (next?.type === "table" || followsBlock)
   ) {
-    const anchor = blocks.find(
+    const directAnchor = blocks.find(
       (block, index): block is Paragraph =>
-        index !== location.index && block.type === "paragraph",
+        index !== location.index &&
+        block.type === "paragraph" &&
+        block.paraId !== undefined,
     );
+    let anchor =
+      directAnchor === undefined
+        ? undefined
+        : ownBlockListAnchor({ ...location, paragraph: directAnchor });
+    if (anchor === undefined && next?.type === "table")
+      anchor = survivingBlockListAnchor(
+        {
+          ...body,
+          content: updateBlockList(body.content, location.list, (items) =>
+            items.filter((_, index) => index !== location.index),
+          ),
+        },
+        location.list,
+      );
     if (anchor === undefined) {
       return Result.err(
         new DocumentOpRefusal({
@@ -8138,6 +8159,29 @@ const joinOps = (
         }),
       );
     }
+    const expandSnapshot = (items: readonly BlockContent[]) =>
+      sameBlockList(anchor.list, location.list)
+        ? items
+        : blockListAt(
+            updateBlockList(body.content, location.list, () => [...items]),
+            anchor.list,
+          );
+    const replaceStructuralBlocks = ({
+      expected,
+      blocks: replacement,
+    }: Pick<
+      SetContainerBlocksOp,
+      "expected" | "blocks"
+    >): SetContainerBlocksOp => ({
+      type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+      story,
+      blockId: anchor.blockId,
+      ...(anchor.ancestorDepth === undefined
+        ? {}
+        : { ancestorDepth: anchor.ancestorDepth }),
+      expected: expandSnapshot(expected),
+      blocks: expandSnapshot(replacement),
+    });
     if (tableOutcome === "remove") {
       const removal = removalBesideJoin({
         blocks,
@@ -8154,15 +8198,12 @@ const joinOps = (
         return paragraphMarkPlan(
           [
             ...breakRemoval.ops,
-            {
-              type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
-              story,
-              blockId: anchor.paraId ?? "",
+            replaceStructuralBlocks({
               expected: blocks.map((block, index) =>
                 index === location.index ? breakRemoval.paragraph : block,
               ),
               blocks: removal.blocks,
-            },
+            }),
           ],
           [...removal.effects],
         );
@@ -8177,15 +8218,12 @@ const joinOps = (
         standingBeforeBlock.length > 0 ? followerIndex : location.index + 1;
       return paragraphMarkPlan(
         [
-          {
-            type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
-            story,
-            blockId: anchor.paraId ?? "",
+          replaceStructuralBlocks({
             expected: blocks,
             blocks: blocks.filter(
               (_, index) => index < location.index || index >= kept,
             ),
-          },
+          }),
           {
             type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
             story,
@@ -8209,16 +8247,13 @@ const joinOps = (
       const replacement = runParagraphIntoTable(paragraph, tableTarget);
       return paragraphMarkPlan(
         [
-          {
-            type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
-            story,
-            blockId: anchor.paraId ?? "",
+          replaceStructuralBlocks({
             expected: blocks,
             blocks: blocks.flatMap((block, index) => {
               if (index === location.index) return [];
               return index === location.index + 1 ? [replacement] : [block];
             }),
-          },
+          }),
         ],
         [{ type: "table-run-in", receiver: tableTarget.receiver }],
       );

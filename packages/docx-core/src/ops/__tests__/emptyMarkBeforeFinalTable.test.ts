@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 
 import type { BlockContent, Document, Paragraph } from "../../model/document";
-import { applyDocumentOp } from "../apply";
+import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { DOCUMENT_OP_TYPES, OP_STORIES, REVISION_DECISIONS } from "../types";
 
 // A package other producers write: the story ends with a table inserted after
@@ -131,4 +131,25 @@ test("accepting an emptied deletion between two tables at the story's end remove
     tableOf("00000012"),
     plainTable,
   ]);
+});
+
+test("a surviving table cell anchors exact review between story-final tables", () => {
+  const before = [tableOf("00000012"), deleted, plainTable];
+  const original: Document = { package: { document: { content: before } } };
+  const result = resolve(before, [2, 3], REVISION_DECISIONS.ACCEPT).unwrap();
+  expect(result.document.package.document.content).toEqual([
+    tableOf("00000012"),
+    plainTable,
+  ]);
+  const undone = applyDocumentOps(
+    result.document,
+    JSON.parse(JSON.stringify(result.inverse)),
+  ).unwrap();
+  expect(undone.document).toStrictEqual(original);
+  expect(
+    applyDocumentOps(
+      undone.document,
+      JSON.parse(JSON.stringify(undone.inverse)),
+    ).unwrap().document,
+  ).toStrictEqual(result.document);
 });
