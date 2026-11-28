@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "title": "PINNED #1842: a comment beside pending deletions keeps its anchor when an inserted paragraph takes ownership",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "plain",
+  "mode": "tracked-changes",
+  "seed": 1890579994,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 2514839364,
+      "operations": [{ "type": "deleteBlock", "blockId": "483CD5EB" }]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 2826969049,
+      "operations": [
+        { "type": "deleteBlock", "blockId": "5E88C024" },
+        {
+          "type": "commentOnRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "31617F9A",
+            "startOffset": 35,
+            "endOffset": 39,
+            "selectedTextHash": "hyks906"
+          },
+          "comment": { "text": "Written party clause invoice." }
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 3139098734,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "5E88C024",
+          "text": "Goods supplier warranty payment goods goods delivery written."
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from random flow seed 1890579994"
+}

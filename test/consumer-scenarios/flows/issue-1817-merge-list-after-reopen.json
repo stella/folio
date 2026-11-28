@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "title": "PINNED #1817: merging a reopened inserted list item preserves its level",
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "trackedChanges",
+  "mode": "tracked-changes",
+  "seed": 900591342,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 2100321485,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "412DDC7F",
+          "text": "Delivery clause notice buyer period agreement agreement.",
+          "numbering": { "kind": "reference", "numId": 2, "ilvl": 0 }
+        }
+      ]
+    },
+    { "action": "new reviewer", "seed": 12990884 },
+    {
+      "action": "core batch",
+      "seed": 453002963,
+      "operations": [
+        { "type": "mergeBlockWithNext", "blockId": "@1", "separator": " " }
+      ],
+      "atomic": true
+    }
+  ],
+  "origin": "shrunk from collisions flow seed 900591342"
+}
