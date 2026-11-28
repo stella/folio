@@ -516,6 +516,24 @@ describe("applyTemplatePlan edge content", () => {
     expect(report.dropped.sourceFields).toEqual([]);
   });
 
+  test("a colour that marks part of the text counts the text of the notes", async () => {
+    const template = await buildTemplate();
+    const separators =
+      '<w:footnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:footnote><w:footnote w:type="continuationSeparator" w:id="0"><w:p><w:r><w:continuationSeparator/></w:r></w:p></w:footnote>';
+    const source = await buildSourceWith({
+      body: p(
+        `${r("[Insert date]", '<w:color w:val="FF0000"/>')}<w:r><w:footnoteReference w:id="2"/></w:r>`,
+      ),
+      footnotes: `${separators}<w:footnote w:id="2">${p(r(" The date on which the last party signs this agreement."))}</w:footnote>`,
+    });
+    const kept = unwrap(
+      await applyFor({ source, template, extra: { textColors: "keep" } }),
+    );
+    expect((await readPart(kept.docx, "word/document.xml")) ?? "").toContain(
+      '<w:color w:val="FF0000"/>',
+    );
+  });
+
   test("a colour that marks part of the text is kept when the plan keeps colours; the source's own look is not", async () => {
     const template = await buildTemplate();
     const source = await buildMinimalDocx(

@@ -502,12 +502,19 @@ const MARKING_SHARE = 0.5;
 /**
  * The colours and run shadings of a document that mark part of its text:
  * each covering less than half of it. Read off the effective colour of
- * every run of the main story, styles included.
+ * every run of the main story and of its footnotes and endnotes, styles
+ * included.
  */
 export const markingColorsOf = (document: AnalyzedDocument): Set<string> => {
   const covered = new Map<string, number>();
   let total = 0;
-  for (const { read } of document.story.paragraphs) {
+  const reads = [
+    ...document.story.paragraphs.map(({ read }) => read),
+    ...[document.footnotes, document.endnotes].flatMap(({ notes }) =>
+      notes.flatMap(({ paragraphs }) => paragraphs),
+    ),
+  ];
+  for (const read of reads) {
     if (read === null) {
       continue;
     }
