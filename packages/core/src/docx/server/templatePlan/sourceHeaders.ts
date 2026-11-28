@@ -1007,7 +1007,9 @@ export const verifyCarriedHeaders = async ({
     if (
       templateRoot.value !== null &&
       showsPageNumber(templateRoot.value) &&
-      showsPageNumber(write.source.root)
+      showsPageNumber(
+        cloneElement(write.source.root, { elements: write.source.blocks }),
+      )
     ) {
       pageNumbersTwice += 1;
     }

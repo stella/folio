@@ -14,7 +14,13 @@ import {
   replacePart,
   TEMPLATE_IDS,
 } from "./fixtures";
-import { applyFor, planFor, unwrap, verifyFor } from "./planning";
+import {
+  applyFor,
+  buildSourceWith,
+  planFor,
+  unwrap,
+  verifyFor,
+} from "./planning";
 
 describe("innerRangeOf", () => {
   test("finds the content after an opening tag whose attribute holds '>'", () => {
@@ -539,6 +545,49 @@ describe("applyTemplatePlan edge content", () => {
     expect(
       (await readPart(plain.docx, "word/document.xml")) ?? "",
     ).not.toContain("w:color");
+  });
+
+  test("a marking colour a paragraph style gives is kept, and run boundaries do not change what marks", async () => {
+    const template = await buildTemplate();
+    const styled = await buildSourceWith({
+      body: [
+        p(
+          r("Note to draft: check the dates."),
+          '<w:pStyle w:val="DraftNote"/>',
+        ),
+        p(r("The Supplier shall deliver the goods on time and in full.")),
+        p(
+          r(
+            "Each party bears its own costs of this agreement and of its advisers.",
+          ),
+        ),
+      ].join(""),
+      styles:
+        '<w:style w:type="paragraph" w:styleId="DraftNote"><w:name w:val="Draft Note"/><w:rPr><w:color w:val="C00000"/></w:rPr></w:style>',
+    });
+    const kept = unwrap(
+      await applyFor({
+        source: styled,
+        template,
+        extra: { textColors: "keep" },
+      }),
+    );
+    expect((await readPart(kept.docx, "word/document.xml")) ?? "").toMatch(
+      /<w:color w:val="C00000"\/><\/w:rPr><w:t xml:space="preserve">Note to draft/u,
+    );
+    const colours = async (runs: string): Promise<boolean> => {
+      const source = await buildMinimalDocx(p(`${runs}${r("ccc")}`));
+      const applied = unwrap(
+        await applyFor({ source, template, extra: { textColors: "keep" } }),
+      );
+      return (
+        (await readPart(applied.docx, "word/document.xml")) ?? ""
+      ).includes("FF0000");
+    };
+    const red = '<w:color w:val="FF0000"/>';
+    expect(await colours(r("a b", red))).toBe(
+      await colours(`${r("a ", red)}${r("b", red)}`),
+    );
   });
 
   test("a content control among runs is kept around its content, without the parts it names", async () => {
