@@ -52,9 +52,13 @@ import {
   blockListAt,
   blockListEndsInParagraph,
   endsItsContainer,
+  ownBlockListAnchor,
   type ParagraphLocation,
+  sameBlockList,
   storyBody,
   storyParagraphs,
+  survivingBlockListAnchor,
+  updateBlockList,
   withBodyContent,
 } from "./blocks";
 import { linksEmptiedByRetirement, newlyExhaustedCommentIds } from "./comments";
@@ -63,6 +67,7 @@ import {
   acceptCopyOriginAncestor,
   rejectCopyOriginAncestorsInNodes,
 } from "./copyOriginAncestors";
+import { customXmlReadThrough, settleCustomXmlMarkup } from "./customXmlMarkup";
 import { keptDeletionBoundaryPaths } from "./deletionBoundaries";
 import {
   combineEditEffects,
@@ -202,6 +207,7 @@ import {
   type RevisionAbsorption,
   type RevisionDecision,
   SECTION_BOUNDARY_POLICIES,
+  type SetContainerBlocksOp,
   type SetParagraphReviewOp,
 } from "./types";
 
@@ -472,11 +478,12 @@ const markWasAdded = (kind: ParagraphMarkChangeKind): boolean =>
 
 /**
  * When the split whose cut a mark's `resolutionJoin` records was made: an
- * added mark's own date, and for a deleted mark, which holds the cut of the
- * inserted break it deletes, that split's date, not the deletion's.
+ * added mark's own date, or the copied split's it records beside a copied
+ * removal, and for a deleted mark, which holds the cut of the inserted break
+ * it deletes, that split's date, not the deletion's.
  */
 const splitDateOf = (mark: ParagraphMarkChange): string | undefined =>
-  markWasAdded(mark.kind) ? mark.info.date : mark.splitDate;
+  markWasAdded(mark.kind) ? (mark.splitDate ?? mark.info.date) : mark.splitDate;
 
 type PropertyChange = RunPropertyChange | ParagraphPropertyChange;
 
@@ -8124,10 +8131,26 @@ const joinOps = (
     blocks.length > 1 &&
     (next?.type === "table" || followsBlock)
   ) {
-    const anchor = blocks.find(
+    const directAnchor = blocks.find(
       (block, index): block is Paragraph =>
-        index !== location.index && block.type === "paragraph",
+        index !== location.index &&
+        block.type === "paragraph" &&
+        block.paraId !== undefined,
     );
+    let anchor =
+      directAnchor === undefined
+        ? undefined
+        : ownBlockListAnchor({ ...location, paragraph: directAnchor });
+    if (anchor === undefined && next?.type === "table")
+      anchor = survivingBlockListAnchor(
+        {
+          ...body,
+          content: updateBlockList(body.content, location.list, (items) =>
+            items.filter((_, index) => index !== location.index),
+          ),
+        },
+        location.list,
+      );
     if (anchor === undefined) {
       return Result.err(
         new DocumentOpRefusal({
@@ -8138,6 +8161,29 @@ const joinOps = (
         }),
       );
     }
+    const expandSnapshot = (items: readonly BlockContent[]) =>
+      sameBlockList(anchor.list, location.list)
+        ? items
+        : blockListAt(
+            updateBlockList(body.content, location.list, () => [...items]),
+            anchor.list,
+          );
+    const replaceStructuralBlocks = ({
+      expected,
+      blocks: replacement,
+    }: Pick<
+      SetContainerBlocksOp,
+      "expected" | "blocks"
+    >): SetContainerBlocksOp => ({
+      type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+      story,
+      blockId: anchor.blockId,
+      ...(anchor.ancestorDepth === undefined
+        ? {}
+        : { ancestorDepth: anchor.ancestorDepth }),
+      expected: expandSnapshot(expected),
+      blocks: expandSnapshot(replacement),
+    });
     if (tableOutcome === "remove") {
       const removal = removalBesideJoin({
         blocks,
@@ -8154,15 +8200,12 @@ const joinOps = (
         return paragraphMarkPlan(
           [
             ...breakRemoval.ops,
-            {
-              type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
-              story,
-              blockId: anchor.paraId ?? "",
+            replaceStructuralBlocks({
               expected: blocks.map((block, index) =>
                 index === location.index ? breakRemoval.paragraph : block,
               ),
               blocks: removal.blocks,
-            },
+            }),
           ],
           [...removal.effects],
         );
@@ -8177,15 +8220,12 @@ const joinOps = (
         standingBeforeBlock.length > 0 ? followerIndex : location.index + 1;
       return paragraphMarkPlan(
         [
-          {
-            type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
-            story,
-            blockId: anchor.paraId ?? "",
+          replaceStructuralBlocks({
             expected: blocks,
             blocks: blocks.filter(
               (_, index) => index < location.index || index >= kept,
             ),
-          },
+          }),
           {
             type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
             story,
@@ -8209,16 +8249,13 @@ const joinOps = (
       const replacement = runParagraphIntoTable(paragraph, tableTarget);
       return paragraphMarkPlan(
         [
-          {
-            type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
-            story,
-            blockId: anchor.paraId ?? "",
+          replaceStructuralBlocks({
             expected: blocks,
             blocks: blocks.flatMap((block, index) => {
               if (index === location.index) return [];
               return index === location.index + 1 ? [replacement] : [block];
             }),
-          },
+          }),
         ],
         [{ type: "table-run-in", receiver: tableTarget.receiver }],
       );
@@ -8780,6 +8817,10 @@ const settleTwoRecordMarks = (
     if (!ids.has(insertion) && !ids.has(deletion)) continue;
     const review = reviewFieldsOf(paragraph);
     if (op.decision === REVISION_DECISIONS.ACCEPT) {
+      // The cut was made when the break was inserted, or when the split a
+      // copied removal records was; a split as old as the deletion is the
+      // date a deleted mark joins at without one.
+      const splitDate = mark.splitDate ?? mark.info.date;
       review.pPrMark = {
         kind: mark.deletion.kind ?? "del",
         info: mark.deletion.info,
@@ -8787,9 +8828,10 @@ const settleTwoRecordMarks = (
           ? {}
           : {
               resolutionJoin: mark.resolutionJoin,
-              ...(mark.info.date === undefined
+              ...(splitDate === undefined ||
+              splitDate === mark.deletion.info.date
                 ? {}
-                : { splitDate: mark.info.date }),
+                : { splitDate }),
             }),
       };
       replacementMarks.set(insertion, deletion);
@@ -8881,6 +8923,70 @@ export const planRevisionResolution = (
   );
   if (grouped.isErr()) return Result.err(grouped.error);
   const op = grouped.value;
+  // A custom XML element's own tags settle first: what they wrap stays in
+  // either case, so the records it holds resolve the same after them.
+  const markup = Object.values(REVISION_DECISIONS).includes(op.decision)
+    ? settleCustomXmlMarkup({
+        document,
+        story: op.story,
+        revisionIds: op.revisionIds,
+        decision: op.decision,
+      })
+    : { ops: [], ids: [...op.revisionIds] };
+  if (markup.ops.length > 0) {
+    const unwrapped = applyOps(document, markup.ops);
+    if (unwrapped.isErr()) return Result.err(unwrapped.error);
+    const rest = planRevisionResolution({
+      ...options,
+      document: unwrapped.value.document,
+      op: { ...op, revisionIds: markup.ids },
+    });
+    if (rest.isErr()) return Result.err(rest.error);
+    return Result.ok({
+      edit: combineEdits(document, [unwrapped.value, rest.value.edit]),
+      receiverEffects: rest.value.receiverEffects,
+    });
+  }
+  // A resolution reaching into a custom XML element reads through its tags.
+  const through = Object.values(REVISION_DECISIONS).includes(op.decision)
+    ? customXmlReadThrough({
+        document,
+        story: op.story,
+        revisionIds: op.revisionIds,
+        decision: op.decision,
+      })
+    : undefined;
+  if (through !== undefined) {
+    const unwrapped = applyOps(document, [through.unwrap]);
+    const read = unwrapped.andThen((untagged) =>
+      planSectionAndMarkResolution({
+        ...options,
+        document: untagged.document,
+        op,
+      }).map((plan) => ({ untagged, plan })),
+    );
+    if (read.isOk()) {
+      const { untagged, plan } = read.value;
+      const rewrap = through.rewrap(plan.edit.document);
+      const tagged =
+        rewrap === undefined
+          ? undefined
+          : applyOps(plan.edit.document, [rewrap]);
+      if (tagged?.isOk() === true)
+        return Result.ok({
+          edit: combineEdits(document, [untagged, plan.edit, tagged.value]),
+          receiverEffects: plan.receiverEffects,
+        });
+    }
+  }
+  return planSectionAndMarkResolution({ ...options, op });
+};
+
+/** Section records, then paragraph marks, inline records and table rows. */
+const planSectionAndMarkResolution = (
+  options: RevisionResolutionPlanOptions,
+): Result<RevisionResolutionPlan, DocumentOpRefusal> => {
+  const { document, applyOps, op } = options;
   const sections = settleSectionRecords(document, op);
   if (sections.ops.length === 0) return planMarkResolution({ ...options, op });
   const settled = applyOps(document, sections.ops);
@@ -9200,7 +9306,7 @@ const planSingleRecordResolution = (
       const shared = {
         depth: mark.resolutionJoin ?? 0,
         resolution,
-        splitDate: mark.info.date ?? "",
+        splitDate: splitDateOf(mark) ?? "",
       };
       const trailing = closedSplitCutSides({
         ...shared,

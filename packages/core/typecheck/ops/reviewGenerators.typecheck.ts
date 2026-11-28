@@ -16,6 +16,7 @@ import {
   OP_STORIES,
   paragraphLength,
   paragraphLogicalText,
+  reviewFieldsOf,
 } from "@stll/docx-core/ops";
 
 import { parseDocx } from "../../src/docx/parser";
@@ -323,6 +324,48 @@ export const operations = {
     patch: { alignment: "center" },
     revision: stamp,
   }),
+  [DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW]: ({
+    document,
+  }: OperationOptions) => {
+    const target = findParagraph(document.package.document.content, FIRST_ID);
+    if (target === undefined)
+      return panic("Generated operation target disappeared");
+    return {
+      type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
+      story: OP_STORIES.MAIN,
+      blockId: FIRST_ID,
+      expected: reviewFieldsOf(target),
+      review: {
+        ...reviewFieldsOf(target),
+        pPrMark: { kind: "ins", info: stamp },
+      },
+      revision: stamp,
+    };
+  },
+  [DOCUMENT_OP_TYPES.SET_CUSTOM_XML_MARKUP]: ({
+    document,
+  }: OperationOptions) => {
+    const content = document.package.document.content;
+    const first = content.at(0);
+    if (first === undefined) return panic("Generated story body is empty");
+    return {
+      type: DOCUMENT_OP_TYPES.SET_CUSTOM_XML_MARKUP,
+      story: OP_STORIES.MAIN,
+      blockId: "00000005",
+      expected: content,
+      blocks: [
+        {
+          type: "blockCustomXml",
+          openingXml: '<w:customXml w:element="clause">',
+          closingXml: "</w:customXml>",
+          content: [first],
+          insertion: { info: stamp },
+        },
+        ...content.slice(1),
+      ],
+      revision: stamp,
+    };
+  },
   [DOCUMENT_OP_TYPES.SPLIT_BLOCK]: ({ document, seed }: OperationOptions) => ({
     type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
     at: at(targetOffset({ document, seed })),

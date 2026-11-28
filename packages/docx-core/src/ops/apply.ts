@@ -95,6 +95,7 @@ import {
   copyOriginBoundaryKeysInBlocks,
   hasValidCopyOriginAncestors,
 } from "./copyOriginAncestors";
+import { setCustomXmlMarkup } from "./customXmlMarkup";
 import {
   isolateKeptDeletionBoundaries,
   keptDeletionBoundaries,
@@ -203,6 +204,7 @@ import {
 } from "./refusal";
 import { type ApplyOps, resolveRevision } from "./resolve";
 import {
+  carriesStamp,
   foldedParagraphPropertyChange,
   foldedRecordInfo,
   foldedRevisionIds,
@@ -3299,6 +3301,8 @@ const dispatchCore = ({ document, op, purpose }: DispatchOptions): Applied => {
       return applyPackageResourcesOp(document, op);
     case DOCUMENT_OP_TYPES.SET_CONTENT_CONTROL:
       return setContentControl(document, op);
+    case DOCUMENT_OP_TYPES.SET_CUSTOM_XML_MARKUP:
+      return setCustomXmlMarkup(document, op);
     case DOCUMENT_OP_TYPES.INSERT_COLUMN:
     case DOCUMENT_OP_TYPES.DELETE_COLUMN:
     case DOCUMENT_OP_TYPES.MERGE_CELLS:
@@ -3459,6 +3463,8 @@ export const stampOf = (op: DocumentOp): RevisionStamp | undefined => {
     case DOCUMENT_OP_TYPES.SET_TABLE_PROPS:
     case DOCUMENT_OP_TYPES.ADD_NOTE:
     case DOCUMENT_OP_TYPES.REMOVE_NOTE:
+    case DOCUMENT_OP_TYPES.SET_CUSTOM_XML_MARKUP:
+    case DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW:
       return op.revision;
     case DOCUMENT_OP_TYPES.CREATE_COMMENT:
     case DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT:
@@ -3472,7 +3478,6 @@ export const stampOf = (op: DocumentOp): RevisionStamp | undefined => {
     case DOCUMENT_OP_TYPES.SPLIT_INLINE:
     case DOCUMENT_OP_TYPES.JOIN_INLINE:
     case DOCUMENT_OP_TYPES.REPLACE_BLOCKS:
-    case DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW:
     case DOCUMENT_OP_TYPES.REPLACE_INLINE:
     case DOCUMENT_OP_TYPES.RESOLVE_REVISION:
     case DOCUMENT_OP_TYPES.SET_TABLE_ROWS:
@@ -3491,6 +3496,60 @@ export const stampOf = (op: DocumentOp): RevisionStamp | undefined => {
     }
   }
 };
+
+/**
+ * The ids of the custom XML elements' own records the stamp marks and the
+ * document did not hold, in document order, in content controls and table
+ * cells too.
+ */
+const stampedCustomXmlMarkupRevisionIds = ({
+  blocks,
+  stamp,
+  known,
+}: {
+  blocks: readonly BlockContent[];
+  stamp: RevisionStamp;
+  known: KeyMembership;
+}): number[] =>
+  blocks.flatMap((block): number[] => {
+    switch (block.type) {
+      case "blockCustomXml":
+        return [
+          ...[block.insertion, block.deletion].flatMap((record) =>
+            record !== undefined &&
+            carriesStamp(record.info, stamp) &&
+            !known.has(
+              slotKey({ space: IDENTITY_SPACES.REVISION, id: record.info.id }),
+            )
+              ? [record.info.id]
+              : [],
+          ),
+          ...stampedCustomXmlMarkupRevisionIds({
+            blocks: block.content,
+            stamp,
+            known,
+          }),
+        ];
+      case "blockSdt":
+        return stampedCustomXmlMarkupRevisionIds({
+          blocks: block.content,
+          stamp,
+          known,
+        });
+      case "table":
+        return block.rows.flatMap((row) =>
+          row.cells.flatMap((cell) =>
+            stampedCustomXmlMarkupRevisionIds({
+              blocks: cell.content,
+              stamp,
+              known,
+            }),
+          ),
+        );
+      default:
+        return [];
+    }
+  });
 
 /**
  * The blocks an edit replaced and the ones it left in their place. Shared
@@ -3593,6 +3652,11 @@ const recordedRevisions = ({
     if (blocks.after.length === 0) continue;
     tableRevisions.push(
       ...stampedTableRevisionIds({ blocks: blocks.after, stamp, known }),
+      ...stampedCustomXmlMarkupRevisionIds({
+        blocks: blocks.after,
+        stamp,
+        known,
+      }),
     );
     const replaced: Paragraph[] = [];
     for (const { paragraph } of storyParagraphs({ content: blocks.after })) {

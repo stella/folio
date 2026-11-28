@@ -39,6 +39,17 @@ const doc = (blocks: PMNode[]): PMNode =>
   // SAFETY: editor schema always defines doc.
   schema.nodes["doc"]!.create({}, blocks);
 
+const customXml = (text: string, attrs: Record<string, unknown>): PMNode =>
+  // SAFETY: editor schema always defines blockCustomXml.
+  schema.nodes["blockCustomXml"]!.create(
+    {
+      openingXml: '<w:customXml w:element="clause">',
+      closingXml: "</w:customXml>",
+      ...attrs,
+    },
+    [para(text)],
+  );
+
 const suggested = (revisionId: number, suggestionId: string) => ({
   revisionId,
   author: "AI",
@@ -206,5 +217,75 @@ describe("block/table suggestion strip", () => {
     );
     expect(blocks(model).length).toBe(1);
     expect(plainText(model)).not.toContain("nested proposed");
+  });
+
+  test("suggested custom XML tag changes are rejected without losing content", () => {
+    const inserted = fromProseDoc(
+      doc([
+        customXml("unwrapped", {
+          insertion: {
+            info: {
+              id: 30,
+              author: "AI",
+              date: DATE,
+              provenance: "suggested",
+              suggestionId: "s8",
+            },
+          },
+        }),
+      ]),
+      undefined,
+      { stylesheetSource: { type: "package" } },
+    );
+    expect(blocks(inserted).map(({ type }) => type)).toEqual(["paragraph"]);
+    expect(plainText(inserted)).toContain("unwrapped");
+
+    const deleted = fromProseDoc(
+      doc([
+        customXml("retained wrapper", {
+          deletion: {
+            info: {
+              id: 31,
+              author: "AI",
+              date: DATE,
+              provenance: "suggested",
+              suggestionId: "s9",
+            },
+          },
+        }),
+      ]),
+      undefined,
+      { stylesheetSource: { type: "package" } },
+    );
+    const retained = blocks(deleted).at(0);
+    expect(retained?.type).toBe("blockCustomXml");
+    if (retained?.type === "blockCustomXml")
+      expect(retained.deletion).toBeUndefined();
+  });
+
+  test("rejecting an originally empty suggested tag insertion drops its filler", () => {
+    // SAFETY: editor schema always defines blockCustomXml.
+    const empty = schema.nodes["blockCustomXml"]!.create(
+      {
+        openingXml: '<w:customXml w:element="empty">',
+        closingXml: "</w:customXml>",
+        _originallyEmpty: true,
+        insertion: {
+          info: {
+            id: 32,
+            author: "AI",
+            date: DATE,
+            provenance: "suggested",
+            suggestionId: "s10",
+          },
+        },
+      },
+      [para("")],
+    );
+    const model = fromProseDoc(doc([empty, para("after")]), undefined, {
+      stylesheetSource: { type: "package" },
+    });
+    expect(blocks(model).map(({ type }) => type)).toEqual(["paragraph"]);
+    expect(plainText(model)).toContain("after");
   });
 });

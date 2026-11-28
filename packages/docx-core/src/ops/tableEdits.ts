@@ -30,7 +30,10 @@ import {
   statedTableColumnWidths,
   withTableColumnWidths,
 } from "../model/tableColumnWidths";
-import { MAX_TABLE_GRID_COLUMNS } from "../model/tableGridLimits";
+import {
+  gridSpanInColumns,
+  MAX_TABLE_GRID_COLUMNS,
+} from "../model/tableGridLimits";
 import {
   storyBody,
   storyParagraphs,
@@ -1087,7 +1090,7 @@ const respanned = (
 ): TableCellFormatting | undefined => {
   if (delta === 0) return formatting;
   const next = authored({ ...formatting });
-  const span = (formatting?.gridSpan ?? 1) + delta;
+  const span = gridSpanInColumns(formatting?.gridSpan) + delta;
   if (span === 1) delete next.gridSpan;
   else next.gridSpan = span;
   return next;

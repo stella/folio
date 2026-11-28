@@ -468,7 +468,7 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
 }>;
 
 // @public
-export const DOCUMENT_OP_SCHEMA_VERSION = 18;
+export const DOCUMENT_OP_SCHEMA_VERSION = 19;
 
 // @public
 export const DOCUMENT_OP_TYPES: Readonly<{
@@ -519,6 +519,7 @@ export const DOCUMENT_OP_TYPES: Readonly<{
     readonly SET_SECTION_ENDPOINT: "setSectionEndpoint";
     readonly SET_PACKAGE_RESOURCES: "setPackageResources";
     readonly SET_CONTENT_CONTROL: "setContentControl";
+    readonly SET_CUSTOM_XML_MARKUP: "setCustomXmlMarkup";
 }>;
 
 // @public
@@ -532,7 +533,7 @@ export type DocumentBatch = {
 };
 
 // @public
-export type DocumentOp = (CommentOp | CreateHeaderFooterOp | RemoveHeaderFooterOp | AddNoteOp | RemoveNoteOp | SetSectionPropsOp | RestoreStoryPartsOp | DeleteBlocksOp | InsertTableOp | DeleteTableOp | SetContainerBlocksOp | InsertBlocksOp | InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp | SetParagraphReviewOp | ReplaceInlineOp | ResolveRevisionOp | SetRevisionInfoOp | InsertRowOp | DeleteRowOp | SetTableRowsOp | TableEditOp | SetTableOp | CreateNumberingInstanceOp | DeleteNumberingInstanceOp | SetSectionEndpointOp | SetPackageResourcesOp | SetContentControlOp) & {
+export type DocumentOp = (CommentOp | CreateHeaderFooterOp | RemoveHeaderFooterOp | AddNoteOp | RemoveNoteOp | SetSectionPropsOp | RestoreStoryPartsOp | DeleteBlocksOp | InsertTableOp | DeleteTableOp | SetContainerBlocksOp | InsertBlocksOp | InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp | SetParagraphReviewOp | ReplaceInlineOp | ResolveRevisionOp | SetRevisionInfoOp | InsertRowOp | DeleteRowOp | SetTableRowsOp | TableEditOp | SetTableOp | CreateNumberingInstanceOp | DeleteNumberingInstanceOp | SetSectionEndpointOp | SetPackageResourcesOp | SetContentControlOp | SetCustomXmlMarkupOp) & {
     undefinedFields?: readonly (readonly string[])[];
 };
 
@@ -1566,6 +1567,17 @@ export type SetContentControlOp = {
 };
 
 // @public
+export type SetCustomXmlMarkupOp = {
+    type: typeof DOCUMENT_OP_TYPES.SET_CUSTOM_XML_MARKUP;
+    story: OpStory;
+    blockId: string;
+    ancestorDepth?: number;
+    expected: readonly BlockContent[];
+    blocks: readonly BlockContent[];
+    revision?: RevisionStamp;
+};
+
+// @public
 export type SetPackageResourcesOp = {
     type: typeof DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES;
     expected: PackageResources;
@@ -1595,6 +1607,7 @@ export type SetParagraphReviewOp = {
     blockId: string;
     expected: ParagraphReviewFields;
     review: ParagraphReviewFields;
+    revision?: RevisionStamp;
 };
 
 // @public (undocumented)

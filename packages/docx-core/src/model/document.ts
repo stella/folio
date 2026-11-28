@@ -375,6 +375,7 @@ export type {
   InlineSdt,
   BlockSdt,
   BlockCustomXml,
+  CustomXmlMarkupRevision,
   ParagraphContent,
   Paragraph,
   ParagraphMarkFormatting,

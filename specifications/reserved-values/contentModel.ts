@@ -1,6 +1,7 @@
 /** Reserved-value decisions for the content model. */
 
 import type {
+  BlockCustomXml,
   BlockSdt,
   BookmarkEnd,
   BookmarkStart,
@@ -10,6 +11,7 @@ import type {
   CommentRangeStart,
   CommentReference,
   ComplexField,
+  CustomXmlMarkupRevision,
   Deletion,
   DocumentBackground,
   DocumentBackgroundDrawing,
@@ -1310,6 +1312,33 @@ export const BLOCK_SDT_RESERVED = {
 export type ExhaustiveBlockSdtReserved = ExhaustiveFields<
   BlockSdt,
   keyof typeof BLOCK_SDT_RESERVED
+>;
+
+export const BLOCK_CUSTOM_XML_RESERVED = {
+  type: NO_RESERVED_VALUE,
+  // The element's tags, replayed as the source wrote them.
+  openingXml: NO_RESERVED_VALUE,
+  closingXml: NO_RESERVED_VALUE,
+  content: NO_RESERVED_VALUE,
+  insertion: NO_RESERVED_VALUE,
+  deletion: NO_RESERVED_VALUE,
+} satisfies Record<RecordField<BlockCustomXml>, ReservedValueDisposition>;
+
+export type ExhaustiveBlockCustomXmlReserved = ExhaustiveFields<
+  BlockCustomXml,
+  keyof typeof BLOCK_CUSTOM_XML_RESERVED
+>;
+
+export const CUSTOM_XML_MARKUP_REVISION_RESERVED = {
+  info: NO_RESERVED_VALUE,
+} satisfies Record<
+  RecordField<CustomXmlMarkupRevision>,
+  ReservedValueDisposition
+>;
+
+export type ExhaustiveCustomXmlMarkupRevisionReserved = ExhaustiveFields<
+  CustomXmlMarkupRevision,
+  keyof typeof CUSTOM_XML_MARKUP_REVISION_RESERVED
 >;
 
 export const PARAGRAPH_MARK_CHANGE_RESERVED = {

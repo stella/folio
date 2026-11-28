@@ -4,8 +4,9 @@
  * and copied range boundaries nested deeper than any fixed limit record,
  * resolve and undo. A tracked deletion of a transparent wrapper holding a
  * comment anchor meets the anchor as a bare one, and a pasted paragraph
- * whose copied deletion of its break holds a cut of its own is refused as a
- * suggestion while the direct paste applies.
+ * whose copied deletion of its break holds a cut of its own is suggested
+ * with that cut beside the paste's insertion of the break, resolving as the
+ * direct paste does.
  */
 import { describe, expect, test } from "bun:test";
 
@@ -383,25 +384,50 @@ describe("a pasted paragraph whose copied deletion of its break holds a cut", ()
       splitDate: "2025-12-01T00:00:00Z",
     },
   ])(
-    "is refused as a suggestion, its cut being read below the paste's own insertions (%o)",
+    "is suggested with its cut, one level below the paste's insertions, beside the pasted break (%o)",
     (pPrMark) => {
       const intent = paste(pPrMark);
       const suggested = compileEditorIntent(document, {
         intent,
         mode: { type: "suggesting", revision: STAMP, newIds: NEW_IDS },
       });
-      expect(suggested.isErr() && suggested.error.reason).toBe(
-        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      if (suggested.isErr()) throw suggested.error;
+      const pasted = apply(document, suggested.value.ops);
+      const [, cut, after] = pasted.document.package.document.content;
+      if (cut?.type !== "paragraph" || after?.type !== "paragraph")
+        throw new TypeError("The pasted paragraphs follow the destination.");
+      expect(cut.pPrMark).toEqual({
+        kind: "ins",
+        info: { ...STAMP, id: cut.pPrMark?.info.id ?? -1 },
+        resolutionJoin: 2,
+        splitDate: pPrMark.splitDate ?? EARLIER.date,
+        deletion: {
+          info: { ...EARLIER, id: cut.pPrMark?.deletion?.info.id ?? -1 },
+        },
+      });
+      // The paste's insertions meet open at the seam the cut joins.
+      for (const side of [cut.content.at(-1), after.content.at(0)])
+        expect(
+          side?.type === "insertion" ? side.resolutionJoins : "not inserted",
+        ).toBeUndefined();
+      expect(apply(pasted.document, pasted.inverse).document).toStrictEqual(
+        document,
       );
       const direct = compileEditorIntent(document, {
         intent,
         mode: { type: "editing", newIds: NEW_IDS },
       });
       if (direct.isErr()) throw direct.error;
-      const pasted = apply(document, direct.value.ops);
-      expect(apply(pasted.document, pasted.inverse).document).toStrictEqual(
-        document,
-      );
+      const copied = apply(document, direct.value.ops);
+      const accepted = (from: Document) =>
+        resolve(
+          from,
+          Array.from({ length: 140 }, (_, index) => index),
+          REVISION_DECISIONS.ACCEPT,
+        ).document.package.document.content.map((block) =>
+          block.type === "paragraph" ? block.content : block,
+        );
+      expect(accepted(pasted.document)).toEqual(accepted(copied.document));
     },
   );
 });

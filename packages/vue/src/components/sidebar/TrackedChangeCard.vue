@@ -141,14 +141,8 @@
         <span class="tc-card__deleted">{{ t("revisions.tableDeleted") }}</span>
       </template>
       <template v-else>
-        {{ change.type === "insertion" ? t("inserted") : t("deleted") }}
-        <span
-          :class="
-            change.type === 'insertion'
-              ? 'tc-card__inserted'
-              : 'tc-card__deleted'
-          "
-        >
+        {{ added ? t("inserted") : t("deleted") }}
+        <span :class="added ? 'tc-card__inserted' : 'tc-card__deleted'">
           &quot;{{ truncateText(change.text) }}&quot;
         </span>
       </template>
@@ -196,6 +190,13 @@ const emit = defineEmits<{
   (e: "reject-by-id", revisionId: number): void;
   (e: "reply", revisionId: number, text: string): void;
 }>();
+
+// A custom XML element's own tags read as the content they wrap does.
+const added = computed(
+  () =>
+    props.change.type === "insertion" ||
+    props.change.type === "customXmlInserted",
+);
 
 const authorName = computed(
   () => props.change.author || t("trackedChanges.unknown"),

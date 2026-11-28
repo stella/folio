@@ -44,6 +44,7 @@ export const OPERATION_LAW_DISPOSITIONS = {
   insertTable: "holds",
   deleteTable: "holds",
   setContainerBlocks: "holds",
+  setCustomXmlMarkup: "holds",
   insertRow: "holds",
   deleteRow: "holds",
   setTableRows: "holds",

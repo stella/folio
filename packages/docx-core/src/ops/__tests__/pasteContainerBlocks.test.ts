@@ -2,12 +2,15 @@
  * Clipboard block content controls, custom XML elements and kept block markup:
  * pasted directly, each stands whole before the caret's paragraph with its
  * own paragraphs and control identified afresh, and the operations' inverse
- * gives the document back. A suggestion has no record for them and refuses.
+ * gives the document back. A suggestion has no record for a block content
+ * control or kept block markup and refuses; a custom XML element records its
+ * own tags (customXmlMarkupRecords.test.ts), and here holds a control.
  */
 import { describe, expect, test } from "bun:test";
 
 import type {
   BlockContent,
+  BlockSdt,
   Document,
   Paragraph,
   Run,
@@ -45,7 +48,7 @@ const source = (): Document => ({
   },
 });
 
-const control = (): PastedBlock => ({
+const control = (): BlockSdt => ({
   type: "blockSdt",
   properties: { sdtType: "richText", id: 7, tag: "clause" },
   content: [paragraph("Inside one", "00000003"), paragraph("Inside two")],
@@ -98,16 +101,15 @@ const paraIds = (blocks: readonly BlockContent[]): string[] =>
   });
 
 // A block-level `w:sdt` takes no revision of its own (CT_SdtBlock records
-// none), so OOXML has no record for its suggested paste or move. A block
-// `w:customXml` has range records the model does not carry yet, and kept
-// markup is not read.
+// none), and kept block markup is markup no revision holds (a `w:ins` or
+// `w:del` holds run-level content only), so OOXML has no record for either's
+// suggested paste or move, a custom XML element holding a control included.
 const NO_RECORD = DOCUMENT_OP_REFUSAL_REASONS.NO_REVISION_RECORD;
-const NOT_YET = DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE;
 
 describe.each([
   { kind: "block content control", blocks: [control()], suggested: NO_RECORD },
-  { kind: "custom XML element", blocks: [customXml()], suggested: NOT_YET },
-  { kind: "kept block markup", blocks: [preserved()], suggested: NOT_YET },
+  { kind: "custom XML element", blocks: [customXml()], suggested: NO_RECORD },
+  { kind: "kept block markup", blocks: [preserved()], suggested: NO_RECORD },
   {
     kind: "every kind",
     blocks: [control(), customXml(), preserved()],
@@ -165,6 +167,27 @@ describe.each([
     expect(compiled.isErr()).toBe(true);
     if (compiled.isErr()) expect(compiled.error.reason).toBe(suggested);
   });
+});
+
+test("a copied content control drops nested custom XML revision records", () => {
+  const copied = control();
+  copied.content = [
+    {
+      type: "blockCustomXml",
+      openingXml: '<w:customXml w:element="nested">',
+      closingXml: "</w:customXml>",
+      content: [paragraph("Nested")],
+      insertion: { info: { id: 7, author: "Elsewhere" } },
+      deletion: { info: { id: 8, author: "Elsewhere" } },
+    },
+  ];
+  const { document, compiled } = pasted([copied], DIRECT);
+  if (compiled.isErr()) throw compiled.error;
+  const applied = applyDocumentOps(document, compiled.value.ops);
+  if (applied.isErr()) throw applied.error;
+  const serialized = JSON.stringify(applied.value.document.package.document);
+  expect(serialized).not.toContain('"id":7,"author":"Elsewhere"');
+  expect(serialized).not.toContain('"id":8,"author":"Elsewhere"');
 });
 
 describe("dragging a block content control", () => {

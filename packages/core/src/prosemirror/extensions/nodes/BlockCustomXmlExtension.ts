@@ -16,6 +16,8 @@ export const BlockCustomXmlExtension: (
       openingXml: { default: null },
       closingXml: { default: null },
       _originallyEmpty: { default: false },
+      insertion: { default: null },
+      deletion: { default: null },
     },
     parseDOM: [
       {
