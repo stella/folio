@@ -253,13 +253,22 @@ export function advanceVisibleListMarker(
         numPrFromStyle: attrs.numPrFromStyle,
       }),
     ).kind === "reference";
+  const previousNumbering =
+    previous === null
+      ? undefined
+      : effectiveParagraphNumbering(
+          paragraphNumberingSourcesFromBoundary({
+            numPr: previous.numPr,
+            numPrFromStyle: previous.numPrFromStyle,
+          }),
+        );
   const visible =
     attrs.numPr?.kind !== "none" &&
     levelOnlyResolves &&
     final.marker === null &&
     original &&
     original.marker !== null &&
-    previous?.numPr?.kind === "reference"
+    previousNumbering?.kind === "reference"
       ? original
       : final;
   return { ...visible, advances };

@@ -3767,7 +3767,7 @@ const materialize = (model: Model): Expected[] => {
                 ...head.fields,
                 kind:
                   head.fields.kind === "paragraph"
-                    ? entry.fields.kind
+                    ? "listItem"
                     : head.fields.kind,
                 listLevel: entry.fields.listLevel,
               }

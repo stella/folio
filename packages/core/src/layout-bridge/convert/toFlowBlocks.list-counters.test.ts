@@ -287,6 +287,43 @@ describe("toFlowBlocks counter sharing by abstractNumId", () => {
     ]);
   });
 
+  test("a pending property change can retain a style-derived original marker", () => {
+    const streams = {
+      final: createListCounterState(),
+      original: createListCounterState(),
+    };
+    const projected = advanceVisibleListMarker(
+      {
+        _propertyChanges: [
+          {
+            type: "paragraphPropertyChange",
+            info: INS_MARK.info,
+            previousFormatting: {
+              numPrFromStyle: paragraphNumberingAttr({
+                kind: "reference",
+                numId: 7,
+                ilvl: 0,
+              }),
+              listMarkerTemplate: "(%1)",
+              listNumFmt: "decimal",
+            },
+          },
+        ],
+      },
+      streams,
+    );
+
+    expect(projected).toMatchObject({
+      marker: "(1)",
+      stream: "original",
+      counterAttrs: {
+        numPrFromStyle: { kind: "reference", numId: 7, ilvl: 0 },
+      },
+    });
+    expect(streams.final.counters.size).toBe(0);
+    expect(streams.original.counters.get(7)?.at(0)).toBe(1);
+  });
+
   test("reader labels count paragraphs whose numbering comes from their style", () => {
     const nextLabel = createListLabelCounter(
       createNumberingMap({
