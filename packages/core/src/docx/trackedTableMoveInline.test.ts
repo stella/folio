@@ -355,19 +355,20 @@ test("a nested table keeps a previously tracked picture and rich-text control mo
   expect(new Set(controls).size).toBe(4);
 });
 
-test("a moved nested table preserves controls shared by rows and cells", () => {
+test("a moved nested table preserves controls shared by rows, cells and bookmarks", () => {
   const original = sourceWith({
     content: plain,
     wrap: (paragraph) =>
       '<w:tbl><w:tblGrid><w:gridCol w:w="500"/><w:gridCol w:w="500"/></w:tblGrid>' +
       '<w:customXml w:element="controlledRows"><w:sdt><w:sdtPr><w:id w:val="73"/>' +
       '<w:dataBinding w:storeItemID="{D39198F2-3D48-4B86-A920-A76E2D16312A}" w:xpath="/form/term[1]"/>' +
-      "</w:sdtPr><w:sdtContent>" +
+      '</w:sdtPr><w:sdtContent><w:bookmarkStart w:id="91" w:name="Rows"/>' +
       '<w:tr><w:sdt><w:sdtPr><w:id w:val="74"/></w:sdtPr><w:sdtContent>' +
+      '<w:bookmarkStart w:id="92" w:name="Cells"/>' +
       `<w:tc>${paragraph}</w:tc><w:tc><w:p w14:paraId="00000007"/></w:tc>` +
-      "</w:sdtContent></w:sdt></w:tr>" +
+      '<w:bookmarkEnd w:id="92"/></w:sdtContent></w:sdt></w:tr>' +
       '<w:tr><w:tc><w:p w14:paraId="00000008"/></w:tc><w:tc><w:p w14:paraId="00000009"/></w:tc></w:tr>' +
-      '</w:sdtContent></w:sdt></w:customXml></w:tbl><w:p w14:paraId="00000005"/>',
+      '<w:bookmarkEnd w:id="91"/></w:sdtContent></w:sdt></w:customXml></w:tbl><w:p w14:paraId="00000005"/>',
   });
   const { merge, controlIds } = allocateTrackedMerge(original);
   expect(controlIds).toHaveLength(2);
@@ -376,6 +377,8 @@ test("a moved nested table preserves controls shared by rows and cells", () => {
     2,
   );
   expect(xml.match(/w:xpath="\/form\/term\[1\]"/gu)).toHaveLength(2);
+  expect(xml.match(/<w:bookmarkStart /gu)).toHaveLength(4);
+  expect(xml.match(/<w:bookmarkEnd /gu)).toHaveLength(4);
   for (const id of [73, 74, ...controlIds])
     expect(xml.match(new RegExp(`<w:id w:val="${id}"`, "gu"))).toHaveLength(1);
 });

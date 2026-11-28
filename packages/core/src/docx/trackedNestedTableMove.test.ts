@@ -311,6 +311,129 @@ test.each(["table", "row", "paragraph", "block"] as const)(
   },
 );
 
+test("a moved nested table keeps proofing endpoints that cross rows", () => {
+  // ISO/IEC 29500-1 §17.13.8.1 pairs proofErr endpoints by kind and
+  // document order. Keep both positions when the whole range is copied.
+  const w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+  const proof = (type: "spellStart" | "spellEnd") =>
+    ({
+      type: "preservedInline",
+      text: "",
+      xml: `<w:proofErr xmlns:w="${w}" w:type="${type}"/>`,
+    }) as const;
+  const first = paragraph("00000003", "Mis");
+  const last = paragraph("00000004", "spelling");
+  const withEnd = { ...last, content: [...last.content, proof("spellEnd")] };
+  const make = (endOutside: boolean): Document => ({
+    package: {
+      document: {
+        content: [
+          {
+            type: "table",
+            columnWidths: [1000, 1200],
+            rows: [
+              {
+                type: "tableRow",
+                cells: [
+                  cell(paragraph("00000001", "Owner")),
+                  cell(
+                    {
+                      ...nested,
+                      rows: [
+                        {
+                          type: "tableRow",
+                          cells: [
+                            cell({
+                              ...first,
+                              content: [proof("spellStart"), ...first.content],
+                            }),
+                          ],
+                        },
+                        {
+                          type: "tableRow",
+                          cells: [cell(endOutside ? last : withEnd)],
+                        },
+                      ],
+                    },
+                    paragraph("00000002"),
+                  ),
+                ],
+              },
+            ],
+          },
+          endOutside
+            ? { ...withEnd, paraId: "00000005" }
+            : paragraph("00000005"),
+        ],
+      },
+    },
+  });
+  const propose = (document: Document) => {
+    const intent = {
+      type: "table",
+      operation: {
+        type: DOCUMENT_OP_TYPES.MERGE_CELLS,
+        story: OP_STORIES.MAIN,
+        blockId: "00000001",
+        top: 0,
+        bottom: 1,
+        left: 0,
+        right: 2,
+      },
+    } as const;
+    const ids = createEditorIntentIdAllocator()(document, intent);
+    return compileEditorIntent(document, {
+      intent,
+      mode: {
+        type: "suggesting",
+        revision: {
+          id: ids.revisionId,
+          author: "Reviewer",
+          date: "2026-11-28T00:00:00Z",
+        },
+        newIds: ids.newIds,
+      },
+    }).andThen(({ ops }) => applyDocumentOps(document, ops));
+  };
+  const source = make(false);
+  const pending = propose(source).unwrap();
+  expect(
+    applyDocumentOps(pending.document, pending.inverse).unwrap().document,
+  ).toStrictEqual(source);
+  const pendingXml = serializeTable(
+    tableOf(pending.document),
+    serializeParagraph,
+  );
+  expect(pendingXml.match(/spell(?:Start|End)/g)).toEqual([
+    "spellStart",
+    "spellEnd",
+    "spellStart",
+    "spellEnd",
+  ]);
+
+  const table = parseSavedTable(pendingXml);
+  const reopened = {
+    package: { document: { content: [table, paragraph("00000005")] } },
+  };
+  const grid = table.formatting?.gridChange;
+  if (grid === undefined)
+    throw new TypeError("Expected the saved grid revision.");
+  for (const decision of Object.values(REVISION_DECISIONS)) {
+    const settled = applyDocumentOp(normalizeForOps(reopened), {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: [grid.id],
+      decision,
+    }).unwrap().document;
+    const xml = serializeTable(tableOf(settled), serializeParagraph);
+    expect(xml.match(/spell(?:Start|End)/g)).toEqual([
+      "spellStart",
+      "spellEnd",
+    ]);
+  }
+  expect(propose(make(true)).isErr()).toBe(true);
+});
+
 const projection = (table: Table): unknown =>
   table.rows.map((row) =>
     row.cells.map((item) => ({
@@ -329,7 +452,7 @@ const projection = (table: Table): unknown =>
     })),
   );
 
-test("earlier inline and formatting revisions stay reviewable through a nested table move", () => {
+test("earlier inline, formatting and break revisions stay reviewable through a nested table move", () => {
   const stamp = (id: number) => ({
     id,
     author: "Earlier",
@@ -372,7 +495,25 @@ test("earlier inline and formatting revisions stay reviewable through a nested t
   };
   const moved: Table = {
     ...nested,
-    rows: [{ type: "tableRow", cells: [cell(marked)] }],
+    rows: [
+      {
+        type: "tableRow",
+        cells: [
+          cell(
+            marked,
+            {
+              ...paragraph("00000006", "Look "),
+              pPrMark: { kind: "del", info: stamp(45) },
+            },
+            {
+              ...paragraph("00000007", "here "),
+              pPrMark: { kind: "ins", info: stamp(46) },
+            },
+            paragraph("00000008", "now"),
+          ),
+        ],
+      },
+    ],
   };
   const table: Table = {
     type: "table",
@@ -429,7 +570,7 @@ test("earlier inline and formatting revisions stay reviewable through a nested t
       : undefined;
   if (grid === undefined || aliases === undefined)
     throw new TypeError("Expected paired run revision handoffs.");
-  expect(aliases.map(([id]) => id)).toEqual([41, 42, 44, 43]);
+  expect(aliases.map(([id]) => id)).toEqual([41, 42, 44, 43, 45, 46]);
   const projected = toProseDoc(reopened, { tableReviewGeometry: "physical" });
   for (const [authored, copied] of aliases)
     expect(getTrackedChangeGroupsForIds(projected, [authored]).at(0)).toContain(
@@ -478,6 +619,15 @@ test("earlier inline and formatting revisions stay reviewable through a nested t
               ? "<w:b/></w:rPr><w:t>clause"
               : "<w:i/></w:rPr><w:t>clause",
           );
+        } else if (authored === 45 || authored === 46) {
+          const deleted = authored === 45;
+          const paraId = deleted ? "00000006" : "00000007";
+          expect(xml.includes(`w14:paraId="${paraId}"`)).toBe(
+            deleted === (inner === REVISION_DECISIONS.REJECT),
+          );
+          expect(xml).toContain("Look ");
+          expect(xml).toContain("here");
+          expect(xml).toContain("now");
         } else {
           const inserted = authored === 41;
           expect(xml.includes(inserted ? "New " : "Old ")).toBe(

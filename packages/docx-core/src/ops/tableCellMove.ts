@@ -18,7 +18,6 @@ import {
   type RunContent,
   type SdtProperties,
   type Table,
-  type TableCell,
   type TableRow,
 } from "../model/document";
 import {
@@ -554,10 +553,12 @@ const movableInlineContent = (
 /** The run move can take the paragraph whole without duplicating an anchor. */
 export const tableMoveSource = (
   paragraph: Paragraph,
-  nested?: Pick<MoveContentContext, "priorRevisions" | "collectBookmark">,
+  nested?: Pick<MoveContentContext, "priorRevisions" | "collectBookmark"> & {
+    proofing?: Set<ProofingKind>;
+  },
 ): TableMoveSource | undefined => {
   const controls: number[] = [];
-  const proofing = new Set<ProofingKind>();
+  const proofing = nested?.proofing ?? new Set<ProofingKind>();
   const pictures = new Set<number>();
   if (
     paragraph.paraId === undefined ||
@@ -573,11 +574,11 @@ export const tableMoveSource = (
       !movableInlineContent(paragraph.content, {
         withinLink: false,
         controls,
-        proofing,
         pictures,
         ...nested,
+        proofing,
       })) ||
-    proofing.size !== 0
+    (nested?.proofing === undefined && proofing.size !== 0)
   )
     return undefined;
   for (const { info } of paragraph.propertyChanges ?? [])
@@ -615,16 +616,6 @@ const movableBookmark = (marker: BookmarkStart | BookmarkEnd): boolean => {
   );
 };
 
-const movablePositionedBookmarks = (
-  bookmarks: PositionedBookmarkMarker[] | undefined,
-) =>
-  bookmarks?.every(
-    ({ marker, contentControls, carrierStack }) =>
-      contentControls === undefined &&
-      carrierStack === undefined &&
-      movableBookmark(marker),
-  ) ?? true;
-
 type NativeHalves = NonNullable<
   ReturnType<typeof nativeMovesInParagraph>
 >["halves"];
@@ -634,6 +625,7 @@ export const nestedTableMoveSource = (
   table: Table,
 ): NestedTableMoveSource | undefined => {
   let hasBookmarks = false;
+  const proofing = new Set<ProofingKind>();
   const collectBookmark = (marker: BookmarkStart | BookmarkEnd) => {
     hasBookmarks = true;
     return movableBookmark(marker);
@@ -655,7 +647,7 @@ export const nestedTableMoveSource = (
   const collectCarriers = ({
     contentControls,
     carrierStack,
-  }: TableRow | TableCell): boolean =>
+  }: Pick<TableRow, "contentControls" | "carrierStack">): boolean =>
     (contentControls?.every(collectControl) ?? true) &&
     (carrierStack?.every((carrier) =>
       carrier.type === "customXml"
@@ -663,18 +655,27 @@ export const nestedTableMoveSource = (
         : collectControl(carrier.properties),
     ) ??
       true);
+  const collectPositionedBookmarks = (
+    bookmarks: PositionedBookmarkMarker[] | undefined,
+  ) =>
+    bookmarks?.every(
+      (bookmark) =>
+        movableBookmark(bookmark.marker) && collectCarriers(bookmark),
+    ) ?? true;
   const collectProperties = (
     changes: readonly { info: { id: number } }[] | undefined,
   ) => {
     for (const { info } of changes ?? []) revisions.push(info.id);
   };
+  const collectBlocks = (blocks: readonly BlockContent[]): boolean =>
+    blocks.every((block, index) => collectBlock(block, blocks.at(index + 1)));
   const collect = (candidate: Table): boolean => {
-    const { rows, ...tableProperties } = candidate;
+    const { rows, bookmarks, ...tableProperties } = candidate;
     const grid = tableProperties.formatting?.gridChange;
     const geometry = grid?.geometryChange;
-    hasBookmarks ||= (tableProperties.bookmarks?.length ?? 0) > 0;
+    hasBookmarks ||= (bookmarks?.length ?? 0) > 0;
     if (
-      !movablePositionedBookmarks(tableProperties.bookmarks) ||
+      !collectPositionedBookmarks(bookmarks) ||
       tableProperties.carrierStack !== undefined ||
       reachesPastRemovedCell(tableProperties) ||
       (geometry?.type === "mergeCells" &&
@@ -694,15 +695,16 @@ export const nestedTableMoveSource = (
     }
     collectProperties(tableProperties.propertyChanges);
     return rows.every((row) => {
-      hasBookmarks ||= (row.bookmarks?.length ?? 0) > 0;
       const {
         cells,
+        bookmarks: rowBookmarks,
         contentControls: _rowControls,
         carrierStack: _rowStack,
         ...rowProperties
       } = row;
+      hasBookmarks ||= (rowBookmarks?.length ?? 0) > 0;
       if (
-        !movablePositionedBookmarks(rowProperties.bookmarks) ||
+        !collectPositionedBookmarks(rowBookmarks) ||
         !collectCarriers(row) ||
         reachesPastRemovedCell(rowProperties) ||
         !rowHasCellsOrOmissions(row)
@@ -744,20 +746,21 @@ export const nestedTableMoveSource = (
             return false;
           revisions.push(previousStructuralChange.info.id);
         }
-        return content.every(collectBlock);
+        return collectBlocks(content);
       });
     });
   };
-  const collectBlock = (block: BlockContent): boolean => {
+  const collectBlock = (
+    block: BlockContent,
+    following: BlockContent | undefined,
+  ): boolean => {
     if (block.type === "bookmarkStart" || block.type === "bookmarkEnd")
       return collectBookmark(block);
     if (block.type === "table") return collect(block);
     if (block.type === "blockCustomXml")
-      return movableCustomXmlBlock(block) && block.content.every(collectBlock);
+      return movableCustomXmlBlock(block) && collectBlocks(block.content);
     if (block.type === "blockSdt") {
-      return (
-        collectControl(block.properties) && block.content.every(collectBlock)
-      );
+      return collectControl(block.properties) && collectBlocks(block.content);
     }
     if (block.type !== "paragraph") return false;
     const move =
@@ -794,7 +797,25 @@ export const nestedTableMoveSource = (
           });
         plain = { ...paragraph, content: tracked.content };
       }
-    } else if (block.pPrMark === undefined) {
+    } else if (block.pPrMark !== undefined) {
+      const { pPrMark, ...paragraph } = block;
+      if (
+        // These ordinary native marks join into the next paragraph in the
+        // same copied block list. Folio cut or handoff metadata needs its own
+        // remapping, as do moves that do not belong to this table's history.
+        following?.type !== "paragraph" ||
+        following.paraId === undefined ||
+        (pPrMark.kind !== "ins" && pPrMark.kind !== "del") ||
+        pPrMark.deletion !== undefined ||
+        pPrMark.resolutionJoin !== undefined ||
+        pPrMark.splitDate !== undefined ||
+        pPrMark.survivor !== undefined ||
+        pPrMark.takenOverMark !== undefined
+      )
+        return false;
+      revisions.push(pPrMark.info.id);
+      plain = paragraph;
+    } else {
       const native = nativeMovesInParagraph(block.content);
       if (native === undefined) return false;
       for (const half of native.halves) {
@@ -805,7 +826,7 @@ export const nestedTableMoveSource = (
         plain = { ...block, content: native.content };
     }
     const source = tableMoveSource(plain, {
-      ...(move === undefined ? { priorRevisions: revisions } : {}),
+      ...(move === undefined ? { priorRevisions: revisions, proofing } : {}),
       collectBookmark,
     });
     if (source === undefined) return false;
@@ -836,7 +857,7 @@ export const nestedTableMoveSource = (
   const insertedRows = table.rows.filter(
     ({ structuralChange }) => structuralChange === undefined,
   ).length;
-  if (!collect(table)) return undefined;
+  if (!collect(table) || proofing.size !== 0) return undefined;
   const nativeMoves = pairedNativeCellMoves(nativeHalves);
   if (nativeMoves === undefined) return undefined;
   for (const { name, fromRange, toRange } of nativeMoves)
@@ -944,18 +965,16 @@ const withNestedMoveIdentities = (
   table: Table,
   ids: NestedMoveIdentities,
 ): Table => {
-  const rewriteBookmark = (
-    bookmark: PositionedBookmarkMarker,
-  ): PositionedBookmarkMarker => {
-    const marker = withBookmarkIdentity(bookmark.marker, ids.bookmarks);
-    return marker === bookmark.marker ? bookmark : { ...bookmark, marker };
-  };
   const restampControl = (properties: SdtProperties): SdtProperties => {
     const id =
       properties.id === undefined ? undefined : ids.controls.get(properties.id);
     return id === undefined ? properties : { ...properties, id };
   };
-  const carrierIdentities = <T extends TableRow | TableCell>(item: T): T => ({
+  const carrierIdentities = <
+    T extends Pick<TableRow, "contentControls" | "carrierStack">,
+  >(
+    item: T,
+  ): T => ({
     ...item,
     ...(item.contentControls === undefined
       ? {}
@@ -972,6 +991,12 @@ const withNestedMoveIdentities = (
           ),
         }),
   });
+  const rewriteBookmark = (
+    bookmark: PositionedBookmarkMarker,
+  ): PositionedBookmarkMarker => {
+    const marker = withBookmarkIdentity(bookmark.marker, ids.bookmarks);
+    return { ...carrierIdentities(bookmark), marker };
+  };
   const restamp = <Change extends { info: { id: number } }>(
     record: Change,
   ): Change => {

@@ -493,6 +493,8 @@ const getTrackedChangeGroupsFromProjectedDoc = (
         if (
           rowScope !== undefined &&
           ROW_PARAGRAPH_MARK_CARRIERS[rowScope.kind] === carrier.type &&
+          !nestedTableRevisionCopies.has(carrier.id) &&
+          !nestedTableRevisionOriginals.has(carrier.id) &&
           isTableRowRevisionCompanion({
             row: rowScope.change,
             candidate: carrier,
@@ -938,6 +940,8 @@ const getTrackedChangeGroupsFromProjectedDoc = (
         case "insertion":
         case "deletion":
         case "formatting":
+        case "paragraphMarkInserted":
+        case "paragraphMarkDeleted":
         case "paragraphPropertiesChanged":
         case "tablePropertiesChanged":
         case "tablePropertyExceptionsChanged":
