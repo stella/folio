@@ -2247,6 +2247,7 @@ export type TemplatePlan = {
     textEffects?: "normalize" | "keep";
     sourceHeaders?: "drop" | "keep";
     comments?: "drop" | "keep";
+    textColors?: "drop" | "keep";
 };
 
 // @public
@@ -2536,6 +2537,7 @@ export type TemplatePlanSourceHeaders = {
         unsupportedObjects: number;
         laterSectionParts: number;
     };
+    pageNumbersTwice: number;
 };
 
 // @public (undocumented)
