@@ -38,6 +38,7 @@ import { type ParagraphLabel, styleNumbering } from "./labels";
 import { PLAN_HIGHLIGHT_COLORS, planShapeIssue } from "./planShape";
 import type { StoryOrigin } from "./resources";
 import { DELETED_PARAGRAPH_MARK } from "./revisions";
+import { baseSectionOf } from "./sourceHeaders";
 import { isPageShape } from "./story";
 import type {
   AtomKind,
@@ -2136,6 +2137,14 @@ export const resolvePlan = (
   if (splitsSections && wChild(template.body, "sectPr") === null) {
     return invalid(
       "The template has no last section to build the plan's sections from.",
+    );
+  }
+  if (
+    plan.bodySection !== undefined &&
+    baseSectionOf(template.body, plan.bodySection) === null
+  ) {
+    return invalid(
+      `The template has no section ${String(plan.bodySection)} to build the output from.`,
     );
   }
 

@@ -1233,6 +1233,62 @@ describe("applyTemplatePlan onto a template whose contents end in the next parag
   });
 });
 
+describe("applyTemplatePlan onto a template whose last section is not its body's", () => {
+  test("builds the output's page and headers from the section the plan names", async () => {
+    const documentXml =
+      (await readPart(fixture.template, "word/document.xml")) ?? "";
+    // The sample body ends a portrait section with the house header; an
+    // annex follows in a landscape section without one.
+    const bodyEnd =
+      '<w:p><w:pPr><w:sectPr><w:headerReference w:type="default" r:id="rId10"/><w:footerReference w:type="default" r:id="rId11"/><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1417" w:right="1417" w:bottom="1134" w:left="1417" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr></w:pPr></w:p>';
+    const annex = `${p(r("Annex page of the template."))}<w:sectPr><w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/><w:pgMar w:top="1417" w:right="1417" w:bottom="1134" w:left="1417" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr>`;
+    const twoSections = documentXml.replace(
+      /<w:sectPr>.*<\/w:sectPr><\/w:body>/su,
+      `${bodyEnd}${annex}</w:body>`,
+    );
+    expect(twoSections).not.toBe(documentXml);
+    const template = await replacePart(
+      fixture.template,
+      "word/document.xml",
+      twoSections,
+    );
+    const inspection = unwrap(await inspectDocxTemplate(template));
+    const finalSection = async (bodySection?: number): Promise<string> => {
+      const result = unwrap(
+        await applyTemplatePlan({
+          source: fixture.source,
+          template,
+          plan: {
+            ...fullPlan(),
+            templateSha256: inspection.sha256,
+            ...(bodySection === undefined ? {} : { bodySection }),
+          },
+        }),
+      );
+      expect(result.report.ok).toBe(true);
+      const output = (await readPart(result.docx, "word/document.xml")) ?? "";
+      return output.slice(output.lastIndexOf("<w:sectPr"));
+    };
+
+    // Left out: the last section, landscape, and the header the body's
+    // section names is inherited from it.
+    expect(await finalSection()).toContain('w:orient="landscape"');
+    const fromBody = await finalSection(0);
+    expect(fromBody).not.toContain("landscape");
+    expect(fromBody).toContain('<w:pgSz w:w="11906" w:h="16838"/>');
+    expect(fromBody).toContain('w:type="default" r:id="rId10"');
+  });
+
+  test("refuses a section the template does not have", async () => {
+    const result = await applyTemplatePlan({
+      source: fixture.source,
+      template: fixture.template,
+      plan: { ...fullPlan(), bodySection: 3 },
+    });
+    expect(Result.isError(result) && result.error.code).toBe("plan-invalid");
+  });
+});
+
 describe("applyTemplatePlan onto a template without notes", () => {
   test("creates the footnotes part with its relationship and content type", async () => {
     const template = await buildTemplate({ withoutFootnotes: true });

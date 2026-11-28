@@ -78,6 +78,7 @@ import {
   withEntriesOnly,
 } from "./sourceComments";
 import {
+  baseSectionOf,
   copyPartContent,
   type CopyTarget,
   type HeaderFamily,
@@ -1374,7 +1375,10 @@ const writeOutput = async ({
   // Sections the plan ends are built from the template's last one. The
   // first of them begins the document; when there is any, the body's own
   // last section is a later one too.
-  const bodySection = wChild(template.body, "sectPr");
+  const bodySection = baseSectionOf(template.body, plan.bodySection);
+  // A section other than the template's last is written anew to close
+  // the body: it inherits what the sections before it name.
+  const otherBase = bodySection !== wChild(template.body, "sectPr");
   // The headers and footers the template's last section shows without
   // stating them: every section of the output is built from that one.
   const inherited =
@@ -1483,6 +1487,7 @@ const writeOutput = async ({
       source,
       template,
       outputSectionStarts(source, keptSectionEnds(resolved)),
+      bodySection,
     );
     if (Result.isError(planned)) {
       return planned;
@@ -1790,7 +1795,10 @@ const writeOutput = async ({
     const { lastSection } = plan;
     const split = sectionEnds.length > 0 || lastSection !== undefined;
     const rebuilt =
-      split || sectionReferences.length > 0 || sectionOverrides.size > 0
+      split ||
+      otherBase ||
+      sectionReferences.length > 0 ||
+      sectionOverrides.size > 0
         ? sectionPropertiesXml(
             template.document.xml,
             bodySection,

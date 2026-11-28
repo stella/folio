@@ -242,6 +242,8 @@ const referencesOf = (
 export const outputReferences = (
   body: XmlElement,
   family: HeaderFamily,
+  /** The section the output is built from; left out, the last. */
+  base: XmlElement | null = null,
 ): Map<HeaderKind, string> => {
   const out = new Map<HeaderKind, string>();
   for (const block of elementChildren(body)) {
@@ -251,8 +253,28 @@ export const outputReferences = (
     for (const [kind, id] of referencesOf(sectPr, family)) {
       out.set(kind, id);
     }
+    // The sections behind the one the output is built from name nothing
+    // it shows.
+    if (base !== null && sectPr === base) {
+      break;
+    }
   }
   return out;
+};
+
+/**
+ * The section of a template the output is built from: the one a plan
+ * names by its position, or the last. Null where the template has no such
+ * section.
+ */
+export const baseSectionOf = (
+  body: XmlElement,
+  index: number | undefined,
+): XmlElement | null => {
+  const sections = sectionsOf(body);
+  return index === undefined
+    ? (sections.at(-1) ?? null)
+    : (sections[index] ?? null);
 };
 
 /** The part a header or footer relationship of the main document points to. */
@@ -440,6 +462,8 @@ export const plannedHeaderWrites = async (
   /** For each output section after the first, the index of the source
    *  section it starts with. */
   starts: readonly number[] = [],
+  /** The template section the output is built from; left out, the last. */
+  base: XmlElement | null = null,
 ): Promise<
   Result<{ writes: HeaderWrite[]; leftOut: LeftOut }, TemplatePlanError>
 > => {
@@ -454,7 +478,8 @@ export const plannedHeaderWrites = async (
   }
   const pages: FamilyPages = {
     titlePage:
-      toggleOf(wChild(wChild(template.body, "sectPr"), "titlePg")) === true,
+      toggleOf(wChild(base ?? wChild(template.body, "sectPr"), "titlePg")) ===
+      true,
     evenPages: templateEven.value,
     sourceEven: sourceEven.value,
   };
@@ -466,7 +491,7 @@ export const plannedHeaderWrites = async (
     if (Result.isError(carried)) {
       return carried;
     }
-    const references = outputReferences(template.body, family);
+    const references = outputReferences(template.body, family, base);
     const pathOf = (kind: HeaderKind): string | null => {
       const id = references.get(kind);
       return id === undefined ? null : familyPathOf(template, family, id);
@@ -501,6 +526,7 @@ export const plannedHeaderWrites = async (
     starts,
     pages,
     leftOut,
+    base,
   );
   if (Result.isError(later)) {
     return later;
@@ -531,6 +557,7 @@ const laterSectionWrites = async (
   starts: readonly number[],
   pages: FamilyPages,
   leftOut: LeftOut,
+  base: XmlElement | null,
 ): Promise<Result<HeaderWrite[], TemplatePlanError>> => {
   const sections = sectionsOf(source.body);
   const representatives = [0, ...starts];
@@ -554,7 +581,7 @@ const laterSectionWrites = async (
       shown.push(carried.value);
     }
     const first = shown[0] ?? new Map<HeaderKind, SourcePart>();
-    const references = outputReferences(template.body, family);
+    const references = outputReferences(template.body, family, base);
     const counted = new Set<string>();
     for (const [index, parts] of shown.entries()) {
       // The output section the source section went into.
@@ -946,18 +973,21 @@ export const verifyCarriedHeaders = async ({
   template,
   output,
   starts = [],
+  base = null,
 }: {
   source: AnalyzedDocument;
   template: AnalyzedDocument;
   output: AnalyzedDocument;
   starts?: readonly number[];
+  /** The template section the output is built from; null for the last. */
+  base?: XmlElement | null;
 }): Promise<
   Result<
     { report: TemplatePlanSourceHeaders; mismatched: string[] },
     TemplatePlanError
   >
 > => {
-  const planned = await plannedHeaderWrites(source, template, starts);
+  const planned = await plannedHeaderWrites(source, template, starts, base);
   if (Result.isError(planned)) {
     return planned;
   }

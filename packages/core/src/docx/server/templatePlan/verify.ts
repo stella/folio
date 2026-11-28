@@ -84,6 +84,7 @@ import {
 } from "./resources";
 import { tableRowRevisions } from "./revisions";
 import {
+  baseSectionOf,
   keptSectionEnds,
   outputSectionStarts,
   verifyCarriedHeaders,
@@ -1951,6 +1952,7 @@ export const reportTemplatePlanOutput = async ({
       template,
       output: out,
       starts: outputSectionStarts(source, keptSectionEnds(resolved)),
+      base: baseSectionOf(template.body, plan.bodySection),
     });
     if (Result.isError(carried)) {
       return carried;

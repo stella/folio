@@ -840,6 +840,14 @@ export type TemplatePlan = {
    */
   lastSection?: TemplatePlanSection;
   /**
+   * The section of the template, counted from 0 in document order, the
+   * output's sections are built from: its page, and the headers and
+   * footers it shows. Left out, the template's last section; a template
+   * whose last section is an annex or a signature page names the one that
+   * holds its sample body.
+   */
+  bodySection?: number;
+  /**
    * Paragraphs inside kept template tables that are written without their
    * text: a sample line of a header cell the document has nothing for (the
    * third line of an address). The paragraph keeps its place and its

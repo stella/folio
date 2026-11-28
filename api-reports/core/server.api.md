@@ -2242,6 +2242,7 @@ export type TemplatePlan = {
         doNotExpandShiftReturn?: boolean;
     };
     lastSection?: TemplatePlanSection;
+    bodySection?: number;
     emptyTemplateBlockIds?: string[];
     trackedChanges?: TemplatePlanTrackedChanges;
     textEffects?: "normalize" | "keep";
