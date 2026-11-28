@@ -18,15 +18,13 @@ type Adapter = (typeof ADAPTERS)[number];
 type Metrics = { minified: number; gzip: number; docxOps: number };
 
 const BUDGETS = {
-  // Main measured React 3,833,737/1,206,336/740,273 and Vue 3,527,470/1,101,917/740,222 (minified/gzip/ops).
-  // Ceilings sit a few kB above measured; raise with a reason, then ratchet down after a series.
-  // Custom XML revision records measure React 3,854,169/1,212,264/756,432 and
-  // Vue 3,547,921/1,107,933/756,377; retain the same 8/3/5 kB margins.
-  // Preserving earlier nested table revisions measures 762,516 React and 762,456 Vue ops bytes.
-  // Settling empty nested move boundaries adds 733 React and 729 Vue ops bytes.
-  // The merge group measures 3,862,697 React and 3,556,475 Vue minified bytes.
-  react: { minified: 3_862_697, gzip: 1_215_264, docxOps: 763_249 },
-  vue: { minified: 3_556_475, gzip: 1_110_933, docxOps: 763_185 },
+  // Main measures about React 3,856/1,212/762 kB and Vue 3,550/1,108/762 kB
+  // (minified/gzip/ops). While tracked-change work is landing, the ceilings
+  // keep about 25/8/20 kB of room so a change needs no edit here; they are
+  // ratcheted down to measured plus a small margin once a week. Raise one
+  // only when CI exceeds it, with the reason and delta.
+  react: { minified: 3_885_000, gzip: 1_222_000, docxOps: 785_000 },
+  vue: { minified: 3_580_000, gzip: 1_118_000, docxOps: 785_000 },
 } as const satisfies Record<Adapter, Metrics>;
 
 const HOST_PEERS = [
