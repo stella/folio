@@ -44,7 +44,9 @@ import type {
   DocxNote,
   DocxSection,
   DocxTableCell,
+  DocxTabStop,
   TemplatePlanLineRule,
+  TemplatePlanTabLeader,
   TemplatePlanTrackedChanges,
 } from "./types";
 import { TemplatePlanError } from "./types";
@@ -199,6 +201,80 @@ const NO_INDENT: IndentSides = { left: null, firstLine: null };
 
 const levelKey = (abstractNumId: number, ilvl: number): string =>
   `${String(abstractNumId)}:${String(ilvl)}`;
+
+const TAB_LEADERS: ReadonlySet<string> = new Set([
+  "dot",
+  "hyphen",
+  "underscore",
+  "heavy",
+  "middleDot",
+]);
+
+const isTabLeader = (value: string): value is TemplatePlanTabLeader =>
+  TAB_LEADERS.has(value);
+
+/** A stop's alignment as a manifest names it; null for a cleared stop. */
+const tabAlignmentOf = (
+  value: string | null,
+): DocxTabStop["alignment"] | null => {
+  switch (value) {
+    case "left":
+    case "start":
+      return "left";
+    case "right":
+    case "end":
+      return "right";
+    case "center":
+    case "decimal":
+    case "bar":
+    case "num":
+      return value;
+    default:
+      return null;
+  }
+};
+
+/**
+ * The tab stops in effect: the style's, its chain resolved, under the
+ * paragraph's own `w:tabs`, by position; a stop a tier clears is gone.
+ */
+export const tabStopsInEffect = (
+  ofStyle:
+    | readonly { position: number; alignment: string; leader?: string }[]
+    | undefined,
+  own: XmlElement | null,
+): DocxTabStop[] => {
+  const byPosition = new Map<number, DocxTabStop | null>();
+  const set = (
+    position: number,
+    alignment: string | null,
+    leader: string | null,
+  ): void => {
+    const kind = tabAlignmentOf(alignment);
+    byPosition.set(
+      position,
+      kind === null
+        ? null
+        : {
+            position,
+            alignment: kind,
+            ...(leader !== null && isTabLeader(leader) ? { leader } : {}),
+          },
+    );
+  };
+  for (const stop of ofStyle ?? []) {
+    set(stop.position, stop.alignment, stop.leader ?? null);
+  }
+  for (const tab of wChildren(own, "tab")) {
+    const position = twipsOrNull(wAttr(tab, "pos"));
+    if (position !== null) {
+      set(position, wAttr(tab, "val"), wAttr(tab, "leader"));
+    }
+  }
+  return [...byPosition.values()]
+    .filter((stop): stop is DocxTabStop => stop !== null)
+    .toSorted((a, b) => a.position - b.position);
+};
 
 /** The sides a `w:ind` states; a hanging indent is a negative first line. */
 const statedIndent = (indent: XmlElement | null): IndentSides => {
@@ -926,6 +1002,13 @@ export const analyzeStory = ({
       // An indent counted in characters cannot be said in this unit.
       if (indent !== null && !read.indentInCharacters) {
         block.indent = indent;
+      }
+      const tabStops = tabStopsInEffect(
+        style?.pPr?.tabs,
+        wChild(wChild(read.element, "pPr"), "tabs"),
+      );
+      if (tabStops.length > 0) {
+        block.tabStops = tabStops;
       }
       index += 1;
       const parent = tables.at(-1);

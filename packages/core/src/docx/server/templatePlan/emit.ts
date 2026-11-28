@@ -1197,7 +1197,10 @@ export const paragraphXml = (
   const { indent, tabStops } = emit.paragraph;
   if (tabStops !== null) {
     const stops = tabStops
-      .map((stop) => `<${w}:tab ${w}:val="left" ${w}:pos="${String(stop)}"/>`)
+      .map(
+        ({ position, alignment, leader }) =>
+          `<${w}:tab ${w}:val="${alignment}"${leader === undefined ? "" : ` ${w}:leader="${leader}"`} ${w}:pos="${String(position)}"/>`,
+      )
       .join("");
     properties.push(`<${w}:tabs>${stops}</${w}:tabs>`);
   }

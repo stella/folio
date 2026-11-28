@@ -15,6 +15,7 @@ import {
   type AnalyzedBlock,
   type AnalyzedDocument,
   bookmarkTargetsOf,
+  tabStopsInEffect,
 } from "./blocks";
 import {
   bookmarkIdsOf,
@@ -49,6 +50,7 @@ import type {
   StoryField,
 } from "./story";
 import {
+  type DocxTabStop,
   type TemplatePlan,
   type TemplatePlanAlignment,
   TemplatePlanError,
@@ -62,6 +64,7 @@ import {
   type TemplatePlanSection,
   type TemplatePlanSourceItem,
   type TemplatePlanSpacing,
+  type TemplatePlanTabStop,
 } from "./types";
 import {
   elementChildren,
@@ -127,6 +130,39 @@ export type ResolvedPart = {
   labelAsText: string | null;
 };
 
+/** A tab stop as the output writes it: `alignment` is `clear` for a stop
+ *  of the style the paragraph clears. */
+export type ResolvedTabStop = {
+  position: number;
+  alignment: string;
+  leader?: string;
+};
+
+/**
+ * A plan item's tab stops as the output writes them, by position: a bare
+ * position is a left stop; with `ofStyle` (the item takes its stops only)
+ * each stop of the style the item does not set is cleared.
+ */
+const resolvedTabStops = (
+  stops: readonly TemplatePlanTabStop[],
+  ofStyle: readonly DocxTabStop[],
+): ResolvedTabStop[] => {
+  const own: ResolvedTabStop[] = stops.map((stop) =>
+    typeof stop === "number"
+      ? { position: stop, alignment: "left" }
+      : {
+          position: stop.position,
+          alignment: stop.alignment ?? "left",
+          ...(stop.leader === undefined ? {} : { leader: stop.leader }),
+        },
+  );
+  const taken = new Set(own.map(({ position }) => position));
+  const cleared = ofStyle
+    .filter(({ position }) => !taken.has(position))
+    .map(({ position }) => ({ position, alignment: "clear" }));
+  return [...own, ...cleared].toSorted((a, b) => a.position - b.position);
+};
+
 export type ResolvedParagraph = {
   parts: ResolvedPart[];
   /** A paragraph style of the template; null leaves the paragraph unstyled. */
@@ -144,8 +180,9 @@ export type ResolvedParagraph = {
   keepNext: boolean;
   /** The paragraph's own indent, or null. */
   indent: TemplatePlanIndent | null;
-  /** The paragraph's own left tab stops, or null. */
-  tabStops: readonly number[] | null;
+  /** The paragraph's own tab stops, those that clear a stop of its style
+   *  included, by position; or null. */
+  tabStops: readonly ResolvedTabStop[] | null;
   /** The paragraph's own alignment, or null. */
   alignment: TemplatePlanAlignment | null;
   /** The paragraph's own outline level (0 for level 1), or null. */
@@ -1157,7 +1194,8 @@ type ParagraphRequest = {
   pageBreakBefore?: boolean;
   keepNext?: boolean;
   indent?: TemplatePlanIndent | undefined;
-  tabStops?: readonly number[] | undefined;
+  tabStops?: readonly TemplatePlanTabStop[] | undefined;
+  tabStopsOnly?: boolean | undefined;
   alignment?: TemplatePlanAlignment | undefined;
   outlineLevel?: number | undefined;
   spacing?: TemplatePlanSpacing | undefined;
@@ -1459,6 +1497,7 @@ export const resolvePlan = (
     keepNext = false,
     indent,
     tabStops,
+    tabStopsOnly = false,
     alignment,
     outlineLevel,
     spacing,
@@ -1700,7 +1739,20 @@ export const resolvePlan = (
       pageBreakBefore,
       keepNext,
       indent: indent ?? null,
-      tabStops: tabStops ?? null,
+      tabStops:
+        tabStops === undefined
+          ? null
+          : resolvedTabStops(
+              tabStops,
+              tabStopsOnly
+                ? tabStopsInEffect(
+                    template.styles.get(
+                      style.value ?? template.defaultStyleId ?? "",
+                    )?.pPr?.tabs,
+                    null,
+                  )
+                : [],
+            ),
       alignment: alignment ?? null,
       outlineLevel: outlineLevel ?? null,
       spacing: spacing ?? null,
@@ -1747,6 +1799,7 @@ export const resolvePlan = (
       item.keepNext !== undefined ||
       item.indent !== undefined ||
       item.tabStops !== undefined ||
+      item.tabStopsOnly !== undefined ||
       item.alignment !== undefined ||
       item.spacing !== undefined ||
       item.endsSection !== undefined ||
@@ -1804,6 +1857,7 @@ export const resolvePlan = (
         keepNext: override?.keepNext === true,
         indent: override?.indent,
         tabStops: override?.tabStops,
+        tabStopsOnly: override?.tabStopsOnly === true,
         alignment: override?.alignment,
         spacing: override?.spacing,
       });
@@ -1944,6 +1998,7 @@ export const resolvePlan = (
             next.keepNext !== undefined ||
             next.indent !== undefined ||
             next.tabStops !== undefined ||
+            next.tabStopsOnly !== undefined ||
             next.alignment !== undefined ||
             next.spacing !== undefined ||
             next.endsSection !== undefined
@@ -1978,6 +2033,7 @@ export const resolvePlan = (
           keepNext: item.keepNext === true,
           indent: item.indent,
           tabStops: item.tabStops,
+          tabStopsOnly: item.tabStopsOnly === true,
           alignment: item.alignment,
           outlineLevel: item.outlineLevel,
           spacing: item.spacing,

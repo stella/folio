@@ -193,23 +193,67 @@ const isIndent = (value: unknown): boolean => {
 };
 
 /** The most tab stops a plan may give one paragraph. */
-const MAX_TAB_STOPS = 8;
+const MAX_TAB_STOPS = 16;
+
+const TAB_ALIGNMENTS: ReadonlySet<unknown> = new Set([
+  "left",
+  "center",
+  "right",
+  "decimal",
+  "bar",
+]);
+const TAB_LEADERS: ReadonlySet<unknown> = new Set([
+  "dot",
+  "hyphen",
+  "underscore",
+  "heavy",
+  "middleDot",
+]);
+
+/** A tab stop's position, or null for a malformed stop. */
+const tabPositionOf = (stop: unknown): number | null => {
+  if (isCount(stop)) {
+    return stop;
+  }
+  if (!isObject(stop)) {
+    return null;
+  }
+  const keys = Object.keys(stop);
+  const known = keys.every(
+    (key) => key === "position" || key === "alignment" || key === "leader",
+  );
+  return known &&
+    isCount(stop["position"]) &&
+    (stop["alignment"] === undefined ||
+      TAB_ALIGNMENTS.has(stop["alignment"])) &&
+    (stop["leader"] === undefined || TAB_LEADERS.has(stop["leader"]))
+    ? stop["position"]
+    : null;
+};
 
 /**
- * Whether `value` is a list of tab stops a plan may state: one to eight
- * whole numbers of twentieths of a point, above zero and ascending.
+ * Whether `value` is a list of tab stops a plan may state: one to sixteen
+ * stops, each a whole number of twentieths of a point or one with an
+ * alignment and a leader, above zero and ascending.
  */
-const isTabStops = (value: unknown): boolean =>
-  Array.isArray(value) &&
-  value.length > 0 &&
-  value.length <= MAX_TAB_STOPS &&
-  value.every(
-    (stop, index) =>
-      isCount(stop) &&
-      stop > 0 &&
-      stop <= MAX_INDENT &&
-      (index === 0 || stop > value[index - 1]),
-  );
+const isTabStops = (value: unknown): boolean => {
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    value.length > MAX_TAB_STOPS
+  ) {
+    return false;
+  }
+  let previous = 0;
+  for (const stop of value) {
+    const position = tabPositionOf(stop);
+    if (position === null || position <= previous || position > MAX_INDENT) {
+      return false;
+    }
+    previous = position;
+  }
+  return true;
+};
 
 const ALIGNMENTS: ReadonlySet<string> = new Set([
   "left",
@@ -277,6 +321,12 @@ const sourceItemIssue = (item: Json, where: string): string | null => {
   if (item["tabStops"] !== undefined && !isTabStops(item["tabStops"])) {
     return `${where} carries malformed tab stops.`;
   }
+  if (
+    item["tabStopsOnly"] !== undefined &&
+    (item["tabStopsOnly"] !== true || item["tabStops"] === undefined)
+  ) {
+    return `${where} clears its style's tab stops without stops of its own.`;
+  }
   if (item["alignment"] !== undefined && !isAlignment(item["alignment"])) {
     return `${where} carries an unknown alignment.`;
   }
@@ -331,6 +381,8 @@ const sourceItemIssue = (item: Json, where: string): string | null => {
       !isOptionalBoolean(entry["dropPageShapes"]) ||
       (entry["indent"] !== undefined && !isIndent(entry["indent"])) ||
       (entry["tabStops"] !== undefined && !isTabStops(entry["tabStops"])) ||
+      (entry["tabStopsOnly"] !== undefined &&
+        (entry["tabStopsOnly"] !== true || entry["tabStops"] === undefined)) ||
       (entry["alignment"] !== undefined && !isAlignment(entry["alignment"])) ||
       (entry["spacing"] !== undefined && !isSpacing(entry["spacing"]))
     ) {
