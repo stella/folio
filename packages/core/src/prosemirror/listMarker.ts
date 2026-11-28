@@ -262,13 +262,17 @@ export function advanceVisibleListMarker(
             numPrFromStyle: previous.numPrFromStyle,
           }),
         );
+  const keepsOriginalMarker =
+    previous?.numPr?.kind === "reference" ||
+    (attrs._propertyChanges?.at(0)?.resolvesWith !== undefined &&
+      previousNumbering?.kind === "reference");
   const visible =
     attrs.numPr?.kind !== "none" &&
     levelOnlyResolves &&
     final.marker === null &&
     original &&
     original.marker !== null &&
-    previousNumbering?.kind === "reference"
+    keepsOriginalMarker
       ? original
       : final;
   return { ...visible, advances };

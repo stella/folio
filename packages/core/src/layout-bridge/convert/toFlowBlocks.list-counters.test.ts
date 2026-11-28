@@ -301,6 +301,7 @@ describe("toFlowBlocks counter sharing by abstractNumId", () => {
           {
             type: "paragraphPropertyChange",
             info: INS_MARK.info,
+            resolvesWith: 2,
             previousFormatting: {
               numPrFromStyle: paragraphNumberingFromAttrValue({
                 kind: "reference",
