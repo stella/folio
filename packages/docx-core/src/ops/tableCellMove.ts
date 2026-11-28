@@ -671,6 +671,8 @@ export const nestedTableMoveSource = (
   ) => {
     for (const { info } of changes ?? []) revisions.push(info.id);
   };
+  const collectBlocks = (blocks: readonly BlockContent[]): boolean =>
+    blocks.every((block, index) => collectBlock(block, blocks.at(index + 1)));
   const collect = (candidate: Table): boolean => {
     const { rows, ...tableProperties } = candidate;
     const grid = tableProperties.formatting?.gridChange;
@@ -747,20 +749,21 @@ export const nestedTableMoveSource = (
             return false;
           revisions.push(previousStructuralChange.info.id);
         }
-        return content.every(collectBlock);
+        return collectBlocks(content);
       });
     });
   };
-  const collectBlock = (block: BlockContent): boolean => {
+  const collectBlock = (
+    block: BlockContent,
+    following: BlockContent | undefined,
+  ): boolean => {
     if (block.type === "bookmarkStart" || block.type === "bookmarkEnd")
       return collectBookmark(block);
     if (block.type === "table") return collect(block);
     if (block.type === "blockCustomXml")
-      return movableCustomXmlBlock(block) && block.content.every(collectBlock);
+      return movableCustomXmlBlock(block) && collectBlocks(block.content);
     if (block.type === "blockSdt") {
-      return (
-        collectControl(block.properties) && block.content.every(collectBlock)
-      );
+      return collectControl(block.properties) && collectBlocks(block.content);
     }
     if (block.type !== "paragraph") return false;
     const move =
@@ -797,7 +800,25 @@ export const nestedTableMoveSource = (
           });
         plain = { ...paragraph, content: tracked.content };
       }
-    } else if (block.pPrMark === undefined) {
+    } else if (block.pPrMark !== undefined) {
+      const { pPrMark, ...paragraph } = block;
+      if (
+        // These ordinary native marks join into the next paragraph in the
+        // same copied block list. Folio cut or handoff metadata needs its own
+        // remapping, as do moves that do not belong to this table's history.
+        following?.type !== "paragraph" ||
+        following.paraId === undefined ||
+        (pPrMark.kind !== "ins" && pPrMark.kind !== "del") ||
+        pPrMark.deletion !== undefined ||
+        pPrMark.resolutionJoin !== undefined ||
+        pPrMark.splitDate !== undefined ||
+        pPrMark.survivor !== undefined ||
+        pPrMark.takenOverMark !== undefined
+      )
+        return false;
+      revisions.push(pPrMark.info.id);
+      plain = paragraph;
+    } else {
       const native = nativeMovesInParagraph(block.content);
       if (native === undefined) return false;
       for (const half of native.halves) {

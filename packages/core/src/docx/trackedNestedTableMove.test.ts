@@ -452,7 +452,7 @@ const projection = (table: Table): unknown =>
     })),
   );
 
-test("earlier inline and formatting revisions stay reviewable through a nested table move", () => {
+test("earlier inline, formatting and break revisions stay reviewable through a nested table move", () => {
   const stamp = (id: number) => ({
     id,
     author: "Earlier",
@@ -495,7 +495,25 @@ test("earlier inline and formatting revisions stay reviewable through a nested t
   };
   const moved: Table = {
     ...nested,
-    rows: [{ type: "tableRow", cells: [cell(marked)] }],
+    rows: [
+      {
+        type: "tableRow",
+        cells: [
+          cell(
+            marked,
+            {
+              ...paragraph("00000006", "Look "),
+              pPrMark: { kind: "del", info: stamp(45) },
+            },
+            {
+              ...paragraph("00000007", "here "),
+              pPrMark: { kind: "ins", info: stamp(46) },
+            },
+            paragraph("00000008", "now"),
+          ),
+        ],
+      },
+    ],
   };
   const table: Table = {
     type: "table",
@@ -552,7 +570,7 @@ test("earlier inline and formatting revisions stay reviewable through a nested t
       : undefined;
   if (grid === undefined || aliases === undefined)
     throw new TypeError("Expected paired run revision handoffs.");
-  expect(aliases.map(([id]) => id)).toEqual([41, 42, 44, 43]);
+  expect(aliases.map(([id]) => id)).toEqual([41, 42, 44, 43, 45, 46]);
   const projected = toProseDoc(reopened, { tableReviewGeometry: "physical" });
   for (const [authored, copied] of aliases)
     expect(getTrackedChangeGroupsForIds(projected, [authored]).at(0)).toContain(
@@ -601,6 +619,15 @@ test("earlier inline and formatting revisions stay reviewable through a nested t
               ? "<w:b/></w:rPr><w:t>clause"
               : "<w:i/></w:rPr><w:t>clause",
           );
+        } else if (authored === 45 || authored === 46) {
+          const deleted = authored === 45;
+          const paraId = deleted ? "00000006" : "00000007";
+          expect(xml.includes(`w14:paraId="${paraId}"`)).toBe(
+            deleted === (inner === REVISION_DECISIONS.REJECT),
+          );
+          expect(xml).toContain("Look ");
+          expect(xml).toContain("here");
+          expect(xml).toContain("now");
         } else {
           const inserted = authored === 41;
           expect(xml.includes(inserted ? "New " : "Old ")).toBe(
