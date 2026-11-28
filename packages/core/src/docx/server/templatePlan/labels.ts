@@ -453,6 +453,12 @@ export const createLabelCounter = ({
               ilvl: resolved.ilvl,
               abstractNumId,
               ...bulletFacts(listRendering, template),
+              ...(template === "" || listRendering.isBullet
+                ? {}
+                : { lvlText: template }),
+              ...(listRendering.isLegal === true
+                ? { legal: true as const }
+                : {}),
             };
       // A level whose run properties hide it counts and shows nothing.
       if (listRendering.markerHidden === true) {

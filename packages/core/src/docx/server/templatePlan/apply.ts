@@ -701,6 +701,11 @@ const editNumbering = (
         ...(patch.numFmt === undefined
           ? {}
           : { numFmt: valued("numFmt", patch.numFmt) }),
+        ...(patch.isLgl === undefined
+          ? {}
+          : {
+              isLgl: patch.isLgl ? `<${w}:isLgl/>` : valued("isLgl", "0"),
+            }),
         ...(patch.suff === undefined
           ? {}
           : { suff: valued("suff", patch.suff) }),

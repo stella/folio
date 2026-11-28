@@ -1524,6 +1524,14 @@ export const reportTemplatePlanOutput = async ({
       suff: patch.suff,
       lvlText: patch.lvlText,
     };
+    if (
+      patch.isLgl !== undefined &&
+      (toggleOf(wChild(level, "isLgl")) === true) !== patch.isLgl
+    ) {
+      numberingMismatch(
+        `Level ${patch.ilvl} of list definition ${patch.abstractNumId} does not carry the planned isLgl.`,
+      );
+    }
     for (const [name, value] of Object.entries(planned)) {
       if (value !== undefined && wChildVal(level, name) !== value) {
         numberingMismatch(

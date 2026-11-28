@@ -411,7 +411,7 @@ const patchesIssue = (patches: unknown): string | null => {
       return `Two numbering patches change level ${String(patch["ilvl"])} of list definition ${String(patch["abstractNumId"])}.`;
     }
     seen.add(key);
-    const { numFmt, lvlText, start, suff, indent, font } = patch;
+    const { numFmt, lvlText, start, suff, indent, font, isLgl } = patch;
     if (
       (font !== undefined && !isFontName(font)) ||
       (numFmt !== undefined &&
@@ -419,6 +419,7 @@ const patchesIssue = (patches: unknown): string | null => {
       (lvlText !== undefined && !(isString(lvlText) && isPlainText(lvlText))) ||
       (start !== undefined && !isCount(start)) ||
       (suff !== undefined && !(isString(suff) && SUFFIXES.has(suff))) ||
+      !isOptionalBoolean(isLgl) ||
       (indent !== undefined && !isIndent(indent))
     ) {
       return "A numbering patch carries a malformed value.";
