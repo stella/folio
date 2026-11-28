@@ -1279,7 +1279,7 @@ describe("a kept table of contents", () => {
     expect(document).not.toContain("Second sample");
   });
 
-  test("text behind the field's own end keeps the contents as the template has them, whatever field follows it", async () => {
+  test("text behind the field's own end stays, whatever field follows it; the entries in front of it go", async () => {
     const onto = await reshaped((document) => {
       const close = document.indexOf(
         `${FIELD_END}</w:p>`,
@@ -1287,11 +1287,14 @@ describe("a kept table of contents", () => {
       );
       return `${document.slice(0, close + FIELD_END.length)}${r(" Printed on page ")}${fieldRuns("PAGE", r("3"))}${document.slice(close + FIELD_END.length)}`;
     });
-    const { document } = await applyOnto(onto);
+    const { document, report } = await applyOnto(onto);
 
-    expect(document).toContain("Sample article");
-    expect(document).toContain("Second sample");
+    expect(report.ok).toBe(true);
+    expect(document).toContain(`\\z </w:instrText></w:r>${EMPTIED}`);
+    expect(document).not.toContain("Sample article");
+    expect(document).not.toContain("Second sample");
     expect(document).toContain(" Printed on page ");
+    expect(document).toContain(" PAGE ");
   });
 
   test("a bookmark that starts in front of the field and ends among its entries goes with them", async () => {

@@ -1127,6 +1127,42 @@ describe("applyTemplatePlan onto a template whose sample text has a note", () =>
   });
 });
 
+describe("applyTemplatePlan onto a template whose contents end in the next paragraph", () => {
+  test("drops the cached entries and keeps that paragraph from behind the end", async () => {
+    const end = '<w:r><w:fldChar w:fldCharType="end"/></w:r>';
+    const documentXml =
+      (await readPart(fixture.template, "word/document.xml")) ?? "";
+    const lastEntryEnd = documentXml.indexOf(`${end}</w:p>`);
+    const toLine = documentXml.indexOf("To: ", lastEntryEnd);
+    const runStart = documentXml.lastIndexOf("<w:r>", toLine);
+    expect(lastEntryEnd).toBeGreaterThan(0);
+    // The field's end moved to the front of the paragraph after the entries.
+    const moved = `${documentXml.slice(0, lastEntryEnd)}${documentXml.slice(lastEntryEnd + end.length, runStart)}${end}${documentXml.slice(runStart)}`;
+    const template = await replacePart(
+      fixture.template,
+      "word/document.xml",
+      moved,
+    );
+    const inspection = unwrap(await inspectDocxTemplate(template));
+    const result = unwrap(
+      await applyTemplatePlan({
+        source: fixture.source,
+        template,
+        plan: { ...fullPlan(), templateSha256: inspection.sha256 },
+      }),
+    );
+    const output = (await readPart(result.docx, "word/document.xml")) ?? "";
+
+    expect(result.report.ok).toBe(true);
+    expect(output).not.toContain("PAGEREF");
+    expect(output).not.toContain("Second sample");
+    expect(output).toContain("Recipient name");
+    expect(output).toContain(
+      '<w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>',
+    );
+  });
+});
+
 describe("applyTemplatePlan onto a template without notes", () => {
   test("creates the footnotes part with its relationship and content type", async () => {
     const template = await buildTemplate({ withoutFootnotes: true });
