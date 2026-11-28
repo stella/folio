@@ -623,20 +623,20 @@ const movableInlineContent = (
         return (
           !context.withinLink &&
           movableInlineContent(item.children, {
-            ...nestedMoveContext(context),
+            ...context,
             withinLink: true,
           })
         );
       case "inlineWrapper":
         return (
           (item.kind === "bidi" || item.propertiesXml === undefined) &&
-          movableInlineContent(item.content, nestedMoveContext(context))
+          movableInlineContent(item.content, context)
         );
       case "inlineSdt": {
         const id = movableControlId(item.properties);
         if (id === undefined) return false;
         context.controls.push(id);
-        return movableInlineContent(item.content, nestedMoveContext(context));
+        return movableInlineContent(item.content, context);
       }
       default:
         return false;
@@ -1117,7 +1117,7 @@ const withNestedMoveIdentities = (
       ? record
       : { ...record, info: { ...record.info, id } };
   };
-  const rewriteMoveContent = (content: ParagraphContent): ParagraphContent => {
+  const rewriteMoveContent = (content: InlineNode): InlineNode => {
     switch (content.type) {
       case "insertion":
       case "deletion":
@@ -1172,10 +1172,10 @@ const withNestedMoveIdentities = (
             ? {}
             : { propertyChanges: block.propertyChanges.map(restamp) }),
           content: withMoveIdentities({
-            content:
-              ids.ranges.size === 0 && ids.revisions.size === 0
-                ? block.content
-                : block.content.map(rewriteMoveContent),
+            content: block.content,
+            ...(ids.ranges.size === 0 && ids.revisions.size === 0
+              ? {}
+              : { reviewIdentity: rewriteMoveContent }),
             controls: ids.controls,
             pictures: ids.pictures,
             bookmarkNames: ids.bookmarkNames,
@@ -1487,6 +1487,7 @@ type MoveIdentityOptions = {
   pictures: ReadonlyMap<number, number>;
   bookmarkNames?: ReadonlyMap<string, string>;
   bookmarkIds?: ReadonlyMap<number, PackageBookmark>;
+  reviewIdentity?: (node: InlineNode) => InlineNode;
 };
 
 const withBookmarkIdentity = (
@@ -1506,16 +1507,23 @@ const withMoveIdentities = ({
   pictures,
   bookmarkNames,
   bookmarkIds,
+  reviewIdentity,
 }: MoveIdentityOptions): ParagraphContent[] => {
-  if (controls.size === 0 && pictures.size === 0 && !bookmarkNames?.size)
+  if (
+    controls.size === 0 &&
+    pictures.size === 0 &&
+    !bookmarkNames?.size &&
+    reviewIdentity === undefined
+  )
     return content;
   const rewrite = (node: InlineNode): InlineNode => {
     const children = childNodes(node);
     const rewritten = children?.map(rewrite);
-    const next =
+    const rebuilt =
       rewritten?.some((child, index) => child !== children?.[index]) === true
         ? rebuildNode(node, rewritten)
         : node;
+    const next = reviewIdentity?.(rebuilt) ?? rebuilt;
     if (next.type === "inlineSdt" && next.properties.id !== undefined) {
       const id = controls.get(next.properties.id);
       if (id !== undefined)

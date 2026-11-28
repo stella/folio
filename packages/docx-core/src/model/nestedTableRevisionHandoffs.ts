@@ -1,4 +1,4 @@
-import type { BlockContent, Table } from "./content";
+import type { BlockContent, ParagraphContent, Table } from "./content";
 import type { TableGeometryNestedMove } from "./formatting";
 
 const tableBlocks = (table: Table) =>
@@ -87,6 +87,25 @@ const revisionSlots = (table: Table): ReadonlyMap<number, string> => {
     for (const [index, { type, info }] of (changes ?? []).entries())
       slots.set(info.id, `${position}:${type}:${index}`);
   };
+  const visitInline = (
+    content: readonly ParagraphContent[],
+    parent: string,
+  ): void => {
+    for (const [index, item] of content.entries()) {
+      const slot = `${parent}:${index}:${item.type}`;
+      if (
+        item.type === "insertion" ||
+        item.type === "deletion" ||
+        item.type === "moveFrom" ||
+        item.type === "moveTo"
+      )
+        slots.set(item.info.id, slot);
+      else if (item.type === "run") record(item.propertyChanges, slot);
+      else if (item.type === "hyperlink") visitInline(item.children, slot);
+      else if (item.type === "inlineSdt" || item.type === "inlineWrapper")
+        visitInline(item.content, slot);
+    }
+  };
   const owners = [table];
   let paragraphIndex = 0;
   visitBlocks(tableBlocks(table), (block) => {
@@ -96,17 +115,7 @@ const revisionSlots = (table: Table): ReadonlyMap<number, string> => {
     record(block.propertyChanges, position);
     const mark = block.pPrMark;
     if (mark !== undefined) slots.set(mark.info.id, `${position}:${mark.kind}`);
-    for (const [index, item] of block.content.entries()) {
-      if (
-        item.type === "insertion" ||
-        item.type === "deletion" ||
-        item.type === "moveFrom" ||
-        item.type === "moveTo"
-      )
-        slots.set(item.info.id, `${position}:inline:${index}:${item.type}`);
-      if (item.type === "run")
-        record(item.propertyChanges, `${position}:inline:${index}`);
-    }
+    visitInline(block.content, `${position}:inline`);
   });
   for (const [index, owner] of owners.entries()) {
     const grid = owner.formatting?.gridChange;
