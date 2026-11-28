@@ -272,6 +272,7 @@ test.each([
   inlinePicture,
   inlinePicture.replace('<pic:cNvPr id="0"', '<pic:cNvPr id="27"'),
   '<w:r><w:ruby><w:rubyPr><w:rubyAlign w:val="center"/><w:hps w:val="10"/><w:hpsRaise w:val="12"/><w:hpsBaseText w:val="20"/><w:lid w:val="ja-JP"/></w:rubyPr><w:rt><w:r><w:t>とう</w:t></w:r></w:rt><w:rubyBase><w:r><w:t>東</w:t></w:r></w:rubyBase></w:ruby></w:r>',
+  '<m:oMath><m:r><w:rPr><w:rFonts w:ascii="Cambria Math"/><w:sz w:val="24"/></w:rPr><m:t>x</m:t></m:r></m:oMath>',
   "<m:oMath><m:f><m:num><m:r><m:t>1</m:t></m:r></m:num><m:den><m:r><m:t>2</m:t></m:r></m:den></m:f></m:oMath>",
   '<q:oMathPara xmlns:q="http://purl.oclc.org/ooxml/officeDocument/math"><q:oMath><q:r><q:t xml:space="preserve"> 1 + 2 </q:t></q:r></q:oMath></q:oMathPara>',
   '<w:proofErr w:type="gramStart"/><w:proofErr w:type="spellStart"/><w:r><w:t>Teh text.</w:t></w:r><w:proofErr w:type="spellEnd"/><w:proofErr w:type="gramEnd"/>',
@@ -337,6 +338,20 @@ test("a moved table with only omitted rows uses its native insertion record as a
   const xml = assertSavedMove(original, merge);
   expect(xml.match(/<w:gridBefore w:val="2"/gu)).toHaveLength(2);
   expect(xml).toMatch(/<w:trPr><w:gridBefore w:val="2"\/><w:ins /u);
+});
+
+test("a moved nested table keeps the cell's imported content anchor", () => {
+  // ISO/IEC 29500-1 §17.17.2.1 permits the import anchor in CT_Tc.
+  const chunk = '<w:altChunk r:id="rIdChunk"/>';
+  const original = sourceWith({
+    content: plain,
+    wrap: (paragraph) =>
+      '<w:tbl><w:tblGrid><w:gridCol w:w="1000"/></w:tblGrid><w:tr>' +
+      `<w:tc>${chunk}${paragraph}</w:tc></w:tr></w:tbl><w:p w14:paraId="00000005"/>`,
+  });
+  const { merge } = allocateTrackedMerge(original);
+  const xml = assertSavedMove(original, merge);
+  expect(xml.match(/<w:altChunk[^>]*r:id="rIdChunk"/gu)).toHaveLength(2);
 });
 
 test("a moved nested table preserves drawing and rich-text control identities", () => {

@@ -191,6 +191,45 @@ const mathNamespace = (uri: string | undefined): boolean =>
   uri === OOXML_NS.m ||
   uri === "http://purl.oclc.org/ooxml/officeDocument/math";
 
+// CT_RPr in a math run can carry display formatting without carrying a
+// revision id or a reference to any other package record.
+const MATH_RUN_FORMATTING = new Set([
+  "b",
+  "bCs",
+  "color",
+  "i",
+  "iCs",
+  "rFonts",
+  "sz",
+  "szCs",
+]);
+
+const namespaceDeclaration = (attribute: string) =>
+  attribute === "xmlns" || attribute.startsWith("xmlns:");
+
+const localMathRunProperties = (node: XmlElement): boolean =>
+  Object.keys(node.attributes ?? {}).every(namespaceDeclaration) &&
+  (node.elements?.every((child) => {
+    const property = wordName(child);
+    return (
+      property !== undefined &&
+      MATH_RUN_FORMATTING.has(property) &&
+      (child.elements?.length ?? 0) === 0 &&
+      Object.keys(child.attributes ?? {}).every((key) => {
+        if (namespaceDeclaration(key)) return true;
+        const colon = key.indexOf(":");
+        return (
+          colon > 0 &&
+          key.slice(colon + 1) !== "id" &&
+          wordNamespace(
+            resolveNamespaceUri(child.namespaceScope, key.slice(0, colon)),
+          )
+        );
+      })
+    );
+  }) ??
+    true);
+
 const localMathNode = (
   node: XmlElement,
   collectBookmark: MoveContentContext["collectBookmark"],
@@ -212,7 +251,7 @@ const localMathNode = (
   }
   return (
     Object.keys(node.attributes ?? {}).every((name) => {
-      if (name === "xmlns" || name.startsWith("xmlns:")) return true;
+      if (namespaceDeclaration(name)) return true;
       const colon = name.indexOf(":");
       if (colon <= 0) return false;
       const namespace = resolveNamespaceUri(
@@ -224,12 +263,20 @@ const localMathNode = (
         (namespace === XML_NAMESPACE_URI && name.slice(colon + 1) === "space")
       );
     }) &&
-    (node.elements?.every((child) => localMathNode(child, collectBookmark)) ??
+    (node.elements?.every((child) => {
+      if (wordName(child) !== "rPr")
+        return localMathNode(child, collectBookmark);
+      const name = node.name ?? "";
+      const owner = name.slice(name.indexOf(":") + 1);
+      return (
+        (owner === "r" || owner === "ctrlPr") && localMathRunProperties(child)
+      );
+    }) ??
       true)
   );
 };
 
-/** A native equation can appear in both move halves if it owns no other markup. */
+/** Admit a captured equation and its known local formatting and bookmarks. */
 const movableMath = (
   { display, ommlXml }: MathEquation,
   collectBookmark: MoveContentContext["collectBookmark"],
@@ -271,6 +318,32 @@ const readCapturedElement = (xml: string) => {
 const emptyElement = (xml: string) => {
   const parsed = readCapturedElement(xml);
   return (parsed?.element.elements?.length ?? 0) === 0 ? parsed : undefined;
+};
+
+/** The copied cell remains in the same part and uses the same import relationship. */
+const movableAltChunk = (xml: string): boolean => {
+  const parsed = emptyElement(xml);
+  const relationship = parsed?.attributes.at(0);
+  if (
+    parsed === undefined ||
+    wordName(parsed.element) !== "altChunk" ||
+    parsed.attributes.length !== 1 ||
+    relationship === undefined ||
+    typeof relationship[1] !== "string" ||
+    relationship[1] === ""
+  )
+    return false;
+  const key = relationship[0];
+  const colon = key.indexOf(":");
+  if (colon <= 0 || key.slice(colon + 1) !== "id") return false;
+  const namespace = resolveNamespaceUri(
+    parsed.element.namespaceScope,
+    key.slice(0, colon),
+  );
+  return (
+    namespace === OOXML_NS.r ||
+    namespace === "http://purl.oclc.org/ooxml/officeDocument/relationships"
+  );
 };
 
 /** An authored tag wrapper without a separately owned record. */
@@ -798,6 +871,7 @@ export const nestedTableMoveSource = (
     if (block.type === "bookmarkStart" || block.type === "bookmarkEnd")
       return collectBookmark(block);
     if (block.type === "table") return collect(block);
+    if (block.type === "preservedBlock") return movableAltChunk(block.xml);
     if (block.type === "blockCustomXml")
       return movableCustomXmlBlock(block) && collectBlocks(block.content);
     if (block.type === "blockSdt") {
