@@ -789,6 +789,7 @@ const isWholeResult = (
 const CONTROL_DROPPED: ReadonlySet<string> = new Set([
   "dataBinding",
   "placeholder",
+  "rPr",
 ]);
 
 /** A control's properties as the output writes them. */
