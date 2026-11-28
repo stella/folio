@@ -1989,6 +1989,23 @@ export const resolveTableMoves = ({
     geometry.emptyOwner === undefined ? undefined : idKey(geometry.emptyOwner);
   const liveParagraphs = new Set(paragraphIdsIn(table).map(idKey));
   const nestedMoves = geometry.nestedMoves ?? [];
+  const liveNestedRowRevisions = new Set<number>();
+  const collectNestedRowRevisions = (blocks: readonly BlockContent[]): void => {
+    for (const block of blocks) {
+      if (block.type === "blockCustomXml" || block.type === "blockSdt") {
+        collectNestedRowRevisions(block.content);
+        continue;
+      }
+      if (block.type !== "table") continue;
+      for (const row of block.rows) {
+        if (row.structuralChange !== undefined)
+          liveNestedRowRevisions.add(row.structuralChange.info.id);
+        for (const cell of row.cells) collectNestedRowRevisions(cell.content);
+      }
+    }
+  };
+  for (const row of table.rows)
+    for (const cell of row.cells) collectNestedRowRevisions(cell.content);
   const substantiveDestinationIds = [
     ...(geometry.moves ?? []).flatMap((move) =>
       move.kind === "empty" ? [] : [idKey(move.destination)],
@@ -2004,9 +2021,21 @@ export const resolveTableMoves = ({
     !reject &&
     nestedMoves.length > 0 &&
     nestedMoves.every(
-      (move) => move.omittedTable === undefined && move.paragraphs.length > 0,
+      (move) =>
+        move.omittedTable === undefined &&
+        move.rows.length > 0 &&
+        move.paragraphs.length > 0,
     ) &&
-    !substantiveDestinationIds.some((id) => liveParagraphs.has(id));
+    !substantiveDestinationIds.some((id) => liveParagraphs.has(id)) &&
+    !nestedMoves.some(
+      (move) =>
+        move.rows.some((id) => liveNestedRowRevisions.has(id)) ||
+        move.revisions?.some(
+          ([source, destination]) =>
+            liveNestedRowRevisions.has(source) ||
+            liveNestedRowRevisions.has(destination),
+        ),
+    );
   const rows = table.rows.map((row) =>
     Object.assign({}, row, {
       cells: row.cells.map((cell) =>

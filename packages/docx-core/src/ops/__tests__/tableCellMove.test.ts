@@ -10,24 +10,22 @@ const paragraph = (paraId: string, text = ""): Paragraph => ({
     text === "" ? [] : [{ type: "run", content: [{ type: "text", text }] }],
 });
 
+const insertedParagraph = (paraId: string, id: number): Paragraph => ({
+  type: "paragraph",
+  paraId,
+  content: [],
+  pPrMark: {
+    kind: "ins",
+    info: { id, author: "Reviewer", date: "2026-11-28T00:00:00Z" },
+  },
+});
+
 describe("table cell moves", () => {
   for (const nestedDestinationSurvives of [false, true]) {
     test(`empty move boundaries follow a ${nestedDestinationSurvives ? "surviving" : "removed"} nested destination`, () => {
       const owner = paragraph("00000100", "Owner");
-      const leading = {
-        ...paragraph("00000201"),
-        pPrMark: {
-          kind: "ins" as const,
-          info: { id: 11, author: "Reviewer", date: null },
-        },
-      };
-      const trailing = {
-        ...paragraph("00000202"),
-        pPrMark: {
-          kind: "ins" as const,
-          info: { id: 12, author: "Reviewer", date: null },
-        },
-      };
+      const leading = insertedParagraph("00000201", 11);
+      const trailing = insertedParagraph("00000202", 12);
       const nested: Table = {
         type: "table",
         rows: [
