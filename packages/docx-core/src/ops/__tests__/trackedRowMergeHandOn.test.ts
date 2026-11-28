@@ -259,5 +259,11 @@ test("a row review can settle the selected column history before handing on a ve
   const resolved = firstTable(together);
   expect(tableGrid(resolved, DOCUMENT_OP_TYPES.SET_TABLE).isOk()).toBe(true);
   expect(resolved.rows).toHaveLength(2);
-  expect(resolved.rows.at(0)?.cells.at(0)?.structuralChange?.info.id).toBe(51);
+  const remaining = resolved.rows.at(0)?.cells.at(0)?.structuralChange;
+  expect(
+    remaining?.type === "tableCellMerge" && remaining.verticalMergeOriginal,
+  ).toBe("rest");
+  expect(
+    resolve(together, [51], REVISION_DECISIONS.ACCEPT).document,
+  ).toStrictEqual(resolve(together, [51], REVISION_DECISIONS.REJECT).document);
 });
