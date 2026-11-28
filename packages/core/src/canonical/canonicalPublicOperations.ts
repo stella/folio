@@ -789,7 +789,9 @@ const overlappingCellShapes = <T extends PlannedOperation>(
 const deletionTakesJoinedWords = (mode: FolioDocumentOperationMode): boolean =>
   mode === "tracked-changes";
 
-type CanonicalBatchOrderOptions<T extends PlannedOperation> = {
+type CanonicalBatchOrderOptions<
+  T extends PlannedOperation & Pick<PreparedOperation, "intents">,
+> = {
   items: readonly T[];
   doc: PMNode;
   mode: FolioDocumentOperationMode;
@@ -828,16 +830,27 @@ const removedTableParagraphs = (
   return blocks;
 };
 
-const orderCanonicalBatch = <T extends PlannedOperation>({
+const orderCanonicalBatch = <
+  T extends PlannedOperation & Pick<PreparedOperation, "intents">,
+>({
   items,
   doc,
   mode,
-}: CanonicalBatchOrderOptions<T>): T[] => {
+}: CanonicalBatchOrderOptions<T>): {
+  ordered: T[];
+  insertionAfterSplit: ReadonlyMap<T, string>;
+} => {
   const deletionOf = new Map<number, T>();
+  const splitsOf = new Map<number, T[]>();
   const directTableDeletionOf = new Map<number, T>();
   for (const item of items) {
     const { claim, block } = item.plan;
     if (claim.type === "deleteBlock") deletionOf.set(block, item);
+    if (claim.type === "split") {
+      const splits = splitsOf.get(block) ?? [];
+      splits.push(item);
+      splitsOf.set(block, splits);
+    }
     if (
       mode === "direct" &&
       claim.type === "tableRemoval" &&
@@ -888,6 +901,42 @@ const orderCanonicalBatch = <T extends PlannedOperation>({
         : [];
     }),
   );
+  const precedingSplitOf = new Map<T, T>();
+  const insertionAfterSplit = new Map<T, string>();
+  for (const item of items) {
+    const { operation, plan } = item;
+    if (
+      operation.type !== "insertBeforeBlock" ||
+      plan.claim.type !== "insertion" ||
+      plan.placedAgainst === plan.block ||
+      plan.address.type !== "content"
+    )
+      continue;
+    const precedingSplit = splitsOf
+      .get(plan.placedAgainst)
+      ?.filter(
+        ({ plan: splitPlan }) =>
+          splitPlan.address.type === "content" &&
+          splitPlan.address.inputIndex < plan.address.inputIndex,
+      )
+      .toSorted((left, right) => {
+        if (
+          left.plan.address.type !== "content" ||
+          right.plan.address.type !== "content"
+        )
+          return 0;
+        return left.plan.address.position - right.plan.address.position;
+      })
+      .at(0);
+    if (precedingSplit === undefined) continue;
+    const newBlockId = precedingSplit.intents.find(
+      (intent) => intent.type === "splitParagraph",
+    )?.newBlockId;
+    if (newBlockId === undefined)
+      return panic("A planned split lost its second paragraph");
+    precedingSplitOf.set(item, precedingSplit);
+    insertionAfterSplit.set(item, newBlockId);
+  }
   /**
    * The batch's deletion of the first of the paragraphs it deletes in a row
    * right before the paragraph at `block`, if it deletes the one before it,
@@ -931,6 +980,12 @@ const orderCanonicalBatch = <T extends PlannedOperation>({
         ? { ...planned, position: before.position, rank: before.rank + steps }
         : planned;
     };
+    // A pending join can place an insertion against its source paragraph even
+    // though the insertion names the join's destination. If an earlier batch
+    // operation splits that source, run the insertion after the last split so
+    // it lands beside the same half as it does one operation at a time.
+    const precedingSplit = precedingSplitOf.get(item);
+    if (precedingSplit !== undefined) return following(precedingSplit, 1);
     // The paragraph between tables can go whole only after the batch has
     // removed the tables before it. Tables after it already run first.
     const precedingTableDeletion = precedingTableDeletionOf.get(item);
@@ -1071,10 +1126,13 @@ const orderCanonicalBatch = <T extends PlannedOperation>({
     ({ plan }) => plan.insertionRun,
     ({ operation }) => operation.type === "setBlockParagraphProperties",
   );
-  return orderAddressingBeforeRemoval(runs, (run) => ({
-    addresses: run.flatMap((item) => access(item).addresses),
-    removes: run.flatMap((item) => access(item).removes),
-  })).flat();
+  return {
+    ordered: orderAddressingBeforeRemoval(runs, (run) => ({
+      addresses: run.flatMap((item) => access(item).addresses),
+      removes: run.flatMap((item) => access(item).removes),
+    })).flat(),
+    insertionAfterSplit,
+  };
 };
 
 type CanonicalPublicOperationRefusal = NonNullable<
@@ -6353,11 +6411,12 @@ export class CanonicalPublicOperations {
     }
     if (!state || projected.isErr() || session.isComposing)
       return result([], null);
-    const executionOrder = orderCanonicalBatch({
-      items: resolved,
-      doc: projected.value.doc,
-      mode: batch.mode ?? "tracked-changes",
-    });
+    const { ordered: executionOrder, insertionAfterSplit } =
+      orderCanonicalBatch({
+        items: resolved,
+        doc: projected.value.doc,
+        mode: batch.mode ?? "tracked-changes",
+      });
     let document = readModel(session.document);
     // The batch's comments run before its edits, each adding a reference
     // unit; the document once they stand maps the edits' pre-batch positions.
@@ -6470,6 +6529,17 @@ export class CanonicalPublicOperations {
           resolvedOperation,
         }),
       });
+      const splitFollower = insertionAfterSplit.get(resolvedOperation);
+      const placedAfterSplit =
+        splitFollower === undefined
+          ? inserting
+          : inserting.map((intent) =>
+              intent.type === "insertParagraphs"
+                ? Object.assign({}, intent, {
+                    at: { type: "before" as const, blockId: splitFollower },
+                  })
+                : intent,
+            );
       const shift = batchCommentReferenceShift({
         before: beforeBatch,
         commented:
@@ -6479,7 +6549,7 @@ export class CanonicalPublicOperations {
       });
       // Pre-batch positions first take the batch's comment references; the
       // as-it-runs bindings below read the document as it stands, past them.
-      const shifted = inserting.map((intent) =>
+      const shifted = placedAfterSplit.map((intent) =>
         mapIntentPositions(intent, shift),
       );
       const rebound =
