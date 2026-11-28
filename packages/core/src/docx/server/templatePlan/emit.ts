@@ -1025,6 +1025,11 @@ export const paragraphXml = (
   if (alignment !== null) {
     properties.push(`<${w}:jc ${w}:val="${alignment}"/>`);
   }
+  // The outline level follows the alignment and stands before a section.
+  const { outlineLevel } = emit.paragraph;
+  if (outlineLevel !== null) {
+    properties.push(`<${w}:outlineLvl ${w}:val="${String(outlineLevel)}"/>`);
+  }
   // A section's properties close the paragraph's.
   if (emit.sectionXml !== null) {
     properties.push(emit.sectionXml);

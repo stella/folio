@@ -2235,6 +2235,7 @@ export type TemplatePlan = {
     fields?: {
         freezeKinds?: string[];
         updateOnOpen?: boolean;
+        contentsOutlineLevels?: boolean;
     };
     compat?: {
         doNotExpandShiftReturn?: boolean;
@@ -2553,6 +2554,7 @@ export type TemplatePlanSourceItem = {
     indent?: TemplatePlanIndent;
     tabStops?: number[];
     alignment?: TemplatePlanAlignment;
+    outlineLevel?: number;
     spacing?: TemplatePlanSpacing;
     endsSection?: TemplatePlanSection;
     cellStyleId?: string;

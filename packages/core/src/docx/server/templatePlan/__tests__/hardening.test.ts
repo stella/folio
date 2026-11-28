@@ -11,6 +11,7 @@ import {
   setKeepShiftReturnSpacing,
 } from "../builders";
 import { isManualLabel } from "../plan";
+import { planShapeIssue } from "../planShape";
 import type {
   TemplatePlan,
   TemplatePlanItem,
@@ -1318,6 +1319,39 @@ describe("a kept table of contents", () => {
     expect(document).toContain(`\\z </w:instrText></w:r>${EMPTIED}`);
     expect(document).not.toContain("Sample article");
     expect(document).not.toContain("Second sample");
+  });
+
+  test("a line the plan gives an outline level is gathered by the kept contents through its \\u switch", async () => {
+    const source = await buildMinimalDocx(
+      `${p(r("Definitions"))}${p(r("The terms below have these meanings."))}`,
+    );
+    const plan = await planFor({
+      source,
+      template,
+      items: (blocks) => {
+        const items = withContents(blocks);
+        const heading = items[1];
+        if (heading?.kind === "source") {
+          heading.outlineLevel = 1;
+        }
+        return items;
+      },
+      extra: { fields: { contentsOutlineLevels: true } },
+    });
+    const applied = unwrap(await applyTemplatePlan({ source, template, plan }));
+    const document = await documentOf(applied.docx);
+    expect(applied.report.ok).toBe(true);
+    expect(document).toContain('TOC \\o "1-3" \\h \\z \\u </w:instrText>');
+    expect(document).toMatch(
+      /<w:outlineLvl w:val="1"\/><\/w:pPr><w:r>(?:<w:rPr>.*?<\/w:rPr>)?<w:t xml:space="preserve">Definitions</u,
+    );
+    expect(document.match(/w:outlineLvl/gu)?.length).toBe(1);
+    // Without the choice the field's code stays the template's.
+    const { document: plain } = await applyOnto(template);
+    expect(plain).toContain('TOC \\o "1-3" \\h \\z </w:instrText>');
+    expect(
+      planShapeIssue({ ...plan, body: [{ ...plan.body[1], outlineLevel: 9 }] }),
+    ).toContain("outline level");
   });
 
   test("text behind the field's own end stays, whatever field follows it; the entries in front of it go", async () => {

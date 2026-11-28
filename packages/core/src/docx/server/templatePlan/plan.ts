@@ -141,6 +141,8 @@ export type ResolvedParagraph = {
   tabStops: readonly number[] | null;
   /** The paragraph's own alignment, or null. */
   alignment: TemplatePlanAlignment | null;
+  /** The paragraph's own outline level (0 for level 1), or null. */
+  outlineLevel: number | null;
   /** The paragraph's own space in front and behind, or null. */
   spacing: TemplatePlanSpacing | null;
   /** The section the paragraph is the last of, or null. */
@@ -1047,6 +1049,7 @@ type ParagraphRequest = {
   indent?: TemplatePlanIndent | undefined;
   tabStops?: readonly number[] | undefined;
   alignment?: TemplatePlanAlignment | undefined;
+  outlineLevel?: number | undefined;
   spacing?: TemplatePlanSpacing | undefined;
   endsSection?: TemplatePlanSection | undefined;
 };
@@ -1347,6 +1350,7 @@ export const resolvePlan = (
     indent,
     tabStops,
     alignment,
+    outlineLevel,
     spacing,
     endsSection,
   }: ParagraphRequest): Result<ResolvedParagraph, TemplatePlanError> => {
@@ -1588,6 +1592,7 @@ export const resolvePlan = (
       indent: indent ?? null,
       tabStops: tabStops ?? null,
       alignment: alignment ?? null,
+      outlineLevel: outlineLevel ?? null,
       spacing: spacing ?? null,
       endsSection: endsSection ?? null,
     };
@@ -1864,6 +1869,7 @@ export const resolvePlan = (
           indent: item.indent,
           tabStops: item.tabStops,
           alignment: item.alignment,
+          outlineLevel: item.outlineLevel,
           spacing: item.spacing,
           endsSection: item.endsSection,
         });
