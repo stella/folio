@@ -1290,6 +1290,7 @@ export const resolveTableRows = ({
   const edits: DocumentEdit[] = [];
   const moveHandoffs = new Map<number, TableMoveHandoffs>();
   const moveRows = new Set<number>();
+  const rowsAfterColumns = new Set<number>();
 
   const settled = marksInRemovedStructure(document, op);
   if (settled.length > 0) {
@@ -1362,13 +1363,31 @@ export const resolveTableRows = ({
       rows[rowIndex] = next;
       rowIndex += 1;
     }
-    if (removalOrphansAMerge(table, rows))
-      return Result.err(
-        refusal(
-          op,
-          "A removed row hands the merges it starts to the next row with their content.",
-        ),
-      );
+    if (removalOrphansAMerge(table, rows)) {
+      if (grid?.geometryChange?.type !== "deleteColumn")
+        return Result.err(
+          refusal(
+            op,
+            "A removed row hands the merges it starts to the next row with their content.",
+          ),
+        );
+      if (!ids.has(grid.id))
+        return Result.err(
+          new DocumentOpRefusal({
+            opType: op.type,
+            reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_TABLE_CHANGE,
+            message:
+              "Resolve the pending column geometry before this row change.",
+          }),
+        );
+      // A grouped column snapshot can still record continuation of a merge
+      // that now starts in a different row. Settle the selected grid first,
+      // then apply these row decisions to the resulting topology.
+      for (const { structuralChange } of table.rows)
+        if (structuralChange !== undefined && ids.has(structuralChange.info.id))
+          rowsAfterColumns.add(structuralChange.info.id);
+      continue;
+    }
     const replacement =
       blockId === undefined
         ? replaceUnaddressedTable({
@@ -1483,6 +1502,15 @@ export const resolveTableRows = ({
     if (applied.isErr()) return Result.err(applied.error);
     edits.push(applied.value);
     current = applied.value.document;
+  }
+  if (rowsAfterColumns.size > 0) {
+    const applied = resolveTableRows({
+      document: current,
+      op: { ...op, revisionIds: [...rowsAfterColumns] },
+      applyOps,
+    });
+    if (applied.isErr()) return Result.err(applied.error);
+    edits.push(applied.value);
   }
   return Result.ok(combineEdits(document, edits));
 };
