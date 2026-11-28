@@ -1,5 +1,14 @@
 # @stll/folio-cli
 
+## 0.6.13
+
+### Patch Changes
+
+- Updated dependencies [[`d786701`](https://github.com/stella/folio/commit/d7867011e7f9591d72fc6d5cebae7a1a69281814), [`298f5d6`](https://github.com/stella/folio/commit/298f5d68da008967d522454728786fb97d57afb4), [`99370ed`](https://github.com/stella/folio/commit/99370ed15b790424fafce5b6b51fb99358d5ca6b), [`84670d1`](https://github.com/stella/folio/commit/84670d10646d8f6eb68ecc81ae515b8f6bd204af), [`27c7488`](https://github.com/stella/folio/commit/27c7488e55245f9dc16b634f8e1ef92a80656e32), [`f6cb36e`](https://github.com/stella/folio/commit/f6cb36e33e6784d14e4802fe082c4d27b5ad0e41), [`1049297`](https://github.com/stella/folio/commit/10492971c0e34b591b6b2a42f3118b03e695409c), [`298f5d6`](https://github.com/stella/folio/commit/298f5d68da008967d522454728786fb97d57afb4), [`908b401`](https://github.com/stella/folio/commit/908b401fa6632699e69568da1101b0b08211320f), [`4319333`](https://github.com/stella/folio/commit/4319333063504bd32ae6a223949cfb4fa25b0df1), [`99370ed`](https://github.com/stella/folio/commit/99370ed15b790424fafce5b6b51fb99358d5ca6b), [`ac14062`](https://github.com/stella/folio/commit/ac14062f3c4f0f49c0aafc9584c15cc8f8028ce8), [`d786701`](https://github.com/stella/folio/commit/d7867011e7f9591d72fc6d5cebae7a1a69281814), [`1049297`](https://github.com/stella/folio/commit/10492971c0e34b591b6b2a42f3118b03e695409c), [`4774ed5`](https://github.com/stella/folio/commit/4774ed52e54281b178ecbb32255468801c284f0a)]:
+  - @stll/folio-core@0.83.0
+  - @stll/docx-core@0.50.1
+  - @stll/folio-agents@0.17.13
+
 ## 0.6.12
 
 ### Patch Changes

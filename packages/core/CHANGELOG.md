@@ -1,5 +1,39 @@
 # @stll/folio-core
 
+## 0.83.0
+
+### Minor Changes
+
+- [#3776](https://github.com/stella/folio/pull/3776) [`27c7488`](https://github.com/stella/folio/commit/27c7488e55245f9dc16b634f8e1ef92a80656e32) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Legacy form fields of the source stay form fields when a plan places them onto a template: a check box and a drop-down list keep their box and list entries, a text input keeps its default and its result inside the field. Fields written so no longer count among the source fields written as text.
+
+- [#3766](https://github.com/stella/folio/pull/3766) [`4319333`](https://github.com/stella/folio/commit/4319333063504bd32ae6a223949cfb4fa25b0df1) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A template plan carries more of the source. An object's embedded part travels whole with it: an OLE object's storage and an embedded package (a workbook, a document, a presentation) go into the output's `embeddings` folder with their content types, beside the picture that previews them, in the body and in carried headers and footers. A moved object declares on itself every namespace prefix its source bound further up (a source may bind the drawing prefixes once at its root, which the template's root need not do), so it reads back as its source. A plan's paragraph indent may give `left` a negative value, reaching into the margin as the source's paragraph does; a hanging or first-line indent stays a width.
+
+- [#3777](https://github.com/stella/folio/pull/3777) [`99370ed`](https://github.com/stella/folio/commit/99370ed15b790424fafce5b6b51fb99358d5ca6b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A template plan may keep the source's own list for a paragraph: `numbering: { numId: "new", ilvl, sourceNumId }`. The output carries a copy of the source's list instance and of its definition (a definition that only links a numbering style is followed to the one that defines its levels), numbered after the template's own; every paragraph naming the same `sourceNumId` counts in that copy, as the source counts them, and the level overrides the source's instance states go with it. What ties a definition to its package (its ids, the paragraph styles its levels name, picture bullets) stays behind, and the copy declares the namespaces the source's numbering part binds. Verification holds every kept list to a definition the output holds; the labels it prints are compared with the source's like any other.
+
+### Patch Changes
+
+- [#3762](https://github.com/stella/folio/pull/3762) [`d786701`](https://github.com/stella/folio/commit/d7867011e7f9591d72fc6d5cebae7a1a69281814) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A batch that deletes a paragraph beside the tables it puts there leaves what its operations leave one at a time: a table put after the paragraph before it lands once the deletion has run, unless the batch also puts a block before the paragraph or it ends its container, and a block put after a paragraph a pending deletion takes whole stands between that paragraph and the one the deletion reads. A merge the batch refuses once its next paragraph is gone gives the reason the merge alone gives.
+
+- [#3769](https://github.com/stella/folio/pull/3769) [`298f5d6`](https://github.com/stella/folio/commit/298f5d68da008967d522454728786fb97d57afb4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A plan may write a bullet's mark as text (`labelAsText`): the mark is written as the Unicode character the reader shows for it, so a bulleted paragraph placed where no list of the template prints its mark no longer refuses the whole document.
+
+- [#3777](https://github.com/stella/folio/pull/3777) [`99370ed`](https://github.com/stella/folio/commit/99370ed15b790424fafce5b6b51fb99358d5ca6b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - The report of a template plan no longer counts a label lost for a paragraph whose list level prints nothing.
+
+- [#3770](https://github.com/stella/folio/pull/3770) [`84670d1`](https://github.com/stella/folio/commit/84670d10646d8f6eb68ecc81ae515b8f6bd204af) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A plan's list group may run over two lists of the template that share one definition and render the level alike (a template that binds its heading and clause styles to two instances of the same outline), instead of refusing the plan.
+
+- [#3764](https://github.com/stella/folio/pull/3764) [`f6cb36e`](https://github.com/stella/folio/commit/f6cb36e33e6784d14e4802fe082c4d27b5ad0e41) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A template plan keeps a LISTNUM field of the source as the field it is, as it keeps an AUTONUM: it holds no result to write as text, so its number was lost. A field that counts in a list by name takes that list's definition along into the output's numbering, where the template does not define a list of that name, without what ties it to its source package (its id, template code and style links).
+
+- [#3769](https://github.com/stella/folio/pull/3769) [`298f5d6`](https://github.com/stella/folio/commit/298f5d68da008967d522454728786fb97d57afb4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A label whose level text cites a level in the format `none` (it counts and prints nothing) may be written as text.
+
+- [#3775](https://github.com/stella/folio/pull/3775) [`908b401`](https://github.com/stella/folio/commit/908b401fa6632699e69568da1101b0b08211320f) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep nested field review text stable across tracked saves.
+
+- [#3767](https://github.com/stella/folio/pull/3767) [`ac14062`](https://github.com/stella/folio/commit/ac14062f3c4f0f49c0aafc9584c15cc8f8028ce8) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Applying a plan leaves out the template's own footnotes and endnotes that the new body no longer refers to (notes of the sample text), and the report counts them as `templateLeftOut`.
+
+- [#3762](https://github.com/stella/folio/pull/3762) [`d786701`](https://github.com/stella/folio/commit/d7867011e7f9591d72fc6d5cebae7a1a69281814) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A tracked batch that deletes a paragraph a pending join runs into, beside a table it puts before the join, keeps the joined words out of that table, so accepting it gives what applying it directly does.
+
+- [#3768](https://github.com/stella/folio/pull/3768) [`4774ed5`](https://github.com/stella/folio/commit/4774ed52e54281b178ecbb32255468801c284f0a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - The conformance check reads an XML part written in UTF-16 (as word processors often write custom XML items) in that encoding instead of reporting it as not well formed.
+- Updated dependencies [[`1049297`](https://github.com/stella/folio/commit/10492971c0e34b591b6b2a42f3118b03e695409c), [`1049297`](https://github.com/stella/folio/commit/10492971c0e34b591b6b2a42f3118b03e695409c)]:
+  - @stll/docx-core@0.50.1
+
 ## 0.82.0
 
 ### Minor Changes
