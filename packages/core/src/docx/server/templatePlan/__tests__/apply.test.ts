@@ -1231,6 +1231,51 @@ describe("applyTemplatePlan with objects, fields and endnotes", () => {
     ).toBe(1);
   });
 
+  test("moves an embedded object with its storage, its preview and their content types", async () => {
+    const storage = Uint8Array.from([0xd0, 0xcf, 0x11, 0xe0, 1, 2, 3, 4]);
+    const preview = Uint8Array.from([0xd7, 0xcd, 0xc6, 0x9a, 5, 6]);
+    const object =
+      '<w:r><w:object w:dxaOrig="780" w:dyaOrig="660"><v:shape xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" id="_x0000_i1026" type="#_x0000_t75" style="width:35pt;height:36pt" o:ole=""><v:imagedata r:id="rId7" o:title=""/></v:shape><o:OLEObject xmlns:o="urn:schemas-microsoft-com:office:office" Type="Embed" ProgID="Equation.3" ShapeID="_x0000_i1026" DrawAspect="Content" ObjectID="_1" r:id="rId8"/></w:object></w:r>';
+    const source = await buildMinimalDocx(p(`${r("A = ")}${object}`), {
+      "word/_rels/document.xml.rels": `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId7" Type="${REL_NS}/image" Target="media/image7.wmf"/><Relationship Id="rId8" Type="${REL_NS}/oleObject" Target="embeddings/oleObject1.bin"/></Relationships>`,
+      "word/media/image7.wmf": preview,
+      "word/embeddings/oleObject1.bin": storage,
+    });
+    const { docx, report } = unwrap(
+      await applyTemplatePlan({
+        source,
+        template: fixture.template,
+        plan: await planFor(source),
+      }),
+    );
+    const document = (await readPart(docx, "word/document.xml")) ?? "";
+    const relationships =
+      (await readPart(docx, "word/_rels/document.xml.rels")) ?? "";
+    const contentTypes = (await readPart(docx, "[Content_Types].xml")) ?? "";
+    const archive = await ZipArchive.read(docx);
+    const objectId =
+      /Id="(?<id>rId\d+)"[^>]*relationships\/oleObject" Target="\/word\/embeddings\/placed\d+\.bin"/u.exec(
+        relationships,
+      )?.groups?.["id"];
+
+    expect(report.ok).toBe(true);
+    expect(objectId).toBeDefined();
+    expect(document).toContain(`ProgID="Equation.3"`);
+    expect(document).toContain(`r:id="${objectId}"`);
+    expect(await archive.entry("word/embeddings/placed2.bin")?.bytes()).toEqual(
+      storage,
+    );
+    expect(await archive.entry("word/media/placed1.wmf")?.bytes()).toEqual(
+      preview,
+    );
+    expect(contentTypes).toContain(
+      '<Override PartName="/word/embeddings/placed2.bin" ContentType="application/vnd.openxmlformats-officedocument.oleObject"/>',
+    );
+    expect(contentTypes).toContain(
+      '<Override PartName="/word/media/placed1.wmf" ContentType="image/x-wmf"/>',
+    );
+  });
+
   test("keeps field results as text and a HYPERLINK field as a link", async () => {
     const source = await buildObjectSource();
     const { docx, report } = unwrap(

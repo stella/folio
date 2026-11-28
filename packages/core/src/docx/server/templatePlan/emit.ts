@@ -28,6 +28,7 @@ import {
   complexFieldXml,
   wrapParagraphContentInBookmark,
 } from "./builders";
+import { EMBEDDED_RELATIONSHIP_TYPES } from "./embeddedParts";
 import { runPropertiesXml } from "./emphasis";
 import {
   type ExpectedPiece,
@@ -166,8 +167,13 @@ export const templateCharacterStyles = (
 
 export type NoteKind = "footnote" | "endnote";
 
-/** A media part of the source, read ahead so the emit stays synchronous. */
-export type SourceMedia = { bytes: Uint8Array; extension: string };
+/** A picture or embedded part of the source, read ahead so the emit stays
+ *  synchronous, with the relationship type it is reached by. */
+export type SourceMedia = {
+  bytes: Uint8Array;
+  extension: string;
+  relationshipType: string;
+};
 
 export type EmitShared = {
   styles: TemplateCharacterStyles;
@@ -379,16 +385,19 @@ const transferObject = (
     }
     const path = context.resolveSourceTarget(origin, relationship.target);
     const media = context.sourceMedia.get(path);
-    if (relationship.type !== RELATIONSHIP_TYPES.image || media === undefined) {
+    if (
+      !EMBEDDED_RELATIONSHIP_TYPES.has(relationship.type) ||
+      media === undefined
+    ) {
       refusal ??= new TemplatePlanError({
         code: "unsupported-content",
         message:
-          "An embedded object other than a picture cannot be moved onto a template.",
+          "An object refers to a part other than a picture or an embedded object, which cannot be moved onto a template.",
       });
       return id;
     }
     return context.relationships.add({
-      type: RELATIONSHIP_TYPES.image,
+      type: relationship.type,
       target: context.addMedia(path, media),
       external: false,
     });

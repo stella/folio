@@ -37,6 +37,7 @@ import {
   type XmlElement,
 } from "../../xmlParser";
 import type { AnalyzedDocument } from "./blocks";
+import { EMBEDDED_RELATIONSHIP_TYPES, extensionOf } from "./embeddedParts";
 import type { RelationshipsEditor, SourceMedia } from "./emit";
 import { readPartText, relationshipsPathFor } from "./package";
 import { createStoryState, readParagraph, toggleOf, walkBlocks } from "./story";
@@ -121,7 +122,8 @@ const showsAnything = (root: XmlElement, texts: readonly string[]): boolean => {
 };
 
 /** Whether every relationship a block refers to can be re-made in an
- *  output part: an external address, or a picture the package holds. */
+ *  output part: an external address, or a picture or embedded object the
+ *  package holds. */
 const carriable = (
   block: XmlElement,
   relationships: RelationshipMap,
@@ -149,7 +151,7 @@ const carriable = (
       const fine =
         relationship !== undefined &&
         (relationship.targetMode === "External" ||
-          (relationship.type === RELATIONSHIP_TYPES.image &&
+          (EMBEDDED_RELATIONSHIP_TYPES.has(relationship.type) &&
             holds(relationship.target)));
       if (!fine) {
         return false;
@@ -474,7 +476,8 @@ const DROPPED: ReadonlySet<string> = new Set([
 /** Paragraph ids a copy leaves out: the output's own parts hold theirs. */
 const DROPPED_ATTRIBUTES: ReadonlySet<string> = new Set(["paraId", "textId"]);
 
-/** The pictures a part refers to, read from the source package. */
+/** The pictures and embedded objects a part refers to, read from the
+ *  source package. */
 const picturesOf = async (
   part: SourcePart,
   target: CopyTarget,
@@ -482,7 +485,7 @@ const picturesOf = async (
   const media = new Map<string, SourceMedia>();
   for (const relationship of part.relationships.values()) {
     if (
-      relationship.type !== RELATIONSHIP_TYPES.image ||
+      !EMBEDDED_RELATIONSHIP_TYPES.has(relationship.type) ||
       relationship.targetMode === "External"
     ) {
       continue;
@@ -491,10 +494,10 @@ const picturesOf = async (
     // oxlint-disable-next-line no-await-in-loop -- serialized reads keep the archive budget exact
     const bytes = await target.readSourceBytes(path);
     if (bytes !== null) {
-      const dot = path.lastIndexOf(".");
       media.set(path, {
         bytes,
-        extension: dot === -1 ? "" : path.slice(dot + 1).toLowerCase(),
+        extension: extensionOf(path),
+        relationshipType: relationship.type,
       });
     }
   }
@@ -502,7 +505,8 @@ const picturesOf = async (
 };
 
 /** One block of a source part re-homed for an output part, or null when
- *  it refers to anything other than a picture or an external address. */
+ *  it refers to anything other than a picture, an embedded object or an
+ *  external address. */
 const rehomedBlock = (
   block: XmlElement,
   part: SourcePart,
@@ -527,14 +531,14 @@ const rehomedBlock = (
     const path = target.resolveSourceTarget(part.path, relationship.target);
     const picture = media.get(path);
     if (
-      relationship.type !== RELATIONSHIP_TYPES.image ||
+      !EMBEDDED_RELATIONSHIP_TYPES.has(relationship.type) ||
       picture === undefined
     ) {
       state.refused = true;
       return id;
     }
     return target.relationships.add({
-      type: RELATIONSHIP_TYPES.image,
+      type: relationship.type,
       target: target.addMedia(path, picture),
       external: false,
     });

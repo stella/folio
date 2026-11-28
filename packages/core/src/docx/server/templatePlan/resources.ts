@@ -8,17 +8,14 @@ import { Result } from "better-result";
 import { resolveNamespaceUri } from "@stll/docx-core/xml/namespaces";
 
 import type { RelationshipMap } from "../../../types/document";
-import {
-  parseRelationships,
-  RELATIONSHIP_TYPES,
-  resolveRelativePath,
-} from "../../relsParser";
+import { parseRelationships, resolveRelativePath } from "../../relsParser";
 import {
   getLocalName,
   OFFICE_RELATIONSHIP_NAMESPACE_URIS,
   type XmlElement,
 } from "../../xmlParser";
 import type { AnalyzedDocument } from "./blocks";
+import { EMBEDDED_RELATIONSHIP_TYPES, isPicturePart } from "./embeddedParts";
 import { readPartText, relationshipsPathFor, sha256Hex } from "./package";
 import { TemplatePlanError } from "./types";
 
@@ -38,10 +35,13 @@ export type StoryResources = {
    * percent-encoded or spelled in another case than its entry still resolves.
    */
   resolveTarget: (origin: StoryOrigin, target: string) => string;
-  /** SHA-256 of every picture the stories embed, by package path. */
+  /** SHA-256 of every picture and embedded object the stories embed, by
+   *  package path. */
   mediaDigests: ReadonlyMap<string, string>;
-  /** The bytes of those pictures, by package path. */
+  /** The bytes of those parts, by package path. */
   media: ReadonlyMap<string, Uint8Array>;
+  /** The relationship type each of those parts is reached by. */
+  mediaTypes: ReadonlyMap<string, string>;
 };
 
 const percentDecoded = (path: string): string => {
@@ -100,10 +100,11 @@ export const readStoryResources = async (
   };
   const media = new Map<string, Uint8Array>();
   const mediaDigests = new Map<string, string>();
+  const mediaTypes = new Map<string, string>();
   for (const origin of STORY_ORIGINS) {
     for (const relationship of relationships[origin].values()) {
       if (
-        relationship.type !== RELATIONSHIP_TYPES.image ||
+        !EMBEDDED_RELATIONSHIP_TYPES.has(relationship.type) ||
         relationship.targetMode === "External"
       ) {
         continue;
@@ -129,10 +130,17 @@ export const readStoryResources = async (
       if (bytes.value !== null) {
         media.set(path, bytes.value);
         mediaDigests.set(path, sha256Hex(bytes.value));
+        mediaTypes.set(path, relationship.type);
       }
     }
   }
-  return Result.ok({ relationships, resolveTarget, mediaDigests, media });
+  return Result.ok({
+    relationships,
+    resolveTarget,
+    mediaDigests,
+    media,
+    mediaTypes,
+  });
 };
 
 const isRelationshipAttribute = (
@@ -239,7 +247,10 @@ export const objectTargets = (
     const digest = resources.mediaDigests.get(
       resources.resolveTarget(origin, relationship.target),
     );
-    return digest === undefined
-      ? `part:${relationship.type}`
-      : `picture:${digest}`;
+    if (digest === undefined) {
+      return `part:${relationship.type}`;
+    }
+    return isPicturePart(relationship.type)
+      ? `picture:${digest}`
+      : `embedded:${digest}`;
   });
