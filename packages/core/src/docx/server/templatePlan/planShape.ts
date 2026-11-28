@@ -86,7 +86,20 @@ const numberingIssue = (value: unknown, where: string): string | null => {
   if (!isObject(value)) {
     return `${where} names a malformed list.`;
   }
-  const { numId, ilvl, restartFrom, baseNumId, group } = value;
+  const { numId, ilvl, restartFrom, baseNumId, group, sourceNumId } = value;
+  if (sourceNumId !== undefined) {
+    if (!isListId(sourceNumId)) {
+      return `${where} keeps a source list with a malformed id.`;
+    }
+    if (
+      numId !== "new" ||
+      restartFrom !== undefined ||
+      baseNumId !== undefined ||
+      group !== undefined
+    ) {
+      return `${where} keeps a source list beside a list of the template.`;
+    }
+  }
   if (numId !== "new" && !isListId(numId)) {
     return `${where} names a list that is neither an id nor "new".`;
   }

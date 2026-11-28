@@ -1471,6 +1471,23 @@ export const reportTemplatePlanOutput = async ({
       }
     }
   }
+  // A source list the plan keeps is an instance of a definition the output
+  // holds; the labels it prints are held to the source's below.
+  for (const { numId } of resolved.sourceLists) {
+    const instance = wChildren(outputNumbering?.root, "num").find(
+      (element) => integerOrNull(wAttr(element, "numId")) === numId,
+    );
+    const abstractNumId = integerOrNull(wChildVal(instance, "abstractNumId"));
+    if (
+      instance === undefined ||
+      !wChildren(outputNumbering?.root, "abstractNum").some(
+        (element) =>
+          integerOrNull(wAttr(element, "abstractNumId")) === abstractNumId,
+      )
+    ) {
+      numberingMismatch(`The kept source list ${numId} has no definition.`);
+    }
+  }
   for (const patch of plan.numberingPatches ?? []) {
     const definition = wChildren(outputNumbering?.root, "abstractNum").find(
       (element) =>

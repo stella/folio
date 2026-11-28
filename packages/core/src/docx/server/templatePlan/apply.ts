@@ -47,6 +47,7 @@ import { readHeaderFooterParts } from "./inspect";
 import { styleNumbering } from "./labels";
 import { guarded, readPartText, relationshipsPathFor } from "./package";
 import {
+  type CarriedSourceList,
   type ExpectedSegment,
   fieldSeparatorRun,
   type PieceOrigin,
@@ -487,6 +488,133 @@ const copiedListsOf = (
     abstractNumId += 1;
   }
   return copied;
+};
+
+/** Children of a list level that tie it to its own package. */
+const PACKAGE_BOUND_LEVEL_CHILDREN: ReadonlySet<string> = new Set([
+  "pStyle",
+  "lvlPicBulletId",
+]);
+
+/**
+ * The source's lists `lists` names, copied for the output: each definition
+ * once (a definition that only links a numbering style is followed to the
+ * one that defines its levels), numbered from `firstAbstractNumId`, and each
+ * instance under the id the plan gave it, with the level overrides the
+ * source states. What ties a definition to its package (its ids, the
+ * styles its levels name, picture bullets) stays behind. The copies declare
+ * the namespaces the source's numbering part binds, so they read the same
+ * under the template's root. Null when a list cannot be found.
+ */
+const carriedSourceListsOf = (
+  source: RawPart,
+  template: RawPart,
+  lists: readonly CarriedSourceList[],
+  firstAbstractNumId: number,
+): CopiedLists | null => {
+  const carried: CopiedLists = { abstracts: [], nums: [] };
+  const w = partPrefixes(template.root)?.w;
+  if (lists.length === 0) {
+    return carried;
+  }
+  if (w === undefined) {
+    return null;
+  }
+  const templateDeclarations = template.root.attributes ?? {};
+  const declarations = Object.entries(source.root.attributes ?? {})
+    .filter(
+      ([name, value]) =>
+        name.startsWith("xmlns:") &&
+        value !== undefined &&
+        templateDeclarations[name] !== value,
+    )
+    .map(([name, value]) => ` ${name}="${escapeXmlAttribute(String(value))}"`)
+    .join("");
+  const abstracts = wChildren(source.root, "abstractNum");
+  const abstractById = new Map(
+    abstracts.map((element) => [
+      integerOrNull(wAttr(element, "abstractNumId")),
+      element,
+    ]),
+  );
+  const definitionOf = (abstract: XmlElement): XmlElement => {
+    const link = wAttr(wChild(abstract, "numStyleLink"), "val");
+    return (
+      (link === null
+        ? undefined
+        : abstracts.find(
+            (element) =>
+              element !== abstract &&
+              wAttr(wChild(element, "styleLink"), "val") === link,
+          )) ?? abstract
+    );
+  };
+  /** Markup of `element`'s content without what ties it to its package. */
+  const contentOf = (element: XmlElement): string | null => {
+    const inner = innerRangeOf(source.xml, element);
+    if (inner === null) {
+      return "";
+    }
+    const left: XmlSplice[] = elementChildren(element).flatMap((child) => {
+      const bound = PACKAGE_BOUND_LIST_CHILDREN.has(wName(child) ?? "")
+        ? [child]
+        : elementChildren(child).filter((grandchild) =>
+            PACKAGE_BOUND_LEVEL_CHILDREN.has(wName(grandchild) ?? ""),
+          );
+      return bound.flatMap((node) => {
+        const range = rangeOf(node);
+        return range === null ? [] : [{ ...range, newXml: "" }];
+      });
+    });
+    return sliceWithSplices(source.xml, inner, left);
+  };
+  const copiedIds = new Map<XmlElement, number>();
+  for (const { sourceNumId, numId } of lists) {
+    const num = wChildren(source.root, "num").find(
+      (element) => integerOrNull(wAttr(element, "numId")) === sourceNumId,
+    );
+    const abstract = abstractById.get(
+      integerOrNull(wAttr(wChild(num, "abstractNumId"), "val")),
+    );
+    if (num === undefined || abstract === undefined) {
+      return null;
+    }
+    const definition = definitionOf(abstract);
+    let abstractNumId = copiedIds.get(definition);
+    if (abstractNumId === undefined) {
+      const body = contentOf(definition);
+      if (body === null) {
+        return null;
+      }
+      abstractNumId = firstAbstractNumId + copiedIds.size;
+      copiedIds.set(definition, abstractNumId);
+      carried.abstracts.push(
+        `<${w}:abstractNum ${w}:abstractNumId="${abstractNumId}"${declarations}>${body}</${w}:abstractNum>`,
+      );
+    }
+    const overrides = wChildren(num, "lvlOverride")
+      .map((override) => {
+        const range = rangeOf(override);
+        if (range === null) {
+          return "";
+        }
+        const inner = innerRangeOf(source.xml, override);
+        if (inner === null) {
+          return source.xml.slice(range.start, range.end);
+        }
+        const content = contentOf(override);
+        return content === null
+          ? ""
+          : source.xml.slice(range.start, inner.start) +
+              content +
+              source.xml.slice(inner.end, range.end);
+      })
+      .join("");
+    carried.nums.push(
+      `<${w}:num ${w}:numId="${numId}"${declarations}><${w}:abstractNumId ${w}:val="${abstractNumId}"/>${overrides}</${w}:num>`,
+    );
+  }
+  return carried;
 };
 
 /** The template numbering part with level patches and new list instances. */
@@ -1415,7 +1543,7 @@ const writeOutput = async ({
       ? null
       : readRawPart(source.numberingPath, source.numberingXml);
   // A LISTNUM field the output keeps counts in its list by name.
-  const copied =
+  const copied: CopiedLists =
     numberingPart === null || sourceNumbering === null
       ? { abstracts: [], nums: [] }
       : copiedListsOf(
@@ -1428,10 +1556,39 @@ const writeOutput = async ({
                 (element) => integerOrNull(wAttr(element, "numId")) ?? 0,
               ),
               ...resolved.mints.map(({ numId }) => numId),
+              ...resolved.sourceLists.map(({ numId }) => numId),
             ],
             0,
           ) + 1,
         );
+  // A source list the plan keeps goes with its definition, numbered after
+  // the template's and the lists copied for fields.
+  const carriedLists =
+    numberingPart === null || sourceNumbering === null
+      ? null
+      : carriedSourceListsOf(
+          sourceNumbering,
+          numberingPart,
+          resolved.sourceLists,
+          maxOf(
+            wChildren(numberingPart.root, "abstractNum").map(
+              (element) => integerOrNull(wAttr(element, "abstractNumId")) ?? 0,
+            ),
+            0,
+          ) +
+            1 +
+            copied.abstracts.length,
+        );
+  if (carriedLists === null && resolved.sourceLists.length > 0) {
+    return Result.err(
+      new TemplatePlanError({
+        code: "numbering-unknown",
+        message: "A source list the plan keeps cannot be carried.",
+      }),
+    );
+  }
+  copied.abstracts.push(...(carriedLists?.abstracts ?? []));
+  copied.nums.push(...(carriedLists?.nums ?? []));
   if (
     patches.length > 0 ||
     resolved.mints.length > 0 ||
