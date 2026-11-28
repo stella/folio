@@ -7275,8 +7275,24 @@ const deferSplitSeam = ({
     isAddedRevision(node) &&
     isTrackedWrapper(node) &&
     node.resolutionJoins !== undefined;
-  let leftEnd = left.length - 1;
-  let rightStart = 0;
+  // A kept boundary can stand between the paragraph edge and the insertion
+  // blocking its split seam. Read past those boundaries to defer the seam on
+  // the insertion; when it goes, the boundaries still land inside the source
+  // pieces as they do when both revisions are rejected together.
+  let leftBlockerEnd = left.length;
+  while (
+    leftBlockerEnd > 0 &&
+    standingInKeptCut(itemBefore(left, leftBlockerEnd))
+  )
+    leftBlockerEnd -= 1;
+  let rightBlockerStart = 0;
+  while (
+    rightBlockerStart < right.length &&
+    standingInKeptCut(right.at(rightBlockerStart))
+  )
+    rightBlockerStart += 1;
+  let leftEnd = leftBlockerEnd - 1;
+  let rightStart = rightBlockerStart;
   while (leftEnd >= 0 && blocking(left.at(leftEnd))) leftEnd -= 1;
   while (rightStart < right.length && blocking(right.at(rightStart)))
     rightStart += 1;
@@ -7284,13 +7300,17 @@ const deferSplitSeam = ({
   // those outside the blocker group; only insertions between them defer it.
   let sourcePair = false;
   for (
-    let leftIndex = left.length - 1;
+    let leftIndex = leftBlockerEnd - 1;
     leftIndex > leftEnd && !sourcePair;
     leftIndex -= 1
   ) {
     const leftSource = left.at(leftIndex);
     if (leftSource === undefined) panic("A scanned source fragment exists.");
-    for (let rightIndex = 0; rightIndex < rightStart; rightIndex += 1) {
+    for (
+      let rightIndex = rightBlockerStart;
+      rightIndex < rightStart;
+      rightIndex += 1
+    ) {
       const rightSource = right.at(rightIndex);
       if (rightSource === undefined) panic("A scanned source fragment exists.");
       if (!sameOwnFields(leftSource, rightSource)) continue;
@@ -7300,10 +7320,10 @@ const deferSplitSeam = ({
       break;
     }
   }
-  if (leftEnd !== left.length - 1 || rightStart !== 0) {
+  if (leftEnd !== leftBlockerEnd - 1 || rightStart !== rightBlockerStart) {
     const blockers = [
-      ...left.slice(leftEnd + 1),
-      ...right.slice(0, rightStart),
+      ...left.slice(leftEnd + 1, leftBlockerEnd),
+      ...right.slice(rightBlockerStart, rightStart),
     ].flatMap((node) => (isTrackedWrapper(node) ? [node.info.id] : []));
     const piecesBeyond = leftEnd >= 0 && rightStart < right.length;
     const deferred = (
@@ -7347,34 +7367,57 @@ const deferSplitSeam = ({
     };
     // Kept markers standing at the seam wait with the insertions beside them,
     // whose side is their cut's piece.
+    const leftSource = itemBefore(left, leftBlockerEnd);
+    const rightSource = right.at(rightBlockerStart);
+    const blockersAreSourcePieces =
+      leftSource !== undefined &&
+      rightSource !== undefined &&
+      isTrackedWrapper(leftSource) &&
+      isTrackedWrapper(rightSource) &&
+      sameStamp(leftSource, rightSource);
+    // Markers beyond two pieces of one change stand outside that change's
+    // split seam. Only markers between the pieces wait on their blockers.
     let keptFrom = leftEnd;
-    while (keptFrom >= 0 && standingInKeptCut(left.at(keptFrom))) keptFrom -= 1;
+    while (
+      !blockersAreSourcePieces &&
+      keptFrom >= 0 &&
+      standingInKeptCut(left.at(keptFrom))
+    )
+      keptFrom -= 1;
     let keptTo = rightStart;
-    while (standingInKeptCut(right.at(keptTo))) keptTo += 1;
+    while (!blockersAreSourcePieces && standingInKeptCut(right.at(keptTo)))
+      keptTo += 1;
     const known = new WeakMap<InlineNode, string>();
     const leftHolder = keptCutHolders({
       after: changeAtEdge(
-        left[leftEnd + 1] ?? (rightStart > 0 ? right.at(0) : undefined),
+        left[leftEnd + 1] ??
+          (rightStart > rightBlockerStart
+            ? right.at(rightBlockerStart)
+            : undefined),
         "start",
       ),
     });
     const rightHolder = keptCutHolders({
       before: changeAtEdge(
         right[rightStart - 1] ??
-          (leftEnd < left.length - 1 ? left.at(-1) : undefined),
+          (leftEnd < leftBlockerEnd - 1
+            ? itemBefore(left, leftBlockerEnd)
+            : undefined),
         "end",
       ),
     });
-    const leftRow = left.slice(leftEnd + 1).toReversed();
-    const rightRow = right.slice(0, rightStart);
+    const leftRow = left.slice(leftEnd + 1, leftBlockerEnd).toReversed();
+    const rightRow = right.slice(rightBlockerStart, rightStart);
     const atLeft = (node: InlineNode, index: number): InlineNode => {
-      if (index > leftEnd) return deferred(node, "after", leftRow);
+      if (index > leftEnd && index < leftBlockerEnd)
+        return deferred(node, "after", leftRow);
       return index > keptFrom && leftHolder !== undefined
         ? withKeptCutHoldersRecorded(node, leftHolder, known)
         : node;
     };
     const atRight = (node: InlineNode, index: number): InlineNode => {
-      if (index < rightStart) return deferred(node, "before", rightRow);
+      if (index >= rightBlockerStart && index < rightStart)
+        return deferred(node, "before", rightRow);
       return index < keptTo && rightHolder !== undefined
         ? withKeptCutHoldersRecorded(node, rightHolder, known)
         : node;
@@ -9753,11 +9796,39 @@ const planSingleRecordResolution = (
   record(rows.value);
   let current = rows.value.document;
   const ranInto = new Set<string>();
-  const joinsBefore = new Set(joins.map(({ paraId }) => idKey(paraId)));
+  // Marks normally resolve last to first. A keep-first mark that took over a
+  // later mark is the exception: its join must happen first, as resolving it
+  // in a separate operation does. The absorbed paragraph then retargets the
+  // later join to the survivor carrying its mark and review fields.
+  const reversedJoins = joins.toReversed();
+  const takenOverMarkByRevision = new Map(
+    paragraphs.flatMap(({ paragraph: { pPrMark } }) =>
+      pPrMark?.takenOverMark === undefined
+        ? []
+        : [[pPrMark.info.id, pPrMark.takenOverMark] as const],
+    ),
+  );
+  const orderedJoins: JoinPlan[] = [];
+  const ordered = new Set<JoinPlan>();
+  const ordering = new Set<JoinPlan>();
+  const orderJoin = (join: JoinPlan): void => {
+    if (ordered.has(join)) return;
+    if (ordering.has(join))
+      panic("Paragraph-mark takeover chains are acyclic.");
+    ordering.add(join);
+    for (const candidate of reversedJoins)
+      if (takenOverMarkByRevision.get(candidate.revisionId) === join.revisionId)
+        orderJoin(candidate);
+    ordering.delete(join);
+    ordered.add(join);
+    orderedJoins.push(join);
+  };
+  for (const join of reversedJoins) orderJoin(join);
+  const joinsBefore = new Set(orderedJoins.map(({ paraId }) => idKey(paraId)));
   const rejoined = new Map(resolution.rejoined);
   const controlEnds: string[] = [];
   const vacated = new Set<string>();
-  for (const join of joins.toReversed()) {
+  for (const [joinIndex, join] of orderedJoins.entries()) {
     joinsBefore.delete(idKey(join.paraId));
     if (removedParagraphs.has(idKey(join.paraId))) continue;
     const unsectioned = dropAddedSection({ document: current, join, applyOps });
@@ -9802,9 +9873,14 @@ const planSingleRecordResolution = (
     // A paragraph ending a control that an earlier one now absorbs (a join
     // keeping the first) hands the control's end to that survivor.
     for (const { absorbed, survivor } of absorbing.touched.absorbed ?? []) {
+      const absorbedKey = idKey(absorbed);
+      const survivorKey = idKey(survivor);
+      for (const pending of orderedJoins.slice(joinIndex + 1))
+        if (idKey(pending.paraId) === absorbedKey) pending.paraId = survivor;
+      if (joinsBefore.delete(absorbedKey)) joinsBefore.add(survivorKey);
       for (const [index, end] of controlEnds.entries())
-        if (idKey(end) === idKey(absorbed)) controlEnds[index] = survivor;
-      if (holders.has(idKey(absorbed))) holders.add(idKey(survivor));
+        if (idKey(end) === absorbedKey) controlEnds[index] = survivor;
+      if (holders.has(absorbedKey)) holders.add(survivorKey);
     }
     if (planned.value.endsControl !== undefined)
       controlEnds.push(planned.value.endsControl);
