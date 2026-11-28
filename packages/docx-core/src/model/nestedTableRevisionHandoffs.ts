@@ -93,6 +93,7 @@ const revisionSlots = (table: Table): ReadonlyMap<number, string> => {
     if (block.type === "table") owners.push(block);
     if (block.type !== "paragraph") return;
     const position = `paragraph:${paragraphIndex++}`;
+    record(block.propertyChanges, position);
     const mark = block.pPrMark;
     if (mark !== undefined) slots.set(mark.info.id, `${position}:${mark.kind}`);
     const content = block.content.at(1);
@@ -101,6 +102,8 @@ const revisionSlots = (table: Table): ReadonlyMap<number, string> => {
     for (const [index, item] of block.content.entries()) {
       if (item.type === "insertion" || item.type === "deletion")
         slots.set(item.info.id, `${position}:inline:${index}:${item.type}`);
+      if (item.type === "run")
+        record(item.propertyChanges, `${position}:inline:${index}`);
     }
   });
   for (const [index, owner] of owners.entries()) {

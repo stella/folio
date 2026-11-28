@@ -937,6 +937,8 @@ const getTrackedChangeGroupsFromProjectedDoc = (
       switch (change.type) {
         case "insertion":
         case "deletion":
+        case "formatting":
+        case "paragraphPropertiesChanged":
         case "tablePropertiesChanged":
         case "tablePropertyExceptionsChanged":
         case "rowPropertiesChanged":

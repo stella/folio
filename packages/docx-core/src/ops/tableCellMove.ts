@@ -99,7 +99,6 @@ const movableAtom = (leaf: RunContent): boolean =>
     isNoteReferenceId(leaf.id));
 
 const movableRun = (run: Run, pictures: Set<number>): boolean =>
-  run.propertyChanges === undefined &&
   run.content.every((leaf) => {
     if (leaf.type !== "drawing") return movableAtom(leaf);
     const id = movableTablePictureId(leaf);
@@ -491,6 +490,17 @@ const movableInlineContent = (
   content.every((item) => {
     switch (item.type) {
       case "run":
+        if (item.propertyChanges !== undefined) {
+          if (
+            context.priorRevisions === undefined ||
+            item.propertyChanges.some(
+              ({ boundaryJoins }) => boundaryJoins !== undefined,
+            )
+          )
+            return false;
+          for (const { info } of item.propertyChanges)
+            context.priorRevisions.push(info.id);
+        }
         return movableRun(item, context.pictures);
       case "bookmarkStart":
       case "bookmarkEnd":
@@ -547,7 +557,11 @@ export const tableMoveSource = (
   if (
     paragraph.paraId === undefined ||
     paragraph.pPrMark !== undefined ||
-    paragraph.propertyChanges !== undefined ||
+    (paragraph.propertyChanges !== undefined &&
+      (nested?.priorRevisions === undefined ||
+        paragraph.propertyChanges.some(
+          ({ resolvesWith }) => resolvesWith !== undefined,
+        ))) ||
     paragraph.sectionProperties !== undefined ||
     paragraph.reviewCarrier !== undefined ||
     (paragraph.content.length !== 0 &&
@@ -561,6 +575,8 @@ export const tableMoveSource = (
     proofing.size !== 0
   )
     return undefined;
+  for (const { info } of paragraph.propertyChanges ?? [])
+    nested?.priorRevisions?.push(info.id);
   return { paragraph, id: paragraph.paraId, controls, pictures };
 };
 
@@ -948,6 +964,13 @@ const withNestedMoveIdentities = (
       case "moveFrom":
       case "moveTo":
         return restamp(content);
+      case "run":
+        return content.propertyChanges === undefined
+          ? content
+          : {
+              ...content,
+              propertyChanges: content.propertyChanges.map(restamp),
+            };
       case "moveFromRangeStart":
       case "moveToRangeStart": {
         const range = ids.ranges.get(content.id);
@@ -985,6 +1008,9 @@ const withNestedMoveIdentities = (
           ...(block.pPrMark === undefined
             ? {}
             : { pPrMark: restamp(block.pPrMark) }),
+          ...(block.propertyChanges === undefined
+            ? {}
+            : { propertyChanges: block.propertyChanges.map(restamp) }),
           content: withMoveIdentities({
             content:
               ids.ranges.size === 0 && ids.revisions.size === 0

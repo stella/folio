@@ -318,13 +318,17 @@ const projection = (table: Table): unknown =>
       content: item.content.map((block) => {
         if (block.type === "table") return projection(block);
         if (block.type === "paragraph")
-          return { paraId: block.paraId, content: block.content };
+          return {
+            paraId: block.paraId,
+            content: block.content,
+            alignment: block.formatting?.alignment,
+          };
         return block;
       }),
     })),
   );
 
-test("earlier inline insertions and deletions stay reviewable through a nested table move", () => {
+test("earlier inline and formatting revisions stay reviewable through a nested table move", () => {
   const stamp = (id: number) => ({
     id,
     author: "Earlier",
@@ -332,6 +336,14 @@ test("earlier inline insertions and deletions stay reviewable through a nested t
   });
   const marked: Paragraph = {
     ...paragraph("00000003"),
+    formatting: { alignment: "center" },
+    propertyChanges: [
+      {
+        type: "paragraphPropertyChange",
+        info: stamp(43),
+        previousFormatting: { alignment: "right" },
+      },
+    ],
     content: [
       {
         type: "insertion",
@@ -343,7 +355,18 @@ test("earlier inline insertions and deletions stay reviewable through a nested t
         info: stamp(42),
         content: [{ type: "run", content: [{ type: "text", text: "Old " }] }],
       },
-      { type: "run", content: [{ type: "text", text: "clause" }] },
+      {
+        type: "run",
+        content: [{ type: "text", text: "clause" }],
+        formatting: { bold: true },
+        propertyChanges: [
+          {
+            type: "runPropertyChange",
+            info: stamp(44),
+            previousFormatting: { italic: true },
+          },
+        ],
+      },
     ],
   };
   const moved: Table = {
@@ -405,7 +428,7 @@ test("earlier inline insertions and deletions stay reviewable through a nested t
       : undefined;
   if (grid === undefined || aliases === undefined)
     throw new TypeError("Expected paired run revision handoffs.");
-  expect(aliases.map(([id]) => id)).toEqual([41, 42]);
+  expect(aliases.map(([id]) => id)).toEqual([41, 42, 44, 43]);
   const projected = toProseDoc(reopened, { tableReviewGeometry: "physical" });
   for (const [authored, copied] of aliases)
     expect(getTrackedChangeGroupsForIds(projected, [authored]).at(0)).toContain(
@@ -442,10 +465,24 @@ test("earlier inline insertions and deletions stay reviewable through a nested t
           projection(tableOf(moveFirst)),
         );
         const xml = serializeTable(tableOf(earlierFirst), serializeParagraph);
-        const inserted = authored === 41;
-        expect(xml.includes(inserted ? "New " : "Old ")).toBe(
-          inserted === (inner === REVISION_DECISIONS.ACCEPT),
-        );
+        if (authored === 43) {
+          expect(xml).toContain(
+            inner === REVISION_DECISIONS.ACCEPT
+              ? '<w:jc w:val="center"'
+              : '<w:jc w:val="right"',
+          );
+        } else if (authored === 44) {
+          expect(xml).toContain(
+            inner === REVISION_DECISIONS.ACCEPT
+              ? "<w:b/></w:rPr><w:t>clause"
+              : "<w:i/></w:rPr><w:t>clause",
+          );
+        } else {
+          const inserted = authored === 41;
+          expect(xml.includes(inserted ? "New " : "Old ")).toBe(
+            inserted === (inner === REVISION_DECISIONS.ACCEPT),
+          );
+        }
       }
     }
   }
