@@ -142,6 +142,7 @@ export type TemplateCharacterStyles = {
   endnoteReference: string | null;
   footnoteText: string | null;
   endnoteText: string | null;
+  commentReference: string | null;
 };
 
 const styleNamed = (
@@ -162,6 +163,7 @@ export const templateCharacterStyles = (
   endnoteReference: styleNamed(template, "character", "endnote reference"),
   footnoteText: styleNamed(template, "paragraph", "footnote text"),
   endnoteText: styleNamed(template, "paragraph", "endnote text"),
+  commentReference: styleNamed(template, "character", "annotation reference"),
 });
 
 export type NoteKind = "footnote" | "endnote";
@@ -183,6 +185,15 @@ export type EmitShared = {
   nextDrawingId: () => number;
   /** A fresh id for a tracked change the output carries. */
   nextRevisionId: () => number;
+  /**
+   * The output id a source comment mark is written with, or null when the
+   * output does not carry it: a comment whose reference is not placed, or
+   * a range whose other end is not.
+   */
+  commentId?: (mark: {
+    kind: "start" | "end" | "reference";
+    id: string;
+  }) => string | null;
 };
 
 export type EmitContext = EmitShared & {
@@ -572,6 +583,27 @@ const plainPieceRunXml = (
             ]
               .map((content) => run(content))
               .join(""),
+      );
+    }
+    case "commentMark": {
+      const mark = piece.atom?.comment;
+      const id =
+        mark === undefined ? null : (context.commentId?.(mark) ?? null);
+      if (mark === undefined || id === null) {
+        return Result.ok("");
+      }
+      if (mark.kind === "reference") {
+        const style = context.styles.commentReference;
+        const look =
+          style === null
+            ? ""
+            : `<${w}:rPr><${w}:rStyle ${w}:val="${escapeXmlAttribute(style)}"/></${w}:rPr>`;
+        return Result.ok(
+          `<${w}:r>${look}<${w}:commentReference ${w}:id="${id}"/></${w}:r>`,
+        );
+      }
+      return Result.ok(
+        `<${w}:${mark.kind === "start" ? "commentRangeStart" : "commentRangeEnd"} ${w}:id="${id}"/>`,
       );
     }
     case "object": {

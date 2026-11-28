@@ -812,6 +812,23 @@ export type TemplatePlan = {
    * it. The report says where each went and what had no place.
    */
   sourceHeaders?: "drop" | "keep";
+  /**
+   * What becomes of the source's comments. `drop`, the default, carries
+   * none. `keep` carries each comment whose reference the output places,
+   * with its range where both ends are placed, and the comments part with
+   * its extensions (replies, done state, people). The report counts what
+   * had no place: a comment anchored in a block the plan omits, or in a
+   * note or a header.
+   */
+  comments?: "drop" | "keep";
+};
+
+/** What the output carries of the source's comments. */
+export type TemplatePlanSourceComments = {
+  /** Comments the output shows. */
+  kept: number;
+  /** Comments of the source the output does not show. */
+  leftOut: number;
 };
 
 /** What the output's headers and footers carry of the source's, and what
@@ -1033,6 +1050,8 @@ export type TemplatePlanReport = {
   updateFields: "set" | "cleared" | "unchanged";
   /** Present when the plan keeps the source's headers and footers. */
   sourceHeaders?: TemplatePlanSourceHeaders;
+  /** Present when the plan keeps the source's comments. */
+  sourceComments?: TemplatePlanSourceComments;
   conformance: {
     status: "conformant" | "invalid" | "indeterminate";
     /** The template's own status; the output may not be worse. */
