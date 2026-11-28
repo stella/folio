@@ -82,6 +82,9 @@ export type DocxBlockNumbering = {
    * first two levels. Absent where the level states none.
    */
   lvlText?: string;
+  /** The format the level counts in (`w:numFmt`, `decimal` under legal
+   *  numbering); stated with `lvlText`. */
+  numFmt?: string;
   /** The level prints its counters in arabic numerals (`w:isLgl`). */
   legal?: true;
 };

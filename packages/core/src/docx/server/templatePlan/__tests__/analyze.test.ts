@@ -169,7 +169,16 @@ describe("analyzeDocxBlocks", () => {
     // The clause prints the article's counter in arabic numerals.
     expect(blocks.map(({ label, numbering: level }) => [label, level])).toEqual(
       [
-        ["I.", { numId: 1, ilvl: 0, abstractNumId: 0, lvlText: "%1." }],
+        [
+          "I.",
+          {
+            numId: 1,
+            ilvl: 0,
+            abstractNumId: 0,
+            lvlText: "%1.",
+            numFmt: "upperRoman",
+          },
+        ],
         [
           "1.1",
           {
@@ -177,6 +186,7 @@ describe("analyzeDocxBlocks", () => {
             ilvl: 1,
             abstractNumId: 0,
             lvlText: "%1.%2",
+            numFmt: "decimal",
             legal: true,
           },
         ],
@@ -203,7 +213,16 @@ describe("analyzeDocxBlocks", () => {
     expect(blocks.map(({ label, numbering: level }) => [label, level])).toEqual(
       [
         ["○", { numId: 1, ilvl: 0, abstractNumId: 0, bullet: true }],
-        ["a", { numId: 1, ilvl: 1, abstractNumId: 0, lvlText: "%2" }],
+        [
+          "a",
+          {
+            numId: 1,
+            ilvl: 1,
+            abstractNumId: 0,
+            lvlText: "%2",
+            numFmt: "lowerLetter",
+          },
+        ],
         // A letter of a text face is that letter only in that face; the
         // code of a symbol face is read as the shape it paints.
         [

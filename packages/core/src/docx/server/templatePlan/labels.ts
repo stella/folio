@@ -455,7 +455,7 @@ export const createLabelCounter = ({
               ...bulletFacts(listRendering, template),
               ...(template === "" || listRendering.isBullet
                 ? {}
-                : { lvlText: template }),
+                : { lvlText: template, numFmt: listRendering.numFmt }),
               ...(listRendering.isLegal === true
                 ? { legal: true as const }
                 : {}),
