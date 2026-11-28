@@ -327,7 +327,7 @@ const canonicalBatchPlan = ({
       : operation.blockId;
   const paragraph =
     projection.paragraph(blockId) ??
-    panic("A resolved batch operation lost its source paragraph", {
+    panic("A batch operation lost its paragraph", {
       id: operation.id,
     });
   const doc = projection.doc;
@@ -618,8 +618,7 @@ type PlannedOperation = {
 /** What precedes a run of paragraphs a batch deletes (`finalBreakCarrier`). */
 type RunCarrier = Exclude<FinalBreakCarrier<unknown>["type"], "none">;
 
-const ROW_SHIFTED_CELL_SHAPE =
-  "The batch inserts or deletes a row that shifts the cells this merges or splits.";
+const ROW_SHIFTED_CELL_SHAPE = "A row edit shifts these cells.";
 
 /**
  * The merges and splits whose cells a batch row edit would shift or remove.
@@ -653,8 +652,7 @@ const rowShiftedCellShapes = <
   );
 };
 
-const COLUMN_EDITED_CELL_SHAPE =
-  "The batch inserts or deletes a column in the table this merges or splits.";
+const COLUMN_EDITED_CELL_SHAPE = "A column edit shifts these cells.";
 
 /**
  * The merges and splits in a table the batch inserts or deletes a column of,
@@ -694,8 +692,7 @@ const columnEditedCellShapes = <
   );
 };
 
-const ROW_CLOSING_CELL_SHAPE =
-  "Another merge the batch makes in this table removes a row, which would move the cells this merges or splits.";
+const ROW_CLOSING_CELL_SHAPE = "Another merge removes this row.";
 
 type RowClosingCellShapesOptions<T> = {
   /** The batch's operations, in the order it requests them. */
@@ -753,8 +750,7 @@ const rowClosingCellShapes = <T extends PlannedOperation>({
   return refused;
 };
 
-const OVERLAPPING_CELL_SHAPE =
-  "An earlier merge or split of the batch reshapes cells this merges or splits.";
+const OVERLAPPING_CELL_SHAPE = "An earlier edit reshapes these cells.";
 
 /**
  * The merges and splits whose cells an earlier one of the batch in their
@@ -1730,8 +1726,9 @@ const lastPutBetween = ({
   ].toSorted((left, right) => order(left.id) - order(right.id));
   const standing =
     endsContainer ||
-    gap.some(placesTable) ||
-    gap.some(({ id }) => {
+    gap.some((placed) => {
+      if (placesTable(placed)) return true;
+      const { id } = placed;
       const stated = inputOrder[order(id)];
       return (
         stated !== undefined &&
@@ -2012,7 +2009,7 @@ const placeAfter = ({
         return besideAsItStands(paragraph);
       const survivor =
         projection.paragraphStartingAt(rule.survivor) ??
-        panic("A pending join names a paragraph the projection lacks.");
+        panic("A pending join lost its paragraph.");
       return besideAsItStands(survivor);
     }
     default: {
@@ -2158,26 +2155,6 @@ const goesWholeOnAcceptance = (paragraph: PMNode): boolean =>
   !holdsStandingContent(paragraph);
 
 /**
- * The paragraphs a pending join runs into the one at `paragraphPos` as the
- * batch runs (`joinedBefore`, nearest first): up to one the batch puts a
- * block right after, which then stands between them, as a block put after a
- * paragraph a pending deletion takes whole lands.
- */
-const joinedAsTheBatchRuns = (
-  doc: PMNode,
-  paragraphPos: number,
-  besideDeletions: BesideDeletions,
-): string[] => {
-  const joined = joinedBefore(doc, paragraphPos);
-  const stop = joined.findIndex(
-    (id) =>
-      besideDeletions.tables.after.has(id) ||
-      besideDeletions.paragraphsAfter.has(id),
-  );
-  return stop < 0 ? joined : joined.slice(0, stop);
-};
-
-/**
  * Whether the blocks after `position` in its container are paragraphs that
  * hold nothing once accepted, each before the last with its break pending
  * deletion, and no section break among them, as the docx-core block deletion
@@ -2239,7 +2216,7 @@ const besidePendingJoin = ({
   const place = at(after ? join.last : join.first);
   const formattingSource = at(join.last);
   if (place === undefined || formattingSource === undefined)
-    return panic("A pending join names a paragraph the projection lacks.");
+    return panic("A pending join lost its paragraph.");
   return { place, formattingSource };
 };
 
@@ -2495,7 +2472,7 @@ const resolveBlockInsertion = ({
   if (place === undefined)
     return refusal(
       "unsupportedBlock",
-      "Canonical insertion beside a table needs a paragraph on that side of it.",
+      "A table-side insertion needs a paragraph there.",
       INVALID_REQUEST,
     );
   // The anchor keeps its identity; the new paragraph takes a fresh one.
@@ -3048,8 +3025,7 @@ const mergeIntentsAsItRuns = ({
   story,
   intents,
   mode,
-}: MergeIntentsAsItRunsOptions):
-  readonly EditorIntent[] | "missingBlock" | "unsupportedBlock" => {
+}: MergeIntentsAsItRunsOptions): readonly EditorIntent[] | null | undefined => {
   const join = intents.find(
     (intent): intent is Extract<EditorIntent, { type: "joinParagraphs" }> =>
       intent.type === "joinParagraphs",
@@ -3070,7 +3046,7 @@ const mergeIntentsAsItRuns = ({
   const bindsToNext =
     mode === "direct" ||
     !locations.some(({ paragraph }) => idKey(paragraph.paraId ?? "") === was);
-  if (here === undefined) return bindsToNext ? "missingBlock" : intents;
+  if (here === undefined) return bindsToNext ? null : intents;
   const end = paragraphLength(here.paragraph);
   const siblings = locateParagraphThroughTextBoxes(
     document,
@@ -3114,7 +3090,7 @@ const mergeIntentsAsItRuns = ({
         between.length === next.index - here.index - 1 &&
         between.every(isBlockBoundary)));
   const nextId = follows ? next.paragraph.paraId : undefined;
-  if (nextId === undefined) return "unsupportedBlock";
+  if (nextId === undefined) return undefined;
   const boundToNext = (intent: EditorIntent): EditorIntent => {
     switch (intent.type) {
       case "joinParagraphs":
@@ -3274,8 +3250,7 @@ const gapAnchorBeforeFollower = ({
 }: GapAnchorBeforeFollowerOptions): InsertionAnchor => {
   if (anchor.type !== "paragraph" || anchor.at.type !== "after") return anchor;
   const paragraph = projection.paragraph(anchor.at.blockId);
-  if (paragraph === undefined)
-    return panic("An insertion anchor is missing from the projection.");
+  if (paragraph === undefined) return panic("An insertion lost its anchor.");
   const position = paragraph.start - 1 + paragraph.node.nodeSize;
   const next = projection.doc.resolve(position).nodeAfter;
   // Before a table, after an anchor whose break is pending deletion, the
@@ -3296,7 +3271,7 @@ const gapAnchorBeforeFollower = ({
   if (next?.type.name !== "paragraph") return anchor;
   const follower =
     projection.paragraphStartingAt(position) ??
-    panic("A following paragraph is missing from the projection.");
+    panic("An insertion lost its following paragraph.");
   return removedBlockIds.has(follower.blockId)
     ? anchor
     : { type: "paragraph", at: { type: "before", blockId: follower.blockId } };
@@ -3354,9 +3329,7 @@ const canonicalInsertionGap = ({
     if (type === "containerStart")
       anchor = { type, at: { type: "after", blockId } };
     else if (type === undefined || side === undefined)
-      return panic(
-        "A resolved table insertion needs an explicit anchor and side.",
-      );
+      return panic("A table insertion needs an anchor and side.");
     else anchor = { type, at: { type: side, blockId } };
   } else return undefined;
   const paragraph = projection.paragraph(anchor.at.blockId);
@@ -3380,8 +3353,7 @@ const canonicalInsertionGap = ({
         : outer[anchor.at.type];
   if (!placesBlock(operation)) return undefined;
   const source = projection.paragraph(operation.blockId);
-  if (source === undefined)
-    panic("A resolved insertion lost its requested source block.");
+  if (source === undefined) panic("An insertion lost its source block.");
   const sourceTable = findOutermostTableBoundary(
     projection.doc,
     source.start - 1,
@@ -3525,7 +3497,7 @@ const droppedInsertionCarrier = ({
   );
   const carrier = insertion?.blocks.at(-1);
   if (carrier?.type !== "paragraph" || carrier.paraId === undefined)
-    panic("A compiled table lost its trailing carrier allocation.");
+    panic("A compiled table lost its trailing carrier.");
   return carrier.paraId;
 };
 
@@ -4341,7 +4313,7 @@ const resolveTableStructure = ({
         )
           return skipAlike(
             "unsupportedBlock",
-            "A merge down takes one column and rows the table has.",
+            "A downward merge needs one column and existing rows.",
           );
       }
       if (
@@ -4358,7 +4330,7 @@ const resolveTableStructure = ({
       )
         return skipAlike(
           "unsupportedBlock",
-          "The merge would cut a merged cell or a slot its row omits.",
+          "The merge would cut a merged or omitted cell.",
         );
       if (new Set(cellsIn(map, rectangle)).size < 2)
         return skipAlike(
@@ -4996,7 +4968,7 @@ const compilePublicIntents = ({
         new DocumentOpRefusal({
           reason: DOCUMENT_OP_REFUSAL_REASONS.PENDING_PARAGRAPH_PROPERTY_CHANGE,
           message:
-            "Resolve the pending paragraph join before tracking a different change to its properties.",
+            "Resolve the pending join before changing paragraph properties.",
           opType: undefined,
         }),
       );
@@ -5580,8 +5552,7 @@ const besideEmptyControl = ({
   };
   const noNeighbour = {
     type: "refused",
-    message:
-      "Canonical insertion beside an empty content control needs a paragraph or table on that side of it.",
+    message: "An empty control needs a block on that side.",
   } as const;
   type Placement = {
     side: "before" | "after";
@@ -5663,8 +5634,7 @@ const besideEmptyControl = ({
     case "splitTableCell":
       return {
         type: "refused",
-        message:
-          "The paragraph shown in an empty content control is not part of the document; insert a block before or after the control instead.",
+        message: "This empty content control paragraph is not in the document.",
       };
     default: {
       const unreachable: never = operation;
@@ -5722,7 +5692,7 @@ export class CanonicalPublicOperations {
     const { session } = this.options;
     const parsed = parseFolioDocumentOperationBatch(options.batch);
     if (options.restagesSuggestions === true && parsed.mode !== "suggested")
-      panic("Only a suggested batch restages pending suggestions.");
+      panic("Only a suggested batch restages suggestions.");
     const lockAdmission =
       options.restagesSuggestions === true
         ? CANONICAL_ADMISSION.restage
@@ -6564,13 +6534,13 @@ export class CanonicalPublicOperations {
               mode: batch.mode,
             })
           : retracting;
-      if (typeof joining === "string")
+      if (!joining)
         return declined({
-          reason: joining,
+          reason: joining === null ? "missingBlock" : "unsupportedBlock",
           message:
-            joining === "missingBlock"
-              ? "The paragraph to join is gone once the batch's deletions are made."
-              : "No paragraph follows the paragraph to join once the batch's deletions are made.",
+            joining === null
+              ? "The join paragraph is gone."
+              : "No paragraph follows the join.",
         });
       const intents = joining;
       const livePropertyRefusal = batchPropertyRefusal({
@@ -7088,7 +7058,7 @@ export class CanonicalPublicOperations {
     for (const interval of merged) {
       const first = executionOrder.at(interval.first);
       if (first === undefined)
-        panic("An insertion admission window lost its first operation.");
+        panic("An insertion window lost its first operation.");
       const window = executionOrder.slice(interval.first, interval.last + 1);
       if (
         batchLease === undefined &&
@@ -7321,7 +7291,7 @@ export class CanonicalPublicOperations {
             replayOperation.operation.id,
           );
           if (paragraphAllocationLease === undefined)
-            panic("An admitted insertion lost its paragraph replay lease.");
+            panic("An insertion lost its paragraph lease.");
         } else {
           const reserved = new Set(session.reservedBlockIds);
           for (const other of admitted) {
@@ -8333,7 +8303,7 @@ export class CanonicalPublicOperations {
       return holdsParagraph(state.doc, blockId)
         ? refusal(
             "unsupportedBlock",
-            "The canonical session holds no address in this paragraph.",
+            "The session has no address in this paragraph.",
             INVALID_REQUEST,
           )
         : refusal("missingBlock");
@@ -8417,8 +8387,14 @@ export class CanonicalPublicOperations {
     const joined = deletionTakesJoinedWords(
       options.batch.mode ?? "tracked-changes",
     )
-      ? joinedAsTheBatchRuns(state.doc, paragraph.start - 1, besideDeletions)
+      ? joinedBefore(state.doc, paragraph.start - 1)
       : [];
+    const joinStop = joined.findIndex(
+      (id) =>
+        besideDeletions.tables.after.has(id) ||
+        besideDeletions.paragraphsAfter.has(id),
+    );
+    if (joinStop >= 0) joined.splice(joinStop);
     const opening = joined.some((id) => besideDeletions.deleted.has(id))
       ? undefined
       : joined.at(-1);
@@ -8514,7 +8490,13 @@ export class CanonicalPublicOperations {
       const follower = followed ? "paragraph" : "block";
       return deletedParagraphPlacement({
         beside: besideDeletions.placedBeside(blockId),
-        lastBefore: lastPutBefore(idOf(before)),
+        lastBefore: lastPutBefore(
+          before?.type.name === "paragraph" &&
+            isDeletedPPrMark(before.attrs["pPrMark"]) &&
+            paragraph.source.formatting === undefined
+            ? undefined
+            : idOf(before),
+        ),
         tableBefore: before?.type.name === "table",
         tableAfter: tableOrOneBefore(after),
         after: blockAfter === null ? "none" : follower,
@@ -8873,7 +8855,7 @@ export class CanonicalPublicOperations {
         if (/\r/u.test(operation.separator ?? ""))
           return refusal(
             "unsupportedBlock",
-            "Canonical public join separators hold no carriage return.",
+            "A join separator cannot contain a carriage return.",
             INVALID_REQUEST,
           );
         start = clean.text.length;
@@ -8921,8 +8903,7 @@ export class CanonicalPublicOperations {
       return Result.err(
         new CanonicalPublicOperationResolutionError({
           reason: "unsupportedBlock",
-          message:
-            "The range begins or ends inside a field result or holds a page-break run.",
+          message: "The range crosses a field result or page-break run.",
           detail: undefined,
         }),
       );
@@ -9007,7 +8988,7 @@ export class CanonicalPublicOperations {
       if (options.batch.mode === "suggested" && start === end)
         return refusal(
           "emptyOperation",
-          "A proposed comment needs words of the paragraph to cover.",
+          "A comment needs paragraph text to cover.",
         );
       return Result.ok({
         ...resolvedComment,
@@ -9068,7 +9049,7 @@ export class CanonicalPublicOperations {
         if (next === undefined)
           return skipAlike(
             "unsupportedBlock",
-            "The block ends its container; no paragraph follows it there.",
+            "No paragraph follows the container's last block.",
           );
         // The merged paragraph is the one whose mark remains, the second,
         // as accepting the tracked merge leaves it.
@@ -9249,7 +9230,7 @@ export class CanonicalPublicOperations {
       // The segments above keep the references, or the replacement edits
       // them, so a plan always exists and reproduces the replacement.
       if (planned === null)
-        return panic("A replacement's planned changes must reproduce it.");
+        return panic("Planned changes must reproduce the replacement.");
       // Keep repeated tabs and breaks in place. A replacement that changes
       // the separators passes them to the editor as inline elements.
       const separated = cutAroundRepeatedSeparators(
