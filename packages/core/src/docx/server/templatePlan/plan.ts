@@ -121,6 +121,10 @@ export type ResolvedParagraph = {
   styleId: string | null;
   numbering: ResolvedNumbering;
   segments: ExpectedSegment[];
+  /** The label written as text the paragraph opens with: its leading
+   *  segments and their text. A bookmark on the paragraph starts behind it,
+   *  where the source's started behind its automatic label. */
+  writtenLabel: { segments: number; text: string } | null;
   text: string;
   /** One signature per UTF-16 unit of `text`. */
   signatures: string[];
@@ -1217,6 +1221,7 @@ export const resolvePlan = (
     }
     const segments: ExpectedSegment[] = [];
     const resolvedParts: ResolvedPart[] = [];
+    let writtenLabel: ResolvedParagraph["writtenLabel"] = null;
     for (const [index, planned] of parts.entries()) {
       const { block, stripLabel, stripLabelBreak } = planned;
       const { id, text } = block.block;
@@ -1378,8 +1383,15 @@ export const resolvePlan = (
             `Block ${id} takes its label as text and can neither lose a typed label nor join a list.`,
           );
         }
+        const writtenPieces = labelPieces(written);
+        if (index === 0) {
+          writtenLabel = {
+            segments: writtenPieces.length,
+            text: writtenPieces.map((piece) => piece.text).join(""),
+          };
+        }
         segments.push(
-          ...labelPieces(written).map((piece): ExpectedSegment => ({
+          ...writtenPieces.map((piece): ExpectedSegment => ({
             kind: "piece",
             piece,
           })),
@@ -1423,6 +1435,7 @@ export const resolvePlan = (
       styleId: style.value,
       numbering: resolvedNumbering.value,
       segments,
+      writtenLabel,
       ...piecesContent(pieces),
       inlineObjects: pieces.filter(({ kind }) => kind === "object").length,
       placement,

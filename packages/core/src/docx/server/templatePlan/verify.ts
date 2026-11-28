@@ -1346,6 +1346,13 @@ export const reportTemplatePlanOutput = async ({
       const field = fields[index];
       const bookmark = resolved.bookmarks.get(entry.target)?.name ?? "";
       const targetBlock = outputOf.get(entry.target);
+      // A label written as text stands in front of the bookmark, where the
+      // paragraph that bears the bookmark opens with it.
+      const written = entry.target.writtenLabel?.text ?? "";
+      const lead =
+        written !== "" && targetBlock?.block.text.startsWith(written) === true
+          ? written
+          : "";
       const hasNumberSwitch = NUMBER_SWITCH.test(entry.reference.instruction);
       const usesNumber = /\\n\b/u.test(entry.reference.instruction);
       let predictedText: string | null = null;
@@ -1353,9 +1360,10 @@ export const reportTemplatePlanOutput = async ({
         if (!hasNumberSwitch) {
           // A number a field counts itself is in no text, so the text
           // shows what such a heading prints only where it has none.
+          // A label written as text stands in front of the bookmark.
           predictedText =
             targetBlock.block.selfNumbers === undefined
-              ? targetBlock.block.text
+              ? targetBlock.block.text.slice(lead.length)
               : null;
         } else if (usesNumber) {
           const number = /\\t\b/u.test(entry.reference.instruction)
@@ -1389,7 +1397,7 @@ export const reportTemplatePlanOutput = async ({
         targetBlock === undefined ||
         outputBookmarks.get(bookmark) !== targetBlock ||
         // The bookmark is the target's whole content, no more and no less.
-        !bookmarkEncloses(targetBlock.read, bookmark)
+        !bookmarkEncloses(targetBlock.read, bookmark, lead)
       ) {
         status = "missing-bookmark";
       } else if (field.result !== entry.reference.expectedText) {

@@ -544,6 +544,9 @@ const selfNumbersOf = ({ atoms }: ParagraphRead): number[] => {
 export const bookmarkEncloses = (
   read: ParagraphRead | null,
   name: string,
+  /** Text in front of the bookmark that is no content of the paragraph's
+   *  own: a label written as text. */
+  lead = "",
 ): boolean => {
   const start = read?.bookmarks.find((bookmark) => bookmark.name === name);
   const end =
@@ -558,8 +561,14 @@ export const bookmarkEncloses = (
       ({ revision }) => revision?.deleted === DELETED_PARAGRAPH_MARK,
     ) + 1;
   const marked = read.atoms.at(-1)?.revision?.mark === true ? 1 : 0;
+  const led = read.atoms
+    .slice(own, start.atomIndex)
+    .map(({ text }) => text)
+    .join("");
   return (
-    start.atomIndex === own && end.atomIndex === read.atoms.length - marked
+    start.atomIndex >= own &&
+    led === lead &&
+    end.atomIndex === read.atoms.length - marked
   );
 };
 
