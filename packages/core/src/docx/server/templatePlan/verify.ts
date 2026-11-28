@@ -88,6 +88,7 @@ import {
   type AtomRevision,
   createStoryState,
   endStory,
+  isFormField,
   isSelfNumberingField,
   type ParagraphRead,
   readParagraph,
@@ -233,6 +234,8 @@ const appendUnit = (
     content.marks.push(`${at}:break:${wAttr(element, "type") ?? "page"}`);
   } else if (kind === "selfNumber") {
     content.marks.push(`${at}:number:${instruction ?? ""}`);
+  } else if (kind === "formField") {
+    content.marks.push(`${at}:form:${instruction ?? ""}`);
   } else if (kind === "object" && element !== null) {
     content.marks.push(
       `${at}:object:${objectFingerprint(element)}:${objectTargets(element, origin, resources).join(",")}`,
@@ -2112,6 +2115,9 @@ export const reportTemplatePlanOutput = async ({
     ]);
   }
   const droppedFields = new Map<string, number>();
+  // Legacy form fields of the source the output places, by kind; those it
+  // writes as fields again are no fields written as text.
+  const placedFormFields = new Map<string, number>();
   let pageShapes = 0;
   for (const paragraph of new Set(resolved.byBlockId.values())) {
     for (const part of paragraph.parts) {
@@ -2132,6 +2138,12 @@ export const reportTemplatePlanOutput = async ({
         !isRebuilt(field, rebuiltSpans.get(id))
       ) {
         droppedFields.set(field.kind, (droppedFields.get(field.kind) ?? 0) + 1);
+      }
+      if (field !== undefined && isFormField(field)) {
+        placedFormFields.set(
+          field.kind,
+          (placedFormFields.get(field.kind) ?? 0) + 1,
+        );
       }
     }
     // Links the output cannot carry: to a bookmark or a part of the source.
@@ -2180,6 +2192,25 @@ export const reportTemplatePlanOutput = async ({
     warnings.push(
       `${source.story.state.comments} comment(s) of the source are not carried over.`,
     );
+  }
+  const outputFormFields = new Map<string, number>();
+  for (const field of out.story.state.fields) {
+    if (isFormField(field)) {
+      outputFormFields.set(
+        field.kind,
+        (outputFormFields.get(field.kind) ?? 0) + 1,
+      );
+    }
+  }
+  for (const [kind, placed] of placedFormFields) {
+    const left =
+      (droppedFields.get(kind) ?? 0) -
+      Math.min(placed, outputFormFields.get(kind) ?? 0);
+    if (left > 0) {
+      droppedFields.set(kind, left);
+    } else {
+      droppedFields.delete(kind);
+    }
   }
   if (droppedFields.size > 0) {
     warnings.push(
