@@ -748,17 +748,24 @@ const retagged = (
   return root;
 };
 
-/** Whether a selected paragraph boundary stands directly in this block list. */
-const holdsSelectedBoundary = (
+/** Whether rejecting selected insertions empties this block list. */
+const holdsSelectedContent = (
   blocks: readonly BlockContent[],
   ids: ReadonlySet<number>,
-): boolean =>
-  blocks.some((block) => {
-    if (block.type === "paragraph")
-      return block.pPrMark !== undefined && ids.has(block.pPrMark.info.id);
-    if (block.type === "blockCustomXml")
-      return holdsSelectedBoundary(block.content, ids);
-    if (block.type === "table")
+): boolean => {
+  const content = blocks.filter((block) => !isCustomXmlProperties(block));
+  return (
+    content.length > 0 &&
+    content.every((block) => {
+      if (block.type === "blockCustomXml")
+        return holdsSelectedContent(block.content, ids);
+      if (block.type === "paragraph")
+        return (
+          block.pPrMark !== undefined &&
+          block.pPrMark.survivor !== "first" &&
+          ids.has(block.pPrMark.info.id)
+        );
+      if (block.type !== "table") return false;
       return (
         block.rows.length > 0 &&
         block.rows.every(
@@ -768,8 +775,26 @@ const holdsSelectedBoundary = (
             ids.has(row.structuralChange.info.id),
         )
       );
-    return false;
-  });
+    })
+  );
+};
+
+/** Whether resolving `element` joins its final paragraph to the next block. */
+const joinsPastElement = (
+  element: BlockCustomXml,
+  after: BlockContent | undefined,
+  ids: ReadonlySet<number>,
+): boolean => {
+  const last = withoutCustomXmlTags(element.content).at(-1);
+  const next =
+    after === undefined ? undefined : withoutCustomXmlTags([after]).at(0);
+  return (
+    last?.type === "paragraph" &&
+    last.pPrMark !== undefined &&
+    ids.has(last.pPrMark.info.id) &&
+    next?.type === "paragraph"
+  );
+};
 
 /**
  * How a resolution reads through the custom XML elements of a story: the
@@ -806,15 +831,16 @@ export const customXmlReadThrough = ({
   const selected = new Set(revisionIds);
   let reached = false;
   mapLists(body.content, (list) => {
-    if (
-      list.some(
-        (block) =>
-          block.type === "blockCustomXml" &&
-          wrapsContent(block) &&
-          holdsSelectedBoundary(block.content, selected),
-      )
-    )
-      reached = true;
+    for (const [index, block] of list.entries())
+      if (
+        block.type === "blockCustomXml" &&
+        wrapsContent(block) &&
+        (holdsSelectedContent(block.content, selected) ||
+          joinsPastElement(block, list[index + 1], selected))
+      ) {
+        reached = true;
+        break;
+      }
     return [...list];
   });
   const anchor = storyParagraphs(body).find(
