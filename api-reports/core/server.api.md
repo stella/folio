@@ -401,6 +401,7 @@ export type DocxSection = {
         left: number | null;
     };
     columns: number;
+    ownHeaders?: true;
 };
 
 // @public (undocumented)
