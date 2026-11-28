@@ -172,15 +172,24 @@ export type ResolvedSlot = {
 
 /** A `REF` switch that shows the target paragraph's number, not its text. */
 
-/** Whether two lists render a level alike: the same format, text, start
- *  and look, whatever their numbers. */
+/** Whether two lists render a level alike: the same format, text and
+ *  look, whatever their numbers and where they start (the group's own
+ *  instance says where it starts; the labels it prints are verified). */
 const sameListRendering = (
   left: ReturnType<typeof computeListRendering>,
   right: ReturnType<typeof computeListRendering>,
 ): boolean =>
   left !== null &&
   right !== null &&
-  listRenderingDefinitionsMatch({ ...left, numId: right.numId }, right);
+  listRenderingDefinitionsMatch(
+    {
+      ...left,
+      numId: right.numId,
+      startOverride: right.startOverride,
+      levelStarts: right.levelStarts,
+    },
+    right,
+  );
 
 const SHOWS_NUMBER = /\\[nrw]\b/u;
 

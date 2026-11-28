@@ -1044,11 +1044,11 @@ describe("list instances and patches", () => {
     );
   });
 
-  test("a group may run over two lists of one definition that render alike", async () => {
+  test("a group may run over two lists of one definition that render alike, wherever they start", async () => {
     const twin = await withNumbering((xml) =>
       xml.replace(
         '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>',
-        '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num><w:num w:numId="7"><w:abstractNumId w:val="0"/></w:num>',
+        '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num><w:num w:numId="7"><w:abstractNumId w:val="0"/><w:lvlOverride w:ilvl="1"><w:startOverride w:val="1"/></w:lvlOverride></w:num>',
       ),
     );
     const items = (blocks: PlannedBlock[]): TemplatePlanItem[] =>
