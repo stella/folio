@@ -556,16 +556,18 @@ const nestedBookmarkCensus = (table: Table) =>
 const movablePositionedBookmarks = (
   bookmarks: PositionedBookmarkMarker[] | undefined,
 ) =>
-  bookmarks?.every(
-    ({ marker, contentControls, carrierStack }) =>
-      Number.isInteger(marker.id) &&
-      marker.id >= 0 &&
-      marker.id <= MAX_REVISION_ID &&
+  bookmarks?.every(({ marker, contentControls, carrierStack }) => {
+    const bookmarkId = marker.id;
+    return (
+      Number.isInteger(bookmarkId) &&
+      bookmarkId >= 0 &&
+      bookmarkId <= MAX_REVISION_ID &&
       marker.copyOriginAncestors === undefined &&
       contentControls === undefined &&
       carrierStack === undefined &&
-      (marker.type === "bookmarkEnd" || marker.name.length > 0),
-  ) ?? true;
+      (marker.type === "bookmarkEnd" || marker.name.length > 0)
+    );
+  }) ?? true;
 
 /** A structural copy may carry only records whose package identities stay unique. */
 export const nestedTableMoveSource = (
