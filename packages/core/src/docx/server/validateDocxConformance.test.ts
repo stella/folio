@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { ZipArchive } from "@stll/docx-core/zip";
 
+import { encodeUtf16LE } from "../../utils/textEncoding";
 import { createEmptyDocx } from "../rezip";
 import type {
   FolioDocxConformanceCheckId,
@@ -63,6 +64,35 @@ describe("validateDocxConformance", () => {
       message: "An XML package part is not well formed.",
       severity: "error",
       part: "word/document.xml",
+    });
+  });
+
+  test("reads an XML part written in UTF-16 with a byte order mark", async () => {
+    const utf16 = (xml: string): Uint8Array =>
+      Uint8Array.from([0xff, 0xfe, ...encodeUtf16LE(xml)]);
+    const wellFormed = await mutateEmptyPackage((zip) => {
+      zip.set(
+        "customXml/item1.xml",
+        utf16(
+          '<?xml version="1.0" encoding="utf-16"?><b:Sources xmlns:b="urn:example:sources"/>',
+        ),
+      );
+    });
+    expect(
+      checkStatus(
+        await validateDocxConformance(wellFormed),
+        "xml-well-formedness",
+      ),
+    ).toBe("passed");
+
+    const malformed = await mutateEmptyPackage((zip) => {
+      zip.set("customXml/item1.xml", utf16("<b:Sources>"));
+    });
+    const report = await validateDocxConformance(malformed);
+    expect(checkStatus(report, "xml-well-formedness")).toBe("failed");
+    expect(report.issues.at(0)).toMatchObject({
+      code: "xml-not-well-formed",
+      part: "customXml/item1.xml",
     });
   });
 
