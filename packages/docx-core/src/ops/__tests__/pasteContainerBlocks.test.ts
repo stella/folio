@@ -10,6 +10,7 @@ import { describe, expect, test } from "bun:test";
 
 import type {
   BlockContent,
+  BlockSdt,
   Document,
   Paragraph,
   Run,
@@ -47,7 +48,7 @@ const source = (): Document => ({
   },
 });
 
-const control = (): PastedBlock => ({
+const control = (): BlockSdt => ({
   type: "blockSdt",
   properties: { sdtType: "richText", id: 7, tag: "clause" },
   content: [paragraph("Inside one", "00000003"), paragraph("Inside two")],
