@@ -1,5 +1,13 @@
 # @stll/docx-core
 
+## 0.50.1
+
+### Patch Changes
+
+- [#3717](https://github.com/stella/folio/pull/3717) [`1049297`](https://github.com/stella/folio/commit/10492971c0e34b591b6b2a42f3118b03e695409c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve earlier nested table moves and their independent review records when an enclosing tracked merge moves the table again.
+
+- [#3717](https://github.com/stella/folio/pull/3717) [`1049297`](https://github.com/stella/folio/commit/10492971c0e34b591b6b2a42f3118b03e695409c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep checkbox controls and their checked state when a tracked cell merge moves their paragraph.
+
 ## 0.50.0
 
 ### Minor Changes
