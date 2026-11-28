@@ -224,7 +224,7 @@ test("a row review can settle the selected column history before handing on a ve
     type: "tableCellMerge",
     info: { ...revision, id: 51, author: "Other" },
     verticalMerge: "rest",
-    verticalMergeOriginal: "cont",
+    verticalMergeOriginal: "continue",
   };
   const document = documentOf(pending);
   expect(contractViolation(document)).toBeUndefined();

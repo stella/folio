@@ -72,7 +72,7 @@ const withMergesHandedOn = (
       table.formatting?.gridChange?.geometryChange === undefined &&
       merge !== TABLE_CELL_VERTICAL_MERGES.CONTINUE &&
       change?.type === "tableCellMerge" &&
-      change.verticalMergeOriginal === "cont" &&
+      change.verticalMergeOriginal === TABLE_CELL_VERTICAL_MERGES.CONTINUE &&
       removed.some(
         (entry) =>
           entry.start === slot.start &&
