@@ -549,88 +549,47 @@ const roundTripScriptArb = (
 const kindsOf = (changes: readonly CompareChange[]): string[] =>
   changes.map(({ kind }) => kind);
 
-/**
- * A block's text with the inline formatting it carries, one entry per
- * character, so two blocks compare on what a reader sees rather than on how
- * their runs happen to be split. A block the snapshot gives no runs for is
- * unstyled throughout.
- */
-const inlineFormattingSignature = (block: FolioAIBlock): string =>
-  JSON.stringify([
-    block.text,
-    (block.previewRuns ?? [{ text: block.text }]).flatMap((run) => {
-      const formatting = [
-        run.bold,
-        run.italic,
-        run.underline,
-        run.strike,
-        run.fontFamily,
-        run.fontSizePt,
-        run.color,
-      ];
-      return Array.from(run.text, () => formatting);
-    }),
-  ]);
-
-const paragraphFormattingSignature = (block: FolioAIBlock): string => {
-  if (block.kind === "diagnostic") {
-    return JSON.stringify([block.kind, block.text]);
-  }
-  return JSON.stringify([
-    block.text,
-    block.styleId,
-    block.listReference,
-    block.statedNumbering,
-    block.directAlignment,
-    block.directSpacing,
-  ]);
-};
-
-/** Every block a story holds, as signatures in an order-independent form. */
-const signaturesOf = (
-  blocks: readonly FolioAIBlock[],
-  signature: (block: FolioAIBlock) => string,
-): string => blocks.map(signature).toSorted().join("\n");
-
-/**
- * How many independently reported formatting categories a relocation dropped.
- *
- * `moveParagraph` is a deletion plus an insertion of the block's TEXT: the
- * The edit-script vocabulary intentionally re-inserts only the paragraph's
- * text. Inline formatting can therefore produce one `format` change and direct
- * paragraph formatting can produce one `paragraph-format` change. Count those
- * projections separately so the change-count property stays tight as the
- * comparison learns to see another formatting category.
- *
- * Applied ON ITS OWN, and compared as an order-independent whole: a relocation
- * that carried its formatting leaves the very same paragraphs in a different
- * order, so any difference at all is formatting the re-insertion dropped. That
- * needs no guess about which arrival belongs to the step, which matching by
- * text alone cannot tell when a document repeats a paragraph.
- */
-const relocationDroppedFormattingCount = async (
-  base: ArrayBuffer,
-  baseBlocks: readonly FolioAIBlock[],
-  step: Extract<EditScriptStep, { type: "moveParagraph" }>,
-): Promise<number> => {
-  const relocated = await applyEditScript(base, [step]);
-  if (relocated.isErr()) {
-    throw relocated.error;
-  }
-  const relocatedBlocks = await blocksOf(relocated.value.buffer);
-  const droppedInlineFormatting =
-    signaturesOf(relocatedBlocks, inlineFormattingSignature) !==
-    signaturesOf(baseBlocks, inlineFormattingSignature);
-  const droppedParagraphFormatting =
-    signaturesOf(relocatedBlocks, paragraphFormattingSignature) !==
-    signaturesOf(baseBlocks, paragraphFormattingSignature);
-  return Number(droppedInlineFormatting) + Number(droppedParagraphFormatting);
-};
-
 type TouchedBlockBudgetOptions = {
-  base: ArrayBuffer;
   applied: readonly EditScriptStep[];
   baseBlocks: readonly FolioAIBlock[];
+  changes: readonly CompareChange[];
+};
+
+const isRelocationFormattingChange = (
+  change: CompareChange,
+  movedBlockIds: ReadonlySet<string>,
+  movedTexts: ReadonlySet<string>,
+): boolean => {
+  switch (change.kind) {
+    case "format":
+      return (
+        movedBlockIds.has(change.baseBlockId) || movedTexts.has(change.text)
+      );
+    case "paragraph-format":
+      return movedBlockIds.has(change.baseBlockId);
+    case "run-format":
+      return movedTexts.has(change.text);
+    case "delete":
+    case "inline-atom":
+    case "insert":
+    case "merge":
+    case "move":
+    case "numbering":
+    case "replace":
+    case "section-properties":
+    case "split":
+    case "table-column-delete":
+    case "table-column-insert":
+    case "table-delete":
+    case "table-insert":
+    case "table-row-delete":
+    case "table-row-insert":
+      return false;
+    default: {
+      const unreachable: never = change;
+      return unreachable;
+    }
+  }
 };
 
 /**
@@ -641,27 +600,37 @@ type TouchedBlockBudgetOptions = {
  * the word floor, or it landed where the alignment can still walk forward).
  *
  * A relocation that also dropped formatting is budgeted one extra change for
- * each independently reported formatting projection. Every other script step,
- * including a whole row insertion or deletion, is one logical change. The
- * monotone row matcher keeps surviving cells paired instead of charging their
- * contents again when the table grows or shrinks.
+ * each formatting report on the moved block. Deriving those reports from the
+ * comparison's exhaustive change union avoids a narrower snapshot projection
+ * silently drifting from preserved run properties. Every other script step,
+ * including a whole row insertion or deletion, is one logical change.
  */
-const touchedBlockBudget = async ({
-  base,
+const touchedBlockBudget = ({
   applied,
   baseBlocks,
-}: TouchedBlockBudgetOptions): Promise<number> => {
+  changes,
+}: TouchedBlockBudgetOptions): number => {
   let budget = 0;
+  const movedBlockIds = new Set<string>();
+  const movedTexts = new Set<string>();
   for (const step of applied) {
     if (step.type !== "moveParagraph") {
       budget += 1;
       continue;
     }
-    // oxlint-disable-next-line no-await-in-loop -- each relocation is replayed on its own
-    budget +=
-      2 + (await relocationDroppedFormattingCount(base, baseBlocks, step));
+    budget += 2;
+    const movedBlock = baseBlocks.at(step.blockIndex);
+    if (movedBlock !== undefined) {
+      movedBlockIds.add(movedBlock.id);
+      movedTexts.add(movedBlock.text);
+    }
   }
-  return budget;
+  return (
+    budget +
+    changes.filter((change) =>
+      isRelocationFormattingChange(change, movedBlockIds, movedTexts),
+    ).length
+  );
 };
 
 /** What a change says apart from its kind and where it sits. */
@@ -851,10 +820,10 @@ describe("compareDocx", () => {
               base,
               scripted.value.buffer,
             );
-            const budget = await touchedBlockBudget({
-              base,
+            const budget = touchedBlockBudget({
               applied: scripted.value.applied,
               baseBlocks,
+              changes,
             });
             if (changes.length > budget) {
               throw new Error(
@@ -968,10 +937,10 @@ describe("compareDocx", () => {
     expect(scripted.value.unresolved).toEqual([]);
     const { changes } = await compareOrThrow(base, scripted.value.buffer);
     expect(changes.length).toBeLessThanOrEqual(
-      await touchedBlockBudget({
-        base,
+      touchedBlockBudget({
         applied: scripted.value.applied,
         baseBlocks,
+        changes,
       }),
     );
     expect(
@@ -980,6 +949,34 @@ describe("compareDocx", () => {
           change.kind === "delete" && change.before === baseBlocks.at(0)?.text,
       ),
     ).toEqual([]);
+  });
+
+  test("a relocation budget includes preserved run-property provenance", async () => {
+    const base = readFixture("upstream-complex-styles.docx");
+    const script = [
+      { type: "deleteParagraph", blockIndex: 3 },
+      { type: "deleteParagraph", blockIndex: 4 },
+      { type: "moveParagraph", blockIndex: 5, beforeBlockIndex: 2 },
+    ] as const satisfies EditScript;
+    const scripted = await applyEditScript(base, script);
+    if (scripted.isErr()) throw scripted.error;
+    expect(scripted.value.unresolved).toEqual([]);
+
+    const { changes } = await compareOrThrow(base, scripted.value.buffer);
+    const budget = touchedBlockBudget({
+      applied: scripted.value.applied,
+      baseBlocks: await blocksOf(base),
+      changes,
+    });
+    expect(
+      changes.some(
+        (change) =>
+          change.kind === "run-format" &&
+          change.text === "Highlighted text and normal text.",
+      ),
+    ).toBe(true);
+    expect(budget).toBe(5);
+    expect(changes.length).toBeLessThanOrEqual(budget);
   });
 
   test("deleting the tail and inserting elsewhere reports only the two scripted changes", async () => {
@@ -1015,10 +1012,10 @@ describe("compareDocx", () => {
       before: baseBlocks.at(-1)?.text,
     });
     expect(compared.changes.length).toBe(
-      await touchedBlockBudget({
-        base,
+      touchedBlockBudget({
         applied: scripted.value.applied,
         baseBlocks,
+        changes: compared.changes,
       }),
     );
     expect(await projectView(compared.buffer, "original")).toEqual(
@@ -1073,10 +1070,10 @@ describe("compareDocx", () => {
     const { changes } = await compareOrThrow(base, scripted.value.buffer);
     expect(changes.filter(({ kind }) => kind === "replace")).toEqual([]);
     expect(changes.length).toBeLessThanOrEqual(
-      await touchedBlockBudget({
-        base,
+      touchedBlockBudget({
         applied: scripted.value.applied,
         baseBlocks,
+        changes,
       }),
     );
   });
@@ -1113,10 +1110,10 @@ describe("compareDocx", () => {
     const { changes } = await compareOrThrow(base, scripted.value.buffer);
     expect(changes.length).toBeGreaterThan(0);
     expect(changes.length).toBeLessThanOrEqual(
-      await touchedBlockBudget({
-        base,
+      touchedBlockBudget({
         applied: scripted.value.applied,
         baseBlocks,
+        changes,
       }),
     );
   });
@@ -1209,10 +1206,10 @@ describe("compareDocx", () => {
       2,
     );
     expect(changes.length).toBeLessThanOrEqual(
-      await touchedBlockBudget({
-        base,
+      touchedBlockBudget({
         applied: scripted.value.applied,
         baseBlocks,
+        changes,
       }),
     );
   });
