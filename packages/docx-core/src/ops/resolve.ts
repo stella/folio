@@ -2936,8 +2936,9 @@ const withAcceptedOpenSeams = (
   if (resolution.decision !== REVISION_DECISIONS.ACCEPT) return nodes;
   let opened: InlineNode[] | undefined;
   for (let index = 0; index + 1 < nodes.length; index += 1) {
-    const left = nodes[index];
-    const right = nodes[index + 1];
+    const current = opened ?? nodes;
+    const left = current[index];
+    const right = current[index + 1];
     if (
       left === undefined ||
       right === undefined ||
