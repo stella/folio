@@ -923,6 +923,9 @@ export type TemplatePlanSourceHeaders = {
      *  of the section the output merges it into. */
     laterSectionParts: number;
   };
+  /** Output headers and footers that show two page numbers: the template's
+   *  part numbers its pages and so does the source's content it took. */
+  pageNumbersTwice: number;
 };
 
 export type TemplatePlanEffectCount = {
