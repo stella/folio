@@ -104,6 +104,7 @@ import type {
   TemplatePlanFieldLeftover,
   TemplatePlanIssue,
   TemplatePlanNoteCounts,
+  TemplatePlanReference,
   TemplatePlanReferenceResult,
   TemplatePlanReport,
   TemplatePlanSectionPage,
@@ -628,6 +629,23 @@ type ReportArgs = {
   resolved: ResolvedPlan;
   options: ApplyTemplatePlanOptions | undefined;
 };
+
+/**
+ * Whether a reference of the plan writes a field over part of a source
+ * field's result: the citation stays a field in the output, though not the
+ * source's own.
+ */
+const isRebuilt = (
+  field: StoryField,
+  spans: readonly TemplatePlanReference[] | undefined,
+): boolean =>
+  spans !== undefined &&
+  field.resultStart >= 0 &&
+  spans.some(
+    ({ start, end }) =>
+      start < field.resultStart + field.result.length &&
+      field.resultStart < end,
+  );
 
 /** Read `output` back and report how it compares with the resolved plan. */
 export const reportTemplatePlanOutput = async ({
@@ -2081,8 +2099,18 @@ export const reportTemplatePlanOutput = async ({
 
   // What the transfer leaves behind by design.
   const placedReads = resolvedParagraphs.flatMap(({ parts }) =>
-    parts.flatMap(({ block }) => (block.read === null ? [] : [block.read])),
+    parts.flatMap(({ block }) =>
+      block.read === null ? [] : [{ id: block.block.id, read: block.read }],
+    ),
   );
+  // The spans the plan writes a field of its own over, by block.
+  const rebuiltSpans = new Map<string, TemplatePlanReference[]>();
+  for (const { reference } of resolved.references) {
+    rebuiltSpans.set(reference.blockId, [
+      ...(rebuiltSpans.get(reference.blockId) ?? []),
+      reference,
+    ]);
+  }
   const droppedFields = new Map<string, number>();
   let pageShapes = 0;
   for (const paragraph of new Set(resolved.byBlockId.values())) {
@@ -2091,15 +2119,17 @@ export const reportTemplatePlanOutput = async ({
     }
   }
   let internalHyperlinks = 0;
-  for (const read of placedReads) {
+  for (const { id, read } of placedReads) {
     for (const index of read.fieldIndices) {
       const field = source.story.state.fields[index];
       // A HYPERLINK field with an address is carried over as a link, a
-      // field that numbers itself as the field it is.
+      // field that numbers itself as the field it is, and a field whose
+      // result a reference of the plan writes anew as a field of its own.
       if (
         field !== undefined &&
         hyperlinkFieldLink(field) === null &&
-        !isSelfNumberingField(field.kind)
+        !isSelfNumberingField(field.kind) &&
+        !isRebuilt(field, rebuiltSpans.get(id))
       ) {
         droppedFields.set(field.kind, (droppedFields.get(field.kind) ?? 0) + 1);
       }

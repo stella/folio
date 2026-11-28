@@ -1015,6 +1015,9 @@ export type TemplatePlanReport = {
   };
   dropped: {
     comments: number;
+    /** Fields of the placed source paragraphs written as their text, by
+     *  kind. A field a reference of the plan writes anew over part of its
+     *  result is not one of them. */
     sourceFields: { kind: string; count: number }[];
     internalHyperlinks: number;
     sectionBreaks: number;

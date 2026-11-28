@@ -204,6 +204,9 @@ describe("applyTemplatePlan edge content", () => {
       predictedText: null,
     });
     expect(report.references.predictionMismatch).toBe(0);
+    // The field the plan writes over the source's stands for it; the two
+    // the plan leaves are written as their text.
+    expect(report.dropped.sourceFields).toEqual([{ kind: "REF", count: 2 }]);
     expect(document).toContain(
       `<w:instrText xml:space="preserve"> REF ${result?.bookmark ?? ""} \\h \\* MERGEFORMAT </w:instrText>`,
     );
