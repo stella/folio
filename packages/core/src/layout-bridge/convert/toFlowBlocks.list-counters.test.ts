@@ -9,7 +9,10 @@ import {
   cloneListCounterState,
   createListCounterState,
 } from "../../prosemirror/listMarker";
-import { paragraphNumberingAttr } from "../../prosemirror/numberingAttr";
+import {
+  paragraphNumberingAttr,
+  paragraphNumberingFromAttrValue,
+} from "../../prosemirror/numberingAttr";
 import type { ParagraphAttrs } from "../../prosemirror/schema/nodes";
 import type { Document, Paragraph } from "../../types/document";
 import { toFlowBlocks } from "./toFlowBlocks";
@@ -299,7 +302,7 @@ describe("toFlowBlocks counter sharing by abstractNumId", () => {
             type: "paragraphPropertyChange",
             info: INS_MARK.info,
             previousFormatting: {
-              numPrFromStyle: paragraphNumberingAttr({
+              numPrFromStyle: paragraphNumberingFromAttrValue({
                 kind: "reference",
                 numId: 7,
                 ilvl: 0,
