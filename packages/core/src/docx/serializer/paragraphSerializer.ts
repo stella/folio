@@ -51,6 +51,7 @@ import {
   CONTAINER_CHILDREN,
   TRACKED_RUN_WORDPROCESSING_CHILDREN,
 } from "../containerChildren.gen";
+import { parseSimpleField as parseCapturedSimpleField } from "../fieldParser";
 import { fieldStateAttributes } from "../fieldState";
 import { serializeEmptyMarkProperties } from "../paragraphMarkPropertyPresence";
 import {
@@ -832,6 +833,10 @@ class UnrepresentableTrackedFieldChildError extends UnrepresentableTrackedFieldC
 const TRACKED_FIELD_CAPTURE_NAMES: ReadonlySet<string> = new Set(
   TRACKED_RUN_WORDPROCESSING_CHILDREN,
 );
+const CAPTURED_SIMPLE_FIELD_CHILDREN: ReadonlySet<string> = new Set([
+  "r",
+  "fldData",
+]);
 const replayableFieldDataXml = createCapturedXmlSanitizer({
   allowedLocalNames: new Set(["fldData"]),
   allowedNamespaceUris: WORDPROCESSINGML_NAMESPACE_URIS,
@@ -916,6 +921,45 @@ const trackedSimpleFieldContent = (
     ...result,
     structuralRun([{ type: "fieldChar", charType: "end" }]),
   ];
+};
+
+/** A captured simple field that a transparent container could not model. */
+const trackedCapturedSimpleField = (
+  item: PreservedInline,
+): SimpleField | null => {
+  const captured = parseXml(item.xml, OOXML_NAMESPACE_SCOPE);
+  const root = captured.elements?.at(0);
+  if (
+    captured.elements?.length !== 1 ||
+    !root ||
+    !WORDPROCESSINGML_NAMESPACE_URIS.has(root.namespaceUri ?? "") ||
+    getLocalName(root.name) !== "fldSimple"
+  ) {
+    return null;
+  }
+  const children = getChildElements(root);
+  const unsupported = children.find(
+    (child) =>
+      !WORDPROCESSINGML_NAMESPACE_URIS.has(child.namespaceUri ?? "") ||
+      !CAPTURED_SIMPLE_FIELD_CHILDREN.has(getLocalName(child.name)),
+  );
+  if (unsupported) {
+    throw new UnrepresentableTrackedFieldChildError({
+      message: `A captured tracked field cannot lower ${getLocalName(unsupported.name)} into a revision wrapper.`,
+    });
+  }
+  const field = parseCapturedSimpleField(root, null, null);
+  const fieldData = children.find(
+    (child) => getLocalName(child.name) === "fldData",
+  );
+  if (fieldData) {
+    field.content.unshift({
+      type: "preservedInline",
+      xml: captureVerbatimXml(fieldData),
+      text: "",
+    });
+  }
+  return field;
 };
 
 /**
@@ -1285,6 +1329,16 @@ const walkTrackedInlineContent = (
         break;
       }
       case "preservedInline": {
+        const field = trackedCapturedSimpleField(item);
+        if (field) {
+          segments.push(
+            ...walkTrackedInlineContent(
+              trackedSimpleFieldContent(field),
+              spelling,
+            ),
+          );
+          break;
+        }
         // Opaque captures cannot enter the typed lifting walk. Refuse hyperlinks
         // in this inline scope; a nested paragraph owns a separate revision scope.
         const pending = getChildElements(
