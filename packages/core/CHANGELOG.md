@@ -1,5 +1,35 @@
 # @stll/folio-core
 
+## 0.85.0
+
+### Minor Changes
+
+- [#3759](https://github.com/stella/folio/pull/3759) [`9b2c54c`](https://github.com/stella/folio/commit/9b2c54cfc112dca489b54e572ce92d26f15ec847) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A suggested paste or move of a block custom XML element now records the insertion or deletion of the element's own tags on the element, written as the custom XML range markers around it, and documents carrying those markers open and save with them. The review panel lists the record on the card of the associated suggested content, or on its own card when no content change matches. Accepting or rejecting the tags and their content in any order leaves the same document, whatever tables or nested elements the element holds: a break ending an element joins across every element end it stands inside, and an element whose content a rejection removes goes with it. A suggested paste of a paragraph whose copied deleted or moved-away break holds a cut of its own now records that cut beside the paste's insertion of the break, resolving as the direct paste does.
+
+- [#3796](https://github.com/stella/folio/pull/3796) [`5e22dc9`](https://github.com/stella/folio/commit/5e22dc92eebe3d6f69e39677514e0983733d28e7) Thanks [@jan-kubica](https://github.com/jan-kubica)! - With `textColors: "keep"` a plan carries the text colours and run shading that mark part of the source's text (a red note, a grey placeholder); a colour that covers more than half of the source's text is its own look and stays the template's. A content control among runs (plain text, rich text, date, list) stays around its content where the output places all of it, without the data binding, placeholder and run look that name parts of the source. The report's `sourceHeaders.pageNumbersTwice` counts output headers and footers that show two page numbers, the template's and the source's.
+
+- [#3797](https://github.com/stella/folio/pull/3797) [`3718edd`](https://github.com/stella/folio/commit/3718edda413c8cdc621fef89e6cdaac140a6e42b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A paragraph whose mark the source hides (`w:vanish` on the mark, which runs it on into the next paragraph on screen, or hides it with hidden text) keeps the mark hidden. A content control around paragraphs or tables stays around them where the output writes all of its blocks, in order, without the data binding, placeholder and run look that name parts of the source.
+
+- [#3794](https://github.com/stella/folio/pull/3794) [`8eec090`](https://github.com/stella/folio/commit/8eec09025a0a17599630455de1fd7feb73407dbd) Thanks [@jan-kubica](https://github.com/jan-kubica)! - More of a source's fields and links survive a template plan. A reference may be written as a `PAGEREF` (`field: "PAGEREF"`, with `\h`, `\p`, a numeric picture and a look-keeping format), and the manifest lists PAGEREF fields among a paragraph's cross-references, including those inside a table of contents' result. `internalLinks: "keep"` links the source's links to its own bookmarks (`w:anchor`, `HYPERLINK \l`) to the plan's bookmark on the output paragraph that stands for their target; those left as text are counted. A contents entry field (`TC`) and a macro button (`MACROBUTTON`) stay fields where their paragraph is placed.
+
+### Patch Changes
+
+- [#3813](https://github.com/stella/folio/pull/3813) [`21698e5`](https://github.com/stella/folio/commit/21698e5ab94639c28f6c228f5463a34914dfa8b7) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Allow moves between projected document stories to use the destination editor state.
+
+- [#3810](https://github.com/stella/folio/pull/3810) [`ac77e65`](https://github.com/stella/folio/commit/ac77e650dea4ace583bdfca3af858cde10071a32) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A template plan's report no longer counts a link to a bookmark the source does not have among the internal links left as text: such a link led nowhere in the source either.
+
+- [#3809](https://github.com/stella/folio/pull/3809) [`0258db9`](https://github.com/stella/folio/commit/0258db9d98577268566fd8d931a353e31cbede6b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A text box carried with its paragraph goes without the source's bookmarks (a text box written twice, for two kinds of reader, names each bookmark twice) and without references to styles the template lacks, and its check no longer counts text effects that show nothing, which the output is written without: such a paragraph no longer fails verification.
+
+- [#3812](https://github.com/stella/folio/pull/3812) [`fd69f00`](https://github.com/stella/folio/commit/fd69f00fa0b6c4525a7a458eb3814f95d364589a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve bookmarks at paragraph and cell boundaries when reviewing tracked nested table moves.
+
+- [#3800](https://github.com/stella/folio/pull/3800) [`579eb4e`](https://github.com/stella/folio/commit/579eb4e107bba84a619dbb33aa23ac2c35e9bf1e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve table and row bookmarks and their local links when a tracked cell merge moves a nested table.
+
+- [#3812](https://github.com/stella/folio/pull/3812) [`fd69f00`](https://github.com/stella/folio/commit/fd69f00fa0b6c4525a7a458eb3814f95d364589a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep earlier run and paragraph formatting revisions independently reviewable through tracked nested table moves.
+
+- [#3812](https://github.com/stella/folio/pull/3812) [`fd69f00`](https://github.com/stella/folio/commit/fd69f00fa0b6c4525a7a458eb3814f95d364589a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep earlier inline insertions and deletions independently reviewable when a tracked merge moves their nested table.
+- Updated dependencies [[`9b2c54c`](https://github.com/stella/folio/commit/9b2c54cfc112dca489b54e572ce92d26f15ec847), [`aae7278`](https://github.com/stella/folio/commit/aae7278ba3456e443a2e3b11fb0d1996c953a610), [`3ce18ae`](https://github.com/stella/folio/commit/3ce18ae8d59e2ba7e878ae396ec8995e4dc5d799), [`e7742cc`](https://github.com/stella/folio/commit/e7742ccc7112a22c832ce57ef2bb2bfb262f239d), [`fd69f00`](https://github.com/stella/folio/commit/fd69f00fa0b6c4525a7a458eb3814f95d364589a), [`579eb4e`](https://github.com/stella/folio/commit/579eb4e107bba84a619dbb33aa23ac2c35e9bf1e), [`fd69f00`](https://github.com/stella/folio/commit/fd69f00fa0b6c4525a7a458eb3814f95d364589a), [`fd69f00`](https://github.com/stella/folio/commit/fd69f00fa0b6c4525a7a458eb3814f95d364589a), [`f05c10a`](https://github.com/stella/folio/commit/f05c10a3385dce9b1906095e409106c6928800bc)]:
+  - @stll/docx-core@0.51.0
+
 ## 0.84.0
 
 ### Minor Changes

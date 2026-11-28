@@ -1,5 +1,29 @@
 # @stll/docx-core
 
+## 0.51.0
+
+### Minor Changes
+
+- [#3759](https://github.com/stella/folio/pull/3759) [`9b2c54c`](https://github.com/stella/folio/commit/9b2c54cfc112dca489b54e572ce92d26f15ec847) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A suggested paste or move of a block custom XML element now records the insertion or deletion of the element's own tags on the element, written as the custom XML range markers around it, and documents carrying those markers open and save with them. The review panel lists the record on the card of the associated suggested content, or on its own card when no content change matches. Accepting or rejecting the tags and their content in any order leaves the same document, whatever tables or nested elements the element holds: a break ending an element joins across every element end it stands inside, and an element whose content a rejection removes goes with it. A suggested paste of a paragraph whose copied deleted or moved-away break holds a cut of its own now records that cut beside the paste's insertion of the break, resolving as the direct paste does.
+
+### Patch Changes
+
+- [#3802](https://github.com/stella/folio/pull/3802) [`aae7278`](https://github.com/stella/folio/commit/aae7278ba3456e443a2e3b11fb0d1996c953a610) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Apply the one-column interpretation of a zero cell span when editing and reviewing tables.
+
+- [#3806](https://github.com/stella/folio/pull/3806) [`3ce18ae`](https://github.com/stella/folio/commit/3ce18ae8d59e2ba7e878ae396ec8995e4dc5d799) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Settle selected column geometry before reviewing a row removal that depends on it.
+
+- [#3795](https://github.com/stella/folio/pull/3795) [`e7742cc`](https://github.com/stella/folio/commit/e7742ccc7112a22c832ce57ef2bb2bfb262f239d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve paragraph and inline seams across every revision resolution order.
+
+- [#3812](https://github.com/stella/folio/pull/3812) [`fd69f00`](https://github.com/stella/folio/commit/fd69f00fa0b6c4525a7a458eb3814f95d364589a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve bookmarks at paragraph and cell boundaries when reviewing tracked nested table moves.
+
+- [#3800](https://github.com/stella/folio/pull/3800) [`579eb4e`](https://github.com/stella/folio/commit/579eb4e107bba84a619dbb33aa23ac2c35e9bf1e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve table and row bookmarks and their local links when a tracked cell merge moves a nested table.
+
+- [#3812](https://github.com/stella/folio/pull/3812) [`fd69f00`](https://github.com/stella/folio/commit/fd69f00fa0b6c4525a7a458eb3814f95d364589a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep earlier run and paragraph formatting revisions independently reviewable through tracked nested table moves.
+
+- [#3812](https://github.com/stella/folio/pull/3812) [`fd69f00`](https://github.com/stella/folio/commit/fd69f00fa0b6c4525a7a458eb3814f95d364589a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep earlier inline insertions and deletions independently reviewable when a tracked merge moves their nested table.
+
+- [#3801](https://github.com/stella/folio/pull/3801) [`f05c10a`](https://github.com/stella/folio/commit/f05c10a3385dce9b1906095e409106c6928800bc) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Use surviving table cells to preserve exact undo when reviewing a removed paragraph beside a table.
+
 ## 0.50.2
 
 ### Patch Changes
