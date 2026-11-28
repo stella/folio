@@ -81,7 +81,11 @@ import {
   type StoryResources,
 } from "./resources";
 import { tableRowRevisions } from "./revisions";
-import { verifyCarriedHeaders } from "./sourceHeaders";
+import {
+  keptSectionEnds,
+  outputSectionStarts,
+  verifyCarriedHeaders,
+} from "./sourceHeaders";
 import {
   type AtomKind,
   type AtomLink,
@@ -1929,6 +1933,7 @@ export const reportTemplatePlanOutput = async ({
       source,
       template,
       output: out,
+      starts: outputSectionStarts(source, keptSectionEnds(resolved)),
     });
     if (Result.isError(carried)) {
       return carried;

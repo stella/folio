@@ -65,6 +65,9 @@ import { readStoryResources } from "./resources";
 import {
   copyPartContent,
   type HeaderFamily,
+  type HeaderWrite,
+  keptSectionEnds,
+  outputSectionStarts,
   plannedHeaderWrites,
 } from "./sourceHeaders";
 import type {
@@ -1125,15 +1128,111 @@ const writeOutput = async ({
     createdXml: string | null;
     markup: string;
     relationships: RelationshipsEditor;
+    /** The relationships a new part copied from the template's starts with. */
+    seededRelationships: string | null;
   }[] = [];
   const sectionReferences = [...inherited];
+  // References a later output section names in place of those every
+  // section shares, by section and by `headerReference:default` key.
+  const sectionOverrides = new Map<number, Map<string, string>>();
+  /** A new part for a later output section: the template's content for
+   *  those pages, then the source section's. */
+  const laterSectionPart = async (
+    write: HeaderWrite & { section: number },
+  ): Promise<Result<undefined, TemplatePlanError>> => {
+    const { w, wUri, r } = documentPrefixes;
+    let index = 1;
+    const free = (candidate: string): boolean =>
+      !pkg.paths.has(candidate) &&
+      carriedParts.every((carried) => carried.path !== candidate);
+    while (!free(`${documentDirectory}${write.family}${index}.xml`)) {
+      index += 1;
+    }
+    const path = `${documentDirectory}${write.family}${index}.xml`;
+    const id = documentRelationships.add({
+      type: RELATIONSHIP_TYPES[write.family],
+      target: `${write.family}${index}.xml`,
+      external: false,
+    });
+    const overrides = sectionOverrides.get(write.section) ?? new Map();
+    overrides.set(
+      `${write.family}Reference:${write.kind}`,
+      `<${w}:${write.family}Reference ${w}:type="${write.kind}" ${r}:id="${escapeXmlAttribute(id)}"/>`,
+    );
+    sectionOverrides.set(write.section, overrides);
+    const templatePart =
+      write.templatePath === null
+        ? undefined
+        : headerFooterParts.find(({ path: at }) => at === write.templatePath);
+    const seedPath =
+      templatePart === undefined
+        ? null
+        : relationshipsPathFor(templatePart.path);
+    const seed =
+      seedPath === null || !pkg.paths.has(seedPath)
+        ? Result.ok(null)
+        : await readTemplateText(seedPath);
+    if (Result.isError(seed)) {
+      return seed;
+    }
+    const relationshipsPath = relationshipsPathFor(path);
+    const relationships = createRelationshipsEditor(
+      relationshipsPath,
+      seed.value,
+    );
+    if (relationships === null) {
+      return Result.err(
+        unreadable(relationshipsPath, "A relationships part is not one."),
+      );
+    }
+    const copy = await copyPartContent(write.source, {
+      relationships,
+      addMedia: shared.addMedia,
+      nextDrawingId: shared.nextDrawingId,
+      readSourceBytes: async (target) => await source.pkg.readBytes(target),
+      resolveSourceTarget: (fromPart, target) =>
+        resolveRelativePath(relationshipsPathFor(fromPart), target),
+      hasStyle: (styleId) => template.styles.has(styleId),
+    });
+    const root = write.family === "header" ? "hdr" : "ftr";
+    carriedParts.push({
+      family: write.family,
+      path,
+      createdXml:
+        templatePart === undefined
+          ? `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><${w}:${root} xmlns:${w}="${wUri}" xmlns:${r}="${NAMESPACES.r}">${copy.markup}</${w}:${root}>`
+          : appendToXmlRoot(templatePart.xml, {
+              rootName: templatePart.root.name ?? "",
+              markup: copy.markup,
+            }),
+      markup: copy.markup,
+      relationships,
+      seededRelationships: seed.value,
+    });
+    return Result.ok(undefined);
+  };
   if (plan.sourceHeaders === "keep") {
-    const planned = await plannedHeaderWrites(source, template);
+    const planned = await plannedHeaderWrites(
+      source,
+      template,
+      outputSectionStarts(source, keptSectionEnds(resolved)),
+    );
     if (Result.isError(planned)) {
       return planned;
     }
     const { w, wUri, r } = documentPrefixes;
     for (const write of planned.value.writes) {
+      if (write.section !== undefined) {
+        // oxlint-disable-next-line no-await-in-loop -- serialized reads keep the archive budget exact
+        const later = await laterSectionPart({
+          ...write,
+          section: write.section,
+        });
+        if (Result.isError(later)) {
+          return later;
+        }
+        continue;
+      }
       let path = write.templatePath;
       if (path === null) {
         let index = 1;
@@ -1189,6 +1288,7 @@ const writeOutput = async ({
             : null,
         markup: copy.markup,
         relationships,
+        seededRelationships: null,
       });
     }
   }
@@ -1197,6 +1297,28 @@ const writeOutput = async ({
       ? [item.paragraph]
       : [],
   );
+  /** The references output section `position` names, and the template's
+   *  own it names others in place of. */
+  const sectionReferencesOf = (
+    position: number,
+  ): { inherited: string[]; replaced: Set<string> } => {
+    const overrides =
+      sectionOverrides.get(position) ?? new Map<string, string>();
+    const keyOf = (xml: string): string => {
+      const name = /^<[^:\s]+:(headerReference|footerReference)/u.exec(
+        xml,
+      )?.[1];
+      const kind = /:type="([^"]+)"/u.exec(xml)?.[1] ?? "default";
+      return `${name ?? ""}:${kind}`;
+    };
+    return {
+      inherited: [
+        ...sectionReferences.filter((xml) => !overrides.has(keyOf(xml))),
+        ...overrides.values(),
+      ],
+      replaced: new Set(overrides.keys()),
+    };
+  };
   const sectionXmlOf = new Map<ResolvedParagraph, string>();
   for (const [position, paragraph] of sectionEnds.entries()) {
     const section = paragraph.endsSection;
@@ -1211,7 +1333,7 @@ const writeOutput = async ({
               first: position === 0,
               page: section.page,
               start: position === 0 ? null : (section.start ?? "nextPage"),
-              inherited: sectionReferences,
+              ...sectionReferencesOf(position),
             },
           );
     if (xml === null) {
@@ -1387,7 +1509,7 @@ const writeOutput = async ({
     const { lastSection } = plan;
     const split = sectionEnds.length > 0 || lastSection !== undefined;
     const rebuilt =
-      split || sectionReferences.length > 0
+      split || sectionReferences.length > 0 || sectionOverrides.size > 0
         ? sectionPropertiesXml(
             template.document.xml,
             bodySection,
@@ -1397,7 +1519,7 @@ const writeOutput = async ({
               page: lastSection?.page,
               start:
                 sectionEnds.length === 0 ? null : (lastSection?.start ?? null),
-              inherited: sectionReferences,
+              ...sectionReferencesOf(sectionEnds.length),
             },
           )
         : null;
@@ -1695,7 +1817,13 @@ const writeOutput = async ({
     }
   }
 
-  for (const { path, createdXml, markup, relationships } of carriedParts) {
+  for (const {
+    path,
+    createdXml,
+    markup,
+    relationships,
+    seededRelationships,
+  } of carriedParts) {
     let xml = createdXml;
     if (xml === null) {
       const part = headerFooterParts.find(
@@ -1727,7 +1855,7 @@ const writeOutput = async ({
       );
     }
     parts.set(path, frozen);
-    const relationshipsXml = relationships.xml();
+    const relationshipsXml = relationships.xml() ?? seededRelationships;
     if (relationshipsXml !== null) {
       parts.set(relationships.path, relationshipsXml);
     }
