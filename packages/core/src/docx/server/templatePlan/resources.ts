@@ -15,6 +15,7 @@ import {
   type XmlElement,
 } from "../../xmlParser";
 import type { AnalyzedDocument } from "./blocks";
+import { invisibleEffectsOf } from "./effects";
 import { EMBEDDED_RELATIONSHIP_TYPES, isPicturePart } from "./embeddedParts";
 import { readPartText, relationshipsPathFor, sha256Hex } from "./package";
 import { TemplatePlanError } from "./types";
@@ -184,9 +185,23 @@ const DRAWING_PROPERTIES = "docPr";
  * to another package: relationship ids, the drawing id and namespace
  * declarations are left out, everything else counts.
  */
+const OBJECT_MARKUP_SKIPPED: ReadonlySet<string> = new Set([
+  "bookmarkStart",
+  "bookmarkEnd",
+  "pStyle",
+  "rStyle",
+  "tblStyle",
+]);
+
 export const objectFingerprint = (element: XmlElement): string => {
   const parts: string[] = [];
+  // Effects that show nothing are written out of every story, text boxes
+  // of an object included: they are no part of what the object holds.
+  const skipped = new Set<XmlElement>();
   const visit = (node: XmlElement): void => {
+    if (skipped.has(node)) {
+      return;
+    }
     if (node.type === "text") {
       parts.push(JSON.stringify(["text", String(node.text ?? "")]));
       return;
@@ -195,6 +210,16 @@ export const objectFingerprint = (element: XmlElement): string => {
       return;
     }
     const local = getLocalName(node.name);
+    // Bookmarks and style references of a text box's text are not carried
+    // with it (see the object transfer): they are no part of its content.
+    if (OBJECT_MARKUP_SKIPPED.has(local)) {
+      return;
+    }
+    if (local === "rPr") {
+      for (const effect of invisibleEffectsOf(node)) {
+        skipped.add(effect);
+      }
+    }
     const attributes = Object.entries(node.attributes ?? {})
       .filter(
         ([name, value]) =>

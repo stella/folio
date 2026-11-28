@@ -217,6 +217,21 @@ const ownerOf = (
   return isW(element, "docDefaults") ? { kind: "defaults" } : owner;
 };
 
+/** The effects of a run's properties that show nothing: the ones the
+ *  output is written without. */
+export const invisibleEffectsOf = (
+  runProperties: XmlElement,
+): ReadonlySet<XmlElement> => {
+  const found = new Set<XmlElement>();
+  for (const effect of TEXT_EFFECTS) {
+    const stated = effectChild(runProperties, effect);
+    if (stated !== null && showsNothing(effect, stated, runProperties)) {
+      found.add(stated);
+    }
+  }
+  return found;
+};
+
 /** Every text effect of a part that shows nothing, in document order. */
 export const findInvisibleEffects = ({ root }: RawPart): InvisibleEffect[] => {
   const found: InvisibleEffect[] = [];
