@@ -78,6 +78,7 @@ import {
   moveRangeAllocator,
   type NestedTableMoveSource,
   nestedTableMoveSource,
+  tableBookmarkAllocator,
   type TableMoveSource,
   tableMoveSource,
   tablePictureIdAllocator,
@@ -2585,6 +2586,11 @@ const suggestMerge = ({
   const takePictureId = moves.some(({ source }) => source.pictures.size > 0)
     ? tablePictureIdAllocator(document.package)
     : undefined;
+  const takeBookmark = moves.some(
+    (move) => move.type === "table" && move.source.bookmarks.length > 0,
+  )
+    ? tableBookmarkAllocator(document.package)
+    : undefined;
   let nextBlockId = continuationCount;
   let nextStamp = 0;
   for (const move of moves) {
@@ -2613,6 +2619,7 @@ const suggestMerge = ({
       const endRevisions = endStamp + source.revisions.length;
       const endAnchors = endRevisions + source.omittedAnchorCount;
       const moveRanges = [];
+      const bookmarks = [];
       for (const original of source.ranges) {
         const temporary = takeMoveRange?.();
         if (temporary === undefined)
@@ -2623,6 +2630,16 @@ const suggestMerge = ({
           });
         moveRanges.push([original, temporary] as const);
       }
+      for (const original of source.bookmarks) {
+        const temporary = takeBookmark?.();
+        if (temporary === undefined)
+          return refuse({
+            op,
+            reason: DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
+            message: "The bookmark identity space is exhausted.",
+          });
+        bookmarks.push([original, temporary] as const);
+      }
       const nested = markNestedTableMove({
         source,
         destinations: op.newBlockIds.slice(nextBlockId, endBlockId),
@@ -2630,6 +2647,7 @@ const suggestMerge = ({
         recordStamps: moveStamps.slice(endStamp, endRevisions),
         anchorStamps: moveStamps.slice(endRevisions, endAnchors),
         moveRanges,
+        bookmarks,
         controls,
         pictures,
       });

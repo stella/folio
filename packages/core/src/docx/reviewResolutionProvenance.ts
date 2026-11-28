@@ -908,6 +908,27 @@ const validMoveRangeHandoffs = (value: unknown): boolean => {
   return true;
 };
 
+const validBookmarkHandoffs = (value: unknown): boolean => {
+  if (value === undefined) return true;
+  if (!Array.isArray(value) || value.length === 0) return false;
+  const ids = new Set<number>();
+  const names = new Set<string>();
+  for (const pair of value) {
+    if (!Array.isArray(pair) || pair.length !== 2) return false;
+    for (const bookmark of pair) {
+      if (!record(bookmark)) return false;
+      const { id, name } = bookmark;
+      if (!isRevisionId(id) || typeof name !== "string" || name.length === 0)
+        return false;
+      const key = name.toLowerCase();
+      if (ids.has(id) || names.has(key)) return false;
+      ids.add(id);
+      names.add(key);
+    }
+  }
+  return true;
+};
+
 const isTableMove = (value: unknown): value is TableMove =>
   record(value) &&
   typeof value["source"] === "string" &&
@@ -949,6 +970,7 @@ const isNestedTableMove = (value: unknown): value is NestedTableMove => {
     ) &&
     validIdentityHandoffs(value["revisions"], validRevisionHandoff) &&
     validMoveRangeHandoffs(value["moveRanges"]) &&
+    validBookmarkHandoffs(value["bookmarks"]) &&
     validIdentityHandoffs(value["controls"], validControlHandoff) &&
     validIdentityHandoffs(value["pictures"], validPictureHandoff)
   );

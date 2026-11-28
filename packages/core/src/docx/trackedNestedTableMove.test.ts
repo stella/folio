@@ -133,6 +133,170 @@ const tableOf = (document: Document): Table => {
   return block;
 };
 
+test.each(["table", "row"] as const)(
+  "tracked horizontal merges keep nested %s bookmark pairs and their local links",
+  (placement) => {
+    const name = "NestedClause";
+    const bookmarks = [
+      { index: 0, marker: { type: "bookmarkStart", id: 77, name } },
+      { index: 1, marker: { type: "bookmarkEnd", id: 77 } },
+    ] satisfies NonNullable<Table["bookmarks"]>;
+    const link: Paragraph = {
+      ...paragraph("00000003"),
+      content: [
+        {
+          type: "hyperlink",
+          anchor: name,
+          children: [
+            { type: "run", content: [{ type: "text", text: "Clause" }] },
+          ],
+        },
+      ],
+    };
+    const moved: Table = {
+      type: "table",
+      columnWidths: [900],
+      ...(placement === "table" ? { bookmarks } : {}),
+      rows: [
+        {
+          type: "tableRow",
+          ...(placement === "row" ? { bookmarks } : {}),
+          cells: [cell(link)],
+        },
+      ],
+    };
+    const table: Table = {
+      type: "table",
+      columnWidths: [1000, 1400],
+      rows: [
+        {
+          type: "tableRow",
+          cells: [
+            cell(paragraph("00000001", "Owner")),
+            cell(moved, paragraph("00000002")),
+          ],
+        },
+      ],
+    };
+    const outside: Paragraph = {
+      ...paragraph("00000004"),
+      content: [
+        { type: "bookmarkStart", id: 1, name: "foliobookmark1" },
+        { type: "run", content: [{ type: "text", text: "Outside" }] },
+        { type: "bookmarkEnd", id: 1 },
+      ],
+    };
+    const withTable = (block: Table): Document => ({
+      package: { document: { content: [block, outside] } },
+    });
+    const original = withTable(table);
+    const operation = {
+      type: DOCUMENT_OP_TYPES.MERGE_CELLS,
+      story: OP_STORIES.MAIN,
+      blockId: "00000001",
+      top: 0,
+      bottom: 1,
+      left: 0,
+      right: 2,
+    } as const;
+    const intent = { type: "table", operation } as const;
+    const ids = createEditorIntentIdAllocator()(original, intent);
+    const { ops } = compileEditorIntent(original, {
+      intent,
+      mode: {
+        type: "suggesting",
+        revision: { id: ids.revisionId, author: "Reviewer" },
+        newIds: ids.newIds,
+      },
+    }).unwrap();
+    const pending = applyDocumentOps(original, ops).unwrap();
+    expect(
+      applyDocumentOps(pending.document, pending.inverse).unwrap().document,
+    ).toStrictEqual(original);
+    const xml = serializeTable(tableOf(pending.document), serializeParagraph);
+    expect(xml).toContain('w:id="2" w:name="FolioBookmark2"');
+    expect(xml).toContain('w:anchor="FolioBookmark2"');
+    const reopened = parseSavedTable(xml);
+    const formatting = reopened.formatting;
+    const grid = formatting?.gridChange;
+    const geometry = grid?.geometryChange;
+    if (grid === undefined || geometry?.type !== "mergeCells")
+      throw new TypeError("Expected reopened merge records.");
+    const nestedMove = geometry.nestedMoves?.at(0);
+    expect(nestedMove?.bookmarks).toEqual([
+      [
+        { id: 77, name },
+        { id: 2, name: "FolioBookmark2" },
+      ],
+    ]);
+    const resolution = {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: [grid.id],
+    } as const;
+    const direct = applyDocumentOp(original, {
+      ...operation,
+      newBlockIds: [],
+    }).unwrap().document;
+    for (const decision of Object.values(REVISION_DECISIONS)) {
+      const reviewed = applyDocumentOp(withTable(reopened), {
+        ...resolution,
+        decision,
+      }).unwrap().document;
+      const expected =
+        decision === REVISION_DECISIONS.ACCEPT ? direct : original;
+      const expectedTable = parseSavedTable(
+        serializeTable(tableOf(expected), serializeParagraph),
+      );
+      const reviewedTable = tableOf(reviewed);
+      expect(projection(reviewedTable)).toEqual(projection(expectedTable));
+      const nestedXml = (outer: Table) =>
+        outer.rows.flatMap(({ cells }) =>
+          cells.flatMap(({ content }) =>
+            content.flatMap((block) =>
+              block.type === "table"
+                ? [serializeTable(block, serializeParagraph)]
+                : [],
+            ),
+          ),
+        );
+      expect(nestedXml(reviewedTable)).toEqual(nestedXml(expectedTable));
+    }
+    if (nestedMove === undefined)
+      throw new TypeError("Expected a nested move.");
+    const stale = withTable({
+      ...reopened,
+      formatting: {
+        ...formatting,
+        gridChange: {
+          ...grid,
+          geometryChange: {
+            ...geometry,
+            nestedMoves: [
+              {
+                ...nestedMove,
+                bookmarks: [
+                  [
+                    { id: 77, name },
+                    { id: 1, name: "foliobookmark1" },
+                  ],
+                ],
+              },
+            ],
+          },
+        },
+      },
+    });
+    const refused = applyDocumentOp(stale, {
+      ...resolution,
+      decision: REVISION_DECISIONS.ACCEPT,
+    });
+    expect(refused.isErr() && refused.error.reason).toBe(
+      DOCUMENT_OP_REFUSAL_REASONS.STALE,
+    );
+  },
+);
+
 const projection = (table: Table): unknown =>
   table.rows.map((row) =>
     row.cells.map((item) => ({
