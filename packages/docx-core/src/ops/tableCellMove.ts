@@ -625,6 +625,10 @@ const movablePositionedBookmarks = (
       movableBookmark(marker),
   ) ?? true;
 
+type NativeHalves = NonNullable<
+  ReturnType<typeof nativeMovesInParagraph>
+>["halves"];
+
 /** A structural copy may carry only records whose package identities stay unique. */
 export const nestedTableMoveSource = (
   table: Table,
@@ -637,7 +641,7 @@ export const nestedTableMoveSource = (
   const paragraphs: string[] = [];
   const revisions: number[] = [];
   const ranges: TableMoveRanges[] = [];
-  const nativeHalves = [];
+  const nativeHalves: NativeHalves = [];
   const earlierMoves = new Map<string, TableGeometryMove>();
   const gridMembers: number[] = [];
   const controls = new Set<number>();
@@ -1652,9 +1656,6 @@ export const nestedNativeMovePairs = ({
   handoffs,
 }: NestedNativeMoveOptions): TableGeometryNativeMove[][] => {
   if (move.moveRanges === undefined) return [];
-  type NativeHalves = NonNullable<
-    ReturnType<typeof nativeMovesInParagraph>
-  >["halves"];
   const byRange = new Map<number, NativeHalves>();
   for (const { paragraph } of storyParagraphs({ content: [table] })) {
     if (paragraph.pPrMark !== undefined || paragraph.paraId === undefined)
