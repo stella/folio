@@ -135,7 +135,7 @@ const tableOf = (document: Document): Table => {
   return block;
 };
 
-test.each(["table", "row", "paragraph", "block"] as const)(
+test.each(["table", "row", "paragraph", "block", "equation"] as const)(
   "tracked horizontal merges keep nested %s bookmark pairs and their local links",
   (placement) => {
     const name = "NestedClause";
@@ -145,6 +145,15 @@ test.each(["table", "row", "paragraph", "block"] as const)(
       { index: 0, marker: start },
       { index: 1, marker: end },
     ] satisfies NonNullable<Table["bookmarks"]>;
+    // ISO/IEC 29500-1 §22.1.2.77 permits bookmarks inside an equation.
+    const formula = ({ id, name: anchorName }: { id: number; name: string }) =>
+      ({
+        type: "mathEquation",
+        display: "inline",
+        ommlXml:
+          '<m:oMath xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math">' +
+          `<w:bookmarkStart w:id="${id}" w:name="${anchorName}"/><m:r><m:t>x</m:t></m:r><w:bookmarkEnd w:id="${id}"/></m:oMath>`,
+      }) as const;
     const link: Paragraph = {
       ...paragraph("00000003"),
       content: [
@@ -157,6 +166,7 @@ test.each(["table", "row", "paragraph", "block"] as const)(
           ],
         },
         ...(placement === "paragraph" ? [end] : []),
+        ...(placement === "equation" ? [formula(start)] : []),
       ],
     };
     const moved: Table = {
@@ -190,11 +200,14 @@ test.each(["table", "row", "paragraph", "block"] as const)(
     };
     const outside: Paragraph = {
       ...paragraph("00000004"),
-      content: [
-        { type: "bookmarkStart", id: 1, name: "foliobookmark1" },
-        { type: "run", content: [{ type: "text", text: "Outside" }] },
-        { type: "bookmarkEnd", id: 1 },
-      ],
+      content:
+        placement === "equation"
+          ? [formula({ id: 1, name: "foliobookmark1" })]
+          : [
+              { type: "bookmarkStart", id: 1, name: "foliobookmark1" },
+              { type: "run", content: [{ type: "text", text: "Outside" }] },
+              { type: "bookmarkEnd", id: 1 },
+            ],
     };
     const withTable = (block: Table): Document => ({
       package: { document: { content: [block, outside] } },

@@ -40,6 +40,10 @@ import {
   XML_NAMESPACE_URI,
 } from "../xml/xmlNamespaceContext";
 import { blockListEndsInParagraph, storyParagraphs } from "./blocks";
+import {
+  readCapturedBookmark,
+  withCapturedBookmarkAliases,
+} from "./capturedBookmarks";
 import { structurallyEqual } from "./equality";
 import {
   IDENTITY_SPACES,
@@ -185,10 +189,25 @@ const mathNamespace = (uri: string | undefined): boolean =>
   uri === OOXML_NS.m ||
   uri === "http://purl.oclc.org/ooxml/officeDocument/math";
 
-const localMathNode = (node: XmlElement): boolean => {
+const localMathNode = (
+  node: XmlElement,
+  collectBookmark: MoveContentContext["collectBookmark"],
+): boolean => {
   if (node.type === "text" || node.type === "comment") return true;
-  if (node.type !== "element" || !mathNamespace(node.namespaceUri))
-    return false;
+  if (node.type !== "element") return false;
+  if (!mathNamespace(node.namespaceUri)) {
+    if (collectBookmark === undefined || (node.elements?.length ?? 0) !== 0)
+      return false;
+    const bookmark = readCapturedBookmark(node);
+    if (bookmark === undefined) return false;
+    const names = Object.keys(node.attributes ?? {}).filter(
+      (name) => name !== "xmlns" && !name.startsWith("xmlns:"),
+    );
+    return (
+      names.length === (bookmark.marker.type === "bookmarkStart" ? 2 : 1) &&
+      collectBookmark(bookmark.marker)
+    );
+  }
   return (
     Object.keys(node.attributes ?? {}).every((name) => {
       if (name === "xmlns" || name.startsWith("xmlns:")) return true;
@@ -203,12 +222,16 @@ const localMathNode = (node: XmlElement): boolean => {
         (namespace === XML_NAMESPACE_URI && name.slice(colon + 1) === "space")
       );
     }) &&
-    (node.elements?.every(localMathNode) ?? true)
+    (node.elements?.every((child) => localMathNode(child, collectBookmark)) ??
+      true)
   );
 };
 
 /** A native equation can appear in both move halves if it owns no other markup. */
-const movableMath = ({ display, ommlXml }: MathEquation): boolean => {
+const movableMath = (
+  { display, ommlXml }: MathEquation,
+  collectBookmark: MoveContentContext["collectBookmark"],
+): boolean => {
   const parsed = readXml(ommlXml, {
     conformance: "ooxml",
     inheritedNamespaceScope: OOXML_NAMESPACE_SCOPE,
@@ -222,7 +245,8 @@ const movableMath = ({ display, ommlXml }: MathEquation): boolean => {
     name !== undefined &&
     name.slice(name.indexOf(":") + 1) ===
       (display === "inline" ? "oMath" : "oMathPara") &&
-    localMathNode(root)
+    mathNamespace(root.namespaceUri) &&
+    localMathNode(root, collectBookmark)
   );
 };
 
@@ -522,7 +546,7 @@ const movableInlineContent = (
         return movableInlineContent(item.content, nestedMoveContext(context));
       }
       case "mathEquation":
-        return movableMath(item);
+        return movableMath(item, context.collectBookmark);
       case "preservedInline":
         return recordProofingMarker(item, context.proofing);
       case "hyperlink":
@@ -1427,11 +1451,14 @@ const withMoveIdentities = ({
           ...(next.href === `#${next.anchor}` ? { href: `#${anchor}` } : {}),
         };
     }
-    if (
-      bookmarkIds !== undefined &&
-      (next.type === "bookmarkStart" || next.type === "bookmarkEnd")
-    )
-      return withBookmarkIdentity(next, bookmarkIds);
+    if (bookmarkIds !== undefined && bookmarkIds.size > 0) {
+      if (next.type === "bookmarkStart" || next.type === "bookmarkEnd")
+        return withBookmarkIdentity(next, bookmarkIds);
+      if (next.type === "mathEquation") {
+        const ommlXml = withCapturedBookmarkAliases(next.ommlXml, bookmarkIds);
+        if (ommlXml !== next.ommlXml) return { ...next, ommlXml };
+      }
+    }
     return next;
   };
   return asParagraphContent(content.map(rewrite));
