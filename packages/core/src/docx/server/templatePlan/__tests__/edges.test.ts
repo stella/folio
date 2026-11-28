@@ -418,6 +418,33 @@ describe("applyTemplatePlan edge content", () => {
     ).not.toContain("w:color");
   });
 
+  test("a content control among runs is kept around its content, without the parts it names", async () => {
+    const template = await buildTemplate();
+    const control = (properties: string, text: string): string =>
+      `<w:sdt><w:sdtPr>${properties}</w:sdtPr><w:sdtContent>${r(text)}</w:sdtContent></w:sdt>`;
+    const source = await buildMinimalDocx(
+      [
+        p(
+          `${r("Signed on ")}${control('<w:id w:val="7"/><w:placeholder><w:docPart w:val="ABC"/></w:placeholder><w:showingPlcHdr/><w:dataBinding w:xpath="/a" w:storeItemID="{1}"/><w:date><w:dateFormat w:val="d MMMM yyyy"/><w:lid w:val="en-GB"/></w:date>', "Click to enter a date.")}${r(" by the parties.")}`,
+        ),
+        p(
+          `${r("Name: ")}${control('<w:alias w:val="Name"/><w:text/>', "[Name]")}`,
+        ),
+      ].join(""),
+    );
+    const { docx, report } = unwrap(await applyFor({ source, template }));
+    const document = (await readPart(docx, "word/document.xml")) ?? "";
+    expect(report.ok).toBe(true);
+    expect(document).toContain(
+      '<w:sdt><w:sdtPr><w:id w:val="7"/><w:showingPlcHdr/><w:date><w:dateFormat w:val="d MMMM yyyy"/><w:lid w:val="en-GB"/></w:date></w:sdtPr><w:sdtContent>',
+    );
+    expect(document).not.toContain("dataBinding");
+    expect(document).not.toContain("docPart");
+    expect(document).toMatch(
+      /<w:sdt><w:sdtPr><w:alias w:val="Name"\/><w:text\/><\/w:sdtPr><w:sdtContent><w:r>(?:<w:rPr>.*?<\/w:rPr>)?<w:t xml:space="preserve">\[Name\]<\/w:t><\/w:r><\/w:sdtContent><\/w:sdt>/u,
+    );
+  });
+
   test("a paragraph cites its own number through a field", async () => {
     const template = await buildTemplate();
     const source = await buildMinimalDocx(
