@@ -24,6 +24,7 @@ import {
 import {
   MAX_TABLE_PICTURE_ID,
   type TableGeometryMove,
+  type TableGeometryNativeMove,
   type TableGeometryNestedMove,
   type TableGridChange,
   type TableMoveRanges,
@@ -61,6 +62,10 @@ import {
 import { stampInfo } from "./review";
 import { reachesPastRemovedCell } from "./tableEditDependencies";
 import { rowHasCellsOrOmissions } from "./tableGrid";
+import {
+  nativeMovesInParagraph,
+  pairedNativeCellMoves,
+} from "./tableNativeMoves";
 import {
   movableTablePictureId,
   withTablePictureIdentity,
@@ -620,6 +625,10 @@ const movablePositionedBookmarks = (
       movableBookmark(marker),
   ) ?? true;
 
+type NativeHalves = NonNullable<
+  ReturnType<typeof nativeMovesInParagraph>
+>["halves"];
+
 /** A structural copy may carry only records whose package identities stay unique. */
 export const nestedTableMoveSource = (
   table: Table,
@@ -632,6 +641,7 @@ export const nestedTableMoveSource = (
   const paragraphs: string[] = [];
   const revisions: number[] = [];
   const ranges: TableMoveRanges[] = [];
+  const nativeHalves: NativeHalves = [];
   const earlierMoves = new Map<string, TableGeometryMove>();
   const gridMembers: number[] = [];
   const controls = new Set<number>();
@@ -784,6 +794,15 @@ export const nestedTableMoveSource = (
           });
         plain = { ...paragraph, content: tracked.content };
       }
+    } else if (block.pPrMark === undefined) {
+      const native = nativeMovesInParagraph(block.content);
+      if (native === undefined) return false;
+      for (const half of native.halves) {
+        revisions.push(half.revision);
+        nativeHalves.push(half);
+      }
+      if (native.halves.length > 0)
+        plain = { ...block, content: native.content };
     }
     const source = tableMoveSource(plain, {
       ...(move === undefined ? { priorRevisions: revisions } : {}),
@@ -818,6 +837,10 @@ export const nestedTableMoveSource = (
     ({ structuralChange }) => structuralChange === undefined,
   ).length;
   if (!collect(table)) return undefined;
+  const nativeMoves = pairedNativeCellMoves(nativeHalves);
+  if (nativeMoves === undefined) return undefined;
+  for (const { name, fromRange, toRange } of nativeMoves)
+    ranges.push({ name, fromRange, toRange });
   const bookmarks = hasBookmarks ? nestedBookmarkCensus(table) : undefined;
   if (
     bookmarks !== undefined &&
@@ -1554,17 +1577,19 @@ const nestedRangeStarts = (table: Table) => {
     }
   >();
   for (const { paragraph } of storyParagraphs({ content: [table] })) {
-    const start = paragraph.content.at(0);
-    if (
-      paragraph.paraId !== undefined &&
-      (start?.type === "moveFromRangeStart" ||
-        start?.type === "moveToRangeStart")
-    )
+    if (paragraph.paraId === undefined) continue;
+    for (const start of paragraph.content) {
+      if (
+        start.type !== "moveFromRangeStart" &&
+        start.type !== "moveToRangeStart"
+      )
+        continue;
       starts.set(start.id, {
         type: start.type,
         name: start.name,
         paragraph: idKey(paragraph.paraId),
       });
+    }
   }
   return starts;
 };
@@ -1616,6 +1641,57 @@ const nestedRangeOwnershipMatches = ({
     copies.delete(to.toRange);
   }
   return original.size === 0 && copies.size === 0;
+};
+
+type NestedNativeMoveOptions = {
+  table: Table;
+  move: TableGeometryNestedMove;
+  handoffs: ReadonlyMap<number, number>;
+};
+
+/** Review the inline move in both native copies while their table move is pending. */
+export const nestedNativeMovePairs = ({
+  table,
+  move,
+  handoffs,
+}: NestedNativeMoveOptions): TableGeometryNativeMove[][] => {
+  if (move.moveRanges === undefined) return [];
+  const byRange = new Map<number, NativeHalves>();
+  for (const { paragraph } of storyParagraphs({ content: [table] })) {
+    if (paragraph.pPrMark !== undefined || paragraph.paraId === undefined)
+      continue;
+    const native = nativeMovesInParagraph(paragraph.content);
+    for (const half of native?.halves ?? []) {
+      const matches = byRange.get(half.range);
+      if (matches === undefined) byRange.set(half.range, [half]);
+      else matches.push(half);
+    }
+  }
+  const pairs: TableGeometryNativeMove[][] = [];
+  for (const [original, copy] of move.moveRanges) {
+    const physicalPair = pairedNativeCellMoves(
+      [
+        original.fromRange,
+        original.toRange,
+        copy.fromRange,
+        copy.toRange,
+      ].flatMap((range) => byRange.get(range) ?? []),
+    );
+    const from = physicalPair?.find(({ name }) => name === original.name);
+    const to = physicalPair?.find(({ name }) => name === copy.name);
+    if (
+      from !== undefined &&
+      to !== undefined &&
+      from.fromRange === original.fromRange &&
+      from.toRange === original.toRange &&
+      to.fromRange === copy.fromRange &&
+      to.toRange === copy.toRange &&
+      handoffs.get(from.fromRevision) === to.fromRevision &&
+      handoffs.get(from.toRevision) === to.toRevision
+    )
+      pairs.push([from, to]);
+  }
+  return pairs;
 };
 
 /** Check the move's saved anchors against the native records in this merge. */

@@ -10,6 +10,7 @@ import {
   normalizeForOps,
   OP_STORIES,
   REVISION_DECISIONS,
+  type RevisionDecision,
   type TableIntentOperation,
 } from "@stll/docx-core/ops";
 
@@ -1430,6 +1431,123 @@ test.each([
     }
   },
 );
+
+test("a moved nested table keeps an earlier native inline move independently reviewable", () => {
+  // ISO/IEC 29500-1 §17.13.5.24 and §17.13.5.28 link the two named ranges.
+  const from =
+    '<w:moveFromRangeStart w:id="20" w:name="Earlier" w:author="Prior"/>' +
+    '<w:moveFrom w:id="21" w:author="Prior"><w:r><w:delText>Moved phrase</w:delText></w:r></w:moveFrom>' +
+    '<w:moveFromRangeEnd w:id="20"/>';
+  const to =
+    '<w:moveToRangeStart w:id="22" w:name="Earlier" w:author="Prior"/>' +
+    '<w:moveTo w:id="23" w:author="Prior"><w:r><w:t>Moved phrase</w:t></w:r></w:moveTo>' +
+    '<w:moveToRangeEnd w:id="22"/>';
+  const imported = parseSavedTable(
+    '<w:tbl><w:tr><w:tc><w:p w14:paraId="00000007">' +
+      "<w:r><w:t>Source: </w:t></w:r>" +
+      from +
+      '</w:p></w:tc><w:tc><w:p w14:paraId="00000008">' +
+      to +
+      "</w:p></w:tc></w:tr></w:tbl>",
+  );
+  const withTable = (table: Table): Document => ({
+    package: { document: { content: [table, paragraph("00000003")] } },
+  });
+  const original = withTable({
+    type: "table",
+    columnWidths: [1000, 1400],
+    rows: [
+      {
+        type: "tableRow",
+        cells: [
+          cell(paragraph("00000001", "Owner")),
+          cell(imported, paragraph("00000002")),
+        ],
+      },
+    ],
+  });
+  const operation = {
+    type: DOCUMENT_OP_TYPES.MERGE_CELLS,
+    story: OP_STORIES.MAIN,
+    blockId: "00000001",
+    top: 0,
+    bottom: 1,
+    left: 0,
+    right: 2,
+  } as const;
+  const intent = { type: "table", operation } as const;
+  const { revisionId, newIds } = createEditorIntentIdAllocator()(
+    original,
+    intent,
+  );
+  const { ops } = compileEditorIntent(original, {
+    intent,
+    mode: {
+      type: "suggesting",
+      revision: {
+        id: revisionId,
+        author: "Reviewer",
+        date: "2026-11-27T00:00:00Z",
+      },
+      newIds,
+    },
+  }).unwrap();
+  const pending = applyDocumentOps(original, ops).unwrap();
+  expect(
+    applyDocumentOps(pending.document, pending.inverse).unwrap().document,
+  ).toStrictEqual(original);
+  const reopen = (document: Document) =>
+    withTable(
+      parseSavedTable(serializeTable(tableOf(document), serializeParagraph)),
+    );
+  const opened = reopen(pending.document);
+  const grid = tableOf(opened).formatting?.gridChange;
+  const copy =
+    grid?.geometryChange?.type === "mergeCells"
+      ? grid.geometryChange.nestedMoves
+          ?.at(0)
+          ?.revisions?.find(([id]) => id === 21)?.[1]
+      : undefined;
+  if (grid === undefined || copy === undefined)
+    throw new TypeError("Expected the native inline move in the nested copy.");
+  expect(
+    getTrackedChangeGroupsForIds(
+      toProseDoc(opened, { tableReviewGeometry: "physical" }),
+      [21],
+    ).at(0),
+  ).toContain(copy);
+  const resolve = (
+    document: Document,
+    revisionIds: number[],
+    decision: RevisionDecision,
+  ) =>
+    applyDocumentOp(document, {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds,
+      decision,
+    }).unwrap().document;
+  const direct = applyDocumentOp(original, {
+    ...operation,
+    newBlockIds: [],
+  }).unwrap().document;
+  for (const outer of Object.values(REVISION_DECISIONS)) {
+    for (const earlier of Object.values(REVISION_DECISIONS)) {
+      const expected = resolve(
+        outer === REVISION_DECISIONS.ACCEPT ? direct : original,
+        [21, 23],
+        earlier,
+      );
+      for (const decided of [
+        resolve(reopen(resolve(opened, [copy], earlier)), [grid.id], outer),
+        resolve(reopen(resolve(opened, [grid.id], outer)), [21, 23], earlier),
+      ])
+        expect(projection(tableOf(decided))).toStrictEqual(
+          projection(tableOf(expected)),
+        );
+    }
+  }
+});
 
 test("a merge refuses before creating an unwriteable nested-table review record", () => {
   const destinationId = (index: number) =>
