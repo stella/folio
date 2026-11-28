@@ -1604,9 +1604,15 @@ describe("labels written as text", () => {
     );
   const NUMBERING = [
     `<w:abstractNum w:abstractNumId="0">${level(0, "upperRoman", "%1.")}${level(1, "decimal", "%1.%2", '<w:suff w:val="space"/>')}${level(2, "ordinal", "%1.%3")}</w:abstractNum>`,
+    // A level that only counts: it prints nothing in front of its children.
+    `<w:abstractNum w:abstractNumId="3">${level(0, "none", "%1")}${level(1, "decimal", "%1%2.")}</w:abstractNum>`,
     `<w:abstractNum w:abstractNumId="1">${level(0, "bullet", "\u2022")}</w:abstractNum>`,
+    // A code of a symbol font no table maps: read as a plain bullet.
+    `<w:abstractNum w:abstractNumId="2"><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="\uF0E8"/><w:rPr><w:rFonts w:ascii="House Dingbats" w:hAnsi="House Dingbats"/></w:rPr></w:lvl></w:abstractNum>`,
     '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>',
     '<w:num w:numId="2"><w:abstractNumId w:val="1"/></w:num>',
+    '<w:num w:numId="3"><w:abstractNumId w:val="2"/></w:num>',
+    '<w:num w:numId="4"><w:abstractNumId w:val="3"/></w:num>',
   ].join("");
   const source = async (): Promise<Uint8Array> =>
     await buildSourceWith({
@@ -1615,6 +1621,8 @@ describe("labels written as text", () => {
         numbered("The works.", 1, 1),
         numbered("A point.", 2, 0),
         numbered("A spelled number.", 1, 2),
+        numbered("A painted mark.", 3, 0),
+        numbered("Under a silent level.", 4, 1),
       ].join(""),
       numbering: NUMBERING,
     });
@@ -1634,7 +1642,7 @@ describe("labels written as text", () => {
       await applyFor({
         source: await source(),
         template,
-        items: asText(["p0", "p1"]),
+        items: asText(["p0", "p1", "p5"]),
       }),
     );
     const blocks = unwrap(await analyzeDocxBlocks(docx)).blocks;
@@ -1648,12 +1656,34 @@ describe("labels written as text", () => {
     expect(report.ok).toBe(true);
     expect(textOf("p0")).toBe("I.\tScope");
     expect(textOf("p1")).toBe("I.1 The works.");
-    // The other two say so: their labels are gone.
-    expect(report.counts).toMatchObject({ labelAsText: 2, labelLost: 2 });
+    expect(textOf("p5")).toBe("1.\tUnder a silent level.");
+    // The other three say so: their labels are gone.
+    expect(report.counts).toMatchObject({ labelAsText: 3, labelLost: 3 });
   });
 
-  test("a bullet and a number a language spells are not text", async () => {
-    for (const blockId of ["p2", "p3"]) {
+  test("a bullet's mark is written as the character the reader shows", async () => {
+    const { docx, report } = unwrap(
+      await applyFor({
+        source: await source(),
+        template,
+        items: asText(["p2", "p4"]),
+      }),
+    );
+    const blocks = unwrap(await analyzeDocxBlocks(docx)).blocks;
+    const textOf = (blockId: string): string | undefined => {
+      const outputBlockId = report.blocks.find(
+        (block) => block.blockId === blockId,
+      )?.outputBlockId;
+      return blocks.find(({ id }) => id === outputBlockId)?.text;
+    };
+
+    expect(report.ok).toBe(true);
+    expect(textOf("p2")).toBe("\u2022\tA point.");
+    expect(textOf("p4")).toBe("\u2022\tA painted mark.");
+  });
+
+  test("a number a language spells is not text", async () => {
+    for (const blockId of ["p3"]) {
       const applied = await applyFor({
         source: await source(),
         template,
