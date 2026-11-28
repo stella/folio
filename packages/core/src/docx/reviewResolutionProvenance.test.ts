@@ -215,6 +215,7 @@ for (const wordNamespace of WORDPROCESSINGML_NAMESPACE_URIS) {
           const joins = {
             ...depths,
             ...(acceptance === undefined ? {} : { acceptance }),
+            openSides: ["before"],
             ...(deferredRemove === undefined
               ? {}
               : {

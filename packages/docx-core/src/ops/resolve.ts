@@ -1695,6 +1695,12 @@ const settleDeferredRemovals = (
             continue;
           }
           if (
+            fates.every((fate) => fate === "accepted") &&
+            joins.openSides !== undefined
+          )
+            for (const side of joins.openSides)
+              joins[side] = Math.max(joins[side], group.depth - 1);
+          if (
             group.edge === undefined &&
             (fates.every((fate) => fate === "accepted") ||
               retires(group, fates))
@@ -2275,6 +2281,7 @@ const withPayloadEdgesClosed = (
   };
   let out: InlineNode[] | undefined;
   const first =
+    joins.openSides?.includes("before") !== true &&
     recordJoin(joins, "before") === 0
       ? closed(content.at(0), "before")
       : undefined;
@@ -2284,6 +2291,7 @@ const withPayloadEdgesClosed = (
   }
   const lastAt = content.length - 1;
   const last =
+    joins.openSides?.includes("after") !== true &&
     recordJoin(joins, "after") === 0
       ? closed((out ?? content).at(lastAt), "after")
       : undefined;
@@ -2915,12 +2923,68 @@ const withRemovedPiecesMet = (
   return out ?? nodes;
 };
 
+/**
+ * Payload pieces on both sides of an opened pasted seam, merged before their
+ * accepted wrappers disappear. The carried join depth places any standing
+ * range boundaries inside the container it rejoins, as accepting the pasted
+ * break before the copied cut does.
+ */
+const withAcceptedOpenSeams = (
+  nodes: readonly InlineNode[],
+  resolution: Resolution,
+): readonly InlineNode[] => {
+  if (resolution.decision !== REVISION_DECISIONS.ACCEPT) return nodes;
+  let opened: InlineNode[] | undefined;
+  for (let index = 0; index + 1 < nodes.length; index += 1) {
+    const left = nodes[index];
+    const right = nodes[index + 1];
+    if (
+      left === undefined ||
+      right === undefined ||
+      !isAddedRevision(left) ||
+      !isAddedRevision(right) ||
+      !isTrackedWrapper(left) ||
+      !isTrackedWrapper(right) ||
+      !resolution.ids.has(left.info.id) ||
+      !resolution.ids.has(right.info.id) ||
+      left.resolutionJoins?.openSides?.includes("after") !== true ||
+      right.resolutionJoins?.openSides?.includes("before") !== true
+    )
+      continue;
+    const depth = Math.min(
+      left.resolutionJoins.after,
+      right.resolutionJoins.before,
+    );
+    if (depth === 0) continue;
+    const seam = withSeamBoundariesInside({
+      left: left.content,
+      right: right.content,
+      depth,
+    });
+    const merged = mergeLists(seam.left, seam.right, depth, {
+      mode: "asFarAsAlike",
+    });
+    if (merged === undefined) continue;
+    opened ??= [...nodes];
+    const rebuiltLeft = rebuildNode(left, merged);
+    const rebuiltRight = rebuildNode(right, []);
+    carryResolutionState(resolution, left, rebuiltLeft);
+    carryResolutionState(resolution, right, rebuiltRight);
+    opened[index] = rebuiltLeft;
+    opened[index + 1] = rebuiltRight;
+  }
+  return opened ?? nodes;
+};
+
 const resolveList = ({
   nodes: listed,
   resolution,
   path,
 }: ResolveListOptions): ResolvedList => {
-  const nodes = withRemovedPiecesMet(listed, resolution);
+  const nodes = withAcceptedOpenSeams(
+    withRemovedPiecesMet(listed, resolution),
+    resolution,
+  );
   const out: SourceOccurrence[] = [];
   const seams: number[] = [];
   const plainSeams = new Set<number>();
@@ -5062,8 +5126,14 @@ const resolveList = ({
           plainSeams.add(out.length);
         continue;
       }
-      if (node.resolutionJoins === undefined) seams.push(out.length);
-      else if (node.resolutionJoins.plainSides?.includes("before") === true)
+      if (
+        node.resolutionJoins === undefined ||
+        node.resolutionJoins.openSides?.includes("before") === true
+      ) {
+        seams.push(out.length);
+        if ((node.resolutionJoins?.before ?? 0) > 0)
+          recordSourceSeam(out.length, node.resolutionJoins?.before ?? 0);
+      } else if (node.resolutionJoins.plainSides?.includes("before") === true)
         plainSeams.add(out.length);
       else {
         const joined = keptJoinDepth(node, index, "before");
@@ -5093,11 +5163,23 @@ const resolveList = ({
       ) {
         const first = content.at(0);
         const last = content.at(-1);
-        const closedBefore = recordJoin(node.resolutionJoins, "before") === 0;
-        const closedAfter = recordJoin(node.resolutionJoins, "after") === 0;
-        if (closedAfter && first !== undefined)
+        const closedBefore =
+          node.resolutionJoins.openSides?.includes("before") !== true &&
+          recordJoin(node.resolutionJoins, "before") === 0;
+        const closedAfter =
+          node.resolutionJoins.openSides?.includes("after") !== true &&
+          recordJoin(node.resolutionJoins, "after") === 0;
+        if (
+          node.resolutionJoins.openSides === undefined &&
+          closedAfter &&
+          first !== undefined
+        )
           resolution.acceptedClosed.first.add(first);
-        if (closedBefore && last !== undefined)
+        if (
+          node.resolutionJoins.openSides === undefined &&
+          closedBefore &&
+          last !== undefined
+        )
           resolution.acceptedClosed.last.add(last);
         // A container the content meets across an edge the insertion joins
         // to nothing (and no other join records a seam at) stays apart from
@@ -5122,20 +5204,29 @@ const resolveList = ({
         node.resolutionJoins?.acceptance ===
           INSERTION_SEAM_POLICIES.MERGE_PLAIN_RUNS
       ) {
-        plainSeams.add(out.length);
-        plainSeams.add(out.length + content.length);
+        if (node.resolutionJoins.openSides?.includes("before") !== true)
+          plainSeams.add(out.length);
+        if (node.resolutionJoins.openSides?.includes("after") !== true)
+          plainSeams.add(out.length + content.length);
         if (node.resolutionJoins.before > 0) payloadJoinSeams.add(out.length);
         if (node.resolutionJoins.after > 0)
           payloadJoinSeams.add(out.length + content.length);
       }
       const payload =
         isAddedRevision(node) &&
-        resolution.decision === REVISION_DECISIONS.ACCEPT;
+        resolution.decision === REVISION_DECISIONS.ACCEPT &&
+        node.resolutionJoins?.openSides === undefined;
       for (const child of content) appendSource(child, index, payload);
       if (resolved.edges?.last !== undefined)
         recordSourceSeam(out.length, resolved.edges.last);
-      if (node.resolutionJoins === undefined) seams.push(out.length);
-      else if (node.resolutionJoins.plainSides?.includes("after") === true)
+      if (
+        node.resolutionJoins === undefined ||
+        node.resolutionJoins.openSides?.includes("after") === true
+      ) {
+        seams.push(out.length);
+        if ((node.resolutionJoins?.after ?? 0) > 0)
+          recordSourceSeam(out.length, node.resolutionJoins?.after ?? 0);
+      } else if (node.resolutionJoins.plainSides?.includes("after") === true)
         plainSeams.add(out.length);
       else {
         const joined = keptJoinDepth(node, index, "after");
@@ -8633,7 +8724,8 @@ const acceptedClosedBoundary = ({
       isTrackedWrapper(node) &&
       isAddedRevision(node) &&
       resolution.ids.has(node.info.id) &&
-      node.resolutionJoins !== undefined
+      node.resolutionJoins !== undefined &&
+      node.resolutionJoins.openSides === undefined
     ) {
       const fitting =
         edge === "first"

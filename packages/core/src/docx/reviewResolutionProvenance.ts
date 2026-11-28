@@ -72,6 +72,7 @@ const JOIN_FIELDS = {
   retainedAfter: true,
   deferredRemove: true,
   acceptance: true,
+  openSides: true,
   plainSides: true,
   emptiedHolder: true,
   holdsParagraph: true,
@@ -242,6 +243,7 @@ export const isResolutionJoins = (value: unknown): value is ResolutionJoins =>
   (value["retainedAfter"] === undefined || retained(value["retainedAfter"])) &&
   (!Object.hasOwn(value, "deferredRemove") ||
     deferredRemovals(value["deferredRemove"])) &&
+  (!Object.hasOwn(value, "openSides") || isBoundaryJoins(value["openSides"])) &&
   (!Object.hasOwn(value, "plainSides") ||
     isBoundaryJoins(value["plainSides"])) &&
   (!Object.hasOwn(value, "emptiedHolder") || value["emptiedHolder"] === true) &&
