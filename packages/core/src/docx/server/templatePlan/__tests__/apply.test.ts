@@ -1450,7 +1450,8 @@ describe("applyTemplatePlan with objects, fields and endnotes", () => {
     expect(report.dropped).toMatchObject({
       // The HYPERLINK field is carried over as a link, so it is not dropped.
       sourceFields: [{ kind: "REF", count: 1 }],
-      internalHyperlinks: 1,
+      // The link's bookmark is not in the source: it led nowhere there.
+      internalHyperlinks: 0,
     });
   });
 
