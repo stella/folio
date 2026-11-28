@@ -312,6 +312,16 @@ export const sameParagraphProperties = (
     paragraphPropertiesOf(right) ?? {},
   );
 
+/** Whether a paragraph property edit returned a pending review to its baseline. */
+export const paragraphPropertyChangeReturnsToBaseline = (
+  change: ParagraphPropertyChange,
+  formatting: ParagraphFormatting | undefined,
+): boolean =>
+  sameParagraphProperties(
+    finalizeParagraphFormatting(change.previousFormatting),
+    finalizeParagraphFormatting(formatting),
+  );
+
 /** Whether two property sets state the same run properties for the paragraph mark. */
 export const sameMarkFormatting = (
   left: ParagraphFormatting | undefined,
