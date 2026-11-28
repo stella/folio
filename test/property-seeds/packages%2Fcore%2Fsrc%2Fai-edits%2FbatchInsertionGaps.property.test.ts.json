@@ -17,6 +17,12 @@
       "path": "7:9",
       "note": "A paragraph and a table placed in one tracked-join gap remain in batch order when the joined paragraph is deleted.",
       "date": "2026-11-28"
+    },
+    {
+      "seed": 990002800,
+      "path": "33:0:0:0:2:4:4",
+      "note": "Blocks placed on opposite sides of a deleted paragraph retain their authored gaps before batch order is applied within each gap.",
+      "date": "2026-11-28"
     }
   ]
 }

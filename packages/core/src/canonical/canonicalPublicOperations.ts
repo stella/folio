@@ -6951,6 +6951,10 @@ export class CanonicalPublicOperations {
         ? orderOf(member) - batch.operations.length
         : orderOf(member);
     const gaps = new Map<number, AdmittedOperation[]>();
+    const insertionPlaces = new Map<
+      AdmittedOperation,
+      NonNullable<ReturnType<typeof canonicalInsertionGap>>
+    >();
     const sourceJoinEnded = new Set<AdmittedOperation>();
     for (const member of executionOrder) {
       if (!placesBlock(member.operation)) continue;
@@ -6973,6 +6977,7 @@ export class CanonicalPublicOperations {
             member.operation.id,
           ),
         }) ?? invalidInsertionReplay();
+      insertionPlaces.set(member, place);
       let { gap } = place;
       if (ended) {
         sourceJoinEnded.add(member);
@@ -7279,11 +7284,19 @@ export class CanonicalPublicOperations {
             sourceJoinEnded.has(entry),
           );
         let anchor = replayAnchorOf(first.resolvedOperation);
-        const placed = partners.toSorted(
-          (left, right) =>
+        const placed = partners.toSorted((left, right) => {
+          const leftPlace =
+            insertionPlaces.get(left.resolvedOperation) ??
+            invalidInsertionReplay();
+          const rightPlace =
+            insertionPlaces.get(right.resolvedOperation) ??
+            invalidInsertionReplay();
+          return (
+            leftPlace.boundary - rightPlace.boundary ||
             placementOrderOf(left.resolvedOperation) -
-            placementOrderOf(right.resolvedOperation),
-        );
+              placementOrderOf(right.resolvedOperation)
+          );
+        });
         if (reverseReplay || anchor.at.type !== "before") placed.reverse();
         if (reverseReplay) {
           const anchorSource = placed.at(-1) ?? invalidInsertionReplay();
