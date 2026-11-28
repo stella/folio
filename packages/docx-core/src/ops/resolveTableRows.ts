@@ -18,6 +18,7 @@ import {
   statedTableColumnWidths,
   withTableColumnWidths,
 } from "../model/tableColumnWidths";
+import { gridSpanInColumns } from "../model/tableGridLimits";
 import { storyBody, storyParagraphs } from "./blocks";
 import { combineEdits, type DocumentEdit } from "./edits";
 import { IDENTITY_SPACES, identityKeysIn, slotKey } from "./ids";
@@ -297,7 +298,10 @@ type PropertyTableOptions = {
 const coveredBy = (row: TableRow): number =>
   (row.formatting?.gridBefore ?? 0) +
   (row.formatting?.gridAfter ?? 0) +
-  row.cells.reduce((sum, cell) => sum + (cell.formatting?.gridSpan ?? 1), 0);
+  row.cells.reduce(
+    (sum, cell) => sum + gridSpanInColumns(cell.formatting?.gridSpan),
+    0,
+  );
 
 const rowCoverage = (table: Table): number | undefined => {
   let coverage: number | undefined;
@@ -573,7 +577,7 @@ const restoreVerticalFragments = (
     const slots = new Map<number, RetainedVerticalSlot>();
     for (const cell of row.cells) {
       const start = end;
-      end += cell.formatting?.gridSpan ?? 1;
+      end += gridSpanInColumns(cell.formatting?.gridSpan);
       const owner = owners.get(cell);
       if (owner === undefined) continue;
       const above = previous.get(start);
@@ -704,7 +708,7 @@ const resolveCellColumns = ({
     let cursor = before;
     const cells: GridCell[] = [];
     for (const cell of row.cells) {
-      const span = cell.formatting?.gridSpan ?? 1;
+      const span = gridSpanInColumns(cell.formatting?.gridSpan);
       if (!Number.isInteger(span) || span < 1) return Result.err("unsupported");
       cells.push({ cell, start: cursor, end: cursor + span });
       cursor += span;
@@ -761,7 +765,7 @@ const resolveCellColumns = ({
         ...cell,
         formatting: {
           ...cell.formatting,
-          gridSpan: (cell.formatting?.gridSpan ?? 1) + extra,
+          gridSpan: gridSpanInColumns(cell.formatting?.gridSpan) + extra,
         },
       };
     };
