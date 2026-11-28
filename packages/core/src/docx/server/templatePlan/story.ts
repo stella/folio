@@ -166,6 +166,7 @@ const SELF_NUMBERING_FIELDS: ReadonlySet<string> = new Set([
   "AUTONUM",
   "AUTONUMLGL",
   "AUTONUMOUT",
+  "LISTNUM",
 ]);
 
 /** Whether a field kind prints a number of its own and caches no text. */

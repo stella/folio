@@ -113,6 +113,50 @@ describe("applyTemplatePlan edge content", () => {
     ]);
   });
 
+  test("keeps a field that counts in a list by name, with the list", async () => {
+    const template = await buildTemplate();
+    const listnum =
+      '<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> LISTNUM  AnnexNumbers </w:instrText></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r>';
+    const source = await buildMinimalDocx(
+      [
+        p(`${r("Annex ")}${listnum}${r(" - Prices")}`),
+        p(`${r("Annex ")}${listnum}${r(" - Terms")}`),
+      ].join(""),
+      {
+        "word/_rels/document.xml.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/></Relationships>`,
+        "word/numbering.xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml"><w:abstractNum w:abstractNumId="4" w15:restartNumberingAfterBreak="0"><w:nsid w:val="0A534828"/><w:multiLevelType w:val="multilevel"/><w:tmpl w:val="C024B46A"/><w:name w:val="AnnexNumbers"/><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:pStyle w:val="Missing"/><w:lvlText w:val="%1"/><w:lvlJc w:val="left"/><w:rPr><w:b/></w:rPr></w:lvl></w:abstractNum><w:num w:numId="7"><w:abstractNumId w:val="4"/></w:num></w:numbering>`,
+      },
+    );
+    const plan = await planFor({
+      source,
+      template,
+      items: (blocks) =>
+        blocks.map(({ id, hash }) => ({
+          kind: "source" as const,
+          blockId: id,
+          hash,
+          styleId: "HouseBody",
+        })),
+    });
+    const { docx, report } = unwrap(
+      await applyTemplatePlan({ source, template, plan }),
+    );
+    const document = (await readPart(docx, "word/document.xml")) ?? "";
+    const numbering = (await readPart(docx, "word/numbering.xml")) ?? "";
+
+    expect(report.ok).toBe(true);
+    expect(report.dropped.sourceFields).toEqual([]);
+    expect(document.match(/ LISTNUM {2}AnnexNumbers /gu)).toHaveLength(2);
+    // The list goes with its fields, without what ties it to its package,
+    // and with an instance after the template's.
+    expect(numbering).toContain(
+      '<w:abstractNum w:abstractNumId="2"><w:multiLevelType w:val="multilevel"/><w:name w:val="AnnexNumbers"/><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1"/><w:lvlJc w:val="left"/><w:rPr><w:b/></w:rPr></w:lvl></w:abstractNum><w:num w:numId="1">',
+    );
+    expect(numbering).toContain(
+      '<w:num w:numId="3"><w:abstractNumId w:val="2"/></w:num></w:numbering>',
+    );
+  });
+
   test("reports a cross-reference field with the paragraph its bookmark marks", async () => {
     const template = await buildTemplate();
     const number =
