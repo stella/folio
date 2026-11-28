@@ -456,25 +456,32 @@ export type SignatureContext = Pick<
 >;
 
 /** A deviation with only the colours a plan keeps. */
+/**
+ * A deviation with the colours a plan keeps: the colour and shading the
+ * text has in effect where they mark part of the text, whether a run or
+ * the paragraph's style gives them (the template's style gives neither);
+ * no other.
+ */
 const withKeptColors = (
   deviation: EmphasisOverride,
+  effective: Emphasis,
   kept: ReadonlySet<string> | undefined,
 ): EmphasisOverride => {
   const out = { ...deviation };
-  if (
-    out.color !== undefined &&
-    (out.color === null || kept?.has(`color:${out.color}`) !== true)
-  ) {
-    delete out.color;
+  delete out.color;
+  delete out.shd;
+  if (effective.color !== null && kept?.has(`color:${effective.color}`)) {
+    out.color = effective.color;
   }
-  if (
-    out.shd !== undefined &&
-    (out.shd === null || kept?.has(`shd:${out.shd}`) !== true)
-  ) {
-    delete out.shd;
+  if (effective.shd !== null && kept?.has(`shd:${effective.shd}`)) {
+    out.shd = effective.shd;
   }
   return out;
 };
+
+/** The amount of text a measure of colour counts: its characters that are
+ *  not blanks, whatever runs hold them. */
+const inkLength = (text: string): number => text.replace(/\s/gu, "").length;
 
 /** A source as a plan reads it: with the colours it keeps, if any. */
 export const withPlanColors = (
@@ -509,7 +516,7 @@ export const markingColorsOf = (document: AnalyzedDocument): Set<string> => {
     );
     const baseline = paragraphBaseline(style, document.defaultEmphasis);
     for (const atom of read.atoms) {
-      const length = atom.text.trim().length;
+      const length = inkLength(atom.text);
       if (length === 0) {
         continue;
       }
@@ -640,17 +647,14 @@ export const paragraphPieces = ({
       const isLinkLook =
         link !== null &&
         LINK_STYLE_NAMES.has(characterStyle?.name?.toLowerCase() ?? "");
+      const effective = withOverride(
+        isLinkLook ? baseline : withCharacterStyle(baseline, characterStyle),
+        readDirectEmphasis(atom.runProperties),
+      );
       signature = emphasisSignature(
         withKeptColors(
-          emphasisDeviation(
-            withOverride(
-              isLinkLook
-                ? baseline
-                : withCharacterStyle(baseline, characterStyle),
-              readDirectEmphasis(atom.runProperties),
-            ),
-            over,
-          ),
+          emphasisDeviation(effective, over),
+          effective,
           keptColors,
         ),
       );
