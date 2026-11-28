@@ -369,9 +369,9 @@ for (const formatting of [
       if (formatting.type !== "authored" && boundary === "table") {
         expect(result.isErr()).toBe(true);
         if (result.isOk())
-          panic("Owned empty formatting must refuse before removal.");
+          panic("The structural replacement must retain a story terminator.");
         expect(result.error.reason).toBe(
-          DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+          DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
         );
         expect(before).toStrictEqual(original);
         return;
@@ -409,7 +409,9 @@ for (const container of ["body", "sdt", "cell"] as const)
     expect(refusal.isErr()).toBe(true);
     if (refusal.isErr())
       expect(refusal.error.reason).toBe(
-        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+        container === "cell"
+          ? DOCUMENT_OP_REFUSAL_REASONS.CONTAINER_FINAL_MARK
+          : DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
       );
     expect(before).toStrictEqual(original);
   });

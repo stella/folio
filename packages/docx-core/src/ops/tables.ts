@@ -47,7 +47,7 @@ import {
   pendingParagraphMarkReason,
 } from "./refusal";
 import { stampInfo, WRAP_KINDS } from "./review";
-import { replaceStoryBody } from "./stories";
+import { blocksEnding, replaceStoryBody } from "./stories";
 import { rowHasCellsOrOmissions } from "./tableGrid";
 import {
   locateBlockInsertion,
@@ -161,15 +161,6 @@ type CommitBlocksOptions = {
   blocks: readonly BlockContent[];
 };
 
-const blockListEndsInTable = (blocks: readonly BlockContent[]): boolean => {
-  const last = blocks.at(-1);
-  return (
-    last?.type === "table" ||
-    ((last?.type === "blockSdt" || last?.type === "blockCustomXml") &&
-      blockListEndsInTable(last.content))
-  );
-};
-
 const commitBlocks = ({
   document,
   op,
@@ -195,12 +186,21 @@ const commitBlocks = ({
       reason: DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
       message: "The structural inverse anchor must survive the edit.",
     });
-  // A structural inverse can restore an authored main story ending in a table.
-  const restoresMainTable =
+  // An exact story snapshot can end in an empty control. The last paragraph
+  // or table still determines whether the story has its closing paragraph.
+  const exactStory =
     op.type === DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS &&
-    op.story === OP_STORIES.MAIN &&
-    anchor.list.length === 0 &&
-    blockListEndsInTable(blocks);
+    anchor.list.length === 0;
+  const ending = exactStory ? blocksEnding(blocks) : undefined;
+  const hadClosingParagraph = exactStory
+    ? blocksEnding(before) === "paragraph"
+    : blockListEndsInParagraph(before);
+  const hasClosingParagraph =
+    ending === undefined
+      ? blockListEndsInParagraph(blocks)
+      : ending === "paragraph";
+  // A structural inverse can restore an authored main story ending in a table.
+  const restoresMainTable = op.story === OP_STORIES.MAIN && ending === "table";
   if (
     blocks.length === 0 ||
     !validStructure(before) ||
@@ -209,8 +209,8 @@ const commitBlocks = ({
     // table, as a body may, is left no worse.
     (!restoresMainTable &&
       endsItsContainer(body, { list: anchor.list, index: before.length - 1 }) &&
-      blockListEndsInParagraph(before) &&
-      !blockListEndsInParagraph(blocks))
+      hadClosingParagraph &&
+      !hasClosingParagraph)
   ) {
     return refuse({
       op,

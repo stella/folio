@@ -165,7 +165,7 @@ export const CANONICAL_CAPABILITIES: {
     readonly owner: "document-operations";
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "A suggested change whose content the tracked-change records cannot express yet is refused: a custom XML element or kept block markup pasted or moved, a copied deleted or moved-away paragraph mark holding a cut of its own on a pasted paragraph, and the removal of a block content control's only paragraph.";
+    readonly summary: "A suggested change whose content the tracked-change records cannot express yet is refused: a custom XML element or kept block markup pasted or moved, or a copied deleted or moved-away paragraph mark holding a cut of its own on a pasted paragraph.";
   };
 } = {
   [CANONICAL_GAP.trackedTableStructure]: {
@@ -180,7 +180,7 @@ export const CANONICAL_CAPABILITIES: {
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
-      "A suggested change whose content the tracked-change records cannot express yet is refused: a custom XML element or kept block markup pasted or moved, a copied deleted or moved-away paragraph mark holding a cut of its own on a pasted paragraph, and the removal of a block content control's only paragraph.",
+      "A suggested change whose content the tracked-change records cannot express yet is refused: a custom XML element or kept block markup pasted or moved, or a copied deleted or moved-away paragraph mark holding a cut of its own on a pasted paragraph.",
   },
 } as const satisfies Record<CanonicalGap, CanonicalCapability>;
 
