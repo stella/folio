@@ -415,9 +415,86 @@ const localCheckbox = (element: XmlElement): boolean => {
   });
 };
 
+const hasLocalWordAttributes = (
+  element: XmlElement,
+  allowed: readonly string[],
+): boolean => {
+  const seen = new Set<string>();
+  return Object.entries(element.attributes ?? {}).every(([key, value]) => {
+    if (namespaceDeclaration(key)) return true;
+    const colon = key.indexOf(":");
+    const local = key.slice(colon + 1);
+    if (
+      colon <= 0 ||
+      !wordNamespace(
+        resolveNamespaceUri(element.namespaceScope, key.slice(0, colon)),
+      ) ||
+      !allowed.includes(local) ||
+      seen.has(local) ||
+      typeof value !== "string"
+    )
+      return false;
+    seen.add(local);
+    return true;
+  });
+};
+
+const localControlType = (
+  element: XmlElement,
+): SdtProperties["sdtType"] | undefined => {
+  switch (wordName(element)) {
+    case "richText":
+      return (element.elements?.length ?? 0) === 0 &&
+        hasLocalWordAttributes(element, [])
+        ? "richText"
+        : undefined;
+    case "text":
+      return (element.elements?.length ?? 0) === 0 &&
+        hasLocalWordAttributes(element, ["multiLine"])
+        ? "plainText"
+        : undefined;
+    case "comboBox":
+    case "dropDownList": {
+      if (!hasLocalWordAttributes(element, ["lastValue"])) return undefined;
+      const safe =
+        element.elements?.every(
+          (item) =>
+            wordName(item) === "listItem" &&
+            (item.elements?.length ?? 0) === 0 &&
+            hasLocalWordAttributes(item, ["displayText", "value"]),
+        ) ?? true;
+      if (!safe) return undefined;
+      return wordName(element) === "comboBox" ? "comboBox" : "dropdown";
+    }
+    case "date": {
+      if (!hasLocalWordAttributes(element, ["fullDate"])) return undefined;
+      const parts = new Set<string>();
+      const safe =
+        element.elements?.every((item) => {
+          const name = wordName(item);
+          if (
+            name === undefined ||
+            !["dateFormat", "lid", "storeMappedDataAs", "calendar"].includes(
+              name,
+            ) ||
+            parts.has(name) ||
+            (item.elements?.length ?? 0) !== 0 ||
+            !hasLocalWordAttributes(item, ["val"])
+          )
+            return false;
+          parts.add(name);
+          return true;
+        }) ?? true;
+      return safe ? "date" : undefined;
+    }
+    default:
+      return undefined;
+  }
+};
+
 const controlPropertyKind = (
   xml: string,
-): "richText" | "checkbox" | "binding" | undefined => {
+): SdtProperties["sdtType"] | "binding" | undefined => {
   const parsed = readCapturedElement(xml);
   if (parsed === undefined) return undefined;
   const { element, localName, attributes } = parsed;
@@ -428,15 +505,9 @@ const controlPropertyKind = (
     localCheckbox(element)
   )
     return "checkbox";
-  if ((element.elements?.length ?? 0) > 0) return undefined;
+  if (localName !== "dataBinding") return localControlType(element);
   if (
-    localName === "richText" &&
-    wordNamespace(element.namespaceUri) &&
-    attributes.length === 0
-  )
-    return "richText";
-  if (
-    localName !== "dataBinding" ||
+    (element.elements?.length ?? 0) > 0 ||
     !(
       wordNamespace(element.namespaceUri) ||
       element.namespaceUri === OOXML_NS.w15
@@ -483,10 +554,14 @@ const emptyControlEndProperties = (xml: string): boolean => {
 const movableControlId = (
   properties: InlineSdt["properties"],
 ): number | undefined => {
-  const { id, preserved, rawEndPropertiesXml } = properties;
-  const checkbox = properties.sdtType === "checkbox";
+  const { id, preserved, rawEndPropertiesXml, sdtType } = properties;
   if (
-    (properties.sdtType !== "richText" && !checkbox) ||
+    (sdtType !== "richText" &&
+      sdtType !== "plainText" &&
+      sdtType !== "checkbox" &&
+      sdtType !== "date" &&
+      sdtType !== "comboBox" &&
+      sdtType !== "dropdown") ||
     id === undefined ||
     !Number.isInteger(id) ||
     id < -MAX_REVISION_ID - 1 ||
@@ -504,8 +579,7 @@ const movableControlId = (
     if (
       kind === undefined ||
       kinds.has(kind) ||
-      (kind === "checkbox" && !checkbox) ||
-      (kind === "richText" && checkbox)
+      (kind !== "binding" && kind !== sdtType)
     )
       return undefined;
     kinds.add(kind);
@@ -623,20 +697,20 @@ const movableInlineContent = (
         return (
           !context.withinLink &&
           movableInlineContent(item.children, {
-            ...nestedMoveContext(context),
+            ...context,
             withinLink: true,
           })
         );
       case "inlineWrapper":
         return (
           (item.kind === "bidi" || item.propertiesXml === undefined) &&
-          movableInlineContent(item.content, nestedMoveContext(context))
+          movableInlineContent(item.content, context)
         );
       case "inlineSdt": {
         const id = movableControlId(item.properties);
         if (id === undefined) return false;
         context.controls.push(id);
-        return movableInlineContent(item.content, nestedMoveContext(context));
+        return movableInlineContent(item.content, context);
       }
       default:
         return false;
@@ -1117,7 +1191,7 @@ const withNestedMoveIdentities = (
       ? record
       : { ...record, info: { ...record.info, id } };
   };
-  const rewriteMoveContent = (content: ParagraphContent): ParagraphContent => {
+  const rewriteMoveContent = (content: InlineNode): InlineNode => {
     switch (content.type) {
       case "insertion":
       case "deletion":
@@ -1172,10 +1246,10 @@ const withNestedMoveIdentities = (
             ? {}
             : { propertyChanges: block.propertyChanges.map(restamp) }),
           content: withMoveIdentities({
-            content:
-              ids.ranges.size === 0 && ids.revisions.size === 0
-                ? block.content
-                : block.content.map(rewriteMoveContent),
+            content: block.content,
+            ...(ids.ranges.size === 0 && ids.revisions.size === 0
+              ? {}
+              : { reviewIdentity: rewriteMoveContent }),
             controls: ids.controls,
             pictures: ids.pictures,
             bookmarkNames: ids.bookmarkNames,
@@ -1487,6 +1561,7 @@ type MoveIdentityOptions = {
   pictures: ReadonlyMap<number, number>;
   bookmarkNames?: ReadonlyMap<string, string>;
   bookmarkIds?: ReadonlyMap<number, PackageBookmark>;
+  reviewIdentity?: (node: InlineNode) => InlineNode;
 };
 
 const withBookmarkIdentity = (
@@ -1506,16 +1581,23 @@ const withMoveIdentities = ({
   pictures,
   bookmarkNames,
   bookmarkIds,
+  reviewIdentity,
 }: MoveIdentityOptions): ParagraphContent[] => {
-  if (controls.size === 0 && pictures.size === 0 && !bookmarkNames?.size)
+  if (
+    controls.size === 0 &&
+    pictures.size === 0 &&
+    !bookmarkNames?.size &&
+    reviewIdentity === undefined
+  )
     return content;
   const rewrite = (node: InlineNode): InlineNode => {
     const children = childNodes(node);
     const rewritten = children?.map(rewrite);
-    const next =
+    const rebuilt =
       rewritten?.some((child, index) => child !== children?.[index]) === true
         ? rebuildNode(node, rewritten)
         : node;
+    const next = reviewIdentity?.(rebuilt) ?? rebuilt;
     if (next.type === "inlineSdt" && next.properties.id !== undefined) {
       const id = controls.get(next.properties.id);
       if (id !== undefined)
