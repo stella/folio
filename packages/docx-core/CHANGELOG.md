@@ -1,5 +1,11 @@
 # @stll/docx-core
 
+## 0.50.2
+
+### Patch Changes
+
+- [#3781](https://github.com/stella/folio/pull/3781) [`1fbd7bc`](https://github.com/stella/folio/commit/1fbd7bca69113f43670ad20de3206f2858b91f31) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve block content controls and exact undo when removing their only paragraph.
+
 ## 0.50.1
 
 ### Patch Changes
