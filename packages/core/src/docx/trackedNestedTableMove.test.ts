@@ -135,7 +135,7 @@ const tableOf = (document: Document): Table => {
   return block;
 };
 
-test.each(["table", "row", "paragraph", "block"] as const)(
+test.each(["table", "row", "paragraph", "block", "equation"] as const)(
   "tracked horizontal merges keep nested %s bookmark pairs and their local links",
   (placement) => {
     const name = "NestedClause";
@@ -145,6 +145,15 @@ test.each(["table", "row", "paragraph", "block"] as const)(
       { index: 0, marker: start },
       { index: 1, marker: end },
     ] satisfies NonNullable<Table["bookmarks"]>;
+    // ISO/IEC 29500-1 §22.1.2.77 permits bookmarks inside an equation.
+    const formula = ({ id, name: anchorName }: { id: number; name: string }) =>
+      ({
+        type: "mathEquation",
+        display: "inline",
+        ommlXml:
+          '<m:oMath xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math">' +
+          `<w:bookmarkStart w:id="${id}" w:name="${anchorName}"/><m:r><m:t>x</m:t></m:r><w:bookmarkEnd w:id="${id}"/></m:oMath>`,
+      }) as const;
     const link: Paragraph = {
       ...paragraph("00000003"),
       content: [
@@ -157,6 +166,7 @@ test.each(["table", "row", "paragraph", "block"] as const)(
           ],
         },
         ...(placement === "paragraph" ? [end] : []),
+        ...(placement === "equation" ? [formula(start)] : []),
       ],
     };
     const moved: Table = {
@@ -190,11 +200,14 @@ test.each(["table", "row", "paragraph", "block"] as const)(
     };
     const outside: Paragraph = {
       ...paragraph("00000004"),
-      content: [
-        { type: "bookmarkStart", id: 1, name: "foliobookmark1" },
-        { type: "run", content: [{ type: "text", text: "Outside" }] },
-        { type: "bookmarkEnd", id: 1 },
-      ],
+      content:
+        placement === "equation"
+          ? [formula({ id: 1, name: "foliobookmark1" })]
+          : [
+              { type: "bookmarkStart", id: 1, name: "foliobookmark1" },
+              { type: "run", content: [{ type: "text", text: "Outside" }] },
+              { type: "bookmarkEnd", id: 1 },
+            ],
     };
     const withTable = (block: Table): Document => ({
       package: { document: { content: [block, outside] } },
@@ -481,12 +494,18 @@ test("earlier inline, formatting and break revisions stay reviewable through a n
       },
       {
         type: "run",
+        formatting: { italic: true },
+        content: [{ type: "text", text: "Prior " }],
+      },
+      {
+        type: "run",
         content: [{ type: "text", text: "clause" }],
         formatting: { bold: true },
         propertyChanges: [
           {
             type: "runPropertyChange",
             info: stamp(44),
+            boundaryJoins: ["before"],
             previousFormatting: { italic: true },
           },
         ],
@@ -617,7 +636,7 @@ test("earlier inline, formatting and break revisions stay reviewable through a n
           expect(xml).toContain(
             inner === REVISION_DECISIONS.ACCEPT
               ? "<w:b/></w:rPr><w:t>clause"
-              : "<w:i/></w:rPr><w:t>clause",
+              : "<w:i/></w:rPr><w:t>Prior clause",
           );
         } else if (authored === 45 || authored === 46) {
           const deleted = authored === 45;
@@ -1270,11 +1289,25 @@ test.each([
   "deleteColumn",
   "mergeCells",
   "merge with moved words",
+  "merge with bookmarked words",
   "merge with a nested move",
 ] as const)(
   "a moved nested table keeps its earlier grouped geometry actionable (%s)",
   (kind) => {
     const innermostRevision = 51;
+    const carriesBookmark = kind === "merge with bookmarked words";
+    const survivor = paragraph(
+      "00000007",
+      kind === "mergeCells" ? undefined : "Survivor",
+    );
+    if (carriesBookmark) {
+      survivor.content.unshift({
+        type: "bookmarkStart",
+        id: 80,
+        name: "NestedWords",
+      });
+      survivor.content.push({ type: "bookmarkEnd", id: 80 });
+    }
     const inner = {
       type: "table",
       columnWidths: [700, 900],
@@ -1317,10 +1350,7 @@ test.each([
               ...(kind === "merge with moved words"
                 ? [paragraph("00000008")]
                 : []),
-              paragraph(
-                "00000007",
-                kind === "mergeCells" ? undefined : "Survivor",
-              ),
+              survivor,
             ),
           ],
         },
@@ -1483,10 +1513,11 @@ test.each([
         }
       }
     }
-    if (kind === "merge with moved words") {
+    if (kind === "merge with moved words" || carriesBookmark) {
       const ranges = nestedMove?.moveRanges?.at(0);
       if (nestedMove === undefined || ranges === undefined)
         throw new TypeError("Expected tracked paragraph range handoffs.");
+      if (carriesBookmark) expect(nestedMove.bookmarks).toHaveLength(2);
       const [authored, temporary] = ranges;
       expect(
         new Set([

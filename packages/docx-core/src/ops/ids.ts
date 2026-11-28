@@ -12,6 +12,7 @@ import type { DocxPackage } from "../model/document";
  * same paragraph must not count twice. The walk is otherwise structural, so a
  * story the model gains is covered without a list to keep in step.
  */
+import { capturedMathBookmarks } from "./capturedBookmarks";
 import { structurallyEqual } from "./equality";
 import { changedListBounds } from "./listSplice";
 import { recentValues } from "./recentValues";
@@ -150,23 +151,35 @@ export const packageBookmarkCensus = (
   const names = new Set<string>();
   const starts = new Map<number, { name: string; count: number }>();
   const ends = new Map<number, number>();
+  const record = (type: unknown, id: unknown, name?: unknown) => {
+    if (typeof id !== "number") return;
+    if (type === "bookmarkStart") {
+      ids.add(id);
+      if (typeof name !== "string") return;
+      names.add(name);
+      const prior = starts.get(id);
+      starts.set(id, { name, count: (prior?.count ?? 0) + 1 });
+    } else if (type === "bookmarkEnd") {
+      ids.add(id);
+      ends.set(id, (ends.get(id) ?? 0) + 1);
+    }
+  };
   walk({
     value: storiesOf(pkg),
     visit: (entries) => {
       const type = fieldOf(entries, "type");
-      const id = fieldOf(entries, "id");
-      if (typeof id !== "number") return;
-      if (type === "bookmarkStart") {
-        ids.add(id);
-        const name = fieldOf(entries, "name");
-        if (typeof name !== "string") return;
-        names.add(name);
-        const prior = starts.get(id);
-        starts.set(id, { name, count: (prior?.count ?? 0) + 1 });
-      } else if (type === "bookmarkEnd") {
-        ids.add(id);
-        ends.set(id, (ends.get(id) ?? 0) + 1);
+      if (type === "mathEquation") {
+        const xml = fieldOf(entries, "ommlXml");
+        if (typeof xml === "string")
+          for (const marker of capturedMathBookmarks(xml))
+            record(
+              marker.type,
+              marker.id,
+              marker.type === "bookmarkStart" ? marker.name : undefined,
+            );
+        return;
       }
+      record(type, fieldOf(entries, "id"), fieldOf(entries, "name"));
     },
   });
   const pairs = [...starts].flatMap(([id, start]) =>

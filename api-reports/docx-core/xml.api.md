@@ -45,7 +45,7 @@ export const rewriteStreamingXmlDecimalAttributes: (xml: string, visitOpenTag: O
 };
 
 // @public
-export const scanStreamingXmlElements: (xml: string, visitElement: ElementScanVisitor) => {
+export const scanStreamingXmlElements: (xml: string, visitElement: ElementScanVisitor, inheritedNamespaceScope?: XmlNamespaceScope) => {
     status: "unsupported";
     refusal: XmlRefusal;
 } | {

@@ -2590,9 +2590,7 @@ const suggestMerge = ({
   const takePictureId = moves.some(({ source }) => source.pictures.size > 0)
     ? tablePictureIdAllocator(document.package)
     : undefined;
-  const takeBookmark = moves.some(
-    (move) => move.type === "table" && move.source.bookmarks.length > 0,
-  )
+  const takeBookmark = moves.some(({ source }) => source.bookmarks.length > 0)
     ? tableBookmarkAllocator(document.package)
     : undefined;
   let nextBlockId = continuationCount;
@@ -2616,6 +2614,17 @@ const suggestMerge = ({
         });
       pictures.push([id, temporary]);
     }
+    const bookmarks = [];
+    for (const original of move.source.bookmarks) {
+      const temporary = takeBookmark?.();
+      if (temporary === undefined)
+        return refuse({
+          op,
+          reason: DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
+          message: "The bookmark identity space is exhausted.",
+        });
+      bookmarks.push([original, temporary] as const);
+    }
     if (move.type === "table") {
       const { source } = move;
       const endBlockId = nextBlockId + source.paragraphs.length;
@@ -2623,7 +2632,6 @@ const suggestMerge = ({
       const endRevisions = endStamp + source.revisions.length;
       const endAnchors = endRevisions + source.omittedAnchorCount;
       const moveRanges = [];
-      const bookmarks = [];
       for (const original of source.ranges) {
         const temporary = takeMoveRange?.();
         if (temporary === undefined)
@@ -2633,16 +2641,6 @@ const suggestMerge = ({
             message: "The move range identity space is exhausted.",
           });
         moveRanges.push([original, temporary] as const);
-      }
-      for (const original of source.bookmarks) {
-        const temporary = takeBookmark?.();
-        if (temporary === undefined)
-          return refuse({
-            op,
-            reason: DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
-            message: "The bookmark identity space is exhausted.",
-          });
-        bookmarks.push([original, temporary] as const);
       }
       const nested = markNestedTableMove({
         source,
@@ -2710,6 +2708,7 @@ const suggestMerge = ({
       to,
       mark,
       ranges,
+      bookmarks,
       controls,
       pictures,
     });
