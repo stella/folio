@@ -2194,8 +2194,13 @@ const compileBlockPlacement = (
     let placed = mapped;
     if (moved !== true && mapped.type === "blockCustomXml")
       placed = withoutElementRecords(mapped);
-    else if (moved !== true && mapped.type === "table")
-      placed = withoutCustomXmlRecords([mapped]).at(0) ?? mapped;
+    else if (moved !== true && mapped.type === "table") {
+      const stripped = withoutCustomXmlRecords([mapped]).at(0);
+      placed =
+        stripped !== undefined && isPastedBlock(stripped)
+          ? stripped
+          : panic("A copied table lost its kind.");
+    }
     if (placed.type === "paragraph" || placed.type === "preservedBlock")
       return placed;
     const [withControls] = withBlockControls([placed], controls);
