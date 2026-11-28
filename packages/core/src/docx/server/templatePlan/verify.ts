@@ -113,6 +113,7 @@ import type {
   TemplatePlanReferenceResult,
   TemplatePlanReport,
   TemplatePlanSectionPage,
+  TemplatePlanSourceComments,
   TemplatePlanSourceHeaders,
   TemplatePlanSpanCounts,
   VerifyTemplatePlanOutputArgs,
@@ -2230,9 +2231,24 @@ export const reportTemplatePlanOutput = async ({
       `${omittedLabels} omitted block(s) showed a number or label in the source.`,
     );
   }
-  if (source.story.state.comments > 0) {
+  // The source's comments the output shows, when the plan keeps them.
+  const sourceComments: TemplatePlanSourceComments | undefined =
+    plan.comments === "keep"
+      ? {
+          kept: out.story.state.comments,
+          leftOut: Math.max(
+            0,
+            source.manifest.comments - out.story.state.comments,
+          ),
+        }
+      : undefined;
+  const droppedComments =
+    sourceComments === undefined
+      ? source.story.state.comments
+      : sourceComments.leftOut;
+  if (droppedComments > 0) {
     warnings.push(
-      `${source.story.state.comments} comment(s) of the source are not carried over.`,
+      `${droppedComments} comment(s) of the source are not carried over.`,
     );
   }
   const outputFormFields = new Map<string, number>();
@@ -2352,7 +2368,7 @@ export const reportTemplatePlanOutput = async ({
       ),
     },
     dropped: {
-      comments: source.story.state.comments,
+      comments: droppedComments,
       sourceFields: [...droppedFields].map(([kind, count]) => ({
         kind,
         count,
@@ -2364,6 +2380,7 @@ export const reportTemplatePlanOutput = async ({
     textEffects,
     updateFields,
     ...(sourceHeaders === undefined ? {} : { sourceHeaders }),
+    ...(sourceComments === undefined ? {} : { sourceComments }),
     conformance: {
       status: conformance.status,
       templateStatus: templateConformance.status,

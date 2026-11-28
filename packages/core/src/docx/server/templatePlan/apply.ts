@@ -63,7 +63,21 @@ import {
 } from "./plan";
 import { readStoryResources } from "./resources";
 import {
+  COMMENT_PARTS,
+  commentParagraphIds,
+  commentPartPath,
+  entriesMarkup,
+  highestCommentId,
+  keptExtensionEntries,
+  placedCommentMarks,
+  readCommentExtension,
+  readSourceComments,
+  type SourceComments,
+  withEntriesOnly,
+} from "./sourceComments";
+import {
   copyPartContent,
+  type CopyTarget,
   type HeaderFamily,
   type HeaderWrite,
   keptSectionEnds,
@@ -1034,7 +1048,11 @@ const writeOutput = async ({
   for (const part of headerFooterParts) {
     noteDrawingIds(part.root);
   }
+  // The output id of a source comment mark the output writes; set once
+  // the comments the output carries are known.
+  let commentIdOf: EmitShared["commentId"];
   const shared: EmitShared = {
+    commentId: (mark) => commentIdOf?.(mark) ?? null,
     sourceFields: source.story.state.fields,
     styles: templateCharacterStyles(template),
     sourceRelationships: sourceResources.value.relationships,
@@ -1093,6 +1111,118 @@ const writeOutput = async ({
     prefixes: documentPrefixes,
     relationships: documentRelationships,
   };
+
+  // The source's comments the plan keeps: each whose reference the output
+  // places, copied into the output's comments part ahead of the body.
+  let carriedComments: {
+    source: SourceComments;
+    carried: XmlElement[];
+    /** The template's comments part, or null where a new part holds them. */
+    templatePart: RawPart | null;
+    path: string;
+    markup: string;
+    relationships: RelationshipsEditor;
+  } | null = null;
+  if (plan.comments === "keep") {
+    const sourceComments = await readSourceComments(source);
+    if (Result.isError(sourceComments)) {
+      return sourceComments;
+    }
+    if (sourceComments.value !== null) {
+      const placed = placedCommentMarks(
+        [...new Set(resolved.byBlockId.values())].map(
+          ({ segments }) => segments,
+        ),
+      );
+      const templatePath = commentPartPath(
+        template,
+        COMMENT_PARTS.comments.type,
+      );
+      const templateXml = await readTemplateText(templatePath);
+      if (Result.isError(templateXml)) {
+        return templateXml;
+      }
+      const templatePart =
+        templatePath === null || templateXml.value === null
+          ? null
+          : readRawPart(templatePath, templateXml.value);
+      let path = templatePart?.path ?? null;
+      if (path === null) {
+        let index = 1;
+        path = `${documentDirectory}${COMMENT_PARTS.comments.fileName}`;
+        while (takenPaths.has(path.toLowerCase())) {
+          index += 1;
+          path = `${documentDirectory}comments${index}.xml`;
+        }
+      }
+      const relationshipsPath = relationshipsPathFor(path);
+      const existing =
+        templatePart === null || !pkg.paths.has(relationshipsPath)
+          ? Result.ok(null)
+          : await readTemplateText(relationshipsPath);
+      if (Result.isError(existing)) {
+        return existing;
+      }
+      const relationships = createRelationshipsEditor(
+        relationshipsPath,
+        existing.value,
+      );
+      if (relationships === null) {
+        return Result.err(
+          unreadable(relationshipsPath, "A relationships part is not one."),
+        );
+      }
+      // Ids follow the template's own comments.
+      const offset = highestCommentId(templatePart?.root ?? null) + 1;
+      const outputId = (id: string): string => {
+        const number = integerOrNull(id);
+        return number === null ? id : String(number + offset);
+      };
+      const target: CopyTarget = {
+        relationships,
+        addMedia: shared.addMedia,
+        nextDrawingId: shared.nextDrawingId,
+        readSourceBytes: async (at) => await source.pkg.readBytes(at),
+        resolveSourceTarget: (fromPart, at) =>
+          resolveRelativePath(relationshipsPathFor(fromPart), at),
+        hasStyle: (styleId) => template.styles.has(styleId),
+      };
+      const carried: XmlElement[] = [];
+      const carriedIds = new Set<string>();
+      const markup: string[] = [];
+      for (const [id, comment] of sourceComments.value.byId) {
+        if (!placed.reference.has(id)) {
+          continue;
+        }
+        // oxlint-disable-next-line no-await-in-loop -- serialized reads keep the archive budget exact
+        const copy = await copyPartContent(
+          sourceComments.value.part,
+          target,
+          { keepParagraphIds: true, blockId: outputId },
+          [comment],
+        );
+        if (copy.unsupported > 0) {
+          continue;
+        }
+        carried.push(comment);
+        carriedIds.add(id);
+        markup.push(copy.markup);
+      }
+      commentIdOf = ({ kind, id }) =>
+        carriedIds.has(id) &&
+        (kind === "reference" || (placed.start.has(id) && placed.end.has(id)))
+          ? outputId(id)
+          : null;
+      carriedComments = {
+        source: sourceComments.value,
+        carried,
+        templatePart,
+        path,
+        markup: markup.join(""),
+        relationships,
+      };
+    }
+  }
 
   const instructions = new Map(
     resolved.references.map(({ reference, instruction }) => [
@@ -1656,6 +1786,84 @@ const writeOutput = async ({
     const relationshipsXml = state.relationships.xml();
     if (relationshipsXml !== null) {
       parts.set(state.relationships.path, relationshipsXml);
+    }
+  }
+  if (carriedComments !== null && carriedComments.carried.length > 0) {
+    const { w, wUri, r } = documentPrefixes;
+    const { templatePart, path, markup, relationships } = carriedComments;
+    if (templatePart === null) {
+      parts.set(
+        path,
+        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><${w}:comments xmlns:${w}="${wUri}" xmlns:${r}="${NAMESPACES.r}">${markup}</${w}:comments>`,
+      );
+      documentRelationships.add({
+        type: COMMENT_PARTS.comments.type,
+        target: path.slice(documentDirectory.length),
+        external: false,
+      });
+      newContentTypes.push({
+        partName: `/${path}`,
+        contentType: COMMENT_PARTS.comments.contentType,
+      });
+    } else {
+      parts.set(
+        path,
+        appendToXmlRoot(templatePart.xml, {
+          rootName: templatePart.root.name ?? "",
+          markup,
+        }),
+      );
+    }
+    const commentRelationships = relationships.xml();
+    if (commentRelationships !== null) {
+      parts.set(relationships.path, commentRelationships);
+    }
+    // The parts that extend the comments, with the carried ones' entries.
+    const entries = keptExtensionEntries(
+      carriedComments.source.extensions,
+      commentParagraphIds(carriedComments.carried),
+    );
+    for (const extension of carriedComments.source.extensions) {
+      const kept = entries.get(extension.kind) ?? [];
+      // oxlint-disable-next-line no-await-in-loop -- serialized reads keep the archive budget exact
+      const own = await readCommentExtension(template, extension.kind);
+      if (Result.isError(own)) {
+        return own;
+      }
+      if (own.value !== null) {
+        if (kept.length > 0) {
+          parts.set(
+            own.value.path,
+            appendToXmlRoot(own.value.xml, {
+              rootName: own.value.root.name ?? "",
+              markup: entriesMarkup(extension.root, kept),
+            }),
+          );
+        }
+        continue;
+      }
+      const xml = withEntriesOnly(extension, kept);
+      if (xml === null) {
+        return Result.err(
+          unreadable(extension.path, "A comments part could not be copied."),
+        );
+      }
+      const { fileName, type, contentType } = COMMENT_PARTS[extension.kind];
+      let extensionPath = `${documentDirectory}${fileName}`;
+      for (
+        let index = 2;
+        takenPaths.has(extensionPath.toLowerCase()) || parts.has(extensionPath);
+        index += 1
+      ) {
+        extensionPath = `${documentDirectory}${fileName.replace(".xml", String(index))}.xml`;
+      }
+      parts.set(extensionPath, xml);
+      documentRelationships.add({
+        type,
+        target: extensionPath.slice(documentDirectory.length),
+        external: false,
+      });
+      newContentTypes.push({ partName: `/${extensionPath}`, contentType });
     }
   }
   if (unsupportedMedia !== null) {

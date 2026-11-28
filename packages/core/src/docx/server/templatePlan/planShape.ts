@@ -540,6 +540,11 @@ export const planShapeIssue = (plan: unknown): string | null => {
     plan["sourceHeaders"] === "drop" ||
     plan["sourceHeaders"] === "keep"
       ? null
-      : "The plan's choice for the source's headers and footers is unknown.")
+      : "The plan's choice for the source's headers and footers is unknown.") ??
+    (plan["comments"] === undefined ||
+    plan["comments"] === "drop" ||
+    plan["comments"] === "keep"
+      ? null
+      : "The plan's choice for the source's comments is unknown.")
   );
 };

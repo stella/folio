@@ -678,6 +678,15 @@ const picturesOf = async (
   return media;
 };
 
+/** How a copy treats the ids of what it copies. */
+export type CopyIds = {
+  /** Keep the paragraphs' own ids (`w14:paraId`, `w14:textId`): parts
+   *  that refer to them come along. */
+  keepParagraphIds?: boolean;
+  /** The id the copied block itself takes (`w:id` of a comment). */
+  blockId?: (id: string) => string;
+};
+
 /** One block of a source part re-homed for an output part, or null when
  *  it refers to anything other than a picture, an embedded object or an
  *  external address. */
@@ -686,6 +695,7 @@ const rehomedBlock = (
   part: SourcePart,
   media: ReadonlyMap<string, SourceMedia>,
   target: CopyTarget,
+  ids: CopyIds = {},
 ): string | null => {
   // Set by a relationship the output part cannot re-make.
   const state = { refused: false };
@@ -725,7 +735,9 @@ const rehomedBlock = (
       const colon = name.indexOf(":");
       if (
         value === undefined ||
-        (colon !== -1 && DROPPED_ATTRIBUTES.has(name.slice(colon + 1)))
+        (colon !== -1 &&
+          ids.keepParagraphIds !== true &&
+          DROPPED_ATTRIBUTES.has(name.slice(colon + 1)))
       ) {
         continue;
       }
@@ -772,10 +784,20 @@ const rehomedBlock = (
           }),
     });
   };
-  const rehomed = rehome(block);
-  if (state.refused || rehomed === null) {
+  const copied = rehome(block);
+  if (state.refused || copied === null) {
     return null;
   }
+  const ownId = wAttr(block, "id");
+  const idName = Object.keys(copied.attributes ?? {}).find(
+    (name) => name.endsWith(":id") && !name.startsWith("xmlns"),
+  );
+  const rehomed =
+    ids.blockId === undefined || ownId === null || idName === undefined
+      ? copied
+      : cloneElement(copied, {
+          attributes: { ...copied.attributes, [idName]: ids.blockId(ownId) },
+        });
   // The block brings the namespaces its part declares at the root.
   const declared: Record<string, string | number | undefined> = {};
   for (const [name, value] of Object.entries(part.root.attributes ?? {})) {
@@ -799,19 +821,21 @@ const rehomedBlock = (
 export const copyPartContent = async (
   part: SourcePart,
   target: CopyTarget,
+  ids: CopyIds = {},
+  blocks: readonly XmlElement[] = part.blocks,
 ): Promise<{ markup: string; unsupported: number }> => {
   const media = await picturesOf(part, target);
   let unsupported = 0;
-  const blocks: string[] = [];
-  for (const block of part.blocks) {
-    const xml = rehomedBlock(block, part, media, target);
+  const copied: string[] = [];
+  for (const block of blocks) {
+    const xml = rehomedBlock(block, part, media, target, ids);
     if (xml === null) {
       unsupported += 1;
     } else {
-      blocks.push(xml);
+      copied.push(xml);
     }
   }
-  return { markup: blocks.join(""), unsupported };
+  return { markup: copied.join(""), unsupported };
 };
 
 const partRootOf = async (

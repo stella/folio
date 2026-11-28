@@ -37,6 +37,7 @@ import type {
   AtomKind,
   AtomLink,
   InlineAtom,
+  ParagraphCommentMark,
   ParagraphRead,
   StoryField,
 } from "./story";
@@ -561,6 +562,52 @@ export const paragraphPieces = ({
   });
 };
 
+/**
+ * A paragraph's pieces with a piece for each of its comment marks, in front
+ * of the atom the mark stands before. Each piece holds no text.
+ */
+export const withCommentMarks = (
+  pieces: readonly ExpectedPiece[],
+  marks: readonly ParagraphCommentMark[],
+): ExpectedPiece[] => {
+  if (marks.length === 0) {
+    return [...pieces];
+  }
+  const out: ExpectedPiece[] = [];
+  let next = 0;
+  const placeUpTo = (atomIndex: number): void => {
+    for (
+      let mark = marks[next];
+      mark !== undefined && mark.atomIndex <= atomIndex;
+      mark = marks[next]
+    ) {
+      next += 1;
+      out.push({
+        kind: "commentMark",
+        text: "",
+        signature: "",
+        link: mark.link,
+        atom: {
+          kind: "commentMark",
+          text: "",
+          runProperties: null,
+          link: mark.link,
+          element: null,
+          fields: [],
+          comment: { kind: mark.kind, id: mark.id },
+        },
+        origin: "document",
+      });
+    }
+  };
+  for (const [index, piece] of pieces.entries()) {
+    placeUpTo(index);
+    out.push(piece);
+  }
+  placeUpTo(Number.POSITIVE_INFINITY);
+  return out;
+};
+
 type PositionedPiece = { piece: ExpectedPiece; start: number; end: number };
 
 const isHighSurrogate = (unit: number): boolean =>
@@ -793,7 +840,17 @@ const partSegments = ({
   const segments: ExpectedSegment[] = [];
   let open:
     { reference: TemplatePlanReference; pieces: ExpectedPiece[] } | undefined;
+  // Comment marks inside a reference stand right behind its field.
+  let held: ExpectedPiece[] = [];
   const close = (): Result<undefined, TemplatePlanError> => {
+    const closed = closeReference();
+    segments.push(
+      ...held.map((piece): ExpectedSegment => ({ kind: "piece", piece })),
+    );
+    held = [];
+    return closed;
+  };
+  const closeReference = (): Result<undefined, TemplatePlanError> => {
     if (open === undefined) {
       return Result.ok(undefined);
     }
@@ -847,6 +904,10 @@ const partSegments = ({
         return closed;
       }
       segments.push({ kind: "piece", piece });
+      continue;
+    }
+    if (piece.kind === "commentMark") {
+      held.push(piece);
       continue;
     }
     if (piece.kind !== "text") {
@@ -1405,12 +1466,16 @@ export const resolvePlan = (
       }
       // Marks of the page the source was laid out on go when the plan
       // says so; every other piece of the paragraph stays.
-      const every = paragraphPieces({
+      const read = paragraphPieces({
         read: block.read,
         context: source,
         origin: "document",
         fields: source.story.state.fields,
       });
+      const every =
+        plan.comments === "keep"
+          ? withCommentMarks(read, block.read.commentMarks)
+          : read;
       const kept =
         planned.dropPageShapes === true
           ? every.filter(

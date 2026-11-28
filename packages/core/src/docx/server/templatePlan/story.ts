@@ -105,7 +105,10 @@ export type AtomKind =
   /** A legacy form field that shows its box or list without a result: the
    *  field itself, with its form data, is the content. */
   | "formField"
-  | "object";
+  | "object"
+  /** No reading yields it: the piece a plan that keeps comments places
+   *  for a paragraph's comment mark (`ParagraphRead.commentMarks`). */
+  | "commentMark";
 
 export type AtomLink =
   /** A link through a relationship; `anchor` is the fragment its element adds. */
@@ -129,6 +132,8 @@ export type InlineAtom = {
   instruction?: string;
   /** The form data (`w:ffData`) of the field a `formField` atom stands for. */
   formData?: XmlElement;
+  /** The comment mark a `commentMark` piece stands for. */
+  comment?: { kind: "start" | "end" | "reference"; id: string };
   /** The tracked change the atom is part of, in a reading that keeps them. */
   revision?: AtomRevision;
   /**
@@ -265,6 +270,18 @@ export type ParagraphBookmark = { name: string; id: string; atomIndex: number };
 /** A bookmark end, with how many atoms of its paragraph come before it. */
 export type ParagraphBookmarkEnd = { id: string; atomIndex: number };
 
+/**
+ * A mark of a comment in a paragraph: where its range starts or ends, or
+ * the reference that shows it, with how many atoms come before it. The
+ * link is the one the content around the mark sits in.
+ */
+export type ParagraphCommentMark = {
+  kind: "start" | "end" | "reference";
+  id: string;
+  atomIndex: number;
+  link: AtomLink | null;
+};
+
 /** The sides of `w:ind` that count in characters of the document grid. */
 const CHARACTER_INDENTS = [
   "leftChars",
@@ -321,6 +338,8 @@ export type ParagraphRead = {
   openFieldsAtStart: number;
   bookmarks: ParagraphBookmark[];
   bookmarkEnds: ParagraphBookmarkEnd[];
+  /** Comment marks, in document order. */
+  commentMarks: ParagraphCommentMark[];
   inlineObjects: number;
   /** How many of them are drawn shapes fixed to the page. */
   pageShapes: number;
@@ -590,6 +609,25 @@ const readDeletedRun = (
   }
 };
 
+/** A comment mark where the walk stands; none inside a field's code. */
+const pushCommentMark = (
+  walk: ParagraphWalk,
+  kind: ParagraphCommentMark["kind"],
+  element: XmlElement,
+  link: AtomLink | null,
+): void => {
+  const id = wAttr(element, "id");
+  if (id === null || inCode(walk.state)) {
+    return;
+  }
+  walk.read.commentMarks.push({
+    kind,
+    id,
+    atomIndex: walk.read.atoms.length,
+    link,
+  });
+};
+
 const readRun = (
   run: XmlElement,
   walk: ParagraphWalk,
@@ -683,6 +721,7 @@ const readRun = (
         break;
       case "commentReference":
         state.comments += 1;
+        pushCommentMark(walk, "reference", child, link);
         break;
       case "fldChar": {
         const type = wAttr(child, "fldCharType");
@@ -881,6 +920,13 @@ const readInline = (
         id: wAttr(child, "id") ?? "",
         atomIndex: read.atoms.length,
       });
+    } else if (name === "commentRangeStart" || name === "commentRangeEnd") {
+      pushCommentMark(
+        walk,
+        name === "commentRangeStart" ? "start" : "end",
+        child,
+        context.link,
+      );
     } else if (!IGNORED_INLINE_CHILDREN.has(name) && !inCode(state)) {
       read.unsupported.push(name);
     }
@@ -951,6 +997,7 @@ export const readParagraph = (
     openFieldsAtStart: state.open.length,
     bookmarks: [],
     bookmarkEnds: [],
+    commentMarks: [],
     inlineObjects: 0,
     pageShapes: 0,
     unsupported: [],
