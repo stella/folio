@@ -1506,7 +1506,9 @@ const placementSide = (
   }
 };
 
-const placesTable = (operation: BlockInsertion | TableInsertion): boolean =>
+const placesTable = (
+  operation: FolioDocumentOperation,
+): operation is TableInsertion =>
   operation.type === "insertTable" || operation.type === "insertSignatureTable";
 
 /**
@@ -3279,9 +3281,9 @@ const gapAnchorBeforeFollower = ({
 };
 
 type InsertionGapOptions = {
-  operation: FolioDocumentOperation;
+  operation: BlockInsertion | TableInsertion;
   /** The public request before pending-join placement changes its anchor. */
-  sourceOperation?: FolioDocumentOperation;
+  sourceOperation: BlockInsertion | TableInsertion;
   intents: readonly EditorIntent[];
   projection: CanonicalProjection;
   /** `BesidePendingJoinOptions.landedEarlier`, for the gap of a block put before. */
@@ -3295,7 +3297,7 @@ const canonicalInsertionGap = ({
   landedEarlier,
   paragraphsLandedEarlier,
   operation,
-  sourceOperation = operation,
+  sourceOperation,
   intents,
   projection,
 }: InsertionGapOptions) => {
@@ -3358,8 +3360,9 @@ const canonicalInsertionGap = ({
           1 +
           (anchor.at.type === "after" ? paragraph.node.nodeSize : 0)
         : outer[anchor.at.type];
-  if (!placesBlock(operation)) return undefined;
-  const source = projection.paragraph(sourceOperation.blockId);
+  const source =
+    projection.paragraph(sourceOperation.blockId) ??
+    projection.paragraph(operation.blockId);
   if (source === undefined) panic("An insertion lost its source block.");
   const sourceTable = findOutermostTableBoundary(
     projection.doc,
@@ -6945,6 +6948,12 @@ export class CanonicalPublicOperations {
     const inputOperationById = new Map(
       batch.operations.map((operation) => [operation.id, operation]),
     );
+    const sourceBlockOperationOf = ({ operation }: AdmittedOperation) => {
+      const source = inputOperationById.get(operation.id);
+      if (source === undefined || !placesBlock(source))
+        return panic("A resolved insertion lost its source operation.");
+      return source;
+    };
     const batchRemovedBlockIds = new Set(
       batch.mode === "direct"
         ? resolved.flatMap(({ operation, keepsTablesApart }) =>
@@ -6976,31 +6985,35 @@ export class CanonicalPublicOperations {
     const joinEndedAtSource = new Set<AdmittedOperation>();
     for (const member of executionOrder) {
       if (!placesBlock(member.operation)) continue;
-      const sourceOperation = inputOperationById.get(member.operation.id);
+      const sourceOperation = sourceBlockOperationOf(member);
       const inputIndex = orderOf(member);
-      const earlierParagraphAtSource =
-        sourceOperation !== undefined &&
-        placesBlock(sourceOperation) &&
-        batch.operations
-          .slice(0, inputIndex)
-          .some(
-            (operation) =>
-              isBlockInsertion(operation) &&
-              placementSide(operation) === "after" &&
-              operation.blockId === sourceOperation.blockId,
-          );
+      const earlierParagraphAtSource = batch.operations
+        .slice(0, inputIndex)
+        .some(
+          (operation) =>
+            isBlockInsertion(operation) &&
+            placementSide(operation) === "after" &&
+            operation.blockId === sourceOperation.blockId,
+        );
       const place = canonicalInsertionGap({
         operation: member.operation,
         sourceOperation,
         intents: member.intents,
         projection: projected.value,
-        landedEarlier:
-          orderOf(member) === 0
-            ? undefined
-            : besideDeletions.blocksLandedEarlier(member.operation.id),
-        paragraphsLandedEarlier: !earlierParagraphAtSource
-          ? undefined
-          : besideDeletions.landedEarlier(member.operation.id),
+        ...(orderOf(member) === 0
+          ? {}
+          : {
+              landedEarlier: besideDeletions.blocksLandedEarlier(
+                member.operation.id,
+              ),
+            }),
+        ...(earlierParagraphAtSource
+          ? {
+              paragraphsLandedEarlier: besideDeletions.landedEarlier(
+                member.operation.id,
+              ),
+            }
+          : {}),
       });
       if (place === undefined)
         panic("A resolved block insertion lost its placement.");
@@ -7083,9 +7096,12 @@ export class CanonicalPublicOperations {
     };
     /** The anchor a gap's insertions replay against, read from its first. */
     const replayAnchorOf = (first: AdmittedOperation) => {
+      if (!placesBlock(first.operation))
+        return panic("An insertion gap lost its block placement.");
       const place =
         canonicalInsertionGap({
           operation: first.operation,
+          sourceOperation: sourceBlockOperationOf(first),
           intents: first.intents,
           projection: projected.value,
         }) ?? panic("An admitted insertion lost its source placement.");
