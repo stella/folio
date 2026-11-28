@@ -270,6 +270,78 @@ const sameLink = (left: AtomLink | null, right: AtomLink | null): boolean => {
 
 type ObjectTransfer = Result<string, TemplatePlanError>;
 
+/** The prefixes an `mc:Choice`/`mc:Ignorable`-style attribute value names. */
+const MARKUP_COMPATIBILITY_PREFIX_LISTS: ReadonlySet<string> = new Set([
+  "Requires",
+  "Ignorable",
+  "ProcessContent",
+  "MustUnderstand",
+  "PreserveElements",
+  "PreserveAttributes",
+]);
+
+/**
+ * `element` declaring every namespace prefix used inside it (element and
+ * attribute names, and the prefixes markup-compatibility attributes name)
+ * that its source binds above it. A source may bind the drawing prefixes
+ * once at its root, which the template's root need not do; declared on the
+ * object itself, the copy reads the same wherever it lands.
+ */
+const declareInheritedNamespaces = (element: XmlElement): XmlElement => {
+  const used = new Set<string>();
+  const note = (prefix: string): void => {
+    if (prefix !== "" && prefix !== "xml" && prefix !== "xmlns") {
+      used.add(prefix);
+    }
+  };
+  const visit = (node: XmlElement): void => {
+    if (node.type !== "element") {
+      return;
+    }
+    const name = node.name ?? "";
+    const colon = name.indexOf(":");
+    if (colon !== -1) {
+      note(name.slice(0, colon));
+    }
+    for (const [attribute, value] of Object.entries(node.attributes ?? {})) {
+      if (attribute === "xmlns" || attribute.startsWith("xmlns:")) {
+        continue;
+      }
+      const at = attribute.indexOf(":");
+      if (at !== -1) {
+        note(attribute.slice(0, at));
+      }
+      const local = at === -1 ? attribute : attribute.slice(at + 1);
+      if (value !== undefined && MARKUP_COMPATIBILITY_PREFIX_LISTS.has(local)) {
+        for (const token of String(value).split(/\s+/u)) {
+          const tokenColon = token.indexOf(":");
+          note(tokenColon === -1 ? token : token.slice(0, tokenColon));
+        }
+      }
+    }
+    for (const child of node.elements ?? []) {
+      visit(child);
+    }
+  };
+  visit(element);
+  const own = element.attributes ?? {};
+  const declarations: Record<string, string> = {};
+  for (const prefix of used) {
+    const name = `xmlns:${prefix}`;
+    if (own[name] !== undefined) {
+      continue;
+    }
+    // A prefix bound only inside the object travels with its declaration.
+    const uri = resolveNamespaceUri(element.namespaceScope, prefix);
+    if (uri !== undefined) {
+      declarations[name] = uri;
+    }
+  }
+  return Object.keys(declarations).length === 0
+    ? element
+    : cloneElement(element, { attributes: { ...declarations, ...own } });
+};
+
 /** An object of the source with its relationships and drawing ids re-homed. */
 const transferObject = (
   { atom, origin }: ExpectedPiece,
@@ -351,7 +423,7 @@ const transferObject = (
         : { elements: node.elements.map(rehome) }),
     });
   };
-  const xml = captureVerbatimXml(rehome(element));
+  const xml = captureVerbatimXml(declareInheritedNamespaces(rehome(element)));
   return refusal === null ? Result.ok(xml) : Result.err(refusal);
 };
 

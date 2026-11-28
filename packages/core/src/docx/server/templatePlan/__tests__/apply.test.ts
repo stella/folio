@@ -1199,6 +1199,38 @@ describe("applyTemplatePlan with objects, fields and endnotes", () => {
     ).toBe(1);
   });
 
+  test("moves a picture whose drawing prefixes the source binds at its root", async () => {
+    const declarations = [
+      'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"',
+      'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"',
+      'xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"',
+    ];
+    const bare = PICTURE_RUN.replaceAll(/ xmlns:(?:wp|a|pic)="[^"]*"/gu, "");
+    expect(bare).not.toContain("xmlns:");
+    const source = await buildMinimalDocx("", {
+      "word/document.xml": `${XML}<w:document ${NS} ${declarations.join(" ")}><w:body>${p(`${r("Picture: ")}${bare}`)}<w:sectPr/></w:body></w:document>`,
+      "word/_rels/document.xml.rels": `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId5" Type="${REL_NS}/image" Target="media/image1.png"/></Relationships>`,
+      "word/media/image1.png": PIXEL_PNG,
+    });
+    const { docx, report } = unwrap(
+      await applyTemplatePlan({
+        source,
+        template: fixture.template,
+        plan: await planFor(source),
+      }),
+    );
+    const document = (await readPart(docx, "word/document.xml")) ?? "";
+
+    expect(report.ok).toBe(true);
+    // The copy declares what its source bound at the root.
+    for (const declaration of declarations) {
+      expect(document).toContain(declaration);
+    }
+    expect(
+      unwrap(await analyzeDocxBlocks(docx)).blocks.at(0)?.inlineObjects,
+    ).toBe(1);
+  });
+
   test("keeps field results as text and a HYPERLINK field as a link", async () => {
     const source = await buildObjectSource();
     const { docx, report } = unwrap(
