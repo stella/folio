@@ -157,6 +157,30 @@ describe("applyTemplatePlan edge content", () => {
     );
   });
 
+  test("reads a bookmark that ends between cells as ending behind the paragraph before", async () => {
+    const ref = (code: string, result: string): string =>
+      `<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve">${code}</w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>${r(result)}<w:r><w:fldChar w:fldCharType="end"/></w:r>`;
+    // A numbered row cell: the bookmark starts in its empty paragraph and
+    // ends in the row, in front of the next cell.
+    const source = await buildMinimalDocx(
+      [
+        `<w:tbl><w:tblGrid><w:gridCol w:w="500"/><w:gridCol w:w="4000"/></w:tblGrid><w:tr><w:tc>${p('<w:bookmarkStart w:id="7" w:name="row1"/>')}</w:tc><w:bookmarkEnd w:id="7"/><w:tc>${p(r("Customer"))}</w:tc></w:tr></w:tbl>`,
+        p(`${r("See item ")}${ref(" REF row1 \\w \\h ", "1")}${r(".")}`),
+      ].join(""),
+    );
+    const { blocks } = unwrap(await analyzeDocxBlocks(source));
+    const citing = blocks.find(({ text }) => text.startsWith("See item"));
+
+    expect(citing?.crossReferences).toEqual([
+      expect.objectContaining({
+        bookmark: "row1",
+        // The empty paragraph of the first cell.
+        targetBlockId: blocks.at(0)?.cells?.at(0)?.blockIds.at(0),
+        targetWhole: true,
+      }),
+    ]);
+  });
+
   test("reports a cross-reference field with the paragraph its bookmark marks", async () => {
     const template = await buildTemplate();
     const number =

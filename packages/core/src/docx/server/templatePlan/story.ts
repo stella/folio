@@ -952,6 +952,11 @@ export type StoryBlockVisitor = {
   unread: (element: XmlElement) => void;
   /** A tracked insertion, deletion or move of a block, row or cell. */
   tracked: (element: XmlElement) => void;
+  /**
+   * A bookmark end between blocks, rows or cells: the bookmark ends behind
+   * the paragraph read last.
+   */
+  bookmarkEnd?: (element: XmlElement) => void;
 };
 
 const BLOCK_WRAPPERS = new Set(["customXml"]);
@@ -1010,6 +1015,8 @@ const walkRows = (
             visitor.cellStart(row, col);
             col += 1;
             walkBlocks(cell, visitor, depth + 1);
+          } else if (cellName === "bookmarkEnd") {
+            visitor.bookmarkEnd?.(cell);
           } else if (cellName === "sdt") {
             const content = wChild(cell, "sdtContent");
             if (content !== null) {
@@ -1026,6 +1033,8 @@ const walkRows = (
         }
       };
       walkCells(child);
+    } else if (name === "bookmarkEnd") {
+      visitor.bookmarkEnd?.(child);
     } else if (name === "sdt") {
       const content = wChild(child, "sdtContent");
       if (content !== null) {
@@ -1072,6 +1081,8 @@ export const walkBlocks = (
       if (REVISION_INCLUDED.has(name)) {
         walkBlocks(child, visitor, depth);
       }
+    } else if (name === "bookmarkEnd") {
+      visitor.bookmarkEnd?.(child);
     } else if (name === null || !IGNORED_BLOCK_CHILDREN.has(name)) {
       visitor.unread(child);
     }
