@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "title": "#1356: a paragraph deleted between two tables as a paragraph goes after the first table equals its operations one at a time",
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "tables",
+  "mode": "tracked-changes",
+  "seed": 1,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 1,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "1BF99289",
+          "text": "Inserted words."
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "79D25458"
+        }
+      ]
+    }
+  ]
+}
